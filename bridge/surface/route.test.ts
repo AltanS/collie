@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
-import { parseSendRequest, SEND_MAX_TEXT, SEND_OFF_TEXT, sendRoute, type SendRouteRuntime } from "../server.ts";
+import { parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendRoute, type SendRouteRuntime } from "../server.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
@@ -92,7 +92,7 @@ function runtime(withSend: boolean, dir: string) {
     : undefined;
   let pokes = 0;
   const engine = {
-    current: () => ({ agents: [{ paneId: "%1", agent: "claude" }] }),
+    current: () => ({ agents: [{ paneId: "%1", agent: "claude" }], shellPanes: [{ paneId: "%7" }] }),
     noteInput: () => undefined,
     pokeNow: () => {
       pokes++;
@@ -155,6 +155,93 @@ describe("sendRoute", () => {
       // A herdr stub with `controlTurn` is what makes a pane screenless for rawInputRefusal.
       const screenless: SendRouteRuntime = { ...rt, herdr: { controlTurn: () => Promise.reject(new Error("never called")) } };
       expect((await sendRoute(screenless, { id: "route-req-0004", pane: "%1", text: "hi" }, context)).status).toBe(409);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the reply route runs the protocol (M56 spec 06)", () => {
+  const context = (audit: AuditLog) => ({ audit, device: "phone", redact: false, acceptEncoding: null });
+
+  test("a reply that submits text is one protocol request: the old shape plus the answer, audited with no text", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit, lines } = auditLines();
+      const res = await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply from a member's pane", submit: true }, context(audit));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({ ok: true, send: { receipt: { outcome: "sent", keys: ["Enter"] } } });
+      expect(body.send.receipt.requestId).toMatch(/^reply-/u);
+      expect(pane.written).toEqual(["a reply from a member's pane"]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('"action":"reply"');
+      expect(lines[0]).not.toContain("member's pane");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the body may carry the phone's id, mode and rows hash, and a reserved lead becomes a command", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit } = auditLines();
+      const named = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "named request", submit: true, id: "phone-req-0001" }, context(audit))).json();
+      expect(named.send.receipt.requestId).toBe("phone-req-0001");
+      const command = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "/compact", submit: true }, context(audit))).json();
+      expect(command).toMatchObject({ ok: true, send: { receipt: { outcome: "sent" } } });
+      expect(pane.written).toEqual(["named request", "/compact"]);
+      const prepared = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "", submit: true, mode: "prepare", id: "phone-req-0002" }, context(audit))).json();
+      expect(prepared).toMatchObject({ ok: true, send: { offers: [], surface: { turn: "idle", modal: "none", composer: "empty" } } });
+      expect((await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "x", submit: true, mode: "shout" }, context(audit))).status).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a refusal is ok false with the protocol's words, and nothing is typed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit } = auditLines();
+      const res = await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "/compact", submit: true, mode: "send" }, context(audit));
+      const body = await res.json();
+      expect(body).toMatchObject({ ok: false, code: "reply.send_failed", textDelivered: false, send: { receipt: { outcome: "refused", reason: "reserved_lead" } } });
+      expect(pane.written).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a bare shell pane is a terminal pane with no profile; an unknown pane is a 404", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      expect(replySendOf(rt).harnessOf("%1")).toBe("claude");
+      expect(replySendOf(rt).harnessOf("%7")).toBe("");
+      expect(replySendOf(rt).harnessOf("%9")).toBeNull();
+      const { audit } = auditLines();
+      expect((await replyThroughProtocol(replySendOf(rt), "%9", "main", { text: "hi", submit: true }, context(audit))).status).toBe(404);
+      // A shell has no profile: the first tap is refused unconfirmed and offers the commit tap.
+      const shell = await (await replyThroughProtocol(replySendOf(rt), "%7", "main", { text: "ls -la", submit: true }, context(audit))).json();
+      expect(shell.send).toMatchObject({ receipt: { outcome: "refused", reason: "unconfirmed", profileId: null }, offers: ["commit", "keys"] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("with the protocol off a submitting reply is refused 409 and nothing is typed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(false, dir);
+      const { audit, lines } = auditLines();
+      const res = await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "hello", submit: true }, context(audit));
+      expect(res.status).toBe(409);
+      expect(await res.text()).toBe(REPLY_OFF_TEXT);
+      expect(pane.written).toEqual([]);
+      expect(lines).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

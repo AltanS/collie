@@ -81,6 +81,12 @@ export interface ShadowOptions {
   readonly log?: (line: string) => void;
   readonly now?: () => number;
   readonly version?: VersionReader;
+  /**
+   * Compare each read with the old readers and log every disagreement (spec 04's shadow mode). Off
+   * once the Send Protocol makes the Surface the verdict (M56 spec 06): the counters still count, and
+   * nothing reads the old verdict. Defaults to on.
+   */
+  readonly compare?: boolean;
 }
 
 interface PaneState {
@@ -259,7 +265,7 @@ export class SurfaceShadow {
       const rows = splitLines(parseAnsi(grid.value.text));
       const blocks = readerBlocks(rows, harness);
       this.push(state, { seq: ++state.seq, source: "screen", at, revision: grid.value.revision, rows, ask: liftAsk(blocks, grid.value.revision) });
-      state.lastLegacy = legacyFree(rows, blocks, harness);
+      state.lastLegacy = this.options.compare === false ? false : legacyFree(rows, blocks, harness);
     }
 
     const read = foldSurface(state.log, { idle, pollMs: this.options.pollMs });
@@ -294,6 +300,7 @@ export class SurfaceShadow {
       const anyUnknown = surface.turn === "unknown" || modal === "unknown" || surface.composer === "unknown";
       if (!free && anyUnknown) bump(counters.unknown, surface.reason ?? (modal === "unknown" ? "weak-cue" : "other"));
     }
+    if (this.options.compare === false) return;
     const axis = freeOnOldAxis(surface);
     if (axis === state.lastLegacy) return;
     counters.disagreements++;

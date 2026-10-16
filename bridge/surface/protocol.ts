@@ -36,10 +36,12 @@ import {
   offersFor,
   reservedLead,
   sendLines,
+  takesManualSend,
   wsFree,
   type ReadMark,
   type SendAnswer,
   type SendMode,
+  type SendOffer,
   type SendOutcome,
   type SendReason,
   type SendReceipt,
@@ -84,11 +86,11 @@ const CLEAR_BATCH = 256;
 /** Texts this short take the probed path whatever the profile says. */
 const SHORT_TEXT = 3;
 
-/** Which verb route a reserved lead belongs to, for the refusal's sentence. */
+/** What a reserved lead is, for the refusal's sentence: each is sent as a `command`, never as a plain send. */
 const LEAD_ROUTES = new Map<string, string>(Object.entries({
-  "/": "A slash command goes through the commands sheet (POST /api/pane/:id/reply), not the Send Protocol.",
-  "!": "A shell line goes through the old reply route (POST /api/pane/:id/reply), not the Send Protocol.",
-  "@": "A file mention at the start goes through the old reply route (POST /api/pane/:id/reply), not the Send Protocol.",
+  "/": "A slash command is sent as a command (mode command), not as a message.",
+  "!": "A shell line is sent as a command (mode command), not as a message.",
+  "@": "A file mention at the start is sent as a command (mode command), not as a message.",
 }));
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────────
@@ -244,9 +246,13 @@ function boxText(frame: Frame): string {
 
 const CUE_RANK = { none: 0, weak: 1, strong: 2 } as const;
 
-/** Whether the generic cues of the bottom cluster grew stronger since `before`. */
+/**
+ * Whether a modal cue grew since `before`: the framed read's or the bare cluster's. On a free S0 there
+ * was none, so any cue counts; on a manual send the person confirmed a screen that already showed one
+ * (an unreadable overlay, a weak cue), and only a stronger one is news.
+ */
 function cueAppeared(before: Snap, after: Snap): boolean {
-  return CUE_RANK[after.bareCues] > CUE_RANK[before.bareCues];
+  return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength] || CUE_RANK[after.bareCues] > CUE_RANK[before.bareCues];
 }
 
 /** The non-blank rows under a frame's bottom edge. */
@@ -271,8 +277,14 @@ function transcriptAbove(snap: Snap, frame: Frame): string[] {
  */
 function outsideUnchanged(before: Snap, after: Snap): boolean {
   if (before.frame === null || after.frame === null) return false;
-  if (after.cueStrength !== "none" || cueAppeared(before, after)) return false;
+  if (cueAppeared(before, after)) return false;
   if (rowsBelow(before, before.frame) !== rowsBelow(after, after.frame)) return false;
+  return aboveUnchanged(before, after);
+}
+
+/** {@link outsideUnchanged} for a `command`: the transcript above the box only; its popup may fill the rows under it. */
+function aboveUnchanged(before: Snap, after: Snap): boolean {
+  if (before.frame === null || after.frame === null) return false;
   const a = transcriptAbove(before, before.frame);
   const b = transcriptAbove(after, after.frame);
   const grew = after.frame.bottom - after.frame.top - (before.frame.bottom - before.frame.top);
@@ -281,6 +293,13 @@ function outsideUnchanged(before: Snap, after: Snap): boolean {
     if (tail.length === b.length && tail.every((row, i) => row === b[i])) return true;
   }
   return false;
+}
+
+/** The lines with the first one's lead character cut: a shell line's `!` turns into the box's prompt glyph. */
+function withoutLead(lines: readonly string[]): string[] {
+  if (lines.length === 0) return [];
+  const first = lines[0]!.trimStart();
+  return [first.slice(1).trimStart(), ...lines.slice(1)];
 }
 
 function isSpace(ch: string | undefined): boolean {
@@ -608,7 +627,7 @@ export class SendProtocol {
     const state = this.bareState({ id: "prepare", text: "", mode: "prepare" }, prepareRecord(target, this.now()), target, match);
     try {
       const snap = await this.stableRead(state, "prepare");
-      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: isFree(snap.surface) ? [] : ["commit", "keys"] };
+      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: prepareOffers(snap) };
     } catch (err) {
       if (err instanceof Ended) return answerWith({ offers: ["keys"] }, { ...err.extra, detail: err.extra.detail ?? err.message });
       throw err;
@@ -647,10 +666,10 @@ export class SendProtocol {
     const profile = match?.profile ?? null;
     const lines = sendLines(request.text);
     const leads = profile?.reservedLeads ?? GENERIC_LEADS;
-    const writes = request.mode === "send" || request.mode === "append" || request.mode === "replace";
+    const writes = request.mode === "send" || request.mode === "command" || request.mode === "append" || request.mode === "replace";
 
     if (writes) {
-      const lead = reservedLead(lines[0] ?? "", leads);
+      const lead = request.mode === "command" ? null : reservedLead(lines[0] ?? "", leads);
       if (lead !== null) throw new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
       if (lines.length > 1 && profile === null) {
         throw new Ended("refused", "not_free", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
@@ -697,6 +716,7 @@ export class SendProtocol {
         this.draftFrame(s0);
         break;
       case "send":
+      case "command":
         this.gateSend(state, s0);
         break;
       case "prepare":
@@ -706,8 +726,13 @@ export class SendProtocol {
 
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
+    // A manual send (the person confirmed a screen that is not free) is always probed.
     state.probed =
-      s0.frame === null || match === null || match.status !== "verified" || ([...text].length >= 1 && [...text].length <= SHORT_TEXT);
+      s0.frame === null ||
+      match === null ||
+      match.status !== "verified" ||
+      (!isFree(s0.surface) && request.mode !== "append" && request.mode !== "replace") ||
+      ([...text].length >= 1 && [...text].length <= SHORT_TEXT);
     let landing: Landing | null = null;
     if (state.probed) landing = await this.probe(state, s0, prefix);
     this.lap(state, "probe");
@@ -733,7 +758,7 @@ export class SendProtocol {
     if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") {
       throw new Ended("refused", "draft_present", { surface, framed: s0.frame !== null, detail: "The box already holds a draft." });
     }
-    if (surface.reason === "no-match" && surface.modal === "unknown") {
+    if (takesManualSend(surface)) {
       if (state.request.rowsHash === undefined) {
         throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the rows, then tap again to type." });
       }
@@ -950,7 +975,7 @@ export class SendProtocol {
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
       landing = probeLanding(s0.plain, snap.plain, probe);
-      return landing !== null && snap.cueStrength === "none" && !cueAppeared(s0, snap) ? "pass" : "fail";
+      return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
     });
     if (typed.verdict !== "pass") throw failed(typed.verdict === "wait" ? "The probe character did not show in the box." : "The probe character changed more than the box.", typed.snap);
 
@@ -993,28 +1018,39 @@ export class SendProtocol {
     }
   }
 
-  /** S1: the box holds exactly the text, and nothing else moved. */
+  /**
+   * S1: the box holds exactly the text, and nothing else moved. A `command` lets the rows under the box
+   * move and lets a cue show there (its own popup), and takes the box with the lead read as the
+   * prompt glyph (a shell line's `!`); the transcript above must still stand still.
+   */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
+    const command = state.request.mode === "command";
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
-      if (snap.cueStrength !== "none" || cueAppeared(s0, snap)) {
+      if (!command && cueAppeared(s0, snap)) {
         why = "modal_cue";
         return "fail";
       }
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
-        if (!boxMatches(boxText(snap.frame), prefix, lines, collapse)) {
+        if (!boxMatches(boxText(snap.frame), prefix, lines, collapse) && !(command && boxMatches(boxText(snap.frame), prefix, withoutLead(lines), collapse))) {
           why = "mismatch";
           return "wait";
         }
-        if (!outsideUnchanged(s0, snap)) {
+        if (!(command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
           why = "changed";
           return "wait";
         }
         return "pass";
       }
       if (landing === null) return "fail";
+      if (command) {
+        // No frame: the landing row with the text in it stands in the read; a popup may move the rest.
+        if (flat(snap.plain).includes(flat([landing.probed.slice(0, landing.index) + lines.join("") + afterProbe(landing)]))) return "pass";
+        why = "mismatch";
+        return "wait";
+      }
       const predicted = flat(predictedRows(s0.plain, landing, lines.join("")));
       const actual = flat(snap.plain);
       const typedTail = flat([lines.join(""), afterProbe(landing), ...s0.plain.slice(landing.row + 1)]);
@@ -1042,14 +1078,21 @@ export class SendProtocol {
     state.keys.push(...keys);
   }
 
-  /** S2: the box emptied or a running sign showed. Anything else after the bound is `unknown`. */
+  /**
+   * S2: the box emptied or a running sign showed. Anything else after the bound is `unknown`. A
+   * `command` also passes when the box went away or no longer holds the text: a command may open its
+   * own screen (a picker, a panel) in the box's place.
+   */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
+    const command = state.request.mode === "command";
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
-        if (snap.frame === null) return "wait";
+        if (snap.frame === null) return command ? "pass" : "wait";
+        if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
         return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame) ? "pass" : "wait";
       }
       if (landing === null) return "wait";
+      if (command) return flat(snap.plain).includes(flat([landing.probed.slice(0, landing.index) + lines.join("") + afterProbe(landing)])) ? "wait" : "pass";
       // No frame: the landing row, found at its S0 distance from the last non-blank row, reads as it
       // did at S0 again, and the typed text no longer stands there. The rows under it may change (a
       // status row counting tokens does, live on pi 0.87.1); a popup that moves the rows does not pass.
@@ -1090,6 +1133,19 @@ export class SendProtocol {
     if (snap.frame !== null && boxText(snap.frame).length === 0) return snap;
     throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
   }
+}
+
+/**
+ * What a `prepare` offers, by the shared rules: nothing on a free screen (the next tap is a plain
+ * send), the commit tap where the manual Send is open, the draft's three offers on a framed draft, and
+ * the key pad everywhere else.
+ */
+function prepareOffers(snap: Snap): SendOffer[] {
+  const { surface } = snap;
+  if (isFree(surface)) return [];
+  if (takesManualSend(surface)) return ["commit", "keys"];
+  if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") return offersFor("refused", "draft_present", snap.frame !== null);
+  return ["keys"];
 }
 
 function collapseOf(match: ProfileMatch | null): RegExp | null {

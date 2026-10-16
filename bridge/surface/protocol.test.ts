@@ -40,6 +40,8 @@ class FakePane {
   echo: { field: string; changesList: boolean } | null = null;
   list = ["  first match", "  second match"];
   backspaceRestores = true;
+  /** A shell line: a box that starts with `!` shows the bang as its prompt glyph, as Claude's shell mode does. */
+  bangPrompt = false;
   dropLastChar = false;
   enterSubmits = true;
   collapseOver = 120;
@@ -65,6 +67,7 @@ class FakePane {
       return lines.map((line, i) => (i === lines.length - 1 ? `${line}\u001b[7m \u001b[0m` : line));
     }
     if (this.box === "") return [`❯ \u001b[2m${this.placeholder}\u001b[0m`];
+    if (this.bangPrompt && this.box.startsWith("!")) return [`! ${this.box.slice(1)}`];
     const rows: string[] = [];
     this.box.split("\n").forEach((line, li) => {
       const chunks = line.length === 0 ? [""] : (line.match(new RegExp(`.{1,${String(WIDTH)}}`, "gu")) ?? [""]);
@@ -423,10 +426,79 @@ describe("accept", () => {
       const { pane, send } = rig();
       const answer = await send(text);
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead", s0: null });
-      expect(answer.detail).toContain("POST /api/pane/:id/reply");
+      expect(answer.detail).toContain("mode command");
       expect(pane.readsSeen).toBe(0);
       expect(pane.calls).toEqual([]);
     }
+  });
+});
+
+describe("a command (M56 spec 06)", () => {
+  const SLASH_POPUP = ["  /compact     Clear the history but keep a summary", "  /config      Open the settings", "  /cost        Show the cost of this session"];
+
+  test("a slash command goes through as a command: its popup under the box does not hold it", async () => {
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:/")) p.popup = SLASH_POPUP;
+      if (what.endsWith("Enter")) p.popup = null;
+    };
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual(["paste:/compact"]);
+    expect(pane.transcript.at(-1)).toBe("> /compact");
+    neverEscape(pane);
+  });
+
+  test("the same text as a plain send is still refused reserved_lead, before any read", async () => {
+    const { pane, send } = rig();
+    expect((await send("/compact")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+    expect(pane.readsSeen).toBe(0);
+  });
+
+  test("a shell line whose bang turns into the prompt glyph matches the box without its lead", async () => {
+    const { pane, send } = rig();
+    pane.bangPrompt = true;
+    const answer = await send("!ls -la", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test("a command that opens its own screen after Enter is taken: the box went away", async () => {
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter")) p.dialog = DIALOG;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("a command into a busy screen is refused like a send: nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.dialog = DIALOG;
+    expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a framed screen with a strong cue above the box takes the manual Send: unconfirmed, then probed and sent", async () => {
+    const { pane, send } = rig();
+    pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    pane.over = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss"];
+    const first = await send("carry on with the plan");
+    expect(first.surface?.modal).toBe("unreadable");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    const commit = await send("carry on with the plan", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> carry on with the plan");
+  });
+
+  test("a transcript that moves under a command still holds the Enter", async () => {
+    const { pane, send } = rig();
+    pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:")) p.transcript[0] = "> a different question";
+    };
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).toEqual([]);
   });
 });
 
@@ -874,6 +946,34 @@ describe("real screens from the fixture corpus", () => {
     const prepared = await protocol.handle({ id: "fixture-prep-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
     expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
     expect(prepared.offers).toEqual([]);
+  });
+
+  test("an unreadable overlay keeps the manual Send: unconfirmed first, and a hotkey screen fails the probe on commit (M56 spec 06)", async () => {
+    const pane = still(fixture("claude--menu-effort-slider--w40-low.txt"));
+    const { send } = rig({ pane });
+    const first = await send("this must not land");
+    expect(first.surface?.modal).toBe("unreadable");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.offers).toEqual(["commit", "keys"]);
+    const commit = await send("this must not land", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    // The probe character went in and showed nowhere, so no Backspace and no text followed it.
+    expect(pane.calls).toEqual([`type:${PROBE}`]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("prepare offers the commit tap on an unreadable overlay and the key pad on a lifted ask", async () => {
+    const overlay = rig({ pane: still(fixture("claude--menu-effort-slider--w40-low.txt")) });
+    const onOverlay = await overlay.protocol.handle({ id: "fixture-prep-2", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(onOverlay.offers).toEqual(["commit", "keys"]);
+    const asked = rig();
+    asked.pane.dialog = DIALOG;
+    const onAsk = await asked.protocol.handle({ id: "fixture-prep-3", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(onAsk.offers).toEqual(["keys"]);
+    const drafted = rig();
+    drafted.pane.box = "half a thought";
+    const onDraft = await drafted.protocol.handle({ id: "fixture-prep-4", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(onDraft.offers).toEqual(["append", "replace", "cancel"]);
   });
 
   for (const name of ["claude--menu-model-picker.txt", "claude--menu-resume-picker--w120-search.txt"]) {

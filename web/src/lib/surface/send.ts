@@ -47,12 +47,30 @@ export const SEND_REASONS = [
 export type SendReason = (typeof SEND_REASONS)[number];
 
 /**
- * What a request asks for. `send` is a new message into an empty box. `append` and `replace` answer a
+ * What a request asks for. `send` is a new message into an empty box. `command` is a text that starts
+ * with a reserved lead (`/`, `!`, `@`): the harness opens its own popup under the box as it is typed,
+ * so the S1 check reads the box and the transcript above it and lets the rows under it move, and S2
+ * takes the box letting go of the text as the evidence (M56 spec 06). `append` and `replace` answer a
  * `draft_present` refusal; `submit` and `discard` answer a `typed_not_submitted`. `prepare` only reads
- * and hands back the hash of the rows, for the two-tap send on an unknown screen.
+ * and hands back the hash of the rows, for the two-tap send on a screen Collie cannot read.
  */
-export const SEND_MODES = ["send", "append", "replace", "submit", "discard", "prepare"] as const;
+export const SEND_MODES = ["send", "command", "append", "replace", "submit", "discard", "prepare"] as const;
 export type SendMode = (typeof SEND_MODES)[number];
+
+/**
+ * Whether a Surface takes the manual Send: two taps, `prepare` then a commit with the hash of the rows
+ * the person saw (M56 spec 06). Open on `unknown(no-match)`, on a weak cue (modal unknown with no
+ * reason) and on `modal unreadable`: a false overlay hit must never block a send, and the probe still
+ * refuses a text that would land in a hotkey dialog. Closed while the turn runs, on a draft, on a box
+ * that cannot be reached, and on a read that is stale, torn or contested (read again first). The
+ * bridge's S0 gate and the phone's Send slot both read this one rule.
+ */
+export function takesManualSend(surface: Surface): boolean {
+  if (surface.composer === "unreachable" || surface.composer === "draft") return false;
+  if (surface.turn === "running") return false;
+  if (surface.reason === "stale" || surface.reason === "torn" || surface.reason === "contested") return false;
+  return surface.modal === "unknown" || surface.modal === "unreadable";
+}
 
 /** A next action the answer offers, each a new request with a new id (`cancel` and `keys` send nothing). */
 export type SendOffer = "append" | "replace" | "cancel" | "submit" | "discard" | "commit" | "keys";

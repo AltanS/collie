@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { offersFor, REQUEST_ID, reservedLead, SEND_REASONS, sendLines, wsFree } from "./send";
+import { offersFor, REQUEST_ID, reservedLead, SEND_MODES, SEND_REASONS, sendLines, takesManualSend, wsFree } from "./send";
+import type { Surface } from "./surface";
 
 describe("sendLines", () => {
   it("splits on every line break and drops trailing blank lines, keeping the empty ones in between", () => {
@@ -52,5 +53,29 @@ describe("the closed lists", () => {
 
   it("wsFree removes every white-space character", () => {
     expect(wsFree(" a b\n c\t")).toBe("abc");
+  });
+});
+
+describe("takesManualSend (M56 spec 06)", () => {
+  const at = (over: Partial<Surface>): Surface => ({ revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", ...over });
+
+  it("opens on unknown(no-match), on a weak cue and on an unreadable overlay", () => {
+    expect(takesManualSend(at({ reason: "no-match" }))).toBe(true);
+    expect(takesManualSend(at({ turn: "idle", composer: "empty" }))).toBe(true);
+    expect(takesManualSend(at({ modal: "unreadable" }))).toBe(true);
+    expect(takesManualSend(at({ turn: "idle", modal: "unreadable", composer: "empty" }))).toBe(true);
+  });
+
+  it("stays closed on a free box, an ask, a draft, a running turn, a box out of reach, and a read that is stale, torn or contested", () => {
+    expect(takesManualSend(at({ turn: "idle", modal: "none", composer: "empty" }))).toBe(false);
+    expect(takesManualSend(at({ modal: { ask: { id: "a", kind: "menu", options: [], channel: "keys", hash: "h" } } }))).toBe(false);
+    expect(takesManualSend(at({ composer: "draft" }))).toBe(false);
+    expect(takesManualSend(at({ turn: "running", modal: "unreadable" }))).toBe(false);
+    expect(takesManualSend(at({ composer: "unreachable" }))).toBe(false);
+    for (const reason of ["stale", "torn", "contested"] as const) expect(takesManualSend(at({ reason }))).toBe(false);
+  });
+
+  it("the modes include command, for a text with a reserved lead", () => {
+    expect(SEND_MODES).toContain("command");
   });
 });

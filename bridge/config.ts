@@ -385,10 +385,11 @@ export interface Config {
    */
   surfaceShadow: boolean;
   /**
-   * The Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec 05): `POST /api/send` runs a send as one
+   * The Send Protocol (`COLLIE_SEND_PROTOCOL`, M56 spec 05): `POST /api/send` runs a send as one
    * bridge-side request with a lock, a probe, a predicted-state check, the key gate and a receipt, and
    * the phone's composer uses it on panes the snapshot marks. Turns on the Surface computation too.
-   * Off by default; the old reply route is untouched either way.
+   * On by default since M56 spec 06: it is the only way text reaches a pane from the phone, and a reply
+   * that submits text runs it too. `COLLIE_SEND_PROTOCOL=0` turns sending text off (the keys still work).
    */
   sendProtocol: boolean;
   /**
@@ -714,7 +715,7 @@ export function loadConfig(env: Environment = process.env): Config {
     stateDir,
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
-    sendProtocol: envBool("COLLIE_SEND_PROTOCOL", false, env),
+    sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

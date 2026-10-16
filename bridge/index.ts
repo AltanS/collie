@@ -1378,9 +1378,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // folded beside the old readers. Fired and not awaited, like the cache probe: a poll never waits on
   // it, and `observe` never throws. A terminal session only; a program session has no screen.
   // The Send Protocol (M56 spec 05) needs the pane's Surface on the snapshot, so its flag turns the
-  // Surface computation on too.
+  // Surface computation on too. With the protocol on, the Surface is the verdict (M56 spec 06): the
+  // comparison with the old readers stops, and only `COLLIE_SURFACE_SHADOW=1` with the protocol off
+  // still runs it. That comparison is the part a later change deletes.
   const computeSurface = (cfg.surfaceShadow || cfg.sendProtocol) && endpoint.kind === "terminal";
-  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs }) : undefined;
+  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol }) : undefined;
   if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
   // request store. A pane's generation is its agent and the session the agent named: a pane that
@@ -1395,7 +1397,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           ring: new RowRing(),
           profile: (harness) => sendProfile(harness),
           generation: (paneId) => {
-            const pane = engine.current().agents.find((agent) => agent.paneId === paneId);
+            const { agents, shellPanes } = engine.current();
+            const pane = agents.find((agent) => agent.paneId === paneId) ?? shellPanes.find((shell) => shell.paneId === paneId);
             return pane === undefined ? null : `${pane.agent}:${pane.agentSession?.value ?? "-"}`;
           },
         })

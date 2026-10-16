@@ -221,8 +221,8 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     env: "COLLIE_SEND_PROTOCOL",
     section: "bridge",
     kind: "bool",
-    default: false,
-    doc: "Send from the phone through the bridge-side Send Protocol (probe, predicted-state check, key gate, receipt).",
+    default: true,
+    doc: "Send from the phone through the bridge-side Send Protocol (probe, predicted-state check, key gate, receipt). Off turns sending text off; the keys still work.",
     configField: "sendProtocol",
   },
   {

@@ -133,7 +133,7 @@ import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
-import { REQUEST_ID, SEND_MODES } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1464,12 +1464,12 @@ export function startServer(opts: {
     // Surface shadow mode (M56 spec 04): an agent pane carries its newest Surface when the shadow has
     // read it; every other pane, and every pane with the mode off, comes back as the same object. The
     // ask's option labels are screen text, so they take the mirror's mask like a title does.
-    // With the Send Protocol on (M56 spec 05) such a pane also says so, and the phone's composer then
-    // sends through `POST /api/send`; with the flag off the field is absent.
+    // With the Send Protocol on (M56 spec 05) every terminal pane also says so, a bare shell and an
+    // agent pane not read yet included (M56 spec 06), and the phone's composer then sends through it;
+    // with the protocol off the field is absent and the composer offers the keys only.
     const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
       const surface = from.surface?.surfaceOf(wire.paneId);
-      if (surface === undefined) return wire;
-      const surfaced = { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+      const surfaced = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
     };
     const sources = widen ? registry.ordered() : [rt];
@@ -1899,8 +1899,10 @@ export function startServer(opts: {
       }
       // A landed input makes the engine hot for a few polls (§ isPaneInput). On a member this runs
       // through the crew dispatch, so the member that owns the pane is the one that goes hot.
+      // A reply that submits text runs this session's Send Protocol (M56 spec 06), on any terminal
+      // pane: an agent's (its string picks the profile) or a bare shell's (no profile, the probed path).
       if (action === "reply" && req.method === "POST")
-        return afterPaneInput(rt.engine, await replyPane(herdr, cfg, paneId, req, audit_, device, session));
+        return afterPaneInput(rt.engine, await replyPane(herdr, cfg, paneId, req, audit_, device, session, replySendOf(rt)));
       if (action === "keys" && req.method === "POST")
         return afterPaneInput(rt.engine, await keysPane(herdr, cfg, paneId, req, audit_, device, session));
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
@@ -4128,16 +4130,20 @@ export type ReplyOutcome =
   | ({ ok: false; textDelivered: boolean } & ApiErrorBody);
 
 /**
- * The reply's two one-shot RPCs — type the text, then send the submit key(s) — as a pure function so
- * the partial-failure branch is unit-testable with a fake client. The important case: if the text
- * lands but the submit keypress fails, we surface a distinct, actionable error and `textDelivered:
- * true` so the client knows NOT to resend (which would duplicate the already-typed text). Pure +
- * exported.
+ * Two one-shot RPCs, type the text and then send the submit key(s), as a pure function so the
+ * partial-failure branch is unit-testable with a fake client. The important case: if the text lands
+ * but the submit keypress fails, we surface a distinct, actionable error and `textDelivered: true` so
+ * the client knows NOT to resend (which would duplicate the already-typed text). Pure + exported.
+ *
+ * NOT the reply path into an agent any more (M56 spec 06): a reply that submits text runs the Send
+ * Protocol ({@link replyPane}), and the old blind wait between the text and Enter is gone. What is left
+ * calls this with `submit: false` (text typed into a dialog's own field, whose caller verifies it
+ * before its own key), with no text and a bound submit, and for a launcher row typed into a shell the
+ * multiplexer has just drawn ({@link typeIntoFreshShell}), where Enter is the line itself and follows
+ * the text in the same input stream.
  */
 export type SleepFn = (ms: number) => Promise<void>;
 const defaultSleep: SleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-/** Pause between typing and Enter so the TUI accepts the submit key (preview-action polls ~350ms). */
-const REPLY_SETTLE_MS = 350;
 
 export async function sendReplySteps(
   client: ReplySender,
@@ -4145,7 +4151,6 @@ export async function sendReplySteps(
   txt: string,
   submit: boolean,
   submitKeys: string[],
-  sleep: SleepFn = defaultSleep,
 ): Promise<ReplyOutcome> {
   let textDelivered = false;
   // One shape for both ways a step can fail — a refusal the adapter returned and an exception it
@@ -4169,8 +4174,7 @@ export async function sendReplySteps(
       textDelivered = true;
     }
     if (submit) {
-      if (txt) await sleep(REPLY_SETTLE_MS);
-      // Through the key gate, like every key the bridge sends (M56 spec 05). The old route keeps its
+      // Through the key gate, like every key the bridge sends (M56 spec 05). This route keeps its
       // own guard: no revision check, the adapter's answer unchanged.
       const sent = await gateFor(client).press(paneId, submitKeys, "legacy_reply");
       if (!sent.ok) return failed(sent.detail);
@@ -4289,7 +4293,84 @@ export async function typeIntoFreshShell(
     const what = tag === "run" ? `a ${[...command].length}-character line` : `"${command}"`;
     console.warn(`[${tag}] pane ${paneId} did not settle after ${ready.ms}ms — sending ${what} anyway`);
   }
-  return sendReplySteps(herdr, paneId, command, true, ["Enter"], wait.sleep);
+  return sendReplySteps(herdr, paneId, command, true, ["Enter"]);
+}
+
+/**
+ * What the reply route needs to run a submitting reply through the Send Protocol (M56 spec 06): this
+ * session's protocol, absent with `COLLIE_SEND_PROTOCOL=0` and on a session with no screen, and the
+ * harness of a terminal pane by id (an agent's string, the empty string for a bare shell), or null
+ * when the session has no such pane.
+ */
+export interface ReplySendContext {
+  readonly protocol: SendProtocol | undefined;
+  readonly harnessOf: (paneId: string) => string | null;
+}
+
+/** What a reply that ran the Send Protocol answers: the old shape for an old reader, and the protocol's answer beside it. */
+export type ReplyProtocolResponse = ActionResponse & { send: SendAnswer };
+
+/** The reply route's refusal while the protocol is off: nothing is typed, the key pad still works. */
+export const REPLY_OFF_TEXT = "sending text is off on this machine (COLLIE_SEND_PROTOCOL=0); the keys still work";
+
+/**
+ * A reply that submits text, run as one Send Protocol request (M56 spec 06). The old route typed,
+ * waited a fixed 350 ms and pressed Enter blind; that path is gone. The body may name the request id,
+ * the mode and the rows hash the way `POST /api/send` does (the phone does, on a crew member's pane,
+ * where `/api/send` does not cross the link); a caller that names none gets a fresh id and the mode
+ * its text implies (`command` for a text that starts with `/`, `!` or `@`). Pure in its ports +
+ * exported for its test.
+ */
+/** A session runtime's {@link ReplySendContext}: its protocol, and the harness of a pane its engine knows. */
+export function replySendOf(rt: Pick<SendRouteRuntime, "send" | "engine">): ReplySendContext {
+  return {
+    protocol: rt.send,
+    harnessOf: (paneId) => {
+      const { agents, shellPanes } = rt.engine.current();
+      const agent = agents.find((pane) => pane.paneId === paneId);
+      if (agent !== undefined) return agent.agent;
+      return (shellPanes ?? []).some((pane) => pane.paneId === paneId) ? "" : null;
+    },
+  };
+}
+
+export async function replyThroughProtocol(
+  send: ReplySendContext,
+  paneId: string,
+  session: string,
+  fields: JsonObject,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (send.protocol === undefined) return text(REPLY_OFF_TEXT, 409);
+  const harness = send.harnessOf(paneId);
+  if (harness === null) return text("no such terminal pane", 404);
+  const words = typeof fields.text === "string" ? fields.text : "";
+  const request = parseSendRequest({
+    ...fields,
+    pane: paneId,
+    text: words,
+    id: fields.id ?? `reply-${crypto.randomUUID()}`,
+    mode: fields.mode ?? (reservedLead(words, ["/", "!", "@"]) === null ? "send" : "command"),
+  });
+  if (request === null) return text("bad send request", 400);
+  const { pane: target, ...sendRequest } = request;
+  const answer = await send.protocol.handle(sendRequest, { session, paneId: target, harness });
+  const receipt = answer.receipt;
+  const auditDetail: AuditDetail = { mode: sendRequest.mode, submit: true, textLength: words.length };
+  if (receipt !== undefined) {
+    auditDetail.outcome = receipt.outcome;
+    if (receipt.reason !== undefined) auditDetail.reason = receipt.reason;
+    auditDetail.probed = receipt.keys.includes("probe");
+  }
+  context.audit.record({ action: "reply", paneId, session, device: context.device, detail: auditDetail });
+  const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  const outcome = receipt?.outcome;
+  if (outcome === undefined || outcome === "sent" || outcome === "effective") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
+  const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
+  const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });
+  const body: ReplyProtocolResponse = { ok: false, textDelivered, ...failure, send: shown };
+  return json(body, context.acceptEncoding);
 }
 
 export async function replyPane(
@@ -4300,6 +4381,7 @@ export async function replyPane(
   audit: AuditLog,
   device: string | null,
   session: string,
+  send: ReplySendContext = { protocol: undefined, harnessOf: () => null },
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -4345,6 +4427,13 @@ export async function replyPane(
     });
     return promptBindingFailure(binding, ae);
   }
+  // A reply that submits text, or that names a protocol mode, is one Send Protocol request (M56 spec
+  // 06), after the binding above when the caller named one. Only a submit with no text stays below,
+  // and it needs that binding: an unbound Enter would be the blind path the protocol replaced.
+  if ((submit && txt !== "") || fields.mode !== undefined) {
+    return replyThroughProtocol(send, paneId, session, fields, { audit, device, redact: cfg.redact, acceptEncoding: ae });
+  }
+  if (submit && binding === null) return text("a submit with no text needs expected_prompt", 400);
   const outcome = await sendReplySteps(herdr, paneId, txt, submit, cfg.submitKeys);
   const replyDetail: AuditDetail = {
     text: txt,
@@ -6779,7 +6868,7 @@ export function surfaceRoute(shadow: SurfaceShadow | undefined, paneId: string |
 }
 
 /** What `/api/send` answers with the flag off: the route is not there, a 404 that says why. */
-export const SEND_OFF_TEXT = "the send protocol is off (COLLIE_SEND_PROTOCOL=1 turns it on)";
+export const SEND_OFF_TEXT = "the send protocol is off (COLLIE_SEND_PROTOCOL=0 turned it off; it is on by default)";
 /** The longest text one send takes, in UTF-16 units. A longer message is a file, not a reply. */
 export const SEND_MAX_TEXT = 64 * 1024;
 
@@ -6821,7 +6910,7 @@ export interface SendRouteRuntime {
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
-    current(): { readonly agents: readonly Pick<AgentView, "paneId" | "agent">[] };
+    current(): { readonly agents: readonly Pick<AgentView, "paneId" | "agent">[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
     noteInput(): void;
     pokeNow(): void;
   };
@@ -6837,10 +6926,11 @@ export async function sendRoute(
   if (request === null) return text("bad send request", 400);
   const refusal = rawInputRefusal(rt.herdr);
   if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
-  const pane = rt.engine.current().agents.find((agent) => agent.paneId === request.pane);
-  if (pane === undefined) return text("no such agent pane", 404);
+  // An agent pane's string picks its profile; a bare shell has none and takes the probed path (M56 spec 06).
+  const harness = replySendOf(rt).harnessOf(request.pane);
+  if (harness === null) return text("no such terminal pane", 404);
   const { pane: paneId, ...sendRequest } = request;
-  const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness: pane.agent });
+  const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   const receipt = answer.receipt;
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };

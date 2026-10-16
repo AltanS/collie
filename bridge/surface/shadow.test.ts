@@ -119,6 +119,17 @@ describe("surface shadow", () => {
     expect(r.shadow.report().counters[`${HARNESS}@2.1.296`]!.disagreements).toBe(1);
   });
 
+  test("with the comparison off (the Send Protocol on, M56 spec 06) the same screen counts and logs no disagreement", async () => {
+    const lines: string[] = [];
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: (line) => lines.push(line), now: () => 1_000_000, version: async () => "2.1.296", compare: false });
+    mux.set("w1:p1", AGENTS, 11);
+    await shadow.observe([agent("w1:p1")]);
+    expect(lines).toEqual([]);
+    expect(shadow.report().counters[`${HARNESS}@2.1.296`]).toMatchObject({ observed: 1, disagreements: 0 });
+    expect(shadow.surfaceOf("w1:p1")).toBeDefined();
+  });
+
   test("the same revision is counted and logged once, however many polls see it", async () => {
     const r = rig();
     r.mux.set("w1:p1", AGENTS, 11);

@@ -59,6 +59,7 @@ import {
   parseCacheWatchForget,
   cacheWatchable,
   replyPane,
+  REPLY_OFF_TEXT,
   requestBodyCap,
   pairedLabel,
   requestDevice,
@@ -509,18 +510,16 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     }
   }
 
-  const noSleep = async () => {};
-
-  test("types then submits on the happy path", async () => {
+  test("types then submits on the happy path, with no wait between the two (the blind 350 ms is gone, M56 spec 06)", async () => {
     const client = new FakeClient();
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text", "keys"]);
   });
 
   test("text lands but submit fails → distinguishable error + textDelivered:true (don't resend)", async () => {
     const client = new FakeClient("keys");
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
     expect(out).toEqual({
       ok: false,
       textDelivered: true,
@@ -532,7 +531,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
 
   test("text step fails → nothing delivered, surfaces Herdr's message (safe to resend)", async () => {
     const client = new FakeClient("text");
-    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"], noSleep);
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Enter"]);
     // The English is byte-for-byte the multiplexer's own words, as it always was; `code` and
     // `detail.reason` are the machine half the phone translates against (bridge/error-codes.ts).
     expect(out).toEqual({
@@ -547,7 +546,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
 
   test("submit-only (empty text) failure is a plain failure, not the partial-delivery message", async () => {
     const client = new FakeClient("keys");
-    const out = await sendReplySteps(client, "p1", "", true, ["Enter"], noSleep);
+    const out = await sendReplySteps(client, "p1", "", true, ["Enter"]);
     expect(out).toEqual({
       ok: false,
       textDelivered: false,
@@ -560,7 +559,7 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
 
   test("no-submit reply just types the text", async () => {
     const client = new FakeClient();
-    const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"], noSleep);
+    const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"]);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
   });
@@ -804,6 +803,24 @@ describe("pane write prompt binding", () => {
     expect(entries[0]?.detail).toMatchObject({
       promptBinding: { checked: true, passed: false, reason: "not_found" },
     });
+  });
+
+  test("a reply that submits text never types blind: with no protocol it is refused 409 and nothing reaches the pane (M56 spec 06)", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "hello", submit: true }), audit, null, "default");
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe(REPLY_OFF_TEXT);
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([]);
+  });
+
+  test("a submit with no text and no binding is refused: an unbound Enter is the blind path (M56 spec 06)", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "", submit: true }), audit, null, "default");
+    expect(res.status).toBe(400);
+    expect(client.keys).toEqual([]);
   });
 
   test("stale expected_prompt returns prompt_changed and sends no reply text or keys", async () => {
@@ -5105,7 +5122,7 @@ describe("the send and abort routes", () => {
     // The refusal sits in front of both raw routes, so neither handler is reached for such a pane.
     const refusal = src.indexOf("const refusal = rawInputRefusal(herdr);");
     expect(refusal).toBeGreaterThan(0);
-    expect(refusal).toBeLessThan(src.indexOf("await replyPane(herdr, cfg, paneId, req, audit_, device, session)"));
+    expect(refusal).toBeLessThan(src.indexOf("await replyPane(herdr, cfg, paneId, req, audit_, device, session, replySendOf(rt))"));
     expect(refusal).toBeLessThan(src.indexOf("await keysPane(herdr, cfg, paneId, req, audit_, device, session)"));
   });
 
