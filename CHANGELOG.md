@@ -124,6 +124,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Codex's and Muse's `/resume` pickers, pi's folder trust prompt and opencode's update prompt are read.** The Codex and Muse `Resume a previous session` list lifts as a menu with Up, Down, Resume and Exit; pi's `Trust project folder?` prompt lifts as a card whose options are walked to and confirmed with Enter; opencode's `Update Available` prompt now refuses a reply, because a reply's Enter would confirm the update. Thanks @GGGODLIN (#446)
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The states playground names its program section for the person, not for a multiplexer.** The section is `#programs`, "Programs home", in `sections/programs.tsx`, and its fixture panes carry the agent `program`, so the mux-name guard passes again with the durable adapter registered. `scripts/docs-screens.sh` opens `#programs`.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.

@@ -75,6 +75,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // Run with NO_COLOR=1, which neither pi 0.87.1 nor OmO 5.1.30 honours: the same paint, the same read.
   ["pi--v0871-nocolor-question.txt", "walk"],
   ["pi--omo-v5130-nocolor-question.txt", "digit"],
+  // pi 1.2.0's folder trust prompt: not a question, read by pi/trust.ts, plan (a) from its footer.
+  ["pi--trust-prompt.txt", "walk"],
+  ["pi--trust-prompt-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
