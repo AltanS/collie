@@ -821,12 +821,12 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     expect(field()).toHaveValue("");
   });
 
-  it("a refusal keeps the draft and tells it at the thumb with the terminal composer's notice", async () => {
+  it("a refusal keeps the draft and tells it at the thumb in program words, never screen words", async () => {
     stubProtocol(() =>
       HttpResponse.json({
         offers: [],
         receipt: { outcome: "refused", reason: "stale_surface", keys: [] },
-        detail: "The program started another turn after you looked.",
+        detail: "The program started another turn after you looked. Read the chat, then send again.",
         surface: { revision: 9, turn: "running", modal: "none", composer: "empty" },
       }),
     );
@@ -834,12 +834,78 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     const user = await type("hello");
     await user.click(sendButton());
     const notice = await screen.findByText((_, node) => node?.getAttribute("data-slot") === "composer-refusal");
-    expect(notice.textContent).toContain("The screen changed");
-    expect(screen.getByText("The program started another turn after you looked.")).toHaveAttribute("data-slot", "composer-refusal-detail");
+    expect(notice).toHaveTextContent("The program started another turn after you looked. Read the chat, then send again.");
+    expect(document.querySelector('[data-slot="composer-refusal-detail"]')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/screen|input box/iu);
     expect(field()).toHaveValue("hello");
     expect(loadDraft(undefined, "c1")).toBe("hello");
     expect(onReload).toHaveBeenCalled();
     expect(onSent).not.toHaveBeenCalled();
+  });
+
+  it("an open question refuses the send: the notice says so and Go to the question calls the card", async () => {
+    stubProtocol(() =>
+      HttpResponse.json({
+        offers: [],
+        receipt: { outcome: "refused", reason: "not_free", keys: [] },
+        detail: "The program waits for an answer to a question. Answer it first, then send.",
+        surface: { revision: 9, turn: "running", modal: { ask: { id: "ask-0123456789abcd", kind: "permission", options: [{ id: "1", label: "Save" }], channel: "program", hash: "abc" } }, composer: "empty" },
+      }),
+    );
+    const onAnswerDialog = vi.fn();
+    draw({ sendProtocol: true, onAnswerDialog });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("The program waits for an answer to a question. Answer it first, then send.")).toHaveAttribute("data-slot", "composer-refusal");
+    await user.click(screen.getByRole("button", { name: "Go to the question" }));
+    expect(onAnswerDialog).toHaveBeenCalledOnce();
+  });
+
+  it("a state Collie cannot read and an unknown end each have their own program sentence", async () => {
+    stubProtocol((n) =>
+      n === 1
+        ? HttpResponse.json({ offers: [], receipt: { outcome: "refused", reason: "not_free", keys: [] }, surface: { revision: 0, turn: "unknown", modal: "unknown", composer: "unreachable", reason: "stale" } })
+        : HttpResponse.json({ offers: [], receipt: { outcome: "unknown", reason: "no_evidence", keys: [] } }),
+    );
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("Collie cannot read this conversation now. Try again in a moment.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to the question" })).toBeNull();
+    await user.click(sendButton());
+    expect(await screen.findByText("The program did not say it took the message. Read the chat before you send it again.")).toBeInTheDocument();
+  });
+
+  it("the program's own refusal shows its words under the program sentence", async () => {
+    stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "refused", reason: "write_failed", keys: [] }, detail: "The desk is closed for the night." }));
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("The program did not take the message.")).toBeInTheDocument();
+    expect(screen.getByText("The desk is closed for the night.")).toHaveAttribute("data-slot", "composer-refusal-detail");
+  });
+
+  it("while no answer came the retry keys on the text only: a turn that moved keeps the same request id", async () => {
+    const protocol = stubProtocol((n) => (n === 1 ? HttpResponse.error() : HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } })));
+    function Moving() {
+      const [shownTurn, setShownTurn] = useState("turn-7");
+      return (
+        <>
+          <DurableComposer paneId="c1" turnId={shownTurn} status="idle" sendProtocol locked={false} lockedWhy="" offline={false} display={{ open: false, onToggle: vi.fn() }} onSent={vi.fn()} onReload={vi.fn()} />
+          <button type="button" onClick={() => setShownTurn("turn-8")}>
+            move the turn
+          </button>
+        </>
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Moving /> }])} />);
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(field()).toHaveValue("hello"));
+    await user.click(screen.getByRole("button", { name: "move the turn" }));
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(2));
+    expect(protocol[1]!.id).toBe(protocol[0]!.id);
   });
 
   it("no answer keeps the draft, and sending again carries the SAME request id", async () => {

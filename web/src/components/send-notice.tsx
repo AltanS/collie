@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 
 import { Notice } from "@/components/ui/notice";
-import { capSentence, type SendNote, type SendReading } from "@/lib/send-protocol";
+import { capSentence, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
 import { t as translate } from "@/lib/i18n";
 
 // WHAT BECAME OF A SEND, AT THE THUMB (M56 specs 06, 07 and 14). The terminal composer and the
@@ -52,6 +52,46 @@ export function readingRefusal(reading: SendReading): SendRefusal {
     screen: READ_THE_SCREEN.has(reading.note),
     tone: reading.note === "discarded" ? "neutral" : "caution",
   };
+}
+
+/** The sentence a program pane's answer gets: a key under `durable.protocol.*`. */
+export type ProgramNote = "askOpen" | "notRead" | "notFree" | "moved" | "busy" | "paneGone" | "writeFailed" | "idReused" | "unknown" | "refused";
+
+/**
+ * The program's word for an answer that did not send (M56 spec 14). A program has no screen and no
+ * input box, so none of the terminal's sentences fit. A `not_free` says why by the state the answer
+ * carried: an open question, a state Collie cannot read, or the program's own no.
+ */
+export function programNote(reading: SendReading): ProgramNote {
+  switch (reading.note) {
+    case "moved":
+      return "moved";
+    case "notFree":
+      if (reading.toCard) return "askOpen";
+      return reading.surface === "unreachable" || reading.surface === "stale" ? "notRead" : "notFree";
+    case "busy":
+      return "busy";
+    case "paneGone":
+      return "paneGone";
+    case "writeFailed":
+      return "writeFailed";
+    case "idReused":
+      return "idReused";
+    case "unknown":
+      return "unknown";
+    default:
+      return "refused";
+  }
+}
+
+/**
+ * The notice for a program pane's answer that did not send: program words only. The driver's own
+ * words show under them only where they carry the program's reason (a refusal from the program).
+ */
+export function programRefusal(reply: SendReply, reading: SendReading): SendRefusal {
+  const note = programNote(reading);
+  const detail = (note === "writeFailed" || note === "refused") && reply.detail !== null && reply.detail !== "" ? reply.detail : null;
+  return { sentence: translate(`durable.protocol.${note}`), detail, toCard: note === "askOpen", screen: false, tone: "caution" };
 }
 
 /** The box at the thumb. `action` is the composer's own buttons, or undefined for none. */

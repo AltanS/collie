@@ -567,6 +567,17 @@ export const fr: Dictionary = {
   "durable.composer.stopMoved": "La conversation a continué, rien n'a donc été arrêté. Vérifiez-la, puis arrêtez de nouveau si vous le souhaitez toujours.",
   "durable.composer.stopUnknown": "Réception de l'arrêt non confirmée. Appuyez de nouveau sur Arrêter pour réessayer une fois.",
   "durable.composer.maybe": "Peut-être déjà envoyé. Vérifiez la conversation avant d'envoyer de nouveau.",
+  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
+  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
+  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "L'arrêt est peut-être déjà appliqué. Vérifiez la conversation.",
   "durable.composer.stopRefused": "L'arrêt a été refusé.",
   "durable.composer.sending": "Envoi…",

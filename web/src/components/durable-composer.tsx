@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
-import { SendRefusalNotice, phoneRefusal, readingRefusal, type SendRefusal } from "@/components/send-notice";
+import { SendRefusalNotice, phoneRefusal, programRefusal, type SendRefusal } from "@/components/send-notice";
+import { NOTICE_ACTION } from "@/components/ui/notice";
 import { Collapse } from "@/components/ui/collapse";
 import { abortPane, apiErrorStatus, postProgramSend, runPaneAction, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -120,6 +121,8 @@ export interface DurableComposerProps {
   hand?: Hand;
   /** A send landed: snap the stream to its tail. */
   onSent: () => void;
+  /** Scroll to the open question's card and focus its first button: the way on from a send an open question refused. */
+  onAnswerDialog?: () => void;
   /** Read the pane again: the turn moved, or a write changed what is current. */
   onReload: () => void;
 }
@@ -148,6 +151,7 @@ export function DurableComposer({
   hand = "right",
   onSent,
   onReload,
+  onAnswerDialog,
 }: DurableComposerProps) {
   useLocale();
   const [input, setInput] = useState(() => loadDraft(scope, paneId) ?? "");
@@ -237,7 +241,9 @@ export function DurableComposer({
   // One Send Protocol request. The id is kept for a retry of the same intent only while no answer came,
   // so a lost answer never sends twice; any answer ends the intent, as in the terminal composer.
   async function sendThroughProtocol(text: string) {
-    const id = requestIdFor(sendIntent.current, intentKey(text, false, target), mintRequestId);
+    // Keyed on the text alone: while no answer came, the same text is the same request, even after the
+    // next read moved the turn, so a retry never sends twice. The bridge checks the turn by the revision.
+    const id = requestIdFor(sendIntent.current, `protocol\u0000${text}`, mintRequestId);
     sendIntent.current = id;
     const key = paneScopeKey(scope, paneId);
     refocus.current = document.activeElement === field.current;
@@ -282,7 +288,7 @@ export function DurableComposer({
     setInput(text);
     saveDraft(scope, paneId, text);
     setPendingState(key, id.requestId, reply.outcome === "unknown" ? "unconfirmed" : "notSent");
-    setRefusal(readingRefusal(reading));
+    setRefusal(programRefusal(reply, reading));
     // The answer says what the bridge saw; the next read draws it.
     onReload();
   }
@@ -368,7 +374,20 @@ export function DurableComposer({
         hand={hand}
       />
       {/* What became of a Send Protocol request, at the thumb: the terminal composer's own notice. */}
-      <Collapse open={refusal !== null}>{refusal !== null && <SendRefusalNotice refusal={refusal} />}</Collapse>
+      <Collapse open={refusal !== null}>
+        {refusal !== null && (
+          <SendRefusalNotice
+            refusal={refusal}
+            action={
+              refusal.toCard && onAnswerDialog !== undefined ? (
+                <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={onAnswerDialog}>
+                  {t("durable.protocol.goToQuestion")}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+      </Collapse>
       <div
         data-slot="composer-box"
         className={cn(

@@ -836,7 +836,8 @@ export function AgentChat({
   // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
-    focusDialogCard(cardDockRef.current);
+    // A program's question card sits in the thread, not in the dock: the first open one takes the focus.
+    if (!focusDialogCard(cardDockRef.current)) focusDialogCard(document.querySelector<HTMLElement>('[data-slot="ask-card"]'));
   }, []);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -2824,6 +2825,7 @@ export function AgentChat({
                     hand={handOf(prefs)}
                     onSent={onSent}
                     onReload={() => revalidator.revalidate()}
+                    onAnswerDialog={answerDialog}
                   />
                 ) : (
                 <Composer

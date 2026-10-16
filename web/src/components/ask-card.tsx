@@ -190,83 +190,86 @@ export function AskCardFace({ card, program, disabled = false, offline = false, 
   const note = noteFor(card, offline);
 
   return (
-    <PromptPanel ariaLabel={shown.title}>
-      <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
-      <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
-        {shown.title}
-      </p>
-      {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
-      {shown.reason !== undefined ? (
-        <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
-          {shown.reason}
+    // The slot is how the composer's "Go to the question" finds the card (lib/dialog-focus.ts).
+    <div data-slot="ask-card">
+      <PromptPanel ariaLabel={shown.title}>
+        <OptionGroupCaption>{program !== null ? t("ask.captionNamed", { name: program }) : t("ask.caption")}</OptionGroupCaption>
+        <p data-slot="ask-title" className="font-content pl-0.5 text-sm leading-snug font-medium text-foreground wrap-anywhere">
+          {shown.title}
         </p>
-      ) : null}
-      {shown.cleaned === true ? (
-        <p data-slot="ask-cleaned" className="pl-0.5 text-xs leading-snug text-muted-foreground">
-          {t("ask.cleaned")}
-        </p>
-      ) : null}
-      {shown.tool !== undefined ? (
-        <p
-          data-slot="ask-tool"
-          className="rounded-lg border border-border/60 bg-muted/30 px-2 py-1 font-mono text-xs leading-snug wrap-anywhere"
-        >
-          <span className="font-medium text-foreground">{shown.tool.name}</span>
-          {shown.tool.summary !== "" ? <span className="text-muted-foreground"> {shown.tool.summary}</span> : null}
-        </p>
-      ) : null}
-      {note !== null ? (
-        <p data-slot="ask-note" role="status" className="pl-0.5 text-xs leading-snug text-muted-foreground wrap-anywhere">
-          {note}
-        </p>
-      ) : null}
-      {canAnswer && shown.kind === "choice" ? (
-        <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer && shown.kind === "text" ? (
-        <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer && shown.kind === "form" ? (
-        <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
-      ) : canAnswer ? (
-        <div className="flex flex-col gap-1">
-          {options.map((option) => {
-            const inFlight = busy && card.optionId === option.id;
-            const effect = option.effect ?? "cancel"; // visibleOptions keeps only options with an effect
-            // Collie's words lead; the program's own label is the quiet second line (lib/ask.ts).
-            const main = card.armed === option.id ? t("ask.alwaysArmed", { tool: shown.tool?.name ?? "" }) : t(effectKey(effect));
-            return (
-              <OptionButton
-                key={option.id}
-                tone={inFlight ? "busy" : optionTone(option.effect)}
-                label={main}
-                description={secondaryLabel(option.label, t(effectKey(effect)))}
-                disabled={frozen}
-                onClick={() => onPress(option)}
-                trailing={
-                  inFlight ? (
-                    <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
-                  ) : null
-                }
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <p data-slot="ask-not-answerable" className="pl-0.5 text-xs leading-snug text-muted-foreground">
-          {t("ask.notAnswerable")}
-        </p>
-      )}
-      {retryAnswer !== null ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          disabled={disabled || offline}
-          onClick={() => onSend(retryAnswer, true)}
-        >
-          {t("ask.retry")}
-        </Button>
-      ) : null}
-    </PromptPanel>
+        {shown.expiresAt !== undefined ? <AskExpiry expiresAt={shown.expiresAt} /> : null}
+        {shown.reason !== undefined ? (
+          <p data-slot="ask-reason" className="font-content pl-0.5 text-sm leading-snug whitespace-pre-line text-muted-foreground wrap-anywhere">
+            {shown.reason}
+          </p>
+        ) : null}
+        {shown.cleaned === true ? (
+          <p data-slot="ask-cleaned" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+            {t("ask.cleaned")}
+          </p>
+        ) : null}
+        {shown.tool !== undefined ? (
+          <p
+            data-slot="ask-tool"
+            className="rounded-lg border border-border/60 bg-muted/30 px-2 py-1 font-mono text-xs leading-snug wrap-anywhere"
+          >
+            <span className="font-medium text-foreground">{shown.tool.name}</span>
+            {shown.tool.summary !== "" ? <span className="text-muted-foreground"> {shown.tool.summary}</span> : null}
+          </p>
+        ) : null}
+        {note !== null ? (
+          <p data-slot="ask-note" role="status" className="pl-0.5 text-xs leading-snug text-muted-foreground wrap-anywhere">
+            {note}
+          </p>
+        ) : null}
+        {canAnswer && shown.kind === "choice" ? (
+          <ChoiceBody key={shown.revision} ask={shown} options={options} frozen={frozen} busy={busy} sending={card.answer} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer && shown.kind === "text" ? (
+          <TextBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer && shown.kind === "form" ? (
+          <FormBody key={shown.revision} ask={shown} frozen={frozen} busy={busy} onSend={(answer) => onSend(answer, false)} />
+        ) : canAnswer ? (
+          <div className="flex flex-col gap-1">
+            {options.map((option) => {
+              const inFlight = busy && card.optionId === option.id;
+              const effect = option.effect ?? "cancel"; // visibleOptions keeps only options with an effect
+              // Collie's words lead; the program's own label is the quiet second line (lib/ask.ts).
+              const main = card.armed === option.id ? t("ask.alwaysArmed", { tool: shown.tool?.name ?? "" }) : t(effectKey(effect));
+              return (
+                <OptionButton
+                  key={option.id}
+                  tone={inFlight ? "busy" : optionTone(option.effect)}
+                  label={main}
+                  description={secondaryLabel(option.label, t(effectKey(effect)))}
+                  disabled={frozen}
+                  onClick={() => onPress(option)}
+                  trailing={
+                    inFlight ? (
+                      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-label={t("prompt.sendingAria")} />
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <p data-slot="ask-not-answerable" className="pl-0.5 text-xs leading-snug text-muted-foreground">
+            {t("ask.notAnswerable")}
+          </p>
+        )}
+        {retryAnswer !== null ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            disabled={disabled || offline}
+            onClick={() => onSend(retryAnswer, true)}
+          >
+            {t("ask.retry")}
+          </Button>
+        ) : null}
+      </PromptPanel>
+    </div>
   );
 }
 

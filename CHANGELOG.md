@@ -102,6 +102,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A program's pane settings list its Recent sends.** The sheet shows each receipt, and a queued send says so. It draws no cache switch, because a program has no prompt cache.
 - **The program send has its own entry in the ack manifest.** A test checks that every phone write says how the phone shows it.
 - **All writes to a program conversation share one lock.** Steer, Stop and answers on the program's card are refused as busy while a send runs. An item from another program never closes a receipt. A send is queued only when its turn still runs after the write. A request id from another conversation is refused.
+- **A program's refusal at the thumb uses the program's own words.** A question that blocks a send gets a Go to the question button. After no answer, a retry keeps its request id when the turn moves.
 
 ### Changed
 
