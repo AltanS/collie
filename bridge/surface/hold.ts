@@ -29,6 +29,7 @@
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { once } from "node:events";
+import { HOST, type Host } from "../host.ts";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import type { BeaconLiveness } from "../beacon/reader.ts";
@@ -460,6 +461,8 @@ export interface HoldTarget extends EdgeTarget {
 
 export interface HoldServerDeps {
   readonly socketPath: string;
+  /** The host the bridge runs on (bridge/host.ts). Defaults to {@link HOST}. */
+  readonly host?: Host;
   readonly liveness: BeaconLiveness;
   targets(): readonly HoldTarget[];
   readonly log?: (line: string) => void;
@@ -502,7 +505,7 @@ export class HoldServer {
     const dir = dirname(path);
     // No hold on Windows yet: the socket's owner-only rule is a POSIX file mode. Permissions stay
     // screen asks there, and the hook finds no socket and prints nothing.
-    if (process.platform === "win32") {
+    if ((this.deps.host ?? HOST).platform === "win32") {
       this.log(`[surface] ${HOLD_TAG} no socket: holds are not built for Windows yet`);
       return false;
     }

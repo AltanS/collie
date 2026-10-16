@@ -7,10 +7,11 @@
 // hook that auto-allows, another Collie first, a hash mismatch. No path sends a key.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HOST, hostFor } from "../host.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -649,8 +650,11 @@ describe("no key", () => {
   });
 });
 
+// The socket is a POSIX file with an owner-only mode. Windows builds no hold yet (see the test below).
+const POSIX_ONLY = HOST.platform === "win32";
+
 describe("the hold socket", () => {
-  test("owner-only: the folder is 0700, the socket 0600; a second bridge on the same path does not take it", async () => {
+  test.skipIf(POSIX_ONLY)("owner-only: the folder is 0700, the socket 0600; a second bridge on the same path does not take it", async () => {
     const path = join(dir, "state", "hold", "sock");
     const logs: string[] = [];
     const server = new HoldServer({ socketPath: path, liveness: { startTimeOf: () => Promise.resolve(null) }, targets: () => [], log: (l) => logs.push(l) });
@@ -663,7 +667,16 @@ describe("the hold socket", () => {
     server.stop();
   });
 
-  test("a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision", async () => {
+  test("no hold socket on Windows yet: start answers false and makes nothing", async () => {
+    const path = join(dir, "win", "hold", "sock");
+    const logs: string[] = [];
+    const server = new HoldServer({ socketPath: path, host: hostFor("win32"), liveness: { startTimeOf: () => Promise.resolve(null) }, targets: () => [], log: (l) => logs.push(l) });
+    expect(await server.start()).toBe(false);
+    expect(existsSync(join(dir, "win"))).toBe(false);
+    expect(logs).toHaveLength(1);
+  });
+
+  test.skipIf(POSIX_ONLY)("a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision", async () => {
     const path = join(dir, "state", "hold", "sock");
     const logs: string[] = [];
     const server = new HoldServer({ socketPath: path, liveness: { startTimeOf: () => Promise.resolve(null) }, targets: () => [], log: (l) => logs.push(l) });
@@ -674,7 +687,7 @@ describe("the hold socket", () => {
     server.stop();
   });
 
-  test("a placed request reaches the session; the decision travels back as one line", async () => {
+  test.skipIf(POSIX_ONLY)("a placed request reaches the session; the decision travels back as one line", async () => {
     const path = join(dir, "state", "hold", "sock");
     const target: HoldTarget = {
       session: "main",
@@ -692,7 +705,7 @@ describe("the hold socket", () => {
     server.stop();
   });
 
-  test("an unparsed line is dropped", async () => {
+  test.skipIf(POSIX_ONLY)("an unparsed line is dropped", async () => {
     const path = join(dir, "state", "hold", "sock");
     const logs: string[] = [];
     const server = new HoldServer({ socketPath: path, liveness: { startTimeOf: () => Promise.resolve(1234) }, targets: () => [], log: (l) => logs.push(l) });

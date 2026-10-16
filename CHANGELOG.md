@@ -95,6 +95,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone answers a held permission in Chat, with no key.** A subagent's request shows a card with the tool, the input and Yes or No. After the hold ends, a note says Sent, answered at the desk, or answered on another Collie. The pane settings sheet reads "Hooks: live, holds permissions" for a pane whose hook holds permissions.
 - **A held deny reads as Sent when Claude prints its Interrupted line.** Claude Code 2.1.301 prints no hook line for a deny. Only a line that is new since the tap counts as proof. The Sent note of a deny ends at once, because no tool runs.
 - **A desk Esc on a held permission reads as answered at the desk.** Claude ends the hook when the desk answers. Collie now waits for the screen before it calls the hold voided. A tap on an option the hook cannot state no longer uses up the card. The pane reads "holds permissions" only while the hooks hold them.
+- **Windows builds no hold socket yet.** The bridge reads the host from `bridge/host.ts` and logs one line. Every permission there stays a screen ask.
 
 ### Changed
 

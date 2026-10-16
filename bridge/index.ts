@@ -1311,6 +1311,7 @@ const holdServer =
     ? null
     : new HoldServer({
         socketPath: holdSocketPath(cfg.stateDir),
+        host: HOST,
         liveness: procBeaconLiveness(),
         targets: () => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
