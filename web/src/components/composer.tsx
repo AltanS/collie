@@ -1235,7 +1235,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
   // write, a box out of reach), then Type mode, then the state's own sentence (lib/way-out.ts); a free
   // box keeps the ordinary reply or shell line.
-  const stateWords = way.words === null ? null : translate(way.words.key, way.words.params);
+  // While a send is in flight the box holds the probe character or the text on its way in, which the
+  // pane's read shows as a draft (send drill 3: "A draft is in the box" flashed for 0.3 s on Claude).
+  // It is Collie's own typing, not a draft, so the placeholder keeps the free line until the answer is in;
+  // a running turn keeps its own word, because the running state outranks a draft.
+  const stateWords = way.words === null || (sending && way.state === "draft") ? null : translate(way.words.key, way.words.params);
   const placeholderWords =
     way.state === "gone" || way.state === "readOnly"
       ? (stateWords ?? "")

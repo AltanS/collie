@@ -1,9 +1,11 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 
+import { asJsonString, parseJsonObject } from "@/lib/json";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
 import { sendAnswer, sendHandler, recordedSends } from "@/test/handlers";
@@ -83,6 +85,59 @@ describe("the way out", () => {
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     expect(recordedSends()[0]).toMatchObject({ text: "carry on", mode: "send" });
     await wayOutIs(user, onToggle, "sends");
+  });
+
+  it("free: while a send is in flight the probe character reads as a draft, and the placeholder keeps the free line (send drill 3)", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let arrived = false;
+    server.use(
+      http.post("/api/send", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        arrived = true;
+        await held;
+        return HttpResponse.json(sendAnswer(asJsonString(body?.id) ?? "", "sent"));
+      }),
+    );
+    const free = wayOutCase("free");
+    markLive(PANE, Date.now() - free.readAgeMs);
+    let showDraft: (draft: boolean) => void = () => undefined;
+    function Pane() {
+      const [draft, setDraft] = useState(false);
+      showDraft = setDraft;
+      return (
+        <Composer
+          paneId={PANE}
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={draft ? wayOutCase("draft").surface : free.surface}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          screen={{ on: false, onToggle: vi.fn() }}
+        />
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Pane /> }])} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(arrived).toBe(true));
+    // The bridge's probe character stands in the box: the pane's read says draft, mid-request.
+    act(() => showDraft(true));
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Type a reply…");
+    expect(screen.queryByPlaceholderText(/a draft is in the box/i)).toBeNull();
+    release();
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    // The request is over: a draft the pane still shows is named again.
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "A draft is in the box");
   });
 
   it("composer draft: the placeholder names it, a send is refused at the thumb with Add, Replace and Cancel, and the way out stays", async () => {
