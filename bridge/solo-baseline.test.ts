@@ -720,6 +720,10 @@ describe("solo zero-tax — routes", () => {
       // included, and then answers 404 instead of the SPA's app shell. Not a route of its own, and it
       // registers nothing on the crew link.
       "/api/*",
+      // Ask v1 (M56 spec 08): a SOLO route that legitimately extends this list, named here rather than
+      // exempted. Write-gated through the same closure a send rides, this collie's own sessions only,
+      // and a 404 when the Send Protocol is off (COLLIE_SEND_PROTOCOL=0). No crew route.
+      "/api/ask/*",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",

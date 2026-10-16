@@ -6,9 +6,12 @@
 // Two doors, one counter:
 //  - `press`: a person's tap (the Keys board, a dialog button, the direct typing mode) and the old
 //    reply route's submit. No revision check: the gate refuses a stale protocol token, never a person.
-//  - `mint` then `commit`: the Send Protocol. A token names the allowed keys, the read revision it was
-//    taken on, its origin and a 150 ms lifetime. `commit` refuses a token that is spent, unknown or
-//    older than its lifetime (`stale_token`) and one whose revision is not the newest (`stale_surface`).
+//  - `mint` then `commit`: the Send Protocol, and an Ask answer (M56 spec 08). A token names the
+//    allowed keys, the read revision it was taken on, its origin and a 150 ms lifetime. `commit`
+//    refuses a token that is spent, unknown or older than its lifetime (`stale_token`) and one whose
+//    revision is not the newest (`stale_surface`). An Ask answer is a person's tap bound to the read
+//    the bridge checked it on: its token carries origin `person_tap`, and only it may carry Escape
+//    (a Cancel the person chose).
 //
 // The revision here is the gate's own, per pane: it moves on every read the protocol notes and on
 // every write that reaches the pane through the bridge (a key from either door, a text write the
@@ -33,13 +36,16 @@ export interface KeySendCounts {
   protocol: number;
 }
 
-/** A protocol token: the keys it allows, the revision it was minted on, and when it dies. */
+/** Who may hold a token: the Send Protocol, or a person's tap on an ask the bridge answers. */
+export type TokenOrigin = "protocol" | "person_tap";
+
+/** A token: the keys it allows, the revision it was minted on, its origin, and when it dies. */
 export interface KeyToken {
   readonly id: number;
   readonly paneId: string;
   readonly keys: readonly string[];
   readonly revision: number;
-  readonly origin: "protocol";
+  readonly origin: TokenOrigin;
   readonly expiresAt: number;
 }
 
@@ -86,13 +92,13 @@ export class KeyGate {
   }
 
   /**
-   * A token for the protocol: these keys, on this revision, for 150 ms. Throws on a key that is
-   * Escape, because Escape is never cleanup, and on an empty key list.
+   * A token: these keys, on this revision, for 150 ms. Throws on an empty key list, and on Escape in
+   * a protocol token, because Escape is never cleanup. A person's ask answer may carry it.
    */
-  mint(paneId: string, keys: readonly string[], revision: number): KeyToken {
+  mint(paneId: string, keys: readonly string[], revision: number, origin: TokenOrigin = "protocol"): KeyToken {
     if (keys.length === 0) throw new Error("a key token needs at least one key");
-    if (keys.some((key) => ESCAPE.test(key))) throw new Error("a protocol token never carries Escape");
-    const token: KeyToken = { id: this.nextId++, paneId, keys: [...keys], revision, origin: "protocol", expiresAt: this.now() + TOKEN_LIFETIME_MS };
+    if (origin === "protocol" && keys.some((key) => ESCAPE.test(key))) throw new Error("a protocol token never carries Escape");
+    const token: KeyToken = { id: this.nextId++, paneId, keys: [...keys], revision, origin, expiresAt: this.now() + TOKEN_LIFETIME_MS };
     this.live.set(token.id, token);
     return token;
   }
@@ -108,7 +114,7 @@ export class KeyGate {
     }
     const sent = await this.mux.writeKeys(token.paneId, token.keys);
     this.bump(token.paneId);
-    this.sends.protocol++;
+    this.sends[token.origin]++;
     return sent.ok ? { ok: true } : { ok: false, reason: "mux", refusal: sent };
   }
 

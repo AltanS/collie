@@ -135,6 +135,8 @@ import type { SurfaceTotals } from "./surface/counters.ts";
 import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
+import type { AskAnswerer } from "./surface/ask.ts";
+import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
 import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
@@ -2431,6 +2433,26 @@ export function startServer(opts: {
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
         return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
+      }
+      // ── Ask v1 (M56 spec 08) ─────────────────────────────────────────────
+      // `POST /api/ask/<id>?session=<name>`: a tap on a dialog card, as one Answer to a single-use ask
+      // id. Write-gated through the same closure a send rides; this collie's own sessions only, like
+      // `/api/send` (a crew member's pane keeps the guarded key route).
+      if (pathname.startsWith("/api/ask/") && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text("an ask answer does not cross a crew link yet", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseAnswerBody` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const askId = pathname.slice("/api/ask/".length);
+        return askRoute(rt, askId, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
@@ -6978,6 +7000,58 @@ export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send">, pane: stri
   if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
   const answer: SendReceiptsAnswer = { receipts: rt.send.recent(pane, 10) };
   return json(answer, acceptEncoding);
+}
+
+/** What `/api/ask/<id>` answers with the Send Protocol off: no ask is answerable, a 404 that says why. */
+export const ASK_OFF_TEXT = "asks are answered with the send protocol, which is off (COLLIE_SEND_PROTOCOL=0)";
+
+/** What `askRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface AskRouteRuntime extends SendRouteRuntime {
+  readonly asks?: AskAnswerer;
+}
+
+/** A reply with its screen text masked like the mirror: the Surface's ask labels and the new ask's. */
+function maskAskReply(reply: AskReply): AskReply {
+  let masked: AskReply = reply;
+  if (reply.surface !== undefined) masked = { ...masked, surface: maskSurface(reply.surface) };
+  if (reply.ask !== undefined) masked = { ...masked, ask: { ...reply.ask, options: reply.ask.options.map((option) => ({ id: option.id, label: redactText(option.label) })) } };
+  return masked;
+}
+
+/**
+ * `POST /api/ask/<id>` once the write gate passed and the session resolved (M56 spec 08). With the
+ * Send Protocol off (no answerer on the runtime) the route is not there. Every outcome is a 200 with
+ * the reply; a malformed body is a 400. One audit line per answer, with the option id, the keys by
+ * name and the outcome, never a label.
+ */
+export async function askRoute(
+  rt: AskRouteRuntime,
+  askId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
+  const parsed = parseAnswerBody(askId, body);
+  if (parsed === null) return text("bad ask answer", 400);
+  const refusal = rawInputRefusal(rt.herdr);
+  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  const harness = replySendOf(rt).harnessOf(parsed.pane);
+  if (harness === null) return text("no such terminal pane", 404);
+  const { pane: paneId, ...answer } = parsed;
+  const reply = await rt.asks.handle(answer, { session: rt.name, paneId, harness });
+  const receipt = reply.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { askId, optionId: answer.optionId, outcome: receipt.outcome, keys: [...receipt.keys] };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    // A replay is the stored receipt of an earlier answer: no key left this time.
+    if (reply.replayed === true) detail.replayed = true;
+    context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
+    if (receipt.keys.length > 0 && reply.replayed !== true) {
+      rt.engine.noteInput();
+      rt.engine.pokeNow();
+    }
+  }
+  return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }
 
 function text(body: string, status: number): Response {

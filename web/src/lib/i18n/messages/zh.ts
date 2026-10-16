@@ -489,6 +489,10 @@ export const zh: Dictionary = {
   "chat.status.feedbackSent": "反馈已发送",
   "chat.status.sent": "已发送",
   "chat.status.menuChanged": "菜单已变动，正在刷新",
+  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
+  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
+  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
+  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
   "chat.status.sendFailed": "发送失败",
   "chat.status.wizardChanged": "向导已变动，正在刷新",
   "chat.status.noteSaved": "笔记已保存",

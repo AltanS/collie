@@ -434,6 +434,10 @@ export const tr: Dictionary = {
   "chat.status.feedbackSent": "Geri bildirim gönderildi",
   "chat.status.sent": "Gönderildi",
   "chat.status.menuChanged": "Menü değişti, yenileniyor",
+  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
+  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
+  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
+  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
   "chat.status.sendFailed": "Gönderme başarısız",
   "chat.status.wizardChanged": "Sihirbaz değişti, yenileniyor",
   "chat.status.noteSaved": "Not kaydedildi",

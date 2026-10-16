@@ -488,6 +488,10 @@ export const zhTW: Dictionary = {
   "chat.status.feedbackSent": "回饋已傳送",
   "chat.status.sent": "已傳送",
   "chat.status.menuChanged": "選單已變動，正在重新整理",
+  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
+  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
+  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
+  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
   "chat.status.sendFailed": "傳送失敗",
   "chat.status.wizardChanged": "精靈已變動，正在重新整理",
   "chat.status.noteSaved": "備註已儲存",

@@ -210,7 +210,8 @@ import {
   updateStartCommand,
 } from "./update-action.ts";
 import { collieVersion, collieVersionBare } from "./version.ts";
-import { SurfaceShadow } from "./surface/shadow.ts";
+import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
+import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { RequestStore } from "./surface/requests.ts";
@@ -1264,6 +1265,8 @@ const sendStore = cfg.sendProtocol ? new RequestStore(join(cfg.stateDir, "sends"
 if (sendStore !== null) {
   const recovered = sendStore.recover(SendProtocol.crashReceipt);
   if (recovered.length > 0) console.log(`[send] ${String(recovered.length)} send request(s) left unsettled by the last run read as unknown`);
+  const recoveredAsks = sendStore.recoverAsks(AskAnswerer.crashReceipt);
+  if (recoveredAsks.length > 0) console.log(`[ask] ${String(recoveredAsks.length)} ask answer(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
 // The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
@@ -1387,34 +1390,52 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // comparison with the old readers stops, and only `COLLIE_SURFACE_SHADOW=1` with the protocol off
   // still runs it. That comparison is the part a later change deletes.
   const computeSurface = (cfg.surfaceShadow || cfg.sendProtocol) && endpoint.kind === "terminal";
-  const surface = computeSurface ? new SurfaceShadow({ mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol, ledger: surfaceLedger ?? undefined }) : undefined;
+  // A pane's generation is its agent and the session the agent named: a pane that holds another
+  // program now is not the pane a request or an ask was taken for.
+  const generationOf = (paneId: string): string | null => {
+    const { agents, shellPanes } = engine.current();
+    const pane = agents.find((agent) => agent.paneId === paneId) ?? shellPanes.find((shell) => shell.paneId === paneId);
+    return pane === undefined ? null : `${pane.agent}:${pane.agentSession?.value ?? "-"}`;
+  };
+  const sends = sendStore !== null && endpoint.kind === "terminal";
+  // The session's single-use ask ids (M56 spec 08): the poll's Surface, the Send Protocol's reads and
+  // the answer route all lift through this one book, so the id on the phone is the id the route knows.
+  const askBook = sends ? new AskBook() : undefined;
+  const shadowOptions: ShadowOptions = { mux: herdr, pollMs: cfg.pollMs, compare: cfg.surfaceShadow && !cfg.sendProtocol, ledger: surfaceLedger ?? undefined };
+  const surface = computeSurface
+    ? new SurfaceShadow(askBook === undefined ? shadowOptions : { ...shadowOptions, asks: { book: askBook, generation: generationOf } })
+    : undefined;
   if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
-  // request store. A pane's generation is its agent and the session the agent named: a pane that
-  // holds another program now is not the pane the request was accepted for.
+  // request store. The ask answerer shares the locks, the gate and the store, so a send and an answer
+  // never run on one pane at once and every key leaves through the one gate.
+  const locks = new SessionLocks();
+  const ring = new RowRing();
   const send =
-    sendStore !== null && endpoint.kind === "terminal"
+    sends && sendStore !== null && askBook !== undefined
       ? new SendProtocol({
           mux: herdr,
           gate: gateFor(herdr),
           store: sendStore,
-          locks: new SessionLocks(),
-          ring: new RowRing(),
+          locks,
+          ring,
           ledger: surfaceLedger ?? undefined,
           profile: (harness) => sendProfile(harness),
-          generation: (paneId) => {
-            const { agents, shellPanes } = engine.current();
-            const pane = agents.find((agent) => agent.paneId === paneId) ?? shellPanes.find((shell) => shell.paneId === paneId);
-            return pane === undefined ? null : `${pane.agent}:${pane.agentSession?.value ?? "-"}`;
-          },
+          generation: generationOf,
+          asks: askBook,
         })
+      : undefined;
+  const asks =
+    sends && sendStore !== null && askBook !== undefined
+      ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
       : undefined;
 
   engine.start();
   poker.start();
   const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
   const withSurface = surface === undefined ? parts : { ...parts, surface };
-  return send === undefined ? withSurface : { ...withSurface, send };
+  const withSend = send === undefined ? withSurface : { ...withSurface, send };
+  return asks === undefined ? withSend : { ...withSend, asks };
 };
 
 const registry = new SessionRegistry({

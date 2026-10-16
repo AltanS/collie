@@ -108,6 +108,26 @@ describe("the key gate's protocol tokens", () => {
   });
 });
 
+describe("the key gate's tokens for an ask answer (M56 spec 08)", () => {
+  test("a person_tap token keeps the revision check and the lifetime, may carry Escape, and counts as the person's", async () => {
+    const mux = new Recorder();
+    const time = clock();
+    const gate = new KeyGate(mux, time.now);
+    const revision = gate.noteRead("%1");
+    const cancel = gate.mint("%1", ["Escape"], revision, "person_tap");
+    expect(cancel.origin).toBe("person_tap");
+    expect(await gate.commit(cancel)).toEqual({ ok: true });
+    // A read after the token was minted makes the next one stale, as for the protocol.
+    const stale = gate.mint("%1", ["Enter"], revision, "person_tap");
+    expect(await gate.commit(stale)).toMatchObject({ ok: false, reason: "stale_surface" });
+    const late = gate.mint("%1", ["Enter"], gate.revision("%1"), "person_tap");
+    time.advance(TOKEN_LIFETIME_MS + 1);
+    expect(await gate.commit(late)).toMatchObject({ ok: false, reason: "stale_token" });
+    expect(mux.sent.map((s) => s.keys)).toEqual([["Escape"]]);
+    expect(gate.sentBy()).toEqual({ person_tap: 1, legacy_reply: 0, protocol: 0 });
+  });
+});
+
 describe("the key gate's door for a person", () => {
   test("a person's tap has no revision check and may press Escape", async () => {
     const mux = new Recorder();

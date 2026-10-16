@@ -434,6 +434,10 @@ export const it: Dictionary = {
   "chat.status.feedbackSent": "Feedback inviato",
   "chat.status.sent": "Inviato",
   "chat.status.menuChanged": "Menu modificato: aggiornamento in corso",
+  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
+  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
+  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
+  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
   "chat.status.sendFailed": "Invio non riuscito",
   "chat.status.wizardChanged": "Procedura guidata modificata: aggiornamento in corso",
   "chat.status.noteSaved": "Nota salvata",
