@@ -60,6 +60,6 @@ describe("paneSurface", () => {
   it("a pane the bridge does not mark for the Send Protocol says sending is off", () => {
     const out = paneSurface(at({}), false, undefined);
     expect(out.surface.composer).toBe("unreachable");
-    expect(out.unreachableNote).toBe("Sending is off on this machine");
+    expect(out.unreachableNote).toBe("This machine cannot take text from the phone. Update its Collie, or check its COLLIE_SEND_PROTOCOL setting. The keys still work.");
   });
 });

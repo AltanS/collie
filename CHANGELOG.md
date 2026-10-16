@@ -135,6 +135,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The surface counters are saved on shutdown, and a filed example row hides its symbols.** A stop now writes the last minute of counters, and the masked rows of the examples folder turn every letter into `a`, every digit into `0` and every other character into `x`, so a secret keeps neither its case nor its symbols. Spaces and box-drawing characters stay.
 - **Windows: the doctor surface tests compare platform paths.** The asserts build the examples and inbox paths with join, as doctor does.
 - **A mixed-version crew no longer types text without a check.** A 1.21 phone's text reply to a member on this build, and this build's text reply to a member that sends no Surface reader version, are each refused at once with a sentence that says which machine to update, and nothing is typed. Keys and unsubmitted text work as before. `collie doctor` and `collie crew status` show each member's reader version, or `none (older build)`.
+- **Five composer tests follow the new sentences.** The locked-field, contested, torn and cap assertions read the wording of this release.
 
 ### Packaging
 

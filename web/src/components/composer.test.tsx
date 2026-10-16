@@ -4136,7 +4136,7 @@ describe("the cap (M56 spec 09)", () => {
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
 
-    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/5 times on agent 2\.1\.301 in the last day/i));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/on agent 2\.1\.301 5 times today/i));
     // The phone's own words stand in the notice, not the bridge's English.
     expect(container.querySelector('[data-slot="composer-refusal"]')).not.toHaveTextContent(/bridge's own english/i);
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");

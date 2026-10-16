@@ -158,7 +158,7 @@ describe("AgentChat: the composer reads the pane's Surface", () => {
   it("a pane the bridge does not mark for the Send Protocol says sending is off, and locks the field", () => {
     const { sendProtocol: _off, ...unmarked } = fixtureAgents[0]!;
     renderChat({ agent: unmarked });
-    expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
+    expect(screen.getByPlaceholderText(/cannot take text from the phone/i)).toBeDisabled();
   });
 });
 

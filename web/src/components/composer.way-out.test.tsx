@@ -165,7 +165,7 @@ describe("the way out", () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "sent")));
     const user = userEvent.setup();
     const { onToggle } = mount("contested");
-    await user.type(screen.getByPlaceholderText(/two reads disagree/i), "go on");
+    await user.type(screen.getByPlaceholderText(/reads disagree/i), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await wayOutIs(user, onToggle, "sends");
@@ -182,11 +182,11 @@ describe("the way out", () => {
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("unknown torn: the placeholder says the screen was moving, and Send reads it again", async () => {
+  it("unknown torn: the placeholder says the screen changed, and Send reads it again", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "sent")));
     const user = userEvent.setup();
     const { onToggle } = mount("torn");
-    await user.type(screen.getByPlaceholderText(/the screen was moving/i), "go on");
+    await user.type(screen.getByPlaceholderText(/the screen changed\. send again/i), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await wayOutIs(user, onToggle, "sends");
