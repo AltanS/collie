@@ -76,6 +76,14 @@ export interface CounterRow extends CounterKey {
   typed_not_submitted: number;
   /** Discards that emptied the box. Never counted under `sent`: nothing went to the agent. */
   discarded: number;
+  /** Sends the harness could not take during its turn, so Collie held them (M56 spec 15). */
+  held: number;
+  /** Held sends that went out once the pane read free (also counted under `sent` or `effective`). */
+  held_sent: number;
+  /** Held sends that nobody could send within 30 minutes. */
+  held_expired: number;
+  /** Held sends the person cancelled before they went out. */
+  held_cancelled: number;
   /**
    * Hook edges (M56 spec 11), by word: each edge kind (`prompt`, `stop`, `dialog`, `start`, `end`,
    * `reread`) as a pane took it, `lost-stop` for a block the screen ended with free reads, and
@@ -122,7 +130,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {} };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {} };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -194,6 +202,10 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     unknown_outcome: count("unknown_outcome"),
     typed_not_submitted: count("typed_not_submitted"),
     discarded: count("discarded"),
+    held: count("held"),
+    held_sent: count("held_sent"),
+    held_expired: count("held_expired"),
+    held_cancelled: count("held_cancelled"),
     edges: parseCountMap(node.edges),
   };
 }
@@ -240,6 +252,10 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.unknown_outcome += from.unknown_outcome;
   into.typed_not_submitted += from.typed_not_submitted;
   into.discarded += from.discarded;
+  into.held += from.held;
+  into.held_sent += from.held_sent;
+  into.held_expired += from.held_expired;
+  into.held_cancelled += from.held_cancelled;
   for (const [word, n] of Object.entries(from.edges)) bump(into.edges, word, n);
 }
 
@@ -450,8 +466,13 @@ export class SurfaceLedger {
     this.touch();
   }
 
-  /** One settled send. `probed` is whether it took the probed path, `manual` whether the person confirmed an unreadable screen. */
-  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean }): void {
+  /**
+   * One settled send. `probed` is whether it took the probed path; `released` whether it was the run of
+   * a held request (M56 spec 15), whose `sent` or `effective` also counts as `held_sent`. A `held`
+   * answer counts once when the send is held; its end (`expired`, `cancelled`, or the release's own
+   * outcome) counts again.
+   */
+  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean; readonly released?: boolean }): void {
     const row = this.row(key);
     if (end.outcome === "refused") bump(row.refused, end.reason ?? "other");
     else if (end.outcome === "sent") row.sent++;
@@ -459,6 +480,10 @@ export class SurfaceLedger {
     else if (end.outcome === "unknown") row.unknown_outcome++;
     else if (end.outcome === "typed_not_submitted") row.typed_not_submitted++;
     else if (end.outcome === "discarded") row.discarded++;
+    else if (end.outcome === "held") row.held++;
+    else if (end.outcome === "expired") row.held_expired++;
+    else if (end.outcome === "cancelled") row.held_cancelled++;
+    if (end.released === true && (end.outcome === "sent" || end.outcome === "effective")) row.held_sent++;
     if (end.probed) row.probed++;
     this.touch();
   }

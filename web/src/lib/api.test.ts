@@ -12,6 +12,7 @@ import { resetServerClockForTests, serverSkewMs } from "./server-clock";
 import {
   apiErrorFields,
   checkForUpdates,
+  cancelHeldSend,
   checkRun,
   clearRecentRuns,
   createTab,
@@ -1239,5 +1240,39 @@ describe("api client: the bridge's clock", () => {
     server.use(http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)));
     await fetchSnapshot();
     expect(serverSkewMs()).toBe(0);
+  });
+});
+
+describe("cancelHeldSend (M56 spec 15)", () => {
+  it("DELETEs the request with its pane and the session, and reads a cancel and a dismiss", async () => {
+    const seen: string[] = [];
+    server.use(
+      http.delete("/api/send/:id", ({ request, params }) => {
+        seen.push(`${String(params.id)} ${new URL(request.url).search}`);
+        return HttpResponse.json({ result: seen.length === 1 ? "cancelled" : "dismissed" });
+      }),
+    );
+    expect(await cancelHeldSend("req00001", "w1:p1", { session: "demo" })).toEqual({ result: "cancelled" });
+    expect(await cancelHeldSend("req00002", "w1:p1")).toEqual({ result: "dismissed" });
+    expect(seen).toEqual(["req00001 ?pane=w1%3Ap1&session=demo", "req00002 ?pane=w1%3Ap1"]);
+  });
+
+  it("a 409 is the answer 'going out now', not an error", async () => {
+    server.use(http.delete("/api/send/:id", () => HttpResponse.json({ result: "refused", reason: "busy" }, { status: 409 })));
+    expect(await cancelHeldSend("req00001", "w1:p1")).toEqual({ result: "refused", reason: "busy" });
+  });
+
+  it("an unknown request (404) and a body that is not an answer both throw", async () => {
+    server.use(http.delete("/api/send/:id", () => HttpResponse.json({ error: "no such request" }, { status: 404 })));
+    await expect(cancelHeldSend("req00001", "w1:p1")).rejects.toMatchObject({ status: 404 });
+    server.use(http.delete("/api/send/:id", () => HttpResponse.json({ nope: true })));
+    await expect(cancelHeldSend("req00001", "w1:p1")).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("never leaves this machine: a crew member's pane throws before any request", async () => {
+    const urls: string[] = [];
+    server.use(http.delete("/api/send/:id", ({ request }) => (urls.push(request.url), HttpResponse.json({ result: "cancelled" }))));
+    await expect(cancelHeldSend("req00001", "w1:p1", { host: "badger" })).rejects.toMatchObject({ status: 400 });
+    expect(urls).toEqual([]);
   });
 });

@@ -216,6 +216,7 @@ import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
+import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { VersionCache } from "./surface/binary-version.ts";
@@ -1276,6 +1277,15 @@ if (sendStore !== null) {
   if (recoveredAsks.length > 0) console.log(`[ask] ${String(recoveredAsks.length)} ask answer(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
+// The hold queue (M56 spec 15): a send the harness cannot take during its turn waits here, one file per
+// request under `<stateDir>/held/`, and is replayed on start. A request that was going out when the
+// last run stopped was settled `unknown` above; its row ends with that, the text kept for a Resend.
+const holdStore = sendStore === null ? null : new HoldStore(join(cfg.stateDir, "held"));
+if (holdStore !== null && sendStore !== null) {
+  const changed = SendProtocol.reconcileHolds(holdStore, sendStore);
+  const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
+  if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
+}
 // The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
 // Created with either flag, so an instance that computes no Surface touches no new file. It never
 // blocks a send and never changes a verdict.
@@ -1435,7 +1445,14 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const surface = computeSurface
     ? new SurfaceShadow(askBook === undefined ? shadowOptions : { ...shadowOptions, asks: { book: askBook, generation: generationOf } })
     : undefined;
-  if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
+  // The held sends (M56 spec 15) ride the same poll: once the Surface has read the panes, a pane that
+  // reads free releases its oldest held request, and the queue ends what expired or lost its pane.
+  // `send` is declared below; the poll's first update comes after `engine.start()`.
+  if (surface !== undefined) {
+    engine.onUpdate((s) => {
+      void surface.observe(s.agents).then(() => send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId)));
+    });
+  }
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
   // request store. The ask answerer shares the locks, the gate and the store, so a send and an answer
   // never run on one pane at once and every key leaves through the one gate.
@@ -1453,6 +1470,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: (harness) => sendProfile(harness),
           generation: generationOf,
           asks: askBook,
+          holds: holdStore ?? undefined,
         })
       : undefined;
   const asks =

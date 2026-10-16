@@ -63,6 +63,13 @@
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
 // message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
 //
+// The held send (M56 spec 15): a send that would be refused `turn_running` (a harness that does not
+// take it during a turn) is held instead when the protocol has a hold queue (holds.ts). The receipt says
+// `held`; the poll releases the oldest held request of a pane the first time its Surface reads free, as
+// a fresh run of these steps under the same request id. A later send or command on that pane joins the
+// end of the queue. A hold lasts 30 minutes, then ends `expired` with its text kept for a Resend; the
+// person may cancel it while it waits.
+//
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
@@ -90,6 +97,8 @@ import {
   type SendReceipt,
   type SendReceiptRow,
   type SendStep,
+  type HeldCancelAnswer,
+  type HeldRow,
 } from "../../web/src/lib/surface/send.ts";
 import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
@@ -97,6 +106,7 @@ import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
+import { HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldStore } from "./holds.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -174,7 +184,8 @@ export interface SendTarget {
  * adds the one confirm its answer asks for.
  */
 export interface SendLedger {
-  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean }): void;
+  /** `released` marks the run of a held request (M56 spec 15): its `sent` or `effective` also counts as `held_sent`. */
+  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean; readonly released?: boolean }): void;
   noteManual(key: CounterKey): void;
   capState(harness: string, version: string): CapState;
   inbox(entry: InboxEntry): void;
@@ -211,6 +222,12 @@ export interface SendDeps {
   readonly ledger?: SendLedger | undefined;
   /** The session's ask book (M56 spec 08): a dialog a read lifts is named by its single-use id. */
   readonly asks?: AskBook;
+  /**
+   * The hold queue (M56 spec 15), shared by the bridge's sessions. With it, a send the harness cannot
+   * take during its turn is held and sent once the pane reads free; without it, that send is refused
+   * `turn_running`.
+   */
+  readonly holds?: HoldStore;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -647,7 +664,7 @@ function queuesInTurn(match: ProfileMatch | null): boolean {
 /**
  * Whether the harness also queues a command entered while its turn runs (`keys.commandWhileRunning:
  * "queues"`, measured in the lab, M56 spec 15). Only then does a command take the queued path; on
- * every other harness a command in a turn is refused `turn_running`.
+ * every other harness a command in a turn is held by Collie (or refused, with no hold queue).
  */
 function commandQueues(match: ProfileMatch | null): boolean {
   return queuesInTurn(match) && match?.profile.keys.commandWhileRunning === "queues";
@@ -708,6 +725,23 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";
+/** The detail of a held send (M56 spec 15): the harness cannot take it during the turn, so Collie keeps it. */
+const HELD = "The agent is working. Collie keeps this and sends it when the turn ends.";
+/** The detail of a send held behind earlier held sends on the same pane: it never jumps the queue. */
+const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
+/** The modes a hold takes: a new text. Submit and Discard name a box that holds text, which a free pane never has. */
+const HOLDABLE: ReadonlySet<SendMode> = new Set<SendMode>(["send", "command", "append", "replace"]);
+/** The modes that join the end of a pane's queue: a new message or command the person typed. */
+const JOINS: ReadonlySet<SendMode> = new Set<SendMode>(["send", "command"]);
+/**
+ * The refusals at a release that mean "not yet" rather than "no": the pane read free on the poll but not
+ * at S0 (a turn began again, a dialog drew, someone typed at the desk) or another send held the lock.
+ * Nothing was typed. The request goes back to its place, at most {@link HOLD_TRIES} times.
+ */
+const NOT_YET: ReadonlySet<SendReason> = new Set<SendReason>(["turn_running", "busy", "not_free", "draft_present", "bound"]);
+/** How often a release may go back to the queue before it ends with the refusal it met. */
+const HOLD_TRIES = 5;
+
 /** The detail of a send into a turn refused because something is open at the box (a popup over or under it). */
 const OPEN_AT_BOX = "Something is open at the input box.";
 /**
@@ -1074,6 +1108,8 @@ interface RunState {
   /** The latest read. */
   lastRead: Snap | null;
   stepStart: number;
+  /** The run of a held request (M56 spec 15): its `sent` also counts under `held_sent`. */
+  released?: boolean;
 }
 
 type Verdict = "pass" | "wait" | "fail";
@@ -1280,6 +1316,15 @@ export class SendProtocol {
       this.count(state, receipt);
       return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
     }
+    // A pane with held sends: a new message or command joins the end of its queue, it never jumps.
+    const holds = this.deps.holds;
+    if (holds !== undefined && JOINS.has(request.mode) && request.rowsHash === undefined && holds.waiting(target.session, target.paneId).length > 0) {
+      const match = await this.deps.profile(target.harness);
+      const state = this.bareState(request, accepted.record, target, match);
+      const refusal = textRefusal(request, match);
+      if (refusal !== null) return this.settle(state, refusal);
+      return this.hold(state, new Ended("refused", "turn_running", { detail: HELD_BEHIND }));
+    }
     const work = this.run(request, accepted.record, target);
     this.inFlight.set(request.id, work);
     try {
@@ -1287,6 +1332,208 @@ export class SendProtocol {
     } finally {
       this.inFlight.delete(request.id);
     }
+  }
+
+  // ── The held send (M56 spec 15) ──
+
+  /** Whether an end is one the hold queue takes instead: a `turn_running` refusal before any key, of a new text. */
+  private holdsEnd(state: RunState, end: Ended): boolean {
+    return this.deps.holds !== undefined && end.outcome === "refused" && end.reason === "turn_running" && state.keys.length === 0 && HOLDABLE.has(state.request.mode);
+  }
+
+  /** The request goes to the end of its pane's queue; the answer's receipt says `held`. */
+  private hold(state: RunState, end: Ended): SendAnswer {
+    const holds = this.deps.holds!;
+    const { request, target } = state;
+    if (holds.waiting(target.session, target.paneId).length >= HOLD_PANE_MAX) {
+      return this.settle(state, new Ended("refused", "busy", { detail: `This pane already holds ${String(HOLD_PANE_MAX)} messages. Cancel one, or wait for the turn to end.` }));
+    }
+    holds.add({ id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0 });
+    const receipt = this.receiptOf(state, "held", undefined);
+    this.deps.store.hold(state.record.id, receipt);
+    this.count(state, receipt);
+    return answerWith({ receipt, offers: [] }, { ...end.extra, detail: end.extra.detail === HELD_BEHIND ? HELD_BEHIND : HELD });
+  }
+
+  /**
+   * A release that met a pane not ready yet: back to its place, its receipt `held` again. After
+   * {@link HOLD_TRIES} such tries it ends with the refusal it met, its text kept for a Resend.
+   */
+  private backToQueue(state: RunState, end: Ended): SendAnswer {
+    const holds = this.deps.holds!;
+    const entry = holds.get(state.record.id);
+    if (entry === null || entry.tries + 1 >= HOLD_TRIES) return this.settle(state, end);
+    holds.putBack(state.record.id);
+    const receipt = this.receiptOf(state, "held", undefined);
+    this.deps.store.hold(state.record.id, receipt);
+    return answerWith({ receipt, offers: [] }, { ...end.extra, detail: HELD });
+  }
+
+  /** The phone's rows for a pane's held requests, oldest first (the snapshot carries them). */
+  heldOf(session: string, paneId: string): HeldRow[] {
+    return this.deps.holds?.list(session, paneId).map(heldRow) ?? [];
+  }
+
+  /**
+   * One held request goes out: a fresh run of the steps under the same request id, the receipt the
+   * run's own. The file says `running` before the first await, so a cancel that comes after it is
+   * refused `busy`, and one that came before it leaves nothing to release. Null when the request is not
+   * held (cancelled, already running, gone).
+   */
+  async release(id: string): Promise<SendAnswer | null> {
+    const holds = this.deps.holds;
+    const entry = holds?.get(id) ?? null;
+    if (holds === undefined || entry === null || entry.state !== "held" || this.inFlight.has(id)) return null;
+    if (holds.markRunning(id) === null) return null;
+    const record = this.deps.store.rearm(id);
+    if (record === null) {
+      holds.remove(id);
+      return null;
+    }
+    const request: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
+    const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
+    const work = this.run(request, record, target, true);
+    this.inFlight.set(id, work);
+    let answer: SendAnswer;
+    try {
+      answer = await work;
+    } catch (err) {
+      // A throw that is not an end (a bug, a disk error): the request ends unknown, the text kept.
+      holds.end(id, "unknown", "crash");
+      throw err;
+    } finally {
+      this.inFlight.delete(id);
+    }
+    const outcome = answer.receipt?.outcome;
+    if (outcome === "held") return answer;
+    if (outcome === "sent" || outcome === "effective") holds.remove(id);
+    else holds.end(id, outcome ?? "unknown", answer.receipt?.reason);
+    return answer;
+  }
+
+  /**
+   * The hold queue's tick on the session's poll, after the Surface read the panes. A request past its
+   * 30 minutes ends `expired`; one whose pane is gone, or holds another program now, ends
+   * `refused(pane_gone)`; both keep their text. Then each pane whose Surface reads free releases its
+   * oldest held request, one pane at a time per request. Returns the releases it started, for a test
+   * to wait on. Never throws: a release that fails is a warning.
+   */
+  tickHolds(session: string, surfaceOf: (paneId: string) => Surface | undefined): Promise<SendAnswer | null>[] {
+    const holds = this.deps.holds;
+    if (holds === undefined) return [];
+    const now = this.now();
+    holds.prune();
+    const started: Promise<SendAnswer | null>[] = [];
+    const busyPanes = new Set<string>();
+    for (const entry of holds.list(session)) {
+      if (entry.state === "ended") continue;
+      if (entry.state === "running" || this.inFlight.has(entry.id)) {
+        busyPanes.add(entry.paneId);
+        continue;
+      }
+      const record = this.deps.store.get(entry.id);
+      if (now >= entry.expiresAt) {
+        this.endHeld(entry, "expired", undefined);
+        continue;
+      }
+      const generation = this.deps.generation(entry.paneId);
+      if (record === null || generation === null || generation !== record.paneGeneration) {
+        this.endHeld(entry, "refused", "pane_gone");
+        continue;
+      }
+      if (busyPanes.has(entry.paneId)) continue;
+      // Oldest first: the first waiting entry of a pane is its turn, whether or not the pane is free.
+      busyPanes.add(entry.paneId);
+      const surface = surfaceOf(entry.paneId);
+      if (surface === undefined || !isFree(surface)) continue;
+      started.push(this.releaseQuietly(entry.id));
+    }
+    return started;
+  }
+
+  /** {@link release} for the poll: a throw is a warning in the journal, never an unhandled rejection. */
+  private async releaseQuietly(id: string): Promise<SendAnswer | null> {
+    try {
+      return await this.release(id);
+    } catch (err) {
+      console.warn(`[send] release of ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * A held request ends without a run: `expired`, `cancelled`, or `refused(pane_gone)`. Its receipt is
+   * the held one with the new outcome; the counters take it. A cancel leaves no file; the others keep
+   * the text for a Resend.
+   */
+  private endHeld(entry: HeldEntry, outcome: "expired" | "cancelled" | "refused", reason: SendReason | undefined): SendReceipt | null {
+    const holds = this.deps.holds!;
+    const record = this.deps.store.get(entry.id);
+    const held = record?.receipt;
+    if (outcome === "cancelled") holds.remove(entry.id);
+    else holds.end(entry.id, outcome, reason);
+    if (record === null || held === undefined || record.phase !== "held") return null;
+    const { reason: _none, queued: _never, ...rest } = held;
+    const receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+    this.deps.store.settle(entry.id, receipt);
+    const ledger = this.deps.ledger;
+    try {
+      ledger?.send(
+        { harness: held.harness === "" ? "-" : held.harness, version: held.version ?? "-", profileId: held.profileId ?? "-", status: held.profileStatus ?? "-" },
+        { outcome, reason, probed: false },
+      );
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return receipt;
+  }
+
+  /**
+   * The person's Cancel on a queued row (`DELETE /api/send/<id>`): a held request ends `cancelled` and
+   * leaves no file; an ended row is dismissed (its receipt stays); a request going out now is refused
+   * `busy`. Null when the pane holds no such request.
+   */
+  cancelHeld(session: string, paneId: string, id: string): HeldCancelAnswer | null {
+    const entry = this.deps.holds?.get(id) ?? null;
+    if (entry === null || entry.session !== session || entry.paneId !== paneId) return null;
+    if (entry.state === "running" || this.inFlight.has(id)) return { result: "refused", reason: "busy" };
+    if (entry.state === "ended") {
+      this.deps.holds!.remove(id);
+      return { result: "dismissed" };
+    }
+    const receipt = this.endHeld(entry, "cancelled", undefined);
+    return receipt === null ? { result: "cancelled" } : { result: "cancelled", receipt };
+  }
+
+  /**
+   * After a start (M56 spec 15): the hold queue and the request files agree again. A request that was
+   * going out when the bridge stopped has been settled `unknown(crash)` by `RequestStore.recover`: its
+   * row ends with that outcome, the text kept. One that had not started yet goes back to waiting.
+   * Rows whose request file is gone are dropped. Returns how many rows changed.
+   */
+  static reconcileHolds(holds: HoldStore, store: RequestStore): number {
+    let changed = 0;
+    for (const entry of holds.list()) {
+      if (entry.state === "ended") continue;
+      const record = store.get(entry.id);
+      if (record === null) {
+        holds.remove(entry.id);
+        changed++;
+        continue;
+      }
+      if (record.phase === "held") {
+        if (entry.state === "running") {
+          holds.putBack(entry.id);
+          changed++;
+        }
+        continue;
+      }
+      const outcome = record.receipt?.outcome;
+      if (outcome === "sent" || outcome === "effective" || outcome === "cancelled") holds.remove(entry.id);
+      else holds.end(entry.id, outcome ?? "unknown", record.receipt?.reason ?? "crash");
+      changed++;
+    }
+    return changed;
   }
 
   /**
@@ -1336,7 +1583,8 @@ export class SendProtocol {
       target,
       match,
       lockKey: `${target.session}\u0000${target.paneId}`,
-      deadline: record.acceptedAt + LOCK_BOUND_MS,
+      // A held request's release is bounded from its start, not from the accept (M56 spec 15).
+      deadline: (record.runAt ?? record.acceptedAt) + LOCK_BOUND_MS,
       marks: { s0: null, s1: null, s2: null },
       gaps: {},
       keys: [],
@@ -1394,12 +1642,17 @@ export class SendProtocol {
     }
   }
 
-  private async run(request: SendRequest, record: SendRecord, target: SendTarget): Promise<SendAnswer> {
+  /**
+   * One run of the steps. `release` marks the run of a held request (M56 spec 15): a refusal that means
+   * "not yet" sends it back to its place in the queue instead of ending it.
+   */
+  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
     const match = await this.deps.profile(target.harness);
-    const state = this.bareState(request, record, target, match);
+    const state: RunState = { ...this.bareState(request, record, target, match), released: release };
     const { locks } = this.deps;
     if (!locks.acquire(state.lockKey, record.id, state.deadline, this.now())) {
-      return this.settle(state, new Ended("refused", "busy", { detail: "Another send on this pane is still running." }));
+      const busy = new Ended("refused", "busy", { detail: "Another send on this pane is still running." });
+      return release ? this.backToQueue(state, busy) : this.settle(state, busy);
     }
     try {
       await this.steps(state);
@@ -1407,8 +1660,10 @@ export class SendProtocol {
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
       return this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
     } catch (err) {
-      if (err instanceof Ended) return this.settle(state, err);
-      throw err;
+      if (!(err instanceof Ended)) throw err;
+      if (release && err.outcome === "refused" && err.reason !== undefined && NOT_YET.has(err.reason) && state.keys.length === 0) return this.backToQueue(state, err);
+      if (!release && this.holdsEnd(state, err)) return this.hold(state, err);
+      return this.settle(state, err);
     } finally {
       locks.release(state.lockKey, record.id);
     }
@@ -1439,7 +1694,7 @@ export class SendProtocol {
     try {
       const key = this.keyOf(state);
       const probed = receipt.keys.includes("probe");
-      ledger.send(key, { outcome: receipt.outcome, reason: receipt.reason, probed });
+      ledger.send(key, { outcome: receipt.outcome, reason: receipt.reason, probed, released: state.released === true });
       const s0 = state.marks.s0;
       if (probed && s0 !== null && (receipt.outcome === "sent" || receipt.outcome === "effective")) {
         const win = bottomWindow(s0.plainRaw);
@@ -1467,11 +1722,8 @@ export class SendProtocol {
     const writes = request.mode === "send" || request.mode === "command" || request.mode === "append" || request.mode === "replace";
 
     if (writes) {
-      const lead = request.mode === "command" ? null : reservedLead(lines[0] ?? "", leads);
-      if (lead !== null) throw new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
-      if (lines.length > 1 && profile === null) {
-        throw new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
-      }
+      const refusal = textRefusal(request, match);
+      if (refusal !== null) throw refusal;
     }
     // Submit and Discard name the text the box holds: a command's text may stand there with its lead read as a mode marker.
     if ((request.mode === "submit" || request.mode === "discard") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
@@ -2262,6 +2514,19 @@ export class SendProtocol {
     if (snap.frame !== null && boxText(snap.frame).length === 0) return snap;
     throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
   }
+}
+
+/**
+ * The rules a text meets before any read: a plain send may not start with a reserved lead (it has the
+ * command route), and a text of more than one line needs a profile's newline key. Null when it passes.
+ */
+function textRefusal(request: SendRequest, match: ProfileMatch | null): Ended | null {
+  const lines = sendLines(request.text);
+  const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
+  const lead = request.mode === "command" ? null : reservedLead(lines[0] ?? "", leads);
+  if (lead !== null) return new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
+  if (lines.length > 1 && match === null) return new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
+  return null;
 }
 
 /**

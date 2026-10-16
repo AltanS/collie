@@ -2747,6 +2747,10 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     effective: number;
     unknown_outcome: number;
     discarded: number;
+    held?: number;
+    held_sent?: number;
+    held_expired?: number;
+    held_cancelled?: number;
   }
   const row = (over: Partial<Row> = {}): Row => ({
     harness: "agent",
@@ -2786,6 +2790,12 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     expect(line.detail).toBe(
       "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0 · discarded 2",
     );
+  });
+
+  test("surface: a row that held sends (M56 spec 15) names the four held counts after discarded; one that held none reads as before", async () => {
+    const { byCheck } = await run([day(0, [row({ held: 3, held_sent: 1, held_expired: 1, held_cancelled: 1 }), row({ version: "2.1.302" })])]);
+    expect(byCheck.get("surface-agent-2.1.301")!.detail).toEndWith("discarded 1 · held 3 · held-sent 1 · held-expired 1 · held-cancelled 1");
+    expect(byCheck.get("surface-agent-2.1.302")!.detail).toEndWith("discarded 1");
   });
 
   test("surface: another version of the same harness is its own line", async () => {

@@ -19,6 +19,7 @@ import {
   type SendMode,
   type SendOffer,
   type SendOutcome,
+  type HeldCancelAnswer,
   type SendReason,
   type SendReceiptRow,
   type SendReceiptsAnswer,
@@ -161,10 +162,24 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
   return { receipts };
 }
 
+const HELD_RESULTS: readonly HeldCancelAnswer["result"][] = ["cancelled", "dismissed", "refused"];
+
+/** What `DELETE /api/send/<id>` answered, field by field; null when it is not one (a proxy page, an old bridge). */
+export function readHeldCancelAnswer(body: JsonValue | undefined): HeldCancelAnswer | null {
+  const node = asJsonObject(body);
+  const result = pick(node?.result, HELD_RESULTS);
+  if (result === null) return null;
+  const reason = pick(node?.reason, SEND_REASONS);
+  return reason === null ? { result } : { result, reason };
+}
+
 /** The sentence an answer gets: a key under `composer.protocol.*`. */
 export type SendNote =
   | "sent"
   | "queued"
+  | "held"
+  | "expired"
+  | "cancelled"
   | "discarded"
   | "draft"
   | "typed"
@@ -279,6 +294,12 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
       return "sent";
     case "discarded":
       return "discarded";
+    case "held":
+      return "held";
+    case "expired":
+      return "expired";
+    case "cancelled":
+      return "cancelled";
     case "typed_not_submitted":
       return "typed";
     case "refused":
@@ -340,6 +361,11 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.
   if (note === "sent") return { clear: true, note: reply.queued ? "queued" : note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };
+  // A held send is the bridge's to keep: its text now lives in the queued row above the box, so the
+  // draft goes. Not a refusal, so it carries no offers. `expired` and `cancelled` end a held send and
+  // answer a DELETE or a snapshot row, not a POST; they are read here for a receipt that arrives late.
+  if (note === "held") return { clear: true, note, offers: [] };
+  if (note === "expired" || note === "cancelled") return { clear: false, note, offers: [] };
   return { clear: false, note, offers };
 }
 

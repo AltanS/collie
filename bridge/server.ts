@@ -138,7 +138,7 @@ import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1486,7 +1486,11 @@ export function startServer(opts: {
       const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
-      return from.send === undefined && from.driver === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
+      if (from.send === undefined && from.driver === undefined) return surfaced;
+      // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
+      const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
+      const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
+      return held.length === 0 ? { ...surfaced, sendProtocol: true as const } : { ...surfaced, sendProtocol: true as const, held: shown };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
@@ -2431,6 +2435,18 @@ export function startServer(opts: {
           body = undefined;
         }
         return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
+      // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
+      // Write-gated like a send; this collie's own sessions only.
+      if (pathname.startsWith("/api/send/") && pathname !== "/api/send/receipts" && req.method === "DELETE") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text("the send protocol does not cross a crew link yet", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        const requestId = decodeURIComponent(pathname.slice("/api/send/".length));
+        return heldCancelRoute(rt, requestId, url.searchParams.get("pane"), { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
       // by name and gaps, read from the receipts. Never a row of the screen and never the text.
@@ -4423,7 +4439,8 @@ export async function replyThroughProtocol(
   context.audit.record({ action: "reply", paneId, session, device: context.device, detail: auditDetail });
   const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   const outcome = receipt?.outcome;
-  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  // A held send (M56 spec 15) is taken: Collie sends it when the turn ends.
+  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
   const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
   const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
   const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });
@@ -7065,6 +7082,29 @@ export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> 
   const receipts = rt.driver !== undefined ? rt.driver.recent(pane, 10, rt.name) : (rt.send?.recent(pane, 10) ?? []);
   const answer: SendReceiptsAnswer = { receipts };
   return json(answer, acceptEncoding);
+}
+
+/**
+ * `DELETE /api/send/<id>?pane=<id>` once the write gate passed and the session resolved (M56 spec 15):
+ * the Cancel on a queued row. A held request ends `cancelled` (200), an ended row is dismissed (200), a
+ * request going out now is refused `busy` (409), and a pane that holds no such request is a 404. One
+ * audit line per cancel, never the text.
+ */
+export function heldCancelRoute(
+  rt: Pick<SendRouteRuntime, "send" | "name">,
+  requestId: string,
+  pane: string | null,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  if (!REQUEST_ID.test(requestId)) return text("bad request id", 400);
+  if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
+  const answer = rt.send.cancelHeld(rt.name, pane, requestId);
+  if (answer === null) return text("no such held send on this pane", 404);
+  const detail: AuditDetail = { outcome: answer.result };
+  if (answer.reason !== undefined) detail.reason = answer.reason;
+  context.audit.record({ action: "send-cancel", paneId: pane, session: rt.name, device: context.device, detail });
+  return json(answer satisfies HeldCancelAnswer, context.acceptEncoding, answer.result === "refused" ? 409 : 200);
 }
 
 /** What `/api/ask/<id>` answers with the Send Protocol off: no ask is answerable, a 404 that says why. */

@@ -12,8 +12,12 @@ import type { Surface } from "./surface";
 /**
  * The closed list of outcomes. `effective` needs a matching prompt edge (spec 11); without one a send closes as `sent`.
  * `discarded` is a Discard that emptied the box: nothing went to the agent, so it is never a send.
+ * `held` is not an end (M56 spec 15): the harness could not take the send while its turn ran, so the
+ * bridge keeps it and sends it, under the same request id, once the pane reads free. A held request
+ * ends like any other send, or `expired` (nobody could send it within 30 minutes; the text is kept for
+ * a Resend), or `cancelled` (the person took it back before it went out).
  */
-export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown"] as const;
+export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled"] as const;
 export type SendOutcome = (typeof SEND_OUTCOMES)[number];
 
 /**
@@ -36,7 +40,8 @@ export const SEND_REASONS = [
   // refused: a text of more than one line on a pane whose newline key is unknown (no profile)
   "multiline",
   // refused: the turn runs and this harness does not take typed input during a turn (its profile
-  // does not say it queues), or the text is a command, which never goes in during a turn
+  // does not say it queues), or the text is a command its profile does not queue. A bridge with a
+  // hold queue (M56 spec 15) holds such a send instead; only a Submit of a box in a turn is refused.
   "turn_running",
   // typed_not_submitted: the text is in the box, Enter was not sent
   "mismatch",
@@ -193,6 +198,38 @@ export interface SendReceiptRow {
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
   readonly queued?: true;
+}
+
+/** Where a held request stands (M56 spec 15): waiting, going out now, or closed with its text kept. */
+export type HeldState = "held" | "running" | "ended";
+
+/**
+ * One held request as the pane's snapshot carries it (M56 spec 15), oldest first: the composer draws a
+ * queued row for each, with the text and Cancel. An `ended` row closed without reaching the agent
+ * (`expired`, `refused`, `typed_not_submitted`, `unknown`); its text stays for a Resend until the
+ * person dismisses it. A request that went out, or that the person cancelled, has no row.
+ */
+export interface HeldRow {
+  readonly requestId: string;
+  readonly mode: SendMode;
+  readonly text: string;
+  /** When the bridge held it, epoch ms. */
+  readonly heldAt: number;
+  /** When it ends `expired` if the pane never reads free, epoch ms. */
+  readonly expiresAt: number;
+  readonly state: HeldState;
+  /** On an `ended` row: how it closed. */
+  readonly outcome?: SendOutcome;
+  readonly reason?: SendReason;
+}
+
+/** What `DELETE /api/send/<id>` answers (M56 spec 15): a held request cancelled, or an ended row dismissed. */
+export interface HeldCancelAnswer {
+  /** `cancelled` for a request that was still held, `dismissed` for an ended row, `refused` when it runs now. */
+  readonly result: "cancelled" | "dismissed" | "refused";
+  /** On `refused`: `busy`, the request is going out now. */
+  readonly reason?: SendReason;
+  readonly receipt?: SendReceipt;
 }
 
 /** What `GET /api/send/receipts` answers: the newest first. */

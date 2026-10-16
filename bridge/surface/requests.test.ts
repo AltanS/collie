@@ -146,6 +146,26 @@ describe("phases and receipts", () => {
     expect(new RequestStore(dir).get(ID)).toBeNull();
   });
 
+  test("a held request (M56 spec 15) survives a restart unsettled, recover leaves it, and rearm runs it again bounded from now", () => {
+    let now = 1_000;
+    const store = new RequestStore(dir, () => now);
+    const { record } = store.accept(input());
+    const held: SendReceipt = { ...receiptFor(record, "held"), keys: [] };
+    expect(store.hold(ID, held)).toMatchObject({ phase: "held", receipt: held });
+    expect(readFileSync(join(dir, `${ID}.json`), "utf8")).not.toContain("hello world");
+    const restarted = new RequestStore(dir, () => now);
+    expect(restarted.recover(SendProtocol.crashReceipt)).toEqual([]);
+    expect(restarted.get(ID)).toMatchObject({ phase: "held", receipt: { outcome: "held" } });
+    expect(restarted.prune(0, 0)).toBe(0);
+    now = 9_000;
+    const armed = restarted.rearm(ID);
+    expect(armed).toMatchObject({ phase: "accepted", runAt: 9_000, acceptedAt: 1_000 });
+    expect(armed?.receipt).toBeUndefined();
+    expect(restarted.rearm(ID)).toBeNull();
+    restarted.settle(ID, receiptFor(record));
+    expect(restarted.hold(ID, held)).toBeNull();
+  });
+
   test("after a crash, a request that sent its submit key but never settled ends unknown, and so does one that never got that far", () => {
     const store = new RequestStore(dir);
     store.accept(input());

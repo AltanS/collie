@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { capSentence, isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
+import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
 import type { SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
@@ -152,6 +152,40 @@ describe("readSend", () => {
     expect(menu).toMatchObject({ surface: "askMenu", toCard: true });
     const overlay = readSend(reply("refused", "unconfirmed", ["commit"], { surface: { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" } }));
     expect(overlay).toMatchObject({ note: "unconfirmed", surface: "unreadable", toCard: true, offers: ["commit"] });
+  });
+});
+
+describe("a held send (M56 spec 15)", () => {
+  const reply = (outcome: string) => readSendReply({ receipt: { outcome }, offers: [], detail: "The agent is working. The bridge holds it." })!;
+
+  it("a held answer clears the draft, says held, and carries no offers, no detail and no refusal", () => {
+    expect(readSend(reply("held"))).toEqual({ clear: true, note: "held", offers: [], surface: null, detail: null, toCard: false, cap: null });
+  });
+
+  it("expired and cancelled keep the draft and say so, with no offers", () => {
+    expect(readSend(reply("expired"))).toMatchObject({ clear: false, note: "expired", offers: [] });
+    expect(readSend(reply("cancelled"))).toMatchObject({ clear: false, note: "cancelled", offers: [] });
+  });
+
+  it("the three outcomes map to their sentence and their list label", () => {
+    expect(sendNote("held", null)).toBe("held");
+    expect(sendNote("expired", null)).toBe("expired");
+    expect(sendNote("cancelled", null)).toBe("cancelled");
+    expect(receiptLabelKey("held")).toBe("sendReceipts.outcome.held");
+    expect(receiptLabelKey("expired")).toBe("sendReceipts.outcome.expired");
+    expect(receiptLabelKey("cancelled")).toBe("sendReceipts.outcome.cancelled");
+    const row: SendReceiptRow = { requestId: "r1abcdefgh", at: 1, mode: "send", keys: [], gapsMs: {}, harness: "codex", version: null, outcome: "expired", reason: "turn_running" };
+    expect(receiptSentence(row, (key) => key)).toBe("composer.protocol.expired");
+  });
+
+  it("reads the DELETE answer field by field and refuses a body that is not one", () => {
+    expect(readHeldCancelAnswer({ result: "cancelled", receipt: { outcome: "cancelled" } })).toEqual({ result: "cancelled" });
+    expect(readHeldCancelAnswer({ result: "dismissed" })).toEqual({ result: "dismissed" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy" })).toEqual({ result: "refused", reason: "busy" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "nonsense" })).toEqual({ result: "refused" });
+    expect(readHeldCancelAnswer({ result: "maybe" })).toBeNull();
+    expect(readHeldCancelAnswer("<html>")).toBeNull();
+    expect(readHeldCancelAnswer(undefined)).toBeNull();
   });
 });
 

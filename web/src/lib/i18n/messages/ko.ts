@@ -375,6 +375,21 @@ export const ko: Dictionary = {
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.protocol.sent": "보냄",
   "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
+  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
+  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.held.sending": "Sending now.", // TODO wordsmith
+  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
+  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
+  "composer.held.cancel": "Cancel", // TODO wordsmith
+  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
+  "composer.held.resend": "Resend", // TODO wordsmith
+  "composer.held.resendAria": "Resend the message", // TODO wordsmith
+  "composer.held.dismiss": "Dismiss", // TODO wordsmith
+  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
+  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
   "composer.protocol.discarded": "입력란에서 텍스트를 지웠습니다. 초안은 여기에 남아 있습니다.",
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
@@ -409,6 +424,9 @@ export const ko: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "입력됨, 전송되지 않음",
   "sendReceipts.outcome.refused": "거부됨",
   "sendReceipts.outcome.unknown": "알 수 없음",
+  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
+  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
+  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
   "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "키: {keys}",
   "sendReceipts.noKeys": "전송된 키가 없습니다.",

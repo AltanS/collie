@@ -319,6 +319,21 @@ export const tr: Dictionary = {
   "composer.noEcho.dismissAria": "Parola istemi bildirimini kapat",
   "composer.protocol.sent": "Gönderildi",
   "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
+  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
+  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.held.sending": "Sending now.", // TODO wordsmith
+  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
+  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
+  "composer.held.cancel": "Cancel", // TODO wordsmith
+  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
+  "composer.held.resend": "Resend", // TODO wordsmith
+  "composer.held.resendAria": "Resend the message", // TODO wordsmith
+  "composer.held.dismiss": "Dismiss", // TODO wordsmith
+  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
+  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
   "composer.protocol.discarded": "Metin kutudan kaldırıldı. Taslağın hâlâ burada.",
   "composer.protocol.draft": "Kutuda zaten bir taslak var. Ekle, değiştir veya iptal et.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
@@ -353,6 +368,9 @@ export const tr: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Yazıldı, gönderilmedi",
   "sendReceipts.outcome.refused": "Reddedildi",
   "sendReceipts.outcome.unknown": "Bilinmiyor",
+  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
+  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
+  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
   "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Tuşlar: {keys}",
   "sendReceipts.noKeys": "Hiçbir tuş gönderilmedi.",

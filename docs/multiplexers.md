@@ -384,6 +384,14 @@ A send from the phone can show as **Confirmed**. That happens when a prompt edge
 text soon after the send. The window is 30 seconds, or ten minutes for a send queued behind a turn.
 The edge carries a salted hash of the prompt, never the text itself.
 
+Claude Code and Codex take a message or a command during a turn. Collie types it at once, and the
+harness runs it after the turn. A harness that cannot take a send during its turn gets a held send
+instead. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
+ends." The row shows the text and a Cancel button. Collie sends it once the pane is free, oldest
+first. A later message on that pane waits behind it. A hold lasts 30 minutes. After that the row
+says the message was not sent, and offers Resend. A held send survives a restart of Collie. Cancel
+works until the send starts to go out, and only on this machine's own panes.
+
 Collie places each edge on one pane. The edge names the agent's process and its pane
 (`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). Collie drops an edge that names no pane, two
 panes, or a process that is gone. The bridge log then shows a `surface.edge.dropped` line. It shows at
@@ -453,9 +461,9 @@ edge, and the screen read after it decides whether the pane is free. The limits:
 Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
 message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
 running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.
-It takes Enter on an idle box, and waits during a turn. Tab would complete a `/` command, and
-Codex runs a `!` text as a shell command. The receipt says queued only when
-Codex shows the queued row with the text.
+It takes Enter on an idle box, because Tab would complete a `/` command there. During a turn it
+takes Tab, and Codex queues it like a message. Codex runs a `!` text as a shell command. The receipt
+says queued only when Codex shows the queued row with the text.
 
 Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
 prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then

@@ -1,6 +1,7 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { HeldRow } from "../web/src/lib/surface/send.ts";
 import type { Surface } from "../web/src/lib/surface/surface.ts";
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
@@ -287,6 +288,12 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * Absent otherwise, so a bridge without the flag sends the same bytes as before.
    */
   sendProtocol?: true;
+  /**
+   * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
+   * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present
+   * only when there is at least one; the text takes the mirror's mask like a title does.
+   */
+  held?: HeldRow[];
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */

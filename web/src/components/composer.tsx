@@ -27,6 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
+import { HeldRows } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
@@ -35,7 +36,7 @@ import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import type { SendMode, SendOffer } from "@/lib/surface/send";
+import type { HeldRow, SendMode, SendOffer } from "@/lib/surface/send";
 import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -72,7 +73,7 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { useLive, useReadAt } from "@/lib/liveness";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
-import { scopeKey, type Scope } from "@/lib/scope";
+import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { VoiceTakeover } from "@/components/voice-takeover";
 import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
@@ -153,6 +154,11 @@ interface ComposerProps {
   display: { open: boolean; onToggle: () => void };
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
+  /**
+   * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
+   * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
+   */
+  held?: readonly HeldRow[] | undefined;
 
   /**
    * The pane switcher, in two pieces: a Switch pill pinned at the actions belt's right end
@@ -328,7 +334,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1037,14 +1043,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
-  function afterVerifiedSend(t: string, isDraft: boolean, queued = false) {
+  // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
+  // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
+  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" = "sent") {
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
     if (isDraft) clearComposedDraft();
     // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
     // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
-    lastSentRef.current = { text: t, at: Date.now() };
+    if (note !== "held") lastSentRef.current = { text: t, at: Date.now() };
     // The stranded line was just swept and our text sent, so mark it handled and drop the preview so
     // it can't flash back before the mirror echoes the cleared line.
     if (effectiveRaw !== null) {
@@ -1056,16 +1064,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // fire-and-forget ✓ but is now actually true. The "You sent: …" pending preview keeps the
     // typed text visible until the mirror catches up (cleared by the next text update or a 6s
     // safety timeout).
-    setJustSent(true);
-    if (sentTimer.current) clearTimeout(sentTimer.current);
-    sentTimer.current = setTimeout(() => setJustSent(false), 1500);
+    if (note !== "held") {
+      setJustSent(true);
+      if (sentTimer.current) clearTimeout(sentTimer.current);
+      sentTimer.current = setTimeout(() => setJustSent(false), 1500);
+    }
     // A send that went in while the agent worked waits for the turn's end: the status line says so,
     // in the place "Sent" stands, never as a refusal.
-    setStatus(translate(queued ? "composer.protocol.queued" : "composer.status.sent"), "success");
-    const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
-    setLastSent(preview);
-    if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
-    lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+    setStatus(translate(note === "held" ? "composer.protocol.held" : note === "queued" ? "composer.protocol.queued" : "composer.status.sent"), "success");
+    if (note !== "held") {
+      const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
+      setLastSent(preview);
+      if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
+      lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+    }
     setSendRefusal(null); // a clean send answers the last refusal
     noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
     onSent(); // you just acted, so snap the mirror back to the live tail to see the result
@@ -1126,7 +1138,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const { reply, reading } = res;
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(t, isDraft, reading.note === "queued");
+        afterVerifiedSend(t, isDraft, reading.note === "queued" || reading.note === "held" ? reading.note : "sent");
         return true;
       }
       setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
@@ -1142,6 +1154,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     } finally {
       setSending(false);
     }
+  }
+
+  // Resend on an ended held row: its text goes out again as a NEW request (a new id; the old one
+  // closed). Not a draft, so the box keeps whatever the person is typing now. True when the bridge took it.
+  function resendHeld(row: HeldRow): Promise<boolean> {
+    if (sending || locked) return Promise.resolve(false);
+    return sendThroughProtocol(row.text, false, row.mode, null);
   }
 
   // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
@@ -1922,6 +1941,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
+        {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
+        <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onResend={resendHeld} onChanged={onSent} />
         <div
           data-slot="composer-box"
           className={cn(

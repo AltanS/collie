@@ -2841,6 +2841,7 @@ export function AgentChat({
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
                   isShell={isShell}
+                  held={agent?.held}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status
                   // half to go, so the prop went with it. The state is stated up here instead — the

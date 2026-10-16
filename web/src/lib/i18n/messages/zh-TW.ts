@@ -365,6 +365,21 @@ export const zhTW: Dictionary = {
   "composer.noEcho.dismissAria": "關閉密碼提示通知",
   "composer.protocol.sent": "已傳送",
   "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
+  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
+  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.held.sending": "Sending now.", // TODO wordsmith
+  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
+  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
+  "composer.held.cancel": "Cancel", // TODO wordsmith
+  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
+  "composer.held.resend": "Resend", // TODO wordsmith
+  "composer.held.resendAria": "Resend the message", // TODO wordsmith
+  "composer.held.dismiss": "Dismiss", // TODO wordsmith
+  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
+  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
   "composer.protocol.discarded": "文字已從輸入框移除。你的草稿仍在這裡。",
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
@@ -399,6 +414,9 @@ export const zhTW: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "已輸入，未傳送",
   "sendReceipts.outcome.refused": "已拒絕",
   "sendReceipts.outcome.unknown": "未知",
+  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
+  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
+  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
   "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "按鍵：{keys}",
   "sendReceipts.noKeys": "未傳送任何按鍵。",

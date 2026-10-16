@@ -149,6 +149,8 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
   // and it is off by default, so it is absent on every pane here and no golden byte moved.
   sendProtocol: true,
+  // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
+  held: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -250,6 +252,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "focused",
       "gitHead",
       "hasSession",
+      "held",
       "hint",
       "hooks",
       "host",

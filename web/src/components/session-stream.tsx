@@ -5,6 +5,7 @@ import { ItemView, PendingTurn, ToolGroup, groupRuns } from "@/components/chat-c
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { QUEUED_BLOCK, QUEUED_BUTTON, QUEUED_HEAD, QUEUED_LABEL, QUEUED_TEXT } from "@/components/queued-block";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { useLocale } from "@/hooks/use-locale";
 import type { ChatFeed } from "@/hooks/use-chat-window";
@@ -96,32 +97,8 @@ function WorkingRow() {
   );
 }
 
-/**
- * THE QUEUE: what the operator typed while the agent was busy.
- *
- * The operator's own colour, because it is the operator's own words — the same `status-working` well
- * `UserTurn` wears (`chat-cards.tsx`), at a lighter weight, so it reads as "mine, and not sent yet"
- * rather than as a turn the agent ignored. A uniform border with a soft shadow and no left accent,
- * per the house rule for a rounded box.
- *
- * Dashed, and that is the one thing carrying "not yet". A solid well would be indistinguishable from
- * a turn that has landed, which is the single mistake this row must not make.
- */
-const QUEUED_BLOCK =
-  "mt-1 flex min-w-0 flex-col gap-1 rounded-md border border-dashed border-status-working/40 bg-status-working/5 px-3 py-2";
-const QUEUED_LABEL = "text-xs font-medium text-status-working";
-/** The label row. The button, when there is one, is its only other child, at the right. */
-const QUEUED_HEAD = "flex min-h-7 items-center justify-between gap-2";
-/**
- * "Send now": drawn 28px tall and bought up to the 44px floor as hit area (DESIGN.md §6), so the
- * card does not grow a row for it. `min-w-11` is the width half of the floor; the `::before` is the
- * height half and reaches into the card's own padding, never into the message text under it.
- */
-const SEND_NOW =
-  "relative h-7 min-w-11 gap-1 px-2 text-xs before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']";
 /** How long "Send now" holds its pending face when the queue does not empty first. */
 const SEND_NOW_PENDING_MS = 5_000;
-const QUEUED_TEXT = "wrap-anywhere text-sm whitespace-pre-wrap text-foreground/80";
 
 /**
  * THE QUEUE CARD: one group, however many messages wait, with its one control at the head.
@@ -164,7 +141,7 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
             variant="outline"
             size="sm"
             data-slot="stream-send-now"
-            className={SEND_NOW}
+            className={QUEUED_BUTTON}
             disabled={pending}
             aria-busy={pending}
             // The accessible name STARTS with the visible words in every language (WCAG 2.5.3, Label in

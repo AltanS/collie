@@ -5,17 +5,18 @@
 // glyph, a rule, a status row), or, for a harness with no profile, a bare editor between two rules.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
-import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
+import { HoldStore } from "./holds.ts";
 
 const RULE = "─".repeat(40);
 const WIDTH = 38;
@@ -276,10 +277,13 @@ function rig(
     ledger?: SurfaceLedger;
     edit?: (profile: Profile) => Profile;
     status?: ProfileStatus;
+    holds?: HoldStore;
+    generation?: () => string | null;
+    clock?: { now: number };
   } = {},
 ): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
-  const clock = { now: 1_000_000 };
+  const clock = options.clock ?? { now: 1_000_000 };
   const now = (): number => clock.now;
   const mux = options.paste === false ? { readGrid: pane.readGrid, typeText: pane.typeText } : { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText };
   const gate = new KeyGate(pane, now);
@@ -303,8 +307,9 @@ function rig(
       if (match === null) return Promise.resolve(null);
       return Promise.resolve(status === undefined ? match : { ...match, status });
     },
-    generation: () => "gen-1",
+    generation: options.generation ?? (() => "gen-1"),
     ledger: options.ledger,
+    holds: options.holds,
     now,
     sleep: (ms: number) => {
       clock.now += ms;
@@ -1226,7 +1231,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     neverEscape(pane);
   });
 
-  test("a Codex profile with no commandWhileRunning refuses a command in a turn: turn_running, nothing typed", async () => {
+  test("a Codex profile with no commandWhileRunning refuses a command in a turn when no hold queue is there: turn_running, nothing typed", async () => {
     const { pane, send } = codex({ edit: noCommandQueue });
     pane.over = [CODEX_RUNNING];
     expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
@@ -1335,7 +1340,7 @@ describe("a send into a running turn", () => {
     neverEscape(pane);
   });
 
-  test("a command in a turn on a harness that does not queue commands: refused turn_running, nothing typed", async () => {
+  test("a command in a turn on a harness that does not queue commands, with no hold queue: refused turn_running, nothing typed", async () => {
     const { pane, send } = rig({ edit: noCommandQueue });
     pane.over = [LIVE_ROW];
     expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
@@ -2866,5 +2871,274 @@ describe("a prompt edge closes a receipt as effective", () => {
     const answer = await send("hello there");
     expect(answer.receipt?.outcome).toBe("refused");
     expect(protocol.promptEdge("%1", hashOf(deps, "hello there"), clock.now)).toBeNull();
+  });
+});
+
+// ── the held send (M56 spec 15) ──
+
+describe("the held send (M56 spec 15)", () => {
+  const FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" } as const;
+  const RUNNING = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  /** A Claude pane whose turn runs and whose binary reported no version: the profile cannot be trusted with the turn. */
+  const untrusted = (options: Parameters<typeof rig>[0] = {}): Rig & { holds: HoldStore } => {
+    const clock = options.clock ?? { now: 1_000_000 };
+    const holds = options.holds ?? new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ version: "no version here", ...options, holds, clock });
+    r.pane.over = [LIVE_ROW];
+    return { ...r, holds };
+  };
+  /** Ends the pane's turn: the running row goes, the box stays empty. */
+  const turnEnds = (pane: FakePane): void => {
+    pane.over = [];
+  };
+  const tick = async (r: Rig, surface: typeof FREE | typeof RUNNING = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+
+  test("a send the harness cannot take during its turn is held: receipt held, nothing typed, the text on disk 0600", async () => {
+    const r = untrusted();
+    const answer = await r.send("then give it a title", { id: "held-000001" });
+    expect(answer.receipt).toMatchObject({ requestId: "held-000001", outcome: "held", keys: [] });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+    expect(answer.detail).toBe("The agent is working. Collie keeps this and sends it when the turn ends.");
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.deps.store.get("held-000001")?.phase).toBe("held");
+    const file = join(dir, "held", "held-000001.json");
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ id: "held-000001", text: "then give it a title", state: "held", paneId: "%1" });
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(r.protocol.heldOf("main", "%1")).toEqual([
+      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held" },
+    ]);
+    expect(r.protocol.recent("%1")[0]).toMatchObject({ requestId: "held-000001", outcome: "held" });
+  });
+
+  test("the same id again while held answers the stored held receipt and holds nothing twice", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000002" });
+    const again = await r.send("then give it a title", { id: "held-000002" });
+    expect(again).toMatchObject({ replayed: true, receipt: { outcome: "held" } });
+    expect(r.holds.list()).toHaveLength(1);
+  });
+
+  test("nothing is released while the Surface reads the turn; the first free read sends it under the same id, a fresh run of the protocol", async () => {
+    const ledger = new SurfaceLedger(join(dir, "state"), { now: () => 1_000_000 });
+    const r = untrusted({ ledger });
+    await r.send("then give it a title", { id: "held-000003" });
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    turnEnds(r.pane);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-000003", outcome: "sent" });
+    expect(released?.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.pane.transcript.at(-1)).toBe("> then give it a title");
+    expect(r.deps.store.get("held-000003")).toMatchObject({ phase: "settled", receipt: { outcome: "sent" } });
+    expect(r.holds.list()).toEqual([]);
+    expect(existsSync(join(dir, "held", "held-000003.json"))).toBe(false);
+    expect(r.protocol.heldOf("main", "%1")).toEqual([]);
+    const row = ledger.rows()[0]!;
+    expect(row).toMatchObject({ held: 1, held_sent: 1, sent: 1 });
+    neverEscape(r.pane);
+  });
+
+  test("a later send on a pane with held sends joins the end, even on a free pane; the oldest goes first, one per free read", async () => {
+    const r = untrusted();
+    await r.send("first message", { id: "held-000004" });
+    turnEnds(r.pane);
+    const second = await r.send("second message", { id: "held-000005" });
+    expect(second.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(second.detail).toBe("Earlier messages wait for this pane. Collie sends this after them.");
+    expect(r.pane.calls).toEqual([]);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-000004", "held-000005"]);
+    const [first] = await tick(r);
+    expect(first?.receipt).toMatchObject({ requestId: "held-000004", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> first message");
+    const [next] = await tick(r);
+    expect(next?.receipt).toMatchObject({ requestId: "held-000005", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> first message", "> second message"]);
+  });
+
+  test("a plain send that starts with a reserved lead is refused before it can join a queue", async () => {
+    const r = untrusted();
+    await r.send("first message", { id: "held-000006" });
+    expect((await r.send("/compact")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+    expect(r.holds.list()).toHaveLength(1);
+  });
+
+  test("a command on a harness that does not queue commands is held and sent as a command once free", async () => {
+    const r = rig({ edit: noCommandQueue, holds: new HoldStore(join(dir, "held")) });
+    r.pane.over = [LIVE_ROW];
+    const answer = await r.send("/compact", { id: "held-000007", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(answer.detail).toBe("The agent is working. Collie keeps this and sends it when the turn ends.");
+    turnEnds(r.pane);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-000007", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> /compact");
+  });
+
+  test("Submit of a box in a turn is not held: the box holds text, which a free pane never has", async () => {
+    const r = untrusted();
+    r.pane.box = "half a thought";
+    expect((await r.send("half a thought", { mode: "submit" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("after 30 minutes a held send ends expired, its text kept for a Resend; the counters take it", async () => {
+    const clock = { now: 1_000_000 };
+    const ledger = new SurfaceLedger(join(dir, "state"), { now: () => clock.now });
+    const r = untrusted({ clock, ledger });
+    await r.send("then give it a title", { id: "held-000008" });
+    clock.now += 30 * 60 * 1000 - 1;
+    await tick(r, RUNNING);
+    expect(r.holds.get("held-000008")?.state).toBe("held");
+    clock.now += 1;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.deps.store.get("held-000008")).toMatchObject({ phase: "settled", receipt: { outcome: "expired", keys: [] } });
+    expect(r.protocol.heldOf("main", "%1")).toEqual([expect.objectContaining({ requestId: "held-000008", state: "ended", outcome: "expired", text: "then give it a title" })]);
+    expect(ledger.rows()[0]).toMatchObject({ held: 1, held_expired: 1 });
+  });
+
+  test("Cancel ends a held send cancelled and leaves no file; an ended row is dismissed; the counters take the cancel", async () => {
+    const clock = { now: 1_000_000 };
+    const ledger = new SurfaceLedger(join(dir, "state"), { now: () => clock.now });
+    const r = untrusted({ clock, ledger });
+    await r.send("then give it a title", { id: "held-000009" });
+    expect(r.protocol.cancelHeld("main", "%2", "held-000009")).toBeNull();
+    expect(r.protocol.cancelHeld("other", "%1", "held-000009")).toBeNull();
+    const cancelled = r.protocol.cancelHeld("main", "%1", "held-000009");
+    expect(cancelled).toMatchObject({ result: "cancelled", receipt: { requestId: "held-000009", outcome: "cancelled" } });
+    expect(r.deps.store.get("held-000009")?.receipt?.outcome).toBe("cancelled");
+    expect(existsSync(join(dir, "held", "held-000009.json"))).toBe(false);
+    turnEnds(r.pane);
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(ledger.rows()[0]).toMatchObject({ held: 1, held_cancelled: 1 });
+
+    r.pane.over = [LIVE_ROW];
+    await r.send("another one", { id: "held-000010" });
+    clock.now += 31 * 60 * 1000;
+    await tick(r, RUNNING);
+    expect(r.protocol.cancelHeld("main", "%1", "held-000010")).toEqual({ result: "dismissed" });
+    expect(r.protocol.heldOf("main", "%1")).toEqual([]);
+    expect(r.deps.store.get("held-000010")?.receipt?.outcome).toBe("expired");
+  });
+
+  test("Cancel on a held send that is going out now is refused busy, and the send completes", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000011" });
+    turnEnds(r.pane);
+    const seen: (HeldCancelAnswer | null)[] = [];
+    r.pane.beforeRead = () => {
+      if (seen.length === 0) seen.push(r.protocol.cancelHeld("main", "%1", "held-000011"));
+    };
+    const [released] = await tick(r);
+    expect(seen).toEqual([{ result: "refused", reason: "busy" }]);
+    expect(released?.receipt?.outcome).toBe("sent");
+  });
+
+  test("a pane that closes with a held send ends it refused(pane_gone), the text kept", async () => {
+    let generation: string | null = "gen-1";
+    const r = untrusted({ generation: () => generation });
+    await r.send("then give it a title", { id: "held-000012" });
+    generation = null;
+    expect(await tick(r)).toEqual([]);
+    expect(r.deps.store.get("held-000012")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(r.protocol.heldOf("main", "%1")).toEqual([expect.objectContaining({ state: "ended", outcome: "refused", reason: "pane_gone", text: "then give it a title" })]);
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a pane that holds another program now ends its held sends refused(pane_gone)", async () => {
+    let generation: string | null = "gen-1";
+    const r = untrusted({ generation: () => generation });
+    await r.send("then give it a title", { id: "held-000013" });
+    generation = "gen-2";
+    await tick(r);
+    expect(r.deps.store.get("held-000013")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+  });
+
+  test("a release whose S0 finds the turn running again goes back to its place, the receipt held; after five tries it ends", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000014" });
+    // The poll read free, the protocol's S0 reads the running row: not yet.
+    const [back] = await tick(r);
+    expect(back?.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.holds.get("held-000014")).toMatchObject({ state: "held", tries: 1 });
+    expect(r.deps.store.get("held-000014")?.phase).toBe("held");
+    for (let i = 0; i < 3; i++) await tick(r);
+    expect(r.holds.get("held-000014")?.tries).toBe(4);
+    const [last] = await tick(r);
+    expect(last?.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
+    expect(r.holds.get("held-000014")).toMatchObject({ state: "ended", outcome: "refused", reason: "turn_running", text: "then give it a title" });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a release whose pane is locked by another send goes back to its place", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-000015" });
+    turnEnds(r.pane);
+    r.deps.locks.acquire("main\u0000%1", "someone-else", r.clock.now + 60_000, r.clock.now);
+    const [back] = await tick(r);
+    expect(back?.receipt?.outcome).toBe("held");
+    expect(r.holds.get("held-000015")?.tries).toBe(1);
+    r.deps.locks.release("main\u0000%1", "someone-else");
+    const [sent] = await tick(r);
+    expect(sent?.receipt?.outcome).toBe("sent");
+  });
+
+  test("the queue is replayed on boot: a new store and protocol over the same state dir release it", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000016" });
+    // A restart: new stores over the same directories, recovery, then the reconcile.
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    expect(store.recover(SendProtocol.crashReceipt)).toEqual([]);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(0);
+    expect(holds.list()).toEqual([expect.objectContaining({ id: "held-000016", state: "held", text: "then give it a title" })]);
+    const pane = new FakePane();
+    const second = rig({ version: "no version here", pane, holds, storeDir: join(dir, "sends"), clock: { now: 2_000_000 } });
+    const [released] = await tick(second);
+    expect(released?.receipt).toMatchObject({ requestId: "held-000016", outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> then give it a title");
+  });
+
+  test("a release the bridge died in ends unknown(crash) on boot, its text kept, and is never sent again", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000017" });
+    // The release had started: the file said running, the request ran as accepted.
+    first.holds.markRunning("held-000017");
+    first.deps.store.rearm("held-000017");
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    expect(store.recover(SendProtocol.crashReceipt).map((record) => record.id)).toEqual(["held-000017"]);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(1);
+    expect(holds.get("held-000017")).toMatchObject({ state: "ended", outcome: "unknown", reason: "crash", text: "then give it a title" });
+    const second = rig({ version: "no version here", holds, storeDir: join(dir, "sends"), clock: { now: 2_000_000 } });
+    expect(await tick(second)).toEqual([]);
+    expect(second.pane.calls).toEqual([]);
+  });
+
+  test("a release that had not started when the bridge died goes back to waiting", async () => {
+    const first = untrusted();
+    await first.send("then give it a title", { id: "held-000018" });
+    first.holds.markRunning("held-000018");
+    const store = new RequestStore(join(dir, "sends"), () => 2_000_000);
+    store.recover(SendProtocol.crashReceipt);
+    const holds = new HoldStore(join(dir, "held"), () => 2_000_000);
+    expect(SendProtocol.reconcileHolds(holds, store)).toBe(1);
+    expect(holds.get("held-000018")?.state).toBe("held");
+  });
+
+  test("a pane holds at most 32 sends; the next is refused busy, never dropped silently", async () => {
+    const r = untrusted();
+    for (let i = 0; i < 32; i++) expect((await r.send(`message ${String(i)}`)).receipt?.outcome).toBe("held");
+    expect((await r.send("one too many")).receipt).toMatchObject({ outcome: "refused", reason: "busy" });
+    expect(r.holds.list()).toHaveLength(32);
+  });
+
+  test("without a hold queue the old refusal stands: turn_running, nothing typed", async () => {
+    const r = rig({ version: "no version here" });
+    r.pane.over = [LIVE_ROW];
+    expect((await r.send("then give it a title")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
   });
 });

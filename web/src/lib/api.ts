@@ -15,8 +15,8 @@ import {
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
-import { readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
-import type { SendReceiptRow, SendRequestBody } from "./surface/send";
+import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
+import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -1419,6 +1419,25 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
   if (normalizeScope(scope).host) return [];
   const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope));
   return readSendReceipts(got).receipts.slice();
+}
+
+/**
+ * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
+ * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
+ * only; the route does not cross a crew link, so a pane on a member never comes here.
+ */
+export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
+  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
+  stampSend(paneId);
+  const got = await req<JsonObject>(
+    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    { method: "DELETE" },
+    // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
+    (status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null),
+  );
+  const answer = readHeldCancelAnswer(got);
+  if (answer === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  return answer;
 }
 
 /**

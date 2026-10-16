@@ -3,6 +3,7 @@
 
 import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
 import { t } from "@/lib/i18n";
+import type { HeldRow } from "@/lib/surface/send";
 import type { Surface } from "@/lib/surface/surface";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
@@ -212,6 +213,11 @@ export interface AgentView {
    * a crew member older than the protocol), and the composer says so (M56 spec 06).
    */
   sendProtocol?: true;
+  /**
+   * Mirrors `PaneWire.held` (M56 spec 15): the pane's held sends, oldest first. The composer draws one
+   * queued row per entry, with the text and Cancel (Resend on an ended one).
+   */
+  held?: HeldRow[];
 }
 
 /** The icon names a program may give a belt action. Mirrors `PANE_ACTION_ICONS` in bridge/types.ts. */

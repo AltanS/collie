@@ -102,7 +102,7 @@ describe("the day file", () => {
 
     const first = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
     expect(Object.values(first!.rows)).toEqual([
-      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0, edges: {} },
+      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {} },
     ]);
     const second = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-17"), "utf8")));
     expect(Object.values(second!.rows)).toHaveLength(1);
@@ -141,6 +141,21 @@ describe("the day file", () => {
       ["2.1.301", 2],
       ["2.1.302", 1],
     ]);
+  });
+
+  test("the held send's four counts (M56 spec 15): held, held_sent (also sent or effective), held_expired, held_cancelled, added up by the summary", () => {
+    const l = ledger();
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "sent", probed: true, released: true });
+    l.send(KEY, { outcome: "expired", probed: false });
+    l.send(KEY, { outcome: "cancelled", probed: false });
+    l.send(KEY, { outcome: "sent", probed: false });
+    l.flush();
+    const day = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
+    expect(Object.values(day!.rows)[0]).toMatchObject({ held: 3, held_sent: 1, held_expired: 1, held_cancelled: 1, sent: 2 });
+    expect(summarize([day!, day!])[0]).toMatchObject({ held: 6, held_sent: 2, held_expired: 2, held_cancelled: 2 });
   });
 
   test("another version, profile or status is another row", () => {
@@ -231,7 +246,7 @@ describe("the day file", () => {
     expect(parseDay("text")).toBeNull();
     expect(parseDay({ date: "yesterday" })).toBeNull();
     const day = parseDay({ date: "2026-10-16", rows: { x: { harness: "a", version: "1", profileId: "p", status: "verified", free: "many", unknown: { weird: -3, fine: 2 } }, y: 5 }, unknownFrames: { k: ["abc", 7, "XYZ!"] }, manualAt: { k: [1, "x", 2] } });
-    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {} }]);
+    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {} }]);
     expect(day!.unknownFrames).toEqual({ k: ["abc"] });
     expect(day!.manualAt).toEqual({ k: [1, 2] });
   });

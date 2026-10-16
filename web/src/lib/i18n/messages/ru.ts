@@ -323,6 +323,21 @@ export const ru: Dictionary = {
   "composer.noEcho.dismissAria": "Скрыть уведомление о запросе пароля",
   "composer.protocol.sent": "Отправлено",
   "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
+  "composer.protocol.held": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.", // TODO wordsmith
+  "composer.held.queued": "Queued. Sends when the turn ends.", // TODO wordsmith
+  "composer.held.sending": "Sending now.", // TODO wordsmith
+  "composer.held.expired": "Not sent. The turn did not end within 30 minutes.", // TODO wordsmith
+  "composer.held.paneGone": "Not sent. The pane closed.", // TODO wordsmith
+  "composer.held.failed": "Not sent. Check the pane, then send again.", // TODO wordsmith
+  "composer.held.cancel": "Cancel", // TODO wordsmith
+  "composer.held.cancelAria": "Cancel the queued message", // TODO wordsmith
+  "composer.held.resend": "Resend", // TODO wordsmith
+  "composer.held.resendAria": "Resend the message", // TODO wordsmith
+  "composer.held.dismiss": "Dismiss", // TODO wordsmith
+  "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
+  "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
   "composer.protocol.discarded": "Текст удалён из поля. Черновик остался здесь.",
   "composer.protocol.draft": "В поле уже есть черновик. Дополните, замените или отмените.",
   "composer.protocol.typed": "Текст в поле, но Enter не нажат. Отправьте или удалите его.",
@@ -357,6 +372,9 @@ export const ru: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Напечатано, не отправлено",
   "sendReceipts.outcome.refused": "Отклонено",
   "sendReceipts.outcome.unknown": "Неизвестно",
+  "sendReceipts.outcome.held": "Queued", // TODO wordsmith
+  "sendReceipts.outcome.expired": "Expired", // TODO wordsmith
+  "sendReceipts.outcome.cancelled": "Cancelled", // TODO wordsmith
   "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Клавиши: {keys}",
   "sendReceipts.noKeys": "Клавиши не отправлялись.",

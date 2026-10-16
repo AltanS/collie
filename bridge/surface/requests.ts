@@ -25,7 +25,12 @@ export const REQUEST_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 /** The most request files kept; the oldest go first. */
 export const REQUEST_KEEP_FILES = 500;
 
-export type RequestPhase = "accepted" | "submit-sent" | "settled";
+/**
+ * `held` (M56 spec 15): the harness could not take the request while its turn ran, and the hold queue
+ * (holds.ts) keeps it. Its receipt says `held`. A restart leaves it held; the release runs it again
+ * under the same id, as a fresh run.
+ */
+export type RequestPhase = "accepted" | "submit-sent" | "settled" | "held";
 
 export interface SendRecord {
   readonly id: string;
@@ -39,6 +44,8 @@ export interface SendRecord {
   readonly acceptedAt: number;
   readonly phase: RequestPhase;
   readonly submitSentAt?: number;
+  /** When a held request's release started (M56 spec 15): its run is bounded from here, not from accept. */
+  readonly runAt?: number;
   readonly receipt?: SendReceipt;
 }
 
@@ -91,7 +98,7 @@ export type AskAcceptResult =
 const ASK_KINDS = ["permission", "question", "menu"] as const;
 const ASK_FILE = /^ask\.(ask-[0-9a-f]{14})\.json$/;
 
-const PHASES = ["accepted", "submit-sent", "settled"] as const;
+const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
 const STEPS = ["s0", "clear", "probe", "write", "s1", "commit", "s2"] as const;
 
@@ -196,6 +203,8 @@ function parseRecord(raw: JsonValue | undefined): SendRecord | null {
   let record: SendRecord = { id, session, paneId, paneGeneration, surfaceRevision, mode, textHash, textLength, acceptedAt, phase };
   const submitSentAt = asJsonNumber(node.submitSentAt);
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
+  const runAt = asJsonNumber(node.runAt);
+  if (runAt !== undefined) record = { ...record, runAt };
   if (node.receipt !== undefined) {
     const receipt = parseReceipt(node.receipt);
     if (receipt === undefined) return null;
@@ -362,6 +371,29 @@ export class RequestStore {
     return receipt.outcome;
   }
 
+  /**
+   * The request is held (M56 spec 15): its receipt says `held`, and the hold queue keeps the text. A
+   * held record is not settled: a restart does not end it, and the release runs it again.
+   */
+  hold(id: string, receipt: SendReceipt): SendRecord | null {
+    const known = this.get(id);
+    if (known === null || known.phase === "settled") return null;
+    const { submitSentAt: _never, ...rest } = known;
+    const held: SendRecord = { ...rest, phase: "held", receipt };
+    this.write(held);
+    return held;
+  }
+
+  /** A held request's release starts: it runs again as accepted, bounded from now. Null when it is not held. */
+  rearm(id: string): SendRecord | null {
+    const known = this.get(id);
+    if (known === null || known.phase !== "held") return null;
+    const { receipt: _held, ...rest } = known;
+    const armed: SendRecord = { ...rest, phase: "accepted", runAt: this.now() };
+    this.write(armed);
+    return armed;
+  }
+
   /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`). */
   settle(id: string, receipt: SendReceipt): SendRecord | null {
     const known = this.get(id);
@@ -394,7 +426,8 @@ export class RequestStore {
   recover(unsettled: (record: SendRecord) => SendReceipt): SendRecord[] {
     const settled: SendRecord[] = [];
     for (const record of this.list()) {
-      if (record.phase === "settled") continue;
+      // A held request waits for its release; the hold queue replays it.
+      if (record.phase === "settled" || record.phase === "held") continue;
       const done = this.settle(record.id, unsettled(record));
       if (done !== null) settled.push(done);
     }
