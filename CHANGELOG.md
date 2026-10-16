@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A probed send that went out keeps its bottom rows as an example for the lab.** `<stateDir>/surface/examples/` holds the rows above the box as a layout only, every letter and digit replaced by a class mark, and the typed text as a length. At most fifty files stay and the oldest go first.
 - **`GET /api/send/receipts?pane=` lists a pane's last ten sends.** Each row has the outcome, the reason, the time, the keys by name and the measured gaps, read from the stored receipts. It carries no message text and no row of the screen.
 - **`GET /api/health` carries the free, unknown and manual totals of the last seven days.** Three numbers, so a monitor or `make health` can see how well the readers do on a lane. A build that counts nothing leaves the field out.
+- **`collie doctor` prints what the input readers saw over the last seven days.** A `surface` line gives the free, unknown and manual totals and names the examples folder and the inbox, and one `surface-<harness>-<version>` line per row gives the profile status, the unknown reads by reason, the modals by kind, the refusals by reason, and the probed, manual, sent, effective and unknown-outcome counts. A row where people typed past an unreadable screen five times or more is a warning that names the inbox. A host with no counters prints nothing new.
 
 ### Changed
 

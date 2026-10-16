@@ -2701,3 +2701,97 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     expect(run.code).toBe(EXIT.OK);
   });
 });
+
+// ── the surface table (M56 spec 09) ──────────────────────────────────────────
+// A summary line and one line per harness and version, read from the bridge's day files over the last
+// seven days. A read: doctor writes nothing. With no counters there is no line at all, so a fresh
+// install reads exactly as it did.
+
+describe("doctor: the surface table (M56 spec 09)", () => {
+  const dayFile = (daysAgo: number): string => `${STATE}/surface/counters-${new Date(T0 - daysAgo * 86_400_000).toISOString().slice(0, 10)}.json`;
+  const day = (daysAgo: number, rows: Row[]): [string, string] => [
+    dayFile(daysAgo),
+    JSON.stringify({ date: new Date(T0 - daysAgo * 86_400_000).toISOString().slice(0, 10), rows: Object.fromEntries(rows.map((r, i) => [`k${String(i)}`, r])), unknownFrames: {}, manualAt: {} }),
+  ];
+  interface Row {
+    harness: string;
+    version: string;
+    profileId: string;
+    status: string;
+    free: number;
+    unknown: Record<string, number>;
+    modal: Record<string, number>;
+    refused: Record<string, number>;
+    probed: number;
+    manual: number;
+    sent: number;
+    effective: number;
+    unknown_outcome: number;
+  }
+  const row = (over: Partial<Row> = {}): Row => ({
+    harness: "agent",
+    version: "2.1.301",
+    profileId: "agent",
+    status: "provisional",
+    free: 100,
+    unknown: { "no-match": 6, "weak-cue": 2 },
+    modal: { permission: 3 },
+    refused: { not_free: 4 },
+    probed: 5,
+    manual: 1,
+    sent: 9,
+    effective: 0,
+    unknown_outcome: 1,
+    ...over,
+  });
+  const run = async (entries: [string, string][]) => findings(harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries(entries) } }));
+
+  test("surface: a host with no counters has no surface line at all", async () => {
+    const { raw } = await findings(harness(null));
+    expect(raw.filter((f) => f.check.startsWith("surface"))).toEqual([]);
+  });
+
+  test("surface: prints a summary and one line per harness and version, adding the last seven days", async () => {
+    const { byCheck, code } = await run([day(0, [row()]), day(3, [row({ free: 50, manual: 2 })]), day(10, [row({ free: 9999 })])]);
+    expect(code).toBe(0);
+    const summary = byCheck.get("surface")!;
+    expect(summary.status).toBe("ok");
+    expect(summary.detail).toContain("free 150 · unknown 16 · manual 3");
+    expect(summary.detail).toContain(`${STATE}/surface/examples`);
+    expect(summary.detail).toContain(`${STATE}/surface/inbox.jsonl`);
+    expect(summary.detail).toContain("3 day files");
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("ok");
+    expect(line.detail).toBe(
+      "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2",
+    );
+  });
+
+  test("surface: another version of the same harness is its own line", async () => {
+    const { raw } = await run([day(0, [row(), row({ version: "2.1.302" })])]);
+    expect(raw.filter((f) => f.check.startsWith("surface-")).map((f) => f.check)).toEqual(["surface-agent-2.1.301", "surface-agent-2.1.302"]);
+  });
+
+  test("surface: a person typing past an unreadable screen as often as the cap is a warning that names the inbox, and never an error", async () => {
+    const { byCheck, code } = await run([day(0, [row({ manual: 5 })])]);
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("warn");
+    expect(line.remedy).toContain(`${STATE}/surface/inbox.jsonl`);
+    expect(code).toBe(0);
+  });
+
+  test("surface: the plain output carries the table and a torn file is skipped", async () => {
+    const h = harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries([day(0, [row()])]), [dayFile(1)]: "{ torn" } });
+    await cmdDoctor(h.deps, []);
+    const out = h.io.stdout.join("\n");
+    expect(out).toMatch(/✓\s+surface\s+last 7 days: free 100 · unknown 8 · manual 1/u);
+    expect(out).toMatch(/surface-agent-2\.1\.301\s+2\.1\.301 provisional · free 100/u);
+  });
+
+  test("surface: doctor writes nothing while it reads the counters", async () => {
+    const h = harness(null, [], { files: { ...healthyFiles(), ...Object.fromEntries([day(0, [row()])]) } });
+    const before = JSON.stringify([...h.files.entries.entries()]);
+    await cmdDoctor(h.deps, ["--json"]);
+    expect(JSON.stringify([...h.files.entries.entries()])).toBe(before);
+  });
+});

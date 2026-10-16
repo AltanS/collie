@@ -60,6 +60,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
+import { surfaceFindings } from "./surface-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -272,6 +273,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
     // reason `historyFindings` is one — a section, not a check.
     ...cacheFindings({ ctx: deps.ctx, files: deps.files, env: deps.ctx.env, now: () => Date.now() }),
+    // What the input readers saw, per harness and version, over the last seven days (M56 spec 09): a
+    // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
+    ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy
