@@ -236,6 +236,18 @@ CRLF line ends as read. The only paths are the lab folders `/tmp/pi-nocolor-cwd`
 | `pi--v0871-nocolor-question.txt` | `question`: Red, Green, Blue, `4. Type something.`, `>` on 1 | walk |
 | `pi--omo-v5130-nocolor-idle.txt` | Empty `❯` editor, status rows | composer |
 | `pi--omo-v5130-nocolor-question.txt` | OmO's ask, one question, Red and Green | digit |
+## gentle-pi `ask_user_choice` on pi 1.3.0 (issue 455, captured 2026-10-16, Herdr 0.9.5)
+
+gentle-pi 4.2.0's `ask_user_choice` on pi 1.3.0 under Gentle Shell, which replaces pi's footer, so
+nothing stands under the dialog's bottom rule. A 200-column Herdr pane, read with `herdr pane read
+--source visible --format ansi` and cut to the dialog's top rule. CRLF line ends and the trailing
+padding are as read. The question and options are a probe (`Pick a color for the Collie probe`); no
+user, host or path is in either file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
+| `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
