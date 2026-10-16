@@ -1,6 +1,6 @@
 # Themes
 
-A theme is the look of the app: its colours, one typeface and, in version 2, a shape. It is one small
+A theme is the look of the app: its colours, its typefaces and, in version 2, a shape. It is one small
 JSON file. Collie ships four. You can import more from a file, and you can export any theme to copy and
 edit. A theme is a setting of one device, kept in that browser, and it changes nothing on the bridge.
 
@@ -94,8 +94,8 @@ A file has these keys, and no others. An unknown key anywhere is refused with it
 }
 ```
 
-- `version` is 1 or 2. A file that carries a `surface` block says 2; a file without one may say either. Any
-  other number is refused.
+- `version` is 1 or 2. A file that carries a `surface` block, a `fonts.display` face or an `ansi` block says 2;
+  a file without them may say either. Any other number is refused.
 - A version 2 file does not import into a Collie older than 1.22.0.
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
@@ -140,13 +140,14 @@ Each half takes any of these, in four groups.
 
 ## What a theme cannot change
 
-A theme changes the value of a colour, one typeface and, in version 2, the shape of controls. It cannot change
+A theme changes the value of a colour, its typefaces and, in version 2, the shape of controls. It cannot change
 anything else.
 
 - **Layout and tap sizes.** A phone layout is easy to break. Radius, shadow, density, weight and border are
   not free values either: a version 2 file picks one closed word for each in its `surface` block.
-- **The terminal mirror and its ANSI colours.** The mirror shows what the agent printed, on its own dark
-  ground. [Dark mode](configure.md#dark-mode--light-mode) says why.
+- **The terminal mirror's dark space.** The mirror shows what the agent printed, on its own dark
+  ground. [Dark mode](configure.md#dark-mode--light-mode) says why. A version 2 file may name that ground,
+  its ink and its 16 colours in an `ansi` block, all of them or none, and each must pass its contrast floor.
 - **What a status means.** Its icon and its word stay as they are, so a red or orange you picked never
   makes blocked look like done.
 - **Motion, raw CSS, remote fonts.** Fonts come from the list Collie ships.
@@ -157,7 +158,7 @@ Your pick is on screen from the first frame. A small script reads it before the 
 does not flash the default first. An imported theme does the same, with one exception. If a token is set in
 only one half, that token shows the default colour for one frame. The app checks the theme again when it loads. A stored theme that
 fails the check is dropped, the device shows Collie, and the browser console says why. The status bar
-follows the theme's two page colours.
+follows the theme's two page colours, or its two band colours when the theme says `chrome: band`.
 
 ## Troubleshooting
 

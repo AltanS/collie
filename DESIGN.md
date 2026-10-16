@@ -899,7 +899,10 @@ come from `light-dark()`.
 **What a theme never reaches.** A free value for spacing, tap sizes, row heights, motion, and the
 meaning of a status: its icon and its word stay as the status components draw them. Radius, shadow,
 density, weight and border are closed words from the schema (version 2, the `surface` block in
-`web/src/lib/theme/surface.ts`), never free values. The
+`web/src/lib/theme/surface.ts`), never free values. So are the seven of M57 spec 17: `ground`
+(`flat`, `gradient`, `grain`), `chrome` (`page`, `band`), `rows` (`rules`, `cards`), `icons` (`default`,
+`thin`, `heavy`), `labels` (`caps`, `sentence`), `fonts.display` (one of the six shipped faces) and
+`ansi` (all 18 mirror colours or none, each held to its contrast floor). The
 terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
 tint it in schema version 1.
 
