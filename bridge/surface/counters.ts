@@ -296,14 +296,19 @@ export function readDays(
   return out.toSorted((a, b) => a.date.localeCompare(b.date));
 }
 
-/** One letter or digit becomes its class mark; every other character stays, so the layout survives. */
+/**
+ * A row as the lab may keep it: whitespace and box-drawing or block characters (U+2500 to U+259F) stay,
+ * because they are the layout the mask exists to show. Every letter becomes `a` (no case class), every
+ * digit `0`, and every other character `x`, so a secret leaks neither its symbols nor its case.
+ */
 export function maskRow(row: string): string {
   let out = "";
   for (const ch of row) {
-    if (/\p{Lu}/u.test(ch)) out += "A";
+    const code = ch.codePointAt(0) ?? 0;
+    if (/\s/u.test(ch) || (code >= 0x2500 && code <= 0x259f)) out += ch;
     else if (/\p{L}/u.test(ch)) out += "a";
     else if (/\p{N}/u.test(ch)) out += "0";
-    else out += ch;
+    else out += "x";
   }
   return out.trimEnd();
 }

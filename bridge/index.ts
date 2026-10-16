@@ -2377,6 +2377,8 @@ const shutdown = async () => {
   // persist them before exiting, or every restart quietly resurrects alerts you'd already cleared.
   activity.stop();
   await activity.flush();
+  // The surface counters write at most once a minute; the last few go to disk here (sync, never throws).
+  surfaceLedger?.flush();
   // The day of minutes is saved every five minutes from the tick; the last few go to disk here.
   await machineWatch?.flush();
   clearInterval(sweepTimer);

@@ -66,6 +66,7 @@ import {
   resetStaticGzipCache,
   resolveStaticPath,
   sendReplySteps,
+  typeIntoFreshShell,
   serveStatic,
   STT_WORKER_CSP,
   isSttWorkerScript,
@@ -562,6 +563,38 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     const out = await sendReplySteps(client, "p1", "hello", false, ["Enter"]);
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
+  });
+});
+
+describe("typeIntoFreshShell: the order of the writes", () => {
+  test("writes the text first and the Enter second, with no wait between them", async () => {
+    const events: string[] = [];
+    let clock = 0;
+    const client = {
+      readGrid: (paneId: string): Promise<MuxOutcome<MuxGrid>> => {
+        events.push("read");
+        return Promise.resolve(muxOk({ paneId, text: "user@host:~$ ", truncated: false, revision: 1 }));
+      },
+      typeText: (_paneId: string, text: string): Promise<MuxAck> => {
+        events.push(`text:${text}`);
+        return Promise.resolve(muxAck());
+      },
+      writeKeys: (_paneId: string, keys: readonly string[]): Promise<MuxAck> => {
+        events.push(`keys:${keys.join("+")}`);
+        return Promise.resolve(muxAck());
+      },
+    };
+    const sleep = (ms: number): Promise<void> => {
+      events.push("sleep");
+      clock += ms;
+      return Promise.resolve();
+    };
+    const out = await typeIntoFreshShell(client, "p1", "ls -la", { sleep, now: () => clock }, "launch");
+    expect(out).toEqual({ ok: true, textDelivered: true });
+    const writes = events.filter((e) => e.startsWith("text:") || e.startsWith("keys:"));
+    expect(writes).toEqual(["text:ls -la", "keys:Enter"]);
+    // Nothing sits between the two writes: the blind settle of the old route is gone (M56 spec 06).
+    expect(events.slice(events.indexOf("text:ls -la"))).toEqual(["text:ls -la", "keys:Enter"]);
   });
 });
 

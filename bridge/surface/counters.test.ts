@@ -74,6 +74,13 @@ describe("a verdict's class", () => {
 });
 
 describe("the day file", () => {
+  test("flush writes a pending count at once, without the minute timer", () => {
+    const l = ledger();
+    l.read(KEY, FREE, null);
+    l.flush();
+    expect(files()).toEqual(["counters-2026-10-16.json"]);
+  });
+
   test("counts verdicts and sends per harness, version, profile and status, and rolls per day", () => {
     const l = ledger();
     l.read(KEY, FREE, null);
@@ -283,7 +290,7 @@ describe("the examples folder", () => {
     textLength: 12,
   });
 
-  test("holds the cluster as a shape: every letter and digit is a class mark, the layout stays, the text is a length", () => {
+  test("holds the cluster as a shape: every letter, digit and symbol is a class mark, the layout stays, the text is a length", () => {
     const l = ledger();
     l.example(entry(1));
     const [name] = readdirSync(l.examplesDir);
@@ -291,7 +298,7 @@ describe("the examples folder", () => {
     expect(text).not.toMatch(/hunter2|password|sonnet|fix it/u);
     // SAFETY: the file was written by `SurfaceLedger.example` a line above; only fields of the written body are read back.
     const body = JSON.parse(text) as { cluster: string[]; text: string };
-    expect(body.cluster).toEqual(["> aa aaaaaaaa aa aaaaaa0", "────", "❯ Aaa \"aaa aa\"", "  aaaaaa · 00% · $0.00"]);
+    expect(body.cluster).toEqual(["x aa aaaaaaaa aa aaaaaa0", "────", "x aaa xaaa aax", "  aaaaaa x 00x x x0x00"]);
     expect(body.text).toBe("<typed:12>");
   });
 
@@ -307,7 +314,8 @@ describe("the examples folder", () => {
     expect(names.at(-1)).toContain(`req-${String(MAX_EXAMPLES + 6).padStart(6, "0")}`);
   });
 
-  test("maskRow keeps punctuation, box drawing and spaces, and hides letters in every script", () => {
-    expect(maskRow("sk-or-v1-secret  │ Привет 日本 ✻ 12:30  ")).toBe("aa-aa-a0-aaaaaa  │ Aaaaaa aa ✻ 00:00");
+  test("maskRow keeps whitespace and box drawing, and hides letters, digits and symbols in every script", () => {
+    expect(maskRow("sk-or-v1-abc123! \u256d\u2500\u256e")).toBe("aaxaaxa0xaaa000x \u256d\u2500\u256e");
+    expect(maskRow("sk-or-v1-secret  \u2502 \u041f\u0440\u0438\u0432\u0435\u0442 \u65e5\u672c \u273b 12:30  ")).toBe("aaxaaxa0xaaaaaa  \u2502 aaaaaa aa x 00x00");
   });
 });

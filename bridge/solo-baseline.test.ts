@@ -347,8 +347,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the pane's input surface (M56 spec 04). Only Surface shadow mode fills it,
   // and it is off by default, so it is absent on every pane here and no golden byte moved.
   surface: true,
-  // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
-  // and it is off by default, so it is absent on every pane here and no golden byte moved.
+  // Not a crew dimension: the Send Protocol's mark (M56 spec 05). It is on by default since spec 06
+  // (COLLIE_SEND_PROTOCOL=0 turns text sending off), but a pane carries it only when its session runtime
+  // has a Send Protocol, and this harness builds none, so it is absent here and no golden byte moved.
   sendProtocol: true,
 } satisfies Record<keyof PaneWire, true>;
 
@@ -722,7 +723,7 @@ describe("solo zero-tax — routes", () => {
       "/api/*",
       // Ask v1 (M56 spec 08): a SOLO route that legitimately extends this list, named here rather than
       // exempted. Write-gated through the same closure a send rides, this collie's own sessions only,
-      // and a 404 when the Send Protocol is off (COLLIE_SEND_PROTOCOL=0). No crew route.
+      // and a 404 when the Send Protocol is off (COLLIE_SEND_PROTOCOL=0, on by default since spec 06). No crew route.
       "/api/ask/*",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
@@ -801,7 +802,8 @@ describe("solo zero-tax — routes", () => {
       "/api/refresh",
       // The Send Protocol (M56 spec 05): a SOLO route that legitimately extends this list, named here
       // rather than exempted. Write-gated through the same closure a reply rides, this collie's own
-      // sessions only, and a 404 unless the operator set COLLIE_SEND_PROTOCOL=1. No crew route.
+      // sessions only, and a 404 only when the operator set COLLIE_SEND_PROTOCOL=0 (the flag is on by
+      // default since spec 06). No crew route.
       "/api/send",
       "/api/send/receipts",
       "/api/snapshot",
@@ -1123,8 +1125,8 @@ const STATE_DIR_ENTRIES = [
   "pairing-pending.json",
   "push-subscriptions.json",
   // The Send Protocol's request files and receipts (M56 spec 05), one per request id in this folder.
-  // Created only by a bridge started with COLLIE_SEND_PROTOCOL=1: with the flag off nothing builds the
-  // store, so every other instance never has this folder.
+  // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
+  // nothing builds the store, so such an instance never has this folder.
   "sends",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
