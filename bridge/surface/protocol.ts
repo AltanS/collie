@@ -171,6 +171,8 @@ export interface SendLedger {
 
 /** A receipt a prompt edge may still close (M56 spec 11): open from the submit key until the window ends. */
 interface OpenSend extends OpenReceipt {
+  /** Set at the submit key, or at settle when a witness after Enter saw the send queue (S2, late). */
+  queued?: boolean;
   readonly key: CounterKey;
   /** Settled already, as `sent` or `unknown`: a match writes the record again. */
   settled: boolean;
@@ -1119,6 +1121,9 @@ export class SendProtocol {
   private settleOpen(state: RunState, outcome: SendOutcome): SendOutcome {
     const entry = this.openSends.find((open) => open.id === state.record.id);
     if (entry === undefined) return outcome;
+    // A witness after Enter (S2, or the late read) can find the send queued behind a turn: the
+    // receipt then waits the queued window for its prompt edge.
+    if (state.queued) entry.queued = true;
     if (entry.effective && (outcome === "sent" || outcome === "unknown")) {
       this.openSends.splice(this.openSends.indexOf(entry), 1);
       return "effective";

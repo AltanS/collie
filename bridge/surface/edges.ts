@@ -133,6 +133,8 @@ export interface EdgeRouterDeps {
   readonly spool: EdgeSpool;
   /** The live sources across a restart. Absent: every pane starts at "hooks: none". */
   readonly store?: SourceStore;
+  /** Called once per {@link HOOK_LIVENESS_MS} on a take: the bridge keeps its hook target file there. */
+  readonly keep?: () => void;
   readonly liveness: BeaconLiveness;
   /** Every terminal session that can take edges, read on each take. */
   targets(): readonly EdgeTarget[];
@@ -153,6 +155,7 @@ export class EdgeRouter {
   private timer: ReturnType<typeof setInterval> | null = null;
   private taking = false;
   private lastLiveness = Number.NEGATIVE_INFINITY;
+  private lastKeep = Number.NEGATIVE_INFINITY;
   private readonly log: (line: string) => void;
   private readonly now: () => number;
   /** Saved sources not placed yet, and until when they may still be. */
@@ -304,6 +307,14 @@ export class EdgeRouter {
    */
   private async checkLiveness(): Promise<void> {
     const now = this.now();
+    if (this.deps.keep !== undefined && now - this.lastKeep >= HOOK_LIVENESS_MS) {
+      this.lastKeep = now;
+      try {
+        this.deps.keep();
+      } catch (err) {
+        console.warn(`[surface] could not keep the hook target: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     if (now - this.lastLiveness < HOOK_LIVENESS_MS || this.sources.size === 0) return;
     this.lastLiveness = now;
     // Deleting the entry being visited is safe in a Map's own iteration.

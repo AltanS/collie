@@ -113,22 +113,41 @@ describe("the herdr beacon matcher", () => {
 describe("the hook target registry on disk", () => {
   test("a bridge writes its target at boot under XDG_STATE_HOME and removes it on a clean stop", () => {
     const env = { XDG_STATE_HOME: join(dir, "xdg") };
-    const unregister = registerHookTarget("/srv/lab-state", env, "/nowhere");
+    const target = registerHookTarget("/srv/lab-state", env, "/nowhere");
     const path = join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/lab-state"));
     const record = parseHookTarget(readFileSync(path, "utf8"));
     expect(record?.stateDir).toBe("/srv/lab-state");
     expect(record?.pid).toBe(process.pid);
-    unregister();
+    target.remove();
     expect(existsSync(path)).toBe(false);
   });
 
   test("the stop leaves a newer bridge's file on the same state dir alone", () => {
     const env = { XDG_STATE_HOME: join(dir, "xdg") };
-    const unregister = registerHookTarget("/srv/lab-state", env, "/nowhere");
+    const target = registerHookTarget("/srv/lab-state", env, "/nowhere");
     const path = join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/lab-state"));
     writeFileSync(path, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/lab-state", pid: process.pid + 1, pidStartTime: null, bootedAt: 1 }));
-    unregister();
+    target.remove();
     expect(existsSync(path)).toBe(true);
+  });
+
+  test("keep writes the file again when an emitter deleted it, or when it names another pid", () => {
+    const env = { XDG_STATE_HOME: join(dir, "xdg") };
+    const target = registerHookTarget("/srv/lab-state", env, "/nowhere");
+    const path = join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/lab-state"));
+    const before = readFileSync(path, "utf8");
+    // Its own file stays as it is.
+    target.keep();
+    expect(readFileSync(path, "utf8")).toBe(before);
+    // An emitter read a dead pid and deleted the file while this bridge restarted.
+    rmSync(path);
+    target.keep();
+    expect(parseHookTarget(readFileSync(path, "utf8"))?.pid).toBe(process.pid);
+    // Another bridge's record on this state dir.
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/lab-state", pid: process.pid + 1, pidStartTime: null, bootedAt: 1 }));
+    target.keep();
+    expect(parseHookTarget(readFileSync(path, "utf8"))?.pid).toBe(process.pid);
+    target.remove();
   });
 
   test("without XDG_STATE_HOME the registry sits under ~/.local/state/collie", () => {

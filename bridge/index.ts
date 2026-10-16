@@ -22,7 +22,7 @@ import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget } from "./beacon-io.ts";
+import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget, type HookTargetRegistration } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -1284,12 +1284,16 @@ const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(
 // Surface, so an instance that computes no Surface takes no edge. Each session that can take edges
 // adds its target in `makeSession`; the router reads only the targets of sessions still registered.
 const edgeTargets = new Map<string, HoldTarget>();
+// This bridge's hook target file (bridge/beacon/hook-targets.ts): written once the router takes
+// edges, kept on each liveness tick, removed on a clean stop.
+let hookTarget: HookTargetRegistration | null = null;
 const edgeRouter =
   surfaceLedger === null
     ? null
     : new EdgeRouter({
         spool: fileEdgeSpool(cfg.stateDir),
         store: fileSourceStore(cfg.stateDir),
+        keep: () => hookTarget?.keep(),
         liveness: procBeaconLiveness(),
         targets: () => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
@@ -1584,7 +1588,7 @@ edgeRouter?.start();
 // registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
-const unregisterHookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
+hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2487,7 +2491,7 @@ const shutdown = async () => {
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
   edgeRouter?.stop();
-  unregisterHookTarget?.();
+  hookTarget?.remove();
   holdServer?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
