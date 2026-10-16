@@ -19,7 +19,7 @@ A ten-line program, one `collie durable attach`, and a question card on your pho
 You need Collie 1.22.0 or later running on this machine, with your phone paired
 ([Install](install.md)).
 
-A program runs on Linux or macOS, with Node 22.18 or later or Bun 1.4 or later. Install the SDK in
+A program runs on Linux or macOS, with Node 22.19 or later or Bun 1.4 or later. Install the SDK in
 your program's folder:
 
 ```bash
@@ -31,6 +31,9 @@ bun add @colliepwa/durable-sdk@experimental
 The package is published under the npm dist-tag `experimental`, never `latest`, and it follows the
 exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package
 is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+
+The SDK's Pi Durable entry is tested with Pi Durable 1.1.0 and 1.2.0. Node 22.19 is the floor of
+Pi Durable 1.2.0.
 
 Save this program as `hello.mjs`. It is ten lines:
 
@@ -169,6 +172,13 @@ The URL must start with `https://`. The one exception is `http://127.0.0.1:<port
 Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
 too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day. Check what
 your host's plan allows for that.
+
+A program behind a URL must serve the Collie wire and check the bearer token. A stock Pi Durable
+demo does neither, so Collie cannot attach it as it is.
+
+Collie polls a hosted program. It asks every 2 s while a phone watches, else every 10 s. Each poll
+wakes a hibernating Durable Object, so a hosted object stays awake while Collie watches. The wire
+has no WebSocket, so the hibernation and WebSocket features of Durable Objects do not help here.
 
 The Cloudflare example is parked and is not part of a release. It is in
 `experiments/durable-member-cloudflare/`.
@@ -332,7 +342,11 @@ on you comes first, then the other open conversations, then the closed ones unde
 An open one opens in Chat, and a closed one opens read-only. A program says in its hello what it can
 do (`asks`, `starters`, `send`, `steer`, `abort`, `rename`, `close`, `actions`, `history`,
 `reopen`), and the phone draws a control only for what it said. A program has no screen, so it has
-no Terminal view and no typed keys. [Sessions](sessions.md#what-the-phone-shows) has more.
+no Terminal view and no typed keys.
+
+On a send to a program, the label queued is Collie's own reading of the turn. Collie does not show
+what waits in Pi's inbox. A task that sleeps until a deadline shows as idle or working, never as
+waiting. [Sessions](sessions.md#what-the-phone-shows) has more.
 
 A question card names the program and shows the time left when the program set one. A question
 decided in the program, or timed out, leaves a line in the chat.

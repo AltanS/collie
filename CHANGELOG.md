@@ -268,6 +268,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie docs themes` prints the Themes page.** The page was on disk and in the README but not in the binary's docs list, so the command did not know it. It is in the list now, and the drift guard in `cli/docs-embed.test.ts` stays green.
 - **The `collie docs` list describes the Themes page in full.** Its entry says colours, shape, look and terminal palette, where it said colours and one typeface.
 - **The screen corpus holds six new captures.** Codex 0.162.1's idle box, `/model` picker, `/permissions` picker and `/resume` search, and Claude Code 2.1.301's idle box and the box a held subagent approval leaves with no dialog on the main screen.
+- **The Programs page and the SDK README say what a hosted program must do.** A program behind a URL serves the Collie wire and checks the bearer token. Collie polls every 2 s while a phone watches, else every 10 s. The `queued` label is Collie's own reading, and a sleeping task never shows as waiting. The `./pi` entry is tested with Pi Durable 1.1.0 and 1.2.0.
 
 ## [1.21.3] - 2026-10-14
 
