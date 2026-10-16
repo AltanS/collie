@@ -59,6 +59,7 @@ import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, type AskTapResult } from "@/lib/dialog-ask";
+import { askOptionFor } from "@/lib/ask-reply";
 import { refreshNow } from "@/lib/api";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -1341,10 +1342,13 @@ export function AgentChat({
         return false;
       }
       // An option on a pane whose Surface carries an ask is one Answer to it (M56 spec 08). A focused
-      // feedback field keeps the guarded path, which refuses it.
+      // feedback field keeps the guarded path, which refuses it. So does a card the ask does not
+      // name (another kind, or another label at that row): the guarded path re-reads the screen and
+      // binds the keys to the card's own region, so a disagreement never locks the dialog.
       if (action.kind === "option" && asksAnswered && paneAsk !== null && prompt.feedback?.focused !== true) {
-        const index = prompt.options.indexOf(action.option);
-        return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap: { card: "prompt-select", index, label: action.option.label } }));
+        const tap = { card: "prompt-select", index: prompt.options.indexOf(action.option), label: action.option.label } as const;
+        if (askOptionFor(paneAsk, tap) !== null) return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+        console.info("collie: the card is not the pane's ask, the tap keeps the guarded route");
       }
       const base = {
         paneId,
@@ -1514,11 +1518,15 @@ export function AgentChat({
       }
       // A footer action on a pane whose Surface carries an ask is one Answer to it (M56 spec 08). An
       // arrow only moves the highlight, which the next commit's hash check covers: it keeps its route.
+      // A card the ask does not name keeps the guarded route, as for a prompt card above.
       if (!action.nav && asksAnswered && paneAsk !== null) {
         const index = menu.actions.findIndex((a) => sameKeys(a.keys, action.keys));
-        const label = menu.actions[index]?.label ?? "";
-        await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap: { card: "menu", index, label } }));
-        return;
+        const tap = { card: "menu", index, label: menu.actions[index]?.label ?? "" } as const;
+        if (askOptionFor(paneAsk, tap) !== null) {
+          await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+          return;
+        }
+        console.info("collie: the card is not the pane's ask, the tap keeps the guarded route");
       }
       const result = await submitMenuKeys({
         paneId,

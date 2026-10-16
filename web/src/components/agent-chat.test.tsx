@@ -946,15 +946,16 @@ describe("AgentChat: a dialog tap answers the pane's ask", () => {
     expect(posted).toHaveLength(1);
   });
 
-  it("an ask whose labels are not the card's posts nothing and reads the screen again", async () => {
+  it("an ask whose labels are not the card's posts no answer; the tap keeps the guarded key route", async () => {
     const user = userEvent.setup();
     const posted = answerWith(() => ({}));
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const other: Ask = { ...ASK_A, options: [{ id: "1", label: "Allow" }, { id: "2", label: "Deny" }] };
     renderChat({ text: MENU_TEXT, agent: withAsk(other) });
     await user.click(await screen.findByRole("button", { name: "Yes" }));
-    await waitFor(() => expect(screen.getByTestId("ask-status")).toHaveTextContent("The dialog changed; the card shows the new one"));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
     expect(posted).toEqual([]);
-    expect(mockSubmit).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 
   it("a menu's footer action answers the menu ask by the action's own row", async () => {
