@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SendReceipt } from "../../web/src/lib/surface/send.ts";
+import { AskAnswerer } from "./ask.ts";
 import { SendProtocol } from "./protocol.ts";
 import { RequestStore, type AcceptInput, type SendRecord } from "./requests.ts";
 
@@ -134,5 +135,44 @@ describe("phases and receipts", () => {
     expect(store.prune(100_000, 2)).toBe(2); // two more settled, oldest first; the unsettled one stays
     const left = readdirSync(dir).filter((name) => name.endsWith(".json")).toSorted();
     expect(left).toEqual(["req-0002-prune.json", "req-0004-prune.json"]);
+  });
+});
+
+// Ask answers live in the same store (M56 spec 08), under their own file names.
+describe("ask answers in the same store", () => {
+  const ASK = "ask-0123456789abcd";
+  const askInput = { id: ASK, session: "main", paneId: "%1", paneGeneration: "g1", hash: "0abc12", optionId: "2" };
+
+  test("accept, replay, answered, settle, and a send list that never reads an ask file", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 7000);
+    expect(store.acceptAsk(askInput).kind).toBe("new");
+    expect(readdirSync(join(dir, "sends")).filter((name) => name.endsWith(".json"))).toEqual([`ask.${ASK}.json`]);
+    expect(store.acceptAsk(askInput).kind).toBe("replay");
+    expect(store.acceptAsk({ ...askInput, optionId: "1" }).kind).toBe("answered");
+    expect(store.acceptAsk({ ...askInput, hash: "ffffff" }).kind).toBe("answered");
+    const receipt = { ...AskAnswerer.crashReceipt(store.getAsk(ASK)!), outcome: "sent" as const, keys: ["Down", "Enter"] };
+    const { reason: _crash, ...sent } = receipt;
+    expect(store.settleAsk(ASK, sent)?.receipt).toEqual(sent);
+    // A settled answer never changes again.
+    expect(store.settleAsk(ASK, receipt)?.receipt).toEqual(sent);
+    expect(store.list()).toEqual([]);
+    expect(store.listAsks().map((record) => record.id)).toEqual([ASK]);
+  });
+
+  test("a send id can never name an ask file", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 7000);
+    store.acceptAsk(askInput);
+    expect(store.accept(input({ id: ASK })).kind).toBe("new");
+    expect(store.getAsk(ASK)?.optionId).toBe("2");
+  });
+
+  test("recover settles an unsettled answer as unknown (crash); prune drops old settled answers", () => {
+    let now = 7000;
+    const store = new RequestStore(join(dir, "sends"), () => now);
+    store.acceptAsk(askInput);
+    expect(store.recoverAsks(AskAnswerer.crashReceipt).map((record) => record.receipt?.reason)).toEqual(["crash"]);
+    now += 8 * 24 * 60 * 60 * 1000;
+    expect(store.prune()).toBe(1);
+    expect(store.listAsks()).toEqual([]);
   });
 });

@@ -76,6 +76,8 @@ describe("every profile file", () => {
     expect(claude.probe.char).toBe("⌁");
     expect(claude.probe.status).toBe("verified");
     expect(claude.paste).toEqual({ bracketed: true });
+    // M56 spec 08: an ask that left the screen is voided after this lifetime.
+    expect(claude.ask).toEqual({ lifetimeMs: 5000 });
     expect(claude.hooks.PermissionRequest).toBe("ask");
     expect(claude.hooks.Stop).toBe("edge");
   });
@@ -116,6 +118,8 @@ describe("parseProfile names the failing field", () => {
     ["Escape as the clear key", ["keys", "clear", "key"], "Escape", "keys.clear.key"],
     ["a probe of two characters", ["probe", "char"], "ab", "probe.char"],
     ["a paste flag that is not a boolean", ["paste", "bracketed"], "yes", "paste.bracketed"],
+    ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
+    ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
     ["an empty submit key list", ["keys", "submit"], [], "keys.submit"],
     ["a bad id", ["id"], "Claude Code", "id"],

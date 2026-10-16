@@ -2,6 +2,7 @@ import { basename, dirname } from "node:path";
 
 import type { SendProtocol } from "./surface/protocol.ts";
 import type { SurfaceShadow } from "./surface/shadow.ts";
+import type { AskAnswerer } from "./surface/ask.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
@@ -99,6 +100,8 @@ export interface SessionParts {
   surface?: SurfaceShadow;
   /** Set when the Send Protocol is on (`COLLIE_SEND_PROTOCOL=1`), on terminal sessions only. */
   send?: SendProtocol;
+  /** Set with `send`: the session's Ask answerer (M56 spec 08), `POST /api/ask/<id>`. */
+  asks?: AskAnswerer;
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */

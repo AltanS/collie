@@ -7,11 +7,16 @@
 // accept, a salted hash and the length of the text, the phase, and the receipt once settled. Never
 // the text and never the rows: both can hold secrets. The salt is random per state directory, so a
 // short text cannot be looked up from its hash in a table made elsewhere.
+//
+// Ask answers (M56 spec 08) live in the same directory under `ask.<id>.json`: the ask id, the pane
+// and its generation, the ask hash, the option id, the phase and the receipt. A request id cannot
+// hold a dot, so a send and an ask never share a file. Never a label: labels are screen text.
 
 import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
+import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -52,6 +57,38 @@ export type AcceptResult =
   | { readonly kind: "replay"; readonly record: SendRecord }
   /** The same id with another text. Refused `id_reused`; the stored record is untouched. */
   | { readonly kind: "id_reused"; readonly record: SendRecord };
+
+/** One ask answer on disk: accepted before any key, settled with its receipt. */
+export interface AskRecord {
+  readonly id: string;
+  readonly session: string;
+  readonly paneId: string;
+  readonly paneGeneration: string;
+  readonly hash: string;
+  readonly optionId: string;
+  readonly acceptedAt: number;
+  readonly phase: "accepted" | "settled";
+  readonly receipt?: AskReceipt;
+}
+
+export interface AskAcceptInput {
+  readonly id: string;
+  readonly session: string;
+  readonly paneId: string;
+  readonly paneGeneration: string;
+  readonly hash: string;
+  readonly optionId: string;
+}
+
+export type AskAcceptResult =
+  | { readonly kind: "new"; readonly record: AskRecord }
+  /** The same id with the same hash and option: the stored record, settled or still in flight. */
+  | { readonly kind: "replay"; readonly record: AskRecord }
+  /** The same id with another option or hash: refused `ask_answered`; the stored record is untouched. */
+  | { readonly kind: "answered"; readonly record: AskRecord };
+
+const ASK_KINDS = ["permission", "question", "menu"] as const;
+const ASK_FILE = /^ask\.(ask-[0-9a-f]{14})\.json$/;
 
 const PHASES = ["accepted", "submit-sent", "settled"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
@@ -151,6 +188,68 @@ function parseRecord(raw: JsonValue | undefined): SendRecord | null {
   return record;
 }
 
+/** An ask receipt read back from its file, every field checked; undefined when one is not what it should be. */
+function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
+  const node = asJsonObject(value);
+  if (node === undefined) return undefined;
+  const text = (key: string): string | undefined => asJsonString(node[key]);
+  const kind = pick(node.kind, ASK_KINDS);
+  const outcome = pick(node.outcome, ASK_OUTCOMES);
+  const reason = node.reason === undefined ? undefined : pick(node.reason, ASK_REASONS);
+  const [check, readBack, after] = [mark(node.check), mark(node.readBack), mark(node.after)];
+  const keys = Array.isArray(node.keys) ? node.keys.map(asJsonString) : undefined;
+  const fields = {
+    askId: text("askId"),
+    session: text("session"),
+    paneId: text("paneId"),
+    paneGeneration: text("paneGeneration"),
+    harness: text("harness"),
+    hash: text("hash"),
+    optionId: text("optionId"),
+  };
+  if (Object.values(fields).some((field) => field === undefined)) return undefined;
+  if (kind === undefined || outcome === undefined || node.origin !== "person_tap") return undefined;
+  if (check === undefined || readBack === undefined || after === undefined || keys === undefined || keys.some((key) => key === undefined)) return undefined;
+  if (node.reason !== undefined && reason === undefined) return undefined;
+  const receipt: AskReceipt = {
+    askId: fields.askId!,
+    session: fields.session!,
+    paneId: fields.paneId!,
+    paneGeneration: fields.paneGeneration!,
+    harness: fields.harness!,
+    kind,
+    hash: fields.hash!,
+    optionId: fields.optionId!,
+    origin: "person_tap",
+    check,
+    readBack,
+    after,
+    keys: keys.filter((key): key is string => key !== undefined),
+    outcome,
+  };
+  return reason === undefined ? receipt : { ...receipt, reason };
+}
+
+/** An ask record read back from its file, every field checked; null when it is not one this module wrote. */
+function parseAskRecord(raw: JsonValue | undefined): AskRecord | null {
+  const node = asJsonObject(raw);
+  if (node === undefined) return null;
+  const id = asJsonString(node.id);
+  const session = asJsonString(node.session);
+  const paneId = asJsonString(node.paneId);
+  const paneGeneration = asJsonString(node.paneGeneration);
+  const hash = asJsonString(node.hash);
+  const optionId = asJsonString(node.optionId);
+  const acceptedAt = asJsonNumber(node.acceptedAt);
+  const phase = pick(node.phase, ["accepted", "settled"] as const);
+  if (id === undefined || session === undefined || paneId === undefined || paneGeneration === undefined) return null;
+  if (hash === undefined || optionId === undefined || acceptedAt === undefined || phase === undefined) return null;
+  const record: AskRecord = { id, session, paneId, paneGeneration, hash, optionId, acceptedAt, phase };
+  if (node.receipt === undefined) return record;
+  const receipt = parseAskReceipt(node.receipt);
+  return receipt === undefined ? null : { ...record, receipt };
+}
+
 export class RequestStore {
   private readonly salt: string;
 
@@ -244,8 +343,10 @@ export class RequestStore {
     if (!existsSync(this.dir)) return [];
     const out: SendRecord[] = [];
     for (const name of readdirSync(this.dir)) {
-      if (!name.endsWith(".json")) continue;
-      const record = this.get(name.slice(0, -".json".length));
+      if (!name.endsWith(".json") || ASK_FILE.test(name)) continue;
+      const stem = name.slice(0, -".json".length);
+      if (!REQUEST_ID.test(stem)) continue;
+      const record = this.get(stem);
       if (record !== null) out.push(record);
     }
     return out.toSorted((a, b) => a.acceptedAt - b.acceptedAt);
@@ -282,6 +383,96 @@ export class RequestStore {
     }
     const settledKept = kept.filter((record) => record.phase === "settled");
     for (let i = 0; i < kept.length - keepFiles && i < settledKept.length; i++) drop(settledKept[i]!);
+    // Ask answers keep by the same rules, counted on their own.
+    const asks = this.listAsks();
+    const askKept: AskRecord[] = [];
+    for (const record of asks) {
+      if (record.phase === "settled" && now - record.acceptedAt > keepMs) {
+        rmSync(this.askPath(record.id), { force: true });
+        dropped++;
+      } else askKept.push(record);
+    }
+    const askSettled = askKept.filter((record) => record.phase === "settled");
+    for (let i = 0; i < askKept.length - keepFiles && i < askSettled.length; i++) {
+      rmSync(this.askPath(askSettled[i]!.id), { force: true });
+      dropped++;
+    }
     return dropped;
+  }
+
+  // ── Ask answers (M56 spec 08) ──
+
+  private askPath(id: string): string {
+    if (!ASK_ID.test(id)) throw new Error(`not an ask id: ${id}`);
+    return join(this.dir, `ask.${id}.json`);
+  }
+
+  private writeAsk(record: AskRecord): void {
+    const target = this.askPath(record.id);
+    const temp = `${target}.tmp`;
+    writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+    chmodSync(temp, 0o600);
+    renameSync(temp, target);
+  }
+
+  /** The stored answer of an ask id, or null. */
+  getAsk(id: string): AskRecord | null {
+    const target = this.askPath(id);
+    if (!existsSync(target)) return null;
+    try {
+      // SAFETY: `JSON.parse` output IS a JsonValue; `parseAskRecord` checks every field.
+      return parseAskRecord(JSON.parse(readFileSync(target, "utf8")) as JsonValue);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Accept an answer: write its file before any key. The id is spent from here on: the same hash and
+   * option replay the stored record, another one is `answered`.
+   */
+  acceptAsk(input: AskAcceptInput): AskAcceptResult {
+    const known = this.getAsk(input.id);
+    if (known !== null) {
+      const same = known.hash === input.hash && known.optionId === input.optionId;
+      return same ? { kind: "replay", record: known } : { kind: "answered", record: known };
+    }
+    const record: AskRecord = { ...input, acceptedAt: this.now(), phase: "accepted" };
+    this.writeAsk(record);
+    return { kind: "new", record };
+  }
+
+  /** The answer's end: its receipt. A settled record never changes again. */
+  settleAsk(id: string, receipt: AskReceipt): AskRecord | null {
+    const known = this.getAsk(id);
+    if (known === null) return null;
+    if (known.phase === "settled") return known;
+    const settled: AskRecord = { ...known, phase: "settled", receipt };
+    this.writeAsk(settled);
+    return settled;
+  }
+
+  /** Every ask answer on disk, oldest first. */
+  listAsks(): AskRecord[] {
+    if (!existsSync(this.dir)) return [];
+    const out: AskRecord[] = [];
+    for (const name of readdirSync(this.dir)) {
+      const id = ASK_FILE.exec(name)?.[1];
+      if (id === undefined) continue;
+      const record = this.getAsk(id);
+      if (record !== null) out.push(record);
+    }
+    return out.toSorted((a, b) => a.acceptedAt - b.acceptedAt);
+  }
+
+  /** After a start: every answer that had not settled ends `unknown` (`crash`). Returns the records it settled. */
+  recoverAsks(unsettled: (record: AskRecord) => AskReceipt): AskRecord[] {
+    const settled: AskRecord[] = [];
+    for (const record of this.listAsks()) {
+      if (record.phase === "settled") continue;
+      const done = this.settleAsk(record.id, unsettled(record));
+      if (done !== null) settled.push(done);
+    }
+    return settled;
   }
 }

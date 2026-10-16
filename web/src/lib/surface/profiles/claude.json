@@ -56,6 +56,9 @@
   "paste": {
     "bracketed": true
   },
+  "ask": {
+    "lifetimeMs": 5000
+  },
   "hooks": {
     "SessionStart": "edge",
     "UserPromptSubmit": "edge",

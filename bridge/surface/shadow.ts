@@ -26,9 +26,11 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { foldSurface, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
 import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
-import { legacyFree, liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
+import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
-import { askOf, isFree, modalWord, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { askOf, isFree, modalWord, shortHash, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
+import type { Block } from "../../web/src/lib/blocks.ts";
 
 /** How many rows of the viewport one shadow read asks for. `viewport` scope never moves a screen. */
 export const SHADOW_READ_LINES = 120;
@@ -87,6 +89,12 @@ export interface ShadowOptions {
    * nothing reads the old verdict. Defaults to on.
    */
   readonly compare?: boolean;
+  /**
+   * The session's ask book and the pane generation (M56 spec 08). With it every lifted dialog gets the
+   * book's single-use id, the one the answer route knows; without it (the Send Protocol off) an ask
+   * is named by its content alone and nothing answers it.
+   */
+  readonly asks?: { readonly book: AskBook; readonly generation: (paneId: string) => string | null };
 }
 
 interface PaneState {
@@ -264,7 +272,7 @@ export class SurfaceShadow {
       state.lastRevision = grid.value.revision;
       const rows = splitLines(parseAnsi(grid.value.text));
       const blocks = readerBlocks(rows, harness);
-      this.push(state, { seq: ++state.seq, source: "screen", at, revision: grid.value.revision, rows, ask: liftAsk(blocks, grid.value.revision) });
+      this.push(state, { seq: ++state.seq, source: "screen", at, revision: grid.value.revision, rows, ask: this.askOf(agent.paneId, blocks, grid.value.revision, profile) });
       state.lastLegacy = this.options.compare === false ? false : legacyFree(rows, blocks, harness);
     }
 
@@ -273,6 +281,13 @@ export class SurfaceShadow {
     if (state.countedRead === readKey) return;
     state.countedRead = readKey;
     this.count(agent.paneId, state, read);
+  }
+
+  /** The ask a read lifted: through the session's book when it has one, else named by its content. */
+  private askOf(paneId: string, blocks: readonly Block[], revision: number, profile: Profile | null): Ask | null {
+    const asks = this.options.asks;
+    if (asks === undefined) return liftAsk(blocks, revision);
+    return asks.book.publish(paneId, asks.generation(paneId) ?? "gone", liftDialog(blocks), profile?.ask?.lifetimeMs ?? ASK_LIFETIME_MS);
   }
 
   private push(state: PaneState, input: SurfaceInput): void {

@@ -103,6 +103,11 @@ export interface Profile {
     /** The harness takes a bracketed paste as text, so a send may paste where the multiplexer can. */
     readonly bracketed: boolean;
   };
+  /** How the bridge keeps an ask (M56 spec 08). Optional: a profile without it uses the default lifetime. */
+  readonly ask?: {
+    /** An ask older than this, in ms, is voided once the screen no longer shows it. */
+    readonly lifetimeMs: number;
+  };
   /** Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one. */
   readonly hooks: Readonly<Record<string, HookKind>>;
 }
@@ -310,6 +315,16 @@ export function parseProfile(raw: JsonValue): Profile {
     paste = { bracketed: bracketed === true };
   }
 
+  let ask: Profile["ask"];
+  if (root.ask !== undefined) {
+    const askNode = object(root.ask, "ask");
+    const lifetimeMs = asJsonNumber(askNode.lifetimeMs);
+    if (lifetimeMs === undefined || !Number.isInteger(lifetimeMs) || lifetimeMs < 500 || lifetimeMs > 600_000) {
+      fail("ask.lifetimeMs", "must be a whole number of ms from 500 to 600000");
+    }
+    ask = { lifetimeMs };
+  }
+
   const hooksNode = object(field(root, "hooks", ""), "hooks");
   const hooks = Object.fromEntries(
     Object.keys(hooksNode).map((event) => [event, oneOf(hooksNode[event], `hooks.${event}`, HOOK_KINDS)]),
@@ -317,7 +332,8 @@ export function parseProfile(raw: JsonValue): Profile {
   if (Object.keys(hooks).length === 0) fail("hooks", "must name at least one event");
 
   const parsedProfile: Profile = { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
-  return paste === undefined ? parsedProfile : { ...parsedProfile, paste };
+  const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
+  return ask === undefined ? withPaste : { ...withPaste, ask };
 }
 
 /** The version a binary printed: the first match of the profile's own version expression, or null. */

@@ -30,7 +30,7 @@ import { splitLines } from "../../web/src/lib/blocks.ts";
 import { readCues, runningSign } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
-import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
+import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
@@ -48,6 +48,7 @@ import {
   type SendStep,
 } from "../../web/src/lib/surface/send.ts";
 import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 
@@ -121,6 +122,8 @@ export interface SendDeps {
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
   /** The pane's generation now, or null when the pane is gone. */
   readonly generation: (paneId: string) => string | null;
+  /** The session's ask book (M56 spec 08): a dialog a read lifts is named by its single-use id. */
+  readonly asks?: AskBook;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -841,7 +844,11 @@ export class SendProtocol {
     const rows = splitLines(parseAnsi(grid.value.text));
     const idle = state.match?.profile.idle ?? null;
     const frame = idle === null ? null : findInputFrame(rows, idle);
-    const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
+    const blocks = readerBlocks(rows, harness);
+    const ask =
+      this.deps.asks === undefined
+        ? liftAsk(blocks, grid.value.revision)
+        : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", liftDialog(blocks), askLifetimeOf(state.match));
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
     const plain = rows.map(plainOf);
