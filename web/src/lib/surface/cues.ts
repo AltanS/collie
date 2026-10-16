@@ -11,7 +11,8 @@
 //    survey, a question) draws a strong one, and a weak shape flush on the box is a quote. Under the
 //    bottom edge, the rows are read only when they do not walk as the profile's status and footer
 //    rows (a popup or a dialog sits there); the volatile rows themselves are a statusline the operator
-//    writes, so they are never read for a modal cue.
+//    writes, so they are never read for a modal cue. Nor is a row the profile names as a footer row
+//    (`frame.volatile.named`): the frame found it from the profile's list, and this file only skips it.
 //  - With no frame, the cluster is the last run of rows on the screen: up to CLUSTER_MAX_ROWS
 //    non-blank rows from the last non-blank one up, ended by CLUSTER_GAP_ROWS blank rows in a row.
 //    A footer of at most FOOTER_MAX_ROWS rows at the very bottom, set apart by a gap, does not end
@@ -228,11 +229,13 @@ function aboveRun(texts: readonly string[], frame: Frame): number[] {
   return rows.toReversed();
 }
 
-/** The rows under a frame's bottom edge when they do not walk as status and footer rows. */
+/** The rows under a frame's bottom edge when they do not walk as status and footer rows. A row the
+ *  profile names as a footer row (`frame.volatile.named`) is never one of them. */
 function belowRows(texts: readonly string[], frame: Frame): number[] {
   if (frame.volatile.status !== null || frame.volatile.footer !== null) return [];
+  const named = new Set(frame.volatile.named.map((hit) => hit.row));
   const rows: number[] = [];
-  for (let i = frame.bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!)) rows.push(i);
+  for (let i = frame.bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!) && !named.has(i)) rows.push(i);
   return rows;
 }
 

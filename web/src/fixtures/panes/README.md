@@ -2200,6 +2200,25 @@ pi 0.87.1 and opencode were measured in the same lab and gave no answer: pi's pr
 and opencode updated itself on start and covered the turn with its update dialog. Neither has a
 profile, so neither ever reads `running`.
 
+## The agents panel under the box (2026-10-16 incident on lane 8788, Claude Code 2.1.301)
+
+On the operator's phone, 37 sends in three minutes were refused `unconfirmed` with `modal: unreadable`, and
+no key went out. The main turn was idle while a `/subtask` fork ran. Claude Code drew its agents
+panel under the box: `● main`, one `◯` row per agent, and the hints `↓ to view` and `↓ to manage`.
+Those rows did not walk as statusline and footer rows, so the cues read the `◯` rows as a checkbox
+list and `↓ to view` as a key hint. The fix names the panel rows and hints in the Claude profile
+(`idle.volatile.below.footerRows`). The frame walk steps over them, and no cue reads them. All three
+files are labelled `idle` and read free.
+
+| Fixture | Source | What's in it |
+|---|---|---|
+| `claude--v2301-fork-running-main-idle.txt` | Captured in the read-only investigation's sandbox pane | The main turn idle after a fork, the statusline, and a panel of `● main` and one `◯` agent row. Two private strings were replaced, same length: the account name in the reply became `demo-u`, and the sandbox path became `~/.cache/sample-lab/incident-0000/sandbox` |
+| `claude--v2301-synth-agents-panel.txt` | Hand-built from the incident screen | The incident shape: three statusline rows, a blank row, then `● main` and two `◯` agent rows |
+| `claude--v2301-synth-agents-panel-walk-fails.txt` | Hand-built from the incident screen | The same panel with `· ↓ to view` on the mode row and `↓ to manage` under the panel. Before the fix the walk failed here and the screen read `unreadable` |
+
+The two hand-built files carry a real reply from the transcript above the box. The folder in their
+statusline became `~/projects/sample-workspace`, the same length.
+
 ## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)
 
 `web/src/fixtures/surface-labels.json` gives every fixture in this folder one hand-checked row:

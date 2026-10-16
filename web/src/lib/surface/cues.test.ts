@@ -75,6 +75,21 @@ describe("the bottom cluster", () => {
     expect(readCues(rows, frame).cluster.length).toBe(12);
   });
 
+  // The 2026-10-16 incident on lane 8788: the agents panel's two agent rows read as a checkbox list
+  // and its "↓ to view" hint as a key hint, so a free box read unreadable.
+  it("never reads a row the profile names as a footer row, even when the rows under the box do not walk", () => {
+    const tall = Array.from({ length: IDLE.volatile.below.maxRows }, (_, i) => `  status ${String(i)}`);
+    const panel = ["  ● main", "  ◯ general-purpose   Reading a file   2m 3s · ↓ 120.1k tokens", "  ◯ fork-name   a task   31s · ↓ 40.2k tokens"];
+    const rows = plainRows(["● done", RULE, "❯ ", RULE, ...tall, "  ⏵⏵ bypass permissions on · 2 background tasks · ↓ to view", "", ...panel, "", "  ↓ to manage"]);
+    const frame = findInputFrame(rows, IDLE)!;
+    expect(frame.volatile.status).toBeNull();
+    const read = readCues(rows, frame);
+    expect(read.cluster).toEqual(tall.map((_, i) => 4 + i));
+    expect(read.strength).toBe("none");
+    // The same rows read with no frame are a dialog shape: only the profile's names keep them out.
+    expect(readCues(plainRows(["  ⏵⏵ bypass permissions on · 2 background tasks · ↓ to view", "", ...panel]), null).strength).toBe("strong");
+  });
+
   it(`ends the no-frame cluster at ${String(CLUSTER_GAP_ROWS)} blank rows`, () => {
     const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "a reply", "more reply", "last line"]);
     const cues = readCues(rows, null);

@@ -523,3 +523,21 @@ describe("foldSurface", () => {
     expect(rowsOf("a\nb")).toHaveLength(2);
   });
 });
+
+// The 2026-10-16 incident on lane 8788: 37 sends refused `unconfirmed` with `modal: unreadable` while a
+// fork ran and Claude Code 2.1.301 drew its agents panel under a free box. The capture and the two
+// hand-built screens are labelled idle; each must read free, and the panel must be the frame's footer.
+describe("the agents panel under the box (incident 2026-10-16)", () => {
+  const PANEL = ["claude--v2301-fork-running-main-idle.txt", "claude--v2301-synth-agents-panel.txt", "claude--v2301-synth-agents-panel-walk-fails.txt"];
+
+  for (const name of PANEL) {
+    it(`${name} reads free, the panel walked as the footer and no cue read`, () => {
+      expect(LABELS.fixtures[name]?.state).toBe("idle");
+      const read = readScreen(fixtureRows(name), "claude", CLAUDE);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+      expect(read.frame?.volatile.footer).not.toBeNull();
+      expect(read.frame?.volatile.named.some((hit) => hit.name === "agents-panel-main")).toBe(true);
+      expect(read.cues?.cues).toEqual([]);
+    });
+  }
+});

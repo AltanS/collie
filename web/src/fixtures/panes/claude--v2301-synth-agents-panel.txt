@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Smaller fixes in the same round: the steer gate also covers harnesses with no measured behaviour, three profiles no
+  longer claim a lab source they never had, the Herdr name `antigravity` maps to the same profile, muse gets a real
+  running row, and some docs claims and long sentences get corrected.
+
+  Still open: the spec 12 verify, which has been silent since its interim note. The 8788 staging stands at fb2db5ba for
+  your test.
+
+✻ Waiting for 1 background agent to finish
+
+❯ /subtask alright it seems a new issue arrived in GitHub, please check. if it's easily addressable, let's add ro the 
+release
+  ⎿  ⑂ forked alright-it-seems (89b5)
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────── 1.22.0 ─
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  CTX:8% CACHE:99% LIMITS 5h:9%/4h:21m 7d:70%/4d:06h
+  [Fable·medium] ~/projects/sample-workspace on main*
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · 1 shell · ← 11 agents
+
+  ● main
+  ◯ general-purpose   Reading profileFor in profile.ts                                     2m 3s · ↓ 120.1k tokens
+  ◯ alright-it-seems  alright it seems a new issue arrived in GitHub, p…                  31s · ↓ 40.2k tokens

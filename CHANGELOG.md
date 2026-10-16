@@ -162,6 +162,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Send goes through while Claude Code shows its agents panel under the box.** A fork running beside an idle main turn drew `● main`, the agent rows and two hints there. The reader took them for a dialog and refused every send as unreadable. The Claude profile now names these rows, the frame walk steps over them, and no dialog cue reads them.
 - **Send from the phone no longer stalls after typing when the Claude statusline is taller than 8 rows.** The reply path now reads the input box by its frame, not through the chrome reader's ceiling (#457).
 - **A crew member takes a push from a shallow lead.** A lead on a Herdr-managed install has a shallow checkout, so its bundle held the commit without its parent, and the member's fetch refused it with "did not send all necessary objects"; `crew update` and `crew add` then reported a build failure although nothing had been built. The member now unbundles the same objects, checks out the lead's commit and records it in `.git/shallow` when the parent is missing; a member that has the parent still fetches as before and keeps its full history. Thanks @OowhitecatoO (#444)
 - **Antigravity's `/resume` list stays raw when a row inside it asks for a key.** A confirmation such as `Press Y to confirm` or `[y/N]` painted among the conversations would have lifted the picker with a Select button, whose Enter answers that prompt. The list is refused until the prompt is gone; the footer rows were already checked.

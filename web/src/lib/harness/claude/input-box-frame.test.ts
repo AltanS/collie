@@ -98,6 +98,11 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2283-plugin-marketplaces-updated--w40.txt",
     "claude--v2283-plugin-marketplaces-updated--w82.txt",
     "claude--v2301-hold-subagent.txt",
+    // The agents panel under the box (incident 2026-10-16): the panel is the footer, and the mode
+    // row's "↓ to view" is the composer's own hint.
+    "claude--v2301-fork-running-main-idle.txt",
+    "claude--v2301-synth-agents-panel.txt",
+    "claude--v2301-synth-agents-panel-walk-fails.txt",
     "claude--v2301-idle.txt",
     "claude--v2301-done-shell-running--w100.txt",
     "claude--v2301-idle-after-turn--w100.txt",

@@ -989,6 +989,11 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2299-ask-under-task-list", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2299-wizard-under-task-list", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2301-hold-subagent", statusRows: 1, draft: null, stripped: 8 },
+    // The 2026-10-16 incident on lane 8788: the agents panel under the box while a fork runs. The
+    // panel is the footer, the three rows over it are the statusline; "↓ to view" is a status hint.
+    { fixture: "v2301-fork-running-main-idle", statusRows: 3, draft: null, stripped: 11 },
+    { fixture: "v2301-synth-agents-panel", statusRows: 3, draft: null, stripped: 12 },
+    { fixture: "v2301-synth-agents-panel-walk-fails", statusRows: 3, draft: null, stripped: 14 },
     { fixture: "v2301-idle", statusRows: 1, draft: null, stripped: 6 },
     // Claude Code 2.1.301 around a running turn (send-queue lab, 2026-10-16): the operator's two-row
     // statusline plus the mode row; the draft typed during the turn is read as a draft.
