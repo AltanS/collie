@@ -545,6 +545,23 @@ describe("the hold matrix", () => {
     }
   });
 
+  test("a cut request is an edge only, even if its hook asked to hold: the person judges on the screen", () => {
+    const r = rig(BASH);
+    const conn = new FakeConn();
+    const lines: string[] = [];
+    const held = takeHold(
+      { book: r.holds, generation: () => GEN, profile: (h) => loadProfiles().get(h)?.hold, reread: () => undefined, log: (l) => lines.push(l) },
+      PANE,
+      holdRequest({ cut: true, hold: true }),
+      conn,
+      () => undefined,
+    );
+    expect(held).toBeNull();
+    expect(conn.released).toBe(1);
+    expect(lines).toEqual([`[surface] surface.hold edge-only pane=${PANE} tool=Bash reason=cut`]);
+    expect(r.poll()?.channel).toBe("keys");
+  });
+
   test("a relabel: the labels came from the screen a moment later, the replaced id answers ask_changed and the hold stays", async () => {
     const r = rig(IDLE);
     const { conn } = r.open();

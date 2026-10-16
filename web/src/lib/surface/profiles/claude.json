@@ -93,6 +93,12 @@
     "limitMs": 290000,
     "hookTimeoutS": 300,
     "inputShown": ["command", "file_path", "notebook_path", "url", "pattern", "path", "query"],
+    "inputDetails": {
+      "Bash": { "flags": ["dangerouslyDisableSandbox", "run_in_background"] },
+      "Write": { "body": ["content"] },
+      "Edit": { "body": ["new_string"] },
+      "NotebookEdit": { "body": ["new_source"] }
+    },
     "screenOnly": ["AskUserQuestion", "ExitPlanMode"],
     "options": [
       { "label": "Yes", "decision": "allow" },

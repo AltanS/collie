@@ -500,9 +500,10 @@ export function takeHold(deps: TakeHoldDeps, paneId: string, request: HoldReques
   deps.reread(paneId);
   const profile = deps.profile(request.harness);
   const generation = deps.generation(paneId);
-  if (!request.hold || profile === undefined || generation === null || profile.screenOnly.includes(request.tool)) {
+  if (!request.hold || request.cut === true || profile === undefined || generation === null || profile.screenOnly.includes(request.tool)) {
     conn.release();
-    deps.log?.(`[surface] surface.hold edge-only pane=${paneId} tool=${request.tool} reason=${!request.hold || profile?.screenOnly.includes(request.tool) === true ? "screen-only" : "no-hold"}`);
+    const reason = request.cut === true ? "cut" : !request.hold || profile?.screenOnly.includes(request.tool) === true ? "screen-only" : "no-hold";
+    deps.log?.(`[surface] surface.hold edge-only pane=${paneId} tool=${request.tool} reason=${reason}`);
     return null;
   }
   const held = deps.book.open(paneId, generation, request, conn, profile);

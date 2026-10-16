@@ -792,6 +792,25 @@ describe("hold: only PermissionRequest is held", () => {
     }
   });
 
+  test("a hold: a cut input is sent as an edge and never held, with the cut mark", async () => {
+    const socket = new FakeHoldSocket();
+    const long = `echo ${"x".repeat(2000)}`;
+    const d = holdDeps({ stdin: permissionPayload({ tool_input: { command: long } }), sockets: { [SOCK]: socket } });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    const request = JSON.parse(socket.sent[0]!);
+    expect(request).toMatchObject({ hold: false, cut: true });
+    expect(request.input.endsWith(" [cut]")).toBe(true);
+    expect(d.timers).toEqual([]);
+    expect(d.printed).toEqual([]);
+  });
+
+  test("a hold: the request shows the risky Bash flags and drops the characters that hide text", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({ stdin: permissionPayload({ tool_input: { command: "rm -rf \u202ebuild\u202c", dangerouslyDisableSandbox: true } }), sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.push('{"decision":"deny"}')) });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(JSON.parse(socket.sent[0]!).input).toBe("rm -rf build\n[dangerouslyDisableSandbox: true]");
+  });
+
   test("a decision from the bridge is printed in the harness's shape; the request carries the input shown, never the whole input", async () => {
     const socket = new FakeHoldSocket();
     const d = holdDeps({ sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.push('{"decision":"allow"}')) });

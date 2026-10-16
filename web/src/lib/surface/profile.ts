@@ -400,6 +400,16 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
   }
   const inputShown = textList(field(node, "inputShown", "hold"), "hold.inputShown", 1);
   const screenOnly = textList(field(node, "screenOnly", "hold"), "hold.screenOnly", 0);
+  const detailsNode = object(field(node, "inputDetails", "hold"), "hold.inputDetails");
+  const inputDetails = Object.fromEntries(
+    Object.keys(detailsNode).map((tool) => {
+      const at = `hold.inputDetails.${tool}`;
+      const detail = object(detailsNode[tool], at);
+      const flags = detail.flags === undefined ? [] : textList(detail.flags, `${at}.flags`, 0);
+      const body = detail.body === undefined ? [] : textList(detail.body, `${at}.body`, 0);
+      return [tool, { flags, body }];
+    }),
+  );
   const options = list(field(node, "options", "hold"), "hold.options").map((item, i) => {
     const at = `hold.options[${String(i)}]`;
     const option = object(item, at);
@@ -416,7 +426,7 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
   const decidedLine = pattern(field(node, "decidedLine", "hold"), "hold.decidedLine").source;
   const deniedLine = pattern(field(node, "deniedLine", "hold"), "hold.deniedLine").source;
   const denyMessage = text(field(node, "denyMessage", "hold"), "hold.denyMessage");
-  return { event, toolEvent, limitMs, hookTimeoutS, inputShown, screenOnly, options, decisions, decidedLine, deniedLine, denyMessage };
+  return { event, toolEvent, limitMs, hookTimeoutS, inputShown, inputDetails, screenOnly, options, decisions, decidedLine, deniedLine, denyMessage };
 }
 
 /** A whole number of ms inside a range. */

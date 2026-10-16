@@ -10,7 +10,7 @@ import {
   HOLD_GRACE_MS,
   HOLD_WIRE_VERSION,
   parseHoldReply,
-  shownInput,
+  shownInputOf,
   type HoldDecision,
   type HoldProfile,
   type HoldRequest,
@@ -91,18 +91,21 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   if (pidStartTime === null) return null;
   const agentRaw = asJsonString(payload.agent_id);
   const agent = agentRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(agentRaw) ? agentRaw : null;
-  return {
+  const shown = shownInputOf(payload.tool_input, hold.inputShown, hold.inputDetails[tool]);
+  const request: HoldRequest = {
     v: HOLD_WIRE_VERSION,
     harness: BEACON_HARNESS,
     pid: deps.agentPid,
     pidStartTime,
     markers,
     tool,
-    input: shownInput(payload.tool_input, hold.inputShown),
+    input: shown.text,
     agent,
-    hold: !hold.screenOnly.includes(tool),
+    // A cut input is answered on the screen: a person cannot judge what the card does not show.
+    hold: !hold.screenOnly.includes(tool) && !shown.cut,
     at: (deps.now ?? Date.now)(),
   };
+  return shown.cut ? { ...request, cut: true } : request;
 }
 
 /** Connect to every socket at once, each with its own limit. The ones that answered, in order. */

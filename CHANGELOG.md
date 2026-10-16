@@ -98,6 +98,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Windows builds no hold socket yet.** The bridge reads the host from `bridge/host.ts` and logs one line. Every permission there stays a screen ask.
 - **A held permission owns only the dialog that shows its own input.** The hold takes a permission dialog when the dialog shows the request's command or file. Any other dialog stays a keys ask for its own card. The request then waits on the hold card, and only a tap from that card answers it. So a Yes on a question card can never allow a subagent's command. A foreground subagent's dialog is taken the same way.
 - **The bridge keeps one hold per pane and agent.** Two subagents can wait on one pane at once. Each tool edge ends only its own agent's hold. A new request of the same agent ends the old hold as void, not as answered at the desk. The phone shows one hold card at a time.
+- **The hold card shows more of what a tool will do.** A Bash request shows `dangerouslyDisableSandbox` and `run_in_background` when they are set. A Write, Edit or NotebookEdit request shows the size and the start of the text it writes. Collie drops zero-width and direction characters before it shows or hashes the input. An input longer than 1000 characters ends in a cut mark, and the screen answers it, not the hook.
 
 ### Changed
 

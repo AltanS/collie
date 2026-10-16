@@ -57,6 +57,8 @@ export interface HoldRequest {
   readonly tool: string;
   /** The input shown, cut at {@link HOLD_INPUT_MAX}. */
   readonly input: string;
+  /** True when the input shown was cut. A cut request is an edge only: nothing is held. */
+  readonly cut?: boolean;
   /** The subagent id the request came from, or null for the main session. */
   readonly agent: string | null;
   readonly hold: boolean;
@@ -87,6 +89,17 @@ export interface HoldOption {
   readonly decision: HoldDecision;
 }
 
+/**
+ * More of one tool's input the card must show (profile field `hold.inputDetails`, by tool name).
+ * `flags`: input keys that change what the tool may do (a sandbox switch, a background run). Each one
+ * present shows on its own line with its value. `body`: input keys of the text a tool writes. Each
+ * one present shows its size and its start.
+ */
+export interface HoldInputDetail {
+  readonly flags: readonly string[];
+  readonly body: readonly string[];
+}
+
 /** How a harness holds a permission (profile field `hold`). */
 export interface HoldProfile {
   /** The hook event that holds. */
@@ -99,6 +112,8 @@ export interface HoldProfile {
   readonly hookTimeoutS: number;
   /** The keys of the tool input shown on the card, first present wins. */
   readonly inputShown: readonly string[];
+  /** More input to show for some tools, by tool name. */
+  readonly inputDetails: Readonly<Record<string, HoldInputDetail>>;
   /** Tools whose dialog the hook cannot answer: the screen answers them through keys. */
   readonly screenOnly: readonly string[];
   /** The options when no dialog is on the screen. */
@@ -122,11 +137,38 @@ export const HOLD_GRACE_MS = 2000;
 /** The kind of every hook-held ask. */
 export const HOLD_ASK_KIND = "permission";
 
+/** The mark at the end of a cut input shown. */
+export const HOLD_CUT_MARK = " [cut]";
+
+/** How many characters of a written body the card shows as its start. */
+export const HOLD_BODY_START = 80;
+
+// Characters that hide text or turn it around on the screen: zero-width marks (U+200B to U+200F),
+// bidirectional embeddings and overrides (U+202A to U+202E) and isolates (U+2066 to U+2069). A command
+// that holds one can show one thing and run another, so they go before display and before the hash.
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069]/gu;
+// eslint-disable-next-line no-control-regex -- control characters are exactly what this removes
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/gu;
+
+/** Text with the hiding characters dropped and the control characters made spaces. */
+export function cleanShown(text: string): string {
+  return text.replace(INVISIBLE, "").replace(CONTROL, " ");
+}
+
+/** The input shown, and whether it was cut at {@link HOLD_INPUT_MAX}. */
+export interface ShownInput {
+  readonly text: string;
+  readonly cut: boolean;
+}
+
 /**
  * The input shown for a tool input: the first key of `keys` that holds text, else the whole input as
- * compact JSON. Cut at {@link HOLD_INPUT_MAX} characters. Control characters become spaces.
+ * compact JSON. Then the tool's details from the profile: each risky flag that is present, and the
+ * size and start of each written body. Hiding characters are dropped, control characters become
+ * spaces, and the whole is cut at {@link HOLD_INPUT_MAX} characters. A cut input is marked: the
+ * hook then holds nothing, because a person cannot judge what the card does not show.
  */
-export function shownInput(toolInput: JsonValue | undefined, keys: readonly string[]): string {
+export function shownInputOf(toolInput: JsonValue | undefined, keys: readonly string[], detail?: HoldInputDetail): ShownInput {
   const node = asJsonObject(toolInput);
   let text = "";
   if (node !== undefined) {
@@ -141,9 +183,32 @@ export function shownInput(toolInput: JsonValue | undefined, keys: readonly stri
   } else if (toolInput !== undefined) {
     text = JSON.stringify(toolInput);
   }
-  // eslint-disable-next-line no-control-regex -- control characters are exactly what this removes
-  const clean = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/gu, " ");
-  return clean.length > HOLD_INPUT_MAX ? clean.slice(0, HOLD_INPUT_MAX) : clean;
+  const lines = [text];
+  if (node !== undefined && detail !== undefined) {
+    for (const flag of detail.flags) {
+      const value = node[flag];
+      if (value !== undefined && value !== null && value !== false) lines.push(`[${flag}: ${JSON.stringify(value)}]`);
+    }
+    for (const key of detail.body) {
+      const body = asJsonString(node[key]);
+      if (body === undefined) continue;
+      const start = cleanShown(body).replace(/\s+/gu, " ").trim().slice(0, HOLD_BODY_START);
+      lines.push(`[${key}: ${String(body.length)} characters. Start: ${start}]`);
+    }
+  }
+  const clean = cleanShown(lines.join("\n"));
+  // A cut input ends in the cut mark, so every place that shows it says so.
+  return clean.length > HOLD_INPUT_MAX ? { text: `${clean.slice(0, HOLD_INPUT_MAX - HOLD_CUT_MARK.length)}${HOLD_CUT_MARK}`, cut: true } : { text: clean, cut: false };
+}
+
+/** The input shown as text alone. See {@link shownInputOf}. */
+export function shownInput(toolInput: JsonValue | undefined, keys: readonly string[], detail?: HoldInputDetail): string {
+  return shownInputOf(toolInput, keys, detail).text;
+}
+
+/** The hash of the input shown, which a tool edge carries so the bridge ends only its own hold. */
+export function holdInputHash(tool: string, input: string): string {
+  return shortHash(["input", tool, cleanShown(input)].join("\n"));
 }
 
 /** The hash of a held request: the kind, the tool, the input shown and the option labels in order. */
@@ -240,7 +305,10 @@ export function parseHoldRequest(line: string): HoldRequest | null {
   if (input === undefined || input.length > HOLD_INPUT_MAX) return null;
   if (at === undefined || !Number.isFinite(at) || hold === undefined || markers === null) return null;
   if (agent === undefined || (agent !== null && !TEXT_FIELD.test(agent))) return null;
-  return { v: HOLD_WIRE_VERSION, harness, pid, pidStartTime, markers, tool, input, agent, hold, at };
+  if (node.cut !== undefined && asJsonBoolean(node.cut) === undefined) return null;
+  // The hook cleaned the input already; an older hook did not drop the hiding characters.
+  const base = { v: HOLD_WIRE_VERSION, harness, pid, pidStartTime, markers, tool, input: cleanShown(input), agent, hold, at };
+  return node.cut === true ? { ...base, cut: true } : base;
 }
 
 /** A reply line, or null when it is not a decision. */
