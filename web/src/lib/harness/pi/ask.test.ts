@@ -291,7 +291,10 @@ describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
     expect(readPiFrame([...lines, plain("$ ")])).toBeNull();
     // Not asserted: `piModalOnScreen`. Since the open-frame read (00c6f251), a painted key-hint row
     // over a rule with rows under it reads as a picker (`/tree` puts its hints over an inner rule), so
-    // the Escape card may stand here. It offers Escape only, never an option.
+    // the Escape card may stand here. It offers Escape only, never an option, and no composer is ready.
+    const blocks = buildBlocks([...lines, plain("$ ")], { agent: "pi" });
+    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false);
+    expect(piAdapter.composerReady?.([...lines, plain("$ ")])).toBe(false);
   });
 
   it("needs a top rule of the same width and colour above a bare bottom rule", () => {
