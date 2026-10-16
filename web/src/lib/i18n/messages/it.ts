@@ -232,6 +232,9 @@ export const it: Dictionary = {
   "settings.display.tapToType.hint": "Attivo: toccare il mirror ovunque apre la tastiera. Disattivo: tocca il testo senza aprire la tastiera, che si apre solo dal compositore.",
   "settings.display.fullReply.label": "Ultima risposta completa",
   "settings.display.fullReply.hint": "Il terminale dell'agente non ha cronologia, quindi una risposta lunga perde l'inizio. Attivo: mostra la risposta per intero dal registro dell'agente.",
+  "settings.display.stretchText.label": "Risposte stretchtext",
+  "settings.display.stretchText.hint":
+    "Le risposte scritte con il plugin cc-stretch mostrano la forma breve; tocca una frase per aprirla.",
   "settings.display.rawTerminal.label": "Terminale grezzo",
   "settings.display.rawTerminal.hint": "Mostra il mirror semplice: nessun pulsante per i prompt, nessuna barra di stato. Usalo se una finestra ha problemi grafici e vuoi gestirla da Tasti.",
   "settings.display.noInvert.label": "Rendering nativo per questo riquadro",
@@ -1273,6 +1276,9 @@ export const it: Dictionary = {
   "transcript.truncated": "… troncato",
   "transcript.toolImageAlt": "Output dello strumento",
   "transcript.attachmentAlt": "Allegato",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Mostra meno",
   "mirror.imageAlt": "Grafica del terminale",
   "mirror.imageBadge": "[Immagine]",
   "mirror.imageMatchedByOrder": "abbinato per ordine, apri Cronologia per verificare",

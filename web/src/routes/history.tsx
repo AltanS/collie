@@ -5,6 +5,7 @@ import { ArrowUpToLine, ChevronDown, ChevronUp, Loader2, ScrollText, Search, X }
 import { RouteHeader } from "@/components/app-header";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { FindBar } from "@/components/find-bar";
+import { StretchTextContext } from "@/components/markdown-text";
 import { TranscriptView } from "@/components/transcript-view";
 import { fetchHistory } from "@/lib/api";
 import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
@@ -319,13 +320,15 @@ export function HistoryRoute() {
                   {data.fileTruncated ? t("history.startClipped") : t("history.startOfConversation")}
                 </div>
               )}
-              <TranscriptView
-                entries={shown}
-                agent={agent?.agent}
-                query={query}
-                focusedUuid={focusedUuid}
-                scope={scope}
-              />
+              <StretchTextContext.Provider value={prefs.stretchText}>
+                <TranscriptView
+                  entries={shown}
+                  agent={agent?.agent}
+                  query={query}
+                  focusedUuid={focusedUuid}
+                  scope={scope}
+                />
+              </StretchTextContext.Provider>
             </>
           )}
         </ChatMessageList>

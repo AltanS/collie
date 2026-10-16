@@ -269,6 +269,9 @@ export const zhTW: Dictionary = {
   "settings.display.fullReply.label": "完整顯示最新回覆",
   "settings.display.fullReply.hint":
     "Agent 的終端機不保留回捲緩衝，較長回覆的開頭會遺失。啟用後會從 Agent 自身的記錄取出完整回覆，取代它所覆蓋的那幾行。",
+  "settings.display.stretchText.label": "伸縮文字回覆",
+  "settings.display.stretchText.hint":
+    "使用 cc-stretch 外掛撰寫的回覆會先顯示簡短形式；輕觸片語即可展開。",
   "settings.display.rawTerminal.label": "原始終端機",
   "settings.display.rawTerminal.hint":
     "僅顯示純終端機鏡像，隱藏提示按鈕與狀態列。適用於對話框呈現異常時透過按鍵手動操作。",
@@ -1372,6 +1375,9 @@ export const zhTW: Dictionary = {
   "transcript.truncated": "… 已截斷",
   "transcript.toolImageAlt": "工具輸出",
   "transcript.attachmentAlt": "附件",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "收合",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "終端機圖形",

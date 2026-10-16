@@ -40,6 +40,7 @@ import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { StretchTextContext } from "@/components/markdown-text";
 import { BottomSheet } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
@@ -297,8 +298,16 @@ export function AgentChat({
   const rootSpaces = useOptionalRootData()?.workspaces;
   const branchOffOffered = agent !== undefined && rootSpaces !== undefined && paneInRepo(rootSpaces, agent.workspaceId);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize, stepChatFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
-    useDisplayPrefs();
+  const {
+    prefs,
+    setWrap,
+    stepFontSize,
+    stepChatFontSize,
+    setRawTerminal,
+    setTapToFocus,
+    setExpandClippedReply,
+    setStretchText,
+  } = useDisplayPrefs();
   // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
   // the two mirror surfaces below and NOWHERE else — see mirrorFont() for how, and why it is not a
   // custom property. Scoped to terminal CONTENT on purpose: app chrome that happens to be monospace
@@ -1740,7 +1749,7 @@ export function AgentChat({
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
     // keyboard on top of the page it just opened. Don't trim it out of this selector.
-    if (target?.closest?.("button, a, input, textarea, select, [role='textbox']")) return;
+    if (target?.closest?.("button, a, input, textarea, select, [role='textbox'], [role='button']")) return;
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
     composerRef.current?.focusInput();
@@ -2436,7 +2445,9 @@ export function AgentChat({
             {/* THE TWO BODIES. One box, one top rule, one face, one list handle — a send snaps
                 whichever body is on screen back to its tail without knowing which one it is. The
                 draft-notice slot below is outside the swap on purpose: the composer portals into it
-                and the notice floats over both bodies alike (ADR 0061). */}
+                and the notice floats over both bodies alike (ADR 0061). Both bodies draw agent
+                replies, so whether this device draws their stretches is read once, here. */}
+            <StretchTextContext.Provider value={prefs.stretchText}>
             {chatShown ? (
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
@@ -2645,6 +2656,7 @@ export function AgentChat({
               )}
             </ChatMessageList>
             )}
+            </StretchTextContext.Provider>
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card
                 is docked, else above the chrome block and its belt. Absolute, so it covers the
@@ -3050,6 +3062,7 @@ export function AgentChat({
             setRawTerminal={setRawTerminal}
             setTapToFocus={setTapToFocus}
             setExpandClippedReply={setExpandClippedReply}
+            setStretchText={setStretchText}
             // THE BODY SWITCH, second door. The ⋮ menu writes the same value; this is the one an
             // operator opens to change how a pane LOOKS, which is the question it answers. `chosen`
             // and `showing` are both passed because they differ on a pane with no journal, and the

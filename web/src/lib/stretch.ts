@@ -198,6 +198,15 @@ export function stretches(segments: Segment[]): Stretch[] {
   return segments.flatMap((segment) => (segment.kind === "prose" ? [] : [segment, ...stretches(segment.long ?? [])]));
 }
 
+/**
+ * `open` without the stretch `key` and without every stretch nested inside it, so a stretch opened
+ * again starts with its own stretches closed.
+ */
+export function closeStretch(open: ReadonlySet<string>, key: string): Set<string> {
+  const nested = `${key}${KEY_SEPARATOR}`;
+  return new Set([...open].filter((k) => k !== key && !k.startsWith(nested)));
+}
+
 /** A reply's stretches, read from `text` once every marker character is stripped from it. */
 export function parseStretches(text: string): Segment[] {
   return parse(stripMarkers(text));
@@ -361,8 +370,10 @@ function liftBlock(block: MdBlock, keys: readonly string[]): MdBlock {
     case "list":
       return { ...block, items: block.items.map((item) => liftSpans(item, keys)) };
     case "table":
+      // `source` is what the table's copy button copies, so it loses its markers too.
       return {
         ...block,
+        source: stripRuns(block.source),
         header: block.header.map((cell) => liftSpans(cell, keys)),
         rows: block.rows.map((row) => row.map((cell) => liftSpans(cell, keys))),
       };

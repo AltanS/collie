@@ -134,6 +134,8 @@ describe("liftStretches", () => {
     expect(drawn("- {{a|b}}")).toEqual([{ kind: "list", ordered: false, items: [[stretch("a", [text("a")])]] }]);
     const [table] = drawn("| h |\n| --- |\n| {{a|b}} |");
     expect(table?.kind === "table" ? table.rows : null).toEqual([[[stretch("a", [text("a")])]]]);
+    // The copy button copies `source`, so no marker may survive in it.
+    expect(table?.kind === "table" ? table.source : null).toBe("| h |\n| --- |\n| a |");
     expect(drawn("# {{a|b}}")).toEqual([{ kind: "heading", level: 1, spans: [stretch("a", [text("a")])] }]);
   });
 
