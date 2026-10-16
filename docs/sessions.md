@@ -15,27 +15,27 @@ Sessions come from two places:
 - **A terminal.** Herdr, tmux, zellij, tuios or Tern holds your shells, and an agent runs in one of
   them. Collie reads the panes from it and finds the agent's session. This is how most people use
   Collie. [Terminals](multiplexers.md) says how to point Collie at yours.
-- **A program.** An agent program that you wrote or run has no screen, and each of its
+- **A durable agent.** One that you wrote or run has no screen, and each of its
   conversations is a session with Chat and nothing else. This is experimental.
-  [Programs](durable-programs.md) has the steps.
+  [Durable agents](durable-agents.md) has the steps.
 
 ## What the phone shows
 
-Your phone has one URL. Under it, each terminal workspace is a **space**, and each program is a
+Your phone has one URL. Under it, each terminal workspace is a **space**, and each durable agent is a
 space with its own name. A space holds tabs, and a tab holds panes. A pane shows one session. A
-program appears in its own Programs section, with its name, its runtime and an Experimental badge,
+durable agent appears in its own Durable agents section, with its name, its runtime and an Experimental badge,
 the count of its open conversations, and how many of them wait on you. The section moves above
 your spaces when a question waits.
 
-A terminal space draws exactly what it always drew. A program space opens on its list of
-conversations, and a control appears only when that program says it can do it.
+A terminal space draws exactly what it always drew. A durable agent space opens on its list of
+conversations, and a control appears only when that durable agent says it can do it.
 
 The words are in [Terminology](terminology.md).
 
 ## One machine, or several
 
-One Collie carries a terminal and programs together. A machine with Herdr and a program needs no
+One Collie carries a terminal and durable agents together. A machine with Herdr and a durable agent needs no
 second Collie and no crew. Both appear under the same URL.
 
 Several machines need a crew. A crew puts every machine's Collie behind one lead and one URL
-([Crews](crew.md)). A machine in the crew can carry its own terminal and its own programs.
+([Crews](crew.md)). A machine in the crew can carry its own terminal and its own durable agents.

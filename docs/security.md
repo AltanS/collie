@@ -212,9 +212,9 @@ Key security boundaries and risks:
   after the fact rather than access control. Characters sent in Type mode are never written to the
   log: `COLLIE_AUDIT_CONTENT=none` redacts each one, and the default preview records only a count of
   `•` marks. Named keys such as Enter and Ctrl+C stay readable
-  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)). A program's answers, sends, stops,
+  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)). A durable agent's answers, sends, stops,
   button taps, starts, reopens and renames are recorded too
-  ([What is logged](durable-programs-security.md#what-is-logged)).
+  ([What is logged](durable-agents-security.md#what-is-logged)).
 - **Response headers.** Every response carries `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer` and `Permissions-Policy: camera=(), geolocation=(),
   microphone=(self), payment=(), usb=()`. The microphone stays allowed for the hands-free speech
@@ -251,12 +251,12 @@ Key security boundaries and risks:
 Restrict access further with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without
 warranty.
 
-## Programs
+## Durable agents
 
-A program you attach is code you run or deploy, and Collie treats its text as untrusted. A private socket
+A durable agent you attach is code you run or deploy, and Collie treats its text as untrusted. A private socket
 keeps other users out but not a process of your own user, and a token is the only gate over https.
-The trust rules per transport, what Collie does to a program's text and what the audit log keeps are in
-[Security of a program](durable-programs-security.md).
+The trust rules per transport, what Collie does to a durable agent's text and what the audit log keeps are in
+[Security of a durable agent](durable-agents-security.md).
 
 ## The speech engine (Whistle)
 
@@ -419,9 +419,9 @@ to host** or runs `collie stt whistle`, and it sends no data about you ([The spe
 If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
 start and once an hour. That call is yours to turn on, and it sends nothing about you either.
 
-If you attach a program by URL, Collie calls that URL on every poll with the program's bearer token in
+If you attach a durable agent by URL, Collie calls that URL on every poll with the durable agent's bearer token in
 the `Authorization` header. That call is yours to turn on too, and nothing is sent until you attach
-one ([Security of a program](durable-programs-security.md#the-token-transport)).
+one ([Security of a durable agent](durable-agents-security.md#the-token-transport)).
 
 If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
 question, never carried by a flag or a default. Removing that promise would be a breaking change

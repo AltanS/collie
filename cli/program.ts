@@ -746,21 +746,21 @@ export const COMMANDS: readonly Command[] = [
   // `sources.json` and restart nothing unless `--restart` is given.
   {
     name: "durable",
-    summary: `programs this Collie shows as sessions: ${DURABLE_SUBCOMMANDS.join(", ")}`,
+    summary: `durable agents this Collie shows as sessions: ${DURABLE_SUBCOMMANDS.join(", ")}`,
     subcommands: [
       {
         name: "attach",
-        summary: "add a program: <name> --socket <path> | --url <url> --token-env <VAR> (--restart)",
+        summary: "add a durable agent: <name> --socket <path> | --url <url> --token-env <VAR> (--restart)",
         run: (args, s) => cmdDurableAttach(durableVerbDeps(s.io), args),
       },
       {
         name: "detach",
-        summary: "remove a program by name (--restart)",
+        summary: "remove a durable agent by name (--restart)",
         run: (args, s) => cmdDurableDetach(durableVerbDeps(s.io), args),
       },
       {
         name: "list",
-        summary: "the attached programs and what the running bridge says of each",
+        summary: "the attached durable agents and what the running bridge says of each",
         run: (_args, s) => cmdDurableList(durableVerbDeps(s.io)),
       },
     ],

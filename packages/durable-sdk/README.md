@@ -1,13 +1,13 @@
 # @colliepwa/durable-sdk
 
-Show a long-running agent program on your phone through [Collie](https://colliepwa.dev). Your program opens a
+Show a long-running durable agent on your phone through [Collie](https://colliepwa.dev). Your durable agent opens a
 private Unix socket, or serves the same wire over HTTPS with a bearer token, lays out its conversations as panes, and
 asks its questions there. Collie dials the socket or the URL and shows each question as a card on the phone, with chat
 and history, and you answer with one tap.
 
 **Experimental.** The package is published under the npm dist-tag `experimental`, never `latest`. The durable wire may
 change, or the feature may be removed, in a later minor release of Collie. The full guide is the
-[Programs page](https://colliepwa.dev/docs/durable-programs).
+[Durable agents page](https://colliepwa.dev/docs/durable-agents).
 
 ## Install
 
@@ -21,9 +21,9 @@ It needs Node 22.19 or later, or Bun 1.4 or later, on Linux. Node 22.19 is the f
 runtime dependency. On macOS, Node runs it, and Bun runs it with `callerCheck: "off"`, because the descendant check
 needs Linux.
 
-## A first program
+## A first durable agent
 
-This program shows one question on the phone, prints the answer and exits:
+This durable agent shows one question on the phone, prints the answer and exits:
 
 ```ts
 import { openCollie } from "@colliepwa/durable-sdk";
@@ -45,10 +45,10 @@ your Collie: `collie durable attach hello --socket <path> --restart`.
 To ask before a tool runs, `requireApproval(toolName, args, { pane, toolCallId })` raises an Allow and Deny card and
 returns who decided and when. Only Allow from the phone approves.
 
-## A hosted program
+## A hosted durable agent
 
-A program behind a URL must serve the Collie wire and check the bearer token. A stock Pi Durable demo does neither, so
-Collie cannot attach it as it is. Collie polls a hosted program every 2 s while a phone watches, else every 10 s. Each
+A durable agent behind a URL must serve the Collie wire and check the bearer token. A stock Pi Durable demo does neither, so
+Collie cannot attach it as it is. Collie polls a hosted durable agent every 2 s while a phone watches, else every 10 s. Each
 poll wakes a hibernating Durable Object, so a hosted object stays awake while Collie watches. The wire has no
 WebSocket, so the hibernation and WebSocket features of Durable Objects do not help here.
 
@@ -62,16 +62,16 @@ a deadline shows as idle or working, never as waiting.
 | `@colliepwa/durable-sdk` | `openCollie` and the whole API. On Bun it serves the socket with the descendant check, elsewhere with `node:http`. |
 | `@colliepwa/durable-sdk/bun` | The Bun server only. |
 | `@colliepwa/durable-sdk/node` | The `node:http` server only. |
-| `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) program: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
-| `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a program that brings its own transport. |
+| `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) durable agent: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
+| `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. |
 
-**On Node, a program cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so
-the descendant check (which refuses an answer, or any other act, from the program itself or from a process it started)
+**On Node, a durable agent cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so
+the descendant check (which refuses an answer, or any other act, from the durable agent itself or from a process it started)
 cannot run, and the Node server writes one line at start that says so. Any process of your user can answer a card. Run
-the agent's tools in a sandbox that cannot reach the socket, or run the program on Bun.
+the agent's tools in a sandbox that cannot reach the socket, or run the durable agent on Bun.
 
 `./pi` needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later and below
-2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: install them yourself, and a program that never imports `./pi` needs none.
+2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: install them yourself, and a durable agent that never imports `./pi` needs none.
 
 ## Versions
 

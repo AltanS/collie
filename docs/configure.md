@@ -104,8 +104,8 @@ The config file groups every setting under a `[section]`. The environment name o
 | `update` | where releases come from, how many versions stay, a GitHub token for the release check |
 | `serve` | whether Collie publishes the front door, on what, and under which path (`base_path`) |
 
-The programs one Collie runs beside its multiplexer are not in `config.toml`. Each is one entry in
-`sources.json`, in the same folder as `.env` ([Programs](durable-programs.md#attach-a-program)).
+The durable agents one Collie runs beside its multiplexer are not in `config.toml`. Each is one entry in
+`sources.json`, in the same folder as `.env` ([Durable agents](durable-agents.md#attach-a-durable-agent)).
 | `stt` | speech-to-text, absent until `collie stt setup` runs |
 
 To read history from multiple agent home directories, provide a comma-separated list in
@@ -466,33 +466,33 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` to turn off every phone-added row on a machine.
 
-### Reaching a durable program (experimental)
+### Reaching a durable agent (experimental)
 
-Each program a Collie runs beside its terminal is one entry in `sources.json`, written by
-`collie durable attach` ([Programs](durable-programs.md#attach-a-program)). The first three
+Each durable agent a Collie runs beside its terminal is one entry in `sources.json`, written by
+`collie durable attach` ([Durable agents](durable-agents.md#attach-a-durable-agent)). The first three
 variables below are the older form, for a durable-only instance (`COLLIE_MUX=durable`) that drives
-one program, named `default`. Set the socket, or the URL with its token, never both.
+one durable agent, named `default`. Set the socket, or the URL with its token, never both.
 
 | variable | example | what it means |
 | --- | --- | --- |
-| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the program's private Unix socket on this machine. Absolute, at most 103 bytes, mode `0600` |
-| `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a program you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for a program on this machine. At most 2048 bytes, no query |
+| `COLLIE_DURABLE_SOCKET` | `/run/user/1000/durable/session.sock` | the durable agent's private Unix socket on this machine. Absolute, at most 103 bytes, mode `0600` |
+| `COLLIE_DURABLE_URL` | `https://durable-member.example.com` | the address of a durable agent you deployed behind TLS. `https://` only, or `http://127.0.0.1:<port>` for a durable agent on this machine. At most 2048 bytes, no query |
 | `COLLIE_DURABLE_TOKEN` | `your-32-byte-random-token-here` | the bearer token sent with every request to the URL. At least 32 bytes. A file holding it must be mode 600, and Collie never prints it |
-| `COLLIE_PROGRAMS` | `off` | the kill switch for programs. The bridge ignores `sources.json`, logs one line and registers no program, so the phone shows no Programs section. `collie doctor` and `collie durable list` say programs are off. Unset it, then `collie restart`, to bring them back. It does not turn off the env form above |
+| `COLLIE_PROGRAMS` | `off` | the kill switch for durable agents. The bridge ignores `sources.json`, logs one line and registers no durable agent, so the phone shows no Durable agents section. `collie doctor` and `collie durable list` say durable agents are off. Unset it, then `collie restart`, to bring them back. It does not turn off the env form above |
 
 Both set, a URL without a token, or a token without a URL is a config error: the instance starts
-and shows the program as unreachable with that reason. Over https every poll is a billed request,
+and shows the durable agent as unreachable with that reason. Over https every poll is a billed request,
 so Collie polls every 2 s while a phone watches and every 10 s otherwise.
-[Programs](durable-programs.md#two-ways-to-reach-a-program) says what each way keeps out, and what
+[Durable agents](durable-agents.md#two-ways-to-reach-a-durable-agent) says what each way keeps out, and what
 it does not.
 
-### Starters from a durable program (experimental)
+### Starters from a durable agent (experimental)
 
-A durable program lists its starters on the New page that you open from it, under
+A durable agent lists its starters on the New page that you open from it, under
 **New conversation**. A starter is a named way to begin a conversation, such as a code review. It
-takes no text: you tap it, and the program decides what to start. The new conversation opens as a
+takes no text: you tap it, and the durable agent decides what to start. The new conversation opens as a
 pane. A tap repeated with the same request id opens the same conversation and starts nothing new,
-and if the program does not answer, **Try again** sends the same request id. A program that cannot
+and if the durable agent does not answer, **Try again** sends the same request id. A durable agent that cannot
 be reached lists no starters. This is experimental and may change in any minor release.
 
 ### One-off commands and their history
