@@ -592,7 +592,7 @@ jobs:
             --version "$version" \
             --repo "$GITHUB_REPOSITORY" \
             --tag "$GITHUB_REF_NAME" \
-            "${previous[@]}" "${nv[@]}" > "$notes"
+            "${nv[@]}" "${previous[@]}" > "$notes"
           # The Windows block goes AFTER everything the script wrote, so the Linux and macOS part of
           # the page is byte for byte what it was. No link: the Windows docs page does not exist yet.
           printf '\n' >> "$notes"
