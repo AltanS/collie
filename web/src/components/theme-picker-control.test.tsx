@@ -231,9 +231,10 @@ describe("ThemePickerControl", () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
       // collie's own dark destructive pair is 2.77:1 (a known finding, pinned in themes.test.ts), so
-      // the clean copy gives it a darker ground and a white ink.
+      // the clean copy gives it a black ink. The light red itself stays: it is also drawn as text and
+      // as a mark on the page, where a dark red would fail the destructive pairs (M57 spec 12).
       const clean = copy("same", "Same", (theme) => {
-        theme.dark = { ...theme.dark, destructive: "#7f1d1d", "destructive-foreground": "#ffffff" };
+        theme.dark = { ...theme.dark, "destructive-foreground": "#000000" };
       });
       pick(container, fileOf(JSON.stringify(clean)));
       const dialog = await screen.findByRole("dialog");

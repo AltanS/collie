@@ -74,6 +74,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A refused ask hands back the dialog still on the screen under a new id.** A wrong hash or an id answered before used to come back with no ask, so the phone kept the spent id until the next poll; now the bridge looks at the pane once, with no key, and the reply carries the new ask. A replayed answer is marked in the audit line and does not poke the poll.
 - **A dialog card the ask does not name keeps the guarded key route.** When the bridge's ask is another kind, or names another label at the tapped row, the tap goes the way it went before the ask (a fresh read, the keys bound to the card's own rows) instead of being refused, so a reader disagreement never locks a dialog.
 - **A theme's contrast report also checks destructive and blocked text.** The import preview measures `destructive` as an icon at 3:1 and as text at 4.5:1, and `status-blocked` as text at 4.5:1, on the page and on a card in both halves. A theme that keeps the default's own `destructive` and ground colours is held to what the default measures, so an untouched export does not warn.
+- **Harbour's dark lines show on a button.** The border of the permission card's option buttons was the same colour as the button in the dark half; `border`, `input` and `rule` moved up one step each, and `border` on the button now measures 1.48 where the default look has 1.46.
 
 ### Changed
 

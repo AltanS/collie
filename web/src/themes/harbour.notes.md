@@ -25,9 +25,24 @@ the gate does not cover.
 
 ## Lines and focus
 
-- `rule` is visibly stronger than `border` in both halves: light 1.51 against 1.22, dark 1.93
-  against 1.30 (each on `background`). Lines are opaque cool greys, not white at an alpha, so the
+- `rule` is visibly stronger than `border` in both halves: light 1.51 against 1.22, dark 2.48
+  against 1.93 (each on `background`). Lines are opaque cool greys, not white at an alpha, so the
   measure is the paint.
+- Dark lines moved on 2026-10-16 (M57 spec 12, counsel). The permission card's option button is
+  `secondary` with a `border`, and dark `border` was oklch(0.3 0.02 250) on `secondary`
+  oklch(0.3 0.022 252): 1.00, an invisible edge. Collie's dark value is 1.46. The three dark lines
+  moved up the same ladder so the order border, input, rule holds:
+
+  | dark token | old                     | new                     | old / new on background | on card     | on secondary |
+  | ---------- | ----------------------- | ----------------------- | ----------------------- | ----------- | ------------ |
+  | `border`   | oklch(0.3 0.02 250)     | oklch(0.4 0.02 250)     | 1.30 / 1.93             | 1.16 / 1.71 | 1.00 / 1.48  |
+  | `input`    | oklch(0.33 0.02 250)    | oklch(0.42 0.02 250)    | 1.45 / 2.09             | 1.28 / 1.86 | 1.11 / 1.60  |
+  | `rule`     | oklch(0.4 0.025 250)    | oklch(0.46 0.025 250)   | 1.93 / 2.48             | 1.71 / 2.20 | 1.48 / 1.90  |
+
+  `border` on `secondary` is now 1.48, above collie's 1.46, and `border` on `background` rose from
+  1.30 to 1.93, so it did not drop. `input` and `rule` moved only to keep `border` below `input`
+  below `rule`, as in `collie`. Light stays: `border` on `secondary` is 1.09 there, near collie's
+  1.06.
 - `ring` is the teal at a mid lightness: 3.88 on the light page, 6.81 on the dark one. Both clear
   the 3:1 floor for a focus mark at full strength.
 
