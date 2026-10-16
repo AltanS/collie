@@ -2547,15 +2547,16 @@ describe("pure helpers", () => {
   });
 });
 
-describe("real screens from the fixture corpus", () => {
-  const fixture = (name: string): string => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8");
+const fixture = (name: string): string => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8");
 
-  /** A pane that always shows one captured screen and records every write. */
-  function still(text: string): FakePane {
-    const pane = new FakePane();
-    pane.render = () => text;
-    return pane;
-  }
+/** A pane that always shows one captured screen and records every write. */
+function still(text: string): FakePane {
+  const pane = new FakePane();
+  pane.render = () => text;
+  return pane;
+}
+
+describe("real screens from the fixture corpus", () => {
 
   test("an idle Claude screen reads free at S0 (prepare offers nothing to confirm)", async () => {
     const { protocol } = rig({ pane: still(fixture("claude-lab--idle-fresh--w82.txt")) });
@@ -2590,6 +2591,26 @@ describe("real screens from the fixture corpus", () => {
     drafted.pane.box = "half a thought";
     const onDraft = await drafted.protocol.handle({ id: "fixture-prep-4", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
     expect(onDraft.offers).toEqual(["append", "replace", "cancel"]);
+  });
+
+  // The 2026-10-16 incident on lane 8788: the agents panel under a free box, with "↓ to view" on the
+  // mode row and "↓ to manage" under the panel. 37 sends were refused `unconfirmed`; a plain send goes in.
+  test("a plain send goes in with the agents panel under the box (incident 2026-10-16)", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.status = [
+      "  CTX:8% CACHE:99% LIMITS 5h:9%/4h:21m",
+      "  [model] ~/project on main*",
+      "  ⏵⏵ bypass permissions on (shift+tab to cycle) · 2 background tasks · ↓ to view · ← 11 agents",
+      "",
+      "  ● main",
+      "  ◯ general-purpose   Reading profileFor in profile.ts      2m 3s · ↓ 120.1k tokens",
+      "  ◯ fork-name   a new issue arrived in GitHub, p…      31s · ↓ 40.2k tokens",
+      "",
+      "  ↓ to manage",
+    ];
+    const answer = await send("carry on with the review please");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys).toContain("Enter");
   });
 
   for (const name of ["claude--menu-model-picker.txt", "claude--menu-resume-picker--w120-search.txt"]) {
@@ -2742,6 +2763,38 @@ describe("counters, the cap and the examples", () => {
     expect(text).not.toMatch(/hunter2|sk-live|typed text|password|token/u);
     expect(example.cluster.some((row) => row.includes("─"))).toBe(true);
     expect(example.cluster.join("\n")).toMatch(/aa/u);
+  });
+
+  test("a refusal over a screen Collie cannot read keeps a negative example: masked cluster, cue kinds and rows, the text as a length", async () => {
+    const ledger = ledgerFor();
+    const { send } = rig({ ledger, pane: still(fixture("claude--menu-effort-slider--w40-low.txt")) });
+    const answer = await send("this exact typed text must not be stored");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    const files = readdirSync(ledger.examplesDir);
+    expect(files).toHaveLength(1);
+    const text = readFileSync(join(ledger.examplesDir, files[0]!), "utf8");
+    // SAFETY: the file was written by `SurfaceLedger.example` a line above; only fields of the written body are read back.
+    const example = JSON.parse(text) as { cluster: string[]; cues: { kind: string; at: number | null; row: string }[] };
+    expect(example).toMatchObject({ outcome: "refused", reason: "unconfirmed", modal: "unreadable", text: "<typed:40>", textLength: 40 });
+    expect(example.cues.length).toBeGreaterThan(0);
+    for (const cue of example.cues) {
+      expect(cue.kind.length).toBeGreaterThan(0);
+      // Masked like the cluster: letters are `a`, digits `0`, other marks `x`.
+      expect(cue.row).toMatch(/^[a0x\s\u2500-\u259f]*$/u);
+      if (cue.at !== null) expect(example.cluster[cue.at]).toBe(cue.row);
+    }
+    expect(text).not.toMatch(/typed text|effort|Medium/u);
+  });
+
+  test("a refusal over a lifted ask or a draft keeps no example: the reader read those screens", async () => {
+    const ledger = ledgerFor();
+    const { pane, send } = rig({ ledger });
+    pane.dialog = DIALOG;
+    expect((await send("not over a dialog")).receipt?.outcome).toBe("refused");
+    pane.dialog = null;
+    pane.box = "half a thought";
+    expect((await send("not over a draft")).receipt?.reason).toBe("draft_present");
+    expect(existsSync(ledger.examplesDir)).toBe(false);
   });
 
   test("a send on the fast path stores no example", async () => {
