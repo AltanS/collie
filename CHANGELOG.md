@@ -198,6 +198,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Claude Code's usage panel over the box reads as a dialog.** `/cost` and `/usage` can open a panel above the box during a turn. Its "Esc to cancel" row now marks a dialog, so Collie types nothing into it.
 - **A held send that may have reached the agent no longer offers Resend.** Its row says "The text may have reached the agent. Read the chat." A row whose text stayed in the box offers Submit and Discard. Cancel on a send that already went out says so.
 - **Claude Code's queued row is seen under tmux too.** There its hint reads "ctrl+x ctrl+s to send now". The profile now takes both hints.
+- **`collie hooks install --help` names `--hold-permissions`.** The flag is for Claude only and the one-line help said nothing about it.
 - **Send from the phone no longer stalls after typing when the Claude statusline is taller than 8 rows.** The reply path now reads the input box by its frame, not through the chrome reader's ceiling (#457).
 - **A hold takes a dialog only when every line of its input shows there, in order.** A two-line command whose dialog shows one line stays a keys ask. A subagent's request also needs the subagent type that the dialog's mark names.
 - **When a keys answer ends the hook first, the hold card says that the keys answered the dialog.** Before, it said that the hook stopped.

@@ -592,7 +592,7 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "install",
-        summary: "register the beacon hooks: `hooks install claude`, or `hooks install codex`",
+        summary: "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions), or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
