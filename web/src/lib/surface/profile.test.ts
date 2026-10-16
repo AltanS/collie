@@ -148,6 +148,7 @@ describe("parseProfile names the failing field", () => {
     ["a hold with no deny option", ["hold", "options"], [{ label: "Yes", decision: "allow" }], "hold.options"],
     ["a hold decision that is neither allow nor deny", ["hold", "decisions", 0, "decision"], "ask", "hold.decisions[0].decision"],
     ["a hold decided line that is no expression", ["hold", "decidedLine"], "[unclosed", "hold.decidedLine"],
+    ["a missing hold denied line", ["hold", "deniedLine"], undefined, "hold.deniedLine"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {

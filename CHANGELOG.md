@@ -93,6 +93,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The permission hook finds each running bridge as the edge emitter does.** It reads `hook-targets/` and holds with every live bridge, each with a 200 ms connect limit. It skips a dead entry and deletes its file. With no bridge listed, it uses the socket in its own state dir.
 - **The bridge holds a hooked permission as an ask with `channel: hook`, and never sends a key for it.** A socket in the bridge state folder, mode 0600, takes the request. The bridge accepts it only from a pid it places on a pane. A tap that carries the right hash goes to the hook as allow or deny. A desk answer, a timeout, a hash mismatch or a closed hook ends the hold. The dialog then becomes a new keys ask. The day counters count held asks per outcome.
 - **The phone answers a held permission in Chat, with no key.** A subagent's request shows a card with the tool, the input and Yes or No. After the hold ends, a note says Sent, answered at the desk, or answered on another Collie. The pane settings sheet reads "Hooks: live, holds permissions" for a pane whose hook holds permissions.
+- **A held deny reads as Sent when Claude prints its Interrupted line.** Claude Code 2.1.301 prints no hook line for a deny. Only a line that is new since the tap counts as proof. The Sent note of a deny ends at once, because no tool runs.
 
 ### Changed
 

@@ -105,8 +105,13 @@ export interface HoldProfile {
   readonly options: readonly HoldOption[];
   /** The rules that map a screen label to a decision, first match wins. */
   readonly decisions: readonly HoldDecisionRule[];
-  /** A regular expression source for the screen line that says the hook decided. */
+  /** A regular expression source for the screen line that says an allow took effect. */
   readonly decidedLine: string;
+  /**
+   * The same for a deny. On Claude Code 2.1.301 a deny that stops the turn prints the same line as a
+   * No at the desk: the two cannot be told apart on the screen, and they do the same thing.
+   */
+  readonly deniedLine: string;
   /** The message a deny carries back to the agent. */
   readonly denyMessage: string;
 }

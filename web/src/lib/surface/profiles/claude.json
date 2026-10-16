@@ -102,7 +102,8 @@
       { "match": "^Yes$", "decision": "allow" },
       { "match": "^No(?:\\b|$)", "decision": "deny" }
     ],
-    "decidedLine": "(?:Allowed|Denied) by PermissionRequest hook",
+    "decidedLine": "Allowed by PermissionRequest hook",
+    "deniedLine": "(?:Denied by PermissionRequest hook|Interrupted · What should Claude do instead\\?)",
     "denyMessage": "The person denied this from Collie."
   }
 }

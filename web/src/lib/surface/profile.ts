@@ -414,8 +414,9 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
     return { match: pattern(field(rule, "match", at), `${at}.match`).source, decision: oneOf(field(rule, "decision", at), `${at}.decision`, HOLD_DECISIONS) };
   });
   const decidedLine = pattern(field(node, "decidedLine", "hold"), "hold.decidedLine").source;
+  const deniedLine = pattern(field(node, "deniedLine", "hold"), "hold.deniedLine").source;
   const denyMessage = text(field(node, "denyMessage", "hold"), "hold.denyMessage");
-  return { event, toolEvent, limitMs, hookTimeoutS, inputShown, screenOnly, options, decisions, decidedLine, denyMessage };
+  return { event, toolEvent, limitMs, hookTimeoutS, inputShown, screenOnly, options, decisions, decidedLine, deniedLine, denyMessage };
 }
 
 /** A whole number of ms inside a range. */

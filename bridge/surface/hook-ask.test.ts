@@ -271,6 +271,37 @@ describe("the hold matrix", () => {
     expect(reply.receipt?.outcome).toBe("sent");
     expect(reply.receipt?.decision).toBe("deny");
     expect(conn.replies).toEqual(["deny"]);
+    // A deny runs no tool, so no tool edge comes: the Sent note ends once the hook's line shows.
+    expect(r.holds.note(PANE)).toBeNull();
+    expect(r.counted).toEqual(["phone"]);
+    expectNoKey(r);
+  });
+
+  test("a deny that stops the turn prints Interrupted, as Claude Code 2.1.301 does: the deny took effect", async () => {
+    const r = rig(BASH);
+    const { conn } = r.open();
+    const ask = r.poll()!;
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0) pane.screen = `⏺ Bash(mkfifo fixture-fifo)\n  ⎿  Interrupted · What should Claude do instead?\n${IDLE}`;
+    };
+    const reply = await r.answer(ask, "3");
+    expect(reply.receipt?.outcome).toBe("sent");
+    expect(reply.receipt?.decision).toBe("deny");
+    expectNoKey(r);
+  });
+
+  test("an older turn's hook line above the dialog is not this answer's evidence", async () => {
+    const OLD = `⏺ Bash(touch a)\n  ⎿  Allowed by PermissionRequest hook\n`;
+    const r = rig(`${OLD}${BASH}`);
+    const { conn } = r.open();
+    const ask = r.poll()!;
+    // The hook took the decision, but the screen shows only the old line: no proof, not Sent.
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0) pane.screen = `${OLD}${BASH}`;
+    };
+    const reply = await r.answer(ask, "1");
+    expect(conn.replies).toEqual(["allow"]);
+    expect(reply.receipt?.outcome).toBe("unknown");
     expectNoKey(r);
   });
 

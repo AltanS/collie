@@ -105,6 +105,8 @@ export interface Held {
   state: HeldState;
   outcome: HoldOutcome | null;
   sentAt: number | null;
+  /** The decision that went to the hook, once one did. */
+  decision: HoldDecision | null;
   note: HoldNote | null;
   cancelLimit: () => void;
 }
@@ -171,6 +173,7 @@ export class HoldBook {
       state: "held",
       outcome: null,
       sentAt: null,
+      decision: null,
       note: null,
       cancelLimit: () => {},
     };
@@ -256,6 +259,7 @@ export class HoldBook {
     }
     held.state = "sent";
     held.sentAt = this.now();
+    held.decision = decision;
     held.cancelLimit();
     held.note = this.noteOf(held, "sent");
     this.line(held, `sent decision=${decision}`);
@@ -273,6 +277,11 @@ export class HoldBook {
     if (outcome === "desk") {
       held.state = "ended";
       held.note = this.noteOf(held, "desk");
+    } else if (held.decision === "deny" && held.request.agent === null) {
+      // A deny runs no tool, so no tool edge ends the Sent note. The screen already moved on (the
+      // hook's line shows), so the note ends here. Found in the lab on Claude Code 2.1.301.
+      held.state = "ended";
+      held.note = null;
     }
     this.line(held, `settled outcome=${outcome}`);
   }

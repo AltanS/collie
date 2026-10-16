@@ -549,10 +549,14 @@ export class AskAnswerer {
         holds.settle(held, "phone");
         return this.holdReply(answer, target, held, "sent", undefined, state, {}, decision);
       }
-      const decided = new RegExp(held.profile.decidedLine, "u");
+      // Only a line that is new since the check read counts: an older turn's line may still show
+      // above the dialog. Found in the lab: the line of an earlier allow read as this answer's.
+      const decided = new RegExp(decision === "allow" ? held.profile.decidedLine : held.profile.deniedLine, "u");
+      const countOf = (texts: readonly string[]): number => texts.filter((row) => decided.test(row)).length;
+      const before = state.marks.check === null ? 0 : countOf(state.marks.check.texts);
       let sawLine = false;
       const after = await this.poll(state, "after", ASK_BOUNDS.after, (snap) => {
-        if (snap.texts.some((row) => decided.test(row))) {
+        if (countOf(snap.texts) > before) {
           sawLine = true;
           return "pass";
         }
