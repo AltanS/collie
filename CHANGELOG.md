@@ -199,6 +199,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A two-tap send during a Codex turn goes through.** On a pane that Collie reads without a frame, a spinner row ticks between two reads. Its spinner glyph and its timer and token digits no longer count as a moved screen. Before, every send during a Codex turn saw a moved screen and stopped. Now the send goes in, and Codex's Enter steers the text into the running turn.
 - **An older screen read no longer replaces a newer one after a hook edge.** The re-read and the poll now take turns on each pane. A prompt typed at the desk no longer confirms a phone send with the same text.
 - **A bridge restart no longer resets the "Hooks" row of a hooked pane to "none".** The bridge saves the live panes and checks each agent process again at boot. The "Hooks: none" hint no longer asks for an agent restart that is not needed.
+- **A send queued behind a turn keeps the ten-minute window for its prompt edge.** This holds when Collie sees the queue only after Enter. A running bridge writes its hook target file again within two seconds when it goes missing.
 
 ### Packaging
 
