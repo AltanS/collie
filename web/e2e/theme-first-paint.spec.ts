@@ -61,6 +61,42 @@ test("an imported theme is on the page before the bundle runs", async ({ page })
   expect(seen.attribute).toBeNull();
 });
 
+// THE SHAPE PAINTS FIRST TOO (schema version 2). A version 2 file with `radius: round` sets the four
+// radius steps before the bundle runs, so a `rounded-md` element is 12px round on the first frame.
+// The probe element carries the same utility class the app draws with; the stylesheet is a <link> in
+// index.html, so it is in force while every script of the bundle is blocked.
+async function firstFrameRadius(page: import("@playwright/test").Page): Promise<string> {
+  await page.route("**/assets/*.js", (route) => route.abort());
+  await page.goto("/");
+  return page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.className = "rounded-md";
+    document.body.append(probe);
+    return getComputedStyle(probe).borderTopLeftRadius;
+  });
+}
+
+test("a version 2 theme's radius is on the page before the bundle runs", async ({ page }) => {
+  const round = { ...theme, version: 2, surface: { radius: "round" } };
+  await page.addInitScript(
+    ([design, library]) => {
+      localStorage.setItem("collie:design:v1", design);
+      localStorage.setItem("collie:themes:v1", library);
+    },
+    [
+      JSON.stringify({ font: "aldrich", theme: "midnight" }),
+      JSON.stringify({ version: 1, themes: [round] }),
+    ] as const,
+  );
+  expect(await firstFrameRadius(page)).toBe("12px");
+  expect(await page.evaluate(() => document.documentElement.style.getPropertyValue("--radius-md"))).toBe("12px");
+});
+
+test("the default theme's radius on the first frame is the sharp 2px", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "aldrich" })));
+  expect(await firstFrameRadius(page)).toBe("2px");
+});
+
 test("a device on the default theme gets no attribute and no inline property", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "aldrich" })));
   await page.route("**/assets/*.js", (route) => route.abort());
