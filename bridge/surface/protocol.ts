@@ -59,6 +59,10 @@
 // above the box may lose text (go blank, or move because rows vanished) but never gain any, and a
 // modal cue that shows still fails.
 //
+// A command in a running turn (M56 spec 15): a profile whose harness queues a command entered during
+// a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
+// message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
+//
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
@@ -641,6 +645,15 @@ function queuesInTurn(match: ProfileMatch | null): boolean {
 }
 
 /**
+ * Whether the harness also queues a command entered while its turn runs (`keys.commandWhileRunning:
+ * "queues"`, measured in the lab, M56 spec 15). Only then does a command take the queued path; on
+ * every other harness a command in a turn is refused `turn_running`.
+ */
+function commandQueues(match: ProfileMatch | null): boolean {
+  return queuesInTurn(match) && match?.profile.keys.commandWhileRunning === "queues";
+}
+
+/**
  * The keys that commit a send: the profile's submit keys, or its queue key for a send that goes into
  * a running turn on a harness whose Enter does not queue. Enter never goes into such a turn.
  */
@@ -683,9 +696,8 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame): Ended | null {
   const box = boxText(frame);
   const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
   const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
-  if (request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null)) {
-    return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
-  }
+  const isCommand = request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null);
+  if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
   return null;
 }
 
@@ -1661,9 +1673,8 @@ export class SendProtocol {
     if (!runs) return;
     if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
     const leads = profile.reservedLeads;
-    if (state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null) {
-      throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
-    }
+    const isCommand = state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null;
+    if (isCommand && !commandQueues(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
     state.queued = true;
   }
 
@@ -1934,7 +1945,9 @@ export class SendProtocol {
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
         const outside = inTurn
-          ? this.turnOutside(state, s0, snap)
+          ? state.command
+            ? this.bandScrolled(state, snap)
+            : this.turnOutside(state, s0, snap)
           : state.manual
             ? manualOutsideUnchanged(s0, snap)
             : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
@@ -2044,8 +2057,11 @@ export class SendProtocol {
           return "wait";
         }
         const inTurn = state.queued || state.streamed;
+        // A command in a turn: its popup may fill the rows under the box, so only the rows above count.
         const outside = inTurn
-          ? this.turnOutside(state, s0, snap)
+          ? command
+            ? this.bandScrolled(state, snap)
+            : this.turnOutside(state, s0, snap)
           : manual
             ? aboveLostOnly(s0, snap)
             : command

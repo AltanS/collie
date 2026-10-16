@@ -49,6 +49,7 @@
       "cancel": "Escape"
     },
     "enterWhileRunning": "steers",
+    "commandWhileRunning": "queues",
     "queueKey": "Tab",
     "queuedRow": {
       "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",

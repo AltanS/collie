@@ -43,6 +43,7 @@
       "cancel": "Escape"
     },
     "enterWhileRunning": "queues",
+    "commandWhileRunning": "queues",
     "queuedRow": {
       "pattern": "^\\s*❯ (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*ctrl\\+enter to send now\\s*$",

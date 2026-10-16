@@ -25,6 +25,14 @@ export type HookKind = "edge" | "ask";
  * idle box and queues in a turn), so no send of text ever presses Enter there.
  */
 export type EnterWhileRunning = "queues" | "steers" | "submits" | "ignored";
+/**
+ * What the commit key does to a command (a text with a reserved lead) entered while a turn runs, as
+ * the lab measured it (M56 spec 15): `queues` (the harness draws it as a queued row and runs it after
+ * the turn), `runs` (at once), `drops` or `steers`. Only `queues` lets a command take the native
+ * queued path; on any other mode, or with the field absent, Collie holds the command until the pane
+ * reads free.
+ */
+export type CommandWhileRunning = "queues" | "runs" | "drops" | "steers";
 
 /** A queued message as the harness draws it (see `keys.queuedRow`). */
 export interface QueuedRow {
@@ -154,6 +162,11 @@ export interface Profile {
      * and a `hint` row at most `hintGap` blank rows under the last of them. Optional.
      */
     readonly queuedRow?: QueuedRow;
+    /**
+     * What the commit key does to a command entered while a turn runs ({@link CommandWhileRunning}).
+     * Optional: without it a command in a turn is held by Collie and sent once the pane reads free.
+     */
+    readonly commandWhileRunning?: CommandWhileRunning;
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -198,6 +211,7 @@ const STATUSES = ["verified", "provisional", "revoked"] as const;
 const PROBE_STATUSES = ["verified", "provisional"] as const;
 const HOOK_KINDS = ["edge", "ask"] as const;
 const ENTER_MODES = ["queues", "steers", "submits", "ignored"] as const;
+const COMMAND_MODES = ["queues", "runs", "drops", "steers"] as const;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE = /^(\d+\.\d+\.\d+) - (\d+\.\d+\.\d+|\*)$/;
@@ -404,6 +418,10 @@ export function parseProfile(raw: JsonValue): Profile {
     if (/^(?:enter|return)$/i.test(queueKey)) fail("keys.queueKey", "must not be Enter: keys.enterWhileRunning says what Enter does in a turn");
     if (keys.enterWhileRunning === "queues") fail("keys.queueKey", "is for a harness whose Enter does not queue");
     keys = { ...keys, queueKey };
+  }
+  if (keysNode.commandWhileRunning !== undefined) {
+    const commandWhileRunning = oneOf(keysNode.commandWhileRunning, "keys.commandWhileRunning", COMMAND_MODES);
+    keys = { ...keys, commandWhileRunning };
   }
   if (keysNode.commandSubmit !== undefined) {
     const commandSubmit = textList(keysNode.commandSubmit, "keys.commandSubmit", 1);

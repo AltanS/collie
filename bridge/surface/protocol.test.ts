@@ -318,6 +318,13 @@ function rig(
   return { pane, protocol, deps, clock, send };
 }
 
+/** A profile whose harness does not queue a command entered during a turn (no `keys.commandWhileRunning`). */
+function noCommandQueue(profile: Profile): Profile {
+  const { commandWhileRunning, ...keys } = profile.keys;
+  void commandWhileRunning;
+  return { ...profile, keys };
+}
+
 function neverEscape(pane: FakePane): void {
   expect(pane.keysSeen.filter((key) => /^esc(ape)?$/iu.test(key))).toEqual([]);
 }
@@ -1112,9 +1119,9 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Tab");
   });
 
-  test("`!ls` is a shell command on Codex: Enter on an idle box, refused in a turn, never Tab (lab, 0.163.0)", async () => {
+  test("`!ls` is a shell command on Codex: Enter on an idle box, the queue key in a turn (lab, 0.163.0)", async () => {
     // Lab, 2026-10-16: on an idle box Tab does nothing with `!ls` (Shell mode) and Enter runs it; in a
-    // turn Tab queues it, and it runs as a shell command after the turn. So it is a command, never Tab.
+    // turn Tab queues it, and it runs as a shell command after the turn (M56 spec 15 made that the path).
     const idle = codex();
     const sent = await idle.send("!ls", { mode: "command" });
     expect(sent.receipt).toMatchObject({ outcome: "sent" });
@@ -1123,9 +1130,11 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect((await idle.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
     const busy = codex();
     busy.pane.over = [CODEX_RUNNING];
-    expect((await busy.send("!ls", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect((await busy.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
-    expect(busy.pane.keysSeen).toEqual([]);
+    const queued = await busy.send("!ls", { mode: "command" });
+    expect(queued.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(busy.pane.queued).toEqual(["!ls"]);
+    expect(busy.pane.keysSeen).not.toContain("Enter");
   });
 
   test("an `@` text is a message on Codex: it goes in with Tab, never Enter (N2)", async () => {
@@ -1136,7 +1145,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("`/model` is a command on Codex: Enter on an idle box, refused in a turn (N2)", async () => {
+  test("`/model` is a command on Codex: Enter on an idle box, the queue key in a turn, never Enter (N2, M56 spec 15)", async () => {
     const idle = codex();
     const sent = await idle.send("/model", { mode: "command" });
     expect(sent.receipt).toMatchObject({ outcome: "sent" });
@@ -1144,8 +1153,9 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(idle.pane.keysSeen).not.toContain("Tab");
     const busy = codex();
     busy.pane.over = [CODEX_RUNNING];
-    expect((await busy.send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
-    expect(busy.pane.calls).toEqual([]);
+    expect((await busy.send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(busy.pane.queued).toEqual(["/model"]);
+    expect(busy.pane.keysSeen).not.toContain("Enter");
   });
 
   test("a `/` text that names no Codex command still takes Enter as a command: Tab would complete it (N2)", async () => {
@@ -1206,8 +1216,18 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a command waits for the Codex turn: refused turn_running, nothing typed", async () => {
+  test("a command in a Codex turn is queued with Tab (lab, 0.163.0: `/status` then Tab queued it and it ran after the turn)", async () => {
     const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.queued).toEqual(["/compact"]);
+    neverEscape(pane);
+  });
+
+  test("a Codex profile with no commandWhileRunning refuses a command in a turn: turn_running, nothing typed", async () => {
+    const { pane, send } = codex({ edit: noCommandQueue });
     pane.over = [CODEX_RUNNING];
     expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(pane.calls).toEqual([]);
@@ -1297,8 +1317,26 @@ describe("a send into a running turn", () => {
     expect(pane.transcript.at(-1)).toBe("> half a thought and the rest");
   });
 
-  test("a command waits for the turn: refused turn_running, nothing typed", async () => {
+  test("a command in a turn goes in queued on a harness that queues commands (lab, 2.1.301: `/help` then Enter queued it and it ran after the turn)", async () => {
     const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.drawsQueuedRow = true;
+    // The slash popup fills the rows under the box while the command stands there, and the turn prints above.
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:/") || what.startsWith("type:/")) p.popup = ["  /compact     Clear the history but keep a summary", "  /config      Open the settings"];
+      if (what.endsWith("Enter")) p.popup = null;
+    };
+    pane.beforeRead = (p, n) => {
+      p.transcript.push(`streamed reply row ${String(n)}`);
+    };
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.over[0]).toBe("❯ /compact");
+    neverEscape(pane);
+  });
+
+  test("a command in a turn on a harness that does not queue commands: refused turn_running, nothing typed", async () => {
+    const { pane, send } = rig({ edit: noCommandQueue });
     pane.over = [LIVE_ROW];
     expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(pane.calls).toEqual([]);
@@ -1318,8 +1356,17 @@ describe("a send into a running turn", () => {
     expect(protocol.recent("%1")[0]).toMatchObject({ outcome: "sent", queued: true });
   });
 
-  test("a box holding a command: a send gets the draft offers, and Add to it and Submit are refused turn_running; Replace goes in queued", async () => {
+  test("a box holding a command: a send gets the draft offers, and Add to it and Submit go in queued where commands queue", async () => {
     const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.box = "/compact";
+    expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect((await send("/compact", { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> /compact");
+  });
+
+  test("a box holding a command where commands do not queue: a send gets the draft offers, and Add to it and Submit are refused turn_running; Replace goes in queued", async () => {
+    const { pane, send } = rig({ edit: noCommandQueue });
     pane.over = [LIVE_ROW];
     pane.box = "/compact";
     expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });

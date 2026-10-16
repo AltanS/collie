@@ -159,6 +159,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A marked row follows the theme's corners.** The selected or blocked row in the spaces list, the program list and the session and machine switchers wears a 2px bar on its left edge under square corners, as before. Under soft or round corners a marked row wears a ring on all four sides instead of a left bar. The Collie theme keeps its left bar.
 - **A marked row under rounded corners also lifts.** With its ring on all four sides, a selected or blocked row under soft or round corners takes a soft shadow, and an unmarked row takes none. Under Collie's square corners nothing changes.
 - **The theme import preview and its refusals speak all eleven languages.** The shape and terminal palette labels and the two new refusal sentences were translated; the import promise now says a theme changes how the app looks and nothing else.
+- **A command typed during a turn waits in the harness queue on Claude Code and Codex.** The lab saw both queue a slash command and run it after the turn. Their profiles now say so with `keys.commandWhileRunning: "queues"`. The bridge sends such a command like a queued message: Enter on Claude Code, Tab on Codex. Its popup under the box no longer stops the send. A profile without the field still refuses the command.
 
 ### Fixed
 
