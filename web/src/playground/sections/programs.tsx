@@ -1,4 +1,4 @@
-// Durable home section of the states playground: a durable program's conversation list, which is the
+// Programs home section of the states playground: a durable program's conversation list, which is the
 // dashboard on a machine with no screen, and the pane header's two lines in each of their priorities. One list
 // with no filter chips since durable-simple (2026-10-13). See app.tsx's header for the page's own rules: the
 // REAL components with REAL props.
@@ -24,8 +24,8 @@ import { Card, Group, Section, type SectionDef } from "../layout";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
-  id: "durable",
-  title: "Durable home",
+  id: "programs",
+  title: "Programs home",
   intent:
     "A durable program this collie or a crew member carries is a row of the dashboard's Programs section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no program. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done. A program's question is a card that names the program in its caption and, when the program set an expiry, shows the time left under its title; an answer that comes too late says who decided first. A program refused for its wire version says why above its list.",
 };
@@ -39,7 +39,7 @@ function convo(paneId: string, title: string, over: Partial<AgentView> = {}): Ag
     workspaceLabel: "support",
     workspaceNumber: 1,
     tabId: `${paneId}:t`,
-    agent: "durable",
+    agent: "program",
     status: "idle",
     cwd: "",
     focused: false,

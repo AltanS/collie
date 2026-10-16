@@ -114,6 +114,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
+- **The states playground names its program section for the person, not for a multiplexer.** The section is `#programs`, "Programs home", in `sections/programs.tsx`, and its fixture panes carry the agent `program`, so the mux-name guard passes again with the durable adapter registered. `scripts/docs-screens.sh` opens `#programs`.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.
 - **A dialog Collie has read is answered at the thumb.** With a draft in the box, Send becomes "Answer the dialog" and a tap scrolls to the dialog card and focuses its first button, instead of a refusal line in the header that a phone has scrolled away. The placeholder names what is waiting ("Menu is waiting"), an empty box keeps its microphone, and a 2.1.300 `/model` picker capture at 119 columns joins the fixtures.
 - **The parked Cloudflare example's version test matches the wire.** A refused version answers 409 with the refusal field the SDK core emits.
@@ -122,6 +123,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A refused send says why at the thumb when no dialog was read.** When the unread-dialog card or a refused pre-flight arms "Type anyway?", the reason the header shows now also stands above the input box for as long as the override is armed. With the unread card on screen its "Answer the dialog" control scrolls to the card and focuses it; with no card it carries no control.
 - **Chat says when OmO's question waits in the terminal.** OmO can show a `? Question pending` banner over its ready editor instead of the dialog, and Chat showed nothing. The thread now ends with one line, "A question is waiting in the terminal. Your next message answers it.", with no card and no buttons, because a reply sent then is OmO's own free-text answer.
 - **A pi or OmO pane started with `NO_COLOR=1` is read as before, and tests pin it.** Real captures show that neither pi 0.87.1 nor OmO 5.1.30 honours the variable: both paint every row as usual, so Collie's paint-based readers read the editor, the draft and the question unchanged. Four captures join the fixtures, and `pi/ASK_NOTES.md` says why the readers keep the paint rule.
+- **Windows: a socket attach says to use --url.** A private socket needs Unix user ids; programs on Windows attach over HTTPS, and doctor's per-program rows are pinned for that platform.
+- **Three private-folder tests hold on Windows.** They read the owner-only state the way the code sets it, instead of POSIX mode bits.
+- **The Windows suite's skip budget counts the durable socket tests.** Nine example-program tests need a Unix socket and skip there by design.
 
 ### Packaging
 

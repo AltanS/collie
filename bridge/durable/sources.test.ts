@@ -4,9 +4,11 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { durableJournal } from "../journal/durable.ts";
 import { DurableMux } from "../mux/durable/adapter.ts";
 import { FakeDurableProgram, type FakeEvent } from "../mux/durable/fixture.ts";
+import { isOwnerOnly } from "../owner-only.ts";
 import type { Ask } from "../types.ts";
 import { askFloodMessage, askFloodTag, AskPush, LOCAL_ASK_HOST } from "./ask-push.ts";
 import { AskGuardStore, decideAsks, GUARD_FILE } from "./guard.ts";
@@ -32,6 +34,15 @@ async function program(): Promise<FakeDurableProgram> {
   const fake = await FakeDurableProgram.startWire();
   cleanups.push(() => fake.close());
   return fake;
+}
+
+/**
+ * A folder the bridge made is private to this user. POSIX: mode 0700. NTFS reports 666 for every folder,
+ * so Windows reads the owner-only access list the folder inherits, the way the bridge's own checks do.
+ */
+function expectPrivateFolder(path: string): void {
+  if (HOST.platform === "win32") expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+  else expect(statSync(path).mode & 0o777).toBe(0o700);
 }
 
 const PANE = "conv-01";
@@ -79,7 +90,7 @@ describe("two programs with the same conversation id", () => {
     expect(readFileSync(deskPath, "utf8")).not.toContain("from the cloud");
     expect(readFileSync(cloudPath, "utf8")).toContain("from the cloud");
     // Each program's folder is private, as the one folder was.
-    expect(statSync(sourceLogDir(state, "desk")).mode & 0o777).toBe(0o700);
+    expectPrivateFolder(sourceLogDir(state, "desk"));
   });
 
   test("the card reads the adapter's phase and the program's name", async () => {
@@ -108,7 +119,7 @@ describe("the one-time move to one folder per program", () => {
     expect(await moveFlatLogs(state, "default", (line) => lines.push(line))).toBe(2);
     expect(readdirSync(root)).toEqual(["default"]);
     expect(readdirSync(join(root, "default")).toSorted()).toEqual([cursorFileName("conv-01"), logFileName("conv-01")].toSorted());
-    expect(statSync(join(root, "default")).mode & 0o777).toBe(0o700);
+    expectPrivateFolder(join(root, "default"));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("moved 2 pane log file(s)");
     // A second boot finds nothing to move and says nothing.
