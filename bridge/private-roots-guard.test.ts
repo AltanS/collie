@@ -44,6 +44,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "cli/durable-attach.ts", count: 1, why: "the path is `sourcesPath(deps.ctx)`, `sources.json` in the instance config folder beside `.env`; the temp file is its `.tmp` sibling" },
   { file: "bridge/surface/requests.ts", count: 6, why: "every path is under the folder `RequestStore` is handed, `<stateDir>/sends` from index.ts (M56 spec 05): the folder, its `.salt`, each `<id>.json` and each ask answer's `ask.<id>.json` (M56 spec 08), both through their `.tmp` siblings" },
   { file: "bridge/surface/counters.ts", count: 5, why: "every path is under `<stateDir>/surface`, the folder `SurfaceLedger` builds from the state folder index.ts hands it (M56 spec 09): the day files through their `.tmp` siblings, the examples folder and its files, and the inbox file beside them" },
+  { file: "bridge/surface/hold.ts", count: 3, why: "the hold socket's folder and file, `holdSocketPath(cfg.stateDir)` from index.ts (M56 spec 12): `<stateDir>/hold` at 0700 and its `sock` at 0600; the server does not start on Windows" },
   { file: "bridge/owner-only.ts", count: 2, why: "the private-folder code itself: the backup folder inside the state folder, and the folder being made private" },
 ];
 

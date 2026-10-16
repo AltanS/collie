@@ -36,6 +36,12 @@ function edgeWords(row: CounterRow): string[] {
   return total === 0 ? [] : [`edges ${String(total)}${words(row.edges)}`];
 }
 
+/** Hook-held permissions by outcome (M56 spec 12), only where a hold happened. */
+function holdWords(row: CounterRow): string[] {
+  const total = Object.values(row.holds).reduce((sum, n) => sum + n, 0);
+  return total === 0 ? [] : [`held asks ${String(total)}${words(row.holds)}`];
+}
+
 function rowLine(row: CounterRow): string {
   const unknown = unknownTotal(row);
   const refused = Object.values(row.refused).reduce((sum, n) => sum + n, 0);
@@ -55,6 +61,7 @@ function rowLine(row: CounterRow): string {
     `discarded ${String(row.discarded)}`,
     // Hook edges (M56 spec 11) only where a pane took one, so a host without hooks reads as before.
     ...edgeWords(row),
+    ...holdWords(row),
   ].join(" · ");
 }
 

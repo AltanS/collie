@@ -238,7 +238,12 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
     keys: keys.filter((key): key is string => key !== undefined),
     outcome,
   };
-  return reason === undefined ? receipt : { ...receipt, reason };
+  // The two hook fields (M56 spec 12): a hook-held ask names its channel and the decision it sent.
+  const decision = node.decision === "allow" || node.decision === "deny" ? node.decision : undefined;
+  let hooked: AskReceipt = receipt;
+  if (node.channel === "hook") hooked = { ...hooked, channel: "hook" };
+  if (node.channel === "hook" && decision !== undefined) hooked = { ...hooked, decision };
+  return reason === undefined ? hooked : { ...hooked, reason };
 }
 
 /** An ask record read back from its file, every field checked; null when it is not one this module wrote. */

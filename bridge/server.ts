@@ -1482,7 +1482,11 @@ export function startServer(opts: {
       const surface = from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
-      return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
+      // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
+      // The input is a command line, so it takes the mirror's mask like the ask's labels do.
+      const note = surface === undefined ? null : (from.hold?.(wire.paneId) ?? null);
+      const held = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input) } : note };
+      return from.send === undefined ? held : { ...held, sendProtocol: true as const };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {

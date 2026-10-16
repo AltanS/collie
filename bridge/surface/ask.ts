@@ -34,6 +34,7 @@ import { askOf, shortHash, type Ask, type Surface } from "../../web/src/lib/surf
 import type { KeyGate } from "./key-gate.ts";
 import type { RowRing, SessionLocks } from "./protocol.ts";
 import type { AskRecord, RequestStore } from "./requests.ts";
+import type { Held, HoldBook } from "./hold.ts";
 
 /** An ask's lifetime when its profile names none: older than this and off the screen, it is voided. */
 export const ASK_LIFETIME_MS = 5000;
@@ -87,11 +88,29 @@ export class AskBook {
   private readonly current = new Map<string, string>();
   private serial = 0;
 
+  /** The session's hook-held permissions (M56 spec 12), when the bridge takes holds. */
+  holds: HoldBook | null = null;
+
   constructor(
     private readonly now: () => number = () => Date.now(),
     /** Random per book, so a restart never mints an id a stored receipt already holds. */
     private readonly salt: string = randomUUID(),
   ) {}
+
+  /**
+   * Take the session's holds. Every read of a pane with a live hold then publishes the hook ask, and
+   * a hold that opens voids the pane's keys ask, so a tap on it can never send a key into the dialog.
+   */
+  attachHolds(holds: HoldBook): void {
+    this.holds = holds;
+    holds.voidKeysAsk = (paneId) => this.voidPane(paneId);
+  }
+
+  /** The pane's live keys ask is voided: a tap on its id answers `ask_gone`. */
+  voidPane(paneId: string): void {
+    const live = this.liveEntry(paneId);
+    if (live !== null) live.state = "voided";
+  }
 
   /**
    * One read of a pane lifted `dialog` (or nothing): the ask with its id. The same binding on a live
@@ -100,6 +119,12 @@ export class AskBook {
    * younger one is kept, since one read can miss a dialog that is still up.
    */
   publish(paneId: string, generation: string, dialog: LiftedDialog | null, lifetimeMs: number = ASK_LIFETIME_MS): Ask | null {
+    // A live hook hold owns the pane's ask (M56 spec 12). It returns null when this read ended it:
+    // the screen's dialog then gets a keys ask with a new id below.
+    if (this.holds?.live(paneId) === true) {
+      const held = this.holds.claim(paneId, generation, dialog);
+      if (held !== null) return held;
+    }
     const now = this.now();
     const live = this.liveEntry(paneId);
     if (dialog === null) {
@@ -280,6 +305,8 @@ interface AskSnap {
   readonly revision: number;
   readonly gateRevision: number;
   readonly hash: string;
+  /** The rows as text, for the hold's evidence line. Never stored. */
+  readonly texts: readonly string[];
   readonly dialog: LiftedDialog | null;
   readonly surface: Surface;
 }
@@ -321,6 +348,8 @@ function sentenceOf(reason: AskReason): string | undefined {
       return "The dialog changed since you looked. Nothing was sent; check the new one.";
     case "ask_gone":
       return "This dialog is gone from the screen. Nothing was sent.";
+    case "ask_desk":
+      return "Answered at the desk. Your tap was not used.";
     case "ask_mismatch":
       return "The highlight did not reach your choice, so Enter was not sent.";
     case "no_plan":
@@ -372,6 +401,17 @@ export class AskAnswerer {
       await running;
       return this.handle(answer, target);
     }
+    // A hook-held permission (M56 spec 12) is answered through its hook. It never reaches the keys.
+    const held = this.deps.book.holds?.byAskId(answer.askId);
+    if (held !== undefined && held.paneId === target.paneId) {
+      const work = this.answerHold(answer, target, held);
+      this.inFlight.set(answer.askId, work);
+      try {
+        return await work;
+      } finally {
+        this.inFlight.delete(answer.askId);
+      }
+    }
     const entry = this.deps.book.entry(answer.askId);
     const stored = this.deps.store.getAsk(answer.askId);
     if (stored === null && (entry === undefined || entry.paneId !== target.paneId)) {
@@ -415,6 +455,163 @@ export class AskAnswerer {
     } finally {
       this.inFlight.delete(answer.askId);
     }
+  }
+
+  // ── A hook-held permission (M56 spec 12) ──
+
+  /**
+   * One tap on a hook-held ask. No key is sent on any path: the gate is never asked. The answer is
+   * stored before the decision, single use like a keys answer. The decision goes to the hook only
+   * when the id is the hold's live one, the hash matches, the option names a decision, and the
+   * dialog the ask was read from is still on the screen. Else the reply says why, and a hash mismatch
+   * releases the hook with no decision.
+   */
+  private async answerHold(answer: Answer, target: AskTarget, held: Held): Promise<AskReply> {
+    const holds = this.deps.book.holds!;
+    const accepted = this.deps.store.acceptAsk({
+      id: answer.askId,
+      session: target.session,
+      paneId: target.paneId,
+      paneGeneration: held.generation,
+      hash: answer.hash,
+      optionId: answer.optionId,
+    });
+    if (accepted.kind === "answered") {
+      return this.holdReply(answer, target, held, "refused", "ask_answered", null, { ask: held.state === "held" ? held.ask : await this.look(target, held.generation) });
+    }
+    if (accepted.kind === "replay") {
+      const kept = accepted.record.receipt;
+      if (kept !== undefined) return { receipt: kept, replayed: true };
+      const receipt: AskReceipt = { ...AskAnswerer.crashReceipt(accepted.record), harness: target.harness, channel: "hook" };
+      this.deps.store.settleAsk(answer.askId, receipt);
+      return { receipt, replayed: true, detail: "The bridge restarted during this answer. Check the screen." };
+    }
+    if (held.state === "ended" || held.state === "sent") {
+      const first = held.outcome === "desk" || held.outcome === "elsewhere";
+      if (first) return this.holdReply(answer, target, held, "refused", "ask_desk", null, { detail: held.outcome === "elsewhere" ? "Answered on another Collie. Your tap was not used." : undefined });
+      if (held.state === "sent") return this.holdReply(answer, target, held, "refused", "ask_answered", null, {});
+      return this.holdReply(answer, target, held, "refused", "ask_gone", null, { ask: await this.look(target, held.generation), detail: "Collie let the hook go. The dialog on the screen is a new card." });
+    }
+    const ask = held.ask;
+    if (ask === null || ask.id !== answer.askId) {
+      // An id this hold replaced (its labels came from the screen a moment later): the same request,
+      // so the hook stays held, and the reply carries the live ask.
+      return this.holdReply(answer, target, held, "refused", "ask_changed", null, { ask });
+    }
+    if (held.state !== "held") return this.holdReply(answer, target, held, "refused", "busy", null, {});
+    if (answer.hash !== ask.hash) {
+      holds.end(held, "mismatch");
+      return this.holdReply(answer, target, held, "refused", "ask_changed", null, {
+        ask: await this.look(target, held.generation),
+        detail: "The request changed since you looked. Collie let the hook go. Check the dialog on the screen.",
+      });
+    }
+    const index = ask.options.findIndex((option) => option.id === answer.optionId);
+    const decision = index < 0 ? null : (held.decisions[index] ?? null);
+    if (decision === null) {
+      return this.holdReply(answer, target, held, "refused", "no_plan", null, { detail: "The hook answers Yes or No only. Use the screen and the keys for this choice." });
+    }
+
+    const lockKey = `${target.session}\u0000${target.paneId}`;
+    const deadline = this.now() + ASK_LOCK_MS;
+    if (!this.deps.locks.acquire(lockKey, answer.askId, deadline, this.now())) {
+      return this.holdReply(answer, target, held, "refused", "busy", null, {});
+    }
+    held.state = "answering";
+    const state: AskRun = {
+      answer,
+      target,
+      record: accepted.record,
+      entry: undefined,
+      match: await this.deps.profile(target.harness),
+      lockKey,
+      deadline,
+      marks: { check: null, readBack: null, after: null },
+      keys: [],
+    };
+    try {
+      if (held.dialog !== null) {
+        // The dialog the ask was read from must still be on the screen: else the desk answered.
+        const check = await this.read(state, "check", this.now() + ASK_BOUNDS.check.ms, "refused").catch(() => null);
+        state.marks.check = check;
+        if (check === null || check.dialog === null || !sameDialog(held.dialog, check.dialog)) {
+          holds.end(held, "desk");
+          return this.holdReply(answer, target, held, "refused", "ask_desk", state, {});
+        }
+        state.marks.readBack = check;
+      }
+      if (!holds.decide(held, decision)) {
+        return this.holdReply(answer, target, held, "refused", "ask_gone", state, { ask: await this.look(target, held.generation), detail: "The hook stopped before your tap reached it. The dialog on the screen is a new card." });
+      }
+      if (held.dialog === null) {
+        // No dialog on the screen (a subagent's request): the hook took the decision. The tool edge
+        // or the hold's own note ends the Sent card.
+        holds.settle(held, "phone");
+        return this.holdReply(answer, target, held, "sent", undefined, state, {}, decision);
+      }
+      const decided = new RegExp(held.profile.decidedLine, "u");
+      let sawLine = false;
+      const after = await this.poll(state, "after", ASK_BOUNDS.after, (snap) => {
+        if (snap.texts.some((row) => decided.test(row))) {
+          sawLine = true;
+          return "pass";
+        }
+        return "wait";
+      }).catch(() => ({ snap: null, verdict: "wait" as const }));
+      state.marks.after = after.snap;
+      if (sawLine) {
+        holds.settle(held, "phone");
+        return this.holdReply(answer, target, held, "sent", undefined, state, {}, decision);
+      }
+      if (after.snap !== null && (after.snap.dialog === null || !sameDialog(held.dialog, after.snap.dialog))) {
+        // The dialog closed with no line from the hook: the desk's key landed first, and the
+        // harness ignored the hook's answer. The phone's answer is void, and the reply says so.
+        holds.settle(held, "desk");
+        return this.holdReply(answer, target, held, "refused", "ask_desk", state, { detail: "The desk answered first. Your answer was not used." }, decision);
+      }
+      return this.holdReply(answer, target, held, "unknown", "no_evidence", state, { detail: "Your answer went to the hook, but the screen did not show it yet." }, decision);
+    } finally {
+      this.deps.locks.release(lockKey, answer.askId);
+    }
+  }
+
+  private holdReply(
+    answer: Answer,
+    target: AskTarget,
+    held: Held,
+    outcome: AskOutcome,
+    reason: AskReason | undefined,
+    state: AskRun | null,
+    extra: { ask?: Ask | null; detail?: string | undefined },
+    decision?: "allow" | "deny",
+  ): AskReply {
+    const base: AskReceipt = {
+      askId: answer.askId,
+      session: target.session,
+      paneId: target.paneId,
+      paneGeneration: held.generation,
+      harness: target.harness,
+      kind: "permission",
+      hash: held.ask?.hash ?? answer.hash,
+      optionId: answer.optionId,
+      origin: "person_tap",
+      check: markOf(state?.marks.check ?? null),
+      readBack: markOf(state?.marks.readBack ?? null),
+      after: markOf(state?.marks.after ?? null),
+      keys: [],
+      outcome,
+      channel: "hook",
+    };
+    const withReason: AskReceipt = reason === undefined ? base : { ...base, reason };
+    const receipt: AskReceipt = decision === undefined ? withReason : { ...withReason, decision };
+    this.deps.store.settleAsk(answer.askId, receipt);
+    let reply: AskReply = { receipt };
+    const detail = extra.detail ?? (reason === undefined ? undefined : sentenceOf(reason));
+    if (detail !== undefined) reply = { ...reply, detail };
+    const snap = state?.marks.after ?? state?.marks.check ?? null;
+    if (snap !== null) reply = { ...reply, surface: snap.surface };
+    if (extra.ask !== undefined && extra.ask !== null) reply = { ...reply, ask: extra.ask };
+    return reply;
   }
 
   private bareReceipt(answer: Answer, target: AskTarget, entry: AskEntry | null, generation: string, outcome: AskOutcome, reason: AskReason | undefined, keys: readonly string[]): AskReceipt {
@@ -619,7 +816,7 @@ export class AskAnswerer {
     const ask = this.publish(state, dialog);
     const idle = state.match?.profile.idle ?? null;
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
-    return { revision: grid.value.revision, gateRevision, hash: shortHash(texts.join("\n")), dialog, surface };
+    return { revision: grid.value.revision, gateRevision, hash: shortHash(texts.join("\n")), texts, dialog, surface };
   }
 
   private async readOnce(state: AskRun, step: string, ms: number, outcome: "refused" | "unknown"): Promise<AskSnap> {

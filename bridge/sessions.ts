@@ -3,6 +3,7 @@ import { basename, dirname } from "node:path";
 import type { SendProtocol } from "./surface/protocol.ts";
 import type { SurfaceShadow } from "./surface/shadow.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { HoldNote } from "../web/src/lib/surface/hold.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
@@ -104,9 +105,12 @@ export interface SessionParts {
   asks?: AskAnswerer;
   /**
    * Set with `surface` on a terminal session whose adapter has a beacon matcher (M56 spec 11): whether
-   * a pane's hook source is live. The pane info on the phone says "hooks: live" or "hooks: none".
+   * a pane's hook source is live. The pane info on the phone says "hooks: live" or "hooks: none",
+   * or "holds permissions" when the harness's hook also holds permissions (M56 spec 12).
    */
-  hooks?: (paneId: string) => "live" | "none";
+  hooks?: (paneId: string) => "live" | "holds" | "none";
+  /** Set with `asks` when the bridge takes holds (M56 spec 12): the pane's hold note for the phone. */
+  hold?: (paneId: string) => HoldNote | null;
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */
