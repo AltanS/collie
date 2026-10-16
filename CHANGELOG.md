@@ -140,6 +140,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Text reaches Codex again through the two-tap Send.** Codex hides its hint row once the box holds a character, so every probe on Codex failed. A manual send (no profile, an overlay Collie cannot read, a weak cue) now lets a hint under the box go blank and the rest of the box change; the rows above the box must still stand still, and a profiled pane on a free screen keeps the strict compare.
 - **A failed probe takes its character back out when it can.** When the probe character stands exactly once in the box, one Backspace goes through the key gate and one more read checks it; the receipt lists the Backspace and the reason stays `probe_failed`. Anywhere else no key follows, and the bridge's sentence says a probe character may remain in the box.
 - **A shell line to Claude goes through when the box shows its bang as a mode marker.** A `command` matches the box with the text as written, with its lead cut, or with the lead drawn as a marker in front of the rest (`! echo ok` for `!echo ok`), white space ignored. Submit and Discard of a text that starts with `/`, `!` or `@` read the box the same way, so Submit no longer refuses `not_free` on a shell line Claude redrew.
+- **Text left in the box no longer reads as someone else's draft.** After `typed_not_submitted` the notice says "Your text is in the box, but Enter was not pressed" without "The box held a draft"; only a `mismatch`, where other text stands in the box, keeps that sentence.
+- **Recent sends say each reason in words.** The session page's list shows the composer's sentence for a reason instead of the raw code (`changed`, `not free`), and keeps the code in the row's title.
 
 ### Packaging
 

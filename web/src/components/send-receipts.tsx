@@ -1,5 +1,6 @@
 // The last ten sends the bridge ran for a pane, on the session page (M56 spec 09). Each row is one
-// receipt: the outcome, the reason when there is one, and how long ago. A tap opens the row: the keys
+// receipt: the outcome, the reason when there is one (as the composer's sentence for it, the raw code
+// in the title), and how long ago. A tap opens the row: the keys
 // the bridge sent by name and the gaps it measured between steps. That is all a receipt holds. It has
 // no text and no screen row, so nothing here can show either, and nothing here asks for them.
 //
@@ -11,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { getSendReceipts } from "@/lib/api";
+import { sendNote } from "@/lib/send-protocol";
 import { timeAgo } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
@@ -68,7 +70,11 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
                   className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
                 >
                   <span className="font-medium">{t(`sendReceipts.outcome.${row.outcome}`)}</span>
-                  {row.reason !== undefined && <span className="text-muted-foreground">{row.reason.replaceAll("_", " ")}</span>}
+                  {row.reason !== undefined && (
+                    <span className="min-w-0 text-muted-foreground" title={row.reason}>
+                      {t(`composer.protocol.${sendNote(row.outcome, row.reason)}`)}
+                    </span>
+                  )}
                   <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(row.at, now)}</span>
                   <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
                 </button>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, surfaceNote } from "./send-protocol";
+import { isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, sendNote, surfaceNote } from "./send-protocol";
 import type { Surface } from "./surface/surface";
 
 const RUNNING: Surface = { revision: 3, turn: "running", modal: "none", composer: "empty" };
@@ -94,6 +94,34 @@ describe("readSend", () => {
     expect(readSend(reply("refused", "bound")).note).toBe("bound");
     expect(readSend(reply("refused", "crash")).note).toBe("refused");
     expect(readSend(reply("typed_not_submitted", "modal_cue", ["submit", "discard", "keys"])).offers).toEqual(["submit", "discard"]);
+  });
+
+  it("typed_not_submitted with the person's own text in the box says Submit or discard, never that the box held a draft (send drill a6)", () => {
+    const DRAFT: Surface = { revision: 4, turn: "idle", modal: "none", composer: "draft" };
+    const changed = readSend(reply("typed_not_submitted", "changed", ["submit", "discard", "keys"], { surface: DRAFT }));
+    expect(changed).toMatchObject({ note: "typed", surface: null, offers: ["submit", "discard"] });
+    expect(readSend(reply("typed_not_submitted", "modal_cue", [], { surface: DRAFT })).surface).toBeNull();
+    // Other text than was typed stands in the box: that one is a draft the person did not write.
+    expect(readSend(reply("typed_not_submitted", "mismatch", [], { surface: DRAFT }))).toMatchObject({ note: "typed", surface: "draft" });
+    // A refusal on a draft keeps the screen word; a typed answer with another screen keeps it too.
+    expect(readSend(reply("refused", "not_free", [], { surface: DRAFT })).surface).toBe("draft");
+    expect(readSend(reply("typed_not_submitted", "changed", [], { surface: MENU })).surface).toBe("askMenu");
+  });
+
+  it("a multi-line text on a pane with no profile is refused multiline: the plain refusal, and the bridge's sentence says one line at a time", () => {
+    const detail = "This harness has no profile, so its newline key is unknown; send one line at a time.";
+    expect(readSend(reply("refused", "multiline", ["keys"], { detail }))).toMatchObject({ note: "refused", detail, offers: [] });
+  });
+
+  it("sendNote is the one map from an outcome and its reason to a sentence key", () => {
+    expect(sendNote("sent", null)).toBe("sent");
+    expect(sendNote("sent", "discarded")).toBe("discarded");
+    expect(sendNote("typed_not_submitted", "changed")).toBe("typed");
+    expect(sendNote("refused", "not_free")).toBe("notFree");
+    expect(sendNote("refused", "probe_failed")).toBe("probeFailed");
+    expect(sendNote("refused", "multiline")).toBe("refused");
+    expect(sendNote("unknown", "no_evidence")).toBe("unknown");
+    expect(sendNote(null, null)).toBe("unknown");
   });
 
   it("passes the receipt's surface and the bridge's sentence to the person, and an ask points to the card", () => {

@@ -231,7 +231,7 @@ export interface SendReading {
   readonly cap: SendCap | null;
 }
 
-/** The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own. */
+/** The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline` takes the plain refusal, and the bridge's detail says to send one line at a time. */
 function refusalNote(reason: SendReason | null): SendNote {
   switch (reason) {
     case "busy":
@@ -261,31 +261,53 @@ function refusalNote(reason: SendReason | null): SendNote {
   }
 }
 
+/**
+ * The sentence for an outcome and its reason: a key under `composer.protocol.*`. The composer's
+ * answer and the session page's list of recent sends both read it, so a reason code never reaches
+ * the person raw.
+ */
+export function sendNote(outcome: SendOutcome | null, reason: SendReason | null): SendNote {
+  switch (outcome) {
+    case "sent":
+    case "effective":
+      return reason === "discarded" ? "discarded" : "sent";
+    case "typed_not_submitted":
+      return "typed";
+    case "refused":
+      return refusalNote(reason);
+    case "unknown":
+    case null:
+      return "unknown";
+  }
+}
+
 /** The verdict half of a reading: whether the draft goes, the sentence, the offers. */
 type Verdict = Pick<SendReading, "clear" | "note" | "offers">;
 
 function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict {
   // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
-  switch (reply.outcome) {
-    case "sent":
-    case "effective":
-      // A discard ends `sent` too: the box emptied, but nothing went to the agent, so the phone's draft stays.
-      return reply.reason === "discarded" ? { clear: false, note: "discarded", offers: [] } : { clear: true, note: "sent", offers: [] };
-    case "typed_not_submitted":
-      return { clear: false, note: "typed", offers };
-    case "refused":
-      return { clear: false, note: refusalNote(reply.reason), offers };
-    case "unknown":
-    case null:
-      return { clear: false, note: "unknown", offers };
-  }
+  const note = sendNote(reply.outcome, reply.reason);
+  // A discard ends `sent` too: the box emptied, but nothing went to the agent, so the phone's draft stays.
+  if (note === "sent") return { clear: true, note, offers: [] };
+  if (note === "discarded") return { clear: false, note, offers: [] };
+  return { clear: false, note, offers };
+}
+
+/**
+ * What the screen word adds after the verdict. After `typed_not_submitted` the box holds the person's
+ * own text, which the Surface reads as a draft; "The box held a draft" would call it someone else's.
+ * Only a `mismatch` (the box shows other text than was typed) keeps the draft word.
+ */
+function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
+  if (reply.outcome === "typed_not_submitted" && note === "draft" && reply.reason !== "mismatch") return null;
+  return note;
 }
 
 export function readSend(reply: SendReply): SendReading {
   const offers = reply.offers.filter((offer) => offer !== "keys");
   const base = noteAndOffers(reply, offers);
-  const surface = base.clear || reply.surface === null ? null : surfaceNote(reply.surface);
+  const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
   const toCard = surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable";
   const cap = base.note === "capConfirm" ? reply.cap : null;
   // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
