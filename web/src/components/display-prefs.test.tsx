@@ -83,6 +83,16 @@ describe("DisplayPrefsContent", () => {
     expect(screen.queryByLabelText("Raw terminal")).toBeNull();
   });
 
+  it("offers the stretchtext switch over both bodies, since Chat draws replies too", () => {
+    draw({ chosen: "chat", showing: "chat" });
+    expect(screen.getByLabelText("Stretchtext replies")).toBeInTheDocument();
+  });
+
+  it("offers the stretchtext switch over the mirror, where the Full reply card draws a reply", () => {
+    draw({ chosen: "terminal", showing: "terminal" });
+    expect(screen.getByLabelText("Stretchtext replies")).toBeInTheDocument();
+  });
+
   it("the stream's text size is its own number, not the mirror's", async () => {
     const user = userEvent.setup();
     const { stepChatFontSize, stepFontSize } = draw({ chosen: "chat", showing: "chat" });
