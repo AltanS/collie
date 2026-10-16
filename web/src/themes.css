@@ -64,9 +64,9 @@
   --accent-foreground: light-dark(oklch(0.26 0.025 250), oklch(0.93 0.012 240));
   --destructive: light-dark(oklch(0.52 0.16 22), oklch(0.68 0.14 20));
   --destructive-foreground: light-dark(oklch(0.985 0.004 235), oklch(0.2 0.018 250));
-  --border: light-dark(oklch(0.885 0.014 240), oklch(0.3 0.02 250));
-  --input: light-dark(oklch(0.885 0.014 240), oklch(0.33 0.02 250));
-  --rule: light-dark(oklch(0.82 0.02 245), oklch(0.4 0.025 250));
+  --border: light-dark(oklch(0.885 0.014 240), oklch(0.4 0.02 250));
+  --input: light-dark(oklch(0.885 0.014 240), oklch(0.42 0.02 250));
+  --rule: light-dark(oklch(0.82 0.02 245), oklch(0.46 0.025 250));
   --ring: light-dark(oklch(0.56 0.08 195), oklch(0.7 0.07 195));
   --status-blocked: light-dark(oklch(0.47 0.16 20), oklch(0.72 0.14 20));
   --status-working: light-dark(oklch(0.47 0.1 72), oklch(0.83 0.12 80));

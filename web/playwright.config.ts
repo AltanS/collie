@@ -180,6 +180,17 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
+      // M57, the MOUNTED bundle server on 4175: `web/dist` through the bridge's own `serveStatic`
+      // under `COLLIE_BASE_PATH=/collie/`. `e2e/theme-first-paint.spec.ts` is its one client. No
+      // API at all; a case that needs one belongs on 4173.
+      command: "bun e2e/serve-mount.ts",
+      url: "http://127.0.0.1:4175/collie/",
+      reuseExistingServer: !process.env.CI,
+      stdout: "ignore",
+      stderr: "pipe",
+      timeout: 60_000,
+    },
+    {
       // M26/04, the SWAPPABLE bundle server on 4174. It builds `e2e/.builds/a` and `e2e/.builds/b`
       // before it listens (hence the long timeout) and serves whichever of the two
       // `e2e/.builds/serving` names, so `e2e/service-worker.spec.ts` can deploy a new bundle under a

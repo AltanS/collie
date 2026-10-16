@@ -620,6 +620,8 @@ export interface Finding {
 const TEXT_FLOOR = 4.5;
 const RULE_FLOOR = 1.3;
 const CHIP_ALPHA = 0.15;
+/** WCAG 1.4.11, for a colour that only draws a shape: the destructive icon. */
+const NON_TEXT_FLOOR = 3;
 /** The least oklab distance between `status-blocked` and `status-done`, so the two never look alike. */
 const BLOCKED_DONE_FLOOR = 0.15;
 
@@ -675,6 +677,33 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
             : ratio(over(ink, ground, ink.alpha), over(ink, ground, CHIP_ALPHA * ink.alpha));
         push(`${status} chip on ${groundToken}`, value, TEXT_FLOOR);
       }
+    }
+    // THE COUNSEL PAIRS (M57 spec 12, 2026-10-16). Colours the app also draws as TEXT or as an
+    // urgent mark, which the pairs above did not reach. `text-destructive` is text in the action
+    // sheet rows and the ask card; `text-status-blocked` is the urgent countdown in the cache chip.
+    //   * destructive on the page and on a card is held at 3:1 as the icon colour, and at 4.5:1 as
+    //     text. Collie's own light `destructive` on `background` is 4.38, a known value of the look the
+    //     app always had (it does not change). A theme that keeps both colours of a pair as the
+    //     base has them is held to what the base measures, so the default and an untouched export
+    //     do not warn, and never below 3; any theme that moves either colour is held to 4.5. Every other shipped
+    //     theme clears 4.5.
+    //   * status-blocked as text, 4.5:1 on both grounds.
+    //   * The Send slot's refusal is a Notice of tone `caution`: `text-status-working` on
+    //     `bg-status-working/15`, over the page or a card. That is exactly the `status-working chip`
+    //     pair of the loop above, so it needs no pair of its own.
+    for (const groundToken of CHIP_GROUNDS) {
+      const destructive = contrast(values.destructive ?? "", values[groundToken] ?? "");
+      push(`destructive on ${groundToken}`, destructive, NON_TEXT_FLOOR);
+      const baseValues = base[half] ?? {};
+      const asBase = values.destructive === baseValues.destructive && values[groundToken] === baseValues[groundToken];
+      const textFloor = asBase
+        ? Math.min(
+            TEXT_FLOOR,
+            Math.max(NON_TEXT_FLOOR, Math.floor(contrast(baseValues.destructive ?? "", baseValues[groundToken] ?? "") * 100) / 100),
+          )
+        : TEXT_FLOOR;
+      push(`destructive text on ${groundToken}`, destructive, textFloor);
+      push(`status-blocked text on ${groundToken}`, contrast(values["status-blocked"] ?? "", values[groundToken] ?? ""), TEXT_FLOOR);
     }
     push("rule on background", contrast(values.rule ?? "", values.background ?? ""), RULE_FLOOR);
 

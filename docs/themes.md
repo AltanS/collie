@@ -41,6 +41,8 @@ A theme that names a typeface writes it into the **Typeface** card once, when yo
 that the Typeface card wins: choose another face there and it stays, until you pick a theme again. The
 [typefaces](configure.md#your-own-typefaces) have their own section.
 
+The three faces that come with Nightwatch, Daylight and Harbour ship Latin and Latin Extended only, so Cyrillic and CJK text falls to the system face under those themes (the Collie theme keeps its Cyrillic companion).
+
 ## The mark
 
 The mark is the small animal in the header. Each theme draws its own, in the same three states.

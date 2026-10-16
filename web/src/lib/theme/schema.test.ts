@@ -238,6 +238,19 @@ describe("parseTheme", () => {
     ]);
   });
 
+  // The two shapes a stylesheet could smuggle through a colour slot (M57 spec 12): a rule that loads a
+  // file, and a function that paints an image. Both are refused as values, by name, and the whole
+  // theme with them.
+  it.each(["@import url(x)", "@import url(https://x.test/a.css)", "linear-gradient(red, blue)", "radial-gradient(#000000, #ffffff)"])(
+    "refuses %s as a colour and names the token",
+    (value) => {
+      expect(isColour(value)).toBe(false);
+      expect(codes(parseTheme(file({ light: { background: value }, dark: { background: "#000000" } }), CAP))).toEqual([
+        "value light.background",
+      ]);
+    },
+  );
+
   it("refuses a half that is not an object", () => {
     expect(codes(parseTheme(file({ light: "#ffffff" }), CAP))).toEqual(["value light"]);
     expect(codes(parseTheme(file({ dark: ["#ffffff"] }), CAP))).toEqual(["value dark"]);
@@ -429,6 +442,12 @@ describe("contrastReport", () => {
       "status-unknown chip on card",
       "status-info chip on background",
       "status-info chip on card",
+      "destructive on background",
+      "destructive text on background",
+      "status-blocked text on background",
+      "destructive on card",
+      "destructive text on card",
+      "status-blocked text on card",
       "rule on background",
       "status-blocked apart from status-done",
     ]);
@@ -449,7 +468,8 @@ describe("contrastReport", () => {
         background: "#ffffff",
         card: "#ffffff",
         primary: "#ffffff",
-        destructive: "#ffffff",
+        destructive: "#b00000",
+        "destructive-foreground": "#ffffff",
         rule: "#bbbbbb",
         "status-blocked": "#b00000",
         "status-done": "#006000",
