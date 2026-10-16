@@ -416,56 +416,6 @@ A bridge keeps the live panes across its own restart. The row stays "live" after
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
 
-#### Codex
-
-Codex has one outside hook, its `notify` command. Collie can use it for a hook edge when a Codex turn
-ends:
-
-```console
-$ collie hooks install codex
-$ collie hooks status
-/home/you/.codex/config.toml: installed
-```
-
-The install writes one line at the top of `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when
-`CODEX_HOME` is not set). The line goes after the comments at the top of the file:
-
-```toml
-notify = ["/home/you/.local/bin/collie", "beacon", "emit", "codex"]
-```
-
-Codex runs one notify command only. If your config already names one, Collie leaves it in place and
-the install stops with a message. If Collie cannot read the file as TOML, the install stops and
-names the line. Collie keeps a copy of the file before its first change.
-`collie hooks uninstall codex` puts back the exact bytes from before the install. If the install
-created the file, uninstall removes it. A Codex that is already open may not see the new line until
-it starts again.
-
-Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
-edge, and the screen read after it decides whether the pane is free. The limits:
-
-- Codex sends no event for an approval dialog or for a new prompt. The screen alone shows a dialog,
-  and a send from the phone never shows as Confirmed on a Codex pane.
-- Codex 0.163.0 runs the notify command from a background helper (`codex app-server`). Collie finds
-  the Codex window in `/proc` with the same `CODEX_HOME` and the folder of the event. This is Linux
-  only.
-- Two Codex windows in one folder on one `CODEX_HOME` get no edge. Collie cannot tell them apart.
-  Their panes still update from the screen, as without the hook.
-- Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
-  the pane gets one more screen read.
-
-Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
-message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
-running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.
-It takes Enter on an idle box, and waits during a turn. Tab would complete a `/` command, and
-Codex runs a `!` text as a shell command. The receipt says queued only when
-Codex shows the queued row with the text.
-
-Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
-prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
-presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
-digit answers at once. On the last question it sends all the answers.
-
 #### Permissions held for the phone
 
 ```console
@@ -532,6 +482,55 @@ says in how many settings files the hooks hold permissions.
 > The tap must carry the hash of the tool, the input shown and the labels the card showed. The
 > answer is only ever a person's tap: Collie never allows or denies on its own.
 
+#### Codex
+
+Codex has one outside hook, its `notify` command. Collie can use it for a hook edge when a Codex turn
+ends:
+
+```console
+$ collie hooks install codex
+$ collie hooks status
+/home/you/.codex/config.toml: installed
+```
+
+The install writes one line at the top of `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when
+`CODEX_HOME` is not set). The line goes after the comments at the top of the file:
+
+```toml
+notify = ["/home/you/.local/bin/collie", "beacon", "emit", "codex"]
+```
+
+Codex runs one notify command only. If your config already names one, Collie leaves it in place and
+the install stops with a message. If Collie cannot read the file as TOML, the install stops and
+names the line. Collie keeps a copy of the file before its first change.
+`collie hooks uninstall codex` puts back the exact bytes from before the install. If the install
+created the file, uninstall removes it. A Codex that is already open may not see the new line until
+it starts again.
+
+Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
+edge, and the screen read after it decides whether the pane is free. The limits:
+
+- Codex sends no event for an approval dialog or for a new prompt. The screen alone shows a dialog,
+  and a send from the phone never shows as Confirmed on a Codex pane.
+- Codex 0.163.0 runs the notify command from a background helper (`codex app-server`). Collie finds
+  the Codex window in `/proc` with the same `CODEX_HOME` and the folder of the event. This is Linux
+  only.
+- Two Codex windows in one folder on one `CODEX_HOME` get no edge. Collie cannot tell them apart.
+  Their panes still update from the screen, as without the hook.
+- Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
+  the pane gets one more screen read.
+
+Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
+message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
+running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.
+It takes Enter on an idle box, and waits during a turn. Tab would complete a `/` command, and
+Codex runs a `!` text as a shell command. The receipt says queued only when
+Codex shows the queued row with the text.
+
+Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
+prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
+presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
+digit answers at once. On the last question it sends all the answers.
 
 ## Harness profiles
 
