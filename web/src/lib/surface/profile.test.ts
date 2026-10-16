@@ -170,6 +170,20 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(queuedRow.hintGap).toBe(0);
   });
 
+  it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
+    const codex = parseProfile(rawCodex());
+    expect(codex.idle.volatile.above.losesText).toBe(true);
+    const hints = codex.idle.volatile.below.hints!.map((source) => new RegExp(source, "u"));
+    expect(hints.some((hint) => hint.test("  ← for agents · ? for shortcuts"))).toBe(true);
+    expect(hints.some((hint) => hint.test("  tab to queue message"))).toBe(true);
+    expect(hints.some((hint) => hint.test("  GPT-6-Luna low · ~/project"))).toBe(false);
+  });
+
+  it("codex: the running rows take the queued-message hint Codex 0.163.0 draws in a turn", () => {
+    const signs = parseProfile(rawCodex()).idle.runningRows!.map((source) => new RegExp(source, "u"));
+    expect(signs.some((sign) => sign.test("  shift+← edit last queued message"))).toBe(true);
+  });
+
   it("codex: matches the long-paste form", () => {
     const form = new RegExp(parseProfile(rawCodex()).collapse.pattern, "u");
     expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
@@ -184,6 +198,9 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: a blank anchor that matches text", ["idle", "frame", "top", "pattern"], "^x$", "idle.frame.top.pattern"],
     ["codex: a blank anchor off column 0", ["idle", "frame", "top", "column"], 2, "idle.frame.top.column"],
     ["codex: a running row that is no expression", ["idle", "runningRows", 0], "[unclosed", "idle.runningRows[0]"],
+    ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
+    ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
+    ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {

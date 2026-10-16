@@ -258,7 +258,7 @@ function signPatterns(sources: readonly string[]): readonly RegExp[] {
 
 /**
  * Whether a found frame's volatile rows show a running sign. `profileSigns` are the profile's own
- * running rows (`idle.runningRows`): patterns read on the bottom edge and the rows under it, for a
+ * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge included, for a
  * harness that marks a turn there (a spinner frame on its status row, a hint only a turn shows).
  */
 export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSigns: readonly string[] = []): boolean {
@@ -266,11 +266,10 @@ export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSign
   if (volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!))) return true;
   if (profileSigns.length === 0) return false;
   const patterns = signPatterns(profileSigns);
-  for (let i = frame.bottom; i < texts.length; i++) {
+  return [...volatileRows(texts, frame), frame.bottom].some((i) => {
     const text = texts[i]!.trimEnd();
-    if (text.length > 0 && patterns.some((pattern) => pattern.test(text))) return true;
-  }
-  return false;
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
 }
 
 interface ClusterCues {

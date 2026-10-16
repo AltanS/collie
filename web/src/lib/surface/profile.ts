@@ -93,12 +93,28 @@ export interface Profile {
       readonly sgr: number;
     };
     readonly volatile: {
-      readonly above: { readonly maxRows: number };
-      readonly below: { readonly maxRows: number; readonly footerMaxRows: number };
+      readonly above: {
+        readonly maxRows: number;
+        /**
+         * The rows above the box may lose text once the box holds a character (a welcome picture
+         * that hides). The Send Protocol then accepts rows above that only lost text. Optional.
+         */
+        readonly losesText?: true;
+      };
+      readonly below: {
+        readonly maxRows: number;
+        readonly footerMaxRows: number;
+        /**
+         * Hint rows under the box that the harness hides or swaps while the box holds text, as
+         * regular expression sources. The Send Protocol leaves them out when it compares the rows
+         * under the box. Optional.
+         */
+        readonly hints?: readonly string[];
+      };
     };
     /**
-     * Rows that mean a turn runs, as regular expression sources, read on the frame's bottom edge and
-     * the rows under it (cues.ts `runningSign`). Optional: the generic running signs above the box
+     * Rows that mean a turn runs, as regular expression sources, read on the volatile band above the
+     * box, the frame's bottom edge and the rows under it (cues.ts `runningSign`). Optional: the generic running signs above the box
      * always count. For a harness that marks a turn on its own status rows.
      */
     readonly runningRows?: readonly string[];
@@ -282,6 +298,23 @@ function parseVersions(value: JsonValue | undefined, path: string): [VersionRang
  * Check one profile file's parsed JSON and return it typed. Every field is checked; the first
  * problem throws a {@link ProfileError} that names the field path.
  */
+
+/** `idle.volatile.above`: its row count, and `losesText` only when the profile sets it (it may only be true). */
+function volatileAbove(node: JsonObject): Profile["idle"]["volatile"]["above"] {
+  const maxRows = whole(field(node, "maxRows", "idle.volatile.above"), "idle.volatile.above.maxRows", 0);
+  if (node.losesText === undefined) return { maxRows };
+  if (node.losesText !== true) fail("idle.volatile.above.losesText", "must be true when present");
+  return { maxRows, losesText: true };
+}
+
+/** `idle.volatile.below`: its row counts, and the hint rows only when the profile names them. */
+function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
+  const maxRows = whole(field(node, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0);
+  const footerMaxRows = whole(field(node, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0);
+  if (node.hints === undefined) return { maxRows, footerMaxRows };
+  const hints = list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source);
+  return { maxRows, footerMaxRows, hints };
+}
 export function parseProfile(raw: JsonValue): Profile {
   const root = object(raw, "profile");
   const id = text(field(root, "id", ""), "id");
@@ -315,13 +348,7 @@ export function parseProfile(raw: JsonValue): Profile {
       texts: textList(field(placeholderNode, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
       sgr: whole(field(placeholderNode, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
     },
-    volatile: {
-      above: { maxRows: whole(field(aboveNode, "maxRows", "idle.volatile.above"), "idle.volatile.above.maxRows", 0) },
-      below: {
-        maxRows: whole(field(belowNode, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0),
-        footerMaxRows: whole(field(belowNode, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0),
-      },
-    },
+    volatile: { above: volatileAbove(aboveNode), below: volatileBelow(belowNode) },
   };
 
   const runningRows =

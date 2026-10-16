@@ -128,6 +128,12 @@ export const CLUSTER_ROWS = 24;
 const FIRST_GAP_MS = 80;
 /** The gap between the two S0 reads. */
 const S0_GAP_MS = 120;
+/**
+ * On a harness whose Enter steers a running turn, the time from S0 to the submit key at least
+ * (SendProtocol.holdSteer). Lab, Codex 0.163.0, 2026-10-16: the working row goes away for up to one
+ * read (under 510 ms) while a line of the answer comes in, so the screen reads idle in a turn.
+ */
+const STEER_HOLD_MS = 900;
 /** Emptying a box (replace, discard) borrows the S2 bound: a read after every batch, inside S2's reads and ms. */
 const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
@@ -296,6 +302,8 @@ interface Snap {
   /** The generic cues of the rows under the frame's bottom edge, read as if no frame were found: a
    *  pointer list that takes the place of status rows there. "none" with no frame. */
   readonly belowCues: "none" | "weak" | "strong";
+  /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
+  readonly below: number;
   /** A short hash of the whole read. */
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
@@ -443,8 +451,23 @@ function modalAtBox(snap: Snap): boolean {
 
 /** The non-blank rows under a frame's bottom edge. */
 function rowsBelow(snap: Snap, frame: Frame): number {
+  void frame;
+  return snap.below;
+}
+
+/**
+ * The non-blank rows under a frame's bottom edge, the profile's hint rows left out
+ * (`idle.volatile.below.hints`): a harness may hide or swap a hint there once the box holds text
+ * (Codex 0.163.0 drops "← for agents · ? for shortcuts" at the first character), which is not a
+ * moved screen.
+ */
+function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[]): number {
+  if (frame === null) return 0;
   let n = 0;
-  for (let i = frame.bottom + 1; i < snap.texts.length; i++) if (snap.texts[i]!.trim().length > 0) n++;
+  for (let i = frame.bottom + 1; i < texts.length; i++) {
+    const text = texts[i]!.trimEnd();
+    if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
+  }
   return n;
 }
 
@@ -461,11 +484,23 @@ function transcriptAbove(snap: Snap, frame: Frame): string[] {
  * above (it may scroll up by as many rows as the box grew, plus one), the same count of rows under
  * the box (a popup adds rows there), and no modal cue. The volatile band over the box may change.
  */
-function outsideUnchanged(before: Snap, after: Snap): boolean {
+function outsideUnchanged(before: Snap, after: Snap, losesText = false): boolean {
   if (before.frame === null || after.frame === null) return false;
   if (cueAppeared(before, after)) return false;
   if (rowsBelow(before, before.frame) !== rowsBelow(after, after.frame)) return false;
-  return aboveUnchanged(before, after);
+  if (aboveUnchanged(before, after)) return true;
+  return losesText && lostTextOnly(transcriptAbove(before, before.frame), transcriptAbove(after, after.frame), SCROLLBACK_SLACK);
+}
+
+/**
+ * Whether the profile says the rows above its box may lose text once the box holds a character
+ * (`idle.volatile.above.losesText`): Codex 0.163.0 hides its welcome picture and its tip row then,
+ * and the screen moves down, so up to three rows at the very top may come back from the scrollback.
+ * Rows that only lose text still never gain any lower down, so a dialog or a line of output near the
+ * box still fails.
+ */
+function aboveLosesText(state: RunState): boolean {
+  return state.match?.profile.idle.volatile.above.losesText === true;
 }
 
 /**
@@ -474,18 +509,29 @@ function outsideUnchanged(before: Snap, after: Snap): boolean {
  * and moved the rest, rows scrolled off the top all pass; a row with new text (a dialog, a line of
  * output, a timer that ticked) fails. A manual send allows this above the box.
  */
-function lostTextOnly(before: readonly string[], after: readonly string[]): boolean {
+function lostTextOnly(before: readonly string[], after: readonly string[], topSlack = 0): boolean {
   const kept = before.map((row) => row.trimEnd()).filter((row) => row.length > 0);
   let k = 0;
+  let seen = 0;
   for (const row of after) {
     const text = row.trimEnd();
     if (text.length === 0) continue;
-    while (k < kept.length && kept[k] !== text) k++;
-    if (k === kept.length) return false;
-    k++;
+    seen++;
+    let at = k;
+    while (at < kept.length && kept[at] !== text) at++;
+    if (at === kept.length) {
+      // `topSlack`: the first rows of `after` may come back from the scrollback when a row lower down
+      // hid and the screen moved down. Only at the very top, never in the rows near the box.
+      if (seen <= topSlack) continue;
+      return false;
+    }
+    k = at + 1;
   }
   return true;
 }
+
+/** How many rows at the top of the screen may come back from the scrollback on a profile whose rows above lose text. */
+const SCROLLBACK_SLACK = 3;
 
 /**
  * What a send into a running turn asks of a framed pane: no modal cue grew and the rows under the box
@@ -995,6 +1041,8 @@ interface RunState {
   streamed: boolean;
   /** Two reads with the same box text saw the rows under the box change (belowMovedAlone): a turn may run. */
   belowMoved: boolean;
+  /** When S0 began: the hold on a steering harness counts from here ({@link SendProtocol.holdSteer}). */
+  s0At: number;
   /** The read before the latest one, for the compares that ask how the screen moved from read to read. */
   previousRead: Snap | null;
   /** The latest read. */
@@ -1273,6 +1321,7 @@ export class SendProtocol {
       queued: false,
       streamed: false,
       belowMoved: false,
+      s0At: 0,
       previousRead: null,
       lastRead: null,
       stepStart: at,
@@ -1402,6 +1451,7 @@ export class SendProtocol {
     const holds = (box: string): boolean => (state.command ? commandBoxMatches : boxMatches)(box, "", lines, collapseOf(match));
 
     this.begin(state);
+    state.s0At = this.now();
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
     state.manual = takesManualSend(s0.surface);
@@ -1471,7 +1521,7 @@ export class SendProtocol {
     await this.write(state, lines);
     this.lap(state, "write");
 
-    const s1 = await this.awaitTyped(state, s0, landing, prefix, lines);
+    const s1 = await this.holdSteer(state, await this.awaitTyped(state, s0, landing, prefix, lines));
     state.marks.s1 = s1;
     this.lap(state, "s1");
     this.checkGeneration(state, "typed_not_submitted");
@@ -1603,6 +1653,35 @@ export class SendProtocol {
     state.queued = true;
   }
 
+  /**
+   * The hold on a harness whose Enter steers a running turn (`keys.enterWhileRunning: "steers"`), for a
+   * send S0 read as idle. Codex 0.163.0 hides its working row while a line of the answer comes in, so
+   * a turn can read idle for one read. Before Enter, the send waits until {@link STEER_HOLD_MS} have
+   * passed since S0, then reads once more. The box must still hold the text. A running sign, a cue at
+   * the box, or new text around the box then means the turn runs: the send takes the queue key, or
+   * ends with the text in the box and no Enter. Enter never steers a turn by accident.
+   */
+  private async holdSteer(state: RunState, s1: Snap): Promise<Snap> {
+    const profile = state.match?.profile;
+    if (profile?.keys.enterWhileRunning !== "steers" || state.queued || state.command || s1.frame === null) return s1;
+    const wait = state.s0At + STEER_HOLD_MS - this.now();
+    if (wait > 0) await this.sleep(wait);
+    const snap = await this.read(state, "s1");
+    if (snap === null || snap.frame === null || boxText(snap.frame) !== boxText(s1.frame)) {
+      throw new Ended("typed_not_submitted", "changed", { framed: true, rowsHash: s1.rowsHash, detail: "The box changed before Enter. The text may still be in the box." });
+    }
+    if (modalAtBox(snap) || cueAppeared(s1, snap)) {
+      throw new Ended("typed_not_submitted", "modal_cue", { framed: true, rowsHash: snap.rowsHash, detail: "Something opened at the box before Enter. The text is in the box." });
+    }
+    const runs = runningSign(snap.rows, snap.frame, profile.idle.runningRows) || snap.surface.turn === "running" || !outsideUnchanged(s1, snap);
+    if (!runs) return snap;
+    if (profile.keys.queueKey === undefined || !queuesInTurn(state.match)) {
+      throw new Ended("typed_not_submitted", "changed", { framed: true, rowsHash: snap.rowsHash, detail: "The agent started to work again before Enter. The text is in the box." });
+    }
+    state.queued = true;
+    return snap;
+  }
+
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
     const refusal = turnRefusal(state, s0, frame);
@@ -1727,8 +1806,15 @@ export class SendProtocol {
       surface,
       cueStrength: readCues(rows, frame).strength,
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
-      bareCues: readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
+      // A box with a blank top edge has no rule between it and the transcript, and that transcript
+      // echoes each prompt behind the prompt glyph (Codex: `› the prompt`, its answer indented under
+      // it), which reads as a pointer list with no anchor. There only the rows under the box count.
+      bareCues:
+        frame !== null && idle?.frame.top.blank === true
+          ? readCues(rows.slice(frame.bottom + 1), null).strength
+          : readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
       belowCues: frame === null ? "none" : readCues(rows.slice(frame.bottom + 1), null).strength,
+      below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
@@ -1865,7 +1951,7 @@ export class SendProtocol {
           ? this.turnOutside(state, s0, snap)
           : state.manual
             ? manualOutsideUnchanged(s0, snap)
-            : outsideUnchanged(s0, snap) || this.aboveMovedInTurn(state, s0, snap);
+            : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
         return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outside ? "pass" : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
@@ -1978,7 +2064,7 @@ export class SendProtocol {
             ? aboveLostOnly(s0, snap)
             : command
               ? aboveUnchanged(s0, snap)
-              : outsideUnchanged(s0, snap) || this.aboveMovedInTurn(state, s0, snap);
+              : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
         if (!outside) {
           why = "changed";
           return "wait";

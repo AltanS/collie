@@ -27,10 +27,14 @@
       "sgr": 2
     },
     "volatile": {
-      "above": { "maxRows": 20 },
-      "below": { "maxRows": 2, "footerMaxRows": 2 }
+      "above": { "maxRows": 6, "losesText": true },
+      "below": {
+        "maxRows": 2,
+        "footerMaxRows": 2,
+        "hints": ["^\\s*← for agents · \\? for shortcuts$", "^\\s*\\? for shortcuts$", "^\\s*[Tt]ab to queue message$"]
+      }
     },
-    "runningRows": ["\\s·\\s[⠀-⣿]$", "^\\s*[Tt]ab to queue message\\b"]
+    "runningRows": ["\\s·\\s[⠀-⣿]$", "^\\s*[Tt]ab to queue message\\b", "^\\s*shift\\+← edit last queued message$"]
   },
   "keys": {
     "submit": ["Enter"],
