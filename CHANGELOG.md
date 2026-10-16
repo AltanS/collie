@@ -97,6 +97,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie hooks install codex` sends a hook edge when a Codex turn ends.** It writes one `notify` line into `$CODEX_HOME/config.toml`. A notify command of your own stays, and Collie refuses to replace it. Each edge goes to the Codex TUI in the event's folder, through that TUI's pane markers. Two Codex TUIs in one folder on one CODEX_HOME get no edge. Codex sends no event for an approval dialog, so the screen still shows those.
 - **`collie hooks install codex` writes its line at the top of `config.toml`.** It goes after the leading comments, before the first key, so it is always top level. Collie reads the file as TOML statements. So a `[` row inside an array or a multi-line string is no table. A file Collie cannot read is refused, and nothing is written. A table named `notify`, such as `[notify.desktop]`, is refused too. Uninstall gives back the exact bytes, and it removes a file the install created. The notify command finds `~/.codex` when `CODEX_HOME` is not set.
 - **The `collie` help names `hooks install codex` beside `hooks install claude`.** The same holds for `hooks uninstall`.
+- **A durable pane says when its Pi session failed.** On Pi Durable 1.2.0 a storage error closes the session. The pane now shows a notice with the error, and the host log gets the error. A watch that stopped on a listener error does the same.
 
 ### Changed
 
@@ -211,6 +212,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **An older screen read no longer replaces a newer one after a hook edge.** The re-read and the poll now take turns on each pane. A prompt typed at the desk no longer confirms a phone send with the same text.
 - **A bridge restart no longer resets the "Hooks" row of a hooked pane to "none".** The bridge saves the live panes and checks each agent process again at boot. The "Hooks: none" hint no longer asks for an agent restart that is not needed.
 - **A send queued behind a turn keeps the ten-minute window for its prompt edge.** This holds when Collie sees the queue only after Enter. A running bridge writes its hook target file again within two seconds when it goes missing.
+- **The durable SDK's Pi entry runs on Pi Durable 1.2.0 as well as 1.1.0.** Pi Durable 1.2.0 renamed a tool result's `content` to `output`. The SDK's tools now return both, through `toolResult`, so each version reads its own. The hook shapes did not change.
 
 ### Packaging
 
