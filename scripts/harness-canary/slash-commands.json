@@ -10,7 +10,7 @@
       { "command": "/permissions", "opens": "dialog", "reason": "The permission rules. The lab adds no rule." },
       { "command": "/hooks", "opens": "dialog", "reason": "A read-only list of hooks." },
       { "command": "/memory", "opens": "dialog", "reason": "The memory picker. The lab closes it with Escape and opens no file." },
-      { "command": "/mcp", "opens": "dialog", "reason": "The MCP server list. The lab closes it with Escape and starts no server." },
+      { "command": "/mcp", "opens": "inline", "reason": "The lab starts Claude with an empty MCP config, so Claude prints that no server is set up. It opens no list." },
       { "command": "/theme", "opens": "dialog", "reason": "The theme picker. The lab closes it with Escape and never confirms a theme." },
       { "command": "/tasks", "opens": "dialog", "reason": "The background task list." },
       { "command": "/plugin", "opens": "dialog", "reason": "The plugin browser. The lab installs nothing." },
