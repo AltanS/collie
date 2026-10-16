@@ -45,12 +45,14 @@ function isPopupRow(text: string): boolean {
 // print `? for shortcuts` under the box (every capture in the corpus), so any of these under a rule
 // means that rule belongs to a modal. One numbered item alone is not enough: a custom `statusLine`
 // may print `1. build ok  2. tests ok` (claude-lab--statusline-numbered-rows--w82.txt), and that is
-// still a live box.
-function dialogUnder(texts: string[], bottomBorder: number, end: number): boolean {
+// still a live box. Under an open completion popup the rows below its footer get the same check, so
+// a modal painted there is still a modal (second review, 2026-10-16); `ownEsc` is the popup's own
+// `esc to cancel` row, the one row there that may say it.
+function dialogUnder(texts: string[], bottomBorder: number, end: number, ownEsc = -1): boolean {
   const options: { n: number }[] = [];
   for (let j = bottomBorder + 1; j < end; j++) {
     const text = texts[j]!;
-    if (classifyFooter(text) !== null || ESC_TO_CANCEL.test(text)) return true;
+    if (classifyFooter(text) !== null || (j !== ownEsc && ESC_TO_CANCEL.test(text))) return true;
     const option = parseOptionRow(text);
     if (option !== null) options.push(option);
   }
@@ -93,11 +95,10 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
   // user message `> …` above it then reads as an idle prompt. A modal under the rule, or a prompt
   // grammar claiming the screen, means no composer: fail closed, like step 2.
   const footer = bottomBorder === -1 ? -1 : completionFooter(texts, bottomBorder, end);
-  if (
-    bottomBorder !== -1 &&
-    ((footer === -1 && dialogUnder(texts, bottomBorder, end)) || detectPromptSelectRegionIn(texts) !== null)
-  ) {
-    return null;
+  if (bottomBorder !== -1) {
+    const modal =
+      footer === -1 ? dialogUnder(texts, bottomBorder, end) : dialogUnder(texts, footer, end, footer + 1);
+    if (modal || detectPromptSelectRegionIn(texts) !== null) return null;
   }
 
   if (bottomBorder !== -1) {
@@ -147,18 +148,24 @@ export function locateInputBox(texts: string[], end: number): LocatedBox | null 
  * (an argument typed). On partial input (`/mo` over `> /model`) the highlighted row is folded in, so
  * the reply guard cannot match and refuses, rather than bless a command nobody typed. A popup listing
  * suggestions with none highlighted is not measured, so its rows are folded in the same way: not
- * finding the highlight is not the same as the popup saying there is none.
+ * finding the highlight is not the same as the popup saying there is none. The whole popup is read
+ * before any answer: `No matches` beside a suggestion, or two highlighted rows, is a screen nobody
+ * measured, and the first row that looked right must not decide it (second review, 2026-10-16).
  */
 function completedDraft(texts: string[], bottomBorder: number, footer: number, typed: string | null): string | null {
   if (typed === null) return null;
-  const rows: string[] = [];
-  for (let j = bottomBorder + 1; j < footer; j++) {
-    const row = texts[j]!.trim();
-    if (COMPLETION_NONE.test(row)) return typed;
-    const pointed = COMPLETION_POINTED.exec(row);
-    if (pointed !== null) return pointed[1] === typed ? typed : `${typed} ${row}`;
-    if (row !== "") rows.push(row);
-  }
+  const rows = texts
+    .slice(bottomBorder + 1, footer)
+    .map((row) => row.trim())
+    .filter((row) => row !== "");
+  if (rows.some((row) => COMPLETION_NONE.test(row))) return rows.length === 1 ? typed : null;
+  const pointed = rows.flatMap((row) => {
+    const match = COMPLETION_POINTED.exec(row);
+    return match === null ? [] : [{ row, command: match[1] }];
+  });
+  if (pointed.length > 1) return null;
+  const [only] = pointed;
+  if (only !== undefined) return only.command === typed ? typed : `${typed} ${only.row}`;
   return rows.length === 0 ? null : `${typed} ${rows.join(" ")}`;
 }
 

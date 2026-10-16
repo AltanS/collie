@@ -434,6 +434,27 @@ describe("the slash-command completion popup is the live box, not a dialog (agy 
     });
     expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/mo");
   });
+
+  // A second review built these three the same way (2026-10-16).
+  it("`No matches` beside a highlighted suggestion does not verify `/mo`", () => {
+    const lines = rebuilt("agy--slash-partial.txt", (t) => (t.startsWith("> /model  ") ? ["   No matches", t] : [t]));
+    expect(lines.some((l) => lineText(l).trim() === "No matches")).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/mo");
+  });
+
+  it("two highlighted suggestions do not verify the typed command", () => {
+    const lines = rebuilt("agy--slash-exact.txt", (t) =>
+      t.startsWith("> /model  Set") ? [t, "> /mode   Switch the agent's mode"] : [t],
+    );
+    expect(lines.filter((l) => lineText(l).startsWith("> /")).length).toBe(3);
+    expect(agyAdapter.extractInputDraft!(lines)).not.toBe("/model");
+  });
+
+  it("a confirmation painted under the popup's own rows refuses the composer", () => {
+    const rows = read("agy--slash-exact.txt").map((l) => lineText(l).trimEnd());
+    const lines = splitLines(parseAnsi([...rows, "Delete this file? Press Enter to confirm."].join("\n")));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+  });
 });
 
 describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => {
@@ -471,6 +492,26 @@ describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => 
     const rows = read("agy--resume-picker.txt").map((l) => lineText(l).trimEnd());
     const lines = splitLines(parseAnsi([...rows, "Delete this conversation? Press Enter to confirm."].join("\n")));
     expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
+  });
+
+  // A second review built these two the same way (2026-10-16).
+  it("does not lift the picker when an indented row follows the status", () => {
+    const rows = read("agy--resume-picker.txt").map((l) => lineText(l).trimEnd());
+    const lines = splitLines(
+      parseAnsi([...rows, "        Delete this conversation? Press Enter to confirm."].join("\n")),
+    );
+    expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
+  });
+
+  it("does not lift the picker when a row naming a key sits between the footer and the status", () => {
+    const rows = read("agy--resume-picker.txt").flatMap((l) => {
+      const t = lineText(l).trimEnd();
+      return t === "  esc Go back / Clear search" ? [t, "Delete this conversation? Press Enter to confirm."] : [t];
+    });
+    expect(rows).toContain("Delete this conversation? Press Enter to confirm.");
+    expect(buildBlocks(splitLines(parseAnsi(rows.join("\n"))), { agent: "agy" }).some((b) => b.kind === "menu")).toBe(
+      false,
+    );
   });
 
   it("starts the card at the title, so the box above stays in the mirror", () => {
@@ -554,6 +595,20 @@ describe("agy: a question takes its digit alone (1.3.5)", () => {
       return t.trimEnd() === "  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip" ? footer : t;
     });
     expect(rows.includes(footer)).toBe(true);
+    expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
+  });
+
+  // The case above keeps the boxes, so it holds without the `space Toggle` scan (second review,
+  // 2026-10-16). Here only the wrapped footer says it is a checkbox.
+  it("keeps a checkbox question raw from a wrapped `space Toggle` alone, with no boxes on its rows", () => {
+    const rows = read("agy--ask-multi.txt").flatMap((l) => {
+      const t = lineText(l);
+      if (t.trimEnd() === "  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip") {
+        return ["  ↑/↓ Navigate · space Toggle", "  enter Submit All · esc Skip"];
+      }
+      return [t.replace("[ ] ", "")];
+    });
+    expect(rows.some((t) => t.includes("[ ]"))).toBe(false);
     expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
   });
 });
