@@ -2757,8 +2757,8 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     const summary = byCheck.get("surface")!;
     expect(summary.status).toBe("ok");
     expect(summary.detail).toContain("free 150 · unknown 16 · manual 3");
-    expect(summary.detail).toContain(`${STATE}/surface/examples`);
-    expect(summary.detail).toContain(`${STATE}/surface/inbox.jsonl`);
+    expect(summary.detail).toContain(join(STATE, "surface", "examples"));
+    expect(summary.detail).toContain(join(STATE, "surface", "inbox.jsonl"));
     expect(summary.detail).toContain("3 day files");
     const line = byCheck.get("surface-agent-2.1.301")!;
     expect(line.status).toBe("ok");
@@ -2776,7 +2776,7 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     const { byCheck, code } = await run([day(0, [row({ manual: 5 })])]);
     const line = byCheck.get("surface-agent-2.1.301")!;
     expect(line.status).toBe("warn");
-    expect(line.remedy).toContain(`${STATE}/surface/inbox.jsonl`);
+    expect(line.remedy).toContain(join(STATE, "surface", "inbox.jsonl"));
     expect(code).toBe(0);
   });
 

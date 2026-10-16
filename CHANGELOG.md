@@ -128,6 +128,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Three private-folder tests hold on Windows.** They read the owner-only state the way the code sets it, instead of POSIX mode bits.
 - **The Windows suite's skip budget counts the durable socket tests.** Nine example-program tests need a Unix socket and skip there by design.
 - **The surface counters are saved on shutdown, and a filed example row hides its symbols.** A stop now writes the last minute of counters, and the masked rows of the examples folder turn every letter into `a`, every digit into `0` and every other character into `x`, so a secret keeps neither its case nor its symbols. Spaces and box-drawing characters stay.
+- **Windows: the doctor surface tests compare platform paths.** The asserts build the examples and inbox paths with join, as doctor does.
 
 ### Packaging
 
