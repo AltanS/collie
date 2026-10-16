@@ -63,7 +63,7 @@ shows at most 25 causes. A file is refused for any of these:
 Collie checks one more thing at **Apply**. A file whose `id` is already on the device is refused with "already
 imported". Remove the old theme first, or change the `id`.
 
-A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.
+A theme changes how the app looks and nothing else. It cannot run code, load files or reach a server.
 
 A device holds up to eight imported themes. **Remove** works only while an imported theme is on. It deletes
 that theme, and the app goes back to Collie. The typeface stays as it was.

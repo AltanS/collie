@@ -41,7 +41,14 @@ describe("MUSE_MIRROR", () => {
     // past visibility (prompt fill at 1.08:1); the reference restores the authored 1.15 edge.
     expect(MUSE_MIRROR).toContain("bg-[#fffbf8]");
     expect(MUSE_MIRROR).not.toContain("bg-[#f5f5f5]");
-    expect(MUSE_MIRROR).toContain("dark:bg-[#0a0a0a]");
+  });
+
+  // M57 spec 17: the dark half reads a theme's `ansi` ground and ink, like MIRROR_SPACE, and falls
+  // back to the dark-space literals it always drew, so without a palette the pixels do not move.
+  it("grounds dark on the theme's mirror colours, with the literals as fallbacks", () => {
+    expect(MUSE_MIRROR).toContain("dark:bg-[color:var(--mirror-ground,#0a0a0a)]");
+    expect(MUSE_MIRROR).toContain("dark:text-[color:var(--mirror-ink,#fafafa)]");
+    expect(MUSE_MIRROR).not.toContain("dark:bg-[#0a0a0a]");
   });
 });
 

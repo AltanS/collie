@@ -53,9 +53,10 @@ export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter
  *  The `dark:` variants here are CORRECT, which deserves a sentence because the NEVER rule above
  *  forbids them inside inverted mirrors: this surface is not inverted, so it follows the root
  *  theme like any other element instead of backwards. `color-scheme` is inherited (light dark),
- *  so native UI inside (scrollbar, selection) follows too. */
+ *  so native UI inside (scrollbar, selection) follows too. The dark half reads a theme's `ansi`
+ *  ground and ink (M57 spec 17) like MIRROR_SPACE, with the same literals as fallbacks. */
 export const MUSE_MIRROR =
-  "terminal-muse bg-[#fffbf8] text-[#0a0a0a] dark:bg-[#0a0a0a] dark:text-[#fafafa]";
+  "terminal-muse bg-[#fffbf8] text-[#0a0a0a] dark:bg-[color:var(--mirror-ground,#0a0a0a)] dark:text-[color:var(--mirror-ink,#fafafa)]";
 
 /** A segment's inline style. `muted` marks decorative TUI chrome rather than an ANSI colour: drop
  *  the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border) + dim was nearly

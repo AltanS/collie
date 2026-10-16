@@ -214,8 +214,8 @@ describe("native mirror (muse)", () => {
     expect(pre.className).toContain("terminal-muse");
     expect(pre.className).toContain("bg-[#fffbf8]");
     expect(pre.className).toContain("text-[#0a0a0a]");
-    expect(pre.className).toContain("dark:bg-[#0a0a0a]");
-    expect(pre.className).toContain("dark:text-[#fafafa]");
+    expect(pre.className).toContain("dark:bg-[color:var(--mirror-ground,#0a0a0a)]");
+    expect(pre.className).toContain("dark:text-[color:var(--mirror-ink,#fafafa)]");
     expect(pre.className).not.toContain("invert(1)");
   });
 
