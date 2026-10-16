@@ -25,10 +25,25 @@ describe("SendReceiptsView", () => {
     expect(items[0]).toHaveTextContent("Sent");
     expect(items[0]).toHaveTextContent(/just now/i);
     expect(items[1]).toHaveTextContent("Refused");
-    expect(items[1]).toHaveTextContent("not free");
+    expect(items[1]).toHaveTextContent("The input box is not free. Nothing was typed.");
     expect(items[1]).toHaveTextContent("5m ago");
     expect(items[2]).toHaveTextContent("Typed, not sent");
-    expect(items[2]).toHaveTextContent("modal cue");
+    expect(items[2]).toHaveTextContent("Your text is in the box, but Enter was not pressed. Submit it or discard it.");
+  });
+
+  it("says a reason with the composer's sentence and keeps the raw code in the title only", () => {
+    const more: readonly SendReceiptRow[] = [
+      { requestId: "req00004", at: NOW, mode: "command", outcome: "typed_not_submitted", reason: "changed", keys: ["probe", "Backspace"], gapsMs: {}, harness: "agent", version: "2.1.301" },
+      { requestId: "req00005", at: NOW, mode: "send", outcome: "refused", reason: "multiline", keys: [], gapsMs: {}, harness: "agent", version: null },
+      { requestId: "req00006", at: NOW, mode: "send", outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"], gapsMs: {}, harness: "agent", version: null },
+    ];
+    render(<SendReceiptsView rows={[...rows, ...more]} now={NOW} />);
+    const items = screen.getAllByRole("listitem");
+    expect(screen.getByTitle("not_free")).toHaveTextContent("The input box is not free. Nothing was typed.");
+    expect(screen.getByTitle("changed")).toHaveTextContent("Your text is in the box, but Enter was not pressed. Submit it or discard it.");
+    expect(screen.getByTitle("multiline")).toHaveTextContent("The send was refused. Nothing was typed.");
+    expect(screen.getByTitle("probe_failed")).toHaveTextContent("Typing did not land in the input box, so nothing was typed. Check the pane.");
+    for (const item of items) expect(item.textContent).not.toMatch(/not_free|modal cue|modal_cue|\bchanged\b|multiline|probe_failed|probe failed/u);
   });
 
   it("a tap opens the keys by name and the gaps, and a second tap closes them", async () => {

@@ -3959,6 +3959,13 @@ describe("outcome at the thumb", () => {
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
   });
 
+  it("typed_not_submitted changed with the text in the box (send drill a6): the typed sentence, not that the box held a draft", async () => {
+    await send(() => sendAnswer("x", "typed_not_submitted", "changed", { offers: ["submit", "discard", "keys"], surface: wayOutCase("draft").surface }), {}, "!echo ok");
+    await waitFor(() => expect(refusalText()).toMatch(/Your text is in the box, but Enter was not pressed\. Submit it or discard it\./u));
+    expect(refusalText()).not.toMatch(/held a draft/iu);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+
   it("refused probe_failed: names the Surface and points to the Keys dock and the Screen", async () => {
     await send(() => sendAnswer("x", "refused", "probe_failed", { surface: SURFACES.noMatch, offers: ["keys"] }));
     await waitFor(() => expect(refusalText()).toMatch(/typing did not land.*could not find the input box/i));
