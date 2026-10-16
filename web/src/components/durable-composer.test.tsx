@@ -826,7 +826,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
       HttpResponse.json({
         offers: [],
         receipt: { outcome: "refused", reason: "stale_surface", keys: [] },
-        detail: "The program started another turn after you looked. Read the chat, then send again.",
+        detail: "The durable agent started another turn after you looked. Read the chat, then send again.",
         surface: { revision: 9, turn: "running", modal: "none", composer: "empty" },
       }),
     );
@@ -834,7 +834,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     const user = await type("hello");
     await user.click(sendButton());
     const notice = await screen.findByText((_, node) => node?.getAttribute("data-slot") === "composer-refusal");
-    expect(notice).toHaveTextContent("The program started another turn after you looked. Read the chat, then send again.");
+    expect(notice).toHaveTextContent("The durable agent started another turn after you looked. Read the chat, then send again.");
     expect(document.querySelector('[data-slot="composer-refusal-detail"]')).toBeNull();
     expect(document.body.textContent).not.toMatch(/screen|input box/iu);
     expect(field()).toHaveValue("hello");
@@ -848,7 +848,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
       HttpResponse.json({
         offers: [],
         receipt: { outcome: "refused", reason: "not_free", keys: [] },
-        detail: "The program waits for an answer to a question. Answer it first, then send.",
+        detail: "The durable agent waits for an answer to a question. Answer it first, then send.",
         surface: { revision: 9, turn: "running", modal: { ask: { id: "ask-0123456789abcd", kind: "permission", options: [{ id: "1", label: "Save" }], channel: "program", hash: "abc" } }, composer: "empty" },
       }),
     );
@@ -856,7 +856,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     draw({ sendProtocol: true, onAnswerDialog });
     const user = await type("hello");
     await user.click(sendButton());
-    expect(await screen.findByText("The program waits for an answer to a question. Answer it first, then send.")).toHaveAttribute("data-slot", "composer-refusal");
+    expect(await screen.findByText("The durable agent waits for an answer to a question. Answer it first, then send.")).toHaveAttribute("data-slot", "composer-refusal");
     await user.click(screen.getByRole("button", { name: "Go to the question" }));
     expect(onAnswerDialog).toHaveBeenCalledOnce();
   });
@@ -873,7 +873,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     expect(await screen.findByText("Collie cannot read this conversation now. Try again in a moment.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Go to the question" })).toBeNull();
     await user.click(sendButton());
-    expect(await screen.findByText("The program did not say it took the message. Read the chat before you send it again.")).toBeInTheDocument();
+    expect(await screen.findByText("The durable agent did not say it took the message. Read the chat before you send it again.")).toBeInTheDocument();
   });
 
   it("the program's own refusal shows its words under the program sentence", async () => {
@@ -881,7 +881,7 @@ describe("the Send Protocol on this machine (M56 spec 14)", () => {
     draw({ sendProtocol: true });
     const user = await type("hello");
     await user.click(sendButton());
-    expect(await screen.findByText("The program did not take the message.")).toBeInTheDocument();
+    expect(await screen.findByText("The durable agent did not take the message.")).toBeInTheDocument();
     expect(screen.getByText("The desk is closed for the night.")).toHaveAttribute("data-slot", "composer-refusal-detail");
   });
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/session-cards";
 import type { ServerSummary, SessionSummary } from "@/lib/types";
 
-// The Programs section's rules (M55 spec 13), as pure functions over the snapshot's session summaries.
+// The Durable agents section's rules (M55 spec 13), as pure functions over the snapshot's session summaries.
 
 function session(name: string, over: Partial<SessionSummary> = {}): SessionSummary {
   return { name, isPrimary: false, reachable: true, agents: 0, working: 0, blocked: 0, ...over };

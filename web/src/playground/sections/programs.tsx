@@ -25,9 +25,9 @@ import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
   id: "programs",
-  title: "Programs home",
+  title: "Durable agents home",
   intent:
-    "A durable program this collie or a crew member carries is a row of the dashboard's Programs section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no program. A tap opens its home. On a machine whose program has no screen, the Dashboard tab is the program's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the program's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done. A program's question is a card that names the program in its caption and, when the program set an expiry, shows the time left under its title; an answer that comes too late says who decided first. A program refused for its wire version says why above its list.",
+    "A durable agent this collie or a crew member carries is a row of the dashboard's Durable agents section, apart from the Spaces list: its name with an Experimental badge, its runtime and where it runs under it (and the member, on another machine), its state as the shared mark, and at the right its open conversations and, when any, the ones that wait on you in the needs-you ink. Starting or Unreachable is said in words there instead. The section sits above the spaces while a question waits, below them otherwise, and draws nothing with no durable agent. A tap opens its home. On a machine whose durable agent has no screen, the Dashboard tab is the durable agent's conversations, as a messaging app lists its chats: what waits on you first, then the other open ones, newest first, then the closed ones under their own label. A row carries its title, its state mark (working, waiting with the open-question count, idle, closed), the time of its last activity, and one line under it: the question that waits on you, else the durable agent's subtitle. A tap on an open row opens its pane in Chat, a tap on a closed row opens the read-only view. The pane header is two lines: the title, and under it the running step, else the percent, else the subtitle, which also comes back once every step is done. A durable agent's question is a card that names the durable agent in its caption and, when the durable agent set an expiry, shows the time left under its title; an answer that comes too late says who decided first. A durable agent refused for its wire version says why above its list.",
 };
 
 const MIN = 60_000;
@@ -274,36 +274,36 @@ function RefusedHome() {
 export function DurableSection() {
   return (
     <Section def={DEF}>
-      <Group title="Programs">
+      <Group title="Durable agents">
         <Card
           state="programs-below"
-          label="1: no waiting question, the Programs section below the spaces"
-          reach="open the dashboard of a collie that carries durable programs beside its multiplexer (sources in sources.json), while no conversation waits on you."
+          label="1: no waiting question, the Durable agents section below the spaces"
+          reach="open the dashboard of a collie that carries durable agents beside its multiplexer (sources in sources.json), while no conversation waits on you."
           note="Drawn from fixed session cards over the real Spaces list. Each row: name, Experimental badge, runtime and place, the open conversations at the right."
         >
           <Dashboard programs={PROGRAMS_QUIET} />
         </Card>
         <Card
           state="programs-above"
-          label="2: one program with two waiting, the section above the spaces"
-          reach="the same dashboard while two conversations of one program wait on you with a question."
+          label="2: one durable agent with two waiting, the section above the spaces"
+          reach="the same dashboard while two conversations of one durable agent wait on you with a question."
           note="On the dashboard the section moves above Launch and the Spaces on the snapshot that brings the first waiting question, and back under the Spaces on the one that clears the last."
         >
           <Dashboard programs={PROGRAMS_WAITING} />
         </Card>
         <Card
           state="programs-unreachable"
-          label="3: one program unreachable"
-          reach="stop a remote program, or take its URL offline, and open the dashboard."
-          note="No counts: the word Unreachable in the muted ink where they would be. The row still opens the program's list."
+          label="3: one durable agent unreachable"
+          reach="stop a remote durable agent, or take its URL offline, and open the dashboard."
+          note="No counts: the word Unreachable in the muted ink where they would be. The row still opens the durable agent's list."
         >
           <Dashboard programs={PROGRAMS_UNREACHABLE} />
         </Card>
         <Card
           state="programs-crew"
           label="4: two machines, one section"
-          reach="open the dashboard of a crew whose lead and member each run a program."
-          note="The member's program names the member after its place; the lead's own names no machine. A waiting question on any machine moves the one section."
+          reach="open the dashboard of a crew whose lead and member each run a durable agent."
+          note="The member's durable agent names the member after its place; the lead's own names no machine. A waiting question on any machine moves the one section."
         >
           <Dashboard programs={PROGRAMS_CREW} servers={CREW} />
         </Card>
@@ -313,15 +313,15 @@ export function DurableSection() {
         <Card
           state="durable-home"
           label="One list: what waits on you, the other open ones, then Closed"
-          reach="open the dashboard on a machine whose program has no screen (its multiplexer declares paneGrid false)."
+          reach="open the dashboard on a machine whose durable agent has no screen (its multiplexer declares paneGrid false)."
           note="Drawn from fixed rows; the live app draws the open ones from the snapshot on the first frame and fills in the closed ones from /api/durable/conversations. The waiting row's second line is its question, in the title's ink."
         >
           <Home live={LIVE} rows={ROWS} />
         </Card>
         <Card
           state="durable-home-open-only"
-          label="A program that keeps no list: its open conversations alone"
-          reach="open the dashboard on a machine whose program does not declare caps.history."
+          label="A durable agent that keeps no list: its open conversations alone"
+          reach="open the dashboard on a machine whose durable agent does not declare caps.history."
         >
           <Home live={LIVE} rows={null} />
         </Card>
@@ -334,8 +334,8 @@ export function DurableSection() {
         <Card
           state="ask-expires-in"
           label="1: a question with 4 min left"
-          reach="open a durable conversation whose program raised a question with expiresAt a few minutes ahead."
-          note="The real card over a live ask: the line ticks on the page's one clock and says Expired after four minutes. The caption names the program from its session card. A tap posts for real, and with no bridge behind this page it ends as not sure the answer arrived."
+          reach="open a durable conversation whose durable agent raised a question with expiresAt a few minutes ahead."
+          note="The real card over a live ask: the line ticks on the page's one clock and says Expired after four minutes. The caption names the durable agent from its session card. A tap posts for real, and with no bridge behind this page it ends as not sure the answer arrived."
         >
           <LiveAsk offsetMs={4 * MIN + 30_000} />
         </Card>
@@ -343,15 +343,15 @@ export function DurableSection() {
           state="ask-expired"
           label="2: a question past its expiry"
           reach="leave a durable question with expiresAt open on the phone until the time passes, before the next read drops it."
-          note="The buttons stay: the program answers a late tap with its 409, and the card then says it timed out."
+          note="The buttons stay: the durable agent answers a late tap with its 409, and the card then says it timed out."
         >
           <LiveAsk offsetMs={-30_000} />
         </Card>
         <Card
           state="ask-decided-in-program"
-          label="3: decided in the program"
-          reach="answer a question in the program's own window, then tap an answer on the phone before the next read drops the card."
-          note="The card's face from a state lib/ask.ts's own steps built (a tap, then a too-late answer naming the program), because this page has no bridge to answer a tap. The card stays frozen."
+          label="3: decided in the durable agent"
+          reach="answer a question in the durable agent's own window, then tap an answer on the phone before the next read drops the card."
+          note="The card's face from a state lib/ask.ts's own steps built (a tap, then a too-late answer naming the durable agent), because this page has no bridge to answer a tap. The card stays frozen."
         >
           <LateAsk by="program" />
         </Card>
@@ -365,9 +365,9 @@ export function DurableSection() {
         </Card>
         <Card
           state="ask-program-refused"
-          label="5: a program refused for its wire version"
-          reach="list a program in sources.json whose hello names a wire version this Collie does not speak, and open its home."
-          note="The real durable home over the program's session card, which carries the refusal sentence. The program row on the dashboard keeps the word Unreachable."
+          label="5: a durable agent refused for its wire version"
+          reach="list a durable agent in sources.json whose hello names a wire version this Collie does not speak, and open its home."
+          note="The real durable home over the durable agent's session card, which carries the refusal sentence. The durable agent row on the dashboard keeps the word Unreachable."
         >
           <RefusedHome />
         </Card>
@@ -377,7 +377,7 @@ export function DurableSection() {
         <Card
           state="durable-header-step"
           label="a step list: Step 2 of 3 and the running step's label"
-          reach="open a durable conversation while its program reports progress as steps."
+          reach="open a durable conversation while its durable agent reports progress as steps."
           note="The real pane over an empty mirror: this page has no durable bridge, so the body under the header is the terminal one. Only the header is the subject."
           span={2}
         >
@@ -388,7 +388,7 @@ export function DurableSection() {
         <Card
           state="durable-header-percent"
           label="a percent: the number and its label"
-          reach="open a durable conversation while its program reports progress as a percent."
+          reach="open a durable conversation while its durable agent reports progress as a percent."
           span={2}
         >
           <PhoneFrameCard height={260}>
@@ -401,7 +401,7 @@ export function DurableSection() {
         <Card
           state="durable-header-all-done"
           label="every step done: the subtitle again"
-          reach="open a durable conversation whose program marked every step done and has not cleared the progress yet."
+          reach="open a durable conversation whose durable agent marked every step done and has not cleared the progress yet."
           note="No step is left to name, so the line goes back to the subtitle."
           span={2}
         >
@@ -426,8 +426,8 @@ export function DurableSection() {
         </Card>
         <Card
           state="durable-header-subtitle"
-          label="no progress: the program's subtitle"
-          reach="open a durable conversation whose program sets a subtitle and no progress, or one that is idle."
+          label="no progress: the durable agent's subtitle"
+          reach="open a durable conversation whose durable agent sets a subtitle and no progress, or one that is idle."
           span={2}
         >
           <PhoneFrameCard height={260}>

@@ -53,14 +53,14 @@ describe("SpaceActionsSheet: the Rename row follows renameSpace", () => {
   it("draws no Rename when renameSpace is declared false, and says the program offers no action", async () => {
     declares({ renameSpace: false });
     renderSheet();
-    await waitFor(() => expect(screen.getByText("This program offers no actions for a space.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("This durable agent offers no actions for a space.")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
   it("draws no Rename on a bridge that never answered for it: a program's own control reads absent", async () => {
     server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })));
     renderSheet();
-    await waitFor(() => expect(screen.getByText("This program offers no actions for a space.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("This durable agent offers no actions for a space.")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 });
@@ -161,7 +161,7 @@ describe("SpaceActionsSheet: the history row is gone on a durable machine", () =
   it("keeps the empty note when the program declares history and no rename", async () => {
     declares({ programHistory: true });
     renderSheet();
-    expect(await screen.findByText("This program offers no actions for a space.")).toBeInTheDocument();
+    expect(await screen.findByText("This durable agent offers no actions for a space.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "History" })).toBeNull();
   });
 });

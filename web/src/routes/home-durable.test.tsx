@@ -215,7 +215,7 @@ describe("durable home: one list with no filter", () => {
     declares({ paneGrid: false });
     renderHome(homeData({ agents: [] }));
     await waitFor(() => expect(list()).not.toBeNull());
-    expect(screen.getByText("This program has no conversations yet.")).toBeInTheDocument();
+    expect(screen.getByText("This durable agent has no conversations yet.")).toBeInTheDocument();
   });
 
   it("durable home: a solo machine with no screen draws no footer tabs, a Herdr machine keeps Dashboard and Files", async () => {
@@ -288,7 +288,7 @@ describe("durable home: a program refused for its wire version says why (M55 spe
     expect(box?.querySelector('[role="status"]') ?? (box?.getAttribute("role") === "status" ? box : null)).not.toBeNull();
     // The box sits above the list, not inside it.
     expect(list()?.contains(box)).toBe(false);
-    expect(screen.queryByText("The program did not answer. Try again in a moment.")).toBeNull();
+    expect(screen.queryByText("The durable agent did not answer. Try again in a moment.")).toBeNull();
   });
 
   it("durable home: a program that is not refused draws no box", async () => {
