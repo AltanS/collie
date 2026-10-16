@@ -54,6 +54,8 @@ class FakePane {
   afterInput: ((pane: FakePane, what: string) => void) | null = null;
   /** Runs before every read; may change the screen or return a promise to hold the read. */
   beforeRead: ((pane: FakePane, n: number) => Promise<void> | void) | null = null;
+  /** Runs when a text write or a key press arrives, before it acts; a promise held for ever is a hung multiplexer. */
+  beforeWrite: ((pane: FakePane, what: string) => Promise<void> | void) | null = null;
 
   constructor(readonly mode: Mode = "claude") {}
 
@@ -115,6 +117,8 @@ class FakePane {
 
   typeText = (paneId: string, text: string): Promise<MuxAck> => {
     void paneId;
+    const held = this.beforeWrite?.(this, `type:${text}`);
+    if (held !== undefined) return held.then(() => muxAck());
     this.calls.push(`type:${text}`);
     this.take(text, text.length > 200);
     this.afterInput?.(this, `type:${text}`);
@@ -123,6 +127,8 @@ class FakePane {
 
   pasteText = (paneId: string, text: string): Promise<MuxAck> => {
     void paneId;
+    const held = this.beforeWrite?.(this, `paste:${text}`);
+    if (held !== undefined) return held.then(() => muxAck());
     this.calls.push(`paste:${text}`);
     this.take(text, true);
     this.afterInput?.(this, `paste:${text}`);
@@ -131,6 +137,8 @@ class FakePane {
 
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
+    const held = this.beforeWrite?.(this, `keys:${keys.join(",")}`);
+    if (held !== undefined) return held.then(() => muxAck());
     for (const key of keys) {
       this.keysSeen.push(key);
       if (this.swallow || this.dialog !== null) continue;
@@ -850,6 +858,98 @@ describe("the lock", () => {
     expect(locks.acquire("k", "b", 200, 50)).toBe(false);
     expect(locks.acquire("k", "b", 300, 101)).toBe(true);
     expect(locks.owns("k", "a", 101)).toBe(false);
+  });
+});
+
+describe("bounded lock", () => {
+  /** A multiplexer call that spends the request's bound down to 300 ms on the fake clock, then never answers. */
+  function hangNearTheBound(clock: { now: number }): Promise<void> {
+    clock.now += LOCK_BOUND_MS - 500;
+    return new Promise<void>(() => undefined);
+  }
+
+  test("a hung text write ends unknown inside the bound, and the next tap is accepted", async () => {
+    const pane = new FakePane();
+    const r = rig({ pane });
+    pane.beforeWrite = (_p, what) => (what.includes("this write never answers") ? hangNearTheBound(r.clock) : undefined);
+    const started = Date.now();
+    const answer = await r.send("this write never answers");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "bound", keys: [] });
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(answer.offers).toEqual(["keys"]);
+    expect(r.deps.store.get(answer.receipt!.requestId)?.phase).toBe("settled");
+    // The lock was released with the outcome: the next tap is read and answered, never refused busy.
+    pane.beforeWrite = null;
+    const next = await r.send("the next tap");
+    expect(next.receipt?.reason).not.toBe("busy");
+    expect(next.receipt?.outcome).toBe("sent");
+    neverEscape(pane);
+  });
+
+  test("a hung Enter ends unknown inside the bound, resends nothing, and the next tap is accepted", async () => {
+    const pane = new FakePane();
+    const r = rig({ pane });
+    pane.beforeWrite = (_p, what) => (what === "keys:Enter" ? hangNearTheBound(r.clock) : undefined);
+    const started = Date.now();
+    const answer = await r.send("this Enter never answers");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "bound" });
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toEqual([]);
+    pane.beforeWrite = null;
+    // The text is still in the box (the Enter never left), so the next tap is refused for the draft, not for the lock.
+    const next = await r.send("the next tap");
+    expect(next.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    neverEscape(pane);
+  });
+
+  test("a read that hangs after Enter ends unknown at S2's bound, and the next tap is accepted", async () => {
+    const pane = new FakePane();
+    const r = rig({ pane });
+    const clock = r.clock;
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    // S2 has 3000 ms; the first read after Enter spends all but 300 ms of it on the fake clock, then never answers.
+    pane.beforeRead = () => {
+      if (!entered) return undefined;
+      clock.now += 2700;
+      return new Promise<void>(() => undefined);
+    };
+    const started = Date.now();
+    const answer = await r.send("this read never answers");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(Date.now() - started).toBeLessThan(2000);
+    pane.beforeRead = null;
+    entered = false;
+    expect((await r.send("the next tap")).receipt?.reason).not.toBe("busy");
+    neverEscape(pane);
+  });
+
+  test("a read that hangs before the write ends the step, never types, and the next tap is accepted", async () => {
+    const pane = new FakePane();
+    const r = rig({ pane });
+    pane.beforeRead = (_p, n) => (n === 2 ? new Promise<void>(() => undefined) : undefined);
+    const answer = await r.send("this S0 read never answers");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound", keys: [] });
+    expect(pane.calls).toEqual([]);
+    pane.beforeRead = null;
+    expect((await r.send("the next tap")).receipt?.outcome).toBe("sent");
+  });
+
+  test("a second tap inside the bound is refused busy, and the lock is free the moment the first settles", async () => {
+    const pane = new FakePane();
+    const { protocol } = rig({ pane });
+    let release: () => void = () => undefined;
+    pane.beforeRead = (_p, n) => (n === 1 ? new Promise<void>((resolve) => (release = resolve)) : undefined);
+    const target = { session: "main", paneId: "%1", harness: "claude" };
+    const first = protocol.handle({ id: "bound-first-01", text: "first", mode: "send" }, target);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect((await protocol.handle({ id: "bound-second-1", text: "second", mode: "send" }, target)).receipt).toMatchObject({ outcome: "refused", reason: "busy" });
+    release();
+    expect((await first).receipt?.outcome).toBe("sent");
+    pane.beforeRead = null;
+    expect((await protocol.handle({ id: "bound-third-01", text: "third", mode: "send" }, target)).receipt?.reason).not.toBe("busy");
   });
 });
 
