@@ -90,6 +90,30 @@ describe("codex: which TUI a notify belongs to", () => {
     expect(codexTuiFor(d.files, 600, "/work/proj")).toBe(500);
   });
 
+  test("codex: the default setup sets no CODEX_HOME: both sides read $HOME/.codex from their own environment (K6)", () => {
+    const plain = (pid: number, pane: string, cwd: string, args: readonly string[] = ["codex"]): Proc => ({ args, env: { HOME: "/home/pat", HERDR_PANE_ID: pane, HERDR_SOCKET_PATH: SOCKET }, cwd, start: 100 + pid });
+    const d = rig({ 500: plain(500, "w9:p1", "/work/proj"), 600: plain(600, "w9:p1", "/work/proj", DAEMON), 700: plain(700, "w9:p2", "/work/other") }, 600);
+    expect(codexTuiFor(d.files, 600, "/work/other")).toBe(700);
+    expect(cmdCodexNotify(d, [payload("/work/other")])).toBe(EXIT.OK);
+    expect(edges(d.files)[0]).toMatchObject({ pid: 700, markers: [{ pane: "w9:p2" }] });
+    // Another user's default home is another Codex home.
+    const other = rig({ 500: plain(500, "w9:p1", "/work/proj"), 600: { ...plain(600, "w9:p1", "/work/proj", DAEMON), env: { HOME: "/home/sam" } } }, 600);
+    expect(codexTuiFor(other.files, 600, "/work/proj")).toBeNull();
+  });
+
+  test("codex: CODEX_HOME set on one side and the default on the other match as real paths (K6)", () => {
+    const d = rig(
+      {
+        500: { args: ["codex"], env: { HOME: "/home/pat", HERDR_PANE_ID: "w9:p1", HERDR_SOCKET_PATH: SOCKET }, cwd: "/work/proj", start: 100 },
+        600: { args: DAEMON, env: { CODEX_HOME: "/home/pat/.codex-link", HERDR_PANE_ID: "w9:p1", HERDR_SOCKET_PATH: SOCKET }, cwd: "/work/proj", start: 120 },
+      },
+      600,
+    );
+    d.files.realPaths.set("/home/pat/.codex-link", "/home/pat/.codex");
+    d.files.realPaths.set("/home/pat/.codex", "/home/pat/.codex");
+    expect(codexTuiFor(d.files, 600, "/work/proj")).toBe(500);
+  });
+
   test("codex: an older Codex runs notify itself: the parent is the TUI", () => {
     const d = rig({ 500: tui("w9:p1", "/work/proj") }, 500);
     expect(cmdCodexNotify(d, [payload("/somewhere/else")])).toBe(EXIT.OK);
