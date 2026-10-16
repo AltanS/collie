@@ -170,4 +170,37 @@ describe("runWalk", () => {
     expect(done.screens).toHaveLength(1);
     expect(done.screens[0]?.expects).toBe("either");
   });
+
+  test("a slow redraw after Down is not read as the end of the menu", async () => {
+    const long = Array.from({ length: 30 }, (_, i) => `/cmd${String(i).padStart(2, "0")}`);
+    const pane = new ScriptPane(long);
+    const read = pane.read.bind(pane);
+    let stale: ScreenView | null = null;
+    let calls = 0;
+    pane.read = async (): Promise<ScreenView> => {
+      const view = await read();
+      calls++;
+      // After each Down, the first read still shows the screen from before the key.
+      if (stale !== null && pane.mode === "popup" && calls % 2 === 0) {
+        const old = stale;
+        stale = null;
+        return old;
+      }
+      stale = view;
+      return view;
+    };
+    const lists = parseSlashLists(JSON.stringify({ claude: { safe: [{ command: "/cmd29", opens: "dialog", reason: "reads only" }], unsafe: [] } }), "claude");
+    const done = await runWalk(pane, lists);
+    // Every command of the long menu was seen: the safe one at the very end was found and sent.
+    expect(done.walk.missing).toEqual([]);
+    expect(done.walk.sent).toEqual(["/cmd29"]);
+  });
+
+  test("a menu read that lost more than half of the safe list fails the menu check", async () => {
+    const pane = new ScriptPane(["/help", "/mystery"]);
+    const done = await runWalk(pane, LISTS);
+    expect(done.walk.menuRead).toBe(false);
+    expect(done.walk.missing).toEqual(["/status", "/gone"]);
+    expect(done.log.join("\n")).toContain("lost 2 of 3 safe ones");
+  });
 });

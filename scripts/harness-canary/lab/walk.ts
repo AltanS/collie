@@ -30,6 +30,11 @@ export const SETTLE_COMMAND: Settle = { pollMs: 300, stable: 3, maxMs: 6000 };
 export const SETTLE_MENU: Settle = { pollMs: 150, stable: 2, maxMs: 2000 };
 /** The most Down presses the menu read makes. The menu wraps long before this. */
 export const MENU_PRESS_CAP = 220;
+/** How long one Down may take to move the pointer, and how often the walk looks. */
+export const MENU_MOVE_MS = 600;
+export const MENU_MOVE_POLL_MS = 60;
+/** The screen did not move for this many Down presses in a row: the menu has no more rows. */
+export const MENU_STUCK_PRESSES = 2;
 /** The most Escape presses a close makes before the walk gives up. */
 export const CLOSE_PRESS_CAP = 3;
 
@@ -47,19 +52,39 @@ export async function settle(pane: WalkPane, how: Settle): Promise<ScreenView> {
   return view;
 }
 
-/** Read the whole `/` menu: type `/`, press Down until the pointer comes back to the first command. */
+/** Wait for the screen to differ from `before`, up to a short bound. The same screen back means the key did nothing yet. */
+async function nextScreen(pane: WalkPane, before: ScreenView): Promise<ScreenView> {
+  let view = await pane.read();
+  for (let waited = 0; view.hash === before.hash && waited < MENU_MOVE_MS; waited += MENU_MOVE_POLL_MS) {
+    await pane.sleep(MENU_MOVE_POLL_MS);
+    view = await pane.read();
+  }
+  return view;
+}
+
+/**
+ * Read the whole `/` menu: type `/`, press Down until the pointer comes back to the first command or the
+ * screen stops moving. Each Down waits for the screen to change, so a slow redraw is not read as a wrap.
+ */
 export async function readMenu(pane: WalkPane): Promise<string[]> {
   await pane.type("/");
   let view = await settle(pane, SETTLE_MENU);
   const names: string[] = [];
-  let first: string | null = null;
-  for (let press = 0; press < MENU_PRESS_CAP; press++) {
-    const { names: shown, pointed } = parseSlashMenu(view.plain);
+  const take = (shown: readonly string[]): void => {
     for (const name of shown) if (!names.includes(name)) names.push(name);
-    if (pointed !== null && first === null) first = pointed;
-    else if (pointed !== null && pointed === first && press > 0) break;
+  };
+  const first = parseSlashMenu(view.plain).pointed;
+  let stuck = 0;
+  for (let press = 0; press < MENU_PRESS_CAP; press++) {
+    take(parseSlashMenu(view.plain).names);
     await pane.keys("Down");
-    view = await settle(pane, { ...SETTLE_MENU, stable: 1, maxMs: 300 });
+    const next = await nextScreen(pane, view);
+    stuck = next.hash === view.hash ? stuck + 1 : 0;
+    const shown = parseSlashMenu(next.plain);
+    take(shown.names);
+    if (stuck >= MENU_STUCK_PRESSES) break;
+    if (first !== null && shown.pointed === first && next.hash !== view.hash) break;
+    view = next;
   }
   return names;
 }
@@ -130,14 +155,19 @@ export async function runWalk(pane: WalkPane, lists: SlashLists): Promise<WalkRe
   const sorted = classifyCommands(listed, lists);
   if (sorted.unclassified.length > 0) note(`walk: ${String(sorted.unclassified.length)} commands are unclassified and were not sent: ${sorted.unclassified.join(" ")}`);
   if (sorted.missing.length > 0) note(`walk: ${String(sorted.missing.length)} safe commands are no longer listed: ${sorted.missing.join(" ")}`);
+  // A menu read that lost more than half of the safe list is a short read or a vendor that moved its commands.
+  // Either way a person must look, so the verdict fails it with a reason instead of passing on two screens.
+  const menuRead = sorted.missing.length * 2 <= lists.safe.length;
+  if (!menuRead) note(`walk: the menu read found ${String(listed.length)} commands and lost ${String(sorted.missing.length)} of ${String(lists.safe.length)} safe ones`);
   const sent: string[] = [];
+  const after = (partial: Partial<WalkFact>): WalkResult => stop({ menuRead, sent, unclassified: sorted.unclassified, missing: sorted.missing, ...partial });
   for (const entry of sorted.send) {
     await pane.type(entry.command);
     const menu = await settle(pane, SETTLE_MENU);
     if (parseSlashMenu(menu.plain).pointed !== entry.command) {
       note(`walk: ${entry.command}: the menu does not point at it, so Enter was not sent`);
       const cleared = await clearSlashLine(pane, entry.command);
-      if (!cleared.free) return stop({ returned: false, sent, unclassified: sorted.unclassified, missing: sorted.missing });
+      if (!cleared.free) return after({ returned: false });
       continue;
     }
     await pane.keys("Enter");
@@ -148,17 +178,17 @@ export async function runWalk(pane: WalkPane, lists: SlashLists): Promise<WalkRe
     note(`walk: ${entry.command} -> turn ${reached.surface.turn}, modal ${fact.surface.modal}, composer ${reached.surface.composer}, free ${String(reached.free)}`);
     if (reached.surface.turn === "running") {
       await pane.keys("Escape");
-      return stop({ startedTurn: entry.command, returned: false, sent, unclassified: sorted.unclassified, missing: sorted.missing });
+      return after({ startedTurn: entry.command, returned: false });
     }
     const closed = await closeToIdle(pane, reached);
     if (closed.presses > 0) note(`walk: ${entry.command}: ${String(closed.presses)} Escape to get back`);
     if (!closed.view.free) {
       screens.push(factOf(closed.view, "walk", `after ${entry.command}`, "idle"));
       note(`walk: ${entry.command}: the box did not come back`);
-      return stop({ returned: false, sent, unclassified: sorted.unclassified, missing: sorted.missing });
+      return after({ returned: false });
     }
   }
-  return stop({ sent, unclassified: sorted.unclassified, missing: sorted.missing });
+  return after({});
 }
 
 /** Take a typed command out of the box without sending it: Escape, then one Backspace per character. */
