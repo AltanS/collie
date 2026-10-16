@@ -191,7 +191,7 @@ export const SURFACE = {
       ["--row-rule", "var(--surface-border-width)"],
       ["--row-edge", "0px"],
       ["--row-corner", "0px"],
-      ["--row-shadow", NONE],
+      ["--row-shadow", "none"],
       ["--row-inset", "0px"],
     ],
     cards: [

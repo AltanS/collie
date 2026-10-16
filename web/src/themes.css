@@ -68,7 +68,7 @@
   --row-rule: var(--surface-border-width);
   --row-edge: 0px;
   --row-corner: 0px;
-  --row-shadow: 0 0 #0000;
+  --row-shadow: none;
   --row-inset: 0px;
   --icon-stroke: 2;
   --label-transform: uppercase;
@@ -143,7 +143,7 @@
   --row-rule: var(--surface-border-width);
   --row-edge: 0px;
   --row-corner: 0px;
-  --row-shadow: 0 0 #0000;
+  --row-shadow: none;
   --row-inset: 0px;
   --icon-stroke: 2;
   --label-transform: uppercase;
@@ -218,7 +218,7 @@
   --row-rule: var(--surface-border-width);
   --row-edge: 0px;
   --row-corner: 0px;
-  --row-shadow: 0 0 #0000;
+  --row-shadow: none;
   --row-inset: 0px;
   --icon-stroke: 2;
   --label-transform: uppercase;

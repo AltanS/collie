@@ -425,7 +425,7 @@ describe("every default word of spec 17 is today's CSS", () => {
         ["--row-rule", "var(--surface-border-width)"],
         ["--row-edge", "0px"],
         ["--row-corner", "0px"],
-        ["--row-shadow", "0 0 #0000"],
+        ["--row-shadow", "none"],
         ["--row-inset", "0px"],
       ]),
     );
