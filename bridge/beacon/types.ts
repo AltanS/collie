@@ -192,4 +192,13 @@ export interface EdgeRecord {
   readonly at: number;
   /** The salted SHA-256 of the prompt a `UserPromptSubmit`-like event carried, or null. */
   readonly promptHash: string | null;
+  /**
+   * Whether the settings the harness reads hold Collie's permission hook (M56 spec 12), so the pane
+   * info can say "holds permissions". Absent from an older emitter, which reads as false.
+   */
+  readonly holds?: boolean;
+  /** The tool a tool edge is about (M56 spec 12). Absent on every other edge. */
+  readonly tool?: string;
+  /** The subagent a tool edge came from (M56 spec 12). Absent for the main session. */
+  readonly agent?: string;
 }

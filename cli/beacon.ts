@@ -13,6 +13,8 @@ import {
 } from "../bridge/beacon/types.ts";
 import { asJsonString } from "../web/src/lib/json.ts";
 import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { agentSettingsPath, settingsHold } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -284,6 +286,18 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
   }
 }
 
+/** A tool name or a subagent id: printable ASCII, short. */
+const TOOL_FIELD = /^[\x20-\x7e]{1,128}$/u;
+
+/**
+ * Whether the settings file this agent reads holds Collie's permission hook right now (M56 spec 12).
+ * The harness reloads hooks from the file while it runs (seen 2026-10-16 on 2.1.301), so the file
+ * is the truth for a running agent too. One small read; an unreadable file holds nothing.
+ */
+function holdsNow(deps: BeaconEmitDeps, event: string): boolean {
+  return settingsHold(deps.files.read(agentSettingsPath(deps.ctx.env, deps.ctx.home)), event);
+}
+
 /** A notification type: lower case and underscores. */
 const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 
@@ -346,6 +360,32 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const payload = asObject(JSON.parse(await deps.readStdin()));
     if (payload === null) return EXIT.OK;
 
+    // The tool edge (M56 spec 12): a tool finished. It ends a "Sent" card of a hook-held permission,
+    // so it is written for a subagent too, with the subagent id and the tool name, and never a beacon.
+    const hold = loadProfiles().get(BEACON_HARNESS)?.hold;
+    if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
+      const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+      if (pidStartTime === null) return EXIT.OK;
+      const tool = readField(payload, "tool_name", TOOL_FIELD);
+      const agent = readField(payload, "agent_id", TOOL_FIELD);
+      let record: EdgeRecord = {
+        schemaVersion: EDGE_SCHEMA_VERSION,
+        harness: BEACON_HARNESS,
+        event: hold.toolEvent,
+        detail: null,
+        pid: deps.agentPid,
+        pidStartTime,
+        markers,
+        at: (deps.now ?? Date.now)(),
+        promptHash: null,
+        holds: holdsNow(deps, hold.event),
+      };
+      if (tool !== null) record = { ...record, tool };
+      if (agent !== null) record = { ...record, agent };
+      writeEdge(deps, record);
+      return EXIT.OK;
+    }
+
     // A SUBAGENT IS NOT THE PANE. A payload carrying `agent_id` came from a Task running inside the
     // session, and its `session_id` is not the pane's identity — writing it would hand the pane a
     // conversation the operator cannot see in it.
@@ -376,6 +416,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
         markers,
         at: now,
         promptHash: promptHashOf(deps, payload),
+        holds: hold === undefined ? false : holdsNow(deps, hold.event),
       });
     } catch {
       // No edge for this event. The screen still reads the pane on its own poll.

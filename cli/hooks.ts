@@ -8,6 +8,8 @@ import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, linkPath, resolveLinkTarget } from "./link.ts";
 import type { Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
+import { HOLD_VERB, holdCommandIn } from "./hold-entry.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 
 // `collie hooks install claude` / `uninstall claude` / `status` — putting the beacon emitter into the
 // agent's own settings, and taking it back out.
@@ -324,8 +326,50 @@ function mergeGroups(groups: readonly JsonValue[], ours: JsonObject): JsonValue[
   return [...kept.slice(0, at), ours, ...kept.slice(at)];
 }
 
-/** The settings document with every {@link BEACON_HOOKS} registration present, or a refusal. */
-export function installDocument(current: JsonValue | null, command: string): HookDocument {
+// ── The permission hold (M56 spec 12) ────────────────────────────────────────
+
+/** The flag that adds the permission hold: `collie hooks install claude --hold-permissions`. */
+export const HOLD_FLAG = "--hold-permissions";
+
+/** The two entries the hold adds: the hold itself, and the tool edge that ends a "Sent" card. */
+export interface HoldInstall {
+  /** The hold event (`PermissionRequest`) and its command, `<binary> beacon hold <marker>`. */
+  readonly event: string;
+  readonly holdCommand: string;
+  /** The seconds the harness gives the hold command, from the profile. Above the hold limit. */
+  readonly timeoutS: number;
+  /** The tool event (`PostToolUse`) and the emitter command. */
+  readonly toolEvent: string;
+  readonly emitCommand: string;
+}
+
+/** The hold entries for this binary, from the harness profile, or null when the profile holds nothing. */
+export function holdInstallFor(harness: string, binary: string): HoldInstall | null {
+  const hold = loadProfiles().get(harness)?.hold;
+  if (hold === undefined) return null;
+  return {
+    event: hold.event,
+    holdCommand: `${binary}${HOLD_VERB}${HOOK_MARKER}`,
+    timeoutS: hold.hookTimeoutS,
+    toolEvent: hold.toolEvent,
+    emitCommand: `${binary}${HOOK_VERB}${HOOK_MARKER}`,
+  };
+}
+
+/** The two events a hold install writes, for the strip when the flag is absent. */
+function holdEvents(harness: string): string[] {
+  const hold = loadProfiles().get(harness)?.hold;
+  return hold === undefined ? [] : [hold.event, hold.toolEvent];
+}
+
+/**
+ * The settings document with every {@link BEACON_HOOKS} registration present, or a refusal.
+ *
+ * With `hold`, the permission hold and the tool edge are merged in too. Without it, any marked entry
+ * under `stripEvents` (the hold's two events) is removed, so an install without the flag takes the
+ * hold back out: permissions return to screen asks at once (the agent reloads its hooks).
+ */
+export function installDocument(current: JsonValue | null, command: string, hold: HoldInstall | null = null, stripEvents: readonly string[] = []): HookDocument {
   const root = current === null ? {} : asObject(current);
   if (root === null) return { kind: "refuse", reason: "its top level is not a JSON object" };
   const section = root.hooks === undefined ? {} : asObject(root.hooks);
@@ -339,6 +383,28 @@ export function installDocument(current: JsonValue | null, command: string): Hoo
       return { kind: "refuse", reason: `its \`hooks.${registration.event}\` is not a JSON array` };
     }
     hooks[registration.event] = mergeGroups(groups, ourGroup(registration, command));
+  }
+  const holdGroups: [string, JsonObject][] =
+    hold === null
+      ? []
+      : [
+          [hold.event, { hooks: [{ type: "command", command: hold.holdCommand, timeout: hold.timeoutS }] }],
+          [hold.toolEvent, { hooks: [{ type: "command", command: hold.emitCommand, timeout: 10 }] }],
+        ];
+  for (const [event, group] of holdGroups) {
+    const existing = section[event];
+    const groups = existing === undefined ? [] : asArray(existing);
+    if (groups === null) return { kind: "refuse", reason: `its \`hooks.${event}\` is not a JSON array` };
+    hooks[event] = mergeGroups(groups, group);
+  }
+  if (hold === null) {
+    for (const event of stripEvents) {
+      const groups = asArray(section[event]);
+      if (groups === null) continue;
+      const kept = groups.filter((group) => markedCommandIn(group) === null);
+      if (kept.length > 0) hooks[event] = kept;
+      else delete hooks[event];
+    }
   }
   return { kind: "document", document: { ...root, hooks } };
 }
@@ -510,8 +576,20 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
 
 /** `collie hooks install claude` — merge every registration into every target, adding what is missing. */
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
-  if (readHarness(deps, args, "install") === null) return EXIT.USAGE;
+  const harness = readHarness(deps, args, "install");
+  if (harness === null) return EXIT.USAGE;
+  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG);
+  if (unknown.length > 0) {
+    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The one option is \`${HOLD_FLAG}\`.`);
+    return EXIT.USAGE;
+  }
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
+  const wantsHold = args.includes(HOLD_FLAG);
+  const hold = wantsHold ? holdInstallFor(harness, binary) : null;
+  if (wantsHold && hold === null) {
+    deps.io.err(`error: \`${harness}\` has no permission hold.`);
+    return EXIT.USAGE;
+  }
   let failed = false;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
@@ -529,7 +607,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
       failed = true;
       continue;
     }
-    const outcome = installDocument(settings.value, command);
+    const outcome = installDocument(settings.value, command, hold, holdEvents(harness));
     if (outcome.kind === "refuse") {
       deps.io.err(`error: ${target.path} cannot be merged into — ${outcome.reason}.`);
       failed = true;
@@ -554,7 +632,13 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
   deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only.");
-  deps.io.out("  Agents that run now keep their old hooks. Restart them to send hook edges.");
+  deps.io.out("  A running agent reloads its hooks on its own. If no edges come, restart it.");
+  if (hold !== null) {
+    deps.io.out(`  ${hold.event} → \`${binary} beacon hold\`: a permission waits for a tap on the phone.`);
+    deps.io.out("  With no Collie listening, or on any error, the hook prints nothing and the dialog shows as before.");
+  } else {
+    deps.io.out(`  No permission hold. Add \`${HOLD_FLAG}\` to hold permissions for the phone.`);
+  }
   return EXIT.OK;
 }
 
@@ -667,7 +751,21 @@ export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): n
   return EXIT.OK;
 }
 
+/** Whether one settings file holds permissions (M56 spec 12). Read-only, like every status read. */
+function targetHolds(deps: HooksDeps, target: HookTarget): boolean {
+  const resolved = resolveTarget(deps, target);
+  if (resolved.kind === "refused") return false;
+  const settings = readSettings(deps, resolved.target);
+  if (settings === null) return false;
+  return HOOK_HARNESSES.some((harness) => holdEvents(harness).slice(0, 1).some((event) => holdCommandIn(settings.value, event) !== null));
+}
+
 function describeTarget(deps: HooksDeps, target: HookTarget): string {
+  const base = describeBeacons(deps, target);
+  return targetHolds(deps, target) ? `${base}, holds permissions` : base;
+}
+
+function describeBeacons(deps: HooksDeps, target: HookTarget): string {
   const state = targetState(deps, target);
   switch (state.kind) {
     case "refused":
@@ -708,7 +806,7 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);
       }
       deps.io.err(hooksUsage());
-      deps.io.err("  install     register the beacon hooks: `hooks install claude`");
+      deps.io.err("  install     register the beacon hooks: `hooks install claude`, add `--hold-permissions` to hold permissions");
       deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
@@ -8,7 +9,9 @@ import {
   cmdHooksInstall,
   cmdHooksStatus,
   cmdHooksUninstall,
+  HOLD_FLAG,
   HOOK_MARKER,
+  HOOK_MARKER_PREFIX,
   type HooksDeps,
   installDocument,
   markedCommandIn,
@@ -19,7 +22,12 @@ import {
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
 import { collieBinary } from "./unit.ts";
-import type { JsonValue } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
+import { asJsonObject } from "../web/src/lib/json.ts";
+import { HOLD_CONNECT_MS, HOLD_GRACE_MS } from "../web/src/lib/surface/hold.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { cmdBeaconHold, type HoldDeps, type HoldSocket } from "./hold.ts";
+import { HOLD_MARKER_PREFIX, holdCommandIn, settingsHold } from "./hold-entry.ts";
 
 // `collie hooks install|uninstall|status`. Every decision is a pure function of the document on disk,
 // so the merge rules are pinned directly; the verbs are then asserted for what they DO — which file
@@ -549,5 +557,287 @@ describe("status --check", () => {
   test("does not answer `behind` for a file it cannot read — that is doctor's business", () => {
     const d = deps({ files: { [SETTINGS]: "{ not json" } });
     expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
+  });
+});
+
+// ── The permission hold (M56 spec 12) ────────────────────────────────────────
+//
+// `collie hooks install claude --hold-permissions` adds two entries: the hold on PermissionRequest and
+// the tool edge on PostToolUse. The hook script itself, `collie beacon hold`, is driven here through
+// fake sockets: it must print nothing and exit 0 on every error, and hold only for PermissionRequest.
+
+const HOLD_PROFILE = loadProfiles().get("claude")!.hold!;
+const HOLD_COMMAND = `${OWN} beacon hold ${HOOK_MARKER}`;
+const HOLD_PID = 4242;
+const HOLD_STAT = `${HOLD_PID} (claude) S 4200 ${Array.from({ length: 17 }, (_v, i) => i).join(" ")} 987654 0 0`;
+const HOLD_ENV: Environment = { TMUX_PANE: "%7", TMUX: "/tmp/tmux-1000/default,3311,0" };
+
+/** The `hooks` section of a settings document, or an empty one. */
+function hooksOf(document: JsonValue): JsonObject {
+  return asJsonObject(asJsonObject(document)?.hooks) ?? {};
+}
+
+function permissionPayload(over: Record<string, JsonValue> = {}): string {
+  return JSON.stringify({
+    session_id: "s-1",
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "rm -rf build", description: "clean" },
+    ...over,
+  });
+}
+
+/** A scripted bridge socket: what the hook sent, and a decision line the test pushes back. */
+class FakeHoldSocket implements HoldSocket {
+  sent: string[] = [];
+  closed = false;
+  private lines: ((line: string) => void)[] = [];
+  private closes: (() => void)[] = [];
+  send(line: string): void {
+    this.sent.push(line);
+  }
+  onLine(listener: (line: string) => void): void {
+    this.lines.push(listener);
+  }
+  onClose(listener: () => void): void {
+    this.closes.push(listener);
+  }
+  close(): void {
+    this.closed = true;
+  }
+  push(line: string): void {
+    for (const l of this.lines) l(line);
+  }
+  drop(): void {
+    for (const l of this.closes) l();
+  }
+}
+
+function holdDeps(over: {
+  env?: Environment;
+  stdin?: string;
+  /** Reading stdin fails, as on a closed pipe. */
+  stdinFails?: boolean;
+  proc?: string | null;
+  sockets?: Record<string, FakeHoldSocket | null | "throw">;
+  onSent?: (path: string, socket: FakeHoldSocket) => void;
+} = {}): HoldDeps & { printed: string[]; connects: { path: string; ms: number }[]; timers: (() => void)[] } {
+  const printed: string[] = [];
+  const connects: { path: string; ms: number }[] = [];
+  const timers: (() => void)[] = [];
+  const sockets = over.sockets ?? {};
+  const stdin = over.stdin ?? permissionPayload();
+  return {
+    ctx: context(over.env ?? HOLD_ENV),
+    files: fakeFiles(over.proc === null ? {} : { [`/proc/${HOLD_PID}/stat`]: over.proc ?? HOLD_STAT }),
+    readStdin: () => (over.stdinFails === true ? Promise.reject(new Error("EPIPE")) : Promise.resolve(stdin)),
+    agentPid: HOLD_PID,
+    sockets: () => Object.keys(sockets),
+    connect: (path, ms) => {
+      connects.push({ path, ms });
+      const socket = sockets[path];
+      if (socket === "throw") return Promise.reject(new Error("boom"));
+      if (socket !== null && socket !== undefined) {
+        const send = socket.send.bind(socket);
+        socket.send = (line) => {
+          send(line);
+          over.onSent?.(path, socket);
+        };
+      }
+      return Promise.resolve(socket ?? null);
+    },
+    print: (text) => {
+      printed.push(text);
+      return Promise.resolve();
+    },
+    now: () => 1_000,
+    after: (_ms, run) => {
+      timers.push(run);
+      return () => undefined;
+    },
+    printed,
+    connects,
+    timers,
+  };
+}
+
+describe("hold: the install", () => {
+  test("--hold-permissions adds the hold on PermissionRequest with the profile's timeout, and the tool edge", () => {
+    const d = deps();
+    expect(cmdHooksInstall(d, ["claude", HOLD_FLAG])).toBe(EXIT.OK);
+    const hooks = hooksOf(settingsOf(d));
+    expect(hooks[HOLD_PROFILE.event]).toEqual([{ hooks: [{ type: "command", command: HOLD_COMMAND, timeout: HOLD_PROFILE.hookTimeoutS }] }]);
+    expect(hooks[HOLD_PROFILE.toolEvent]).toEqual([{ hooks: [{ type: "command", command: COMMAND, timeout: 10 }] }]);
+    // The hold limit plus the grace stays below the hook timeout the harness enforces.
+    expect(HOLD_PROFILE.limitMs + HOLD_GRACE_MS).toBeLessThan(HOLD_PROFILE.hookTimeoutS * 1000);
+    expect(d.io.stdout.join("\n")).toContain("PermissionRequest");
+  });
+
+  test("an install without the flag takes the hold back out, and keeps the operator's own entries", () => {
+    const d = deps();
+    cmdHooksInstall(d, ["claude", HOLD_FLAG]);
+    const before = hooksOf(settingsOf(d));
+    const held = before[HOLD_PROFILE.event];
+    const withTheirs = { hooks: { ...before, [HOLD_PROFILE.event]: [...(Array.isArray(held) ? held : []), THEIRS] } };
+    d.files.entries.set(posixKey(SETTINGS), { text: JSON.stringify(withTheirs), mode: 0o600 });
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    const hooks = hooksOf(settingsOf(d));
+    expect(hooks[HOLD_PROFILE.event]).toEqual([THEIRS]);
+    expect(hooks[HOLD_PROFILE.toolEvent]).toBeUndefined();
+    expect(holdCommandIn(settingsOf(d), HOLD_PROFILE.event)).toBeNull();
+  });
+
+  test("the hold entry is found by the edge emitter's reader; uninstall removes it", () => {
+    const d = deps();
+    cmdHooksInstall(d, ["claude", HOLD_FLAG]);
+    expect(settingsHold(d.files.entries.get(posixKey(SETTINGS))!.text, HOLD_PROFILE.event)).toBe(true);
+    expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(settingsHold(d.files.entries.get(posixKey(SETTINGS))?.text ?? null, HOLD_PROFILE.event)).toBe(false);
+  });
+
+  test("an unknown option is refused, and the marker prefix matches the one the emitter writes", () => {
+    const d = deps();
+    expect(cmdHooksInstall(d, ["claude", "--hold"])).toBe(EXIT.USAGE);
+    expect(d.files.entries.get(posixKey(SETTINGS))).toBeUndefined();
+    expect(HOLD_MARKER_PREFIX).toBe(HOOK_MARKER_PREFIX);
+  });
+});
+
+describe("hold: the hook script is inert on every error", () => {
+  const SOCK = "/state/hold/sock";
+  const cases: [string, Parameters<typeof holdDeps>[0]][] = [
+    ["outside a multiplexer", { env: {}, sockets: { [SOCK]: new FakeHoldSocket() } }],
+    ["stdin that is not JSON", { stdin: "{oops", sockets: { [SOCK]: new FakeHoldSocket() } }],
+    ["stdin that throws", { stdinFails: true, sockets: { [SOCK]: new FakeHoldSocket() } }],
+    ["no /proc entry for the agent", { proc: null, sockets: { [SOCK]: new FakeHoldSocket() } }],
+    ["no bridge socket at all", { sockets: {} }],
+    ["a socket that does not accept in time", { sockets: { [SOCK]: null } }],
+    ["a connect that throws", { sockets: { [SOCK]: "throw" } }],
+    ["a tool name that is not plain text", { stdin: permissionPayload({ tool_name: "Bash\u001b[2J" }), sockets: { [SOCK]: new FakeHoldSocket() } }],
+  ];
+  for (const [name, over] of cases) {
+    test(`prints nothing and exits 0: ${name}`, async () => {
+      const d = holdDeps(over);
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(d.printed).toEqual([]);
+    });
+  }
+
+  test("each socket gets the 200 ms connect limit", async () => {
+    const d = holdDeps({ sockets: { [SOCK]: null, "/other/hold/sock": null } });
+    await cmdBeaconHold(d);
+    expect(d.connects).toEqual([
+      { path: SOCK, ms: HOLD_CONNECT_MS },
+      { path: "/other/hold/sock", ms: HOLD_CONNECT_MS },
+    ]);
+    expect(HOLD_CONNECT_MS).toBe(200);
+  });
+
+  test("a bridge that dies mid-hold: no decision, nothing printed, exit 0", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({ sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.drop()) });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.printed).toEqual([]);
+    expect(socket.closed).toBe(true);
+  });
+
+  test("the hold limit: no decision, nothing printed", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({ sockets: { [SOCK]: socket }, onSent: () => queueMicrotask(() => d.timers[0]?.()) });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.printed).toEqual([]);
+  });
+
+  test("a reply that is not a decision is not one", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({
+      sockets: { [SOCK]: socket },
+      onSent: (_p, s) =>
+        queueMicrotask(() => {
+          s.push('{"decision":"ask"}');
+          s.push("garbage");
+          s.drop();
+        }),
+    });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.printed).toEqual([]);
+  });
+});
+
+describe("hold: only PermissionRequest is held", () => {
+  const SOCK = "/state/hold/sock";
+  test("every other event exits at once, with no connect", async () => {
+    for (const event of ["PreToolUse", "PostToolUse", "Notification", "Stop", "UserPromptSubmit"]) {
+      const d = holdDeps({ stdin: permissionPayload({ hook_event_name: event }), sockets: { [SOCK]: new FakeHoldSocket() } });
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(d.connects).toEqual([]);
+      expect(d.printed).toEqual([]);
+    }
+  });
+
+  test("a screen-only tool is sent as an edge and never held", async () => {
+    for (const tool of HOLD_PROFILE.screenOnly) {
+      const socket = new FakeHoldSocket();
+      const d = holdDeps({ stdin: permissionPayload({ tool_name: tool }), sockets: { [SOCK]: socket } });
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(JSON.parse(socket.sent[0]!)).toMatchObject({ tool, hold: false });
+      expect(d.timers).toEqual([]);
+      expect(d.printed).toEqual([]);
+    }
+  });
+
+  test("a decision from the bridge is printed in the harness's shape; the request carries the input shown, never the whole input", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({ sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.push('{"decision":"allow"}')) });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    const request = JSON.parse(socket.sent[0]!);
+    expect(request).toMatchObject({ v: 1, harness: "claude", pid: HOLD_PID, pidStartTime: 987654, tool: "Bash", input: "rm -rf build", agent: null, hold: true });
+    expect(request.markers).toEqual([{ namespace: "tmux", scope: "/tmp/tmux-1000/default", pane: "%7" }]);
+    expect(d.printed.map((p) => JSON.parse(p))).toEqual([{ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } }]);
+  });
+
+  test("two bridges: the first decision wins, the other bridge hears answered elsewhere", async () => {
+    const a = new FakeHoldSocket();
+    const b = new FakeHoldSocket();
+    const d = holdDeps({
+      sockets: { "/a/hold/sock": a, "/b/hold/sock": b },
+      onSent: (path, s) => {
+        if (path === "/b/hold/sock" && s.sent.length === 1) queueMicrotask(() => s.push('{"decision":"deny"}'));
+      },
+    });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(a.sent.at(-1)).toBe(`${JSON.stringify({ done: "elsewhere" })}\n`);
+    expect(b.sent).toHaveLength(1);
+    expect(a.closed && b.closed).toBe(true);
+    expect(JSON.parse(d.printed[0]!).hookSpecificOutput.decision).toEqual({ behavior: "deny", message: HOLD_PROFILE.denyMessage, interrupt: true });
+  });
+});
+
+describe("no secret", () => {
+  // The hold carries no token: the socket is a file in the bridge's own state folder, mode 0600, and
+  // the settings entry names only the binary, the verb and the marker.
+  const SECRET = /(token|secret|password|bearer|api[_-]?key|sk-[a-z0-9]|COLLIE_[A-Z_]*KEY)/iu;
+
+  test("the settings entries the hold install writes hold no secret", () => {
+    const d = deps({ env: { COLLIE_TOKEN: "sk-or-v1-your-key-here", COLLIE_ACCESS_KEY: "placeholder-key" } });
+    cmdHooksInstall(d, ["claude", HOLD_FLAG]);
+    const text = d.files.entries.get(posixKey(SETTINGS))!.text;
+    expect(text).not.toMatch(SECRET);
+    expect(text).not.toContain("sk-or-v1-your-key-here");
+    expect(text).not.toContain("placeholder-key");
+  });
+
+  test("the hook script source reads no secret and sends none", async () => {
+    const source = readFileSync(join(import.meta.dir, "hold.ts"), "utf8") + readFileSync(join(import.meta.dir, "hold-entry.ts"), "utf8");
+    for (const line of source.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/u.test(l))) expect(line).not.toMatch(SECRET);
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({
+      env: { ...HOLD_ENV, COLLIE_TOKEN: "sk-or-v1-your-key-here" },
+      sockets: { "/state/hold/sock": socket },
+      onSent: (_p, s) => queueMicrotask(() => s.drop()),
+    });
+    await cmdBeaconHold(d);
+    expect(socket.sent.join("")).not.toContain("sk-or-v1-your-key-here");
+    expect(socket.sent.join("")).not.toMatch(SECRET);
   });
 });

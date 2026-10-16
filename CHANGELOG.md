@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The pane settings sheet says whether the pane sends hook edges.** It reads "Hooks: live" when the agent's own hooks report from the pane, and "Hooks: none" when they are not installed or the agent started before `collie hooks install claude`. `docs/multiplexers.md` explains hook edges and the row.
 - **`collie hooks install claude` says what the hooks do on Herdr and for agents that already run.** In Herdr the hooks write hook edges only, and an agent that runs keeps its old hooks until it restarts.
 - **The Claude profile describes a hook-held permission.** A `hold` block names the PermissionRequest hook and a hold limit below the hook timeout. It lists the options a hook can state: only Yes and No reach the hook. A PostToolUse hook gives a new `tool` edge. `web/src/lib/surface/hold.ts` holds the wire lines, the hash and the decision output.
+- **`collie hooks install claude --hold-permissions` lets the phone answer a Claude permission.** It adds a PermissionRequest hook, `collie beacon hold`, and a PostToolUse edge. The hook posts the request to each running bridge and waits for a tap. With no bridge, or on any error, it prints nothing and the dialog shows as before. An install without the flag takes the hold out again. The settings entry holds no token. `collie doctor` says when hooks hold permissions.
 
 ### Changed
 

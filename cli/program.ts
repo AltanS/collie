@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
+import { type HoldDeps, holdSocketPath, netConnect, runBeaconHold } from "./hold.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -296,6 +297,21 @@ function beaconDeps(): BeaconEmitDeps {
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
+  };
+}
+
+function holdDeps(): HoldDeps {
+  const ctx = loadContext(() => {});
+  return {
+    ctx,
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    agentPid: process.ppid,
+    sockets: () => [holdSocketPath(ctx.stateDir)],
+    connect: netConnect,
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
   };
 }
 
@@ -593,13 +609,18 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit` — an agent hook's payload in, one beacon file out",
+    summary: "internal: `beacon emit` and `beacon hold`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
         name: "emit",
         summary: "internal: write this pane's beacon from the hook payload on stdin",
         run: () => runBeaconEmit(beaconDeps),
+      },
+      {
+        name: "hold",
+        summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
+        run: () => runBeaconHold(holdDeps),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets
