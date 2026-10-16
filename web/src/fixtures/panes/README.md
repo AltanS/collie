@@ -201,6 +201,19 @@ The last two are real pi 1.2.0 captures too (Herdr 0.9.4, padding 2, the dialog 
 to the top rule like the rest. Before 1.21.3 both read as a ready composer; their search row looks like
 an editor. They are unread dialogs: nothing on the phone answers them.
 
+## gentle-pi `ask_user_choice` on pi 1.3.0 (issue 455, captured 2026-10-16, Herdr 0.9.5)
+
+gentle-pi 4.2.0's `ask_user_choice` on pi 1.3.0 under Gentle Shell, which replaces pi's footer, so
+nothing stands under the dialog's bottom rule. A 200-column Herdr pane, read with `herdr pane read
+--source visible --format ansi` and cut to the dialog's top rule. CRLF line ends and the trailing
+padding are as read. The question and options are a probe (`Pick a color for the Collie probe`); no
+user, host or path is in either file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
+| `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
+
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
 Agent prose can quote a whole question dialog. These four files are BUILT, not captured: a real

@@ -107,3 +107,24 @@ Without the field nothing changes, and an older bridge that ignores it compares 
 refuses the tap. The pi reader sets it only on a question card read from a cropped view, 0 to the
 panel's column. A Submit page beside the panel stays raw, and the editor's bound prompt beside the
 panel is still whole rows, so a reply there stays an unbound write.
+
+## Amendment, 2026-10-16: unnumbered rows, and a dialog with nothing under it
+
+Status: **Accepted** (2026-10-16). Amends the shape the Decision reads for two screens it did not
+cover. Trail: [issue 455](https://github.com/AltanS/collie/issues/455) · `web/src/lib/harness/pi/ask.ts`
+(`statusTailBottom`, `readUnnumbered`), `ASK_NOTES.md` · `pi--v130-gentle-choice*.txt`. Tested on
+captures of gentle-pi 4.2.0 on pi 1.3.0 under Herdr 0.9.5, and against pi 1.3.0's selector source.
+
+**Unnumbered rows.** pi's own selector behind `ctx.ui.confirm` and `ctx.ui.select`, and gentle-pi's
+`ask_user_choice`, print ` → Label` and `   Label` with no number. The reader takes them at pointer
+column 1 only, with one pointer, descriptions one column further in, and gentle-pi's `Other…` as the
+free-text row, which stays a field. They lift by the walk alone, since there is no digit to send, so
+ADR 0009 holds. Column 0 (`→ name`) is pi's slash palette and its pickers, and stays unread. A tab
+strip beside unnumbered rows has no capture and stays raw.
+
+**Nothing under the bottom rule.** An extension can replace pi's footer with an empty one, as Gentle
+Shell does, so a live dialog's bottom rule is the last row. The reader now takes a bare bottom rule
+under a top rule of the same width and colour. That is byte for byte a dialog quoted in agent prose
+that ends the buffer, which the screen cannot tell apart; a shell prompt or any plain row under it
+still refuses it. A walked tap on such a quoted block sends arrows and never Enter, because the
+pointer never moves and the read-back fails (ADR 0080).
