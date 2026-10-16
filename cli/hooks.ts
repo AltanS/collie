@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
+import { cmdCodexHooksInstall, cmdCodexHooksUninstall, codexHooksStatusLine } from "./codex-hooks.ts";
 import { hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext } from "./context.ts";
@@ -52,8 +53,11 @@ import { collieBinary } from "./unit.ts";
 // an old one missing the field gets it back the next time bytes are compared — no marker bump, because
 // the command string is still exactly what it was.
 
-/** The harnesses that have an emitter. One today; the arg is required so the second needs no new verb. */
-export const HOOK_HARNESSES = ["claude"] as const;
+/**
+ * The harnesses that have an emitter. Claude takes the hooks in its settings files; Codex takes one
+ * notify command in its config.toml (cli/codex-hooks.ts, M56 spec 13).
+ */
+export const HOOK_HARNESSES = ["claude", "codex"] as const;
 
 /** The `hooks` sub-verbs, in the order the usage block prints them. */
 export const HOOKS_SUBCOMMANDS = ["install", "uninstall", "status"] as const;
@@ -511,8 +515,10 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
 
 /** `collie hooks install claude` — merge every registration into every target, adding what is missing. */
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
-  if (readHarness(deps, args, "install") === null) return EXIT.USAGE;
+  const harness = readHarness(deps, args, "install");
+  if (harness === null) return EXIT.USAGE;
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
+  if (harness === "codex") return cmdCodexHooksInstall(deps, binary, PINNED_NOTE[source]);
   let failed = false;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
@@ -563,7 +569,9 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
 
 /** `collie hooks uninstall claude` — remove only what carries the marker. */
 export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): number {
-  if (readHarness(deps, args, "uninstall") === null) return EXIT.USAGE;
+  const harness = readHarness(deps, args, "uninstall");
+  if (harness === null) return EXIT.USAGE;
+  if (harness === "codex") return cmdCodexHooksUninstall(deps);
   let failed = false;
   let removed = 0;
 
@@ -667,6 +675,7 @@ export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): n
   for (const target of claudeSettingsTargets(deps.ctx)) {
     deps.io.out(`${target.path}: ${describeTarget(deps, target)}`);
   }
+  deps.io.out(codexHooksStatusLine(deps, binary));
   return EXIT.OK;
 }
 
@@ -711,8 +720,8 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);
       }
       deps.io.err(hooksUsage());
-      deps.io.err("  install     register the beacon hooks: `hooks install claude`");
-      deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`");
+      deps.io.err("  install     register the beacon hooks: `hooks install claude`, or `hooks install codex`");
+      deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;
   }

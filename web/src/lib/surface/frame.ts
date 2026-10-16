@@ -75,19 +75,24 @@ export interface Frame {
   readonly anchorsHit: readonly FrameAnchorHit[];
 }
 
+/** One anchor, compiled: its pattern, the cells it must span, its column, and whether it is a blank row. */
+interface CompiledAnchor {
+  readonly pattern: RegExp;
+  readonly cells: number;
+  readonly column: number;
+  readonly blank: boolean;
+}
+
 interface Compiled {
-  readonly top: RegExp;
-  readonly topCells: number;
-  readonly prompt: RegExp;
-  readonly promptCells: number;
-  readonly bottom: RegExp;
-  readonly bottomCells: number;
+  readonly top: CompiledAnchor;
+  readonly prompt: CompiledAnchor;
+  readonly bottom: CompiledAnchor;
 }
 
 const compiledByIdle = new WeakMap<IdleProfile, Compiled>();
 
-function cellFloor(anchor: FrameAnchor): number {
-  return anchor.minCells ?? 0;
+function compileAnchor(anchor: FrameAnchor, flags: string): CompiledAnchor {
+  return { pattern: new RegExp(anchor.pattern, flags), cells: anchor.minCells ?? 0, column: anchor.column, blank: anchor.blank === true };
 }
 
 function compile(idle: IdleProfile): Compiled {
@@ -95,16 +100,18 @@ function compile(idle: IdleProfile): Compiled {
   if (known !== undefined) return known;
   const { top, prompt, bottom } = idle.frame;
   const compiled: Compiled = {
-    top: new RegExp(top.pattern, "u"),
-    topCells: cellFloor(top),
+    top: compileAnchor(top, "u"),
     // `d` gives the draft hole's offset, so the placeholder test reads only the runs inside it.
-    prompt: new RegExp(prompt.pattern, "du"),
-    promptCells: cellFloor(prompt),
-    bottom: new RegExp(bottom.pattern, "u"),
-    bottomCells: cellFloor(bottom),
+    prompt: compileAnchor(prompt, "du"),
+    bottom: compileAnchor(bottom, "u"),
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
+}
+
+/** Whether the profile draws its box with a blank top edge. Such a box gets the strict interior (see frameAt). */
+function blankTop(idle: IdleProfile): boolean {
+  return idle.frame.top.blank === true;
 }
 
 /** The plain text of a row. */
@@ -123,24 +130,41 @@ export function plainRows(texts: readonly string[]): FrameRow[] {
   return texts.map((text) => ({ segments: [{ text }] }));
 }
 
-/** Whether an anchor matches a row: the row starts in the anchor's column (0, so no leading space),
- *  the pattern matches the row with its trailing space cut, and the row spans at least `minCells`. */
-function anchored(text: string, pattern: RegExp, minCells: number): RegExpExecArray | null {
-  if (text.length === 0 || /^\s/u.test(text)) return null;
-  const trimmed = text.trimEnd();
-  if (minCells > 0 && displayWidth(trimmed) < minCells) return null;
-  return pattern.exec(trimmed);
+/** The column a row's text starts in: its count of leading spaces. A blank row has none. */
+function textColumn(text: string): number {
+  return text.length - text.trimStart().length;
 }
 
-/** The edge a row is, as the frame walk sees it: one of the three anchors, at column 0. A row that
- *  matches the bottom anchor also matches the top one on a bare edge; the walk only needs to know
- *  it is an edge. */
+/** Whether an anchor matches a row. A blank anchor matches a blank row. Any other anchor needs the
+ *  row's text to start in the anchor's column, the pattern to match the row with its trailing space
+ *  cut, and the row to span at least `minCells`. */
+function anchored(text: string, anchor: CompiledAnchor): RegExpExecArray | null {
+  if (isBlank(text)) return anchor.blank ? anchor.pattern.exec("") : null;
+  if (anchor.blank || textColumn(text) !== anchor.column) return null;
+  const trimmed = text.trimEnd();
+  if (anchor.cells > 0 && displayWidth(trimmed) < anchor.cells) return null;
+  return anchor.pattern.exec(trimmed);
+}
+
+/** The edge a row is, as the frame walk sees it: one of the three anchors. A row that matches the
+ *  bottom anchor also matches the top one on a bare edge; the walk only needs to know it is an edge.
+ *  A blank row is never an edge here, so a blank row inside a draft is crossed like any other. */
 export function frameEdge(text: string, idle: IdleProfile): "prompt" | "bottom" | "top" | null {
+  if (isBlank(text)) return null;
   const c = compile(idle);
-  if (anchored(text, c.prompt, c.promptCells) !== null) return "prompt";
-  if (anchored(text, c.bottom, c.bottomCells) !== null) return "bottom";
-  if (anchored(text, c.top, c.topCells) !== null) return "top";
+  if (anchored(text, c.prompt) !== null) return "prompt";
+  if (anchored(text, c.bottom) !== null) return "bottom";
+  if (anchored(text, c.top) !== null) return "top";
   return null;
+}
+
+/**
+ * Whether a row may stand inside a box whose edges are blank rows: a blank row, or a row indented at
+ * least `continuationIndent` columns (a wrapped or later line of the draft). Text further left is the
+ * transcript or a dialog, so the walk must stop there.
+ */
+export function interiorRow(text: string, idle: IdleProfile): boolean {
+  return isBlank(text) || textColumn(text) >= idle.frame.continuationIndent;
 }
 
 /** The placeholder attribute as a run flag, or null when the profile names one this module cannot
@@ -241,28 +265,44 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   const c = compile(idle);
   const texts = rows.map(rowText);
   const bottomText = texts[bottom];
-  if (bottomText === undefined || anchored(bottomText, c.bottom, c.bottomCells) === null) return null;
+  if (bottomText === undefined || anchored(bottomText, c.bottom) === null) return null;
 
+  const strict = blankTop(idle);
   const budget = idle.frame.maxDraftRows;
   let crossed = 0;
   let i = bottom - 1;
+  let blankRun = 0;
   while (i >= 0 && frameEdge(texts[i]!, idle) === null && crossed < budget) {
+    // A box with blank edges has no edge glyph to stop at: a row with text left of the indent ends
+    // it, and so do two blank rows in a row (a blank edge is one row, so a second one is outside).
+    if (strict && !interiorRow(texts[i]!, idle)) return null;
+    blankRun = isBlank(texts[i]!) ? blankRun + 1 : 0;
+    if (strict && blankRun > 1) return null;
     crossed++;
     i--;
   }
   if (i < 0) return null;
-  const promptMatch = anchored(texts[i]!, c.prompt, c.promptCells);
+  const promptMatch = anchored(texts[i]!, c.prompt);
   if (promptMatch === null) return null;
   const prompt = i;
   i--;
-  while (i >= 0 && isBlank(texts[i]!) && crossed < budget) {
-    crossed++;
-    i--;
+  let top: number;
+  let topMatch: RegExpExecArray | null;
+  if (c.top.blank) {
+    // A blank top edge is the row straight over the prompt row: there is no padding to pass.
+    if (i < 0) return null;
+    topMatch = anchored(texts[i]!, c.top);
+    top = i;
+  } else {
+    while (i >= 0 && isBlank(texts[i]!) && crossed < budget) {
+      crossed++;
+      i--;
+    }
+    if (i < 0) return null;
+    topMatch = anchored(texts[i]!, c.top);
+    top = i;
   }
-  if (i < 0) return null;
-  const topMatch = anchored(texts[i]!, c.top, c.topCells);
   if (topMatch === null) return null;
-  const top = i;
 
   const anchorsHit: FrameAnchorHit[] = ["top"];
   const label = topMatch.groups?.label?.trim() ?? "";
@@ -305,16 +345,18 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
 /**
  * The input frame on a screen read, or null.
  *
- * The bottom edge is the lowest row that matches the bottom anchor at column 0, at most
+ * The bottom edge is the lowest row that matches the bottom anchor at its column, at most
  * `maxTailRows` rows above the last non-blank row. Only that row is tried: when its frame does not
- * close, there is no frame. A box higher up is an echo in the transcript, not the live one.
+ * close, there is no frame. A box higher up is an echo in the transcript, not the live one. A box
+ * with blank edges (no edge glyphs) is read strictly: every interior row is blank or indented, the
+ * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);
   let end = rows.length;
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
-    if (anchored(rowText(rows[b]!), c.bottom, c.bottomCells) !== null) return frameAt(rows, b, idle);
+    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
   }
   return null;
 }

@@ -217,7 +217,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   const frame = idle === null ? null : findInputFrame(rows, idle);
   const cues = readCues(rows, frame);
 
-  const turn: SurfaceTurn = frame === null ? "unknown" : runningSign(rows, frame) ? "running" : "idle";
+  const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle.runningRows) ? "running" : "idle";
 
   let modal: SurfaceModal;
   if (input.ask !== null) modal = { ask: input.ask };

@@ -264,7 +264,7 @@ export interface BeaconEmitDeps {
  * honest answer to an absent file is already the right one. In practice that is every non-Linux host,
  * because the alternatives there are all subprocesses and `SessionEnd` has 1.5 s.
  */
-function readPidStartTime(files: Files, pid: number): number | null {
+export function readPidStartTime(files: Files, pid: number): number | null {
   const text = files.read(procStatPath(pid));
   return text === null ? null : parseProcStartTime(text);
 }
@@ -310,7 +310,7 @@ function privateDir(deps: BeaconEmitDeps, dir: string): boolean {
  * than {@link EDGE_MAX_AGE_MS}, which no bridge would take anyway; still full, it takes nothing more,
  * because no bridge is taking them and a spool must not grow without end.
  */
-function writeEdge(deps: BeaconEmitDeps, stateDir: string, record: EdgeRecord): void {
+export function writeEdge(deps: BeaconEmitDeps, stateDir: string, record: EdgeRecord): void {
   const dir = edgesDir(stateDir);
   if (deps.files.entryType(dir) === null) deps.files.mkdirp(dir, BEACON_DIR_MODE);
   if (!privateDir(deps, dir)) return;

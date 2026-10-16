@@ -204,9 +204,10 @@ describe("surface shadow", () => {
   test("a harness with no profile reads unknown with no version, under its own counter", async () => {
     const r = rig();
     r.mux.set("w1:p2", "codex--fresh-idle.txt", 1);
-    await r.shadow.observe([agent("w1:p2", "codex")]);
+    // Codex has a profile since M56 spec 13, so its screen stands in here for a harness with none.
+    await r.shadow.observe([agent("w1:p2", "nothing-known")]);
     expect(r.shadow.surfaceOf("w1:p2")).toMatchObject({ modal: "unknown", composer: "unknown" });
-    expect(Object.keys(r.shadow.report().counters)).toEqual(["codex@-"]);
+    expect(Object.keys(r.shadow.report().counters)).toEqual(["nothing-known@-"]);
     expect(r.versionReads()).toBe(0);
   });
 

@@ -5,14 +5,18 @@
 // read unknown and why, and how many the generic cues alone read as a modal (no reader lifting).
 //
 // Exits 1 when a dialog fixture (a label of state `dialog` or `screen` in
-// web/src/fixtures/surface-labels.json) reads free, or when fewer than 95% of the idle Claude fixtures
-// read free. One idle miss is forgiven on the last three versions above the profile's
+// web/src/fixtures/surface-labels.json) reads free, or when fewer than 95% of the idle fixtures of the
+// chosen harness (Claude unless `--harness` names another profiled harness) read free. One idle miss is forgiven on the last three versions above the profile's
 // `verifiedThrough`: a version nobody has verified yet may move one row before its profile does.
 // Exits 1 too when the generic cues alone (no reader lifting) read a `dialog` fixture of any other
-// harness (codex, pi, opencode, grok, omp and the rest) as anything but a modal: those harnesses
-// have no profile, so the cues are what stands between their dialogs and a guess.
+// harness (codex, pi, opencode, grok, omp and the rest) as anything but a modal: most of those
+// harnesses have no profile, so the cues are what stands between their dialogs and a guess.
 //
-//   bun scripts/surface-corpus.ts
+//   bun scripts/surface-corpus.ts                  # every harness, the idle rule on Claude
+//   bun scripts/surface-corpus.ts --harness codex  # the Codex rows, the idle rule on Codex (M56 spec 13)
+//
+// With `--harness`, the table shows that harness's rows and the idle rule and its thresholds apply
+// to that harness. The dialog rule and the cues rule still run over every fixture.
 //
 // The fixtures and the labels are the ones fold.test.ts pins; this script prints what the tests check.
 
@@ -24,8 +28,28 @@ import { askOf, isFree, type Surface } from "../web/src/lib/surface/surface.ts";
 
 /** The labels that must never read free. */
 const NEGATIVE: ReadonlySet<FixtureState> = new Set(["dialog", "screen"]);
-/** The profile the idle rule is about. scripts/ is outside the surface code's name ban. */
-const IDLE_HARNESS = "claude";
+/** The harness with the most readers: the cues rule leaves its dialogs to them. scripts/ is outside the surface code's name ban. */
+const READER_HARNESS = "claude";
+
+function harnessArg(argv: readonly string[]): string {
+  const at = argv.indexOf("--harness");
+  if (at === -1) return READER_HARNESS;
+  const value = argv[at + 1];
+  if (value === undefined || value.startsWith("-")) {
+    console.error("usage: bun scripts/surface-corpus.ts [--harness <profile id>]");
+    process.exit(2);
+  }
+  if (!loadProfiles().has(value)) {
+    console.error(`no profile named ${value}; known: ${[...loadProfiles().keys()].join(", ")}`);
+    process.exit(2);
+  }
+  return value;
+}
+
+/** The profile the idle rule is about. */
+const IDLE_HARNESS = harnessArg(process.argv.slice(2));
+/** Whether the table shows one harness only. */
+const ONLY = process.argv.includes("--harness");
 /** The label a bare shell carries: no harness, so no cue rule. */
 const SHELL = "shell";
 const IDLE_SHARE = 0.95;
@@ -96,7 +120,7 @@ for (const name of names) {
   if (isModal(surface)) row.modal++;
   if (isModal(cuesAlone)) row.cuesModal++;
   // A "-cut" fixture is a screen truncated on purpose: it hides the footer that proves the dialog, and its uncut sibling is in the set.
-  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL && !name.endsWith("-cut.txt") && !CUES_BLIND.has(name)) cuesMisses.push(`${name} (${label.harness})`);
+  else if (label.state === "dialog" && label.harness !== READER_HARNESS && label.harness !== SHELL && !name.endsWith("-cut.txt") && !CUES_BLIND.has(name)) cuesMisses.push(`${name} (${label.harness})`);
   const reason = unknownReason(surface);
   if (reason !== null) row.unknown.set(reason, (row.unknown.get(reason) ?? 0) + 1);
 
@@ -109,6 +133,7 @@ for (const name of names) {
 
 const header = ["harness", "version", "fixtures", "free", "modal", "unknown by reason", "cues-alone modal"];
 const body = [...rows.entries()]
+  .filter(([key]) => !ONLY || key.startsWith(`${IDLE_HARNESS}\t`))
   .toSorted(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))
   .map(([key, row]) => {
     // SAFETY: every key was built above as `${harness}\t${version}`, and neither part holds a tab.

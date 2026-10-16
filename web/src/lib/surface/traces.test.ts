@@ -26,6 +26,17 @@ describe("golden traces on disk", () => {
     expect(negative.length).toBeGreaterThan(files.filter((trace) => trace.header.set === "negative").length + incidents.length - 1);
   });
 
+  it("codex: has the five Codex lab traces (M56 spec 13)", () => {
+    const codex = files.filter((trace) => trace.header.harness === "codex").map((trace) => trace.name);
+    expect(codex.toSorted()).toEqual([
+      "codex/lab-approval-dialog.jsonl",
+      "codex/lab-notify-edge.jsonl",
+      "codex/lab-queued-message.jsonl",
+      "codex/lab-running-turn.jsonl",
+      "codex/lab-steered-draft.jsonl",
+    ]);
+  });
+
   for (const trace of files) {
     it(`${trace.name}: the expectations hold with the hook source present`, () => {
       const mismatches = replayTrace(trace, { mode: "present", fixture: fixtureText }).flatMap((result) =>

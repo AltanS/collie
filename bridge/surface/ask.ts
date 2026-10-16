@@ -199,6 +199,27 @@ export function planFor(dialog: LiftedDialog, index: number): AskPlan | null {
   }
 }
 
+/** The navigation keys of a profile: the arrows, the confirm key and the cancel key. */
+export type NavigationKeys = ProfileMatch["profile"]["keys"]["navigation"];
+
+/**
+ * A plan's keys in the harness's own names: the readers write the walk and the commit in the generic
+ * names (`Up`, `Down`, `Enter`, `Escape`), and the profile's `keys.navigation` says which key each one
+ * is on this harness. Any other key (a digit, a letter shortcut) stays as the reader wrote it. With no
+ * profile the plan is sent as written.
+ */
+export function planKeysFor(plan: AskPlan, navigation: NavigationKeys | null): AskPlan {
+  if (navigation === null) return plan;
+  const named = new Map([
+    ["Up", navigation.up],
+    ["Down", navigation.down],
+    ["Enter", navigation.confirm],
+    ["Escape", navigation.cancel],
+  ]);
+  const map = (keys: readonly string[]): string[] => keys.map((key) => named.get(key) ?? key);
+  return { walk: map(plan.walk), commit: map(plan.commit), label: plan.label };
+}
+
 /** Whether two lifts are the same dialog, by the contract's identity (the pointer may have moved). */
 export function sameDialog(a: LiftedDialog, b: LiftedDialog): boolean {
   if (a.blockKind !== b.blockKind) return false;
@@ -507,8 +528,10 @@ export class AskAnswerer {
     if (askBinding(this.generationOf(state), check.dialog) !== entry.binding) {
       throw new AskEnded("refused", "ask_changed", { ask: askOf(check.surface.modal) });
     }
-    const plan = planFor(check.dialog, index);
-    if (plan === null || plan.label !== entry.ask.options[index]!.label) throw new AskEnded("refused", "no_plan");
+    const read = planFor(check.dialog, index);
+    if (read === null || read.label !== entry.ask.options[index]!.label) throw new AskEnded("refused", "no_plan");
+    // Walk, read back, commit, in the keys the profile names for this harness.
+    const plan = planKeysFor(read, state.match?.profile.keys.navigation ?? null);
 
     let bound = check;
     if (plan.walk.length > 0) {
