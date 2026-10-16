@@ -377,9 +377,9 @@ export function pickerOverlayUp(lines: StyledLine[]): boolean {
   return false;
 }
 
-/** How far below a confirm dialog's title row its buttons may sit: three on the update prompt (two
- *  body rows and a blank), with room for a longer body. */
-const MAX_TITLE_TO_BUTTONS = 6;
+/** How far below a confirm dialog's title row its buttons may sit: six on the update prompt (a blank,
+ *  two body rows and two blanks), with room for a body that wraps onto more rows on a narrow pane. */
+const MAX_TITLE_TO_BUTTONS = 12;
 /** How far left of the `esc` hint's end the `Confirm` label may end: the highlighted button pads its
  *  label with one space inside its own background. */
 const BUTTON_PAD = 2;

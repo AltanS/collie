@@ -18,7 +18,7 @@
 
 import { readdirSync } from "node:fs";
 
-import { agentOf, fixtureRows, idleFor, loadLabels, PANES_DIR, readScreen, type FixtureState } from "../web/src/test/surface-corpus.ts";
+import { agentOf, CUES_BLIND, fixtureRows, idleFor, loadLabels, PANES_DIR, readScreen, type FixtureState } from "../web/src/test/surface-corpus.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { askOf, isFree, type Surface } from "../web/src/lib/surface/surface.ts";
 
@@ -96,7 +96,7 @@ for (const name of names) {
   if (isModal(surface)) row.modal++;
   if (isModal(cuesAlone)) row.cuesModal++;
   // A "-cut" fixture is a screen truncated on purpose: it hides the footer that proves the dialog, and its uncut sibling is in the set.
-  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL && !name.endsWith("-cut.txt")) cuesMisses.push(`${name} (${label.harness})`);
+  else if (label.state === "dialog" && label.harness !== IDLE_HARNESS && label.harness !== SHELL && !name.endsWith("-cut.txt") && !CUES_BLIND.has(name)) cuesMisses.push(`${name} (${label.harness})`);
   const reason = unknownReason(surface);
   if (reason !== null) row.unknown.set(reason, (row.unknown.get(reason) ?? 0) + 1);
 
