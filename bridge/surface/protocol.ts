@@ -29,6 +29,12 @@
 // profile does not queue, a command, and a box that would go out as a command are refused
 // `turn_running`; something open at the box is refused `not_free`.
 //
+// A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
+// S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
+// box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
+// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). From there it takes the
+// queued path; the receipt says `queued` only on S0's running read or the S2 witness.
+//
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
 // spot (the row and column where the probe character appeared) is what S1 and S2 compare against.
@@ -466,6 +472,28 @@ function queuesInTurn(match: ProfileMatch | null): boolean {
   return match.profile.keys.enterWhileRunning === "queues";
 }
 
+/**
+ * Why a request may not go into a running turn, or null when it may: the harness must queue; nothing
+ * may be open at the box (a popup above or under it that the frame walks past, read by the frameless
+ * cues); and what the box would hold once Enter goes out must not be a command (a request in mode
+ * command, or a box text plus the new text that starts with a reserved lead). Discard always may.
+ */
+function turnRefusal(state: RunState, s0: Snap, frame: Frame): Ended | null {
+  const { surface } = s0;
+  const { request } = state;
+  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+  if (s0.bareCues === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
+  if (request.mode === "discard") return null;
+  const text = sendLines(request.text).join("");
+  const box = boxText(frame);
+  const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
+  const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+  if (request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null)) {
+    return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
+  }
+  return null;
+}
+
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a command refused because the turn runs. */
@@ -818,8 +846,15 @@ interface RunState {
   command: boolean;
   /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
   heldOther: boolean;
-  /** S0 read a running turn on a harness that queues: the text goes in during the turn and waits for its end. */
+  /** S0 read a running turn on a harness that queues, or S2 saw the harness's queued row with the text: the receipt says `queued`. */
   queued: boolean;
+  /**
+   * The rows above the box moved while Collie typed, on a harness that queues, with everything else
+   * held ({@link SendProtocol.aboveMovedInTurn}): a turn the screen does not mark (Claude Code 2.1.301
+   * draws no spinner while the answer streams). From there the send takes the queued path; the receipt
+   * says `queued` only on S0's running read or the S2 witness.
+   */
+  streamed: boolean;
   stepStart: number;
 }
 
@@ -1028,6 +1063,7 @@ export class SendProtocol {
       command: request.mode === "command",
       heldOther: false,
       queued: false,
+      streamed: false,
       stepStart: at,
     };
   }
@@ -1333,30 +1369,31 @@ export class SendProtocol {
     return frame;
   }
 
-  /**
-   * The rule for anything that goes into a running turn (a send, Add to it, Replace, Submit, Discard):
-   * the harness must queue; nothing may be open at the box (a popup above or under it that the frame
-   * walks past, read by the frameless cues); and what the box would hold once Enter goes out must not
-   * be a command (a request in mode command, or a box text plus the new text that starts with a
-   * reserved lead). Then the request is queued.
-   */
+  /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
-    const { surface } = s0;
-    const { request } = state;
-    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-    if (s0.bareCues === "strong") throw new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
-    if (request.mode === "discard") {
-      state.queued = true;
-      return;
-    }
-    const text = sendLines(request.text).join("");
-    const box = boxText(frame);
-    const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
-    const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
-    if (request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null)) {
-      throw new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
-    }
+    const refusal = turnRefusal(state, s0, frame);
+    if (refusal !== null) throw refusal;
     state.queued = true;
+  }
+
+  /**
+   * The amended rule of S1 (ARCHITECTURE.md, Send Protocol, 2026-10-16): on a harness whose Enter
+   * queues, a send that is not a command may see the rows ABOVE the box move while Collie types. All
+   * else must hold: the frame is there, the rows under the box keep their count, the cue read inside
+   * the frame is the same, and the Surface claims no modal. When the rows above moved under these
+   * terms, the send takes the queued path from there and this returns true. Movement under the box, a
+   * changed cue inside the frame, a missing frame or a modal claim return false, and the caller
+   * refuses or ends as before.
+   */
+  private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
+    if (state.queued || state.manual || state.command) return false;
+    const { mode } = state.request;
+    if (mode !== "send" && mode !== "append" && mode !== "replace") return false;
+    if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
+    if (snap.cueStrength !== s0.cueStrength || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
+    if (turnRefusal(state, s0, s0.frame) !== null) return false;
+    state.streamed = true;
+    return true;
   }
 
   private checkGeneration(state: RunState, outcome: "refused" | "typed_not_submitted"): void {
@@ -1568,10 +1605,15 @@ export class SendProtocol {
         // Queued: the Surface's claim of a modal over a found box fails, and so do two reads in a row
         // with no box. One read with no box may be torn, and its Surface claims nothing to trust.
         frameless = snap.frame === null ? frameless + 1 : 0;
-        if (state.queued && (frameless >= FRAMELESS_READS || modalAtBox(snap))) return "fail";
+        const inTurn = state.queued || state.streamed;
+        if (inTurn && (frameless >= FRAMELESS_READS || modalAtBox(snap))) return "fail";
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
-        const outside = state.queued ? turnOutsideUnchanged(s0, snap) : state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
+        const outside = inTurn
+          ? turnOutsideUnchanged(s0, snap)
+          : state.manual
+            ? manualOutsideUnchanged(s0, snap)
+            : outsideUnchanged(s0, snap) || this.aboveMovedInTurn(state, s0, snap);
         return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outside ? "pass" : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
@@ -1658,11 +1700,13 @@ export class SendProtocol {
    */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
-    const { command, manual, queued } = state;
+    const { command, manual } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
-      // Queued: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
-      if (!command && (queued ? framedCueGrew(s0, snap) || modalAtBox(snap) : cueAppeared(s0, snap))) {
+      // In a turn: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
+      // A frameless cue that grew while the rows above moved is the turn's own list (aboveMovedInTurn).
+      const cueGrew = state.queued || state.streamed ? framedCueGrew(s0, snap) || modalAtBox(snap) : cueAppeared(s0, snap) && !this.aboveMovedInTurn(state, s0, snap);
+      if (!command && cueGrew) {
         why = "modal_cue";
         return "fail";
       }
@@ -1672,7 +1716,15 @@ export class SendProtocol {
           why = "mismatch";
           return "wait";
         }
-        if (!(queued ? turnOutsideUnchanged(s0, snap) : manual ? aboveLostOnly(s0, snap) : command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
+        const inTurn = state.queued || state.streamed;
+        const outside = inTurn
+          ? turnOutsideUnchanged(s0, snap)
+          : manual
+            ? aboveLostOnly(s0, snap)
+            : command
+              ? aboveUnchanged(s0, snap)
+              : outsideUnchanged(s0, snap) || this.aboveMovedInTurn(state, s0, snap);
+        if (!outside) {
           why = "changed";
           return "wait";
         }
@@ -1726,7 +1778,9 @@ export class SendProtocol {
    * own screen (a picker, a panel) in the box's place.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
-    const { command, manual, queued } = state;
+    const { command, manual } = state;
+    // The queued path: S0 read the turn running, or the rows above moved while Collie typed.
+    const queued = state.queued || state.streamed;
     let dialog = false;
     let frameless = 0;
     // A send that S0 read as idle may still have gone into a turn (its first second reads idle): the
@@ -1735,7 +1789,7 @@ export class SendProtocol {
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
     let witnessed = false;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
-      if (!queued && !command && !witnessed) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
+      if (!state.queued && !command && !witnessed) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
         // The Surface claiming a modal, or two reads in a row with no box, end the request on their

@@ -56,6 +56,8 @@ class FakePane {
   readsSeen = 0;
   calls: string[] = [];
   keysSeen: string[] = [];
+  /** A screen this many rows high shows only its last rows, so new rows scroll the rest up; null shows all. */
+  height: number | null = null;
   /** A whole screen to answer every read with, as a capture holds it; null draws the fake box. */
   fixed: string | null = null;
   /** Runs after every text write or key, for scripted changes. */
@@ -97,7 +99,7 @@ class FakePane {
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
     else rows.push(...(this.popup ?? this.status));
-    return rows.join("\n");
+    return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
   }
 
   private take(text: string, pasted: boolean): void {
@@ -625,8 +627,10 @@ describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
     expect(above.pane.calls).toEqual([`type:${PROBE}`]);
   });
 
-  test("a profiled pane on a free screen keeps the strict compare: a row above the box or a hint under it that changes fails the probe", async () => {
-    const rowAbove = rig({ version: "2.1.999" });
+  test("a profiled pane on a free screen keeps the strict compare where Enter does not queue: a row above the box or a hint under it that changes fails the probe", async () => {
+    // On a harness that does not queue, a row above the box must stand still while Collie types.
+    // (A harness that queues lets it move: the rows above the box, a sending drill below.)
+    const rowAbove = rig({ version: "2.1.999", edit: (profile) => ({ ...profile, keys: { ...profile.keys, enterWhileRunning: "submits" } }) });
     // Rows close over the box are its volatile band; a transcript row above that band must stand still.
     rowAbove.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
     rowAbove.pane.afterInput = (p, what) => {
@@ -1070,6 +1074,109 @@ describe("a send into a running turn", () => {
     expect(pane.calls).toEqual([]);
   });
 
+  // Claude Code 2.1.301 draws no spinner while the answer streams (lab, 2026-10-16): S0 reads idle,
+  // and the answer rows scroll up above the box on every read.
+  const ANSWER = [
+    "● Juno was a search and rescue dog. She worked in the mountains with her handler, Mara.",
+    "  She knew the vest meant work.",
+    "  Mara and Juno drove to the trailhead. Snow was already falling.",
+    '  "Find him," Mara said.',
+    "  Juno set off at once. She did not run wildly. She moved in wide, careful loops.",
+    "  An hour passed. Then two. The snow grew thick.",
+    "  Mara followed. Behind the rocks, under a small ledge, sat a man.",
+    '  "I thought no one would come," he whispered.',
+  ];
+  /** The streamed answer of one fake pane: how many rows it pushed so far. */
+  interface Stream {
+    rows(): number;
+  }
+  const streamAnswer = (pane: FakePane, from: (p: FakePane) => boolean): Stream => {
+    let next = 0;
+    pane.height = 16;
+    pane.transcript = ["❯ Write a 300 word story about a working dog, plain text, no tools.", "", ...ANSWER];
+    // Each streamed row is new text (a story does not repeat), two rows a read: more than the one row
+    // a compare lets the transcript scroll by.
+    const row = (): string => `  ${ANSWER[next % ANSWER.length]!.slice(2)} (${String(next++)})`;
+    pane.beforeRead = (p) => {
+      if (!from(p) || next >= ANSWER.length * 4) return;
+      p.transcript.push(row(), row());
+    };
+    return { rows: () => next };
+  };
+  const typing = (p: FakePane): boolean => p.calls.length > 0;
+
+  test("the answer streaming above the box while Collie types (no spinner, S0 idle): sent, and queued by the S2 witness", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.drawsQueuedRow = true;
+      const stream = streamAnswer(pane, typing);
+      const answer = await send("then give it a title");
+      expect(answer.receipt, version).toMatchObject({ outcome: "sent", queued: true });
+      expect(pane.keysSeen.at(-1), version).toBe("Enter");
+      expect(stream.rows(), version).toBeGreaterThan(2);
+    }
+  });
+
+  test("the answer streaming above the box, and no queued row in S2: sent, and the receipt does not say queued", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    streamAnswer(pane, typing);
+    pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.transcript = p.transcript.filter((row) => !row.startsWith("> "));
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.queued).toBeUndefined();
+  });
+
+  test("the answer streaming above the box and a row under the box that changes: refused, no Enter", async () => {
+    const ends = {
+      // Verified: no probe, so S1 sees the row under the box go.
+      "2.1.200": { outcome: "typed_not_submitted", reason: "changed" },
+      // Provisional: the probe sees it first.
+      "2.1.301": { outcome: "refused", reason: "probe_failed" },
+    } as const;
+    for (const version of ["2.1.200", "2.1.301"] as const) {
+      const { pane, send } = rig({ version });
+      streamAnswer(pane, typing);
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("type:") || what.startsWith("paste:")) p.status = [];
+      };
+      const answer = await send("then give it a title");
+      expect(answer.receipt, version).toMatchObject(ends[version]);
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+    }
+  });
+
+  test("the answer streaming above the box and the box gone after Enter: unknown(dialog_after_enter)", async () => {
+    const { pane, send } = rig();
+    streamAnswer(pane, typing);
+    pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.dialog = DIALOG;
+    };
+    expect((await send("then give it a title")).receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+  });
+
+  test("the answer streaming above the box and a permission dialog that replaces the box while the text goes in: no Enter", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      streamAnswer(pane, typing);
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("paste:") || what === "type:then give it a title") p.dialog = DIALOG;
+      };
+      const answer = await send("then give it a title");
+      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+    }
+  });
+
+  test("the answer streaming above the box while a command is typed: no Enter", async () => {
+    const { pane, send } = rig();
+    streamAnswer(pane, typing);
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
   test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {
     expect(steadyRow("* Wibbling… (4s · ↓ 304 tokens)")).toBe(steadyRow("✶ Wibbling… (5s · ↓ 310 tokens)"));
     expect(steadyRow("• Working (8s • esc to interrupt) · 1 background terminal running")).toBe(steadyRow("• Working (9s • esc to interrupt) · 1 background terminal running"));
@@ -1313,13 +1420,24 @@ describe("the write and S1", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
-  test("a transcript row that moved while typing ends typed_not_submitted changed", async () => {
-    const { pane, send } = rig();
+  test("a transcript row that moved while typing ends typed_not_submitted changed, where Enter does not queue", async () => {
+    const { pane, send } = rig({ edit: (profile) => ({ ...profile, keys: { ...profile.keys, enterWhileRunning: "submits" } }) });
     pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
     pane.afterInput = (p, what) => {
       if (what.startsWith("paste:")) p.transcript[0] = "> a different question";
     };
     expect((await send("hello world")).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a transcript row that moved while a command was typed ends typed_not_submitted changed, where Enter queues", async () => {
+    const { pane, send } = rig();
+    pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:")) p.transcript[0] = "> a different question";
+    };
+    expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).toEqual([]);
   });
 });
 
