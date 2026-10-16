@@ -321,6 +321,8 @@ interface Snap {
   /** The generic cues of the rows under the frame's bottom edge, read as if no frame were found: a
    *  pointer list that takes the place of status rows there. "none" with no frame. */
   readonly belowCues: "none" | "weak" | "strong";
+  /** The framed cue read found cues, and every one stands under the frame's bottom edge. */
+  readonly cuesUnderBox: boolean;
   /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
   readonly below: number;
   /** A short hash of the whole read. */
@@ -427,7 +429,17 @@ function framedCueGrew(before: Snap, after: Snap): boolean {
  * fail. A dialog drawn under the box makes the Surface claim it.
  */
 function commandCueGrew(before: Snap, after: Snap): boolean {
+  if (commandPopup(after)) return false;
   return modalAtBox(after) || CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength];
+}
+
+/**
+ * The command's own popup as the framed read sees it: a weak cue, all of it under the box, and a Surface
+ * that claims only `unknown`, never an ask or an unreadable dialog. Claude Code's full slash list, open
+ * while the box holds `/`, reads so (claude-lab--popup-slash-all--w82, review of spec 15, L1).
+ */
+function commandPopup(snap: Snap): boolean {
+  return snap.frame !== null && snap.surface.modal === "unknown" && snap.cueStrength === "weak" && snap.cuesUnderBox;
 }
 
 /**
@@ -1166,12 +1178,21 @@ interface PaneWatch {
   sawRunning: boolean;
   /** Polls in a row that read the pane free. */
   freeReads: number;
+  /** When the first of those free polls came; null while the run is empty. */
+  freeSince: number | null;
   /** Polls in a row that found no pane. */
   missing: number;
 }
 
 /** Polls in a row a pane must read free, after a running turn, before its oldest held request goes. */
 const FREE_POLLS = 2;
+/**
+ * With no running turn read since the last release: the polls in a row, and the time they must span,
+ * before the next held request goes anyway. A released command that starts no turn (/help, /status),
+ * or a turn shorter than one poll, then never stalls the queue (review of spec 15, V1).
+ */
+const QUIET_FREE_POLLS = 5;
+const QUIET_FREE_MS = 10_000;
 /** Polls in a row with no pane before its held requests end `pane_gone`. */
 const MISSING_POLLS = 3;
 
@@ -1461,7 +1482,7 @@ export class SendProtocol {
     if (watch === undefined) {
       // First sight of a pane with held requests: a hold is made from a read of a running turn, and after
       // a restart the turn may have ended while the bridge was down, so the running read counts as done.
-      watch = { sawRunning: true, freeReads: 0, missing: 0 };
+      watch = { sawRunning: true, freeReads: 0, freeSince: null, missing: 0 };
       this.watches.set(key, watch);
     }
     return watch;
@@ -1483,6 +1504,7 @@ export class SendProtocol {
     // Every release starts the wait again: the next request waits for a running turn, then a free pane.
     watch.sawRunning = false;
     watch.freeReads = 0;
+    watch.freeSince = null;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
       holds.remove(id);
@@ -1520,7 +1542,8 @@ export class SendProtocol {
    *  - the pane ends its requests `refused(pane_gone)` when it holds another agent now, or when three
    *    polls in a row found no pane; a session id that resolved, or a /clear, keeps them;
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
-   *    then two polls in a row read the pane free. A release starts that wait again.
+   *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
+   *    it free over at least ten seconds. A release starts that wait again.
    * Every end keeps the text. Returns the releases it started, for a test to wait on. Never throws: a
    * release that fails is a warning.
    */
@@ -1565,13 +1588,17 @@ export class SendProtocol {
         continue;
       }
       const surface = generation === null ? undefined : surfaceOf(paneId);
-      if (surface?.turn === "running") {
-        watch.sawRunning = true;
-        watch.freeReads = 0;
+      if (surface !== undefined && isFree(surface)) {
+        watch.freeReads += 1;
+        watch.freeSince ??= now;
       } else {
-        watch.freeReads = surface !== undefined && isFree(surface) ? watch.freeReads + 1 : 0;
+        if (surface?.turn === "running") watch.sawRunning = true;
+        watch.freeReads = 0;
+        watch.freeSince = null;
       }
-      if (busy || !watch.sawRunning || watch.freeReads < FREE_POLLS) continue;
+      const afterTurn = watch.sawRunning && watch.freeReads >= FREE_POLLS;
+      const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      if (busy || !(afterTurn || quiet)) continue;
       started.push(this.releaseQuietly(next.id));
     }
     return started;
@@ -2223,6 +2250,7 @@ export class SendProtocol {
     const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const plain = plainRaw.map((row) => steadyRow(row, signs));
     const win = bottomWindow(texts);
+    const framed = readCuesFor(rows, frame, idle);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const snap: Snap = {
       revision: grid.value.revision,
@@ -2233,7 +2261,8 @@ export class SendProtocol {
       plainRaw,
       frame,
       surface,
-      cueStrength: readCuesFor(rows, frame, idle).strength,
+      cueStrength: framed.strength,
+      cuesUnderBox: frame !== null && framed.cues.length > 0 && framed.cues.every((cue) => cue.row > frame.bottom),
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
       // A harness that draws its dialogs in the box's place (`idle.dialogsInBox`) keeps them in.
       // A box with a blank top edge has no rule between it and the transcript, and that transcript

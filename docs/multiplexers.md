@@ -388,12 +388,13 @@ Claude Code and Codex take a message or a command during a turn. Collie types it
 harness runs it after the turn. A harness that cannot take a send during its turn gets a held send
 instead. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
 ends." The row shows the text and a Cancel button. Collie sends it after the turn ends, once the
-pane reads free on two polls in a row, oldest first. Each later held send waits for the next turn
-to end. A later message on that pane waits behind the held ones. A held text lasts 30 minutes, a
-held command 10 minutes. After that the row says the message was not sent, and offers Resend. Some
-commands never wait: on Claude Code `/clear`, `/exit`, `/quit`, `/logout`, `/resume`, `/branch` and
-every `!` line, on Codex `/quit`, `/exit`, `/new`, `/resume` and every `!` line. Collie refuses those
-during a turn. A held send survives a restart of Collie. Cancel works until the send starts to go
+pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
+the send before it started. If no turn shows, it goes after five free polls over ten seconds. A
+later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
+10 minutes. After that the row says the message was not sent, and offers Resend. Some commands
+never wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`,
+`/quit`, `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`,
+`/new`, `/resume`, `/logout` and every `!` line. A held send survives a restart of Collie. Cancel works until the send starts to go
 out, and only on this machine's own panes. Collie keeps the held text on disk in plain form, in a
 file only your user can read (mode 0600). It deletes the text when the send goes out, and at most
 one hour after the hold ends.

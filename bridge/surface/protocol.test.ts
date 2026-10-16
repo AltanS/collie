@@ -847,6 +847,40 @@ describe("a command (M56 spec 06)", () => {
     neverEscape(pane);
   });
 
+  test("an idle command whose box holds only / under the full slash list (claude-lab--popup-slash-all--w82.txt) is sent: its own popup (review L1)", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    const capture = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--popup-slash-all--w82.txt"), "utf8");
+    // Before the write the same screen with the box as the fake holds it and the footer under it.
+    const top = capture.split("\n").slice(0, 16);
+    const at = top.findIndex((row) => row.startsWith("\u276f\u00a0/"));
+    const idleScreen = (box: string): string => [...top.slice(0, at), `\u276f\u00a0${box}\r`, ...top.slice(at + 1), "  ? for shortcuts"].join("\n");
+    let written = false;
+    let entered = false;
+    let reads = 0;
+    pane.afterInput = (_p, what) => {
+      if (what.startsWith("paste:/") || what.startsWith("type:/")) written = true;
+      if (what.endsWith("Enter")) entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) {
+        p.fixed = idleScreen("");
+        return;
+      }
+      if (!written) {
+        p.fixed = idleScreen(p.box);
+        return;
+      }
+      // The first read after the write finds the box at `/` with every command listed, then the whole command.
+      reads += 1;
+      p.fixed = reads === 1 ? capture : capture.replace("\u276f\u00a0/\r", "\u276f\u00a0/add-dir\r");
+    };
+    const answer = await send("/add-dir", { mode: "command" });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(reads).toBeGreaterThan(0);
+    neverEscape(pane);
+  });
+
   test("the same text as a plain send is still refused reserved_lead, before any read", async () => {
     const { pane, send } = rig();
     expect((await send("/compact")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
@@ -3043,6 +3077,42 @@ describe("the held send (M56 spec 15)", () => {
     expect(r.pane.transcript.slice(-2)).toEqual(["> first message", "> second message"]);
   });
 
+  test("a released send that starts no turn does not stall the next: five free polls a minute apart send it, it never expires (review V1)", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("first message", { id: "held-000040" });
+    turnEnds(r.pane);
+    await r.send("second message", { id: "held-000041" });
+    const [first] = await freeTwice(r);
+    expect(first?.receipt).toMatchObject({ requestId: "held-000040", outcome: "sent" });
+    // No poll reads a running turn after it (a /help, or a turn shorter than one poll).
+    for (let i = 0; i < 4; i++) {
+      clock.now += 60_000;
+      expect(await tick(r)).toEqual([]);
+    }
+    clock.now += 60_000;
+    const [next] = await tick(r);
+    expect(next?.receipt).toMatchObject({ requestId: "held-000041", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> first message", "> second message"]);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("five free polls inside ten seconds do not release the next held send on their own", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("first message", { id: "held-000042" });
+    turnEnds(r.pane);
+    await r.send("second message", { id: "held-000043" });
+    await freeTwice(r);
+    for (let i = 0; i < 5; i++) {
+      clock.now += 1_000;
+      expect(await tick(r)).toEqual([]);
+    }
+    clock.now += 6_000;
+    const [next] = await tick(r);
+    expect(next?.receipt).toMatchObject({ requestId: "held-000043", outcome: "sent" });
+  });
+
   test("a plain send that starts with a reserved lead is refused before it can join a queue", async () => {
     const r = untrusted();
     await r.send("first message", { id: "held-000006" });
@@ -3285,6 +3355,11 @@ describe("the held send (M56 spec 15)", () => {
     const claude = profileFor("claude", "2.1.301", { log: () => undefined });
     expect(neverHeldEntry("/clearly", claude)).toBeNull();
     expect(neverHeldEntry("/clear all", claude)).toBe("/clear");
+    // Codex 0.163.0 lists /logout among its slash commands (its binary's command names, review of spec 15).
+    expect(neverHeldEntry("/logout", profileFor("codex", "0.163.0", { log: () => undefined }))).toBe("/logout");
+    // /compact stays allowed on both.
+    expect(neverHeldEntry("/compact", claude)).toBeNull();
+    expect(neverHeldEntry("/compact", profileFor("codex", "0.163.0", { log: () => undefined }))).toBeNull();
   });
 
   test("a never-held command on a profile that does not queue commands is refused, not held, and joins no queue (H6)", async () => {

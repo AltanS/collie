@@ -86,7 +86,7 @@
     "enterWhileRunning": "steers",
     "commandWhileRunning": "queues",
     "commandWhileRunningNote": "Lab 2026-10-16: measured on Codex 0.163.0 with /status only (queued under Queued follow-up inputs, ran after the turn).",
-    "neverHeld": ["/quit", "/exit", "/new", "/resume", "!"],
+    "neverHeld": ["/quit", "/exit", "/new", "/resume", "/logout", "!"],
     "queueKey": "Tab",
     "queuedRow": {
       "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",
