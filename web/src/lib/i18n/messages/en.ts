@@ -76,6 +76,8 @@ export const en = {
   "theme.preview.fills": "It fills its {half} half from the default theme.",
   "theme.preview.apply": "Apply",
   "theme.preview.cancel": "Cancel",
+  "theme.preview.shape": "Shape",
+  "theme.preview.shape.sample": "Sample",
   "theme.preview.contrast.pass": "Every contrast check passes.",
   "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.",
   "theme.preview.contrast.more": "and {count} more checks fail",

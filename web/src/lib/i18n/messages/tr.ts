@@ -50,6 +50,8 @@ export const tr: Dictionary = {
   "theme.preview.fills": "Eksik tarafını ({half}) varsayılan temadan doldurur.",
   "theme.preview.apply": "Uygula",
   "theme.preview.cancel": "İptal",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "Tüm kontrast kontrolleri başarılı.",
   "theme.preview.contrast.fail": "{half}: {check} {ratio} ölçüyor. Alt sınır {floor}.",
   "theme.preview.contrast.more": "ve {count} kontrol daha başarısız",

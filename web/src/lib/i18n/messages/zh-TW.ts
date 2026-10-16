@@ -55,6 +55,8 @@ export const zhTW: Dictionary = {
   "theme.preview.fills": "其缺少的一半（{half}）會以預設主題填補。",
   "theme.preview.apply": "套用",
   "theme.preview.cancel": "取消",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "所有對比度檢查皆已通過。",
   "theme.preview.contrast.fail": "{half}：{check} 量測值為 {ratio}。最低門檻為 {floor}。",
   "theme.preview.contrast.more": "還有另外 {count} 項檢查失敗",

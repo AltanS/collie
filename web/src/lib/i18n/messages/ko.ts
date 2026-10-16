@@ -55,6 +55,8 @@ export const ko: Dictionary = {
   "theme.preview.fills": "누락된 부분({half})은 기본 테마에서 채웁니다.",
   "theme.preview.apply": "적용",
   "theme.preview.cancel": "취소",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "모든 대비 검사를 통과했습니다.",
   "theme.preview.contrast.fail": "{half}: {check} 측정값은 {ratio}입니다. 최솟값은 {floor}입니다.",
   "theme.preview.contrast.more": "외 {count}개의 검사 실패",

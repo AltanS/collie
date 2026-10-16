@@ -54,6 +54,8 @@ export const ja: Dictionary = {
   "theme.preview.fills": "不足している側 ({half}) はデフォルトテーマで補完されます。",
   "theme.preview.apply": "適用",
   "theme.preview.cancel": "キャンセル",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "すべてのコントラストチェックに合格しました。",
   "theme.preview.contrast.fail": "{half}: {check} の測定値は {ratio} です。最小値は {floor} です。",
   "theme.preview.contrast.more": "ほか {count} 件のチェックに失敗しました",

@@ -55,6 +55,8 @@ export const zh: Dictionary = {
   "theme.preview.fills": "它会从默认主题填补缺失的一侧（{half}）。",
   "theme.preview.apply": "应用",
   "theme.preview.cancel": "取消",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "所有对比度检查均已通过。",
   "theme.preview.contrast.fail": "{half}：{check} 测得 {ratio}。最低要求为 {floor}。",
   "theme.preview.contrast.more": "还有另外 {count} 项检查失败",

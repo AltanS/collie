@@ -52,6 +52,8 @@ export const ru: Dictionary = {
   "theme.preview.fills": "Недостающая сторона ({half}) берется из темы по умолчанию.",
   "theme.preview.apply": "Применить",
   "theme.preview.cancel": "Отмена",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "Все проверки контрастности пройдены.",
   "theme.preview.contrast.fail": "{half}: {check} дает значение {ratio}. Нижний порог: {floor}.",
   "theme.preview.contrast.more": "Еще не пройдено проверок: {count}",

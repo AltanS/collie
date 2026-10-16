@@ -266,6 +266,47 @@ describe("ThemePickerControl", () => {
       return JSON.stringify({ ...copy("shaped", "Shaped"), version: 2, surface });
     }
 
+    it("draws the file's shape on its own sample and names the five words", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(surfaceFile({ radius: "round", shadow: "lifted", density: "roomy", weight: "bold" })));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(dialog).toHaveTextContent("Shape");
+      const sample = within(dialog).getByTestId("theme-shape-sample");
+      const box = sample.parentElement;
+      expect(box?.style.getPropertyValue("--radius-lg")).toBe("16px");
+      expect(box?.style.getPropertyValue("--spacing")).toBe("0.28rem");
+      expect(box?.style.getPropertyValue("--font-weight-semibold")).toBe("700");
+      expect(box?.style.getPropertyValue("--surface-shadow-md")).toBe(
+        "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+      );
+      // A token the file leaves out is drawn at its default word, never at the page's.
+      expect(box?.style.getPropertyValue("--surface-border-width")).toBe("1px");
+      expect(sample.className).toMatch(/\brounded-lg\b/);
+      expect(sample.className).toMatch(/\bshadow-md\b/);
+      expect(sample.className).toMatch(/\bp-3\b/);
+      expect(within(sample).getByText("Sample").className).toMatch(/\bfont-medium\b/);
+      const words = within(dialog).getByTestId("theme-shape-words");
+      expect([...words.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+        "radius: round",
+        "shadow: lifted",
+        "density: roomy",
+        "weight: bold",
+        "border: default",
+      ]);
+    });
+
+    it("draws a version 1 file at the default shape", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("plain", "Plain"))));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      const box = within(dialog).getByTestId("theme-shape-sample").parentElement;
+      expect(box?.style.getPropertyValue("--radius-lg")).toBe("2px");
+      expect(box?.style.getPropertyValue("--spacing")).toBe("0.25rem");
+      expect(within(dialog).getByTestId("theme-shape-words")).toHaveTextContent("radius: sharp");
+    });
+
     it("refuses a file with an unknown shape word, names the token, and applies nothing", async () => {
       const { ThemePickerControl, store } = await load();
       const { container } = render(<ThemePickerControl />);

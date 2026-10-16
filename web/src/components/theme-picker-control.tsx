@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { Palette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   useActiveTheme,
   useLibrary,
 } from "@/lib/theme/store";
+import { SURFACE_TOKENS, fullSurfaceDeclarations, resolveSurface } from "@/lib/theme/surface";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -201,6 +202,47 @@ function Swatches({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
   );
 }
 
+/**
+ * The file's shape, drawn: a small card with a line of text and a button-like block, inside a box
+ * that carries the declarations of the file's five shape words (a word it leaves out is the default
+ * one). The utilities inside read `--radius-*`, `--spacing`, `--font-weight-*` and the `--surface-*`
+ * properties from the nearest box that sets them, so the sample wears the file's shape while the
+ * sheet around it keeps the page's. Below it, the five words as the file spells them.
+ */
+function SurfaceSample({ theme }: { theme: Theme }) {
+  const surface = resolveSurface(theme.surface);
+  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
+  // only because CSSProperties has no index signature for `--*`. Names and values come from surface.ts.
+  const style = Object.fromEntries(fullSurfaceDeclarations(theme.surface)) as CSSProperties;
+  return (
+    <div>
+      <div className="mb-1 text-xs text-muted-foreground">{t("theme.preview.shape")}</div>
+      <div style={style}>
+        <div
+          aria-hidden
+          data-testid="theme-shape-sample"
+          className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground shadow-md"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">{theme.name}</div>
+            <div className="truncate text-xs font-medium text-muted-foreground">{theme.author ?? theme.id}</div>
+          </div>
+          <span className="inline-flex h-8 shrink-0 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground">
+            {t("theme.preview.shape.sample")}
+          </span>
+        </div>
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" data-testid="theme-shape-words">
+        {SURFACE_TOKENS.map((token) => (
+          <li key={token}>
+            {token}: {surface[token]}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function failureText(finding: Finding): string {
   return t("theme.preview.contrast.fail", {
     half: t(HALF_KEYS[finding.half]),
@@ -212,7 +254,7 @@ function failureText(finding: Finding): string {
 
 /**
  * What an import would change, before it changes anything: the name and author, which halves the
- * file carries, a swatch row per half, and the contrast report. A failed floor WARNS and Apply stays
+ * file carries, a swatch row per half, the shape drawn and in words, and the contrast report. A failed floor WARNS and Apply stays
  * on; only a refusal, which never reaches this sheet, stops an import.
  */
 export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProps) {
@@ -237,6 +279,8 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
             <Swatches theme={theme} half="light" />
             <Swatches theme={theme} half="dark" />
           </div>
+
+          <SurfaceSample theme={theme} />
 
           <div className="flex flex-col gap-2">
             {halves !== "both" && (

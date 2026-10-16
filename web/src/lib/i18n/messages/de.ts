@@ -55,6 +55,8 @@ export const de: Dictionary = {
   "theme.preview.fills": "Es füllt seine fehlende Seite ({half}) aus dem Standarddesign auf.",
   "theme.preview.apply": "Anwenden",
   "theme.preview.cancel": "Abbrechen",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "Jede Kontrastprüfung ist bestanden.",
   "theme.preview.contrast.fail": "{half}: {check} misst {ratio}. Der Mindestwert ist {floor}.",
   "theme.preview.contrast.more": "und {count} weitere Prüfungen schlagen fehl",

@@ -50,6 +50,8 @@ export const pt: Dictionary = {
   "theme.preview.fills": "Ele preenche o lado ausente ({half}) a partir do tema padrão.",
   "theme.preview.apply": "Aplicar",
   "theme.preview.cancel": "Cancelar",
+  "theme.preview.shape": "Shape", // TODO wordsmith
+  "theme.preview.shape.sample": "Sample", // TODO wordsmith
   "theme.preview.contrast.pass": "Todas as verificações de contraste passaram.",
   "theme.preview.contrast.fail": "{half}: {check} mede {ratio}. O mínimo é {floor}.",
   "theme.preview.contrast.more": "e mais {count} verificações falharam",
