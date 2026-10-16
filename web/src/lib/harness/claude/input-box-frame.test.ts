@@ -103,6 +103,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2301-fork-running-main-idle.txt",
     "claude--v2301-synth-agents-panel.txt",
     "claude--v2301-synth-agents-panel-walk-fails.txt",
+    "claude--v2301-lab-agents-panel-empty.txt",
+    "claude--v2301-lab-agents-panel-draft.txt",
     "claude--v2301-idle.txt",
     "claude--v2301-done-shell-running--w100.txt",
     "claude--v2301-idle-after-turn--w100.txt",

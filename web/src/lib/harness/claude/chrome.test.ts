@@ -994,6 +994,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2301-fork-running-main-idle", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "v2301-synth-agents-panel", statusRows: 3, draft: null, stripped: 12 },
     { fixture: "v2301-synth-agents-panel-walk-fails", statusRows: 3, draft: null, stripped: 14 },
+    // The scratch-bridge lab the same day: the panel under an empty box (the grey suggestion is no
+    // draft), and under a typed draft, where the mode row drops its two hints.
+    { fixture: "v2301-lab-agents-panel-empty", statusRows: 1, draft: null, stripped: 8 },
+    { fixture: "v2301-lab-agents-panel-draft", statusRows: 1, draft: "draft text in the box", stripped: 9 },
     { fixture: "v2301-idle", statusRows: 1, draft: null, stripped: 6 },
     // Claude Code 2.1.301 around a running turn (send-queue lab, 2026-10-16): the operator's two-row
     // statusline plus the mode row; the draft typed during the turn is read as a draft.

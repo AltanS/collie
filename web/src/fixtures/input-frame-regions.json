@@ -936,6 +936,44 @@
   }
  },
  {
+  "fixture": "claude--v2301-lab-agents-panel-draft.txt",
+  "frame": {
+   "top": 33,
+   "prompt": 34,
+   "bottom": 35,
+   "label": "lab-sample",
+   "text": "draft text in the box",
+   "placeholder": false,
+   "status": {
+    "first": 36,
+    "last": 36
+   },
+   "footer": {
+    "first": 38,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-empty.txt",
+  "frame": {
+   "top": 33,
+   "prompt": 34,
+   "bottom": 35,
+   "label": "lab-sample",
+   "text": "reply with the single word ping",
+   "placeholder": true,
+   "status": {
+    "first": 36,
+    "last": 36
+   },
+   "footer": {
+    "first": 38,
+    "last": 39
+   }
+  }
+ },
+ {
   "fixture": "claude--v2301-queued-taken--w100.txt",
   "frame": {
    "top": 34,

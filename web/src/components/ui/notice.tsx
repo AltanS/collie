@@ -222,11 +222,11 @@ const BOX = "flex min-h-[42px] flex-wrap items-start gap-x-2 gap-y-1 rounded-sm 
  * **On a narrow box the actions go under the text, never beside it in a column of their own.** The
  * body asks for 12rem before it shares its line (`flex: 1 1 12rem`), and the root
  * wraps, so a cluster that does not fit beside 12rem of text moves to the next line, pushed right by
- * `ml-auto`. There it may shrink to the box's width, and its own buttons wrap. Measured with the
- * composer's three-button refusal (Answer the dialog, Screen, Open Keys): at 360 and 412 px the
- * buttons stand under the sentence and the sentence takes the full width; on a tablet they share one
- * line. A single ✕ or one short button still fits beside the text at 360 px. The 2026-10-16 field
- * case had the old `shrink-0` cluster squeeze the sentence into a column a word or two wide.
+ * `ml-auto`. There it may shrink to the box's width, and its own buttons wrap. Measured on 2026-10-16
+ * in a headless browser with the composer's refusal (Screen, Open Keys, ✕): at 360 px the sentence
+ * is 280 px wide and the buttons stand on the line under it, at 412 px the sentence is 332 px wide,
+ * and at 820 px they share one line. The field case that day had the old `shrink-0` cluster squeeze
+ * the sentence into a column a word or two wide.
  */
 const BOX_BODY = "flex min-h-6 min-w-0 flex-[1_1_12rem] flex-col justify-center";
 const BOX_ACTIONS = "relative ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1";
