@@ -1786,6 +1786,17 @@ describe("collie crew status", () => {
     expect(rendered).toContain("reachable");
   });
 
+  test("a member's Surface reader renders as its version, or as none for an older build (M56)", async () => {
+    for (const [body, line] of [
+      [{ protocol: 2, member: "nas", surfaceVersion: 2 }, "surface reader 2"],
+      [{ protocol: 2, member: "nas" }, "surface none (older build)"],
+    ] as const) {
+      const h = withVersion(harness(leadStore({ peers: [member({ memberId: "nas" })] }), [jsonReply(body, 200, "nas")]), "1.0.0-alpha.12");
+      await cmdCrewStatus(h.deps, []);
+      expect(text(h.io)).toContain(line);
+    }
+  });
+
   test("a protocol mismatch is still INCOMPATIBLE, and no version line dresses it up (§7)", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [

@@ -1019,6 +1019,9 @@ export class CrewLead {
       link: resolved.link,
       state: resolved.state,
       transport: this.deps.proxy,
+      // What this member's last hello said about its Surface reader: `null` for an older build, which
+      // makes the forward refuse a text reply instead of letting that build type it blind.
+      surfaceVersion: this.surfaceVersionFor(resolved.link.memberId),
       // This lead's own cap, for §13's refuse-before-forward. The peer enforces its own on arrival.
       maxUploadBytes: this.deps.maxUploadBytes,
       // Every landed forward refreshes this member's receipt, so a watched peer's freshness tracks

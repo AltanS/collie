@@ -12,6 +12,7 @@ import {
   forwardPaneId,
   forwardParams,
   forwardToPeer,
+  REPLY_OLD_MEMBER_TEXT,
   crewRouteFor,
   proxiedResponse,
   textAnswerOf,
@@ -643,6 +644,66 @@ describe("request shaping", () => {
 });
 
 // ── §10.3 Writes: refuse before attempting, never retry an ambiguous one ─────
+
+// ── M56 compat: a text reply to a member with no Surface reader ──────────────
+
+describe("a text reply to a member that sent no Surface reader version (an older build)", () => {
+  const REPLY = "/api/pane/w1:p1/reply?host=laptop";
+
+  test("a text submit is refused at once with the reply route's own shape, and the member is never dialled", async () => {
+    for (const body of [`{"text":"hi","submit":true}`, `{"text":"hi"}`, `{"text":"hi","submit":true,"expected_prompt":"Approve?"}`]) {
+      const { transport, calls } = transportOf(() => ok(new Response("{}")));
+      const [req, url] = post(REPLY, body);
+      const res = await forward(req, url, { transport, surfaceVersion: null });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        ok: false,
+        textDelivered: false,
+        error: REPLY_OLD_MEMBER_TEXT,
+        code: "reply.send_failed",
+        detail: { reason: REPLY_OLD_MEMBER_TEXT },
+      });
+      expect(calls).toHaveLength(0);
+    }
+  });
+
+  test("with a Surface reader version, or with none known to the caller, the same reply is forwarded", async () => {
+    for (const surfaceVersion of [2, undefined]) {
+      const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true}`)));
+      const [req, url] = post(REPLY, `{"text":"hi","submit":true,"id":"phone-req-0001"}`);
+      const res = await forward(req, url, { transport, surfaceVersion });
+      expect(await res.json()).toEqual({ ok: true });
+      expect(calls.map((c) => c.route)).toEqual(["pane/w1:p1/reply"]);
+      // The body still streams on whole: the refusal check reads a clone.
+      expect(await new Response(calls[0]?.init.body).text()).toBe(`{"text":"hi","submit":true,"id":"phone-req-0001"}`);
+    }
+  });
+
+  test("keys, raw text with submit false, other routes and a body that is not JSON go to the old member as before", async () => {
+    const sent: [string, string][] = [
+      ["/api/pane/w1:p1/keys?host=laptop", `{"keys":["1"]}`],
+      [REPLY, `{"text":"hi","submit":false}`],
+      [REPLY, `{"text":"","submit":true,"expected_prompt":"Approve?"}`],
+      [REPLY, "not json"],
+      ["/api/pane/w1:p1/rename?host=laptop", `{"name":"x","text":"hi"}`],
+    ];
+    for (const [path, body] of sent) {
+      const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true}`)));
+      const [req, url] = post(path, body);
+      const res = await forward(req, url, { transport, surfaceVersion: null });
+      expect(await res.json()).toEqual({ ok: true });
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  test("a member that is not reachable is still refused as unreachable first", async () => {
+    const { transport, calls } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = post(REPLY, `{"text":"hi","submit":true}`);
+    const res = await forward(req, url, { transport, state: DEAD, surfaceVersion: null });
+    expect((await failureBody(res)).code).toBe("host_unreachable");
+    expect(calls).toHaveLength(0);
+  });
+});
 
 describe("a write to a member that is not reachable (§10.3)", () => {
   test("it is refused BEFORE it is attempted, naming the member and its lastSeenAt", async () => {

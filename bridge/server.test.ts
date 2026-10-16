@@ -60,6 +60,7 @@ import {
   cacheWatchable,
   replyPane,
   REPLY_OFF_TEXT,
+  REPLY_OLD_PHONE_TEXT,
   requestBodyCap,
   pairedLabel,
   requestDevice,
@@ -654,6 +655,7 @@ describe("pane write prompt binding", () => {
     keys?: string[];
     text?: string;
     submit?: boolean;
+    id?: string;
     expected_prompt?: string | number | null;
     expected_styled?: string | number | null;
     expected_columns?: { start: number; end: number } | number[] | string | null;
@@ -841,11 +843,56 @@ describe("pane write prompt binding", () => {
   test("a reply that submits text never types blind: with no protocol it is refused 409 and nothing reaches the pane (M56 spec 06)", async () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
-    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "hello", submit: true }), audit, null, "default");
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "hello", submit: true, id: "phone-req-0001" }), audit, null, "default");
     expect(res.status).toBe(409);
     expect(await res.text()).toBe(REPLY_OFF_TEXT);
     expect(client.texts).toEqual([]);
     expect(client.keys).toEqual([]);
+  });
+
+  test("a text submit with no request id is an old phone: refused at once, before any read or key (M56 compat)", async () => {
+    const client = new FakePaneClient();
+    const { audit, entries } = auditEntries();
+    const bodies = [
+      { text: "hello", submit: true },
+      { text: "hello" },
+      { text: "hello", submit: true, expected_prompt: "Approve this command?\n1. Yes\n2. No" },
+    ];
+    for (const body of bodies) {
+      const res = await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        ok: false,
+        textDelivered: false,
+        error: REPLY_OLD_PHONE_TEXT,
+        code: "reply.send_failed",
+        detail: { reason: REPLY_OLD_PHONE_TEXT },
+      });
+    }
+    expect(client.reads).toEqual([]);
+    expect(client.texts).toEqual([]);
+    expect(client.keys).toEqual([]);
+    expect(entries[0]?.detail).toMatchObject({ submitted: false, textDelivered: false, reason: "old_phone" });
+  });
+
+  test("an old phone's keys and its raw text with submit false still work (M56 compat)", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const typed = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "hello", submit: false }), audit, null, "default");
+    expect(typed.status).toBe(200);
+    expect(await typed.json()).toEqual({ ok: true });
+    expect(client.texts).toEqual([["w1:p1", "hello"]]);
+    const keyed = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"] }), audit, null, "default");
+    expect(keyed.status).toBe(200);
+    expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+  });
+
+  test("a text submit that names an id runs the Send Protocol as before, so the old-phone rule does not widen (M56 compat)", async () => {
+    const client = new FakePaneClient();
+    const { audit } = auditEntries();
+    const res = await replyPane(asMux(client), cfg(), "w1:p1", request({ text: "hello", submit: true, id: "phone-req-0001" }), audit, null, "default");
+    expect(res.status).toBe(409);
+    expect(await res.text()).toBe(REPLY_OFF_TEXT);
   });
 
   test("a submit with no text and no binding is refused: an unbound Enter is the blind path (M56 spec 06)", async () => {
@@ -867,6 +914,7 @@ describe("pane write prompt binding", () => {
       request({
         text: "hello",
         submit: true,
+        id: "phone-req-0001",
         expected_prompt: "Approve this command?\n1. Yes\n2. No",
       }),
       audit,
@@ -1026,7 +1074,7 @@ describe("pane write prompt binding", () => {
         asMux(client),
         cfg(),
         "w1:p1",
-        request({ text: "hello", expected_prompt: TEXT_REGION, expected_styled: styledOf(chips(0)) }),
+        request({ text: "hello", id: "phone-req-0001", expected_prompt: TEXT_REGION, expected_styled: styledOf(chips(0)) }),
         audit,
         null,
         "default",

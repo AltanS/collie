@@ -1584,6 +1584,22 @@ describe("a member's capability block rides `hello` and is answered per host (M2
     expect(silent.lead.surfaceVersionFor("laptop")).toBeNull();
   });
 
+  test("the lead's forward hands a member's stored reader version to the refusal of a text reply (M56 compat)", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), {
+      hello: () => Promise.resolve({ ok: true, value: { version: "1.21.3", mux: null }, status: 200, member: "laptop", receivedAt: NOW, date: null }),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.surfaceVersionFor("laptop")).toBeNull();
+    const url = new URL("https://lead.example/api/pane/w1:p1/reply?host=laptop");
+    const resolved = h.lead.resolve({ kind: "member", id: "laptop" });
+    const req = new Request(url, { method: "POST", body: JSON.stringify({ text: "hi", submit: true }) });
+    // SAFETY: "laptop" is the sole enrolled member and is not `self`, so `resolve` returns the `peer`
+    // variant, the one carrying the link + state pair. The test's proxy would throw on a dial.
+    const res = await h.lead.forward(req, url, resolved as ResolvedPeer);
+    expect(await res.json()).toMatchObject({ ok: false, textDelivered: false, code: "reply.send_failed" });
+  });
+
   test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {
     // A peer older than this amendment, and a peer whose bridge holds no adapter, are the same
     // value here — and that value is NOT "every capability present".
