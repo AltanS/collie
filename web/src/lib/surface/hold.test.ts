@@ -11,6 +11,9 @@ import {
   parseHoldReply,
   parseHoldRequest,
   readHoldNote,
+  screenCardMayAnswer,
+  dialogShowsRequest,
+  holdAskOfNote,
   shownInput,
 } from "./hold";
 import { loadProfiles } from "./profile";
@@ -106,9 +109,37 @@ describe("the wire", () => {
     expect(isElsewhereLine('{"done":"other"}')).toBe(false);
   });
   it("reads a hold note field by field", () => {
-    const note = { askId: "ask-1", state: "sent", tool: "Bash", input: "ls", agent: false, since: 5 };
+    const note = { askId: "ask-1", state: "sent", tool: "Bash", input: "ls", agent: false, options: ["Yes", "No"], hash: "abc123", adopted: true, since: 5 };
     expect(readHoldNote(note)).toEqual(note);
     expect(readHoldNote({ ...note, state: "maybe" })).toBeNull();
+    expect(readHoldNote({ ...note, options: [1] })).toBeNull();
+    expect(readHoldNote({ ...note, adopted: undefined })).toBeNull();
     expect(readHoldNote(null)).toBeNull();
+  });
+});
+
+describe("which dialog a hold may adopt", () => {
+  it("matches the input's first line with white space and the gutter dropped, or a path by its last part", () => {
+    expect(dialogShowsRequest("Bash command\n   mkfifo fixture-fifo\nDo you want to proceed?", "mkfifo fixture-fifo")).toBe(true);
+    expect(dialogShowsRequest("│ set -e; cd /a &&\n│ rm -rf ./*", "set -e; cd /a && rm -rf ./*")).toBe(true);
+    expect(dialogShowsRequest("Create file\n hello.txt\nDo you want to create hello.txt?", "/var/home/me/project/hello.txt")).toBe(true);
+    expect(dialogShowsRequest("Bash command\n   ls -la", "rm -rf build")).toBe(false);
+    expect(dialogShowsRequest("Do you want to proceed?", "ls")).toBe(false);
+    expect(dialogShowsRequest(null, "mkfifo fixture-fifo")).toBe(false);
+  });
+});
+
+describe("the hold card and the screen card", () => {
+  const note = { askId: "ask-1", state: "held" as const, tool: "Bash", input: "rm -rf build", agent: true, options: ["Yes", "No"], hash: holdHash("Bash", "rm -rf build", ["Yes", "No"]), adopted: false, since: 1 };
+  it("the hold card's ask is the note's id, hash and labels", () => {
+    expect(holdAskOfNote(note)).toEqual(holdAsk("ask-1", "Bash", "rm -rf build", ["Yes", "No"]));
+  });
+  it("a screen card never answers a hook ask its hold did not adopt", () => {
+    const hook = holdAskOfNote(note);
+    expect(screenCardMayAnswer(hook, note)).toBe(false);
+    expect(screenCardMayAnswer(hook, undefined)).toBe(false);
+    expect(screenCardMayAnswer(hook, { ...note, adopted: true })).toBe(true);
+    expect(screenCardMayAnswer(hook, { ...note, adopted: true, askId: "ask-2" })).toBe(false);
+    expect(screenCardMayAnswer({ ...hook, channel: "keys" }, note)).toBe(true);
   });
 });

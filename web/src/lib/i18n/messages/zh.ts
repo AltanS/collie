@@ -497,16 +497,16 @@ export const zh: Dictionary = {
   "chat.status.askMismatch": "高亮未到达你的选择，因此未确认任何内容",
   "chat.status.askGone": "对话框已消失；Collie 重新读取了屏幕",
   "chat.status.askUnknown": "无法证明回答已发出；屏幕显示了实际情况",
-  "chat.status.askDesk": "Answered at the desk; your tap was not used", // TODO wordsmith
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
   "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. The screen shows no dialog for it.", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "Answered at the desk.", // TODO wordsmith
-  "chat.hold.elsewhere": "Answered on another Collie.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Nothing was sent.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "发送失败",
   "chat.status.wizardChanged": "向导已变动，正在刷新",
   "chat.status.noteSaved": "笔记已保存",

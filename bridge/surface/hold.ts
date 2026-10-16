@@ -37,6 +37,7 @@ import { EDGE_SCHEMA_VERSION, type EdgeRecord } from "../beacon/types.ts";
 import type { LiftedDialog } from "../../web/src/lib/surface/lift.ts";
 import {
   decisionOf,
+  dialogShowsRequest,
   HOLD_LINE_MAX,
   holdAsk,
   isElsewhereLine,
@@ -54,8 +55,6 @@ import { placeEdge, type EdgeTarget } from "./edges.ts";
 
 /** How many reads in a row must miss a dialog the screen showed before the desk counts as first. */
 export const DESK_READS = 2;
-/** How long after the hold opened a screen dialog may still give the ask its labels. */
-export const RELABEL_MS = 2000;
 
 /**
  * How long a hold whose hook ended early waits for the screen to say who ended it. Claude Code
@@ -141,6 +140,11 @@ const timerSchedule = (run: () => void, ms: number): (() => void) => {
   return () => clearTimeout(timer);
 };
 
+/** The key of a hold: its pane and its agent ("-" for the main session). */
+function holdKey(paneId: string, agent: string | null): string {
+  return `${paneId}\u0000${agent ?? "-"}`;
+}
+
 /** The note state of a closed hold's outcome. */
 function noteStateOf(outcome: HoldOutcome): HoldState {
   return outcome === "phone" ? "sent" : outcome;
@@ -148,7 +152,8 @@ function noteStateOf(outcome: HoldOutcome): HoldState {
 
 export class HoldBook {
   private readonly byId = new Map<string, Held>();
-  private readonly byPane = new Map<string, Held>();
+  /** The holds by pane and agent: one per pane for the main session, one per subagent beside it. */
+  private readonly byKey = new Map<string, Held>();
   private serial = 0;
   private readonly now: () => number;
   private readonly schedule: (run: () => void, ms: number) => () => void;
@@ -165,13 +170,14 @@ export class HoldBook {
   }
 
   /**
-   * A placed request opens a hold on its pane. A hold still open there ends as desk first: the
-   * harness asks one request at a time per session, so a new one means the old one was answered.
+   * A placed request opens a hold, keyed by its pane and its agent. A hold still open under the same
+   * key ends as void, never as desk: nothing proves who answered it. Holds of other agents on the
+   * pane stay open beside it.
    */
   open(paneId: string, generation: string, request: HoldRequest, conn: HoldConn, profile: HoldProfile): Held {
-    const old = this.byPane.get(paneId);
-    if (old !== undefined && (old.state === "held" || old.state === "answering")) this.end(old, "desk");
-    this.voidKeysAsk(paneId);
+    const key = holdKey(paneId, request.agent);
+    const old = this.byKey.get(key);
+    if (old !== undefined && (old.state === "held" || old.state === "answering")) this.end(old, "void");
     const held: Held = {
       paneId,
       generation,
@@ -196,7 +202,7 @@ export class HoldBook {
     held.cancelLimit = this.schedule(() => {
       if (held.state === "held") this.end(held, "timeout");
     }, profile.limitMs);
-    this.byPane.set(paneId, held);
+    this.byKey.set(key, held);
     this.line(held, "open");
     return held;
   }
@@ -206,59 +212,92 @@ export class HoldBook {
     return this.byId.get(id);
   }
 
-  /** Whether the pane's reads go through {@link claim}: a hold waits, runs an answer, or just sent one. */
-  live(paneId: string): boolean {
-    const held = this.byPane.get(paneId);
-    if (held === undefined) return false;
+  /** Every hold on the pane, live or closed, oldest first. */
+  holdsOn(paneId: string): Held[] {
+    return [...this.byKey.values()].filter((held) => held.paneId === paneId).toSorted((a, b) => a.openedAt - b.openedAt);
+  }
+
+  /** Whether the hold waits, runs an answer, or just sent one. */
+  private isLive(held: Held): boolean {
     if (held.state === "held" || held.state === "answering") return true;
     return held.state === "sent" && held.sentAt !== null && this.now() - held.sentAt < SENT_SHIELD_MS;
   }
 
-  /** The pane's hold, in any state, or undefined. */
-  heldOn(paneId: string): Held | undefined {
-    return this.byPane.get(paneId);
+  /** Whether the pane's reads go through {@link claim}: a hold on it waits, runs an answer, or just sent one. */
+  live(paneId: string): boolean {
+    return this.holdsOn(paneId).some((held) => this.isLive(held));
   }
 
   /**
-   * One read of a pane with a live hold. Returns the hook ask, or null when the hold ended on this
-   * read (the caller then publishes the screen's dialog as a keys ask). Never sends a key.
+   * One read of a pane with a live hold. Returns the hook ask the pane's Surface carries, or null:
+   * the caller then publishes the screen's dialog as a keys ask, or nothing. Never sends a key.
+   *
+   * A hold owns the Surface's ask only in two cases. It adopted the permission dialog on the screen
+   * (the dialog shows its tool and input), and that dialog is still there. Or the screen shows no
+   * dialog at all (a background subagent's request). A dialog the hold did not adopt is the screen's
+   * own: it gets a keys ask, and the hold's ask lives only in the hold note, answered from the hold
+   * card. So a tap on a screen card never becomes a decision for another request.
    */
   claim(paneId: string, generation: string, dialog: LiftedDialog | null): Ask | null {
-    const held = this.byPane.get(paneId);
-    if (held === undefined || !this.live(paneId)) return null;
+    const live = this.holdsOn(paneId).filter((held) => this.isLive(held));
+    if (live.length === 0) return null;
     const permission = dialog !== null && dialog.blockKind === "prompt-select" && dialog.kind === "permission" ? dialog : null;
-    if (held.ask === null) {
-      this.mint(held, generation, permission);
-      return held.ask;
+    let owner: Ask | null = null;
+    for (const held of live) {
+      const ask = this.step(held, live, generation, dialog, permission);
+      if (ask !== null && owner === null) owner = ask;
     }
-    if (held.state !== "held") return held.ask;
+    if (owner !== null) return owner;
+    if (dialog !== null) return null;
+    // No dialog on the screen: the oldest hold that waits carries the Surface's ask.
+    return live.find((held) => held.state === "held" && held.dialog === null)?.ask ?? null;
+  }
+
+  /** One hold's part of a read. Returns its ask when it owns the dialog on the screen, else null. */
+  private step(held: Held, live: readonly Held[], generation: string, dialog: LiftedDialog | null, permission: LiftedDialog | null): Ask | null {
+    if (held.state !== "held") return held.dialog !== null ? held.ask : null;
+    if (held.dialog === null) {
+      // Adopt the permission dialog that shows this request's own tool input, when no other hold has it.
+      // The dialog's labels replace the profile's; an id minted before answers `ask_changed`, never a key.
+      const taken = live.some((other) => other !== held && other.dialog !== null && permission !== null && sameDialog(other.dialog, permission));
+      if (permission !== null && !taken && dialogShowsRequest(permission.region, held.request.input)) {
+        this.mint(held, generation, permission);
+        this.voidKeysAsk(held.paneId);
+        return held.ask;
+      }
+      if (held.ask === null) this.mint(held, generation, null);
+      return null;
+    }
+    const same = permission !== null && sameDialog(held.dialog, permission);
     if (held.hookGone) {
-      // The hook ended early. A dialog still up: the hook stopped on its own, so the dialog becomes
-      // a keys ask. No dialog on two reads: the desk answered, and Claude ended the hook.
-      if (permission !== null) {
+      // The hook ended early. Its dialog still up: the hook stopped on its own, so the dialog
+      // becomes a keys ask. Its dialog gone on two reads: the desk answered, and the harness ended the hook.
+      if (same) {
         if (this.now() - held.goneAt < CLOSE_SETTLE_MS) return held.ask;
         this.end(held, "void");
         return null;
       }
-      held.missing += 1;
-      if (held.missing < DESK_READS) return held.ask;
-      this.end(held, "desk");
-      return null;
+      return this.miss(held, dialog);
     }
-    if (held.dialog === null) {
-      // Labels from the profile so far. A dialog that paints soon after takes over once, so the card on
-      // the phone and the ask name the same options. The old id answers `ask_changed`, never a key.
-      if (permission !== null && held.request.agent === null && this.now() - held.openedAt < RELABEL_MS) this.mint(held, generation, permission);
-      return held.ask;
-    }
-    if (permission !== null && sameDialog(held.dialog, permission)) {
+    if (same) {
       held.missing = 0;
       return held.ask;
     }
+    return this.miss(held, dialog);
+  }
+
+  /**
+   * The adopted dialog is not on this read. Two misses in a row: the desk answered. Until then the
+   * hold keeps the Surface's ask only while no other dialog shows, so a tap on another card never
+   * lands on this hold.
+   */
+  private miss(held: Held, dialog: LiftedDialog | null): Ask | null {
     held.missing += 1;
-    if (held.missing < DESK_READS) return held.ask;
-    this.end(held, "desk");
-    return null;
+    if (held.missing >= DESK_READS) {
+      this.end(held, "desk");
+      return null;
+    }
+    return dialog === null ? held.ask : null;
   }
 
   private mint(held: Held, _generation: string, dialog: LiftedDialog | null): void {
@@ -336,8 +375,8 @@ export class HoldBook {
     // A close at the limit is the hook's own timer: the same outcome as the bridge's.
     const late = this.now() - held.openedAt >= held.profile.limitMs - 2000;
     if (late) return this.end(held, "timeout");
-    // A subagent's request has no dialog for the screen to judge: the hook stopped.
-    if (held.request.agent !== null || held.state === "answering") return this.end(held, "void");
+    // A hold with no adopted dialog has nothing for the screen to judge: the hook stopped.
+    if (held.dialog === null || held.state === "answering") return this.end(held, "void");
     held.hookGone = true;
     held.goneAt = this.now();
     held.missing = 0;
@@ -353,8 +392,10 @@ export class HoldBook {
    * session's request means the dialog is gone. A session edge voids the hold.
    */
   edge(paneId: string, kind: EdgeKind, info: { readonly tool: string | null; readonly agent: string | null }): void {
-    const held = this.byPane.get(paneId);
-    if (held === undefined) return;
+    for (const held of this.holdsOn(paneId)) this.edgeOf(held, kind, info);
+  }
+
+  private edgeOf(held: Held, kind: EdgeKind, info: { readonly tool: string | null; readonly agent: string | null }): void {
     const matches = info.agent === held.request.agent && (info.tool === null || info.tool === held.request.tool);
     switch (kind) {
       case "tool":
@@ -383,21 +424,43 @@ export class HoldBook {
     }
   }
 
-  /** The pane's note for the phone, or null when there is nothing to say. */
+  /**
+   * The pane's note for the phone, or null when there is nothing to say. With more than one hold on
+   * the pane: the hold that owns the dialog on the screen, else the oldest that waits, else the newest
+   * closed note. The phone shows one hold card at a time; the next one shows once the first ends.
+   */
   note(paneId: string): HoldNote | null {
-    const held = this.byPane.get(paneId);
-    const note = held?.note ?? null;
-    if (held === undefined || note === null) return null;
+    const notes = this.holdsOn(paneId)
+      .map((held) => ({ held, note: this.noteNow(held) }))
+      .filter((entry): entry is { held: Held; note: HoldNote } => entry.note !== null);
+    const waiting = notes.filter((entry) => entry.note.state === "held");
+    const pick = waiting.find((entry) => entry.held.dialog !== null) ?? waiting[0] ?? notes.toSorted((a, b) => b.note.since - a.note.since)[0];
+    return pick?.note ?? null;
+  }
+
+  private noteNow(held: Held): HoldNote | null {
+    const note = held.note;
+    if (note === null) return null;
     const age = this.now() - note.since;
-    if (note.state === "held") return held.state === "held" || held.state === "answering" ? note : null;
+    if (note.state === "held") return held.state === "held" || held.state === "answering" ? { ...note, adopted: held.dialog !== null } : null;
     if (note.state === "sent") return age < SENT_NOTE_MS ? note : null;
     return age < NOTE_MS ? note : null;
   }
 
   private noteOf(held: Held, state: HoldState): HoldNote | null {
-    const askId = held.ask?.id;
-    if (askId === undefined) return null;
-    return { askId, state, tool: held.request.tool, input: held.request.input, agent: held.request.agent !== null, since: this.now() };
+    const ask = held.ask;
+    if (ask === null) return null;
+    return {
+      askId: ask.id,
+      state,
+      tool: held.request.tool,
+      input: held.request.input,
+      agent: held.request.agent !== null,
+      options: ask.options.map((option) => option.label),
+      hash: ask.hash,
+      adopted: held.dialog !== null,
+      since: this.now(),
+    };
   }
 
   private count(held: Held, outcome: HoldOutcome): void {

@@ -60,6 +60,7 @@ import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, type AskTapResult } from "@/lib/dialog-ask";
+import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
 import { refreshNow } from "@/lib/api";
 import { sameKeys } from "@/lib/harness/prompt-model";
@@ -1277,13 +1278,17 @@ export function AgentChat({
         setStatus(refusal, "error");
         return;
       }
-      if (paneAsk === null || paneAsk.channel !== "hook") return;
-      const option = paneAsk.options[index];
-      if (option === undefined) return;
-      const tap = { card: "prompt-select", index, label: option.label } as const;
-      await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+      // The note carries the hold ask's id, hash and labels: the card answers it even while the
+      // Surface carries the keys ask of another dialog on the screen.
+      const note = agent?.hold;
+      if (note === undefined || note.state !== "held") return;
+      const label = note.options[index];
+      if (label === undefined) return;
+      const ask = holdAskOfNote(note);
+      const tap = { card: "prompt-select", index, label } as const;
+      await settleAskTap(ask.id, await answerAsk({ paneId, scope, ask, tap, via: "hold-card" }));
     },
-    [refuseWrite, paneAsk, paneId, scope, settleAskTap],
+    [refuseWrite, agent?.hold, paneId, scope, settleAskTap],
   );
 
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
@@ -1305,6 +1310,12 @@ export function AgentChat({
       // name (another kind, or another label at that row): the guarded path re-reads the screen and
       // binds the keys to the card's own region, so a disagreement never locks the dialog.
       if (action.kind === "option" && asksAnswered && paneAsk !== null && prompt.feedback?.focused !== true) {
+        // A hook ask the hold did not take from this screen is answered from the hold card only.
+        if (!screenCardMayAnswer(paneAsk, agent?.hold)) {
+          setStatus(t("chat.hold.cardMismatch"), "warn");
+          revalidator.revalidate();
+          return false;
+        }
         const tap = { card: "prompt-select", index: prompt.options.indexOf(action.option), label: action.option.label } as const;
         if (askOptionFor(paneAsk, tap) !== null) return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
         // A hook-held ask (M56 spec 12) never falls back to keys: a key would answer the held dialog
@@ -1350,7 +1361,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1486,6 +1497,11 @@ export function AgentChat({
       // arrow only moves the highlight, which the next commit's hash check covers: it keeps its route.
       // A card the ask does not name keeps the guarded route, as for a prompt card above.
       if (!action.nav && asksAnswered && paneAsk !== null) {
+        if (!screenCardMayAnswer(paneAsk, agent?.hold)) {
+          setStatus(t("chat.hold.cardMismatch"), "warn");
+          revalidator.revalidate();
+          return;
+        }
         const index = menu.actions.findIndex((a) => sameKeys(a.keys, action.keys));
         const tap = { card: "menu", index, label: menu.actions[index]?.label ?? "" } as const;
         if (askOptionFor(paneAsk, tap) !== null) {
@@ -1520,7 +1536,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
@@ -2645,8 +2661,6 @@ export function AgentChat({
           {agent?.hold !== undefined && (
             <HookHoldCard
               note={agent.hold}
-              ask={paneAsk}
-              screenCard={dialogPresent}
               disabled={readOnly || gone || !asksAnswered}
               onAnswer={handleHoldAnswer}
             />

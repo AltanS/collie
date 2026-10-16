@@ -35,6 +35,11 @@ const BASH = fx("claude--permission-bash.txt");
 /** A second, different permission dialog. */
 const EDIT = fx("claude--permission-edit.txt");
 const IDLE = fx("claude--v2301-idle.txt");
+/** An AskUserQuestion dialog on the main screen: Apple / Banana / Orange. */
+const QUESTION = fx("claude--v2283-ask-two-line-question.txt");
+/** A subagent's Bash permission drawn on the main screen ("· from the general-purpose agent"). */
+const SUB_DIALOG = fx("claude--v2291-permission-bash-subagent.txt");
+const SUB_COMMAND = "set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./*";
 /** A subagent's request on 2.1.301: no dialog on the main screen at all (LAB.md Table 6). */
 const SUBAGENT_IDLE = fx("claude--v2301-hold-subagent.txt");
 /** The screen after the hook decided: the dialog is gone and the result line names the hook. */
@@ -372,7 +377,7 @@ describe("the hold matrix", () => {
     expect(conn.replies).toEqual(["deny"]);
     expect(reply.receipt?.outcome).toBe("refused");
     expect(reply.receipt?.reason).toBe("ask_desk");
-    expect(reply.detail).toBe("The desk answered first. Your answer was not used.");
+    expect(reply.detail).toBe("The desk answered first. Collie did not use your answer.");
     expect(r.holds.note(PANE)?.state).toBe("desk");
     expect(r.counted).toEqual(["desk"]);
     expectNoKey(r);
@@ -470,19 +475,21 @@ describe("the hold matrix", () => {
     expect(r.counted).toEqual(["elsewhere"]);
     const reply = await r.answer(ask, "1");
     expect(reply.receipt?.reason).toBe("ask_desk");
-    expect(reply.detail).toBe("Answered on another Collie. Your tap was not used.");
+    expect(reply.detail).toBe("Another Collie answered. Collie did not use your tap.");
     expect(conn.replies).toEqual([]);
     expectNoKey(r);
   });
 
-  test("two queued requests: the second hold ends the first as desk first, one ask at a time", () => {
+  test("a second request of the same agent replaces the first: the first ends void, never desk", () => {
     const r = rig(BASH);
     const first = r.open();
     const a1 = r.poll()!;
     r.pane.screen = EDIT;
-    const second = r.open({ tool: "Edit", input: "/tmp/x" });
+    const second = r.open({ tool: "Write", input: "/tmp/project/hello.txt" });
     const a2 = r.poll()!;
     expect(first.conn.released).toBe(1);
+    expect(first.conn.replies).toEqual([]);
+    expect(r.counted).toEqual(["void"]);
     expect(a2.id).not.toBe(a1.id);
     expect(a2.channel).toBe("hook");
     expect(second.conn.released).toBe(0);
@@ -503,7 +510,11 @@ describe("the hold matrix", () => {
     r.holds.edge(PANE, "prompt", { tool: null, agent: null });
     r.holds.edge(PANE, "tool", { tool: "Bash", agent: null });
     expect(conn.released).toBe(0);
-    const reply = await r.answer(ask, "1");
+    // No dialog to adopt: only the hold card answers it. A tap from a screen card is refused.
+    expect(r.holds.note(PANE)?.adopted).toBe(false);
+    expect((await r.answer(ask, "1")).receipt?.reason).toBe("ask_changed");
+    expect(conn.replies).toEqual([]);
+    const reply = await r.answer(ask, "1", { via: "hold-card" });
     expect(reply.receipt?.outcome).toBe("sent");
     expect(conn.replies).toEqual(["allow"]);
     expect(r.holds.note(PANE)?.state).toBe("sent");
@@ -596,6 +607,114 @@ describe("the hold matrix", () => {
     expect(r.poll()?.id).toBe(ask.id);
     r.clock.now += SENT_SHIELD_MS + 1;
     expect(r.poll()?.channel).toBe("keys");
+  });
+});
+
+describe("a hold owns only the dialog it adopted", () => {
+  test("a background subagent's rm while AskUserQuestion shows: the question is a keys ask, a screen tap never reaches the hook", async () => {
+    const r = rig(QUESTION);
+    const { conn } = r.open({ agent: "agent-9", input: "rm -rf build" });
+    // The question is the screen's own dialog: it keeps a keys ask, with its own labels.
+    const ask = r.poll()!;
+    expect(ask.channel).toBe("keys");
+    expect(ask.options.map((o) => o.label)).toContain("Apple");
+    // The hold's ask lives in the note only, for the hold card.
+    const note = r.holds.note(PANE)!;
+    expect(note).toMatchObject({ state: "held", adopted: false, agent: true, options: ["Yes", "No"], input: "rm -rf build" });
+    // A "Yes" tapped on a screen card, sent to the hook ask's id, is refused: no decision, no key.
+    const hookAsk = { id: note.askId, kind: "permission" as const, options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "hook" as const, hash: note.hash };
+    const reply = await r.answer(hookAsk, "1");
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_changed", keys: [] });
+    expect(conn.replies).toEqual([]);
+    expect(conn.released).toBe(0);
+    expectNoKey(r);
+    // The hold card's tap, marked as such, is the decision.
+    const fromCard = await r.answer(hookAsk, "2", { via: "hold-card" });
+    expect(fromCard.receipt).toMatchObject({ outcome: "sent", decision: "deny", keys: [] });
+    expect(conn.replies).toEqual(["deny"]);
+    expectNoKey(r);
+  });
+
+  test("a main hold whose dialog does not show its input stays unadopted: the dialog is a keys ask", () => {
+    const r = rig(BASH);
+    r.open({ tool: "Bash", input: "npm run build" });
+    const ask = r.poll()!;
+    expect(ask.channel).toBe("keys");
+    expect(r.holds.note(PANE)?.adopted).toBe(false);
+  });
+
+  test("a dialog painted late still adopts when it shows the request, and the profile id answers ask_changed", async () => {
+    const r = rig(IDLE);
+    const { conn } = r.open();
+    const early = r.poll()!;
+    r.clock.now += 5000;
+    r.pane.screen = BASH;
+    const late = r.poll()!;
+    expect(late.channel).toBe("hook");
+    expect(late.id).not.toBe(early.id);
+    expect(r.holds.note(PANE)?.adopted).toBe(true);
+    expect((await r.answer(early, "1", { via: "hold-card" })).receipt?.reason).toBe("ask_changed");
+    expect(conn.replies).toEqual([]);
+  });
+
+  test("a foreground subagent's dialog is adopted: a No on the screen card denies through the hook", async () => {
+    const r = rig(SUB_DIALOG);
+    const { conn } = r.open({ agent: "agent-3", input: SUB_COMMAND });
+    const ask = r.poll()!;
+    expect(ask.channel).toBe("hook");
+    expect(ask.options.map((o) => o.label)).toEqual(["Yes", "No"]);
+    expect(r.holds.note(PANE)?.adopted).toBe(true);
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0) pane.screen = `⏺ Bash(set -e)\n  ⎿  Interrupted · What should Claude do instead?\n${IDLE}`;
+    };
+    const reply = await r.answer(ask, "2");
+    expect(reply.receipt).toMatchObject({ outcome: "sent", decision: "deny", keys: [] });
+    expectNoKey(r);
+  });
+
+  test("a foreground subagent's dialog answered at the desk reads as desk", () => {
+    const r = rig(SUB_DIALOG);
+    const { conn } = r.open({ agent: "agent-3", input: SUB_COMMAND });
+    r.poll();
+    r.pane.screen = DESK_DONE;
+    r.poll();
+    expect(r.poll()).toBeNull();
+    expect(conn.released).toBe(1);
+    expect(r.counted).toEqual(["desk"]);
+  });
+});
+
+describe("holds by pane and agent", () => {
+  test("two subagents hold on one pane at once: each keeps its own hold, edges end each by its agent", async () => {
+    const r = rig(SUBAGENT_IDLE);
+    const a = r.open({ agent: "agent-1", input: "touch a.txt" });
+    const b = r.open({ agent: "agent-2", input: "touch b.txt" });
+    expect(a.conn.released).toBe(0);
+    expect(b.conn.released).toBe(0);
+    // The oldest waiting hold carries the Surface's ask and the note.
+    const first = r.poll()!;
+    expect(r.holds.note(PANE)?.input).toBe("touch a.txt");
+    const reply = await r.answer(first, "1", { via: "hold-card" });
+    expect(reply.receipt?.outcome).toBe("sent");
+    expect(a.conn.replies).toEqual(["allow"]);
+    expect(b.conn.replies).toEqual([]);
+    // The second shows next. A tool edge of agent-1 does not end agent-2's hold.
+    r.holds.edge(PANE, "tool", { tool: "Bash", agent: "agent-1" });
+    expect(r.holds.note(PANE)?.input).toBe("touch b.txt");
+    expect(b.conn.released).toBe(0);
+    r.holds.edge(PANE, "tool", { tool: "Bash", agent: "agent-2" });
+    expect(b.conn.released).toBe(1);
+    expect(r.counted).toEqual(["phone", "desk"]);
+  });
+
+  test("a main hold and a subagent hold side by side: the main one adopts the dialog, the subagent one waits on its card", () => {
+    const r = rig(BASH);
+    r.open({ agent: "agent-1", input: "touch a.txt" });
+    r.open();
+    const ask = r.poll()!;
+    expect(ask.channel).toBe("hook");
+    expect(r.holds.note(PANE)).toMatchObject({ adopted: true, input: "mkfifo fixture-fifo" });
+    expect(r.holds.holdsOn(PANE)).toHaveLength(2);
   });
 });
 

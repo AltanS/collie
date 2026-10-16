@@ -513,16 +513,16 @@ export const de: Dictionary = {
   "chat.status.askMismatch": "Die Hervorhebung hat deine Auswahl nicht erreicht, daher wurde nichts bestätigt",
   "chat.status.askGone": "Der Dialog ist verschwunden; Collie hat den Bildschirm erneut eingelesen",
   "chat.status.askUnknown": "Kein Nachweis, dass die Antwort übermittelt wurde; der Bildschirm zeigt, was passiert ist",
-  "chat.status.askDesk": "Answered at the desk; your tap was not used", // TODO wordsmith
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
   "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. The screen shows no dialog for it.", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "Answered at the desk.", // TODO wordsmith
-  "chat.hold.elsewhere": "Answered on another Collie.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Nothing was sent.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "Senden fehlgeschlagen",
   "chat.status.wizardChanged": "Assistent geändert, Aktualisierung läuft",
   "chat.status.noteSaved": "Notiz gespeichert",

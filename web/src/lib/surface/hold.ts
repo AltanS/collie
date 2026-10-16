@@ -151,6 +151,35 @@ export function holdHash(tool: string, input: string, labels: readonly string[])
   return shortHash([HOLD_ASK_KIND, tool, input, ...labels].join("\n"));
 }
 
+/** Text with every white space dropped. */
+function squash(text: string): string {
+  return text.replace(/\s+/gu, "");
+}
+
+/** The fewest characters a match key may have: shorter text shows up on any screen by chance. */
+const MATCH_KEY_MIN = 3;
+/** The most characters of the input's first line a match compares. */
+const MATCH_KEY_MAX = 60;
+
+/**
+ * Whether a permission dialog's text shows this request's input, so the hold may take the dialog as
+ * its own. White space is dropped on both sides: the dialog wraps a long command over rows. The key
+ * is the first line of the input shown, cut at 60 characters. A path (no space, a slash) also
+ * matches by its last part, as a dialog names a file relative to the project. An input too short to
+ * tell, or a dialog with no text, never matches: the dialog then stays the screen's own keys ask.
+ */
+export function dialogShowsRequest(dialogText: string | null, input: string): boolean {
+  if (dialogText === null) return false;
+  // A wrapped command keeps the dialog's `│` gutter at the start of each row: drop it on the screen side.
+  const screen = squash(dialogText.replace(/│/gu, ""));
+  const first = (input.split("\n").find((line) => line.trim().length > 0) ?? "").trim();
+  const key = squash(first).slice(0, MATCH_KEY_MAX);
+  if (key.length >= MATCH_KEY_MIN && screen.includes(key)) return true;
+  if (/\s/u.test(first) || !first.includes("/")) return false;
+  const tail = first.slice(first.lastIndexOf("/") + 1);
+  return tail.length >= MATCH_KEY_MIN && screen.includes(squash(tail));
+}
+
 /** The decision an option label stands for under the profile, or null when no rule names it. */
 export function decisionOf(rules: readonly HoldDecisionRule[], label: string): HoldDecision | null {
   for (const rule of rules) {
@@ -245,8 +274,18 @@ export interface HoldNote {
   readonly tool: string;
   /** The input shown. The bridge masks it like the mirror when redaction is on. */
   readonly input: string;
-  /** True when the request came from a subagent: the screen shows no dialog for it. */
+  /** True when the request came from a subagent. */
   readonly agent: boolean;
+  /** The hold ask's option labels, in order: the hold card draws them and answers by position. */
+  readonly options: readonly string[];
+  /** The hold ask's hash, which a tap from the hold card carries. */
+  readonly hash: string;
+  /**
+   * True when the hold took the permission dialog on the screen as its own: the screen's card
+   * answers it. False: the screen shows no dialog for it, or another one. Only the hold card answers
+   * it then, and the phone never maps a screen card onto it.
+   */
+  readonly adopted: boolean;
   /** When the hold took this state, in epoch ms. */
   readonly since: number;
 }
@@ -261,6 +300,26 @@ export function readHoldNote(value: JsonValue | undefined): HoldNote | null {
   const input = asJsonString(node.input);
   const agent = asJsonBoolean(node.agent);
   const since = asJsonNumber(node.since);
+  const hash = asJsonString(node.hash);
+  const adopted = asJsonBoolean(node.adopted);
+  const options = Array.isArray(node.options) && node.options.length <= 9 ? node.options.map((label) => asJsonString(label)) : undefined;
   if (askId === undefined || state === undefined || tool === undefined || input === undefined || agent === undefined || since === undefined) return null;
-  return { askId, state, tool, input, agent, since };
+  if (hash === undefined || adopted === undefined || options === undefined || options.some((label) => label === undefined)) return null;
+  return { askId, state, tool, input, agent, options: options.filter((label): label is string => label !== undefined), hash, adopted, since };
+}
+
+/** The hold ask a note names, for a tap from the hold card. Option ids are the 1-based positions. */
+export function holdAskOfNote(note: HoldNote): Ask {
+  return { id: note.askId, kind: HOLD_ASK_KIND, options: note.options.map((label, index) => ({ id: String(index + 1), label })), channel: "hook", hash: note.hash };
+}
+
+/**
+ * Whether a tap on a screen card may answer the pane's ask. A keys ask: yes, the screen card is its
+ * own. A hook ask: only when the hold took that very dialog as its own (`adopted`) and the note names
+ * the same ask. Else the screen card shows another dialog, or a stale one, and its tap must never
+ * become a decision for the held request.
+ */
+export function screenCardMayAnswer(ask: Ask, note: HoldNote | undefined): boolean {
+  if (ask.channel !== "hook") return true;
+  return note !== undefined && note.state === "held" && note.adopted && note.askId === ask.id;
 }

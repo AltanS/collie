@@ -356,7 +356,7 @@ function sentenceOf(reason: AskReason): string | undefined {
     case "ask_gone":
       return "This dialog is gone from the screen. Nothing was sent.";
     case "ask_desk":
-      return "Answered at the desk. Your tap was not used.";
+      return "The desk answered first. Collie did not use your tap.";
     case "ask_mismatch":
       return "The highlight did not reach your choice, so Enter was not sent.";
     case "no_plan":
@@ -475,6 +475,15 @@ export class AskAnswerer {
    */
   private async answerHold(answer: Answer, target: AskTarget, held: Held): Promise<AskReply> {
     const holds = this.deps.book.holds!;
+    // A hold with no adopted dialog takes a tap only from its own hold card. A screen card shows
+    // another dialog then, or none; its tap must never become a decision for this request. Refused
+    // before the id is taken, so the hold card can still answer.
+    if (held.state === "held" && held.dialog === null && answer.via !== "hold-card") {
+      return this.holdReply(answer, target, held, "refused", "ask_changed", null, {
+        ask: await this.look(target, held.generation),
+        detail: "That card shows another dialog. Collie did not use your tap.",
+      });
+    }
     // An option the hook cannot state is refused before the id is taken: nothing happened, so the
     // same card stays answerable with Yes or No. Found in the lab: the refusal had spent the id.
     const live = held.state === "held" && held.ask !== null && held.ask.id === answer.askId && held.ask.hash === answer.hash ? held.ask : null;
@@ -504,7 +513,7 @@ export class AskAnswerer {
     }
     if (held.state === "ended" || held.state === "sent") {
       const first = held.outcome === "desk" || held.outcome === "elsewhere";
-      if (first) return this.holdReply(answer, target, held, "refused", "ask_desk", null, { detail: held.outcome === "elsewhere" ? "Answered on another Collie. Your tap was not used." : undefined });
+      if (first) return this.holdReply(answer, target, held, "refused", "ask_desk", null, { detail: held.outcome === "elsewhere" ? "Another Collie answered. Collie did not use your tap." : undefined });
       if (held.state === "sent") return this.holdReply(answer, target, held, "refused", "ask_answered", null, {});
       return this.holdReply(answer, target, held, "refused", "ask_gone", null, { ask: await this.look(target, held.generation), detail: "Collie let the hook go. The dialog on the screen is a new card." });
     }
@@ -587,7 +596,7 @@ export class AskAnswerer {
         // The dialog closed with no line from the hook: the desk's key landed first, and the
         // harness ignored the hook's answer. The phone's answer is void, and the reply says so.
         holds.settle(held, "desk");
-        return this.holdReply(answer, target, held, "refused", "ask_desk", state, { detail: "The desk answered first. Your answer was not used." }, decision);
+        return this.holdReply(answer, target, held, "refused", "ask_desk", state, { detail: "The desk answered first. Collie did not use your answer." }, decision);
       }
       return this.holdReply(answer, target, held, "unknown", "no_evidence", state, { detail: "Your answer went to the hook, but the screen did not show it yet." }, decision);
     } finally {

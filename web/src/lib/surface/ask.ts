@@ -20,6 +20,11 @@ export interface Answer {
   readonly hash: string;
   readonly optionId: string;
   readonly origin: "person_tap";
+  /**
+   * `hold-card` when the tap came from the hold card of a hook-held permission (M56 spec 12). The
+   * bridge takes a tap on a hold with no adopted dialog only from there, never from a screen card.
+   */
+  readonly via?: "hold-card";
 }
 
 /** An answer's request body. The ask id is in the path. */
@@ -28,6 +33,7 @@ export interface AnswerBody {
   readonly hash: string;
   readonly optionId: string;
   readonly origin: "person_tap";
+  readonly via?: "hold-card";
 }
 
 /** The closed list of outcomes an answer can end in, a subset of the send outcomes. */
@@ -119,5 +125,6 @@ export function parseAnswerBody(askId: string, value: JsonValue | undefined): ({
   if (hash === undefined || !/^[0-9a-f]{1,64}$/u.test(hash)) return null;
   if (optionId === undefined || !/^[0-9]{1,3}$/u.test(optionId)) return null;
   if (node.origin !== "person_tap") return null;
-  return { pane, askId, hash, optionId, origin: "person_tap" };
+  if (node.via !== undefined && node.via !== "hold-card") return null;
+  return node.via === "hold-card" ? { pane, askId, hash, optionId, origin: "person_tap", via: "hold-card" } : { pane, askId, hash, optionId, origin: "person_tap" };
 }

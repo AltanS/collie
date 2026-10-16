@@ -506,16 +506,16 @@ export const ko: Dictionary = {
   "chat.status.askMismatch": "강조 표시가 선택 항목에 도달하지 않아 아무것도 확인되지 않았습니다.",
   "chat.status.askGone": "대화 상자가 사라졌습니다. Collie가 화면을 다시 읽었습니다.",
   "chat.status.askUnknown": "답변이 전달되었다는 증거가 없습니다. 화면에 발생한 결과가 표시됩니다.",
-  "chat.status.askDesk": "Answered at the desk; your tap was not used", // TODO wordsmith
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
   "chat.hold.title": "Permission: {tool}", // TODO wordsmith
-  "chat.hold.subagent": "A subagent asks. The screen shows no dialog for it.", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
-  "chat.hold.desk": "Answered at the desk.", // TODO wordsmith
-  "chat.hold.elsewhere": "Answered on another Collie.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
-  "chat.hold.cardMismatch": "This card is not the held request. Nothing was sent.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "전송 실패",
   "chat.status.wizardChanged": "위저드 상태 변경 감지, 새로고침 중",
   "chat.status.noteSaved": "메모 저장 완료",

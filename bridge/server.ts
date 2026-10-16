@@ -1485,7 +1485,8 @@ export function startServer(opts: {
       // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
       // The input is a command line, so it takes the mirror's mask like the ask's labels do.
       const note = surface === undefined ? null : (from.hold?.(wire.paneId) ?? null);
-      const held = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input) } : note };
+      // The option labels are screen text too. The hash stays: the hold card's tap carries it.
+      const held = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
       return from.send === undefined ? held : { ...held, sendProtocol: true as const };
     };
     const sources = widen ? registry.ordered() : [rt];
