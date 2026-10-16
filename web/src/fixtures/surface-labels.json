@@ -781,6 +781,16 @@
    "version": "2.1.299",
    "state": "dialog"
   },
+  "claude--v2301-hold-subagent.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-idle.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",
@@ -1650,6 +1660,26 @@
    "harness": "codex",
    "version": "0.159",
    "state": "other"
+  },
+  "codex--v0162-idle.txt": {
+   "harness": "codex",
+   "version": "0.162",
+   "state": "idle"
+  },
+  "codex--v0162-picker-model.txt": {
+   "harness": "codex",
+   "version": "0.162",
+   "state": "dialog"
+  },
+  "codex--v0162-picker-permissions.txt": {
+   "harness": "codex",
+   "version": "0.162",
+   "state": "dialog"
+  },
+  "codex--v0162-resume-search.txt": {
+   "harness": "codex",
+   "version": "0.162",
+   "state": "dialog"
   },
   "codex--working.txt": {
    "harness": "codex",
