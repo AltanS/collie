@@ -33,6 +33,8 @@ export interface ReplyArgs {
   readonly rowsHash?: string | null;
   /** The person's extra confirm after the cap's notice (M56 spec 09): true on that commit and no other. */
   readonly capAck?: boolean;
+  /** A resend of an ended held row (M56 spec 15): the old request id. The text goes empty; the bridge takes the row's own. */
+  readonly resendOf?: string | undefined;
   /** The intent the last tap left without an answer: the same intent keeps its request id. */
   readonly held: IntentId | null;
   /** Test seam for the request id. */
@@ -71,10 +73,11 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const rowsHash = args.rowsHash ?? null;
   const capAck = args.capAck === true;
   // The extra confirm is its own intent: it must not replay the commit the cap refused.
-  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${args.text}`, args.mint ?? mintRequestId);
+  const resendOf = args.resendOf;
+  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.text}`, args.mint ?? mintRequestId);
   const body: SendRequestBody = { id: intent.requestId, pane: args.paneId, text: args.text, mode };
   try {
-    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined }, args.scope);
+    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf }, args.scope);
     return { status: "answered", reply, reading: readSend(reply) };
   } catch (e) {
     return { status: "noAnswer", error: describeThrownError(e), intent };

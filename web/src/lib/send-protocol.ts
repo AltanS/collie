@@ -19,12 +19,13 @@ import {
   type SendMode,
   type SendOffer,
   type SendOutcome,
+  type HeldCancelAnswer,
   type SendReason,
   type SendReceiptRow,
   type SendReceiptsAnswer,
   type SendStep,
 } from "./surface/send";
-import type { Ask, AskOption, Surface, SurfaceComposer, SurfaceModal, SurfaceReason, SurfaceTurn } from "./surface/surface";
+import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
 export interface SendReply {
@@ -39,6 +40,8 @@ export interface SendReply {
   readonly detail: string | null;
   /** Set when the cap asks for one more confirm (M56 spec 09): the next commit carries `capAck`. */
   readonly cap: SendCap | null;
+  /** The receipt says the send went in while the turn ran: the harness queued it for after the turn. */
+  readonly queued: boolean;
 }
 
 const OFFERS: readonly SendOffer[] = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"];
@@ -47,7 +50,6 @@ const COMPOSERS: readonly SurfaceComposer[] = ["empty", "draft", "unreachable", 
 const REASONS: readonly SurfaceReason[] = ["no-match", "contested", "stale", "torn"];
 const MODAL_WORDS = ["none", "unreadable", "unknown"] as const;
 const ASK_KINDS = ["permission", "question", "menu"] as const;
-const ASK_CHANNELS = ["hook", "keys"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | null {
   return allowed.find((word) => word === value) ?? null;
@@ -111,6 +113,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     surface: readSurface(node.surface),
     detail: asJsonString(node.detail) ?? null,
     cap: readSendCap(node.cap),
+    queued: receipt?.queued === true,
   };
 }
 
@@ -153,14 +156,36 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     const row: RowDraft = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
     if (reason !== null) row.reason = reason;
     if (cap !== null) row.cap = cap;
+    if (node.queued === true) row.queued = true;
     receipts.push(row);
   }
   return { receipts };
 }
 
+const HELD_RESULTS: readonly HeldCancelAnswer["result"][] = ["cancelled", "dismissed", "refused"];
+
+/** What `DELETE /api/send/<id>` answered, field by field; null when it is not one (a proxy page, an old bridge). */
+export function readHeldCancelAnswer(body: JsonValue | undefined): HeldCancelAnswer | null {
+  const node = asJsonObject(body);
+  const result = pick(node?.result, HELD_RESULTS);
+  if (result === null) return null;
+  const reason = pick(node?.reason, SEND_REASONS);
+  // Only a refusal carries a receipt that matters: the request already went out.
+  const stored = asJsonObject(node?.receipt);
+  const outcome = result === "refused" ? pick(stored?.outcome, SEND_OUTCOMES) : null;
+  const storedReason = pick(stored?.reason, SEND_REASONS);
+  const receipt = outcome === null ? null : storedReason === null ? { outcome } : { outcome, reason: storedReason };
+  if (receipt !== null) return reason === null ? { result, receipt } : { result, reason, receipt };
+  return reason === null ? { result } : { result, reason };
+}
+
 /** The sentence an answer gets: a key under `composer.protocol.*`. */
 export type SendNote =
   | "sent"
+  | "queued"
+  | "held"
+  | "expired"
+  | "cancelled"
   | "discarded"
   | "draft"
   | "typed"
@@ -168,6 +193,7 @@ export type SendNote =
   | "capConfirm"
   | "unknown"
   | "busy"
+  | "agentBusy"
   | "notFree"
   | "bound"
   | "probeFailed"
@@ -225,13 +251,20 @@ export interface SendReading {
   readonly cap: SendCap | null;
 }
 
-/** The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline` takes the plain refusal, and the bridge's detail says to send one line at a time. */
+/**
+ * The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline`
+ * takes the plain refusal, and the bridge's detail says to send one line at a time. `turn_running`
+ * (a harness that does not take a message during a turn) says the agent is working, not that the box
+ * is taken.
+ */
 function refusalNote(reason: SendReason | null): SendNote {
   switch (reason) {
     case "busy":
       return "busy";
     case "not_free":
       return "notFree";
+    case "turn_running":
+      return "agentBusy";
     case "bound":
       return "bound";
     case "draft_present":
@@ -267,6 +300,12 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
       return "sent";
     case "discarded":
       return "discarded";
+    case "held":
+      return "held";
+    case "expired":
+      return "expired";
+    case "cancelled":
+      return "cancelled";
     case "typed_not_submitted":
       return "typed";
     case "refused":
@@ -302,10 +341,14 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
 /**
  * The sentence under a row's label, or null when it has none. A reason reads as the composer's sentence
  * for it; the cap's refusal, which carries its numbers, reads as the cap's sentence with them filled in;
- * a discard carries no reason and has its own sentence.
+ * a discard carries no reason and has its own sentence; a send queued behind the turn says so.
  */
-export function receiptSentence(row: SendReceiptRow, say: (key: `composer.protocol.${SendNote}`, vars?: Record<string, string>) => string): string | null {
+export function receiptSentence(
+  row: SendReceiptRow,
+  say: (key: `composer.protocol.${SendNote}` | "sendReceipts.queued", vars?: Record<string, string>) => string,
+): string | null {
   if (row.outcome === "discarded") return say("composer.protocol.discarded");
+  if (row.queued === true) return say("sendReceipts.queued");
   if (row.reason === undefined) return null;
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
     return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
@@ -321,8 +364,14 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   const note = sendNote(reply.outcome, reply.reason);
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
-  if (note === "sent") return { clear: true, note, offers: [] };
+  // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.
+  if (note === "sent") return { clear: true, note: reply.queued ? "queued" : note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };
+  // A held send is the bridge's to keep: its text now lives in the queued row above the box, so the
+  // draft goes. Not a refusal, so it carries no offers. `expired` and `cancelled` end a held send and
+  // answer a DELETE or a snapshot row, not a POST; they are read here for a receipt that arrives late.
+  if (note === "held") return { clear: true, note, offers: [] };
+  if (note === "expired" || note === "cancelled") return { clear: false, note, offers: [] };
   return { clear: false, note, offers };
 }
 
@@ -340,10 +389,28 @@ export function readSend(reply: SendReply): SendReading {
   const offers = reply.offers.filter((offer) => offer !== "keys");
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
-  const toCard = surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable";
+  // A queued send whose Enter met a dialog points to the card too, whatever the dialog read as.
+  const toCard =
+    surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
-  // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
-  return { ...base, surface, detail: base.clear || cap !== null ? null : reply.detail, toCard, cap };
+  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply) ? null : reply.detail, toCard, cap };
+}
+
+/**
+ * Whether the phone's own sentence already says what the bridge's English detail says (the
+ * 2026-10-16 field case, "Collie cannot read this screen" twice). Only for a refusal, and only for
+ * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
+ * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
+ * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
+ * (a `not_free` that names what is open, a dialog that Enter may have answered).
+ */
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present"]);
+const PLAIN_NOT_FREE = "The input box is not free.";
+
+function ownSentence(reply: SendReply): boolean {
+  if (reply.outcome !== "refused" || reply.reason === null) return false;
+  if (REPEATS_THE_NOTE.has(reply.reason)) return true;
+  return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;
 }
 
 /** The mode a tap on an offer sends, or null for one that sends nothing (`cancel`, `keys`). A commit keeps a command a command. */

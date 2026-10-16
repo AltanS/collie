@@ -11,7 +11,8 @@
 //    survey, a question) draws a strong one, and a weak shape flush on the box is a quote. Under the
 //    bottom edge, the rows are read only when they do not walk as the profile's status and footer
 //    rows (a popup or a dialog sits there); the volatile rows themselves are a statusline the operator
-//    writes, so they are never read for a modal cue.
+//    writes, so they are never read for a modal cue. Nor is a row the profile names as a footer row
+//    (`frame.volatile.named`): the frame found it from the profile's list, and this file only skips it.
 //  - With no frame, the cluster is the last run of rows on the screen: up to CLUSTER_MAX_ROWS
 //    non-blank rows from the last non-blank one up, ended by CLUSTER_GAP_ROWS blank rows in a row.
 //    A footer of at most FOOTER_MAX_ROWS rows at the very bottom, set apart by a gap, does not end
@@ -31,7 +32,7 @@
 //
 // Pure: the same rows always give the same answer.
 
-import { rowText, type Frame, type FrameRow } from "./frame";
+import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { shortHash } from "./surface";
 
 export type CueKind =
@@ -61,6 +62,8 @@ export interface CueRead {
   readonly strength: CueStrength;
   /** A short hash of the bottom cluster's text (the generic one, frame or not), for log lines. */
   readonly hash: string;
+  /** A panel's dismiss hint stands alone over the found box ({@link PANEL_FOOT}): the panel takes the keys, not the box. */
+  readonly panelFoot?: true;
 }
 
 /** The most non-blank rows the no-frame cluster reads (a list it would cut is read whole). */
@@ -83,6 +86,12 @@ const RULE = /^\s*[─━═╌┄┈]{2,}(?:\s*[^\s─━═╌┄┈]{1,3}\s*[
 const RULE_MIN_GLYPHS = 8;
 /** A title row that names only its close key, at its right end after a wide gap. */
 const DISMISS_HEADER = /^\s*(\S(?:.*\S)?)\s{3,}(?:esc|escape)\s*$/iu;
+/**
+ * A row that is nothing but the dismiss hint of an open panel ("Esc to cancel"). Alone in the run over a
+ * live box it is the foot of a panel drawn above the box, which takes the keys (Claude Code 2.1.301's
+ * /cost and /usage panel during a turn, fixtures claude--v2301-usage-panel-over-box--w82 and --w40): strong.
+ */
+const PANEL_FOOT = /^\s*(?:esc|escape)\s+to\s+(?:cancel|close|exit|dismiss|go back)\s*$/iu;
 /** A slash command with its description in a second column ("/agents     Switch agent"). */
 const COMMAND_ENTRY = new RegExp(`^(\\s*)(?:[${POINTERS}]\\s*)?/[\\w:.-]+\\s{2,}\\S`, "u");
 /** A prompt that holds only a slash query: "/", "/res", "❯ /usage". */
@@ -228,11 +237,13 @@ function aboveRun(texts: readonly string[], frame: Frame): number[] {
   return rows.toReversed();
 }
 
-/** The rows under a frame's bottom edge when they do not walk as status and footer rows. */
+/** The rows under a frame's bottom edge when they do not walk as status and footer rows. A row the
+ *  profile names as a footer row (`frame.volatile.named`) is never one of them. */
 function belowRows(texts: readonly string[], frame: Frame): number[] {
   if (frame.volatile.status !== null || frame.volatile.footer !== null) return [];
+  const named = new Set(frame.volatile.named.map((hit) => hit.row));
   const rows: number[] = [];
-  for (let i = frame.bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!)) rows.push(i);
+  for (let i = frame.bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!) && !named.has(i)) rows.push(i);
   return rows;
 }
 
@@ -246,10 +257,31 @@ export function volatileRows(texts: readonly string[], frame: Frame): number[] {
   return rows.filter((i) => !isBlank(texts[i]!));
 }
 
-/** Whether a found frame's volatile rows show a running sign. */
-export function runningSign(rows: readonly FrameRow[], frame: Frame): boolean {
+const compiledSigns = new WeakMap<readonly string[], readonly RegExp[]>();
+
+function signPatterns(sources: readonly string[]): readonly RegExp[] {
+  const known = compiledSigns.get(sources);
+  if (known !== undefined) return known;
+  const compiled = sources.map((source) => new RegExp(source, "u"));
+  compiledSigns.set(sources, compiled);
+  return compiled;
+}
+
+/**
+ * Whether a found frame's volatile rows show a running sign. `profileSigns` are the profile's own
+ * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge and the top
+ * edge included, for a harness that marks a turn there (a spinner frame on its status row, a hint only
+ * a turn shows, a label in the top rule).
+ */
+export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSigns: readonly string[] = []): boolean {
   const texts = rows.map(rowText);
-  return volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!));
+  if (volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!))) return true;
+  if (profileSigns.length === 0) return false;
+  const patterns = signPatterns(profileSigns);
+  return [...volatileRows(texts, frame), frame.bottom, frame.top].some((i) => {
+    const text = texts[i]!.trimEnd();
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
 }
 
 interface ClusterCues {
@@ -384,6 +416,22 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
 }
 
 /**
+ * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
+ * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
+ * the box rows included.
+ */
+export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
+  const plain = readCues(rows, frame);
+  if (idle?.dialogsInBox !== true || frame === null) return plain;
+  // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
+  const at = frame.top;
+  const down = readCues(rows.slice(at), null);
+  // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
+  if (down.strength !== "strong" || plain.strength === "strong") return plain;
+  return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
+}
+
+/**
  * The modal cues on a screen read. `frame` is the input frame the profile found, or null: a screen
  * with no profile, or one whose frame the profile did not find, gets the no-frame cluster.
  */
@@ -403,10 +451,12 @@ export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRea
   const above = aboveRun(texts, frame);
   const under = cuesIn(texts, cluster);
   const over = cuesIn(texts, above);
-  const overStrong = strengthOf(over.cues, over) === "strong";
+  // A panel's dismiss hint, alone over the box: the panel holds the keys, whatever the box looks like.
+  const panelFoot = above.length === 1 && PANEL_FOOT.test(unboxed(texts[above[0]!]!));
+  const overStrong = panelFoot || strengthOf(over.cues, over) === "strong";
   const cues = overStrong ? [...under.cues, ...over.cues] : under.cues;
   const strength = overStrong ? "strong" : strengthOf(under.cues, under);
-  return { cluster, above, cues, strength, hash };
+  return panelFoot ? { cluster, above, cues, strength, hash, panelFoot } : { cluster, above, cues, strength, hash };
 }
 
 /**

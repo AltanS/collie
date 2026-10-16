@@ -12,11 +12,38 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import { compareSemver } from "../semver";
+import { EDGE_KINDS, type EdgeProfile } from "./edges";
+import { HOLD_DECISIONS, HOLD_GRACE_MS, type HoldProfile } from "./hold";
 import { PROFILE_FILES } from "./profiles/index";
 
 export type ProfileStatus = "verified" | "provisional" | "revoked";
 export type HookKind = "edge" | "ask";
-export type EnterWhileRunning = "queues" | "submits" | "ignored";
+/**
+ * What Enter does while a turn runs: `queues` (the text waits for the turn's end), `steers` (the text
+ * goes into the running turn), `submits` or `ignored`. The Send Protocol presses Enter into a turn
+ * only on `queues`; on any other mode it presses `keys.queueKey` when the profile names one. A
+ * harness whose Enter steers may name a submit key that is not Enter at all (Codex: Tab sends on an
+ * idle box and queues in a turn), so no send of text ever presses Enter there.
+ */
+export type EnterWhileRunning = "queues" | "steers" | "submits" | "ignored";
+/**
+ * What the commit key does to a command (a text with a reserved lead) entered while a turn runs, as
+ * the lab measured it (M56 spec 15): `queues` (the harness draws it as a queued row and runs it after
+ * the turn), `runs` (at once), `drops` or `steers`. Only `queues` lets a command take the native
+ * queued path; on any other mode, or with the field absent, Collie holds the command until the pane
+ * reads free.
+ */
+export type CommandWhileRunning = "queues" | "runs" | "drops" | "steers";
+
+/** A queued message as the harness draws it (see `keys.queuedRow`). */
+export interface QueuedRow {
+  /** A regular expression source for the row that starts the text, with the named group `text`. */
+  readonly pattern: string;
+  /** A regular expression source for the hint row under the queued texts. */
+  readonly hint: string;
+  /** How many blank rows may stand between the last queued text and the hint. */
+  readonly hintGap: number;
+}
 
 export interface VersionRange {
   /** `X.Y.Z - X.Y.Z`, both ends included. The upper end may be `*`. */
@@ -32,15 +59,102 @@ export interface VersionRange {
   readonly verifiedOn: string | null;
 }
 
-/** A frame anchor: a row pattern, the display cells it must span, and the column it starts in. */
+/**
+ * A frame anchor: a row pattern, the display cells it must span, and the column it starts in. A
+ * `blank` anchor is a row with no text at all (a box drawn with a fill colour and no edge glyphs);
+ * its pattern must match the empty string.
+ */
 export interface FrameAnchor {
-  /** A regular expression source, matched against the row text with its trailing space cut. The top
-   *  anchor may hold a named group `label` (the words on the edge); the prompt anchor must hold
-   *  `draft` (the hole). */
+  /** A regular expression source, matched against the row text with its trailing space cut and its
+   *  leading `column` spaces kept. The top anchor may hold a named group `label` (the words on the
+   *  edge); the prompt anchor must hold `draft` (the hole). */
   readonly pattern: string;
   readonly minCells?: number;
-  readonly column: 0;
+  /** The row's text starts in exactly this column: that many spaces, then a character that is no space.
+   *  With `maxColumn`, in any column from this one to that one. */
+  readonly column: number;
+  /** The last column the row's text may start in. For a box that moves sideways (a splash screen
+   *  centres it). Optional. */
+  readonly maxColumn?: number;
+  /** The edge is a blank row. Only the top and bottom anchors may be blank. */
+  readonly blank?: true;
+  /**
+   * The bottom anchor only, on the interior walk: the box has no bottom edge and ends on the last
+   * non-blank row of the screen. The anchor's pattern is not read.
+   */
+  readonly open?: true;
 }
+
+/** A named row under the box (`idle.volatile.below.footerRows`). */
+export interface FooterRow {
+  /** What the row is, for a trace or a log line. */
+  readonly name: string;
+  /** A regular expression source, matched on the row with its trailing space cut. */
+  readonly pattern: string;
+}
+
+/**
+ * The rows a box always draws under the draft that hold no draft text (a model row inside the box,
+ * and the padding between it and the bottom edge). The interior walk (`idle.frame.walk`) takes them
+ * off the draft.
+ */
+export interface FrameTrailer {
+  /** A regular expression source for the one row that must stand last inside the box. */
+  readonly row: string;
+  /** A regular expression source for the padding rows allowed between that row and the bottom edge. */
+  readonly pad?: string;
+  /** How many padding rows at most. */
+  readonly maxPad: number;
+}
+
+/** One shape of the input box: its anchors, bounds and the fields of its walk (`idle.frame`). */
+export interface FrameLayout {
+  readonly top: FrameAnchor;
+  /** Must hold the named group `draft`: the hole where the person's text sits. */
+  readonly prompt: FrameAnchor;
+  /** With `open` set (interior walk only), the box has no bottom edge: it ends on the last row of the screen. */
+  readonly bottom: FrameAnchor;
+  /** Spaces in front of a wrapped draft row inside the box. */
+  readonly continuationIndent: number;
+  readonly maxDraftRows: number;
+  /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
+   *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
+  readonly maxTailRows: number;
+  /**
+   * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
+   * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
+   * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
+   * nearest top edge. The prompt row is then the first row under it that matches the prompt anchor,
+   * and a blank row may match, so a box with no prompt glyph can be framed.
+   */
+  readonly walk?: FrameWalk;
+  /**
+   * The interior walk only. A regular expression source: the rows of the box are one unbroken run
+   * of rows that match it, and the top edge is the nearest row of the run that matches the top anchor
+   * and not the prompt anchor, or else the first row of the run. Without `rows` the top edge is the
+   * nearest row that matches the top anchor.
+   */
+  readonly rows?: string;
+  /** The interior walk only. Rows under the draft that are no draft text. Optional. */
+  readonly trailer?: FrameTrailer;
+  /**
+   * The interior walk only. A regular expression source with the named group `text`, applied to
+   * every interior row that is not the prompt row to take the draft text out of it. Without it a
+   * row counts as its trimmed text.
+   */
+  readonly continuation?: string;
+  /**
+   * The interior walk only. A regular expression source the first non-blank row under the bottom
+   * edge must match, when there is one. A box with a blank prompt row has the same shape as the
+   * gap between a notice and the real box, so the row the harness always draws under the box
+   * (its status line) tells them apart. Optional; a closed box only.
+   */
+  readonly under?: string;
+
+}
+
+/** How the frame module walks to a box. `edges` is the walk up from a bottom edge to a prompt row and a top edge. */
+export type FrameWalk = "edges" | "interior";
 
 export interface Profile {
   readonly id: string;
@@ -49,33 +163,95 @@ export interface Profile {
     readonly versionCommand: readonly string[];
     /** A regular expression source. The first match in the command output is the version. */
     readonly versionRegex: string;
+    /**
+     * Other names a multiplexer reports for this harness (Herdr reports Antigravity as `agy` and as
+     * `antigravity`). The bridge files each of them under this profile. Optional; never the id of a profile.
+     */
+    readonly agentNames?: readonly string[];
   };
   readonly versions: readonly [VersionRange, ...VersionRange[]];
   readonly idle: {
-    readonly frame: {
-      readonly top: FrameAnchor;
-      /** Must hold the named group `draft`: the hole where the person's text sits. */
-      readonly prompt: FrameAnchor;
-      readonly bottom: FrameAnchor;
-      /** Spaces in front of a wrapped draft row inside the box. */
-      readonly continuationIndent: number;
-      readonly maxDraftRows: number;
-      /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
-       *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
-      readonly maxTailRows: number;
-    };
+    readonly frame: FrameLayout;
     readonly placeholders: {
       readonly texts: readonly string[];
+      /**
+       * Text that starts with one of these is a placeholder too, for a harness whose placeholder holds
+       * a suggestion that changes. Optional. A draft that starts the same way reads as a placeholder,
+       * which stalls a send and never sends one into a dialog.
+       */
+      readonly prefixes?: readonly string[];
       /** The SGR attribute the placeholder renders with (2 is faint). */
       readonly sgr: number;
     };
     readonly volatile: {
-      readonly above: { readonly maxRows: number };
-      readonly below: { readonly maxRows: number; readonly footerMaxRows: number };
+      readonly above: {
+        readonly maxRows: number;
+        /**
+         * The rows above the box may lose text once the box holds a character (a welcome picture
+         * that hides). The Send Protocol then accepts rows above that only lost text. Optional.
+         */
+        readonly losesText?: true;
+      };
+      readonly below: {
+        readonly maxRows: number;
+        readonly footerMaxRows: number;
+        /**
+         * Hint rows under the box that the harness hides or swaps while the box holds text, as
+         * regular expression sources. The Send Protocol leaves them out when it compares the rows
+         * under the box. Optional.
+         */
+        readonly hints?: readonly string[];
+        /**
+         * Rows the harness draws under its box that are neither a statusline nor a dialog, each with a
+         * name and a regular expression source (Claude Code's agents panel and its hints). The frame
+         * walk steps over them: a run of them at the bottom, set apart by a blank row, is a footer of
+         * its own. No modal cue reads a row one of them matches. Optional.
+         */
+        readonly footerRows?: readonly FooterRow[];
+      };
     };
+    /**
+     * Rows that mean a turn runs, as regular expression sources, read on the volatile band above the
+     * box, the frame's bottom edge and the rows under it (cues.ts `runningSign`). Optional: the generic running signs above the box
+     * always count. For a harness that marks a turn on its own status rows.
+     */
+    readonly runningRows?: readonly string[];
+    /**
+     * Rows that mean a dialog is drawn over the screen above a live box, as regular expression
+     * sources, read on every row above the box. A harness that draws its pickers and notices over
+     * the transcript and leaves the box on screen needs them: the box looks free under a dialog.
+     * A match makes the modal `unreadable`. Optional.
+     */
+    readonly overlayRows?: readonly string[];
+    /**
+     * True for a harness that draws its dialogs where the box stands, between the same two rules. The
+     * frame walk then finds a box on a dialog screen, so the modal cues read the whole screen, the
+     * box rows included, as they do on a screen with no frame. A draft that looks like a list reads
+     * as a modal then, and a modal is never free. Optional.
+     */
+    readonly dialogsInBox?: boolean;
+    /**
+     * Other shapes of the same box, tried in order when `frame` finds none. A harness whose border
+     * style the person can change (OMP) draws more than one. Each is a full frame as `frame` is.
+     * The first shape that finds a box wins, so a shape that is easy to match goes last. Optional.
+     */
+    readonly frameAlternates?: readonly FrameLayout[];
   };
   readonly keys: {
+    /**
+     * The keys that send a text. Codex names Tab here: its Enter steers a running turn
+     * (`enterWhileRunning`). In the file this is a list, or an object `{ "default": [...], "win32": [...] }`
+     * for a harness whose key differs by platform; this field holds the default list.
+     */
     readonly submit: readonly string[];
+    /** The lists for the platforms that differ from `submit`, by `process.platform`. {@link forPlatform} applies them. Optional. */
+    readonly submitByPlatform?: Readonly<Record<string, readonly string[]>>;
+    /**
+     * The keys that send a command or a text that starts with a reserved lead, when they are not
+     * `submit`. Optional: without it a command takes `submit`. Codex names Enter: Tab completes in its
+     * slash popup. Never Escape.
+     */
+    readonly commandSubmit?: readonly string[];
     readonly newline: readonly string[];
     readonly interrupt: readonly string[];
     /** One `key` press per typed character, plus `slack` more. Never Escape. */
@@ -86,7 +262,37 @@ export interface Profile {
       readonly confirm: string;
       readonly cancel: string;
     };
-    readonly enterWhileRunning: EnterWhileRunning;
+    /** What Enter does in a running turn. Absent when no lab run measured it: a send into a turn is then refused. */
+    readonly enterWhileRunning?: EnterWhileRunning;
+    /**
+     * The key that queues a message for after the running turn, on a harness whose Enter does not
+     * queue (`enterWhileRunning` is not `queues`). Optional: without it, a send into a turn is refused.
+     * Never Escape and never Enter (what Enter does in a turn is `enterWhileRunning`). It may be the
+     * submit key itself, on a harness whose submit key sends on an idle box and queues in a turn.
+     */
+    readonly queueKey?: string;
+    /** The queue keys for the platforms that differ from `queueKey`, by `process.platform`. Optional. */
+    readonly queueKeyByPlatform?: Readonly<Record<string, string>>;
+    /**
+     * How the harness draws a message it queued during a turn, when that is known: a row whose
+     * `pattern` holds the text in the named group `text` (later rows of a wrapped text are indented),
+     * and a `hint` row at most `hintGap` blank rows under the last of them. Optional.
+     */
+    readonly queuedRow?: QueuedRow;
+    /**
+     * What the commit key does to a command entered while a turn runs ({@link CommandWhileRunning}).
+     * Optional: without it a command in a turn is held by Collie and sent once the pane reads free.
+     */
+    readonly commandWhileRunning?: CommandWhileRunning;
+    /** Where `commandWhileRunning` was measured: the versions and commands the lab ran. Optional, prose only. */
+    readonly commandWhileRunningNote?: string;
+    /**
+     * The commands Collie never queues or holds from the phone while a turn runs (M56 spec 15 review):
+     * each acts on the session as it stands (it ends, clears or swaps it), so a later turn is the wrong
+     * one. Such a command in a turn is refused `turn_running`. A one-character entry (`!`) names every
+     * line that starts with it; a longer one names the command word. Optional.
+     */
+    readonly neverHeld?: readonly string[];
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -108,8 +314,21 @@ export interface Profile {
     /** An ask older than this, in ms, is voided once the screen no longer shows it. */
     readonly lifetimeMs: number;
   };
-  /** Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one. */
+  /**
+   * Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one.
+   * Empty for a harness with no hook Collie can install.
+   */
   readonly hooks: Readonly<Record<string, HookKind>>;
+  /**
+   * What each edge is for the fold, and its timing (M56 spec 11). Optional: a profile without it maps
+   * no event, so every edge only asks for a fresh read, with the default timing.
+   */
+  readonly edges?: EdgeProfile;
+  /**
+   * How the harness's permission hook holds a request for the phone (M56 spec 12). Optional: a
+   * profile without it holds nothing, and every permission stays a screen ask.
+   */
+  readonly hold?: HoldProfile;
 }
 
 /** A profile that failed its check. `path` names the field, for example `keys.clear.slack`. */
@@ -125,7 +344,9 @@ export class ProfileError extends Error {
 const STATUSES = ["verified", "provisional", "revoked"] as const;
 const PROBE_STATUSES = ["verified", "provisional"] as const;
 const HOOK_KINDS = ["edge", "ask"] as const;
-const ENTER_MODES = ["queues", "submits", "ignored"] as const;
+const FRAME_WALKS = ["edges", "interior"] as const;
+const ENTER_MODES = ["queues", "steers", "submits", "ignored"] as const;
+const COMMAND_MODES = ["queues", "runs", "drops", "steers"] as const;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE = /^(\d+\.\d+\.\d+) - (\d+\.\d+\.\d+|\*)$/;
@@ -170,6 +391,33 @@ function textList(value: JsonValue | undefined, path: string, minLength: number)
   return items.map((item, i) => text(item, `${path}[${String(i)}]`));
 }
 
+const PLATFORMS = ["win32", "darwin", "linux"] as const;
+
+/** A key list as the file wrote it: the default, and the lists of the platforms that differ. */
+interface PlatformLists {
+  readonly default: string[];
+  readonly byPlatform: Record<string, string[]>;
+}
+
+/**
+ * A key list that may differ by platform: an array, or an object `{ "default": [...], "win32": [...] }`.
+ * With `single`, each list holds exactly one key (the queue key). Returns the default and the lists for
+ * the platforms named.
+ */
+function platformLists(value: JsonValue | undefined, path: string, single = false): PlatformLists {
+  const minimum = 1;
+  const check = (items: string[], at: string): string[] => (single && items.length !== 1 ? fail(at, "must name one key") : items);
+  const node = asJsonObject(value);
+  if (node === undefined) return { default: check(textList(value, path, minimum), path), byPlatform: {} };
+  const byPlatform: Record<string, string[]> = {};
+  for (const key of Object.keys(node)) {
+    if (key === "default") continue;
+    if (!PLATFORMS.some((platform) => platform === key)) fail(`${path}.${key}`, `must be default or one of ${PLATFORMS.join(", ")}`);
+    byPlatform[key] = check(textList(node[key], `${path}.${key}`, minimum), `${path}.${key}`);
+  }
+  return { default: check(textList(field(node, "default", path), `${path}.default`, minimum), `${path}.default`), byPlatform };
+}
+
 function oneOf<const T extends string>(value: JsonValue | undefined, path: string, allowed: readonly T[]): T {
   const word = text(value, path);
   return allowed.find((candidate) => candidate === word) ?? fail(path, `must be one of ${allowed.join(", ")}`);
@@ -191,15 +439,26 @@ function pattern(value: JsonValue | undefined, path: string): RegExp {
   }
 }
 
-function anchor(value: JsonValue | undefined, path: string, needsGroup: string | null): FrameAnchor {
+function anchor(value: JsonValue | undefined, path: string, needsGroup: string | null, mayBeBlank: boolean): FrameAnchor {
   const node = object(value, path);
   const compiled = pattern(field(node, "pattern", path), `${path}.pattern`);
   if (needsGroup !== null && !compiled.source.includes(`(?<${needsGroup}>`)) {
     fail(`${path}.pattern`, `must hold the named group ${needsGroup}`);
   }
-  if (whole(field(node, "column", path), `${path}.column`, 0) !== 0) fail(`${path}.column`, "must be 0");
-  const base = { pattern: compiled.source, column: 0 } as const;
-  return node.minCells === undefined ? base : { ...base, minCells: whole(node.minCells, `${path}.minCells`, 1) };
+  const column = whole(field(node, "column", path), `${path}.column`, 0);
+  const maxColumn = node.maxColumn === undefined ? undefined : whole(node.maxColumn, `${path}.maxColumn`, column);
+  const base: FrameAnchor = maxColumn === undefined ? { pattern: compiled.source, column } : { pattern: compiled.source, column, maxColumn };
+  const withCells = node.minCells === undefined ? base : { ...base, minCells: whole(node.minCells, `${path}.minCells`, 1) };
+  if (node.open !== undefined) {
+    if (node.open !== true) fail(`${path}.open`, "must be true when present");
+    return { ...withCells, open: true };
+  }
+  if (node.blank === undefined) return withCells;
+  if (node.blank !== true) fail(`${path}.blank`, "must be true when present");
+  if (!mayBeBlank) fail(`${path}.blank`, "only the top and bottom anchors may be blank");
+  if (!compiled.test("")) fail(`${path}.pattern`, "of a blank anchor must match the empty string");
+  if (column !== 0) fail(`${path}.column`, "of a blank anchor must be 0");
+  return { ...withCells, blank: true };
 }
 
 function parseVersions(value: JsonValue | undefined, path: string): [VersionRange, ...VersionRange[]] {
@@ -230,6 +489,92 @@ function parseVersions(value: JsonValue | undefined, path: string): [VersionRang
  * Check one profile file's parsed JSON and return it typed. Every field is checked; the first
  * problem throws a {@link ProfileError} that names the field path.
  */
+
+/** `idle.volatile.above`: its row count, and `losesText` only when the profile sets it (it may only be true). */
+function volatileAbove(node: JsonObject): Profile["idle"]["volatile"]["above"] {
+  const maxRows = whole(field(node, "maxRows", "idle.volatile.above"), "idle.volatile.above.maxRows", 0);
+  if (node.losesText === undefined) return { maxRows };
+  if (node.losesText !== true) fail("idle.volatile.above.losesText", "must be true when present");
+  return { maxRows, losesText: true };
+}
+
+/** `idle.volatile.below.footerRows`: each row a unique name and a pattern that cannot match a blank row. */
+function footerRows(value: JsonValue | undefined): FooterRow[] {
+  const path = "idle.volatile.below.footerRows";
+  const names = new Set<string>();
+  return list(value, path).map((item, i) => {
+    const at = `${path}[${String(i)}]`;
+    const node = object(item, at);
+    const name = text(field(node, "name", at), `${at}.name`);
+    if (names.has(name)) fail(`${at}.name`, "is used twice");
+    names.add(name);
+    const compiled = pattern(field(node, "pattern", at), `${at}.pattern`);
+    if (compiled.test("")) fail(`${at}.pattern`, "must not match a blank row");
+    return { name, pattern: compiled.source };
+  });
+}
+
+/** `idle.volatile.below`: its row counts, and the hint rows and named footer rows only when the profile names them. */
+function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
+  const maxRows = whole(field(node, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0);
+  const footerMaxRows = whole(field(node, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0);
+  const base: Profile["idle"]["volatile"]["below"] = { maxRows, footerMaxRows };
+  const withHints =
+    node.hints === undefined
+      ? base
+      : { ...base, hints: list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source) };
+  return node.footerRows === undefined ? withHints : { ...withHints, footerRows: footerRows(node.footerRows) };
+}
+/** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
+function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
+  const base = {
+    texts: textList(field(node, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
+    sgr: whole(field(node, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
+  };
+  if (node.prefixes === undefined) return base;
+  return { ...base, prefixes: textList(node.prefixes, "idle.placeholders.prefixes", 1) };
+}
+
+/** `idle.frame.trailer`: the last row inside the box, and the padding rows under it. */
+function parseTrailer(value: JsonValue): FrameTrailer {
+  const node = object(value, "idle.frame.trailer");
+  const row = pattern(field(node, "row", "idle.frame.trailer"), "idle.frame.trailer.row").source;
+  const maxPad = node.maxPad === undefined ? 0 : whole(node.maxPad, "idle.frame.trailer.maxPad", 0);
+  if (node.pad === undefined) {
+    if (maxPad > 0) fail("idle.frame.trailer.maxPad", "needs a pad pattern");
+    return { row, maxPad };
+  }
+  return { row, pad: pattern(node.pad, "idle.frame.trailer.pad").source, maxPad };
+}
+
+/** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */
+function parseFrame(frameNode: JsonObject): FrameLayout {
+  const walk = frameNode.walk === undefined ? "edges" : oneOf(frameNode.walk, "idle.frame.walk", FRAME_WALKS);
+  const base = {
+    top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
+    prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft", false),
+    continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
+    maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
+    maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
+  };
+  if (walk === "edges") {
+    for (const key of ["rows", "trailer", "continuation"] as const) {
+      if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
+    }
+    const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
+    if (edgeBottom.open === true) fail("idle.frame.bottom.open", "belongs to the interior walk");
+    return { ...base, bottom: edgeBottom };
+  }
+  const interior = { ...base, bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true), walk };
+  const withRows = frameNode.rows === undefined ? interior : { ...interior, rows: pattern(frameNode.rows, "idle.frame.rows").source };
+  const withTrailer = frameNode.trailer === undefined ? withRows : { ...withRows, trailer: parseTrailer(frameNode.trailer) };
+  const withUnder = frameNode.under === undefined ? withTrailer : { ...withTrailer, under: pattern(frameNode.under, "idle.frame.under").source };
+  if (frameNode.continuation === undefined) return withUnder;
+  const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
+  if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
+  return { ...withUnder, continuation: continuation.source };
+}
+
 export function parseProfile(raw: JsonValue): Profile {
   const root = object(raw, "profile");
   const id = text(field(root, "id", ""), "id");
@@ -241,6 +586,14 @@ export function parseProfile(raw: JsonValue): Profile {
     versionCommand: textList(field(identityNode, "versionCommand", "identity"), "identity.versionCommand", 1),
     versionRegex: pattern(field(identityNode, "versionRegex", "identity"), "identity.versionRegex").source,
   };
+  let agentNames: readonly string[] | undefined;
+  if (identityNode.agentNames !== undefined) {
+    agentNames = textList(identityNode.agentNames, "identity.agentNames", 1);
+    for (const name of agentNames) {
+      if (!/^[a-z][a-z0-9-]*$/.test(name)) fail("identity.agentNames", `${name} must be lower-case letters, digits and dashes`);
+      if (name === id) fail("identity.agentNames", "must not repeat the id");
+    }
+  }
 
   const versions = parseVersions(field(root, "versions", ""), "versions");
 
@@ -250,33 +603,50 @@ export function parseProfile(raw: JsonValue): Profile {
   const volatileNode = object(field(idleNode, "volatile", "idle"), "idle.volatile");
   const aboveNode = object(field(volatileNode, "above", "idle.volatile"), "idle.volatile.above");
   const belowNode = object(field(volatileNode, "below", "idle.volatile"), "idle.volatile.below");
-  const idle = {
-    frame: {
-      top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null),
-      prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft"),
-      bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null),
-      continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
-      maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
-      maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
-    },
-    placeholders: {
-      texts: textList(field(placeholderNode, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
-      sgr: whole(field(placeholderNode, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
-    },
-    volatile: {
-      above: { maxRows: whole(field(aboveNode, "maxRows", "idle.volatile.above"), "idle.volatile.above.maxRows", 0) },
-      below: {
-        maxRows: whole(field(belowNode, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0),
-        footerMaxRows: whole(field(belowNode, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0),
-      },
-    },
+  const idle: Profile["idle"] = {
+    frame: parseFrame(frameNode),
+    placeholders: parsePlaceholders(placeholderNode),
+    volatile: { above: volatileAbove(aboveNode), below: volatileBelow(belowNode) },
   };
+
+  const runningRows =
+    idleNode.runningRows === undefined
+      ? undefined
+      : list(idleNode.runningRows, "idle.runningRows").map((item, i) => pattern(item, `idle.runningRows[${String(i)}]`).source);
+  const withRunning: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const overlayRows =
+    idleNode.overlayRows === undefined
+      ? undefined
+      : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
+  const withOverlay0: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlay: Profile["idle"] =
+    idleNode.frameAlternates === undefined
+      ? withOverlay0
+      : {
+          ...withOverlay0,
+          frameAlternates: list(idleNode.frameAlternates, "idle.frameAlternates").map((item, i) => {
+            try {
+              return parseFrame(object(item, `idle.frameAlternates[${String(i)}]`));
+            } catch (error) {
+              // A field of the alternate says its own place, not the main frame's.
+              if (error instanceof ProfileError && error.path.startsWith("idle.frame.")) {
+                fail(`idle.frameAlternates[${String(i)}].${error.path.slice("idle.frame.".length)}`, error.message.split(": ").slice(1).join(": "));
+              }
+              throw error;
+            }
+          }),
+        };
+  if (idleNode.dialogsInBox !== undefined && idleNode.dialogsInBox !== true && idleNode.dialogsInBox !== false) {
+    fail("idle.dialogsInBox", "must be true or false");
+  }
+  const idleBlock: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
   const navNode = object(field(keysNode, "navigation", "keys"), "keys.navigation");
-  const keys = {
-    submit: textList(field(keysNode, "submit", "keys"), "keys.submit", 1),
+  const platformSubmit = platformLists(field(keysNode, "submit", "keys"), "keys.submit");
+  const baseKeys = {
+    submit: platformSubmit.default,
     newline: textList(field(keysNode, "newline", "keys"), "keys.newline", 1),
     interrupt: textList(field(keysNode, "interrupt", "keys"), "keys.interrupt", 1),
     clear: {
@@ -289,8 +659,57 @@ export function parseProfile(raw: JsonValue): Profile {
       confirm: text(field(navNode, "confirm", "keys.navigation"), "keys.navigation.confirm"),
       cancel: text(field(navNode, "cancel", "keys.navigation"), "keys.navigation.cancel"),
     },
-    enterWhileRunning: oneOf(field(keysNode, "enterWhileRunning", "keys"), "keys.enterWhileRunning", ENTER_MODES),
   };
+  let keys: Profile["keys"] = Object.keys(platformSubmit.byPlatform).length === 0 ? baseKeys : { ...baseKeys, submitByPlatform: platformSubmit.byPlatform };
+  if (keysNode.enterWhileRunning !== undefined) {
+    keys = { ...keys, enterWhileRunning: oneOf(keysNode.enterWhileRunning, "keys.enterWhileRunning", ENTER_MODES) };
+  }
+  if (keysNode.queuedRow !== undefined) {
+    const queuedNode = object(keysNode.queuedRow, "keys.queuedRow");
+    const rowPattern = pattern(field(queuedNode, "pattern", "keys.queuedRow"), "keys.queuedRow.pattern");
+    if (!rowPattern.source.includes("(?<text>")) fail("keys.queuedRow.pattern", "must hold the named group text");
+    const queuedRow: QueuedRow = {
+      pattern: rowPattern.source,
+      hint: pattern(field(queuedNode, "hint", "keys.queuedRow"), "keys.queuedRow.hint").source,
+      hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
+    };
+    keys = { ...keys, queuedRow };
+  }
+  if (keysNode.queueKey !== undefined) {
+    const queueObject = asJsonObject(keysNode.queueKey);
+    const queueNode = platformLists(
+      queueObject === undefined ? [text(keysNode.queueKey, "keys.queueKey")] : Object.fromEntries(Object.entries(queueObject).map(([key, value]) => [key, [text(value, `keys.queueKey.${key}`)]])),
+      "keys.queueKey",
+      true,
+    );
+    const checkQueueKey = (key: string): void => {
+      if (/^(?:escape|esc)$/i.test(key)) fail("keys.queueKey", "must not be Escape");
+      if (/^(?:enter|return)$/i.test(key)) fail("keys.queueKey", "must not be Enter: keys.enterWhileRunning says what Enter does in a turn");
+    };
+    const queueKey = queueNode.default[0] ?? fail("keys.queueKey", "must name one key");
+    checkQueueKey(queueKey);
+    if (keys.enterWhileRunning === "queues") fail("keys.queueKey", "is for a harness whose Enter does not queue");
+    const queueByPlatform = Object.fromEntries(Object.entries(queueNode.byPlatform).map(([platform, names]) => [platform, names[0] ?? ""]));
+    for (const key of Object.values(queueByPlatform)) checkQueueKey(key);
+    keys = Object.keys(queueByPlatform).length === 0 ? { ...keys, queueKey } : { ...keys, queueKey, queueKeyByPlatform: queueByPlatform };
+  }
+  if (keysNode.commandWhileRunning !== undefined) {
+    const commandWhileRunning = oneOf(keysNode.commandWhileRunning, "keys.commandWhileRunning", COMMAND_MODES);
+    keys = { ...keys, commandWhileRunning };
+  }
+  if (keysNode.commandWhileRunningNote !== undefined) {
+    keys = { ...keys, commandWhileRunningNote: text(keysNode.commandWhileRunningNote, "keys.commandWhileRunningNote") };
+  }
+  if (keysNode.neverHeld !== undefined) {
+    const neverHeld = textList(keysNode.neverHeld, "keys.neverHeld", 1);
+    if (neverHeld.some((entry) => entry.trim() !== entry || entry.length === 0)) fail("keys.neverHeld", "entries must be trimmed and not empty");
+    keys = { ...keys, neverHeld };
+  }
+  if (keysNode.commandSubmit !== undefined) {
+    const commandSubmit = textList(keysNode.commandSubmit, "keys.commandSubmit", 1);
+    if (commandSubmit.some((key) => /^(?:escape|esc)$/i.test(key))) fail("keys.commandSubmit", "must not hold Escape");
+    keys = { ...keys, commandSubmit };
+  }
   // Escape is never cleanup (ARCHITECTURE.md, Send Protocol): a profile cannot name it as the clear key.
   if (/^(?:escape|esc)$/i.test(keys.clear.key)) fail("keys.clear.key", "must not be Escape");
 
@@ -329,11 +748,100 @@ export function parseProfile(raw: JsonValue): Profile {
   const hooks = Object.fromEntries(
     Object.keys(hooksNode).map((event) => [event, oneOf(hooksNode[event], `hooks.${event}`, HOOK_KINDS)]),
   );
-  if (Object.keys(hooks).length === 0) fail("hooks", "must name at least one event");
 
-  const parsedProfile: Profile = { id, identity, versions, idle, keys, collapse, reservedLeads, probe, hooks };
+  const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
+
+  const hold = root.hold === undefined ? undefined : parseHold(root.hold, hooks);
+
+  const parsedProfile: Profile = { id, identity: agentNames === undefined ? identity : { ...identity, agentNames }, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
   const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
-  return ask === undefined ? withPaste : { ...withPaste, ask };
+  const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
+  const withEdges = edges === undefined ? withAsk : { ...withAsk, edges };
+  return hold === undefined ? withEdges : { ...withEdges, hold };
+}
+
+/**
+ * The `hold` block. Its event must be a key of `hooks` with kind `ask`, its tool event one with kind
+ * `edge`. The limit plus the hook's own grace must stay below the hook timeout, so the bridge lets go
+ * before the harness kills the hook.
+ */
+function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>): HoldProfile {
+  const node = object(value, "hold");
+  const event = text(field(node, "event", "hold"), "hold.event");
+  if (hooks[event] !== "ask") fail("hold.event", `names ${event}, which hooks does not list as an ask`);
+  const toolEvent = text(field(node, "toolEvent", "hold"), "hold.toolEvent");
+  if (hooks[toolEvent] !== "edge") fail("hold.toolEvent", `names ${toolEvent}, which hooks does not list as an edge`);
+  const limitMs = millis(field(node, "limitMs", "hold"), "hold.limitMs", 5000, 3_600_000);
+  const hookTimeoutS = whole(field(node, "hookTimeoutS", "hold"), "hold.hookTimeoutS", 10);
+  if (limitMs + HOLD_GRACE_MS >= hookTimeoutS * 1000) {
+    fail("hold.limitMs", `plus ${String(HOLD_GRACE_MS)} ms must stay below hold.hookTimeoutS`);
+  }
+  const minVersion = text(field(node, "minVersion", "hold"), "hold.minVersion");
+  if (!/^\d+\.\d+\.\d+$/u.test(minVersion)) fail("hold.minVersion", "must read X.Y.Z");
+  const inputShown = textList(field(node, "inputShown", "hold"), "hold.inputShown", 1);
+  const screenOnly = textList(field(node, "screenOnly", "hold"), "hold.screenOnly", 0);
+  const headersNode = object(field(node, "headers", "hold"), "hold.headers");
+  const headers = Object.fromEntries(Object.keys(headersNode).map((tool) => [tool, textList(headersNode[tool], `hold.headers.${tool}`, 1)]));
+  const agentMark = pattern(field(node, "agentMark", "hold"), "hold.agentMark").source;
+  // The first group names the subagent's type: the bridge compares it with the request's.
+  if ((new RegExp(`${agentMark}|`, "u").exec("")?.length ?? 0) < 2) fail("hold.agentMark", "must hold one group, the subagent's type");
+  const detailsNode = object(field(node, "inputDetails", "hold"), "hold.inputDetails");
+  const inputDetails = Object.fromEntries(
+    Object.keys(detailsNode).map((tool) => {
+      const at = `hold.inputDetails.${tool}`;
+      const detail = object(detailsNode[tool], at);
+      const flags = detail.flags === undefined ? [] : textList(detail.flags, `${at}.flags`, 0);
+      const body = detail.body === undefined ? [] : textList(detail.body, `${at}.body`, 0);
+      return [tool, { flags, body }];
+    }),
+  );
+  const options = list(field(node, "options", "hold"), "hold.options").map((item, i) => {
+    const at = `hold.options[${String(i)}]`;
+    const option = object(item, at);
+    return { label: text(field(option, "label", at), `${at}.label`), decision: oneOf(field(option, "decision", at), `${at}.decision`, HOLD_DECISIONS) };
+  });
+  if (!options.some((o) => o.decision === "allow") || !options.some((o) => o.decision === "deny")) {
+    fail("hold.options", "must offer one allow and one deny");
+  }
+  const decisions = list(field(node, "decisions", "hold"), "hold.decisions").map((item, i) => {
+    const at = `hold.decisions[${String(i)}]`;
+    const rule = object(item, at);
+    return { match: pattern(field(rule, "match", at), `${at}.match`).source, decision: oneOf(field(rule, "decision", at), `${at}.decision`, HOLD_DECISIONS) };
+  });
+  const decidedLine = pattern(field(node, "decidedLine", "hold"), "hold.decidedLine").source;
+  const deniedLine = pattern(field(node, "deniedLine", "hold"), "hold.deniedLine").source;
+  const denyMessage = text(field(node, "denyMessage", "hold"), "hold.denyMessage");
+  return { event, toolEvent, limitMs, hookTimeoutS, minVersion, inputShown, inputDetails, screenOnly, headers, agentMark, options, decisions, decidedLine, deniedLine, denyMessage };
+}
+
+/** A whole number of ms inside a range. */
+function millis(value: JsonValue | undefined, path: string, min: number, max: number): number {
+  const ms = asJsonNumber(value);
+  return ms !== undefined && Number.isInteger(ms) && ms >= min && ms <= max
+    ? ms
+    : fail(path, `must be a whole number of ms from ${String(min)} to ${String(max)}`);
+}
+
+/**
+ * The `edges` block. Each key is a hook event, or `Event:detail` for one detail of it (a notification
+ * type). The event part must be a key of `hooks` with kind `edge`: an event the profile does not
+ * register as an edge cannot be one.
+ */
+function parseEdges(value: JsonValue, hooks: Readonly<Record<string, HookKind>>): EdgeProfile {
+  const node = object(value, "edges");
+  const rereadMs = millis(field(node, "rereadMs", "edges"), "edges.rereadMs", 100, 5000);
+  const settleMs = millis(field(node, "settleMs", "edges"), "edges.settleMs", 100, 10_000);
+  const eventsNode = object(field(node, "events", "edges"), "edges.events");
+  const events = Object.fromEntries(
+    Object.keys(eventsNode).map((key) => {
+      const at = `edges.events.${key}`;
+      if (!/^[A-Za-z][A-Za-z-]*(?::[a-z_-]+)?$/.test(key)) fail(at, "must read Event or Event:detail");
+      const event = key.split(":")[0] ?? key;
+      if (hooks[event] !== "edge") fail(at, `names ${event}, which hooks does not list as an edge`);
+      return [key, oneOf(eventsNode[key], at, EDGE_KINDS)];
+    }),
+  );
+  return { rereadMs, settleMs, events };
 }
 
 /** The version a binary printed: the first match of the profile's own version expression, or null. */
@@ -369,6 +877,13 @@ export function loadProfiles(): ReadonlyMap<string, Profile> {
     if (profile.id !== stem) throw new ProfileError("id", `${profile.id} does not match its file name ${stem}`);
     out.set(profile.id, profile);
   }
+  const claimed = new Set(out.keys());
+  for (const profile of out.values()) {
+    for (const name of profile.identity.agentNames ?? []) {
+      if (claimed.has(name)) throw new ProfileError("identity.agentNames", `${name} of ${profile.id} is already a profile id or another profile's name`);
+      claimed.add(name);
+    }
+  }
   parsed = out;
   return out;
 }
@@ -382,6 +897,36 @@ export function requireProfile(id: string): Profile {
   const profile = loadProfiles().get(id);
   if (profile === undefined) throw new ProfileError("id", `no profile file carries the id ${id}`);
   return profile;
+}
+
+/** The profile a multiplexer's agent name belongs to: the id itself, or a name in `identity.agentNames`. */
+export function findProfile(profiles: ReadonlyMap<string, Profile>, name: string): Profile | undefined {
+  const direct = profiles.get(name);
+  if (direct !== undefined) return direct;
+  for (const profile of profiles.values()) if (profile.identity.agentNames?.includes(name) === true) return profile;
+  return undefined;
+}
+
+/**
+ * The profile with the keys of one platform (`process.platform`): `keys.submit` and `keys.queueKey`
+ * take the platform's entry where the profile names one. A profile with no platform entry comes back as it is.
+ */
+export function forPlatform(profile: Profile, platform: string): Profile {
+  const { submitByPlatform, queueKeyByPlatform } = profile.keys;
+  const submit = submitByPlatform?.[platform];
+  const queueKey = queueKeyByPlatform?.[platform];
+  if (submit === undefined && queueKey === undefined) return profile;
+  const keys: Profile["keys"] = { ...profile.keys, submit: submit ?? profile.keys.submit };
+  return { ...profile, keys: queueKey === undefined ? keys : { ...keys, queueKey } };
+}
+
+/**
+ * {@link profileFor} for one platform: the match carries the profile with that platform's keys
+ * ({@link forPlatform}). The bridge calls this with `process.platform`.
+ */
+export function profileForPlatform(harness: string, version: string | null, platform: string, options?: ProfileForOptions): ProfileMatch | null {
+  const match = profileFor(harness, version, options);
+  return match === null ? null : { ...match, profile: forPlatform(match.profile, platform) };
 }
 
 const logged = new Set<string>();
@@ -435,7 +980,7 @@ export function profileFor(
   version: string | null,
   options?: ProfileForOptions,
 ): ProfileMatch | null {
-  const profile = (options?.profiles ?? loadProfiles()).get(harness);
+  const profile = findProfile(options?.profiles ?? loadProfiles(), harness);
   if (profile === undefined) return null;
 
   if (version === null || !SEMVER.test(version)) {

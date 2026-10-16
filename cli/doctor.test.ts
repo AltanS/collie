@@ -1814,8 +1814,9 @@ describe("beacon-hooks-claude", () => {
     expect(finding.status).toBe("ok");
     expect(finding.remedy).toBeNull();
     expect(finding.detail).toContain(OWN_BINARY);
-    // Installed anyway under Herdr is still ✓, and says out loud that nothing here needs it.
+    // Installed under Herdr is still ✓, and says that Herdr needs it for hook edges only.
     expect(finding.detail).toContain("does not need");
+    expect(finding.detail).toContain("hook edges only");
   });
 
   test("a stale marker version is a warn whose remedy is the self-heal", async () => {
@@ -2619,7 +2620,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const row = run.byCheck.get("durable-socket")!;
     expect(row.status).toBe("error");
     expect(row.detail).toContain("nothing is at");
-    expect(row.remedy).toContain("start the program");
+    expect(row.remedy).toContain("start the durable agent");
     expect(run.byCheck.get("durable-hello")!.status).toBe("skipped");
   });
 
@@ -2673,7 +2674,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("not a durable program");
+    expect(row.detail).toContain("not a durable agent");
     expect(row.remedy).toContain("COLLIE_DURABLE_SOCKET");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
@@ -2686,7 +2687,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("program speaks 2..3, this Collie speaks 1..1");
+    expect(row.detail).toContain("the durable agent speaks 2..3, this Collie speaks 1..1");
     expect(run.byCheck.get("durable-socket")!.status).toBe("ok");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
@@ -2746,6 +2747,10 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     effective: number;
     unknown_outcome: number;
     discarded: number;
+    held?: number;
+    held_sent?: number;
+    held_expired?: number;
+    held_cancelled?: number;
   }
   const row = (over: Partial<Row> = {}): Row => ({
     harness: "agent",
@@ -2785,6 +2790,12 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     expect(line.detail).toBe(
       "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0 · discarded 2",
     );
+  });
+
+  test("surface: a row that held sends (M56 spec 15) names the four held counts after discarded; one that held none reads as before", async () => {
+    const { byCheck } = await run([day(0, [row({ held: 3, held_sent: 1, held_expired: 1, held_cancelled: 1 }), row({ version: "2.1.302" })])]);
+    expect(byCheck.get("surface-agent-2.1.301")!.detail).toEndWith("discarded 1 · held 3 · held-sent 1 · held-expired 1 · held-cancelled 1");
+    expect(byCheck.get("surface-agent-2.1.302")!.detail).toEndWith("discarded 1");
   });
 
   test("surface: another version of the same harness is its own line", async () => {

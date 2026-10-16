@@ -47,7 +47,7 @@ export function zellijBeaconMatcher(namespace: string, session: ZellijSessionBin
       const resolved = await session.name();
       return resolved.ok ? resolved.session : null;
     },
-    matches(pane: MuxPane, marker, scope): boolean {
+    matches(pane: Pick<MuxPane, "paneId">, marker, scope): boolean {
       // The prefix is applied HERE rather than by the emitter, and it is not decoration: zellij's
       // `plugin_0` and `terminal_0` coexist in one tab, so the bare integer names two panes and only
       // the namespaced id names one.

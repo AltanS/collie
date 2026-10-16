@@ -15,7 +15,7 @@ export function ternBeaconMatcher(
     async scope(): Promise<string | null> {
       return socketPath;
     },
-    matches(pane: MuxPane, marker, scope): boolean {
+    matches(pane: Pick<MuxPane, "paneId">, marker, scope): boolean {
       return marker.scope === scope && marker.pane === pane.paneId;
     },
     notesWithoutHooks: {

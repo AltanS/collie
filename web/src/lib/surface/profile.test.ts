@@ -5,10 +5,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import ledgerJson from "../harness/verified-versions.json";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
 import {
+  findProfile,
+  forPlatform,
   loadProfiles,
   parseProfile,
   ProfileError,
   profileFor,
+  profileForPlatform,
   resetProfileLog,
   versionFromOutput,
   type Profile,
@@ -71,6 +74,7 @@ describe("every profile file", () => {
     expect(claude.keys.submit).toEqual(["Enter"]);
     expect(claude.keys.interrupt).toEqual(["Escape"]);
     expect(claude.keys.enterWhileRunning).toBe("queues");
+    expect(claude.keys.queuedRow?.hintGap).toBe(1);
     expect(claude.reservedLeads).toEqual(["/", "!", "@"]);
     // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
     expect(claude.probe.char).toBe("⌁");
@@ -89,6 +93,16 @@ describe("every profile file", () => {
     expect(form.exec("[Pasted text #3 +59 lines]")?.groups?.lines).toBe("59");
   });
 
+  it("matches the queued rows Claude Code 2.1.301 draws (claude--v2301-working-queued-message--w100)", () => {
+    const queuedRow = parseProfile(rawClaude()).keys.queuedRow!;
+    const start = new RegExp(queuedRow.pattern, "u");
+    const hint = new RegExp(queuedRow.hint, "u");
+    expect(start.exec("❯ QUEUEDMSG please add a title")?.groups?.text).toBe("QUEUEDMSG please add a title");
+    expect(start.exec("❯")).toBeNull();
+    expect(hint.test("  ctrl+enter to send now")).toBe(true);
+    expect(hint.test("  ctrl+enter to send now, or more")).toBe(false);
+  });
+
   it("matches the frame anchors on a real box", () => {
     const { idle } = parseProfile(rawClaude());
     const rule = "─".repeat(40);
@@ -99,6 +113,424 @@ describe("every profile file", () => {
     expect(prompt.exec("❯ hello there")?.groups?.draft).toBe("hello there");
     expect(prompt.exec("❯")?.groups?.draft).toBeUndefined();
     expect(prompt.exec("!important")).toBeNull();
+  });
+});
+
+function rawCodex(): JsonObject {
+  const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "codex.json"), "utf8"));
+  if (raw === undefined) throw new Error("codex.json is not a JSON object");
+  return raw;
+}
+
+describe("the codex profile (M56 spec 13)", () => {
+  it("codex: carries every field the spec names", () => {
+    const codex = parseProfile(rawCodex());
+    expect(codex.identity.versionCommand).toEqual(["codex", "--version"]);
+    expect(versionFromOutput(codex, "codex-cli 0.163.0")).toBe("0.163.0");
+    expect(codex.idle.frame.top).toMatchObject({ blank: true, column: 0 });
+    expect(codex.idle.frame.prompt.pattern).toContain("(?<draft>");
+    expect(codex.idle.frame.bottom.column).toBe(2);
+    expect(codex.idle.placeholders.sgr).toBe(2);
+    expect(codex.idle.runningRows?.length).toBeGreaterThan(0);
+    // Tab sends on an idle box and queues in a turn (lab, 0.150.0, 0.159.2, 0.163.0): Enter steers a turn.
+    expect(codex.keys.submit).toEqual(["Tab"]);
+    expect(codex.keys.commandSubmit).toEqual(["Enter"]);
+    expect(codex.keys.enterWhileRunning).toBe("steers");
+    expect(codex.keys.queueKey).toBe("Tab");
+    // `/` opens a command and `!` a shell command on Codex; an `@` text is a message, and takes Tab.
+    // Lab, 0.163.0, 2026-10-16: Tab on an idle `!ls` does nothing (the box is in Shell mode), and a
+    // queued `!ls` runs as a shell command after the turn, so `!` is never sent with Tab.
+    expect(codex.reservedLeads).toEqual(["/", "!"]);
+    expect(codex.probe).toMatchObject({ char: "⌁", status: "verified" });
+    expect(codex.hooks["agent-turn-complete"]).toBe("edge");
+    expect(codex.edges?.events["agent-turn-complete"]).toBe("stop");
+  });
+
+  it("codex: the prompt anchor takes the box and its draft, and never a numbered dialog row", () => {
+    const prompt = new RegExp(parseProfile(rawCodex()).idle.frame.prompt.pattern, "u");
+    expect(prompt.exec("› hello there")?.groups?.draft).toBe("hello there");
+    expect(prompt.exec("›")?.groups?.draft).toBeUndefined();
+    expect(prompt.exec("› 1. Yes, proceed (y)")).toBeNull();
+    expect(prompt.exec("› 12. Other")).toBeNull();
+  });
+
+  it("codex: the bottom anchor takes the status row and never a hint row", () => {
+    const bottom = new RegExp(parseProfile(rawCodex()).idle.frame.bottom.pattern, "u");
+    expect(bottom.test("  GPT-6-Luna low · ~/project")).toBe(true);
+    expect(bottom.test("  tab to queue message                     88% context left")).toBe(true);
+    expect(bottom.test("  ← for agents · ? for shortcuts")).toBe(false);
+    expect(bottom.test("  ? for shortcuts")).toBe(false);
+    expect(bottom.test("  tab to queue message")).toBe(false);
+  });
+
+  it("codex: the running rows take a spinner on the status row and the queue hint", () => {
+    const signs = parseProfile(rawCodex()).idle.runningRows!.map((source) => new RegExp(source, "u"));
+    const any = (row: string): boolean => signs.some((sign) => sign.test(row));
+    expect(any("  gpt-5.5 medium · ~/project · ⠋")).toBe(true);
+    expect(any("  tab to queue message")).toBe(true);
+    expect(any("  GPT-6-Luna low · ~/project")).toBe(false);
+  });
+
+  it("codex: matches the queued rows Codex 0.163.0 draws after Tab (lab, 2026-10-16)", () => {
+    const queuedRow = parseProfile(rawCodex()).keys.queuedRow!;
+    expect(new RegExp(queuedRow.pattern, "u").exec("  ↳ then add a short summary")?.groups?.text).toBe("then add a short summary");
+    expect(new RegExp(queuedRow.hint, "u").test("    shift+← edit last queued message")).toBe(true);
+    // Codex 0.150.0 draws the same rows with another edit key (lab, 2026-10-16).
+    expect(new RegExp(queuedRow.hint, "u").test("    alt + ↑ edit last queued message")).toBe(true);
+    expect(queuedRow.hintGap).toBe(0);
+  });
+
+  it("claude: the footer rows name the agents panel and its hints, and no statusline row (incident 2026-10-16)", () => {
+    const rows = parseProfile(rawClaude()).idle.volatile.below.footerRows!;
+    const nameOf = (text: string): string | null => rows.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
+    expect(nameOf("  ● main")).toBe("agents-panel-main");
+    expect(nameOf("  ◯ general-purpose   Reading profileFor in profile.ts      2m 3s · ↓ 120.1k tokens")).toBe("agents-panel-agent");
+    expect(nameOf("❯ ◯ alright-it-seems  alright it seems a new issue arrived      31s · ↓ 40.2k tokens")).toBe("agents-panel-agent");
+    expect(nameOf("  ↓ to manage")).toBe("agents-panel-manage-hint");
+    expect(nameOf("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 2 background tasks · ↓ to view · ← 11 agents")).toBe("tasks-view-hint");
+    expect(nameOf("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 1 shell · ← 11 agents")).toBeNull();
+    expect(nameOf("  CTX:8% CACHE:99% LIMITS 5h:9%/4h:21m 7d:70%/4d:06h")).toBeNull();
+    expect(nameOf("  [Fable·medium] ~/projects/sample-workspace on main*")).toBeNull();
+  });
+
+  it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
+    const codex = parseProfile(rawCodex());
+    expect(codex.idle.volatile.above.losesText).toBe(true);
+    const hints = codex.idle.volatile.below.hints!.map((source) => new RegExp(source, "u"));
+    expect(hints.some((hint) => hint.test("  ← for agents · ? for shortcuts"))).toBe(true);
+    expect(hints.some((hint) => hint.test("  tab to queue message"))).toBe(true);
+    expect(hints.some((hint) => hint.test("  GPT-6-Luna low · ~/project"))).toBe(false);
+  });
+
+  it("codex: the running rows take the queued-message hint Codex 0.163.0 draws in a turn", () => {
+    const signs = parseProfile(rawCodex()).idle.runningRows!.map((source) => new RegExp(source, "u"));
+    expect(signs.some((sign) => sign.test("  shift+← edit last queued message"))).toBe(true);
+  });
+
+  it("codex: matches the long-paste form", () => {
+    const form = new RegExp(parseProfile(rawCodex()).collapse.pattern, "u");
+    expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
+  });
+
+  const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
+    ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
+    ["codex: Enter as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
+    ["codex: Escape as a command key", ["keys", "commandSubmit"], ["Escape"], "keys.commandSubmit"],
+    ["codex: no command key", ["keys", "commandSubmit"], [], "keys.commandSubmit"],
+    ["codex: a queue key on a harness whose Enter queues", ["keys", "enterWhileRunning"], "queues", "keys.queueKey"],
+    ["codex: an unknown Enter mode", ["keys", "enterWhileRunning"], "sometimes", "keys.enterWhileRunning"],
+    ["codex: a blank prompt anchor", ["idle", "frame", "prompt", "blank"], true, "idle.frame.prompt.blank"],
+    ["codex: a blank anchor that matches text", ["idle", "frame", "top", "pattern"], "^x$", "idle.frame.top.pattern"],
+    ["codex: a blank anchor off column 0", ["idle", "frame", "top", "column"], 2, "idle.frame.top.column"],
+    ["codex: a running row that is no expression", ["idle", "runningRows", 0], "[unclosed", "idle.runningRows[0]"],
+    ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
+    ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
+    ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
+  ];
+  for (const [name, path, value, field] of cases) {
+    it(name, () => {
+      expect(failure(change(rawCodex(), path, value)).path).toBe(field);
+    });
+  }
+});
+
+describe("the Codex range", () => {
+  const row = ledgerJson.agents.codex;
+
+  it("codex: verified through 0.163.0, where the live sends of spec 13 passed on 0.150.0, 0.159.2 and 0.163.0", () => {
+    const codex = loadProfiles().get("codex")!;
+    const verified = codex.versions.filter((range) => range.status === "verified");
+    expect(verified).toHaveLength(1);
+    expect(verified[0]!.range).toBe("0.150.0 - 0.163.0");
+    expect(verified[0]!.verifiedThrough).toBe("0.163.0");
+    expect(verified[0]!.verifiedOn).toBe("2026-10-16");
+    expect(codex.probe.note).toContain("0.150.0, 0.159.2 and 0.163.0");
+    for (const version of ["0.150.0", row.version, "0.163.0"]) {
+      resetProfileLog();
+      expect(profileFor("codex", version, { log: () => {} })?.status, version).toBe("verified");
+    }
+  });
+
+  it("codex: the ledger's canary row sits inside the range, and a version above it is provisional", () => {
+    resetProfileLog();
+    expect(profileFor("codex", row.version, { log: () => {} })?.range?.range).toBe("0.150.0 - 0.163.0");
+    expect(profileFor("codex", "0.164.0", { log: () => {} })?.status).toBe("provisional");
+  });
+});
+
+/**
+ * The profiles of M56 spec 14. Each row names the harness's own samples: rows its anchors must take
+ * and rows they must refuse. The ledger rows (verified-versions.json) and the profile ranges must say
+ * the same thing, as for Codex.
+ */
+interface Spec14Case {
+  readonly id: string;
+  readonly binary: string;
+  readonly versionOutput: string;
+  readonly version: string;
+  /** A version above the ledger row, which the profile reads as provisional. */
+  readonly above: string;
+  /** Rows an idle box is made of: each must match the anchor it names. */
+  readonly takes: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string; readonly draft?: string }[];
+  /** Rows an anchor must refuse. */
+  readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
+  readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
+  /** The reserved leads, where they are not `/`, `!` and `@`: pi and OMP read an `@` text as a message. */
+  readonly reservedLeads?: readonly string[];
+  /** The keys that send a text on an idle box. */
+  readonly submit: readonly string[];
+  /** The keys that send a command, where they differ from `submit`. */
+  readonly commandSubmit?: readonly string[];
+  /** What the profile says of its probe: provisional means every send takes the probed path (a live send has not passed inside the range). */
+  readonly probeStatus: "verified" | "provisional";
+  /** The status of the ledger-version range, when it is not `verified`. */
+  readonly rangeStatus?: "provisional";
+  readonly enterWhileRunning: "queues" | "steers" | undefined;
+  /** The key that queues a message in a turn, where Enter does not queue. */
+  readonly queueKey?: string;
+}
+
+const SPEC14_CASES: readonly Spec14Case[] = [
+  {
+    id: "opencode",
+    binary: "opencode",
+    versionOutput: "1.19.2",
+    version: "1.19.2",
+    above: "1.19.2",
+    takes: [
+      { anchor: "top", row: "  ┃" },
+      { anchor: "prompt", row: "  ┃  hello there", draft: "hello there" },
+      { anchor: "prompt", row: "  ┃" },
+      { anchor: "bottom", row: "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀" },
+    ],
+    refuses: [
+      { anchor: "bottom", row: "  ┃" },
+      { anchor: "bottom", row: "  ────────────────" },
+      { anchor: "top", row: "  ┃  hello there" },
+    ],
+    collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    enterWhileRunning: "queues",
+  },
+  {
+    id: "grok",
+    binary: "grok",
+    versionOutput: "1.0.46 (2765805b9442) [stable]\n",
+    version: "1.0.46",
+    above: "1.0.52",
+    takes: [
+      { anchor: "top", row: "  ╭──────────────────────────────────╮" },
+      { anchor: "top", row: "╭──────────────────────────────────" },
+      { anchor: "prompt", row: "  │ ❯ testing stuff                  │", draft: "testing stuff" },
+      { anchor: "prompt", row: "  │ ❯                                │" },
+      { anchor: "bottom", row: "  ╰───────────────── Grok 4.6 (high) · auto ─╯" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  │   continuation row               │" },
+      { anchor: "top", row: "  ┌──────────────────────────────────┐" },
+      { anchor: "bottom", row: "  ╭──────────────────────────────────╮" },
+    ],
+    collapse: { text: "[Pasted 3003 chars]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    enterWhileRunning: undefined,
+  },
+  {
+    id: "agy",
+    binary: "agy",
+    versionOutput: "1.1.17\n",
+    version: "1.1.17",
+    above: "1.3.5",
+    takes: [
+      { anchor: "top", row: "────────────────────" },
+      { anchor: "prompt", row: ">" },
+      { anchor: "prompt", row: "> hello there", draft: "hello there" },
+      { anchor: "bottom", row: "────────────────────" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  > hello there" },
+      { anchor: "top", row: "──── hello" },
+    ],
+    collapse: { text: "[Pasted 12 lines]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    rangeStatus: "provisional",
+    enterWhileRunning: undefined,
+  },
+  {
+    id: "muse",
+    binary: "muse",
+    versionOutput: "Muse Code 1.4.7\n",
+    version: "1.4.7",
+    above: "1.4.8",
+    takes: [
+      { anchor: "top", row: "── Voice input (⌥ + v to start) ────────────────" },
+      { anchor: "top", row: "────────────────────────────────" },
+      { anchor: "prompt", row: "❯" },
+      { anchor: "prompt", row: "❯ hello muse draft", draft: "hello muse draft" },
+      { anchor: "bottom", row: "────────────────────────────────" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  hello muse draft" },
+      { anchor: "bottom", row: "── Voice input (⌥ + v to start) ────────────────" },
+    ],
+    collapse: { text: "[Image #1]", group: "", value: "" },
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    enterWhileRunning: undefined,
+  },
+  {
+    id: "omp",
+    binary: "omp",
+    versionOutput: "omp/18.6.1\n",
+    version: "18.6.1",
+    above: "18.6.1",
+    takes: [
+      { anchor: "top", row: "╭── π  > ⬢ Auto > 🗑 …/scratchpad/omp-sandbox > ⑂ master > ◫ 11.5%/200K ⟲ > (sub) ▶────────" },
+      { anchor: "top", row: " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──4%──────────" },
+      { anchor: "top", row: " ⠇ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──5%──────────" },
+      { anchor: "prompt", row: "╰─ hello there", draft: "hello there" },
+      { anchor: "prompt", row: "│  hello there", draft: "hello there" },
+      { anchor: "prompt", row: `╰─${" ".repeat(60)}⇧⇥ to change thinking effort`, draft: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: " π · ⬢ no-model · 🗑 collie-omp-shape-sandbox" },
+      { anchor: "prompt", row: "   hello there" },
+    ],
+    collapse: { text: "📄 #3", group: "", value: "" },
+    reservedLeads: ["/", "!"],
+    submit: ["ctrl+q"],
+    commandSubmit: ["Enter"],
+    probeStatus: "provisional",
+    enterWhileRunning: "steers",
+    queueKey: "ctrl+q",
+  },
+  {
+    id: "pi",
+    binary: "pi",
+    versionOutput: "0.87.1\n",
+    version: "0.87.1",
+    above: "1.1.0",
+    takes: [
+      { anchor: "top", row: "─".repeat(40) },
+      { anchor: "top", row: "── ⠴ Working ─────────────────────────" },
+      { anchor: "prompt", row: "hello there", draft: "hello there" },
+      { anchor: "prompt", row: "  hello there", draft: "hello there" },
+      { anchor: "prompt", row: "❯ hello there", draft: "hello there" },
+      { anchor: "prompt", row: "❯", draft: "" },
+      { anchor: "prompt", row: `❯${" ".repeat(60)}…/omo-lab/work`, draft: "" },
+      { anchor: "bottom", row: "─".repeat(40) },
+    ],
+    refuses: [
+      { anchor: "bottom", row: "── ⠴ Working ─────────────────────────" },
+      { anchor: "top", row: "hello there" },
+    ],
+    collapse: { text: "[paste #2 +12 lines]", group: "lines", value: "12" },
+    reservedLeads: ["/", "!"],
+    submit: ["alt+Enter"],
+    commandSubmit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "steers",
+    queueKey: "alt+Enter",
+  },
+];
+
+describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
+  const profile = (): Profile => loadProfiles().get(c.id)!;
+  const pattern = (anchor: "top" | "prompt" | "bottom"): RegExp => new RegExp(profile().idle.frame[anchor].pattern, "u");
+
+  it(`${c.id}: carries every field the spec names`, () => {
+    const p = profile();
+    expect(p.identity.versionCommand[0]).toBe(c.binary);
+    expect(versionFromOutput(p, c.versionOutput)).toBe(c.version);
+    expect(p.idle.frame.prompt.pattern).toContain("(?<draft>");
+    expect(p.idle.runningRows?.length).toBeGreaterThan(0);
+    expect(p.keys.submit).toEqual(c.submit);
+    expect(p.keys.commandSubmit).toEqual(c.commandSubmit);
+    expect(p.probe.status).toBe(c.probeStatus);
+    expect(p.keys.interrupt.length).toBeGreaterThan(0);
+    expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);
+    expect(p.keys.queueKey).toBe(c.queueKey);
+    expect(p.reservedLeads).toEqual(c.reservedLeads ?? ["/", "!", "@"]);
+    expect(p.probe.char.length).toBeGreaterThan(0);
+    expect(p.paste).toEqual({ bracketed: true });
+    expect(p.hooks).toBeDefined();
+  });
+
+  it(`${c.id}: the anchors take the rows of an idle box and refuse the others`, () => {
+    for (const { anchor, row, draft } of c.takes) {
+      const hit = pattern(anchor).exec(row);
+      expect(hit, `${anchor}: ${row}`).not.toBeNull();
+      if (draft !== undefined) expect(hit?.groups?.["draft"]).toBe(draft);
+    }
+    for (const { anchor, row } of c.refuses) expect(pattern(anchor).test(row), `${anchor}: ${row}`).toBe(false);
+  });
+
+  it(`${c.id}: matches its own long-paste form`, () => {
+    const hit = new RegExp(profile().collapse.pattern, "u").exec(c.collapse.text);
+    if (c.collapse.group === "") expect(hit).not.toBeNull();
+    else expect(hit?.groups?.[c.collapse.group]).toBe(c.collapse.value);
+  });
+
+  it(`${c.id}: verified through the ledger row, provisional above it`, () => {
+    // SAFETY: the ledger is this repo's own committed JSON; every agent row has a version and a verified date, and the key is a harness id from this table.
+    const row = (ledgerJson.agents as Record<string, { version: string; verified: string }>)[c.id]!;
+    if (c.rangeStatus === "provisional") {
+      expect(profile().versions.map((range) => range.status)).toEqual(["provisional"]);
+      expect(profileFor(c.id, row.version, { log: () => {} })?.status).toBe("provisional");
+      return;
+    }
+    const verified = profile().versions.filter((range) => range.status === "verified");
+    expect(verified).toHaveLength(1);
+    expect(verified[0]!.verifiedThrough).toBe(row.version);
+    expect(verified[0]!.verifiedOn).toBe(row.verified);
+    expect(verified[0]!.range.endsWith(` - ${row.version}`)).toBe(true);
+    expect(profileFor(c.id, row.version, { log: () => {} })?.status).toBe("verified");
+    resetProfileLog();
+    expect(profileFor(c.id, c.above, { log: () => {} })?.status).toBe(c.above === row.version ? "verified" : "provisional");
+  });
+
+  it(`${c.id}: the probe is verified or says why not`, () => {
+    const p = profile();
+    expect(["verified", "provisional"]).toContain(p.probe.status);
+    expect(p.probe.note.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the frame schema of the interior walk (M56 spec 14)", () => {
+  const rawOpencode = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "opencode.json"), "utf8"))!;
+  const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
+    ["an unknown walk", ["idle", "frame", "walk"], "diagonal", "idle.frame.walk"],
+    ["rows that are no expression", ["idle", "frame", "rows"], "[unclosed", "idle.frame.rows"],
+    ["a trailer row that is no expression", ["idle", "frame", "trailer", "row"], "[unclosed", "idle.frame.trailer.row"],
+    ["a continuation with no text group", ["idle", "frame", "continuation"], "^ *┃ .*$", "idle.frame.continuation"],
+    ["an overlay row that is no expression", ["idle", "overlayRows", 0], "[unclosed", "idle.overlayRows[0]"],
+    ["an under row that is no expression", ["idle", "frame", "under"], "[unclosed", "idle.frame.under"],
+    ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
+    ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
+  ];
+  for (const [name, path, value, field] of cases) {
+    it(`refuses ${name}`, () => {
+      expect(failure(change(rawOpencode(), path, value)).path).toBe(field);
+    });
+  }
+
+  it("keeps rows, a trailer and a continuation out of the edges walk", () => {
+    expect(failure(change(rawOpencode(), ["idle", "frame", "walk"], "edges")).path).toMatch(/^idle\.frame\./u);
+    expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
+    expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
+  });
+
+  it("names the alternate frame shape in the path of a bad field", () => {
+    const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
+    expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
+    expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
+    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
+  });
+
+  it("accepts a profile that names no hook", () => {
+    expect(parseProfile(rawOpencode()).hooks).toEqual({});
   });
 });
 
@@ -121,8 +553,28 @@ describe("parseProfile names the failing field", () => {
     ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
     ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
+    ["an unknown edge kind", ["edges", "events", "Stop"], "level", "edges.events.Stop"],
+    ["an edge on an event hooks does not list as an edge", ["edges", "events", "PermissionRequest"], "dialog", "edges.events.PermissionRequest"],
+    ["an edge key that is not Event or Event:detail", ["edges", "events", "Stop now"], "stop", "edges.events.Stop now"],
+    ["a settle time below its floor", ["edges", "settleMs"], 10, "edges.settleMs"],
+    ["a missing re-read delay", ["edges", "rereadMs"], undefined, "edges.rereadMs"],
     ["an empty submit key list", ["keys", "submit"], [], "keys.submit"],
     ["a bad id", ["id"], "Claude Code", "id"],
+    ["a queued row pattern with no text group", ["keys", "queuedRow", "pattern"], "^❯ .*$", "keys.queuedRow.pattern"],
+    ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
+    ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
+    ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
+    ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
+    ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
+    ["a footer row that is no expression", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "[unclosed", "idle.volatile.below.footerRows[0].pattern"],
+    ["a footer row that matches a blank row", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "^\\s*$", "idle.volatile.below.footerRows[0].pattern"],
+    ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
+    ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
+    ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],
+    ["a hold with no deny option", ["hold", "options"], [{ label: "Yes", decision: "allow" }], "hold.options"],
+    ["a hold decision that is neither allow nor deny", ["hold", "decisions", 0, "decision"], "ask", "hold.decisions[0].decision"],
+    ["a hold decided line that is no expression", ["hold", "decidedLine"], "[unclosed", "hold.decidedLine"],
+    ["a missing hold denied line", ["hold", "deniedLine"], undefined, "hold.deniedLine"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {
@@ -239,7 +691,83 @@ describe("the Claude ranges and the ledger", () => {
     expect(match?.profile.id).toBe("claude");
   });
 
-  it("holds provisional for Claude 2.1.300, the field version of 2026-10-15", () => {
-    expect(profileFor("claude", "2.1.300", { log: () => {} })?.status).toBe("provisional");
+  it("serves Claude 2.1.300, the field version of 2026-10-15, by the ledger's row", () => {
+    // Provisional while the ledger is below 2.1.300, verified once a lab pass moves the row to it or past it.
+    // A fixed "provisional" here went red on the first real bump, so the nightly lab's own pass commit failed CI.
+    const [rowMajor = 0, rowMinor = 0, rowPatch = 0] = row.version.split(".").map(Number);
+    const key = (major: number, minor: number, patch: number): number => major * 1_000_000 + minor * 1_000 + patch;
+    const verified = key(rowMajor, rowMinor, rowPatch) >= key(2, 1, 300);
+    expect(profileFor("claude", "2.1.300", { log: () => {} })?.status).toBe(verified ? "verified" : "provisional");
+  });
+});
+
+describe("keys that differ by platform (M56 spec 14 review)", () => {
+  const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!;
+
+  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows", () => {
+    const pi = loadProfiles().get("pi")!;
+    expect(pi.keys.submit).toEqual(["alt+Enter"]);
+    expect(pi.keys.queueKey).toBe("alt+Enter");
+    const win = forPlatform(pi, "win32");
+    expect(win.keys.submit).toEqual(["ctrl+q"]);
+    expect(win.keys.queueKey).toBe("ctrl+q");
+    expect(win.keys.commandSubmit).toEqual(["Enter"]);
+    expect(forPlatform(pi, "linux")).toBe(pi);
+    expect(forPlatform(pi, "darwin")).toBe(pi);
+  });
+
+  it("the bridge's match carries the platform's keys", () => {
+    const match = profileForPlatform("pi", "0.87.1", "win32", { log: () => {} });
+    expect(match?.profile.keys.submit).toEqual(["ctrl+q"]);
+    expect(match?.status).toBe("verified");
+    expect(profileForPlatform("pi", "0.87.1", "linux", { log: () => {} })?.profile.keys.submit).toEqual(["alt+Enter"]);
+    expect(profileForPlatform("nothing-known", "1.0.0", "win32")).toBeNull();
+  });
+
+  it("a profile with no platform entry is returned as it is", () => {
+    const claude = loadProfiles().get("claude")!;
+    expect(forPlatform(claude, "win32")).toBe(claude);
+  });
+
+  it("keys.submit may be a list or an object with a default; an unknown platform, a missing default and an empty list are named", () => {
+    expect(parseProfile(change(raw(), ["keys", "submit"], ["alt+Enter"])).keys.submitByPlatform).toBeUndefined();
+    expect(failure(change(raw(), ["keys", "submit"], { win32: ["ctrl+q"] })).path).toBe("keys.submit.default");
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], plan9: ["ctrl+q"] })).path).toBe("keys.submit.plan9");
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], win32: [] })).path).toBe("keys.submit.win32");
+  });
+
+  it("keys.queueKey names one key per platform, never Enter or Escape", () => {
+    expect(failure(change(raw(), ["keys", "queueKey"], { default: "alt+Enter", win32: "Enter" })).path).toBe("keys.queueKey");
+    expect(failure(change(raw(), ["keys", "queueKey"], { default: "Escape", win32: "ctrl+q" })).path).toBe("keys.queueKey");
+    expect(failure(change(raw(), ["keys", "queueKey"], { win32: "ctrl+q" })).path).toBe("keys.queueKey.default");
+    expect(parseProfile(change(raw(), ["keys", "queueKey"], "alt+Enter")).keys.queueKeyByPlatform).toBeUndefined();
+  });
+});
+
+describe("other names of a harness (M56 spec 14 review)", () => {
+  const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "agy.json"), "utf8"))!;
+
+  it("agy answers to antigravity too, and the profile for either name is the agy profile", () => {
+    const profiles = loadProfiles();
+    expect(findProfile(profiles, "agy")?.id).toBe("agy");
+    expect(findProfile(profiles, "antigravity")?.id).toBe("agy");
+    expect(findProfile(profiles, "nothing-known")).toBeUndefined();
+    expect(profileFor("antigravity", "1.1.17", { log: () => {} })?.profile.id).toBe("agy");
+  });
+
+  it("a name that repeats the id, is not a word, or is empty is named", () => {
+    expect(failure(change(raw(), ["identity", "agentNames"], ["agy"])).path).toBe("identity.agentNames");
+    expect(failure(change(raw(), ["identity", "agentNames"], ["Not A Name"])).path).toBe("identity.agentNames");
+    expect(failure(change(raw(), ["identity", "agentNames"], [])).path).toBe("identity.agentNames");
+  });
+
+  it("no name of one profile is the id or the name of another", () => {
+    const claimed = new Map<string, string>();
+    for (const profile of loadProfiles().values()) {
+      for (const name of [profile.id, ...(profile.identity.agentNames ?? [])]) {
+        expect(claimed.has(name), `${name} of ${profile.id} is also ${claimed.get(name) ?? ""}`).toBe(false);
+        claimed.set(name, profile.id);
+      }
+    }
   });
 });

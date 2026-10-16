@@ -1,7 +1,9 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { HeldRow } from "../web/src/lib/surface/send.ts";
 import type { Surface } from "../web/src/lib/surface/surface.ts";
+import type { HoldNote } from "../web/src/lib/surface/hold.ts";
 import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
@@ -275,11 +277,30 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   surface?: Surface;
   /**
+   * Whether the pane's hook source is live (M56 spec 11): `live` while the harness's own hooks send
+   * edges from the pane's process, `holds` when those hooks also hold permissions (M56 spec 12),
+   * `none` otherwise (hooks not installed, or the pane started before the install). Present only with `surface`, on a session whose adapter can place edges. Absent from
+   * an older bridge.
+   */
+  hooks?: "live" | "holds" | "none";
+  /**
+   * The pane's hook-held permission (M56 spec 12): the tool, the input shown and the state (held,
+   * sent, answered at the desk, voided). Present only while a hold waits or a short while after it
+   * ended. The input is masked like the mirror under redaction. Absent from an older bridge.
+   */
+  hold?: HoldNote;
+  /**
    * Present (and `true`) when this bridge runs the Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec
    * 05) and the pane carries a Surface: the phone's composer then sends through `POST /api/send`.
    * Absent otherwise, so a bridge without the flag sends the same bytes as before.
    */
   sendProtocol?: true;
+  /**
+   * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
+   * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present
+   * only when there is at least one; the text takes the mirror's mask like a title does.
+   */
+  held?: HeldRow[];
 };
 
 /** The icon names a program may give a belt action. The phone maps each to one of its own glyphs. */
@@ -677,7 +698,7 @@ export interface SessionCard {
   experimental: boolean;
   /**
    * A program only, and only while it is refused for its wire version (WIRE.md section 2): the one sentence
-   * that says why, for example "Program speaks wire v2, this Collie speaks v1. Update Collie, or the program's SDK." Absent
+   * that says why, for example "The durable agent speaks wire v2, this Collie speaks v1. Update Collie, or the agent's SDK." Absent
    * everywhere else.
    */
   notice?: string;

@@ -11,7 +11,7 @@
 #      (scripts/sdk-pack-check.ts).
 #
 # It never publishes and never logs in. Publishing is Altan's, by hand (packages/durable-sdk/README.md, "Publish").
-# Needs node and npm (Node 22.18 or later), bun, and the example's install (the build reads its Pi packages).
+# Needs node and npm (Node 22.19 or later), bun, and the example's install (the build reads its Pi packages).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

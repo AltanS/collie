@@ -139,6 +139,23 @@ describe("the key gate's door for a person", () => {
     expect(gate.sentBy()).toEqual({ person_tap: 1, legacy_reply: 1, protocol: 0 });
   });
 
+  test("Send now under a running turn: the queue's keys pass the person's door even after a protocol send queued", async () => {
+    // A protocol send queued behind the turn (reads, a text write, its Enter token), then the person
+    // taps Send now (`ChatWindow.sendQueuedNow`, ctrl+Enter on Claude Code). The door for a person
+    // checks no revision and no Surface, so a running turn never refuses it.
+    const time = clock();
+    const mux = new Recorder();
+    const gate = new KeyGate(mux, time.now);
+    const read = gate.noteRead("%1");
+    gate.noteWrite("%1");
+    const token = gate.mint("%1", ["Enter"], gate.revision("%1"));
+    expect(await gate.commit(token)).toEqual({ ok: true });
+    expect(read).toBeLessThan(gate.revision("%1"));
+    expect(await gate.press("%1", ["ctrl+Enter"], "person_tap")).toEqual(muxAck());
+    expect(mux.sent.map((s) => s.keys)).toEqual([["Enter"], ["ctrl+Enter"]]);
+    expect(gate.sentBy()).toEqual({ person_tap: 1, legacy_reply: 0, protocol: 1 });
+  });
+
   test("the adapter's answer is handed back unchanged", async () => {
     const mux = new Recorder();
     mux.answer = muxRefused("pane is gone");

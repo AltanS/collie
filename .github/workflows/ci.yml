@@ -45,6 +45,12 @@ jobs:
         run: cd web && bun run typecheck
       - name: Test (web)
         run: cd web && bun run test
+      # The corpus rule (M56 spec 10). The web suite above already runs this file. This step gives
+      # the rule its own name in the run log, so a negative trace that reads `free` is easy to find.
+      - name: Corpus rule (golden traces, the negative set never reads free)
+        run: cd web && bunx vitest run src/lib/surface/traces.test.ts
+      - name: Corpus table (every dialog fixture is not free)
+        run: bun scripts/surface-corpus.ts
 
   # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
   # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots

@@ -15,6 +15,7 @@ import {
   dayOf,
   KEEP_DAYS,
   MAX_EXAMPLES,
+  MAX_NEGATIVE_EXAMPLES,
   parseDay,
   readDays,
   maskRow,
@@ -102,7 +103,7 @@ describe("the day file", () => {
 
     const first = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
     expect(Object.values(first!.rows)).toEqual([
-      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0 },
+      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} },
     ]);
     const second = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-17"), "utf8")));
     expect(Object.values(second!.rows)).toHaveLength(1);
@@ -141,6 +142,21 @@ describe("the day file", () => {
       ["2.1.301", 2],
       ["2.1.302", 1],
     ]);
+  });
+
+  test("the held send's four counts (M56 spec 15): held, held_sent (also sent or effective), held_expired, held_cancelled, added up by the summary", () => {
+    const l = ledger();
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "held", probed: false });
+    l.send(KEY, { outcome: "sent", probed: true, released: true });
+    l.send(KEY, { outcome: "expired", probed: false });
+    l.send(KEY, { outcome: "cancelled", probed: false });
+    l.send(KEY, { outcome: "sent", probed: false });
+    l.flush();
+    const day = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
+    expect(Object.values(day!.rows)[0]).toMatchObject({ held: 3, held_sent: 1, held_expired: 1, held_cancelled: 1, sent: 2 });
+    expect(summarize([day!, day!])[0]).toMatchObject({ held: 6, held_sent: 2, held_expired: 2, held_cancelled: 2 });
   });
 
   test("another version, profile or status is another row", () => {
@@ -231,7 +247,7 @@ describe("the day file", () => {
     expect(parseDay("text")).toBeNull();
     expect(parseDay({ date: "yesterday" })).toBeNull();
     const day = parseDay({ date: "2026-10-16", rows: { x: { harness: "a", version: "1", profileId: "p", status: "verified", free: "many", unknown: { weird: -3, fine: 2 } }, y: 5 }, unknownFrames: { k: ["abc", 7, "XYZ!"] }, manualAt: { k: [1, "x", 2] } });
-    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0 }]);
+    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} }]);
     expect(day!.unknownFrames).toEqual({ k: ["abc"] });
     expect(day!.manualAt).toEqual({ k: [1, 2] });
   });
@@ -348,8 +364,68 @@ describe("the examples folder", () => {
     expect(names.at(-1)).toContain(`req-${String(MAX_EXAMPLES + 6).padStart(6, "0")}`);
   });
 
+  // The review of 2026-10-16: refusals repeat on one screen, so they get their own small cap and
+  // one file per frame hash and reason per day, and never push the sent examples out.
+  const refusal = (n: number, frame: string, reason = "unconfirmed") => ({
+    ...entry(n),
+    outcome: "refused" as const,
+    reason,
+    modal: "unreadable" as const,
+    frame,
+  });
+
+  test("refused examples keep their own cap of ten, and the sent examples keep their fifty", () => {
+    const l = ledger();
+    for (let n = 0; n < MAX_EXAMPLES; n++) {
+      clock.now = START + n;
+      l.example(entry(n));
+    }
+    for (let n = 0; n < MAX_NEGATIVE_EXAMPLES + 4; n++) {
+      clock.now = START + 1000 + n;
+      l.example(refusal(n, `f${String(n).padStart(4, "0")}`));
+    }
+    const names = readdirSync(l.examplesDir).toSorted();
+    const negative = names.filter((name) => name.includes("-refused-"));
+    expect(negative).toHaveLength(MAX_NEGATIVE_EXAMPLES);
+    expect(negative[0]).toContain("f0004");
+    expect(names.length - negative.length).toBe(MAX_EXAMPLES);
+  });
+
+  test("a refusal files once per frame hash and reason per day", () => {
+    const l = ledger();
+    for (let n = 0; n < 5; n++) {
+      clock.now = START + n;
+      l.example(refusal(n, "same0"));
+    }
+    l.example(refusal(9, "same0", "not_free"));
+    l.example(refusal(10, "other"));
+    expect(readdirSync(l.examplesDir)).toHaveLength(3);
+    // The next day the same screen and reason file again.
+    clock.now = START + 24 * 60 * 60 * 1000;
+    l.example(refusal(11, "same0"));
+    expect(readdirSync(l.examplesDir)).toHaveLength(4);
+  });
+
   test("maskRow keeps whitespace and box drawing, and hides letters, digits and symbols in every script", () => {
     expect(maskRow("sk-or-v1-abc123! \u256d\u2500\u256e")).toBe("aaxaaxa0xaaa000x \u256d\u2500\u256e");
     expect(maskRow("sk-or-v1-secret  \u2502 \u041f\u0440\u0438\u0432\u0435\u0442 \u65e5\u672c \u273b 12:30  ")).toBe("aaxaaxa0xaaaaaa  \u2502 aaaaaa aa x 00x00");
+  });
+});
+
+describe("hook edges in the counters (M56 spec 11)", () => {
+  test("counts each edge word per row, and a confirmed send moves from sent to effective", () => {
+    const l = ledger();
+    l.edge(KEY, "stop");
+    l.edge(KEY, "stop");
+    l.edge(KEY, "lost-stop");
+    l.send(KEY, { outcome: "sent", probed: false });
+    l.confirmEffective(KEY, "sent");
+    l.flush();
+    const [row] = l.rows();
+    expect(row?.edges).toEqual({ stop: 2, "lost-stop": 1 });
+    expect(row?.sent).toBe(0);
+    expect(row?.effective).toBe(1);
+    const day = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
+    expect(Object.values(day!.rows)[0]?.edges).toEqual({ stop: 2, "lost-stop": 1 });
   });
 });

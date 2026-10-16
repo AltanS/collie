@@ -3,7 +3,7 @@
 // This file holds the contract's types, the free rule and the one short hash the surface code uses.
 // It is pure: no DOM, no Bun API, no harness name.
 
-/** Why a claim is `unknown`. `contested` is reserved for later sources (hooks, mux hints). */
+/** Why a claim is `unknown`. `contested` comes from a hook edge that disagrees with a young read (spec 11). */
 export type SurfaceReason = "no-match" | "contested" | "stale" | "torn";
 
 /**
@@ -16,7 +16,13 @@ export type SurfaceReason = "no-match" | "contested" | "stale" | "torn";
 export const SURFACE_VERSION = 1;
 
 export type AskKind = "permission" | "question" | "menu";
-export type AskChannel = "hook" | "keys";
+/**
+ * How an ask is answered. `keys`: the bridge walks and confirms on the screen through the key gate.
+ * `hook`: a hook holds the ask and answers it (spec 12). `program`: a program session answers it on
+ * its own channel by the program's ask id, and no key is sent (spec 14).
+ */
+export const ASK_CHANNELS = ["hook", "keys", "program"] as const;
+export type AskChannel = (typeof ASK_CHANNELS)[number];
 
 /** One option of an ask: a stable id within the ask and the label the screen shows. */
 export interface AskOption {

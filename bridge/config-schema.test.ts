@@ -277,7 +277,7 @@ describe("the durable transport settings", () => {
   test("durable: a URL without a token, or a token without a URL, is a config error", () => {
     expect(chooseDurableTransport({ COLLIE_DURABLE_URL: "https://x.example" })).toEqual({
       kind: "conflict",
-      detail: "COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the program refuses a caller with no token",
+      detail: "COLLIE_DURABLE_URL is set without COLLIE_DURABLE_TOKEN; the durable agent refuses a caller with no token",
     });
     expect(chooseDurableTransport({ COLLIE_DURABLE_URL: "https://x.example", COLLIE_DURABLE_TOKEN: "   " }).kind).toBe("conflict");
     expect(chooseDurableTransport({ COLLIE_DURABLE_TOKEN: token() })).toMatchObject({ kind: "conflict" });

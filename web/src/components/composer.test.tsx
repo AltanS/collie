@@ -345,14 +345,15 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
       ),
     );
     const onAnswerDialog = vi.fn();
-    const { container } = renderWithContainer({ surface: UNREADABLE, onAnswerDialog });
+    const { container } = renderWithContainer({ surface: UNREADABLE, onAnswerDialog, dialogCard: true });
     // A false overlay hit must never block a send: the field and Send stay as on a free box.
     expect(screen.getByPlaceholderText(/cannot read what is open/i)).toBeEnabled();
     const user = await typeAndSend("carry on please");
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
     expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen.*cannot read was open over the box/i);
-    expect(container.querySelector('[data-slot="composer-refusal-detail"]')).toHaveTextContent(/check the pane, then tap type here/i);
+    // The phone's sentence says it once: the bridge's same English is not repeated under it.
+    expect(container.querySelector('[data-slot="composer-refusal-detail"]')).toBeNull();
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
     // Its control goes to the card, the same way the Answer the dialog word does.
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
@@ -524,7 +525,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
       ),
     );
     const onAnswerDialog = vi.fn();
-    const { container } = renderWithContainer({ surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" }, onAnswerDialog });
+    const { container } = renderWithContainer({ surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" }, onAnswerDialog, dialogCard: true });
 
     await user.type(screen.getByPlaceholderText(/cannot read what is open/i), "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -535,6 +536,78 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
     // Only the first tap went out, and it typed nothing: the bridge refused before any key.
     expect(recordedSends()).toHaveLength(1);
+  });
+
+  // The 2026-10-16 field case on lane 8788: a free box with Claude Code's agents panel under it read
+  // unreadable. The notice said its sentence twice, offered a card that was not there, and had no ✕.
+  it("an unreadable screen with no dialog card: the sentence once, no Answer the dialog, and a ✕ that hides the notice", async () => {
+    const user = userEvent.setup();
+    const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;
+    server.use(
+      ...sendHandler((request) =>
+        sendAnswer(request.id, "refused", "unconfirmed", {
+          offers: ["commit", "keys"],
+          rowsHash: "0abc",
+          surface: unreadable,
+          detail: "Collie cannot read this screen. Check the pane, then tap Type here.",
+        }),
+      ),
+    );
+    const onAnswerDialog = vi.fn();
+    const { container } = renderWithContainer({ surface: unreadable, onAnswerDialog });
+    await user.type(screen.getByRole("textbox"), "carry on please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+    expect(container.textContent?.match(/Collie cannot read this screen/g)).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
+    // The offers stay: the ✕ hid only the notice.
+    expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+
+    // The same words over the same screen stay hidden; a send that reads another screen shows again.
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull();
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0abd", surface: { ...unreadable, revision: 5 } })));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+  });
+
+  // The review of 2026-10-16: a refusal with no offers has no strip, so a hidden notice would leave
+  // the tap with no visible answer. The same refusal on the same still screen shows the notice again.
+  it("a hidden notice comes back when a tap meets the same refusal with no offers", async () => {
+    const user = userEvent.setup();
+    const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { surface: unreadable })));
+    const { container } = renderWithContainer({ surface: unreadable });
+    await user.type(screen.getByRole("textbox"), "carry on please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
+    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
+  });
+
+  it("the offers' ✕ hides the notice with the strip", async () => {
+    const user = userEvent.setup();
+    const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0abc", surface: unreadable })));
+    const { container } = renderWithContainer({ surface: unreadable });
+    await user.type(screen.getByRole("textbox"), "carry on please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Type here" })).toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
   });
 
   it("draws no refusal notice for a read dialog: its word stands in the Send slot", async () => {
@@ -3939,6 +4012,20 @@ describe("outcome at the thumb", () => {
     expect(refusalText()).toBe("");
   });
 
+  it("sent and queued behind the turn: the draft goes, and the header says it waits for the turn, not a refusal", async () => {
+    await send(() => sendAnswer("x", "sent", undefined, { queued: true }), { surface: SURFACES.running });
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    await waitFor(() => expect(header()).toBe("Queued. The agent takes it after this turn."));
+    expect(refusalText()).toBe("");
+  });
+
+  it("refused turn_running: the agent is working, said as that, with the draft kept", async () => {
+    await send(() => sendAnswer("x", "refused", "turn_running", { offers: ["keys"], surface: SURFACES.running }), { surface: SURFACES.running });
+    await waitFor(() => expect(refusalText()).not.toBe(""));
+    expect(refusalText()).toBe("The agent is working. Send again when it is done.");
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+  });
+
   it("refused draft_present: Add to it, Replace and Cancel, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }));
     const strip = await screen.findByTestId("send-offers");
@@ -3999,7 +4086,7 @@ describe("outcome at the thumb", () => {
 
   it("refused not_free: names the dialog that was open and points to its card and the Keys dock", async () => {
     const onAnswerDialog = vi.fn();
-    const user = await send(() => sendAnswer("x", "refused", "not_free", { surface: SURFACES.ask }), { onAnswerDialog });
+    const user = await send(() => sendAnswer("x", "refused", "not_free", { surface: SURFACES.ask }), { onAnswerDialog, dialogCard: true });
     await waitFor(() => expect(refusalText()).toMatch(/not free.*a menu was open/i));
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);

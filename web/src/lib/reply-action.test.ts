@@ -49,6 +49,28 @@ describe("sendText", () => {
     ]);
   });
 
+  it("a resend names the old request id and sends an empty text; a plain send carries no resendOf", async () => {
+    await sendText({ paneId: "w1:p1", text: "", mode: "send", resendOf: "req00001", held: null, mint });
+    await sendText({ paneId: "w1:p1", text: "plain", held: null, mint });
+    const [resend, plain] = recordedSends();
+    expect(resend).toMatchObject({ text: "", mode: "send", resendOf: "req00001" });
+    expect(resend!.id).not.toBe("req00001");
+    expect(plain).not.toHaveProperty("resendOf");
+  });
+
+  it("a resend keeps its request id across a lost answer, and another old id is a new intent", async () => {
+    server.use(http.post("/api/send", () => HttpResponse.error()));
+    const first = await sendText({ paneId: "w1:p1", text: "", mode: "send", resendOf: "req00001", held: null, mint });
+    expect(first.status).toBe("noAnswer");
+    if (first.status !== "noAnswer") return;
+    server.resetHandlers();
+    await sendText({ paneId: "w1:p1", text: "", mode: "send", resendOf: "req00001", held: first.intent, mint });
+    await sendText({ paneId: "w1:p1", text: "", mode: "send", resendOf: "req00002", held: first.intent, mint });
+    const ids = recordedSends().map((s) => s.id);
+    expect(ids[0]).toBe(first.intent.requestId);
+    expect(ids[1]).not.toBe(first.intent.requestId);
+  });
+
   it("modeFor: a slash command, a shell line or a file mention at the start is a command", () => {
     expect(modeFor("/model")).toBe("command");
     expect(modeFor("  !ls")).toBe("command");

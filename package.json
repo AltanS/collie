@@ -20,7 +20,8 @@
     "test:crew": "bun test ./integration/crew-harness.test.ts",
     "typecheck": "bunx tsc --noEmit && bunx tsc --noEmit -p tsconfig.contract.json",
     "harness:drift": "bun scripts/harness-drift.ts",
-    "canary": "bun scripts/harness-canary/run.ts"
+    "canary": "bun scripts/harness-canary/run.ts",
+    "harness:lab": "bun scripts/harness-canary/lab/main.ts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.78.0",

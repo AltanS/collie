@@ -7,15 +7,23 @@
 // three are filled, and it sits OUTSIDE that directory so the rule stays greppable rather than
 // remembered.
 //
-// It reads and it never writes. Nothing here can cause a send, a key, a rename or a close — a beacon
-// is a hint, never a control channel (.adr/0024).
+// It reads and it never writes, with two exceptions (M56 spec 11): the edge spool deletes each edge
+// file it took, so an edge is taken once, and a bridge that takes edges writes its own hook target
+// file at boot and removes it on a clean stop. Nothing here can cause a send, a key, a rename or a close: a
+// beacon and an edge are hints, never a control channel (.adr/0024).
 
-import { readFileSync } from "node:fs";
-import { readdir, readFile, lstat } from "node:fs/promises";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { readdir, readFile, lstat, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, parseHookTarget, type HookTargetEnv, type HookTargetRecord } from "./beacon/hook-targets.ts";
+
 import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
-import { beaconsDir, BEACON_FILE_SUFFIX } from "./beacon/paths.ts";
+import { parseEdge } from "./beacon/parse.ts";
+import type { SavedSource, SourceStore } from "./surface/edges.ts";
+import { asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
+import { beaconsDir, BEACON_FILE_SUFFIX, EDGE_FILE, edgesDir } from "./beacon/paths.ts";
 import type { BeaconDirectory, BeaconLiveness, BeaconSweepDeps } from "./beacon/reader.ts";
 import type { JsonValue } from "./json.ts";
 import type { Environment } from "../cli/context.ts";
@@ -167,4 +175,148 @@ function readTextFile(path: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ── The edge spool (M56 spec 11) ──────────────────────────────────────────────
+
+/** The edge spool seam: every edge file's text, each taken once (read, then deleted). */
+export interface EdgeSpool {
+  take(): Promise<readonly string[]>;
+}
+
+/** The most edge files one take reads. The emitter caps the spool at the same order of size. */
+const EDGE_TAKE_MAX = 512;
+
+/**
+ * The edge spool on disk: `<stateDir>/edges/`. Names that are not edge files (a temp file mid-write,
+ * anything foreign) are left alone. A symlink or a non-file is deleted unread. Every failure is
+ * "nothing to take": the screen still reads every pane on its own poll.
+ */
+export function fileEdgeSpool(stateDir: string, uid: number | undefined = process.getuid?.()): EdgeSpool {
+  const dir = edgesDir(stateDir);
+  return {
+    async take(): Promise<readonly string[]> {
+      let names: string[];
+      try {
+        names = (await readdir(dir)).filter((name) => EDGE_FILE.test(name)).toSorted().slice(0, EDGE_TAKE_MAX);
+      } catch {
+        return [];
+      }
+      const texts: string[] = [];
+      for (const name of names) {
+        const path = join(dir, name);
+        try {
+          const stats = await lstat(path);
+          // A file another user wrote is not an edge of this user's agents: deleted unread.
+          if (stats.isFile() && (uid === undefined || stats.uid === uid)) texts.push(await readFile(path, "utf8"));
+        } catch {
+          // Gone between the listing and the read: another take had it.
+        }
+        await rm(path, { force: true }).catch(() => undefined);
+      }
+      return texts;
+    },
+  };
+}
+
+// ── The hook target registry (M56 spec 11, bridge/beacon/hook-targets.ts) ─────
+
+/** This bridge's entry in the hook target registry. */
+export interface HookTargetRegistration {
+  /**
+   * Writes the file again when it is missing or names another pid. An emitter can delete it between
+   * reading a dead pid and this bridge's restart on the same state dir; the liveness tick heals that.
+   */
+  keep(): void;
+  /** For a clean stop: deletes the file only while it still names this process. */
+  remove(): void;
+}
+
+/**
+ * Writes this bridge's hook target file, so every emitter on the host also writes its edges here.
+ * A newer bridge on the same state dir keeps its own file on this one's stop. A write that fails is
+ * one warning until a later write works: the emitter then falls back to the default state dir, as
+ * before the registry.
+ */
+export function registerHookTarget(stateDir: string, env: HookTargetEnv = process.env, home: string = homedir()): HookTargetRegistration {
+  const dir = hookTargetsDir(env, home);
+  const path = join(dir, hookTargetFileName(stateDir));
+  let pidStartTime: number | null = null;
+  try {
+    pidStartTime = parseProcStartTime(readFileSync(procStatPath(process.pid), "utf8"));
+  } catch {
+    // No /proc: the emitter checks the pid alone.
+  }
+  const record: HookTargetRecord = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now() };
+  const temp = join(dir, `.${String(process.pid)}.tmp`);
+  let warned = false;
+  const write = (): void => {
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+      renameSync(temp, path);
+      warned = false;
+    } catch (err) {
+      rmSync(temp, { force: true });
+      if (!warned) console.warn(`[surface] could not register as a hook target in ${dir}: ${err instanceof Error ? err.message : String(err)}`);
+      warned = true;
+    }
+  };
+  const ownPid = (): boolean => {
+    try {
+      return parseHookTarget(readFileSync(path, "utf8"))?.pid === process.pid;
+    } catch {
+      return false;
+    }
+  };
+  write();
+  return {
+    keep: () => {
+      if (!ownPid()) write();
+    },
+    remove: () => {
+      if (ownPid()) rmSync(path, { force: true });
+    },
+  };
+}
+
+// ── The live hook sources across a restart (M56 spec 11, bridge/surface/edges.ts) ─────
+
+/** `<stateDir>/surface/hook-sources.json`: the router's live sources, so a restart keeps "hooks: live". */
+export function hookSourcesPath(stateDir: string): string {
+  return join(stateDir, "surface", "hook-sources.json");
+}
+
+/** The most saved sources read back. One per hooked pane; a host has far fewer. */
+const SAVED_SOURCES_MAX = 256;
+
+/** The router's source store on disk. A missing or broken file reads as no sources. */
+export function fileSourceStore(stateDir: string): SourceStore {
+  const path = hookSourcesPath(stateDir);
+  return {
+    load(): readonly SavedSource[] {
+      let rows: JsonValue[];
+      try {
+        const parsed = parseJson(readFileSync(path, "utf8"));
+        rows = Array.isArray(parsed) ? parsed.slice(0, SAVED_SOURCES_MAX) : [];
+      } catch {
+        return [];
+      }
+      const out: SavedSource[] = [];
+      for (const row of rows) {
+        const object = asJsonObject(row);
+        const session = asJsonString(object?.session);
+        const paneId = asJsonString(object?.paneId);
+        const record = object?.record === undefined ? null : parseEdge(JSON.stringify(object.record));
+        if (session !== undefined && paneId !== undefined && record !== null) out.push({ session, paneId, record });
+      }
+      return out;
+    },
+    save(sources: readonly SavedSource[]): void {
+      const temp = `${path}.${String(process.pid)}.tmp`;
+      mkdirSync(join(stateDir, "surface"), { recursive: true, mode: 0o700 });
+      writeFileSync(temp, `${JSON.stringify(sources)}\n`, { mode: 0o600 });
+      renameSync(temp, path);
+    },
+  };
 }

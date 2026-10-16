@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
-import { ASK_OFF_TEXT, askRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
+import { ASK_OFF_TEXT, askRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
 import { readFileSync } from "node:fs";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -20,6 +20,7 @@ import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
+import { HoldStore } from "./holds.ts";
 
 const RULE = "─".repeat(40);
 
@@ -89,14 +90,16 @@ function idlePane() {
   };
 }
 
-function runtime(withSend: boolean, dir: string) {
+function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
   const pane = idlePane();
   let clock = 0;
+  const store = new RequestStore(join(dir, "sends"), () => clock);
   const send = withSend
     ? new SendProtocol({
         mux: pane,
         gate: new KeyGate(pane, () => clock),
-        store: new RequestStore(join(dir, "sends"), () => clock),
+        store,
+        holds,
         locks: new SessionLocks(),
         ring: new RowRing(),
         profile: (harness) => Promise.resolve(profileFor(harness, "2.1.200", { log: () => undefined })),
@@ -118,7 +121,7 @@ function runtime(withSend: boolean, dir: string) {
   };
   // The herdr stub has no `controlTurn`, so it is a screen pane.
   const rt: SendRouteRuntime = { send, engine, herdr: {}, name: "main" };
-  return { rt, pane, pokes: () => pokes };
+  return { rt, pane, store, pokes: () => pokes };
 }
 
 function auditLines() {
@@ -316,6 +319,99 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// `DELETE /api/send/<id>` (M56 spec 15): the Cancel on a queued row.
+describe("heldCancelRoute (M56 spec 15)", () => {
+  /** A held request on pane %1, as the protocol leaves one: the record held, the row on disk. */
+  const seed = (store: RequestStore, holds: HoldStore, id: string): void => {
+    const accepted = store.accept({ id, session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "a private message" });
+    const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+    store.hold(id, { ...receipt, outcome: "held" });
+    holds.add({ id, session: "main", paneId: "%1", harness: "claude", mode: "send", text: "a private message", revision: 0, command: false });
+  };
+
+  test("flag off is a 404; a bad id or pane is a 400; a pane that holds no such request is a 404", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, acceptEncoding: null };
+      const off = runtime(false, dir);
+      expect(heldCancelRoute(off.rt, "route-held-0001", "%1", context).status).toBe(404);
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      expect(heldCancelRoute(rt, "../x", "%1", context).status).toBe(400);
+      expect(heldCancelRoute(rt, "route-held-0001", null, context).status).toBe(400);
+      expect(heldCancelRoute(rt, "route-held-0001", "%1", context).status).toBe(404);
+      seed(store, holds, "route-held-0001");
+      expect(heldCancelRoute(rt, "route-held-0001", "%2", context).status).toBe(404);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a held request ends cancelled with its receipt, one audit line and never the text; a running one is a 409 busy; an ended one is dismissed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit, lines } = auditLines();
+      const context = { audit, device: "phone", acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      seed(store, holds, "route-held-0002");
+      const res = heldCancelRoute(rt, "route-held-0002", "%1", context);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({ result: "cancelled", receipt: { requestId: "route-held-0002", outcome: "cancelled" } });
+      expect(holds.get("route-held-0002")).toBeNull();
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("send-cancel");
+      expect(lines.join("\n")).not.toMatch(/private/u);
+
+      seed(store, holds, "route-held-0003");
+      holds.markRunning("route-held-0003");
+      const busy = heldCancelRoute(rt, "route-held-0003", "%1", context);
+      expect(busy.status).toBe(409);
+      expect(await busy.json()).toEqual({ result: "refused", reason: "busy" });
+
+      seed(store, holds, "route-held-0004");
+      holds.end("route-held-0004", "expired");
+      expect(await heldCancelRoute(rt, "route-held-0004", "%1", context).json()).toEqual({ result: "dismissed" });
+      expect(holds.get("route-held-0004")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
+  test("resendOf sends the stored text of the ended row under the new id, and the old row goes; an unknown row is a 404", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: true, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      const accepted = store.accept({ id: "route-res-0001", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "a name the mask would hide" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-res-0001", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-res-0001", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "a name the mask would hide", revision: 0, command: false });
+      holds.end("route-res-0001", "expired");
+      expect((await sendRoute(rt, { id: "route-res-0002", pane: "%1", text: "", resendOf: "route-res-9999" }, context)).status).toBe(404);
+      const res = await sendRoute(rt, { id: "route-res-0003", pane: "%1", text: "", resendOf: "route-res-0001" }, context);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0003", outcome: "sent", textLength: "a name the mask would hide".length } });
+      expect(holds.get("route-res-0001")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("parseSendRequest takes resendOf with an empty text, and refuses a resendOf that is not a request id or is the new id", () => {
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "route-res-0001" })).toMatchObject({ resendOf: "route-res-0001", text: "" });
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "../x" })).toBeNull();
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "route-res-0004" })).toBeNull();
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "" })).toBeNull();
   });
 });
 

@@ -63,3 +63,4 @@ source moves with the durable code.
 - The package's name on npm outlives the experiment: an exit deprecates it, it cannot remove it.
 - Revisit this decision if the exit in ADR 0104 passes (the dist-tag rule then ends, and `latest` becomes the
   question), or if a second runtime needs a server of its own.
+- Wording, 2026-10-16: as of 1.22.0 the user-facing term for what this ADR and ADR 0104 call a program is "durable agent". The API channel, the code and these records keep the word program.

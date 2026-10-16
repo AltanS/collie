@@ -33,8 +33,13 @@ export const WRITE_EVERY_MS = 60_000;
 export const DEFAULT_CAP = 5;
 /** The window the cap counts in. */
 export const CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
-/** The most example files kept; the oldest go first. */
+/** The most sent example files kept; the oldest go first. */
 export const MAX_EXAMPLES = 50;
+/** The most refused (negative) example files kept, on their own cap; the oldest go first. One per
+ *  frame hash and reason per day, so one screen refused many times fills one slot. */
+export const MAX_NEGATIVE_EXAMPLES = 10;
+/** The marker in a negative example's file name: `<at>-refused-<day>-<frame>-<reason>.json`. */
+const NEGATIVE_MARK = "-refused-";
 /** The most frame hashes one row keeps per day. A hash is nine bytes of a day's cluster; a few hundred is plenty. */
 export const MAX_FRAME_HASHES = 200;
 /** The inbox is cut back to its newest lines past this size. */
@@ -76,6 +81,26 @@ export interface CounterRow extends CounterKey {
   typed_not_submitted: number;
   /** Discards that emptied the box. Never counted under `sent`: nothing went to the agent. */
   discarded: number;
+  /** Sends the harness could not take during its turn, so Collie held them (M56 spec 15). */
+  held: number;
+  /** Held sends that went out once the pane read free (also counted under `sent` or `effective`). */
+  held_sent: number;
+  /** Held sends that nobody could send within 30 minutes. */
+  held_expired: number;
+  /** Held sends the person cancelled before they went out. */
+  held_cancelled: number;
+  /**
+   * Hook edges (M56 spec 11), by word: each edge kind (`prompt`, `stop`, `dialog`, `start`, `end`,
+   * `reread`) as a pane took it, `lost-stop` for a block the screen ended with free reads, and
+   * `dropped` for an edge no pane could be found for (counted under the edge's harness, version `-`).
+   */
+  edges: Record<string, number>;
+  /**
+   * Hook-held permissions (M56 spec 12), by outcome: `phone` (the tap reached the hook and took
+   * effect), `desk` (the desk or another hook answered first), `void` (the hook stopped, or another
+   * Collie answered), `timeout` (the hold reached its limit), `mismatch` (an answer with another hash).
+   */
+  holds: Record<string, number>;
 }
 
 /** One day's file. */
@@ -106,6 +131,11 @@ export interface CapState {
 }
 
 /** `YYYY-MM-DD` of a moment, in UTC, so a day file does not move with the zone. */
+/** A piece of a file name: letters, digits, `_` and `.` only; anything else becomes `_`. */
+function safeName(piece: string): string {
+  return piece.replace(/[^A-Za-z0-9_.]/gu, "_").slice(0, 64);
+}
+
 export function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -116,7 +146,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0 };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -188,6 +218,12 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     unknown_outcome: count("unknown_outcome"),
     typed_not_submitted: count("typed_not_submitted"),
     discarded: count("discarded"),
+    held: count("held"),
+    held_sent: count("held_sent"),
+    held_expired: count("held_expired"),
+    held_cancelled: count("held_cancelled"),
+    edges: parseCountMap(node.edges),
+    holds: parseCountMap(node.holds),
   };
 }
 
@@ -233,6 +269,12 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.unknown_outcome += from.unknown_outcome;
   into.typed_not_submitted += from.typed_not_submitted;
   into.discarded += from.discarded;
+  into.held += from.held;
+  into.held_sent += from.held_sent;
+  into.held_expired += from.held_expired;
+  into.held_cancelled += from.held_cancelled;
+  for (const [word, n] of Object.entries(from.edges)) bump(into.edges, word, n);
+  for (const [word, n] of Object.entries(from.holds)) bump(into.holds, word, n);
 }
 
 /** The rows of several days added up by key, sorted by harness, then version. */
@@ -333,15 +375,34 @@ export interface InboxEntry {
   readonly count: number;
 }
 
-/** A probed send that settled, kept as a positive example: the bottom cluster as a shape, the text as a length. */
+/** A cue a refusal's read found: its kind, and its row as a shape. */
+export interface ExampleCue {
+  readonly kind: string;
+  /** The cue's row inside `cluster`, or null when it sits above the cluster. */
+  readonly at: number | null;
+  /** The cue's row as read. Masked like the cluster before it is written. */
+  readonly row: string;
+}
+
+/**
+ * A request kept as an example: the bottom cluster as a shape, the text as a length. A probed send
+ * that settled is a positive one. A refusal whose modal read `unreadable` or `unknown` is a negative
+ * one, with its reason, its modal and the cues that read: the shape a reader may have to learn.
+ */
 export interface ExampleEntry {
   readonly requestId: string;
   readonly harness: string;
   readonly version: string;
   readonly profileId: string;
   readonly status: string;
-  readonly outcome: "sent" | "effective";
-  /** The bottom cluster of S0, rows as shapes. */
+  readonly outcome: "sent" | "effective" | "refused";
+  /** A refusal's reason. */
+  readonly reason?: string;
+  /** A refusal's modal. */
+  readonly modal?: "unreadable" | "unknown";
+  /** A refusal's cues, read with the frame the profile found. */
+  readonly cues?: readonly ExampleCue[];
+  /** The bottom cluster of the read, rows as shapes: S0 for a send, the last read for a refusal. */
   readonly cluster: readonly string[];
   /** The short hash of the cluster, the same one a refusal names. */
   readonly frame: string;
@@ -442,8 +503,13 @@ export class SurfaceLedger {
     this.touch();
   }
 
-  /** One settled send. `probed` is whether it took the probed path, `manual` whether the person confirmed an unreadable screen. */
-  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean }): void {
+  /**
+   * One settled send. `probed` is whether it took the probed path; `released` whether it was the run of
+   * a held request (M56 spec 15), whose `sent` or `effective` also counts as `held_sent`. A `held`
+   * answer counts once when the send is held; its end (`expired`, `cancelled`, or the release's own
+   * outcome) counts again.
+   */
+  send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean; readonly released?: boolean }): void {
     const row = this.row(key);
     if (end.outcome === "refused") bump(row.refused, end.reason ?? "other");
     else if (end.outcome === "sent") row.sent++;
@@ -451,7 +517,37 @@ export class SurfaceLedger {
     else if (end.outcome === "unknown") row.unknown_outcome++;
     else if (end.outcome === "typed_not_submitted") row.typed_not_submitted++;
     else if (end.outcome === "discarded") row.discarded++;
+    else if (end.outcome === "held") row.held++;
+    else if (end.outcome === "expired") row.held_expired++;
+    else if (end.outcome === "cancelled") row.held_cancelled++;
+    if (end.released === true && (end.outcome === "sent" || end.outcome === "effective")) row.held_sent++;
     if (end.probed) row.probed++;
+    this.touch();
+  }
+
+  /** One hook edge word (M56 spec 11): an edge kind a pane took, `lost-stop`, or `dropped`. */
+  edge(key: CounterKey, word: string): void {
+    const row = this.row(key);
+    bump(row.edges, word);
+    this.touch();
+  }
+
+  /** One hook-held permission's outcome (M56 spec 12): `phone`, `desk`, `void`, `timeout` or `mismatch`. */
+  hold(key: CounterKey, word: string): void {
+    const row = this.row(key);
+    bump(row.holds, word);
+    this.touch();
+  }
+
+  /**
+   * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11): it moves to
+   * `effective`. An outcome counted on an earlier day stays there; today's row only gains the effective.
+   */
+  confirmEffective(key: CounterKey, from: "sent" | "unknown"): void {
+    const row = this.row(key);
+    if (from === "sent" && row.sent > 0) row.sent--;
+    if (from === "unknown" && row.unknown_outcome > 0) row.unknown_outcome--;
+    row.effective++;
     this.touch();
   }
 
@@ -492,21 +588,32 @@ export class SurfaceLedger {
     }
   }
 
-  /** The folder of positive examples. `collie doctor` names it. */
+  /** The folder of examples, positive and negative. `collie doctor` names it. */
   get examplesDir(): string {
     return join(this.dir, "examples");
   }
 
-  /** A probed send that settled: its S0 bottom cluster as a shape, at most {@link MAX_EXAMPLES} files, oldest dropped. */
+  /** A probed send that settled, or a refusal over a screen Collie could not read: its bottom cluster
+   *  and its cue rows as shapes. Sent examples keep at most {@link MAX_EXAMPLES} files and refused ones
+   *  at most {@link MAX_NEGATIVE_EXAMPLES}, each cap on its own, oldest dropped. A refusal files once per
+   *  frame hash and reason per day: the same screen refused again adds nothing. */
   example(entry: ExampleEntry): void {
     try {
       mkdirSync(this.examplesDir, { recursive: true, mode: 0o700 });
       const at = this.now();
-      const name = `${String(at).padStart(14, "0")}-${entry.requestId}.json`;
-      const body = { at, ...entry, cluster: entry.cluster.map(maskRow), text: `<typed:${String(entry.textLength)}>` };
+      const negative = entry.outcome === "refused";
+      const stamp = String(at).padStart(14, "0");
+      const key = `${NEGATIVE_MARK}${dayOf(at)}-${safeName(entry.frame)}-${safeName(entry.reason ?? "-")}`;
+      const present = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json"));
+      if (negative && present.some((file) => file.slice(stamp.length) === `${key}.json`)) return;
+      const name = negative ? `${stamp}${key}.json` : `${stamp}-${entry.requestId}.json`;
+      const masked = { at, ...entry, cluster: entry.cluster.map(maskRow), text: `<typed:${String(entry.textLength)}>` };
+      const body = entry.cues === undefined ? masked : { ...masked, cues: entry.cues.map((cue) => ({ ...cue, row: maskRow(cue.row) })) };
       writeFileSync(join(this.examplesDir, name), `${JSON.stringify(body)}\n`, { mode: 0o600 });
       const files = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json")).toSorted();
-      for (const old of files.slice(0, Math.max(0, files.length - MAX_EXAMPLES))) rmSync(join(this.examplesDir, old), { force: true });
+      const group = files.filter((file) => file.includes(NEGATIVE_MARK) === negative);
+      const keep = negative ? MAX_NEGATIVE_EXAMPLES : MAX_EXAMPLES;
+      for (const old of group.slice(0, Math.max(0, group.length - keep))) rmSync(join(this.examplesDir, old), { force: true });
     } catch (err) {
       this.warn(`[surface] could not write an example: ${err instanceof Error ? err.message : String(err)}`);
     }

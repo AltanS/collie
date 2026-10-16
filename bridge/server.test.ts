@@ -701,6 +701,18 @@ describe("pane write prompt binding", () => {
     expect(client.keys).toEqual([["w1:p1", ["1"]]]);
   });
 
+  test("Send now while the turn runs: the queue's declared keys pass with no read of the screen", async () => {
+    // The screen of a running Claude Code 2.1.301 turn with a message queued (`ctrl+enter to send now`).
+    // The keys door never asks the Surface: a running turn is never a refusal here, like the Stop key.
+    const client = new FakePaneClient();
+    client.text = readFileSync(join(import.meta.dir, "../web/src/fixtures/panes/claude--v2301-working-queued-message--w100.txt"), "utf8");
+    const { audit } = auditEntries();
+    const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["ctrl+Enter"] }), audit, "phone", "default");
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([]);
+    expect(client.keys).toEqual([["w1:p1", ["ctrl+Enter"]]]);
+  });
+
   test("reply without expected_prompt writes without an extra pane read", async () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();
@@ -2199,9 +2211,9 @@ describe("renameSpace", () => {
   });
 
   test("the program's refusal rides the space.rename_failed code with its words, and nothing is audited", async () => {
-    const { run, audit } = rig(async () => muxRefused("The program did not accept this name."));
+    const { run, audit } = rig(async () => muxRefused("The durable agent did not accept this name."));
     const res = await run(JSON.stringify({ label: "Taken" }));
-    expect(await res.json()).toMatchObject({ ok: false, code: "space.rename_failed", detail: { reason: "The program did not accept this name." } });
+    expect(await res.json()).toMatchObject({ ok: false, code: "space.rename_failed", detail: { reason: "The durable agent did not accept this name." } });
     expect(audit).toEqual([]);
   });
 
@@ -2261,7 +2273,7 @@ describe("durable history routes", () => {
     ];
     const adapter: Pick<MuxAdapter, "conversationItems"> = {
       conversationItems: async (id) =>
-        id === "conv-1" ? muxOk<MuxConversationItems>({ items, next: "i2", more: true }) : muxGone("The program does not know this conversation."),
+        id === "conv-1" ? muxOk<MuxConversationItems>({ items, next: "i2", more: true }) : muxGone("The durable agent does not know this conversation."),
     };
     const res = await durableConversationItems(adapter, "conv-1", new URL("http://x/api/durable/conversation/conv-1/items"), get("/"), true);
     const body = await res.json();
@@ -2271,7 +2283,7 @@ describe("durable history routes", () => {
       ["r1", "assistant"],
     ]);
     const gone = await durableConversationItems(adapter, "nobody", new URL("http://x/"), get("/"), true);
-    expect(await gone.json()).toEqual({ available: false, reason: "gone", detail: "The program does not know this conversation." });
+    expect(await gone.json()).toEqual({ available: false, reason: "gone", detail: "The durable agent does not know this conversation." });
     expect(await (await durableConversationItems({}, "conv-1", new URL("http://x/"), get("/"), true)).json()).toEqual({ available: false, reason: "unsupported" });
   });
 
@@ -2293,9 +2305,9 @@ describe("durable history routes", () => {
     const audit: AuditEntry[] = [];
     const record = { record: (entry: AuditEntry) => void audit.push(entry) };
     const engine = { pokeNow: () => {} };
-    const refused: Pick<MuxAdapter, "reopenConversation" | "refresh"> = { reopenConversation: async () => muxRefused("The program did not bring this conversation back."), refresh: async () => {} };
+    const refused: Pick<MuxAdapter, "reopenConversation" | "refresh"> = { reopenConversation: async () => muxRefused("The durable agent did not bring this conversation back."), refresh: async () => {} };
     const res = await reopenConversation(refused, engine, "conv-1", new Request("http://x/", { method: "POST" }), record, "pixel", "default");
-    expect(await res.json()).toMatchObject({ ok: false, code: "durable.reopen_failed", detail: { reason: "The program did not bring this conversation back." } });
+    expect(await res.json()).toMatchObject({ ok: false, code: "durable.reopen_failed", detail: { reason: "The durable agent did not bring this conversation back." } });
     const bare: Pick<MuxAdapter, "reopenConversation" | "refresh"> = { refresh: async () => {} };
     const none = await reopenConversation(bare, engine, "conv-1", new Request("http://x/", { method: "POST" }), record, "pixel", "default");
     expect(await none.json()).toMatchObject({ ok: false, code: "durable.reopen_failed" });

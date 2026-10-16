@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { capSentence, isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
+import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
 import type { SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
@@ -31,6 +31,7 @@ describe("readSendReply", () => {
       surface: { revision: 2, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" },
       detail: "No input box was found.",
       cap: null,
+      queued: false,
     });
   });
 
@@ -84,6 +85,43 @@ describe("readSend", () => {
     expect(readSend(reply("unknown", "bound")).clear).toBe(false);
   });
 
+  it("a send queued behind the running turn clears the draft and says it waits for the turn; the receipt's queued is read off the wire", () => {
+    const body: JsonObject = { receipt: { outcome: "sent", queued: true }, offers: [] };
+    const queued = readSendReply(body)!;
+    expect(queued.queued).toBe(true);
+    expect(readSend(queued)).toEqual({ clear: true, note: "queued", offers: [], surface: null, detail: null, toCard: false, cap: null });
+    expect(readSendReply({ receipt: { outcome: "sent", queued: "yes" }, offers: [] })!.queued).toBe(false);
+    expect(reply("sent", null).queued).toBe(false);
+  });
+
+  it("a queued send whose Enter met a dialog is unknown and points to the card, with the bridge's sentence", () => {
+    const read = readSend(reply("unknown", "dialog_after_enter", ["keys"], { surface: RUNNING, detail: "A dialog opened as the message went in. Check the card before you answer it." }));
+    expect(read).toMatchObject({ clear: false, note: "unknown", offers: [], toCard: true, detail: "A dialog opened as the message went in. Check the card before you answer it." });
+  });
+
+  // The 2026-10-16 field case: "Collie cannot read this screen" stood twice, the phone's sentence and
+  // the bridge's English under it.
+  it("drops the bridge's sentence only where it repeats the phone's own, and keeps it everywhere else", () => {
+    const detail = "Collie cannot read this screen. Check the pane, then tap Type here.";
+    const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" };
+    expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"], { surface: unreadable, detail })).detail).toBeNull();
+    for (const reason of ["stale_surface", "busy", "pane_gone", "draft_present"]) {
+      expect(readSend(reply("refused", reason, ["commit"], { detail: "The bridge's line." })).detail).toBeNull();
+    }
+    // not_free: the plain line goes, a line that names what is open stays.
+    expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "The input box is not free." })).detail).toBeNull();
+    expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "Something is open at the input box." })).detail).toBe("Something is open at the input box.");
+    expect(readSend(reply("refused", "turn_running", [], { surface: RUNNING, detail: "A command waits until the turn ends." })).detail).toBe("A command waits until the turn ends.");
+    expect(readSend(reply("refused", "multiline", ["keys"], { detail: "Send one line at a time." })).detail).toBe("Send one line at a time.");
+    expect(readSend(reply("refused", "a_reason_from_a_newer_bridge", ["keys"], { detail: "A newer bridge's reason." })).detail).toBe("A newer bridge's reason.");
+    expect(readSend(reply("unknown", "a_reason_from_a_newer_bridge", ["keys"], { detail: "A newer bridge's reason." })).detail).toBe("A newer bridge's reason.");
+  });
+
+  it("turn_running is the agent at work, its own sentence, never that the box is not free", () => {
+    expect(readSend(reply("refused", "turn_running", ["keys"], { surface: RUNNING }))).toMatchObject({ clear: false, note: "agentBusy", offers: [], surface: "running" });
+    expect(sendNote("refused", "turn_running")).toBe("agentBusy");
+  });
+
   it("a discard empties the box and keeps the phone's draft", () => {
     expect(readSend(reply("discarded", null))).toMatchObject({ clear: false, note: "discarded", offers: [] });
   });
@@ -135,6 +173,42 @@ describe("readSend", () => {
   });
 });
 
+describe("a held send (M56 spec 15)", () => {
+  const reply = (outcome: string) => readSendReply({ receipt: { outcome }, offers: [], detail: "The agent is working. The bridge holds it." })!;
+
+  it("a held answer clears the draft, says held, and carries no offers, no detail and no refusal", () => {
+    expect(readSend(reply("held"))).toEqual({ clear: true, note: "held", offers: [], surface: null, detail: null, toCard: false, cap: null });
+  });
+
+  it("expired and cancelled keep the draft and say so, with no offers", () => {
+    expect(readSend(reply("expired"))).toMatchObject({ clear: false, note: "expired", offers: [] });
+    expect(readSend(reply("cancelled"))).toMatchObject({ clear: false, note: "cancelled", offers: [] });
+  });
+
+  it("the three outcomes map to their sentence and their list label", () => {
+    expect(sendNote("held", null)).toBe("held");
+    expect(sendNote("expired", null)).toBe("expired");
+    expect(sendNote("cancelled", null)).toBe("cancelled");
+    expect(receiptLabelKey("held")).toBe("sendReceipts.outcome.held");
+    expect(receiptLabelKey("expired")).toBe("sendReceipts.outcome.expired");
+    expect(receiptLabelKey("cancelled")).toBe("sendReceipts.outcome.cancelled");
+    const row: SendReceiptRow = { requestId: "r1abcdefgh", at: 1, mode: "send", keys: [], gapsMs: {}, harness: "codex", version: null, outcome: "expired", reason: "turn_running" };
+    expect(receiptSentence(row, (key) => key)).toBe("composer.protocol.expired");
+  });
+
+  it("reads the DELETE answer field by field and refuses a body that is not one", () => {
+    expect(readHeldCancelAnswer({ result: "cancelled", receipt: { outcome: "cancelled" } })).toEqual({ result: "cancelled" });
+    expect(readHeldCancelAnswer({ result: "dismissed" })).toEqual({ result: "dismissed" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy", receipt: { outcome: "sent" } })).toEqual({ result: "refused", reason: "busy", receipt: { outcome: "sent" } });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy", receipt: { outcome: "nonsense" } })).toEqual({ result: "refused", reason: "busy" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy" })).toEqual({ result: "refused", reason: "busy" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "nonsense" })).toEqual({ result: "refused" });
+    expect(readHeldCancelAnswer({ result: "maybe" })).toBeNull();
+    expect(readHeldCancelAnswer("<html>")).toBeNull();
+    expect(readHeldCancelAnswer(undefined)).toBeNull();
+  });
+});
+
 describe("the cap's extra confirm", () => {
   const CAP = { count: 5, limit: 5, harness: "agent", version: "2.1.301" };
   const body = (reason: string, cap: typeof CAP | undefined): JsonObject => {
@@ -148,9 +222,9 @@ describe("the cap's extra confirm", () => {
     expect(reading).toMatchObject({ clear: false, note: "capConfirm", offers: ["commit"], cap: CAP, detail: null });
   });
 
-  it("an unconfirmed refusal with no cap stays the ordinary one", () => {
+  it("an unconfirmed refusal with no cap stays the ordinary one, its own sentence with no English under it", () => {
     const reading = readSend(readSendReply(body("unconfirmed", undefined))!);
-    expect(reading).toMatchObject({ note: "unconfirmed", cap: null, detail: "The bridge's own English." });
+    expect(reading).toMatchObject({ note: "unconfirmed", cap: null, detail: null });
   });
 
   it("a cap on any other refusal is ignored", () => {
@@ -195,6 +269,16 @@ describe("the session page's rows (send drill 3)", () => {
     expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmed");
     expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirm ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
     expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
+  });
+
+  it("a send queued behind the turn wears Sent and says it was queued; queued is read off the wire only when true", () => {
+    const row: SendReceiptRow = { ...base, outcome: "sent", queued: true };
+    expect(receiptLabelKey(row.outcome)).toBe("sendReceipts.outcome.sent");
+    expect(receiptSentence(row, say)).toBe("sendReceipts.queued");
+    const wire = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "claude", version: "2.1.301" };
+    const rows = readSendReceipts({ receipts: [{ ...wire, queued: true }, { ...wire, requestId: "r2abcdefgh", queued: 1 }] });
+    expect(rows.receipts[0]!.queued).toBe(true);
+    expect(rows.receipts[1]!.queued).toBeUndefined();
   });
 
   it("reads the cap of a row off the wire and drops one that is not whole", () => {

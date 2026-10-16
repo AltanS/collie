@@ -136,8 +136,9 @@ import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -1476,10 +1477,27 @@ export function startServer(opts: {
     // With the Send Protocol on (M56 spec 05) every terminal pane also says so, a bare shell and an
     // agent pane not read yet included (M56 spec 06), and the phone's composer then sends through it;
     // with the protocol off the field is absent and the composer offers the keys only.
+    // A pane that carries a Surface on a session that takes hook edges (M56 spec 11) also says whether
+    // its hook source is live, for the pane info: `hooks: "live"` or `"none"`.
+    // A program session's panes take their Surface from the structured driver (M56 spec 14), the
+    // one driver of that session, and say `sendProtocol` the same way.
     const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
-      const surface = from.surface?.surfaceOf(wire.paneId);
-      const surfaced = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
-      return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
+      // Picked by the session kind: a program session has the driver and no screen fold (makeSession refuses both).
+      const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
+      const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+      const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
+      // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
+      // The input is a command line, so it takes the mirror's mask like the ask's labels do. A program
+      // pane (M56 spec 14) takes its asks from its driver, so it never carries a hold.
+      const note = surface === undefined || from.driver !== undefined ? null : (from.hold?.(wire.paneId) ?? null);
+      // The option labels are screen text too. The hash stays: the hold card's tap carries it.
+      const withHold = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
+      if (from.send === undefined && from.driver === undefined) return withHold;
+      // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
+      // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
+      const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
+      const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
+      return held.length === 0 ? { ...withHold, sendProtocol: true as const } : { ...withHold, sendProtocol: true as const, held: shown };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
@@ -1929,7 +1947,8 @@ export function startServer(opts: {
           body = undefined;
         }
         const answered = await answerPane(paneId, body, {
-          adapter: herdr,
+          // A local program's writes take the structured driver's lock, so they never run beside a send.
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: answerReceipts,
           audit: audit_,
           device,
@@ -1950,7 +1969,7 @@ export function startServer(opts: {
           body = undefined;
         }
         const controlled = await controlPane(action, paneId, body, {
-          adapter: herdr,
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: controlReceipts,
           audit: audit_,
           device,
@@ -2423,6 +2442,18 @@ export function startServer(opts: {
           body = undefined;
         }
         return sendRoute(rt, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // `DELETE /api/send/<id>?session=<name>&pane=<id>` (M56 spec 15): the Cancel on a queued row. A held
+      // request ends `cancelled`, an ended row is dismissed, one going out now is refused `busy`.
+      // Write-gated like a send; this collie's own sessions only.
+      if (pathname.startsWith("/api/send/") && pathname !== "/api/send/receipts" && req.method === "DELETE") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text("the send protocol does not cross a crew link yet", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        const requestId = decodeURIComponent(pathname.slice("/api/send/".length));
+        return heldCancelRoute(rt, requestId, url.searchParams.get("pane"), { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
       // by name and gaps, read from the receipts. Never a row of the screen and never the text.
@@ -4415,7 +4446,8 @@ export async function replyThroughProtocol(
   context.audit.record({ action: "reply", paneId, session, device: context.device, detail: auditDetail });
   const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   const outcome = receipt?.outcome;
-  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  // A held send (M56 spec 15) is taken: Collie sends it when the turn ends.
+  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
   const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
   const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
   const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });
@@ -6940,17 +6972,21 @@ export const SEND_MAX_TEXT = 64 * 1024;
  * A `/api/send` body, checked field by field, or null (a 400). Pure + exported for its test: the
  * handler lives inside `Bun.serve`. The text may be empty only for `prepare`, which writes nothing.
  */
-export function parseSendRequest(body: JsonValue | undefined): ({ pane: string } & SendRequest) | null {
+export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
+  // A Resend of an ended held row (M56 spec 15 review): the bridge sends the row's stored text, so the
+  // body carries none, and the stored mode stands.
+  if (resendOf !== undefined && (typeof resendOf !== "string" || !REQUEST_ID.test(resendOf) || resendOf === id)) return null;
   const chosen = mode === undefined ? "send" : SEND_MODES.find((m) => m === mode);
   if (chosen === undefined) return null;
-  if (chosen !== "prepare" && words.trim().length === 0) return null;
-  const request: { pane: string } & SendRequest = { id, pane, text: words, mode: chosen };
+  if (resendOf === undefined && chosen !== "prepare" && words.trim().length === 0) return null;
+  const request: { pane: string; resendOf?: string } & SendRequest = { id, pane, text: words, mode: chosen };
+  if (resendOf !== undefined) Object.assign(request, { resendOf });
   if (rowsHash !== undefined) {
     if (typeof rowsHash !== "string" || !/^[0-9a-f]{1,64}$/u.test(rowsHash)) return null;
     Object.assign(request, { rowsHash });
@@ -6975,6 +7011,8 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string }
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface SendRouteRuntime {
   readonly send?: SendProtocol;
+  /** A program session's structured driver (M56 spec 14). It takes the send and the ask in place of the screen's. */
+  readonly driver?: ProgramDriver;
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
@@ -6989,6 +7027,7 @@ export async function sendRoute(
   body: JsonValue | undefined,
   context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
 ): Promise<Response> {
+  if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
   const request = parseSendRequest(body);
   if (request === null) return text("bad send request", 400);
@@ -6997,11 +7036,21 @@ export async function sendRoute(
   // An agent pane's string picks its profile; a bare shell has none and takes the probed path (M56 spec 06).
   const harness = replySendOf(rt).harnessOf(request.pane);
   if (harness === null) return text("no such terminal pane", 404);
-  const { pane: paneId, ...sendRequest } = request;
+  const { pane: paneId, resendOf, ...asked } = request;
+  let sendRequest: SendRequest = asked;
+  if (resendOf !== undefined) {
+    // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
+    const source = rt.send.resendSource(rt.name, paneId, resendOf);
+    if (source === null) return text("no such ended held send on this pane", 404);
+    sendRequest = { ...asked, text: source.text, mode: source.mode };
+  }
   const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   const receipt = answer.receipt;
+  // The old row goes once the new request was taken; a refusal keeps it, text and all.
+  if (resendOf !== undefined && receipt !== undefined && receipt.outcome !== "refused") rt.send.dismissHeld(rt.name, paneId, resendOf);
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
+    if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (receipt.keys.length > 0) {
@@ -7014,15 +7063,69 @@ export async function sendRoute(
 }
 
 /**
+ * `POST /api/send` on a program session (M56 spec 14): the same request body and the same answer,
+ * run by the structured driver. The program's pane must be one the engine lists. One audit line per
+ * request, with the outcome and never the text.
+ */
+async function programSendRoute(
+  rt: SendRouteRuntime,
+  driver: ProgramDriver,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  const request = parseSendRequest(body);
+  if (request === null) return text("bad send request", 400);
+  const harness = replySendOf(rt).harnessOf(request.pane);
+  if (harness === null) return text("no such conversation", 404);
+  const { pane: paneId, ...sendRequest } = request;
+  const answer = await driver.handle(sendRequest, { session: rt.name, paneId, harness });
+  const receipt = answer.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: false };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    if (receipt.acknowledged !== undefined) detail.acknowledged = receipt.acknowledged;
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    // The program took the text: read the layout again soon, so the phone sees the turn move.
+    if (receipt.acknowledged !== undefined && answer.replayed !== true) rt.engine.pokeNow();
+  }
+  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  return json(out, context.acceptEncoding);
+}
+
+/**
  * `GET /api/send/receipts?pane=<id>` once the read gate passed and the session resolved: the last ten
  * settled requests for the pane, newest first. With the protocol off the route is not there; a call
- * with no pane is a 400.
+ * with no pane is a 400. A program session lists its own driver's receipts.
  */
-export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send">, pane: string | null, acceptEncoding: string | null): Response {
-  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {
+  if (rt.send === undefined && rt.driver === undefined) return text(SEND_OFF_TEXT, 404);
   if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
-  const answer: SendReceiptsAnswer = { receipts: rt.send.recent(pane, 10) };
+  const receipts = rt.driver !== undefined ? rt.driver.recent(pane, 10, rt.name) : (rt.send?.recent(pane, 10) ?? []);
+  const answer: SendReceiptsAnswer = { receipts };
   return json(answer, acceptEncoding);
+}
+
+/**
+ * `DELETE /api/send/<id>?pane=<id>` once the write gate passed and the session resolved (M56 spec 15):
+ * the Cancel on a queued row. A held request ends `cancelled` (200), an ended row is dismissed (200), a
+ * request going out now is refused `busy` (409), and a pane that holds no such request is a 404. One
+ * audit line per cancel, never the text.
+ */
+export function heldCancelRoute(
+  rt: Pick<SendRouteRuntime, "send" | "name">,
+  requestId: string,
+  pane: string | null,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  if (!REQUEST_ID.test(requestId)) return text("bad request id", 400);
+  if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
+  const answer = rt.send.cancelHeld(rt.name, pane, requestId);
+  if (answer === null) return text("no such held send on this pane", 404);
+  const detail: AuditDetail = { outcome: answer.result };
+  if (answer.reason !== undefined) detail.reason = answer.reason;
+  context.audit.record({ action: "send-cancel", paneId: pane, session: rt.name, device: context.device, detail });
+  return json(answer satisfies HeldCancelAnswer, context.acceptEncoding, answer.result === "refused" ? 409 : 200);
 }
 
 /** What `/api/ask/<id>` answers with the Send Protocol off: no ask is answerable, a 404 that says why. */
@@ -7053,6 +7156,7 @@ export async function askRoute(
   body: JsonValue | undefined,
   context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
 ): Promise<Response> {
+  if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
   if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
   const parsed = parseAnswerBody(askId, body);
   if (parsed === null) return text("bad ask answer", 400);
@@ -7073,6 +7177,35 @@ export async function askRoute(
       rt.engine.noteInput();
       rt.engine.pokeNow();
     }
+  }
+  return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/ask/<id>` on a program session (M56 spec 14): the same Answer body and the same reply,
+ * run by the structured driver. The answer goes to the program by its own ask id, and no key is sent.
+ * One audit line per answer, with the option id and the outcome, never a label.
+ */
+async function programAskRoute(
+  rt: AskRouteRuntime,
+  driver: ProgramDriver,
+  askId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  const parsed = parseAnswerBody(askId, body);
+  if (parsed === null) return text("bad ask answer", 400);
+  const harness = replySendOf(rt).harnessOf(parsed.pane);
+  if (harness === null) return text("no such conversation", 404);
+  const { pane: paneId, ...answer } = parsed;
+  const reply = await driver.answer(answer, { session: rt.name, paneId, harness });
+  const receipt = reply.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { askId, optionId: answer.optionId, outcome: receipt.outcome, keys: [], channel: "program" };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    if (reply.replayed === true) detail.replayed = true;
+    context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
+    if (receipt.outcome === "sent" && reply.replayed !== true) rt.engine.pokeNow();
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }

@@ -1,0 +1,7 @@
+{"kind": "trace", "harness": "claude", "version": "2.3.1", "set": "positive", "source": "synthetic, from fixtures/panes", "note": "a permission dialog edge while the screen shows a subagent hold the screen reader sees as a free box: the edge keeps a modal up until a closing edge. The lab of 2026-10-16 (lab-subagent-dialog-edge.jsonl) showed it live: a subagent's Notification permission_prompt carries no agent_id, so the emitter writes its edge"}
+{"at": 0, "read": {"rows": 0, "cols": 0, "fixture": "claude--v2301-hold-subagent.txt"}}
+{"at": 200, "edge": {"event": "Notification", "detail": "permission_prompt"}, "expect": {"free": false}}
+{"at": 900, "read": {"rows": 0, "cols": 0, "fixture": "claude--v2301-hold-subagent.txt"}, "expect": {"free": false, "modal": "unreadable"}}
+{"at": 5000, "read": {"rows": 0, "cols": 0, "fixture": "claude--v2301-hold-subagent.txt"}, "expect": {"free": false, "modal": "unreadable"}}
+{"at": 6000, "edge": {"event": "Stop"}}
+{"at": 6700, "read": {"rows": 0, "cols": 0, "fixture": "claude--fresh-idle.txt"}, "expect": {"free": true}}

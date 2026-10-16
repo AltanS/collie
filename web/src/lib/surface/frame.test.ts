@@ -456,6 +456,72 @@ describe("findInputFrame", () => {
     expect(unwalked.volatile.footer).toBeNull();
   });
 
+  // The 2026-10-16 incident on lane 8788: Claude Code 2.1.301's agents panel under the box, with a
+  // hint row under the panel, did not walk, so the cues read the panel as a dialog.
+  it("steps over the profile's named footer rows: the agents panel and its hints walk as a footer", () => {
+    const status = ["  CTX:8%", "  [model] ~/project", "  ⏵⏵ bypass permissions on · 2 background tasks · ↓ to view · ← 11 agents"];
+    const panel = ["  ● main", "  ◯ general-purpose   Reading a file     2m 3s · ↓ 120.1k tokens", "❯ ◯ fork-name   a task    31s · ↓ 40.2k tokens"];
+    const frame = findInputFrame(lines(RULE, "❯ ", RULE, ...status, "", ...panel, "", "  ↓ to manage"), IDLE)!;
+    expect(frame.volatile.status).toEqual({ first: 3, last: 5 });
+    expect(frame.volatile.footer).toEqual({ first: 7, last: 11 });
+    expect(frame.volatile.named.map((hit) => [hit.row, hit.name])).toEqual([
+      [5, "tasks-view-hint"],
+      [7, "agents-panel-main"],
+      [8, "agents-panel-agent"],
+      [9, "agents-panel-agent"],
+      [11, "agents-panel-manage-hint"],
+    ]);
+  });
+
+  it("a named run is at most footerMaxRows tall: a taller panel names nothing and walks as before", () => {
+    const max = IDLE.volatile.below.footerMaxRows;
+    const agentRows = (n: number) => Array.from({ length: n }, (_, i) => `  ◯ agent-${String(i)}   working    ${String(i)}s · ↓ 1k tokens`);
+    const fits = findInputFrame(lines(RULE, "❯ ", RULE, "  model", "", "  ● main", ...agentRows(max - 1)), IDLE)!;
+    expect(fits.volatile.status).toEqual({ first: 3, last: 3 });
+    expect(fits.volatile.footer).toEqual({ first: 5, last: 4 + max });
+    expect(fits.volatile.named).toHaveLength(max);
+    const tall = findInputFrame(lines(RULE, "❯ ", RULE, "  model", "", "  ● main", ...agentRows(max)), IDLE)!;
+    expect(tall.volatile.named).toEqual([]);
+    expect(tall.volatile.status).toBeNull();
+    // A panel straight under the box, with no statusline: the panel alone is the footer.
+    const bare = findInputFrame(lines(RULE, "❯ ", RULE, "", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"), IDLE)!;
+    expect(bare.volatile.status).toBeNull();
+    expect(bare.volatile.footer).toEqual({ first: 4, last: 5 });
+  });
+
+  it("a named run never makes rows that do not walk a statusline, and a failed walk names nothing", () => {
+    const tall = Array.from({ length: IDLE.volatile.below.maxRows + 1 }, (_, i) => `  status ${String(i)}`);
+    const frame = findInputFrame(lines(RULE, "❯ ", RULE, ...tall, "", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"), IDLE)!;
+    expect(frame.volatile.status).toBeNull();
+    expect(frame.volatile.footer).toBeNull();
+    expect(frame.volatile.named).toEqual([]);
+  });
+
+  it("no second footer walks over the named run: a dialog between the statusline and the panel fails the walk", () => {
+    const panel = ["", "  ● main", "  ◯ agent   working   1s · ↓ 1k tokens"];
+    const frame = findInputFrame(lines(RULE, "❯ ", RULE, "  ⏵⏵ auto mode on", "", " ❯ 1. Yes", "   2. No", ...panel), IDLE)!;
+    expect(frame.volatile.status).toBeNull();
+    expect(frame.volatile.footer).toBeNull();
+    expect(frame.volatile.named).toEqual([]);
+  });
+
+  it("names a run only when it opens with the list's first entry and keeps the list's order", () => {
+    const status = ["  ⏵⏵ auto mode on · 1 shell · ↓ to view", ""];
+    // No `● main`: a list of `◯` rows under the box is not the panel.
+    const popup = findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ◯ one", "  ◯ two"), IDLE)!;
+    expect(popup.volatile.named).toEqual([]);
+    // `● main` again under an agent row, or an agent row under the manage hint, breaks the order.
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ◯ one", "  ● main"), IDLE)!.volatile.named).toEqual([]);
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ↓ to manage", "  ◯ one"), IDLE)!.volatile.named).toEqual([]);
+    // The view hint counts only on the mode row, the last statusline row.
+    const ok = findInputFrame(lines(RULE, "❯ ", RULE, ...status, "  ● main", "  ◯ one"), IDLE)!;
+    expect(ok.volatile.named.map((hit) => hit.name)).toEqual(["tasks-view-hint", "agents-panel-main", "agents-panel-agent"]);
+    expect(findInputFrame(lines(RULE, "❯ ", RULE, "  pick one · ↓ to view", "", "  ● main", "  ◯ one"), IDLE)!.volatile.named.map((hit) => hit.name)).toEqual([
+      "agents-panel-main",
+      "agents-panel-agent",
+    ]);
+  });
+
   it("names the band over the top edge as volatile, bounded by the profile", () => {
     const above = Array.from({ length: 10 }, (_, i) => `row ${String(i)}`);
     const frame = findInputFrame(lines(...above, RULE, "❯ ", RULE), IDLE)!;
@@ -486,6 +552,119 @@ describe("the Claude profile's frame bounds", () => {
   });
 
   it("bound the statusline run and the footer by the numbers ADR 0004 set", () => {
-    expect(IDLE.volatile.below).toEqual({ maxRows: 8, footerMaxRows: 8 });
+    expect(IDLE.volatile.below).toMatchObject({ maxRows: 8, footerMaxRows: 8 });
+  });
+
+  it("name the agents panel rows and hints as footer rows, and nothing else", () => {
+    expect((IDLE.volatile.below.footerRows ?? []).map((row) => row.name)).toEqual([
+      "agents-panel-main",
+      "agents-panel-agent",
+      "agents-panel-more",
+      "agents-panel-manage-hint",
+      "tasks-view-hint",
+    ]);
+  });
+});
+
+// M56 spec 14: the interior walk, for a harness whose box has side rows (and no rule on top) or no
+// bottom row at all. The rows below are the OpenCode shape the profile reads.
+describe("the interior walk (M56 spec 14)", () => {
+  const OC = requireProfile("opencode").idle;
+  const BOTTOM = `  ╹${"▀".repeat(30)}`;
+  const box = (...rows: string[]): string[] => ["  ┃", ...rows, "  ┃", "  ┃  Build · Model Provider", BOTTOM, "   /work/dir                       1K (1%) · $0.00  ctrl+p"];
+
+  it("finds a draft row and an empty box", () => {
+    const frame = findInputFrame(lines("reply", "", ...box("  ┃  hello there")), OC)!;
+    expect(frame.interior.text).toBe("hello there");
+    expect(frame.top).toBe(2);
+    const empty = findInputFrame(lines("reply", "", ...box("  ┃")), OC)!;
+    expect(empty.interior.text).toBe("");
+    expect(empty.placeholder).toBe(false);
+  });
+
+  it("joins the continuation rows of a wrapped draft", () => {
+    const frame = findInputFrame(lines("", ...box("  ┃  first line", "  ┃  second line")), OC)!;
+    expect(frame.interior.text).toBe("first line second line");
+  });
+
+  it("marks the placeholder by its prefix", () => {
+    expect(findInputFrame(lines("", ...box("  ┃  Ask anything… \"Fix broken tests\"")), OC)!.placeholder).toBe(true);
+  });
+
+  it("does not take a quoted box far above the real one for part of it", () => {
+    const frame = findInputFrame(lines("  ┃  quoted", "", "text", ...box("  ┃  real")), OC)!;
+    expect(frame.interior.text).toBe("real");
+  });
+
+  it("finds no box in rows that only start with the side mark", () => {
+    expect(findInputFrame(lines("  ┃  a", "  ┃  b", "output"), OC)).toBeNull();
+  });
+});
+
+// M56 spec 14: a box with a blank prompt row and rules for edges (pi), the same shape as the gap
+// between a notice and the real box, told apart by the row the harness draws under it.
+describe("the interior walk on rules with no prompt glyph (M56 spec 14)", () => {
+  const PI = requireProfile("pi").idle;
+  const footer = ["/tmp/work (main)", "0.0%/200k (auto)    model • low"];
+
+  it("finds an empty box, a draft and a padded draft", () => {
+    expect(findInputFrame(lines("reply", RULE, "", RULE, ...footer), PI)!.interior.text).toBe("");
+    expect(findInputFrame(lines("reply", RULE, "hello there", RULE, ...footer), PI)!.interior.text).toBe("hello there");
+    expect(findInputFrame(lines(RULE, "  line one", "  line two", RULE, ...footer), PI)!.interior.text).toBe("line one line two");
+  });
+
+  it("reads the Working label on the top rule", () => {
+    const frame = findInputFrame(lines("reply", "── ⠴ Working ──────────────", "", RULE, ...footer), PI)!;
+    expect(frame.label).toBe("⠴ Working");
+  });
+
+  it("refuses a rule pair whose bottom has no status line under it", () => {
+    // The real box lost its bottom rule: the gap between the notice and the box top is not a box.
+    expect(findInputFrame(lines(RULE, "Update Available", RULE, "", RULE, "typed draft", ...footer), PI)).toBeNull();
+  });
+
+  it("cuts the text a side panel draws on the prompt row", () => {
+    const row = `❯${" ".repeat(40)}facts 4 queued`;
+    expect(findInputFrame(lines(RULE, row, RULE, ...footer), PI)!.interior.text).toBe("");
+  });
+
+  it("stops at 30 rows: a taller rule pair is a dialog, not a draft", () => {
+    const body = Array.from({ length: 35 }, (_, i) => `item ${String(i)}`);
+    expect(findInputFrame(lines(RULE, ...body, RULE, ...footer), PI)).toBeNull();
+  });
+});
+
+// M56 spec 14: OMP lets the person pick the border style, so its profile names five frame shapes.
+describe("frame alternates (M56 spec 14)", () => {
+  const OMP = requireProfile("omp").idle;
+  const status = " π · ⬢ no-model · 🗑 sandbox · ⑂ master";
+  const top = " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 ▶──4%──────────";
+
+  it("finds the open box: a status row on top, the prompt row `╰─`, and indented rows after it", () => {
+    const frame = findInputFrame(lines("reply", "", top, "╰─ first line", "   second line"), OMP)!;
+    expect(frame.interior.text).toBe("first line second line");
+    expect(frame.top).toBe(2);
+    expect(findInputFrame(lines("reply", "", top, "╰─"), OMP)!.interior.text).toBe("");
+  });
+
+  it("finds the old open box with `│` rows and the prompt row last", () => {
+    const rows = lines("reply", "╭── π  > ⬢ Auto > ⑂ master ▶────────", "│  wrapped draft row", "╰─ end");
+    expect(findInputFrame(rows, OMP)!.interior.text).toBe("wrapped draft row end");
+  });
+
+  it("finds the rule pair with a `❯` prompt row, the rule line with no bottom rule, and the borderless box", () => {
+    expect(findInputFrame(lines("reply", RULE, "❯ hello", RULE, status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "❯ hello", "", status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "", "❯ hello", status), OMP)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", RULE, "", RULE, status), OMP)!.interior.text).toBe("");
+  });
+
+  it("cuts the right-hand hint off the prompt row", () => {
+    const hint = `❯${" ".repeat(60)}⇧⇥ to change thinking effort`;
+    expect(findInputFrame(lines("reply", RULE, hint, RULE, status), OMP)!.interior.text).toBe("");
+  });
+
+  it("finds no box in a plain transcript", () => {
+    expect(findInputFrame(lines("a", "   indented", "b"), OMP)).toBeNull();
   });
 });

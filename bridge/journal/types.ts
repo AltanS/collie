@@ -187,6 +187,11 @@ export interface TranscriptSource {
  */
 export interface ForegroundProcess {
   readonly argv: readonly string[];
+  /**
+   * The process id, when the multiplexer reports it (Herdr does). The hook edges (M56 spec 11) use it
+   * to check that the pid an edge names is in the pane's foreground. Absent means "not reported".
+   */
+  readonly pid?: number;
 }
 
 /**

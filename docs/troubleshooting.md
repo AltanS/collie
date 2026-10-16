@@ -11,7 +11,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
-**a program does not show up, or says Unreachable**.
+**a durable agent does not show up, or says Unreachable**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -276,10 +276,10 @@ Recent. The second means the phone lost the reply. Look at the dashboard first, 
 exist. **Try again** sends the same request and never opens a second pane
 ([Start an agent or a shell from the phone](claude-code-on-your-phone.md#start-an-agent-or-a-shell-from-the-phone)).
 
-## Programs
+## Durable agents
 
-A program you attached has its own checks, reasons and cases. Start with `collie durable list` and
-`collie doctor`, then read [Troubleshooting a program](durable-programs-troubleshooting.md).
+A durable agent you attached has its own checks, reasons and cases. Start with `collie durable list` and
+`collie doctor`, then read [Troubleshooting a durable agent](durable-agents-troubleshooting.md).
 
 ---
 

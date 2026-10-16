@@ -126,10 +126,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 111 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 113 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([71, 17, 23]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([71, 17, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the 30 durable example tests and the 36 durable socket
     // tests; the comment names them all.
@@ -143,6 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
     expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");
     expect(script).toContain("installScript from a shallow lead, run for real");
+    // The scripts allowance is the 23 install.sh tests plus the two harness lab skips the script names.
+    expect(budget("Scripts")).toBe(23 + 2);
+    expect(script).toContain("POSIX only: the login copy has mode 600");
+    expect(script).toContain("a real throwaway server starts, shows its pane, stops, and leaves no socket");
     expect(script).not.toContain("[int]$MaxSkips = ");
     expect(script).toContain("if ($skip -gt $skipBudget[$name])");
   });

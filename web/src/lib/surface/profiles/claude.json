@@ -28,7 +28,17 @@
     },
     "volatile": {
       "above": { "maxRows": 6 },
-      "below": { "maxRows": 8, "footerMaxRows": 8 }
+      "below": {
+        "maxRows": 8,
+        "footerMaxRows": 8,
+        "footerRows": [
+          { "name": "agents-panel-main", "pattern": "^\\s*(?:❯\\s+)?●\\s+main(?:\\s.*)?$" },
+          { "name": "agents-panel-agent", "pattern": "^\\s*(?:❯\\s+)?◯\\s+\\S.*$" },
+          { "name": "agents-panel-more", "pattern": "^\\s*↓ \\d+ more$" },
+          { "name": "agents-panel-manage-hint", "pattern": "^\\s*↓ to manage$" },
+          { "name": "tasks-view-hint", "pattern": "^\\s*(?:⏵⏵|⏸|\\?)\\s.*\\s·\\s↓ to view(?:\\s·\\s|$)" }
+        ]
+      }
     }
   },
   "keys": {
@@ -42,7 +52,15 @@
       "confirm": "Enter",
       "cancel": "Escape"
     },
-    "enterWhileRunning": "queues"
+    "enterWhileRunning": "queues",
+    "commandWhileRunning": "queues",
+    "commandWhileRunningNote": "Lab 2026-10-16: measured on Claude Code 2.1.301 with /help only (queued as a row above the box, ran after the turn).",
+    "neverHeld": ["/clear", "/exit", "/quit", "/logout", "/resume", "/branch", "!"],
+    "queuedRow": {
+      "pattern": "^\\s*❯ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*(?:ctrl\\+enter|ctrl\\+x ctrl\\+s) to send now\\s*$",
+      "hintGap": 1
+    }
   },
   "collapse": {
     "pattern": "\\[Pasted text #(?<n>\\d+)(?: \\+(?<lines>\\d+) lines)?\\]"
@@ -65,6 +83,54 @@
     "Stop": "edge",
     "SessionEnd": "edge",
     "Notification": "edge",
-    "PermissionRequest": "ask"
+    "PermissionRequest": "ask",
+    "PostToolUse": "edge"
+  },
+  "edges": {
+    "rereadMs": 700,
+    "settleMs": 1500,
+    "events": {
+      "SessionStart": "start",
+      "UserPromptSubmit": "prompt",
+      "Stop": "stop",
+      "SessionEnd": "end",
+      "Notification:permission_prompt": "dialog",
+      "Notification:elicitation_dialog": "dialog",
+      "Notification:idle_prompt": "reread",
+      "PostToolUse": "tool"
+    }
+  },
+  "hold": {
+    "event": "PermissionRequest",
+    "toolEvent": "PostToolUse",
+    "limitMs": 290000,
+    "hookTimeoutS": 300,
+    "minVersion": "2.0.45",
+    "inputShown": ["command", "file_path", "notebook_path", "url", "pattern", "path", "query"],
+    "inputDetails": {
+      "Bash": { "flags": ["dangerouslyDisableSandbox", "run_in_background"] },
+      "Write": { "body": ["content"] },
+      "Edit": { "body": ["new_string"] },
+      "NotebookEdit": { "body": ["new_source"] }
+    },
+    "screenOnly": ["AskUserQuestion", "ExitPlanMode"],
+    "headers": {
+      "Bash": ["Bash command", "Bash"],
+      "Write": ["Create file"],
+      "Edit": ["Edit file"],
+      "WebFetch": ["Fetch"]
+    },
+    "agentMark": "·\\s*from the\\s*(.*?)(?:\\s+agent)?\\s*$",
+    "options": [
+      { "label": "Yes", "decision": "allow" },
+      { "label": "No", "decision": "deny" }
+    ],
+    "decisions": [
+      { "match": "^Yes$", "decision": "allow" },
+      { "match": "^No(?:\\b|$)", "decision": "deny" }
+    ],
+    "decidedLine": "Allowed by PermissionRequest hook",
+    "deniedLine": "(?:Denied by PermissionRequest hook|Interrupted · What should Claude do instead\\?)",
+    "denyMessage": "The person denied this from Collie."
   }
 }

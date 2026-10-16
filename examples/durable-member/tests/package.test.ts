@@ -10,11 +10,11 @@ const pkg = JSON.parse(readFileSync(`${PKG_DIR}package.json`, "utf8"));
 const ENTRIES = [".", "./node", "./bun", "./pi", "./core"];
 
 describe("the package", () => {
-  test("is @colliepwa/durable-sdk, an ES module with no side effects, for Node 22.18 or later", () => {
+  test("is @colliepwa/durable-sdk, an ES module with no side effects, for Node 22.19 or later", () => {
     expect(pkg.name).toBe("@colliepwa/durable-sdk");
     expect(pkg.type).toBe("module");
     expect(pkg.sideEffects).toBe(false);
-    expect(pkg.engines).toEqual({ node: ">=22.18" });
+    expect(pkg.engines).toEqual({ node: ">=22.19" });
     expect(pkg.license).toBe("MIT");
     expect(pkg.private).toBeUndefined();
   });
@@ -48,7 +48,7 @@ describe("the package", () => {
 describe("the docs quote the package.json", () => {
   // The name is written once, in the package's package.json; a rename is that edit, and this test names every page
   // that still says the old one.
-  const pages = ["docs/durable-programs.md", "examples/durable-member/README.md", "packages/durable-sdk/README.md"];
+  const pages = ["docs/durable-agents.md", "examples/durable-member/README.md", "packages/durable-sdk/README.md"];
   for (const page of pages) {
     test(`${page} installs the package under its dist-tag and imports it by its name`, () => {
       const text = readFileSync(new URL(`../../../${page}`, import.meta.url), "utf8");
@@ -63,8 +63,8 @@ describe("the docs quote the package.json", () => {
       .filter((line) => line.trim() !== "" && !line.trim().startsWith("//"))
       .map((line) => (line.startsWith("import ") ? `import { openCollie } from "${pkg.name}";` : line));
     expect(hello).toHaveLength(10);
-    const docs = readFileSync(new URL("../../../docs/durable-programs.md", import.meta.url), "utf8");
-    const block = /Save this program as `hello\.mjs`\. It is ten lines:\n\n```js\n([\s\S]*?)```/.exec(docs)?.[1] ?? "";
+    const docs = readFileSync(new URL("../../../docs/durable-agents.md", import.meta.url), "utf8");
+    const block = /Save this durable agent as `hello\.mjs`\. It is ten lines:\n\n```js\n([\s\S]*?)```/.exec(docs)?.[1] ?? "";
     expect(block.split("\n").filter((line) => line.trim() !== "")).toEqual(hello);
   });
 });

@@ -159,3 +159,52 @@ export type BeaconReading =
       readonly session: AgentSessionRef;
       readonly markers: readonly BeaconMarker[];
     };
+
+// ── HOOK EDGES (M56 spec 11) ──────────────────────────────────────────────────────────────────────
+//
+// An edge is one hook event, written by the same emitter as a beacon, as one file in
+// `<stateDir>/edges/`. The bridge takes each file once and deletes it. An edge is still a hint, never
+// a control channel (.adr/0024): it may ask for a fresh read of the screen, say a turn runs or a modal
+// is up, and close a send receipt as effective. It can never make a pane free, send a key or type.
+//
+// It never holds the prompt text. A prompt edge holds a salted hash of it, keyed with the send
+// store's own salt, so it can match a send's receipt and nothing else.
+
+/** The edge format version this build writes and reads. A different value is skipped. */
+export const EDGE_SCHEMA_VERSION = 1;
+
+/** One edge file, as it is on disk. */
+export interface EdgeRecord {
+  readonly schemaVersion: number;
+  /** The harness the emitter speaks for, in the journal registry's vocabulary. */
+  readonly harness: string;
+  /** The hook event name, as the harness wrote it (`Stop`, `Notification`). */
+  readonly event: string;
+  /** One detail of the event, when it has kinds (a notification type), or null. */
+  readonly detail: string | null;
+  /** The harness's pid (the hook's parent). The bridge places the edge through it. */
+  readonly pid: number;
+  /** The pid's start time, the pid-reuse guard. */
+  readonly pidStartTime: number;
+  /** Every multiplexer marker the hook saw, as a beacon records them. */
+  readonly markers: readonly BeaconMarker[];
+  /** Epoch ms when the hook ran. */
+  readonly at: number;
+  /** The salted SHA-256 of the prompt a `UserPromptSubmit`-like event carried, or null. */
+  readonly promptHash: string | null;
+  /**
+   * Whether the settings the harness reads hold Collie's permission hook (M56 spec 12), so the pane
+   * info can say "holds permissions". Absent from an older emitter, which reads as false.
+   */
+  readonly holds?: boolean;
+  /** The tool a tool edge is about (M56 spec 12). Absent on every other edge. */
+  readonly tool?: string;
+  /** The subagent a tool edge came from (M56 spec 12). Absent for the main session. */
+  readonly agent?: string;
+  /**
+   * The hash of the tool's input shown (`holdInputHash`), on a tool edge. The bridge ends a hold on a
+   * tool edge only when this matches the held request's input, so another call of the same tool
+   * never ends it. Absent from an older emitter, whose tool edges then end no hold.
+   */
+  readonly inputHash?: string;
+}

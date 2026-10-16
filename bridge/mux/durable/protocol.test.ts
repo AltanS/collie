@@ -48,7 +48,7 @@ describe("version negotiation", () => {
 
   test("the detail starts with incompatible and names both ranges", () => {
     expect(incompatibleDetail({ min: 2, max: 3 })).toBe(
-      "incompatible: program speaks 2..3, this Collie speaks 1..1",
+      "incompatible: the durable agent speaks 2..3, this Collie speaks 1..1",
     );
     expect(incompatibleDetail(null)).toBe("incompatible");
   });
@@ -105,7 +105,7 @@ describe("hello", () => {
     expect(Buffer.byteLength(parsed.value.hostName)).toBeLessThanOrEqual(CAPS.hostName);
   });
 
-  test("a hello without the service name is not a durable program, whatever else it says", () => {
+  test("a hello without the service name is not a durable agent, whatever else it says", () => {
     const base = { protocol: { min: 1, max: 1 }, host: { name: "h" }, epoch: EPOCH, ready: true, caps: {} };
     for (const service of [undefined, null, "", "collie", "Collie-Durable", 1]) {
       expect(parseHello(JSON.stringify({ ...base, service }))).toEqual({ ok: false, detail: NOT_A_DURABLE_PROGRAM });

@@ -15,14 +15,15 @@ import {
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
-import { readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
-import type { SendReceiptRow, SendRequestBody } from "./surface/send";
+import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
+import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import { textRouteFor } from "./send-path";
 import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
@@ -1375,7 +1376,8 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
   // A pane on a crew member goes through the pane's reply route, which the lead forwards to the
   // member like any other write; the member runs the same Send Protocol on its own screen and puts
   // the answer under `send` (M56 spec 06). `/api/send` serves this machine's own panes only.
-  const got = normalizeScope(scope).host
+  const route = textRouteFor({ program: false, crew: !isLead(scope), sendProtocol: true });
+  const got = route === "pane-reply"
     ? asJsonObject(
         (
           await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {
@@ -1392,6 +1394,23 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
 }
 
 /**
+ * POST /api/send for a program on this machine (M56 spec 14): the bridge's structured driver runs the
+ * request, with the same answer as for a terminal pane. A program on a crew member never comes here; it
+ * keeps the program's own send route (lib/send-path.ts), so this refuses one before any request.
+ */
+export async function postProgramSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
+  if (textRouteFor({ program: true, crew: !isLead(scope), sendProtocol: true }) !== "api-send") {
+    throw new ApiError("A durable agent on a crew member takes its own send route.", 400);
+  }
+  stampSend(body.pane);
+  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readSendReply(got);
+  if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  return reply;
+}
+
+/**
  * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
  * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
  * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
@@ -1400,6 +1419,25 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
   if (normalizeScope(scope).host) return [];
   const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope));
   return readSendReceipts(got).receipts.slice();
+}
+
+/**
+ * DELETE /api/send/<id>: take back a held send, or dismiss an ended one (M56 spec 15). `refused` is an
+ * answer, not an error: the request is going out now, and a 409 carries it. This machine's own panes
+ * only; the route does not cross a crew link, so a pane on a member never comes here.
+ */
+export async function cancelHeldSend(requestId: string, paneId: string, scope?: Scope): Promise<HeldCancelAnswer> {
+  if (!isLead(scope)) throw new ApiError("A held send on a crew member is cancelled on that machine.", 400);
+  stampSend(paneId);
+  const got = await req<JsonObject>(
+    withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
+    { method: "DELETE" },
+    // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
+    (status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null),
+  );
+  const answer = readHeldCancelAnswer(got);
+  if (answer === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
+  return answer;
 }
 
 /**

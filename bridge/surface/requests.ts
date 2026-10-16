@@ -17,6 +17,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
+import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
 import { readSendCap, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -24,7 +25,12 @@ export const REQUEST_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 /** The most request files kept; the oldest go first. */
 export const REQUEST_KEEP_FILES = 500;
 
-export type RequestPhase = "accepted" | "submit-sent" | "settled";
+/**
+ * `held` (M56 spec 15): the harness could not take the request while its turn ran, and the hold queue
+ * (holds.ts) keeps it. Its receipt says `held`. A restart leaves it held; the release runs it again
+ * under the same id, as a fresh run.
+ */
+export type RequestPhase = "accepted" | "submit-sent" | "settled" | "held";
 
 export interface SendRecord {
   readonly id: string;
@@ -38,6 +44,8 @@ export interface SendRecord {
   readonly acceptedAt: number;
   readonly phase: RequestPhase;
   readonly submitSentAt?: number;
+  /** When a held request's release started (M56 spec 15): its run is bounded from here, not from accept. */
+  readonly runAt?: number;
   readonly receipt?: SendReceipt;
 }
 
@@ -90,7 +98,7 @@ export type AskAcceptResult =
 const ASK_KINDS = ["permission", "question", "menu"] as const;
 const ASK_FILE = /^ask\.(ask-[0-9a-f]{14})\.json$/;
 
-const PHASES = ["accepted", "submit-sent", "settled"] as const;
+const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
 const STEPS = ["s0", "clear", "probe", "write", "s1", "commit", "s2"] as const;
 
@@ -138,6 +146,11 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (node.reason !== undefined && reason === undefined) return undefined;
   const cap = node.cap === undefined ? undefined : readSendCap(node.cap);
   if (cap === null) return undefined;
+  // `queued` is true or absent; anything else is not a receipt this module wrote.
+  if (node.queued !== undefined && node.queued !== true) return undefined;
+  // `acknowledged` is a request id or absent (a program session's send, M56 spec 14).
+  const acknowledged = node.acknowledged === undefined ? undefined : asJsonString(node.acknowledged);
+  if (node.acknowledged !== undefined && (acknowledged === undefined || !REQUEST_ID.test(acknowledged))) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
@@ -165,6 +178,8 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const whole: ReceiptDraft = { ...receipt };
   if (reason !== undefined) whole.reason = reason;
   if (cap !== undefined) whole.cap = cap;
+  if (node.queued === true) whole.queued = true;
+  if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   return whole;
 }
 
@@ -188,6 +203,8 @@ function parseRecord(raw: JsonValue | undefined): SendRecord | null {
   let record: SendRecord = { id, session, paneId, paneGeneration, surfaceRevision, mode, textHash, textLength, acceptedAt, phase };
   const submitSentAt = asJsonNumber(node.submitSentAt);
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
+  const runAt = asJsonNumber(node.runAt);
+  if (runAt !== undefined) record = { ...record, runAt };
   if (node.receipt !== undefined) {
     const receipt = parseReceipt(node.receipt);
     if (receipt === undefined) return null;
@@ -219,6 +236,8 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
   if (kind === undefined || outcome === undefined || node.origin !== "person_tap") return undefined;
   if (check === undefined || readBack === undefined || after === undefined || keys === undefined || keys.some((key) => key === undefined)) return undefined;
   if (node.reason !== undefined && reason === undefined) return undefined;
+  const channel = node.channel === undefined ? undefined : pick(node.channel, ASK_CHANNELS);
+  if (node.channel !== undefined && channel === undefined) return undefined;
   const receipt: AskReceipt = {
     askId: fields.askId!,
     session: fields.session!,
@@ -235,7 +254,11 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
     keys: keys.filter((key): key is string => key !== undefined),
     outcome,
   };
-  return reason === undefined ? receipt : { ...receipt, reason };
+  const withReason = reason === undefined ? receipt : { ...receipt, reason };
+  const withChannel = channel === undefined ? withReason : { ...withReason, channel };
+  // A hook-held ask (M56 spec 12) also names the decision it sent.
+  const decision = node.decision === "allow" || node.decision === "deny" ? node.decision : undefined;
+  return channel === "hook" && decision !== undefined ? { ...withChannel, decision } : withChannel;
 }
 
 /** An ask record read back from its file, every field checked; null when it is not one this module wrote. */
@@ -336,7 +359,46 @@ export class RequestStore {
     this.write({ ...known, phase: "submit-sent", submitSentAt: this.now() });
   }
 
-  /** The request's end: its receipt. A settled record never changes again. */
+  /**
+   * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11) becomes
+   * `effective`, its reason dropped. That is the one change a settled record can take, and it takes it
+   * once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
+   */
+  markEffective(id: string): "sent" | "unknown" | null {
+    const known = this.get(id);
+    const receipt = known?.receipt;
+    if (known === null || known.phase !== "settled" || receipt === undefined) return null;
+    if (receipt.outcome !== "sent" && receipt.outcome !== "unknown") return null;
+    const { reason: _dropped, ...rest } = receipt;
+    this.write({ ...known, receipt: { ...rest, outcome: "effective" } });
+    return receipt.outcome;
+  }
+
+  /**
+   * The request is held (M56 spec 15): its receipt says `held`, and the hold queue keeps the text. A
+   * held record is not settled: a restart does not end it, and the release runs it again.
+   */
+  hold(id: string, receipt: SendReceipt): SendRecord | null {
+    const known = this.get(id);
+    if (known === null || known.phase === "settled") return null;
+    const { submitSentAt: _never, ...rest } = known;
+    const held: SendRecord = { ...rest, phase: "held", receipt };
+    this.write(held);
+    return held;
+  }
+
+  /** A held request's release starts: it runs again as accepted, bounded from now. Null when it is not held. */
+  rearm(id: string, paneGeneration?: string): SendRecord | null {
+    const known = this.get(id);
+    if (known === null || known.phase !== "held") return null;
+    const { receipt: _held, ...rest } = known;
+    // The pane's generation now, when the caller read one: the release runs against the pane as it is.
+    const armed: SendRecord = { ...rest, phase: "accepted", runAt: this.now(), paneGeneration: paneGeneration ?? known.paneGeneration };
+    this.write(armed);
+    return armed;
+  }
+
+  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`). */
   settle(id: string, receipt: SendReceipt): SendRecord | null {
     const known = this.get(id);
     if (known === null) return null;
@@ -368,7 +430,8 @@ export class RequestStore {
   recover(unsettled: (record: SendRecord) => SendReceipt): SendRecord[] {
     const settled: SendRecord[] = [];
     for (const record of this.list()) {
-      if (record.phase === "settled") continue;
+      // A held request waits for its release; the hold queue replays it.
+      if (record.phase === "settled" || record.phase === "held") continue;
       const done = this.settle(record.id, unsettled(record));
       if (done !== null) settled.push(done);
     }

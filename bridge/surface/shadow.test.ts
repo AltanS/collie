@@ -204,9 +204,10 @@ describe("surface shadow", () => {
   test("a harness with no profile reads unknown with no version, under its own counter", async () => {
     const r = rig();
     r.mux.set("w1:p2", "codex--fresh-idle.txt", 1);
-    await r.shadow.observe([agent("w1:p2", "codex")]);
+    // Codex has a profile since M56 spec 13, so its screen stands in here for a harness with none.
+    await r.shadow.observe([agent("w1:p2", "nothing-known")]);
     expect(r.shadow.surfaceOf("w1:p2")).toMatchObject({ modal: "unknown", composer: "unknown" });
-    expect(Object.keys(r.shadow.report().counters)).toEqual(["codex@-"]);
+    expect(Object.keys(r.shadow.report().counters)).toEqual(["nothing-known@-"]);
     expect(r.versionReads()).toBe(0);
   });
 
@@ -336,6 +337,21 @@ describe("surface shadow: the persisted counters (M56 spec 09)", () => {
       await shadow.observe([agent("w1:p2", "nothing-known")]);
       const unknown = ledger.rows().find((row) => row.harness === "nothing-known");
       expect(unknown).toMatchObject({ version: "-", profileId: "-", status: "-" });
+    } finally {
+      rmSync(state, { recursive: true, force: true });
+    }
+  });
+
+  test("both names a multiplexer reports for a harness file under its profile id (M56 spec 14 review)", async () => {
+    const state = mkdtempSync(join(tmpdir(), "collie-shadow-alias-"));
+    try {
+      const ledger = new SurfaceLedger(state, { now: () => 1_000_000, warn: () => undefined });
+      const mux = new FakeMux();
+      const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => undefined, now: () => 1_000_000, version: async () => "1.1.17", ledger });
+      mux.set("w1:p1", "agy--fresh-idle.txt", 1);
+      mux.set("w1:p2", "agy--fresh-idle.txt", 2);
+      await shadow.observe([agent("w1:p1", "agy"), agent("w1:p2", "antigravity")]);
+      expect(ledger.rows()).toMatchObject([{ harness: "agy", version: "1.1.17", profileId: "agy", free: 2 }]);
     } finally {
       rmSync(state, { recursive: true, force: true });
     }

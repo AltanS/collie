@@ -581,11 +581,18 @@ jobs:
           echo "compare base: ${prev:-<none>}"
           # Same flake as every other bun invocation in this workflow, so the notes are produced by
           # the Bun the release is built with.
+          # A tag cut over a named harness drift carries a `Not verified: agent version` line in its
+          # message (scripts/check-tag.sh --accept-drift, M44 spec 08). The page repeats it. Reading
+          # the message is best effort: a checkout that flattened the tag answers nothing, and the
+          # page is then the same as before.
+          unverified="$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}" 2>/dev/null | sed -n 's/^Not verified:[[:space:]]*//p' | head -1 || true)"
+          nv=()
+          [ -z "$unverified" ] || nv=(--not-verified "$unverified")
           nix develop --command bun scripts/release-notes.ts \
             --version "$version" \
             --repo "$GITHUB_REPOSITORY" \
             --tag "$GITHUB_REF_NAME" \
-            "${previous[@]}" > "$notes"
+            "${nv[@]}" "${previous[@]}" > "$notes"
           # The Windows block goes AFTER everything the script wrote, so the Linux and macOS part of
           # the page is byte for byte what it was. No link: the Windows docs page does not exist yet.
           printf '\n' >> "$notes"

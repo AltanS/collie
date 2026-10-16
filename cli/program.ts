@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
+import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
+import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -296,6 +298,21 @@ function beaconDeps(): BeaconEmitDeps {
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
+    uid: process.getuid?.(),
+  };
+}
+
+function holdDeps(): HoldDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    agentPid: process.ppid,
+    uid: process.getuid?.(),
+    connect: netConnect,
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
   };
 }
 
@@ -575,12 +592,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "install",
-        summary: "register the beacon hooks: `hooks install claude`",
+        summary: "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions), or `hooks install codex`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
         name: "uninstall",
-        summary: "remove only the entries collie owns: `hooks uninstall claude`",
+        summary: "remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`",
         run: (args, s) => cmdHooksUninstall(hooksDeps(s.io), args),
       },
       {
@@ -593,13 +610,19 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit` — an agent hook's payload in, one beacon file out",
+    summary: "internal: `beacon emit` and `beacon hold`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
         name: "emit",
         summary: "internal: write this pane's beacon from the hook payload on stdin",
-        run: () => runBeaconEmit(beaconDeps),
+        // `collie beacon emit codex <payload>` is the Codex notify command (cli/codex-notify.ts).
+        run: (args) => (args[0] === CODEX_NOTIFY_HARNESS ? runCodexNotify(beaconDeps, args.slice(1)) : runBeaconEmit(beaconDeps)),
+      },
+      {
+        name: "hold",
+        summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
+        run: () => runBeaconHold(holdDeps),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets
@@ -743,21 +766,21 @@ export const COMMANDS: readonly Command[] = [
   // `sources.json` and restart nothing unless `--restart` is given.
   {
     name: "durable",
-    summary: `programs this Collie shows as sessions: ${DURABLE_SUBCOMMANDS.join(", ")}`,
+    summary: `durable agents this Collie shows as sessions: ${DURABLE_SUBCOMMANDS.join(", ")}`,
     subcommands: [
       {
         name: "attach",
-        summary: "add a program: <name> --socket <path> | --url <url> --token-env <VAR> (--restart)",
+        summary: "add a durable agent: <name> --socket <path> | --url <url> --token-env <VAR> (--restart)",
         run: (args, s) => cmdDurableAttach(durableVerbDeps(s.io), args),
       },
       {
         name: "detach",
-        summary: "remove a program by name (--restart)",
+        summary: "remove a durable agent by name (--restart)",
         run: (args, s) => cmdDurableDetach(durableVerbDeps(s.io), args),
       },
       {
         name: "list",
-        summary: "the attached programs and what the running bridge says of each",
+        summary: "the attached durable agents and what the running bridge says of each",
         run: (_args, s) => cmdDurableList(durableVerbDeps(s.io)),
       },
     ],

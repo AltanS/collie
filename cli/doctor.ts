@@ -97,6 +97,8 @@ import type { ServeMode } from "./context.ts";
 import type { Exec, Files } from "./sys.ts";
 import { whistleModelFindings, type WhistleSeams } from "./stt-whistle.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
+import { settingsHold } from "./hold-entry.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import {
   HTTPS_DISABLED_HINT,
   tailnetCertDomains,
@@ -1938,9 +1940,9 @@ function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
 // than assuming. `agentDetection` is a declared mux capability (`bridge/mux/capabilities.ts`), and it
 // is the whole question:
 //
-//  • Declared (Herdr) — the multiplexer names the agent and its status from its own wire, so nobody
-//    will ever install the emitter and a red line here would exit this verb non-zero on a perfectly
-//    healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
+//  • Declared (Herdr), the multiplexer names the agent and its status from its own wire. The emitter
+//    is optional there (it adds the hook edges of M56 spec 11), and a red line here would exit this
+//    verb non-zero on a perfectly healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
 //  • Absent (tmux, zellij) — the emitter is the ONLY thing that can give that adapter sight
 //    (`beaconMatcher`, M11/03). Without it every pane reads as a shell: no agent list, no "needs
 //    you", no notification. That is not a degraded Collie, it is the feature missing. `error`.
@@ -2048,14 +2050,18 @@ function beaconHooks(
       "`collie hooks install claude` to complete it",
     );
   }
-  // Installed under a multiplexer that names its own agents is still `ok` — it is not a mistake, and
-  // Collie prefers the adapter's answer to a beacon anyway (`beaconMatcher`'s "absent is the Herdr
-  // case") — but it is worth saying so, because it is the one install nothing here depends on.
-  const spare = muxReportsAgents ? `, which ${name} does not need — it reports agents itself` : "";
+  // Installed under a multiplexer that names its own agents is still `ok`. That multiplexer does not
+  // need the hooks to name an agent, so the line says what they still give: the hook edges of the
+  // input surface (M56 spec 11).
+  const spare = muxReportsAgents ? `; ${name} names agents itself and does not need them for that, so they give hook edges only` : "";
+  // The permission hold (M56 spec 12): which files hold permissions for the phone, if any.
+  const holdEvent = loadProfiles().get("claude")?.hold?.event;
+  const holding = holdEvent === undefined ? 0 : [...perFile.keys()].filter((path) => settingsHold(deps.files.read(path), holdEvent)).length;
+  const holds = holding > 0 ? `; holds permissions in ${String(holding)}` : "";
   return ok(
     check,
     `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
-      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}`,
+      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}${holds}`,
   );
 }
 

@@ -214,7 +214,7 @@ describe("the durable journal adapter: chat shape", () => {
       ["ask-closed:a2", "note"],
     ]);
     expect(firstText(entries[1])).toBe("Timed out before an answer: write_note wants to write /tmp/notes.txt");
-    expect(firstText(entries[2])).toBe("Decided in the program: write_note wants to write /tmp/notes.txt");
+    expect(firstText(entries[2])).toBe("Decided in the durable agent: write_note wants to write /tmp/notes.txt");
   });
 
   test("an older ask-closed row without a title draws the words alone, and the same row twice draws once", () => {

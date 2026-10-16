@@ -1,13 +1,23 @@
-import { join } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import { isAbsolute, join } from "node:path";
 
-import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir } from "../bridge/beacon/paths.ts";
+import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
+import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
+import { HOST } from "../bridge/host.ts";
 import {
   BEACON_SCHEMA_VERSION,
+  EDGE_SCHEMA_VERSION,
   type BeaconMarker,
   type BeaconRecord,
   type BeaconStatus,
+  type EdgeRecord,
 } from "../bridge/beacon/types.ts";
+import { asJsonString } from "../web/src/lib/json.ts";
+import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
+import { holdInputHash, shownInput } from "../web/src/lib/surface/hold.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { agentHolds, agentSettingsPath, managedSettingsPath, projectSettingsPaths } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -54,6 +64,9 @@ import type { Files } from "./sys.ts";
 // process — no surviving shell in between, with or without a trailing comment in the command string —
 // so `process.ppid` is the agent, and the agent is what the reader's liveness check needs. The hook's
 // own pid is dead microseconds later and would make every beacon read expired.
+
+/** The marker namespace of a Herdr pane, which is the Herdr adapter's registry key. */
+const HERDR_NAMESPACE = "herdr";
 
 /**
  * Where a multiplexer's pane identity lives in the environment of a process running inside it.
@@ -102,6 +115,15 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     scopeVar: "ZELLIJ_SESSION_NAME",
     scopeOf: (raw) => raw,
   },
+  {
+    // Herdr exports its own wire id (`w54:pW`) and the socket of the server that owns the pane
+    // (M56 spec 11). Herdr names its agents itself, so a Herdr marker never names a pane's agent: it
+    // places the hook edges on a Herdr pane, and nothing else.
+    namespace: HERDR_NAMESPACE,
+    paneVar: "HERDR_PANE_ID",
+    scopeVar: "HERDR_SOCKET_PATH",
+    scopeOf: (raw) => raw,
+  },
 ];
 
 /**
@@ -146,17 +168,24 @@ export function readEnvMarkers(env: Environment): BeaconMarker[] {
  * pane key — the beacon is keyed by the pane, so a later event simply overwrites the same file. It is
  * registered with no matcher for that reason: every source is the same sentence.
  *
- * THE MATCHER IS THE WAITING SIGNAL, NEVER A MESSAGE STRING. `Notification` fires for several
- * notification types; the registration in `cli/hooks.ts` carries `matcher: "idle_prompt"`, so the
- * only `Notification` payloads that reach this process are the idle ones. The `idle_prompt` message
- * string is undocumented and nothing here parses it — a status derived from prose is a status that
- * changes when the prose does.
+ * THE NOTIFICATION TYPE IS THE WAITING SIGNAL, NEVER A MESSAGE STRING. `Notification` fires for
+ * several notification types. Since M56 spec 11 the registration carries no matcher, so every type
+ * reaches this process, and `details` below picks by `notification_type`: `idle_prompt` writes
+ * `waiting`, the permission and question types write an edge only, and every other type writes
+ * nothing. The message string is undocumented and nothing here parses it. A status derived from prose
+ * is a status that changes when the prose does.
  */
 export interface HookRegistration {
   readonly event: string;
   /** Matched against `notification_type` by Claude Code itself. Absent means "every occurrence". */
   readonly matcher?: string;
   readonly status: BeaconStatus;
+  /**
+   * For an event with kinds (`Notification`, by `notification_type`): the kinds this emitter speaks
+   * for, each with the beacon status it writes, or null for "an edge only, no beacon". A kind not
+   * listed writes nothing at all. Absent means the event has no kinds and `status` holds.
+   */
+  readonly details?: Readonly<Record<string, BeaconStatus | null>>;
 }
 
 export const BEACON_HOOKS: readonly HookRegistration[] = [
@@ -172,7 +201,15 @@ export const BEACON_HOOKS: readonly HookRegistration[] = [
   // `prompt_input_exit` / `other` really mean the agent is gone, and for all four the honest word
   // right now is the same one.
   { event: "SessionEnd", status: "idle" },
-  { event: "Notification", matcher: "idle_prompt", status: "waiting" },
+  // No matcher since M56 spec 11: the permission and question kinds are hook edges too (a modal is up).
+  // They write an edge and no beacon. A permission prompt is not the agent waiting for its next
+  // prompt, and a `waiting` there would hold the pane at "needs you" until the turn's Stop. The idle
+  // kind still writes `waiting`, as before.
+  {
+    event: "Notification",
+    status: "waiting",
+    details: { idle_prompt: "waiting", permission_prompt: null, elicitation_dialog: null },
+  },
 ];
 
 /** The harness this emitter speaks for, in the journal registry's vocabulary. */
@@ -218,6 +255,8 @@ export interface BeaconEmitDeps {
   readonly agentPid: number;
   /** Injected so a test can pin the heartbeat; production leaves it. */
   readonly now?: () => number;
+  /** This process's uid: a spool or registry folder another user owns is not written into. Absent off POSIX. */
+  readonly uid?: number | undefined;
 }
 
 /**
@@ -229,7 +268,7 @@ export interface BeaconEmitDeps {
  * honest answer to an absent file is already the right one. In practice that is every non-Linux host,
  * because the alternatives there are all subprocesses and `SessionEnd` has 1.5 s.
  */
-function readPidStartTime(files: Files, pid: number): number | null {
+export function readPidStartTime(files: Files, pid: number): number | null {
   const text = files.read(procStatPath(pid));
   return text === null ? null : parseProcStartTime(text);
 }
@@ -255,6 +294,131 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
   }
 }
 
+/** A tool name or a subagent id: printable ASCII, short. */
+const TOOL_FIELD = /^[\x20-\x7e]{1,128}$/u;
+
+/**
+ * Whether the settings this agent reads hold Collie's permission hook right now (M56 spec 12): the
+ * user file, the project's two files under the folder the hook reports (`cwd`), and the managed file.
+ * Any of them can turn hooks off (`disableAllHooks`, or `allowManagedHooksOnly` in the managed one).
+ * The harness reloads hooks from these files while it runs (seen 2026-10-16 on 2.1.301), so the files
+ * are the truth for a running agent too. A few small reads; an unreadable file holds nothing.
+ */
+function holdsNow(deps: BeaconEmitDeps, event: string, cwd: string | null): boolean {
+  return agentHolds(
+    {
+      user: deps.files.read(agentSettingsPath(deps.ctx.env, deps.ctx.home)),
+      project: cwd === null ? [] : projectSettingsPaths(cwd).map((path) => deps.files.read(path)),
+      managed: deps.files.read(managedSettingsPath(HOST.platform)),
+    },
+    event,
+  );
+}
+
+/** The folder the hook reports the agent runs in, or null. */
+function cwdOf(payload: JsonObject): string | null {
+  const cwd = asJsonString(payload.cwd);
+  return cwd !== undefined && isAbsolute(cwd) && cwd.length < 4096 ? cwd : null;
+}
+
+/** A notification type: lower case and underscores. */
+const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
+
+/** What the registry walk needs: the emitter and the permission hold (`collie beacon hold`) share it. */
+export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
+
+/**
+ * Whether a folder the emitter is about to write into is this user's own and private: a real folder,
+ * not a link, owned by this uid, and writable by nobody else. A folder that fails is skipped.
+ */
+export function privateDir(deps: EdgeTargetDeps, dir: string): boolean {
+  if (deps.files.entryType(dir) !== "directory") return false;
+  const mode = deps.files.mode(dir);
+  if (mode !== null && (mode & 0o022) !== 0) return false;
+  return deps.uid === undefined || deps.files.ownerUid(dir) === deps.uid;
+}
+
+/**
+ * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
+ * bridge never reads half of one. A spool at {@link EDGE_SPOOL_MAX} files first loses its edges older
+ * than {@link EDGE_MAX_AGE_MS}, which no bridge would take anyway; still full, it takes nothing more,
+ * because no bridge is taking them and a spool must not grow without end.
+ */
+export function writeEdge(deps: BeaconEmitDeps, stateDir: string, record: EdgeRecord): void {
+  const dir = edgesDir(stateDir);
+  if (deps.files.entryType(dir) === null) deps.files.mkdirp(dir, BEACON_DIR_MODE);
+  if (!privateDir(deps, dir)) return;
+  if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) {
+    for (const name of deps.files.list(dir)) {
+      if (EDGE_FILE.test(name) && record.at - Number(name.split("-")[0]) > EDGE_MAX_AGE_MS) deps.files.remove(join(dir, name));
+    }
+    if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) return;
+  }
+  const name = `${String(record.at)}-${String(record.pid)}-${randomBytes(4).toString("hex")}.json`;
+  const temp = join(dir, `.${name}.tmp`);
+  try {
+    deps.files.write(temp, `${JSON.stringify(record)}\n`, 0o600);
+    deps.files.rename(temp, join(dir, name));
+  } catch (err) {
+    deps.files.remove(temp);
+    throw err;
+  }
+}
+
+/**
+ * The prompt as Claude Code hands it, unwrapped. A collapsed paste arrives as
+ * `\n\n<pasted_content id="f27a">\n<text>\n</pasted_content id="f27a">\n` (M56 spec 01 lab, Table 5),
+ * so the wrapper is cut before the hash. Only this emitter knows that form.
+ */
+export function unwrapPrompt(prompt: string): string {
+  return prompt.replace(/<pasted_content id="[^"]*">\n?([\s\S]*?)\n?<\/pasted_content id="[^"]*">/gu, "$1");
+}
+
+/**
+ * The salted hash of the prompt a `UserPromptSubmit` carried, or null. The salt is the send store's own
+ * (`<stateDir>/sends/.salt`, bridge/surface/requests.ts), so the hash matches a send's receipt and is
+ * worth nothing to a reader without it. No salt (the Send Protocol never ran) means no hash. The
+ * prompt text itself is never written anywhere.
+ */
+export function promptHashOf(deps: BeaconEmitDeps, stateDir: string, payload: JsonObject): string | null {
+  const prompt = asJsonString(payload.prompt);
+  if (prompt === undefined || prompt.length === 0) return null;
+  const salt = deps.files.read(join(stateDir, "sends", ".salt"))?.trim();
+  if (salt === undefined || salt.length === 0) return null;
+  return createHash("sha256").update(salt).update("\u0000").update(normalizePrompt(unwrapPrompt(prompt))).digest("hex");
+}
+
+/**
+ * The state dirs an edge goes to (M56 spec 11, bridge/beacon/hook-targets.ts): every bridge in the
+ * hook target registry whose pid still runs as the same process. A dead target's file is deleted. An
+ * explicit `COLLIE_STATE_DIR` in the agent's environment is always one of them. With no live target
+ * the edge goes to this emitter's own state dir, as it did before the registry.
+ */
+export function edgeStateDirs(deps: EdgeTargetDeps): string[] {
+  const dirs: string[] = [];
+  const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
+  if (privateDir(deps, registry)) {
+    for (const name of deps.files.list(registry).filter((entry) => HOOK_TARGET_FILE.test(entry)).slice(0, HOOK_TARGETS_MAX)) {
+      const path = join(registry, name);
+      const target = parseHookTarget(deps.files.read(path) ?? "");
+      if (target === null) continue;
+      const start = readPidStartTime(deps.files, target.pid);
+      if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
+        deps.files.remove(path);
+        continue;
+      }
+      dirs.push(target.stateDir);
+    }
+  }
+  if ((deps.ctx.env.COLLIE_STATE_DIR ?? "").trim() !== "" || dirs.length === 0) dirs.push(deps.ctx.stateDir);
+  return [...new Set(dirs.map((dir) => deps.files.realpath(dir) ?? dir))];
+}
+
+/** True when every marker is a Herdr one: Herdr names its agents itself, so no beacon is written. */
+function herdrOnly(markers: readonly BeaconMarker[]): boolean {
+  return markers.every((marker) => marker.namespace === HERDR_NAMESPACE);
+}
+
 /**
  * `collie beacon emit` — one hook event in, at most one beacon file out.
  *
@@ -271,6 +435,40 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const payload = asObject(JSON.parse(await deps.readStdin()));
     if (payload === null) return EXIT.OK;
 
+    // The tool edge (M56 spec 12): a tool finished. It ends a "Sent" card of a hook-held permission,
+    // so it is written for a subagent too, with the subagent id and the tool name, and never a beacon.
+    const hold = loadProfiles().get(BEACON_HARNESS)?.hold;
+    if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
+      const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+      if (pidStartTime === null) return EXIT.OK;
+      const tool = readField(payload, "tool_name", TOOL_FIELD);
+      const agent = readField(payload, "agent_id", TOOL_FIELD);
+      let record: EdgeRecord = {
+        schemaVersion: EDGE_SCHEMA_VERSION,
+        harness: BEACON_HARNESS,
+        event: hold.toolEvent,
+        detail: null,
+        pid: deps.agentPid,
+        pidStartTime,
+        markers,
+        at: (deps.now ?? Date.now)(),
+        promptHash: null,
+        holds: holdsNow(deps, hold.event, cwdOf(payload)),
+      };
+      if (tool !== null) record = { ...record, tool };
+      if (agent !== null) record = { ...record, agent };
+      // The input shown, hashed as the hold hashed it: the bridge ends only the hold of this very call.
+      if (tool !== null) record = { ...record, inputHash: holdInputHash(tool, shownInput(payload.tool_input, hold.inputShown, hold.inputDetails[tool])) };
+      for (const stateDir of edgeStateDirs(deps)) {
+        try {
+          writeEdge(deps, stateDir, record);
+        } catch {
+          // No tool edge for this target. A Sent card there ends when the screen moves on.
+        }
+      }
+      return EXIT.OK;
+    }
+
     // A SUBAGENT IS NOT THE PANE. A payload carrying `agent_id` came from a Task running inside the
     // session, and its `session_id` is not the pane's identity — writing it would hand the pane a
     // conversation the operator cannot see in it.
@@ -279,22 +477,51 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const event = payload.hook_event_name;
     const registration = BEACON_HOOKS.find((row) => row.event === event);
     if (registration === undefined) return EXIT.OK;
-
-    const session = readField(payload, "session_id", SESSION_ID);
-    if (session === null) return EXIT.OK;
+    // An event with kinds speaks only for the kinds it lists. `undefined` here is "not ours".
+    const detail = registration.details === undefined ? null : readField(payload, "notification_type", NOTIFICATION_TYPE);
+    const status = registration.details === undefined ? registration.status : detail === null ? undefined : registration.details[detail];
+    if (status === undefined) return EXIT.OK;
 
     const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
     if (pidStartTime === null) return EXIT.OK;
+    const now = (deps.now ?? Date.now)();
+
+    // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
+    // one target that cannot be written must not cost the others, and the other way round.
+    const holds = hold === undefined ? false : holdsNow(deps, hold.event, cwdOf(payload));
+    for (const stateDir of edgeStateDirs(deps)) {
+      try {
+        writeEdge(deps, stateDir, {
+          schemaVersion: EDGE_SCHEMA_VERSION,
+          harness: BEACON_HARNESS,
+          event: registration.event,
+          detail,
+          pid: deps.agentPid,
+          pidStartTime,
+          markers,
+          at: now,
+          promptHash: promptHashOf(deps, stateDir, payload),
+          holds,
+        });
+      } catch {
+        // No edge for this target. The screen still reads the pane on its own poll.
+      }
+    }
+
+    // A Herdr pane gets edges only: Herdr names the agent and its session on its own wire.
+    if (status === null || herdrOnly(markers)) return EXIT.OK;
+    const session = readField(payload, "session_id", SESSION_ID);
+    if (session === null) return EXIT.OK;
 
     writeBeacon(deps, {
       schemaVersion: BEACON_SCHEMA_VERSION,
       harness: BEACON_HARNESS,
       session: { kind: "id", value: session },
-      status: registration.status,
+      status,
       pid: deps.agentPid,
       pidStartTime,
       markers,
-      heartbeatMs: (deps.now ?? Date.now)(),
+      heartbeatMs: now,
     });
     return EXIT.OK;
   } catch {

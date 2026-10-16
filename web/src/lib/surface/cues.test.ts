@@ -75,6 +75,24 @@ describe("the bottom cluster", () => {
     expect(readCues(rows, frame).cluster.length).toBe(12);
   });
 
+  // The 2026-10-16 incident on lane 8788: the agents panel's two agent rows read as a checkbox list
+  // and its "↓ to view" hint as a key hint, so a free box read unreadable.
+  it("skips the named panel on a walk that holds, and reads it when the walk fails", () => {
+    const panel = ["  ● main", "  ◯ general-purpose   Reading a file   2m 3s · ↓ 120.1k tokens", "  ◯ fork-name   a task   31s · ↓ 40.2k tokens"];
+    const mode = "  ⏵⏵ bypass permissions on · 2 background tasks · ↓ to view";
+    const held = plainRows(["● done", RULE, "❯ ", RULE, mode, "", ...panel, "", "  ↓ to manage"]);
+    const heldFrame = findInputFrame(held, IDLE)!;
+    expect(heldFrame.volatile.named).toHaveLength(5);
+    expect(readCues(held, heldFrame).strength).toBe("none");
+    // Too many statusline rows: the walk fails, nothing is named, and the panel is in sight again.
+    const tall = Array.from({ length: IDLE.volatile.below.maxRows }, (_, i) => `  status ${String(i)}`);
+    const failed = plainRows(["● done", RULE, "❯ ", RULE, ...tall, mode, "", ...panel, "", "  ↓ to manage"]);
+    const failedFrame = findInputFrame(failed, IDLE)!;
+    expect(failedFrame.volatile.status).toBeNull();
+    expect(failedFrame.volatile.named).toEqual([]);
+    expect(readCues(failed, failedFrame).strength).not.toBe("none");
+  });
+
   it(`ends the no-frame cluster at ${String(CLUSTER_GAP_ROWS)} blank rows`, () => {
     const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "a reply", "more reply", "last line"]);
     const cues = readCues(rows, null);
@@ -160,6 +178,32 @@ describe("cue shapes", () => {
     expect(isRunningRow("  ⏵⏵ bypass permissions on · esc to interrupt · ← for agents")).toBe(true);
     expect(isRunningRow("✻ Brewed for 4s · done 12:27 PM")).toBe(false);
     expect(isRunningRow("  Esc to interrupt is not a key hint here")).toBe(false);
+  });
+});
+
+describe("the running sign on live captures (Claude Code 2.1.301, Codex 0.163.0, 2026-10-16)", () => {
+  // The rows of the fixtures claude--v2301-*--w100.txt and codex--v0163-working-*--w120.txt, as read.
+  // 2.1.301 prints no interrupt hint while it runs: the live row is a spinner with `…` and a timer.
+  it("a live row fires: a spinner glyph, a verb with an ellipsis, a bracketed timer", () => {
+    expect(isRunningRow("* Wibbling… (4s · ↓ 304 tokens)")).toBe(true);
+    expect(isRunningRow("✽ Germinating… (4s · thinking with high effort)")).toBe(true);
+    expect(isRunningRow("· Germinating… (7s · thinking with high effort)")).toBe(true);
+    expect(isRunningRow("• Working (8s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close")).toBe(true);
+  });
+
+  it("a finished turn's row never fires, whatever follows it", () => {
+    expect(isRunningRow("✻ Worked for 6s · done 12:36 PM · 1 shell still running")).toBe(false);
+    expect(isRunningRow("✻ Churned for 1s · done 12:37 PM")).toBe(false);
+    expect(isRunningRow("✻ Cogitated for 1s · done 12:38 PM")).toBe(false);
+    expect(isRunningRow("✻ Crunched for 12s")).toBe(false);
+    expect(isRunningRow("✻ Waiting for 1 background agent to finish")).toBe(false);
+    expect(isRunningRow("  Worked for 5s • 12:42 PM")).toBe(false);
+  });
+
+  it("the first second of a turn, before its timer shows, and the queued message's hint do not fire", () => {
+    expect(isRunningRow("✶ Wibbling…")).toBe(false);
+    expect(isRunningRow("  ctrl+enter to send now")).toBe(false);
+    expect(isRunningRow("  ◯ general-purpose  Create m56s2.txt file                   9s · ↓ 28.4k tokens")).toBe(false);
   });
 });
 

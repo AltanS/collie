@@ -31,6 +31,23 @@ function words(record: Readonly<Record<string, number>>): string {
   return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
+function edgeWords(row: CounterRow): string[] {
+  const total = Object.values(row.edges).reduce((sum, n) => sum + n, 0);
+  return total === 0 ? [] : [`edges ${String(total)}${words(row.edges)}`];
+}
+
+/** The held sends (M56 spec 15), only where a send was held, so a host that never held one reads as before. */
+function heldWords(row: CounterRow): string[] {
+  if (row.held + row.held_sent + row.held_expired + row.held_cancelled === 0) return [];
+  return [`held ${String(row.held)}`, `held-sent ${String(row.held_sent)}`, `held-expired ${String(row.held_expired)}`, `held-cancelled ${String(row.held_cancelled)}`];
+}
+
+/** Hook-held permissions by outcome (M56 spec 12), only where a hold happened. */
+function holdWords(row: CounterRow): string[] {
+  const total = Object.values(row.holds).reduce((sum, n) => sum + n, 0);
+  return total === 0 ? [] : [`held asks ${String(total)}${words(row.holds)}`];
+}
+
 function rowLine(row: CounterRow): string {
   const unknown = unknownTotal(row);
   const refused = Object.values(row.refused).reduce((sum, n) => sum + n, 0);
@@ -48,6 +65,10 @@ function rowLine(row: CounterRow): string {
     `unknown-outcome ${String(row.unknown_outcome)}`,
     `typed-not-submitted ${String(row.typed_not_submitted)}`,
     `discarded ${String(row.discarded)}`,
+    ...heldWords(row),
+    // Hook edges (M56 spec 11) only where a pane took one, so a host without hooks reads as before.
+    ...edgeWords(row),
+    ...holdWords(row),
   ].join(" · ");
 }
 

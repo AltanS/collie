@@ -191,6 +191,11 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "agy--after-plan-idle.txt": {
+   "harness": "agy",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "agy--working.txt": {
    "harness": "agy",
    "version": "unversioned",
@@ -831,15 +836,90 @@
    "version": "2.1.299",
    "state": "dialog"
   },
+  "claude--v2301-done-shell-running--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-fork-running-main-idle.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-draft.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "draft"
+  },
+  "claude--v2301-lab-agents-panel-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-focused.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-more.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-tasks-pill.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-hold-subagent.txt": {
    "harness": "claude",
    "version": "2.1.301",
    "state": "running"
   },
+  "claude--v2301-idle-after-turn--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-idle.txt": {
    "harness": "claude",
    "version": "2.1.301",
    "state": "idle"
+  },
+  "claude--v2301-queued-taken--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-spinner-no-timer--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-synth-agents-panel-walk-fails.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-synth-agents-panel.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-working-draft--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-working-queued-message--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-working-quiet--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
   },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
@@ -1501,6 +1581,16 @@
    "version": "2.1.291",
    "state": "dialog"
   },
+  "claude--v2301-usage-panel-over-box--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "dialog"
+  },
+  "claude--v2301-usage-panel-over-box--w82.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "dialog"
+  },
   "claude-lab--working-popup-open--w82.txt": {
    "harness": "claude",
    "version": "2.1.291",
@@ -1714,7 +1804,7 @@
   "codex--v0158-goal-notice.txt": {
    "harness": "codex",
    "version": "0.158",
-   "state": "idle"
+   "state": "running"
   },
   "codex--v0159-task-title.txt": {
    "harness": "codex",
@@ -1745,6 +1835,16 @@
    "harness": "codex",
    "version": "0.163",
    "state": "idle"
+  },
+  "codex--v0163-working-draft--w120.txt": {
+   "harness": "codex",
+   "version": "0.163",
+   "state": "running"
+  },
+  "codex--v0163-working-steered--w120.txt": {
+   "harness": "codex",
+   "version": "0.163",
+   "state": "running"
   },
   "codex--working.txt": {
    "harness": "codex",
@@ -2192,6 +2292,11 @@
    "state": "dialog"
   },
   "muse--working.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "idle"
+  },
+  "muse--turn-running.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "running"
@@ -2794,7 +2899,7 @@
   "omp--v18-4-claude-titled.txt": {
    "harness": "omp",
    "version": "18.4",
-   "state": "draft"
+   "state": "idle"
   },
   "omp--v18-4-claude-wrapped.txt": {
    "harness": "omp",
@@ -3656,5 +3761,10 @@
    "version": "unversioned",
    "state": "screen"
   }
+ },
+ "knownMismatches": {
+  "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
+  "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
+  "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it."
  }
 }

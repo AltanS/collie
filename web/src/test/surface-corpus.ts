@@ -60,6 +60,8 @@ export interface Incident {
 export interface SurfaceLabels {
   readonly fixtures: Readonly<Record<string, FixtureLabel>>;
   readonly incidents: Readonly<Record<string, Incident>>;
+  /** Fixtures labelled `running` that read free, each with its reason (the `$comment` key dropped). */
+  readonly knownMismatches: Readonly<Record<string, string>>;
 }
 
 let labels: SurfaceLabels | null = null;
@@ -72,10 +74,13 @@ export function loadLabels(): SurfaceLabels {
   const raw = JSON.parse(readFileSync(join(FIXTURES_DIR, "surface-labels.json"), "utf8")) as {
     fixtures: Record<string, FixtureLabel>;
     incidents: Record<string, Incident>;
+    knownMismatches?: Record<string, string>;
   };
   const incidents: Record<string, Incident> = {};
   for (const [sha, entry] of Object.entries(raw.incidents)) if (!sha.startsWith("$")) incidents[sha] = entry;
-  labels = { fixtures: raw.fixtures, incidents };
+  const knownMismatches: Record<string, string> = {};
+  for (const [name, why] of Object.entries(raw.knownMismatches ?? {})) if (!name.startsWith("$")) knownMismatches[name] = why;
+  labels = { fixtures: raw.fixtures, incidents, knownMismatches };
   return labels;
 }
 

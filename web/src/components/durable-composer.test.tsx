@@ -463,7 +463,7 @@ describe("the program's own actions", () => {
 
   it("a refusal says the bridge's own words, keeps nothing, and the next tap is a new intent", async () => {
     const seen = stub("action", () =>
-      HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "The program did not run this action: Already escalated." }, { status: 409 }),
+      HttpResponse.json({ ok: false, outcome: "refused", reason: "refused", detail: "The durable agent did not run this action: Already escalated." }, { status: 409 }),
     );
     const { onReload } = draw({ actions: [escalate] });
     const user = userEvent.setup();
@@ -781,5 +781,177 @@ describe("partial replies", () => {
     drawBoth([reply("All of it")]);
     expect(screen.getByText("All of it").closest("[data-partial]")).toBeNull();
     expect(document.querySelector("[aria-busy]")).toBeNull();
+  });
+});
+
+describe("the Send Protocol on this machine (M56 spec 14)", () => {
+  /** Serve `POST /api/send` with `reply`, and record each body. */
+  function stubProtocol(reply: (n: number) => Response): Sent[] {
+    const seen: Sent[] = [];
+    server.use(
+      http.post<never, JsonObject>("/api/send", async ({ request }) => {
+        seen.push(asJsonObject(await request.json()) ?? {});
+        return reply(seen.length);
+      }),
+    );
+    return seen;
+  }
+
+  it("a program on this machine sends a plain text through POST /api/send with the revision it showed", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [], acknowledged: "x" } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    const { onSent } = draw({ sendProtocol: true, revision: 4242 });
+    const user = await type("go left");
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(1));
+    expect(protocol[0]).toMatchObject({ pane: "c1", text: "go left", mode: "send", revision: 4242 });
+    expect(String(protocol[0]!.id)).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(old).toHaveLength(0);
+    await waitFor(() => expect(field()).toHaveValue(""));
+    expect(onSent).toHaveBeenCalled();
+    expect(screen.getByTestId("said")).toHaveTextContent("Sent");
+  });
+
+  it("a send the program takes for after its turn says Queued", async () => {
+    stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [], queued: true } }));
+    draw({ sendProtocol: true, status: "working" });
+    const user = await type("and then this");
+    await user.click(sendButton());
+    await waitFor(() => expect(screen.getByTestId("said")).toHaveTextContent("Queued. The agent takes it after this turn."));
+    expect(field()).toHaveValue("");
+  });
+
+  it("a refusal keeps the draft and tells it at the thumb in program words, never screen words", async () => {
+    stubProtocol(() =>
+      HttpResponse.json({
+        offers: [],
+        receipt: { outcome: "refused", reason: "stale_surface", keys: [] },
+        detail: "The durable agent started another turn after you looked. Read the chat, then send again.",
+        surface: { revision: 9, turn: "running", modal: "none", composer: "empty" },
+      }),
+    );
+    const { onReload, onSent } = draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    const notice = await screen.findByText((_, node) => node?.getAttribute("data-slot") === "composer-refusal");
+    expect(notice).toHaveTextContent("The durable agent started another turn after you looked. Read the chat, then send again.");
+    expect(document.querySelector('[data-slot="composer-refusal-detail"]')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/screen|input box/iu);
+    expect(field()).toHaveValue("hello");
+    expect(loadDraft(undefined, "c1")).toBe("hello");
+    expect(onReload).toHaveBeenCalled();
+    expect(onSent).not.toHaveBeenCalled();
+  });
+
+  it("an open question refuses the send: the notice says so and Go to the question calls the card", async () => {
+    stubProtocol(() =>
+      HttpResponse.json({
+        offers: [],
+        receipt: { outcome: "refused", reason: "not_free", keys: [] },
+        detail: "The durable agent waits for an answer to a question. Answer it first, then send.",
+        surface: { revision: 9, turn: "running", modal: { ask: { id: "ask-0123456789abcd", kind: "permission", options: [{ id: "1", label: "Save" }], channel: "program", hash: "abc" } }, composer: "empty" },
+      }),
+    );
+    const onAnswerDialog = vi.fn();
+    draw({ sendProtocol: true, onAnswerDialog });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("The durable agent waits for an answer to a question. Answer it first, then send.")).toHaveAttribute("data-slot", "composer-refusal");
+    await user.click(screen.getByRole("button", { name: "Go to the question" }));
+    expect(onAnswerDialog).toHaveBeenCalledOnce();
+  });
+
+  it("a state Collie cannot read and an unknown end each have their own program sentence", async () => {
+    stubProtocol((n) =>
+      n === 1
+        ? HttpResponse.json({ offers: [], receipt: { outcome: "refused", reason: "not_free", keys: [] }, surface: { revision: 0, turn: "unknown", modal: "unknown", composer: "unreachable", reason: "stale" } })
+        : HttpResponse.json({ offers: [], receipt: { outcome: "unknown", reason: "no_evidence", keys: [] } }),
+    );
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("Collie cannot read this conversation now. Try again in a moment.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to the question" })).toBeNull();
+    await user.click(sendButton());
+    expect(await screen.findByText("The durable agent did not say it took the message. Read the chat before you send it again.")).toBeInTheDocument();
+  });
+
+  it("the program's own refusal shows its words under the program sentence", async () => {
+    stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "refused", reason: "write_failed", keys: [] }, detail: "The desk is closed for the night." }));
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    expect(await screen.findByText("The durable agent did not take the message.")).toBeInTheDocument();
+    expect(screen.getByText("The desk is closed for the night.")).toHaveAttribute("data-slot", "composer-refusal-detail");
+  });
+
+  it("while no answer came the retry keys on the text only: a turn that moved keeps the same request id", async () => {
+    const protocol = stubProtocol((n) => (n === 1 ? HttpResponse.error() : HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } })));
+    function Moving() {
+      const [shownTurn, setShownTurn] = useState("turn-7");
+      return (
+        <>
+          <DurableComposer paneId="c1" turnId={shownTurn} status="idle" sendProtocol locked={false} lockedWhy="" offline={false} display={{ open: false, onToggle: vi.fn() }} onSent={vi.fn()} onReload={vi.fn()} />
+          <button type="button" onClick={() => setShownTurn("turn-8")}>
+            move the turn
+          </button>
+        </>
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Moving /> }])} />);
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(field()).toHaveValue("hello"));
+    await user.click(screen.getByRole("button", { name: "move the turn" }));
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(2));
+    expect(protocol[1]!.id).toBe(protocol[0]!.id);
+  });
+
+  it("no answer keeps the draft, and sending again carries the SAME request id", async () => {
+    const protocol = stubProtocol((n) => (n === 1 ? HttpResponse.error() : HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } })));
+    draw({ sendProtocol: true });
+    const user = await type("hello");
+    await user.click(sendButton());
+    await waitFor(() => expect(field()).toHaveValue("hello"));
+    expect(await screen.findByText(/Tap Send again: it does not send twice/)).toHaveAttribute("data-slot", "composer-refusal");
+    await user.click(sendButton());
+    await waitFor(() => expect(protocol).toHaveLength(2));
+    expect(protocol[1]!.id).toBe(protocol[0]!.id);
+    await waitFor(() => expect(field()).toHaveValue(""));
+  });
+
+  it("a program on a crew member keeps the program's own send route", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw({ sendProtocol: true, scope: { host: "member" } });
+    const user = await type("over the crew");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(old[0]).toMatchObject({ text: "over the crew", turnId: "turn-7" });
+    expect(protocol).toHaveLength(0);
+  });
+
+  it("a steer stays on the program's own route: it is not part of the Send Protocol", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw({ sendProtocol: true, status: "working" });
+    const user = userEvent.setup();
+    await user.click(await steerButton());
+    await user.type(field(), "left please");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(old[0]).toMatchObject({ steer: true, text: "left please" });
+    expect(protocol).toHaveLength(0);
+  });
+
+  it("a bridge that does not mark the pane keeps the program's own send route", async () => {
+    const protocol = stubProtocol(() => HttpResponse.json({ offers: [], receipt: { outcome: "sent", keys: [] } }));
+    const old = stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+    draw();
+    const user = await type("old bridge");
+    await user.click(sendButton());
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(protocol).toHaveLength(0);
   });
 });

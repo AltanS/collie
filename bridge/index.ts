@@ -22,7 +22,7 @@ import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
+import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget, type HookTargetRegistration } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -214,10 +214,15 @@ import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
+import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
+import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
+import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
+import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1205,7 +1210,10 @@ const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env }
  */
 function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter {
   const matcher = factoryFor(muxRegistry, adapter.mux)?.beaconMatcher?.(target);
-  const seeing = matcher === undefined ? adapter : withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled });
+  // Herdr has a matcher too since M56 spec 11, for the hook edges, but it sees agents on its own wire:
+  // the decorator wraps only an adapter that cannot.
+  const blind = matcher !== undefined && !adapter.capabilities.supports.agentDetection && !adapter.capabilities.supports.agentSessionRef;
+  const seeing = blind ? withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled }) : adapter;
   // The hint tier sits OUTSIDE the decorator, so it reads the DECORATED declaration and retires
   // itself the moment that declaration says agents are visible (M11/05). Applied to every adapter,
   // including one that was never decorated: it suppresses itself there for the same reason.
@@ -1233,6 +1241,8 @@ interface BuiltAdapter {
   readonly adapter: MuxAdapter;
   readonly target: MuxTarget;
   readonly probe?: ProgramProbe;
+  /** A program's structured state and its two writes, for the structured driver (M56 spec 14). */
+  readonly structured?: ProgramPort;
 }
 
 /** The adapter for one terminal session, exactly as every session was built before programs. */
@@ -1255,7 +1265,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   const logDir = sourceLogDir(cfg.stateDir, source.name);
   const target: MuxTarget = { endpoint: "", timeoutMs: DEFAULT_TIMEOUT_MS, options: { [DURABLE_LOG_DIR_OPTION]: logDir } };
   const program = createDurableMux(sourceTransportEnv(source), target.options);
-  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() } };
+  return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() }, structured: program };
 }
 
 // The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
@@ -1269,16 +1279,64 @@ if (sendStore !== null) {
   if (recoveredAsks.length > 0) console.log(`[ask] ${String(recoveredAsks.length)} ask answer(s) left unsettled by the last run read as unknown`);
   sendStore.prune();
 }
+// The hold queue (M56 spec 15): a send the harness cannot take during its turn waits here, one file per
+// request under `<stateDir>/held/`, and is replayed on start. A request that was going out when the
+// last run stopped was settled `unknown` above; its row ends with that, the text kept for a Resend.
+const holdStore = sendStore === null ? null : new HoldStore(join(cfg.stateDir, "held"));
+if (holdStore !== null && sendStore !== null) {
+  const changed = SendProtocol.reconcileHolds(holdStore, sendStore);
+  const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
+  if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
+}
 // The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
 // Created with either flag, so an instance that computes no Surface touches no new file. It never
 // blocks a send and never changes a verdict.
 const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
+// The hook edges (M56 spec 11): the harness's own hook writes one file per event into
+// `<stateDir>/edges/`, and this router places each on one pane of a terminal session. Built with the
+// Surface, so an instance that computes no Surface takes no edge. Each session that can take edges
+// adds its target in `makeSession`; the router reads only the targets of sessions still registered.
+const edgeTargets = new Map<string, HoldTarget>();
+// This bridge's hook target file (bridge/beacon/hook-targets.ts): written once the router takes
+// edges, kept on each liveness tick, removed on a clean stop.
+let hookTarget: HookTargetRegistration | null = null;
+const edgeRouter =
+  surfaceLedger === null
+    ? null
+    : new EdgeRouter({
+        spool: fileEdgeSpool(cfg.stateDir),
+        store: fileSourceStore(cfg.stateDir),
+        keep: () => hookTarget?.keep(),
+        liveness: procBeaconLiveness(),
+        targets: () => {
+          const live = new Set(registry.ordered().map((runtime) => runtime.name));
+          return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
+        },
+        // A dropped edge counts under its own harness, with no version: no pane named one.
+        onDrop: (record) => surfaceLedger.edge({ harness: record?.harness ?? "-", version: "-", profileId: "-", status: "-" }, "dropped"),
+      });
+// Hook-held permissions (M56 spec 12): the harness's permission hook connects to this bridge's local
+// socket (`<stateDir>/hold/sock`, 0600 in a 0700 directory) and waits for a tap. Built with the edges
+// and the Send Protocol, since the hold is placed like an edge and answered through the ask route. It
+// takes the same targets as the edges; a session without an ask book answers no hold.
+const holdServer =
+  edgeRouter === null || sendStore === null
+    ? null
+    : new HoldServer({
+        socketPath: holdSocketPath(cfg.stateDir),
+        host: HOST,
+        liveness: procBeaconLiveness(),
+        targets: () => {
+          const live = new Set(registry.ordered().map((runtime) => runtime.name));
+          return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
+        },
+      });
 const sendVersions = new VersionCache();
 /** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
 async function sendProfile(harness: string): Promise<ProfileMatch | null> {
-  const profile = loadProfiles().get(harness);
+  const profile = findProfile(loadProfiles(), harness);
   if (profile === undefined) return null;
-  return profileFor(profile.id, await sendVersions.versionOf(profile));
+  return profileForPlatform(profile.id, await sendVersions.versionOf(profile), HOST.platform);
 }
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
@@ -1405,7 +1463,14 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const surface = computeSurface
     ? new SurfaceShadow(askBook === undefined ? shadowOptions : { ...shadowOptions, asks: { book: askBook, generation: generationOf } })
     : undefined;
-  if (surface !== undefined) engine.onUpdate((s) => void surface.observe(s.agents));
+  // The held sends (M56 spec 15) ride the same poll: once the Surface has read the panes, a pane that
+  // reads free releases its oldest held request, and the queue ends what expired or lost its pane.
+  // `send` is declared below; the poll's first update comes after `engine.start()`.
+  if (surface !== undefined) {
+    engine.onUpdate((s) => {
+      void surface.observe(s.agents).then(() => send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId)));
+    });
+  }
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
   // request store. The ask answerer shares the locks, the gate and the store, so a send and an answer
   // never run on one pane at once and every key leaves through the one gate.
@@ -1423,19 +1488,100 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: (harness) => sendProfile(harness),
           generation: generationOf,
           asks: askBook,
+          holds: holdStore ?? undefined,
         })
       : undefined;
   const asks =
     sends && sendStore !== null && askBook !== undefined
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
       : undefined;
+  // The structured driver (M56 spec 14): a program session's Surface, Send and Ask from its structured
+  // state, with the Send Protocol on. It is the one driver of its session; no screen fold runs beside it.
+  const driver =
+    sendStore !== null && endpoint.kind === "program" && built.structured !== undefined
+      ? new ProgramDriver({ session: name, port: built.structured, store: sendStore, locks, ledger: surfaceLedger ?? undefined })
+      : undefined;
+  // One driver per session: a program session has no screen fold, and a terminal session no structured driver.
+  if (driver !== undefined && surface !== undefined) throw new Error(`session ${name}: a screen Surface and the structured driver must never both run`);
+  if (driver !== undefined) engine.onUpdate((s) => driver.observe(s.agents.map((agent) => agent.paneId)));
+
+  // This session's hook-held permissions (M56 spec 12): one book beside the ask book. The ask book
+  // asks it first on every read of a pane with a live hold, so no keys ask is minted for that dialog.
+  const holdBook =
+    askBook !== undefined && holdServer !== null
+      ? new HoldBook({
+          count: (held, outcome) => {
+            const key = surface?.counterKeyOf(held.paneId) ?? { harness: held.request.harness, version: "-", profileId: "-", status: "-" };
+            surfaceLedger?.hold(key, counterWordOf(outcome));
+          },
+        })
+      : undefined;
+  if (holdBook !== undefined) askBook?.attachHolds(holdBook);
+
+  // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.
+  // Herdr has a matcher for this alone; tmux and zellij use the one that lifts their agents.
+  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : factoryFor(muxRegistry, built.adapter.mux)?.beaconMatcher?.(target);
+  if (surface !== undefined && edgeRouter !== null && edgeMatcher !== undefined) {
+    const foreground = herdr.foregroundProcesses?.bind(herdr);
+    const edgeTarget: EdgeTarget = {
+      session: name,
+      matcher: edgeMatcher,
+      paneIds: () => {
+        const { agents, shellPanes } = engine.current();
+        return [...agents, ...shellPanes].map((pane) => pane.paneId);
+      },
+      deliver: (paneId, edge) => {
+        // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold;
+        // the edge still counts, under its harness with no version, like a dropped one.
+        if (!surface.edge(paneId, edge.kind, edge.at)) surfaceLedger?.edge({ harness: edge.record.harness, version: "-", profileId: "-", status: "-" }, edge.kind);
+        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.record.at);
+        holdBook?.edge(paneId, edge.kind, { tool: edge.record.tool ?? null, agent: edge.record.agent ?? null, at: edge.record.at, inputHash: edge.record.inputHash ?? null });
+      },
+    };
+    const holdTarget: HoldTarget =
+      holdBook === undefined
+        ? edgeTarget
+        : {
+            ...edgeTarget,
+            hold: (paneId, request, conn, onClose) => {
+              takeHold(
+                {
+                  book: holdBook,
+                  generation: generationOf,
+                  profile: (harness) => loadProfiles().get(harness)?.hold,
+                  reread: (pane) => surface.edge(pane, "dialog", Date.now()),
+                  log: (line) => console.log(line),
+                },
+                paneId,
+                request,
+                conn,
+                onClose,
+              );
+            },
+          };
+    edgeTargets.set(name, foreground === undefined ? holdTarget : { ...holdTarget, foreground });
+  } else {
+    edgeTargets.delete(name);
+  }
+  // "holds" also while a hold from the pane is live, which proves it before the next edge says so.
+  const hooks =
+    edgeTargets.has(name) && edgeRouter !== null
+      ? (paneId: string) => {
+          const word = edgeRouter.hooksOf(name, paneId);
+          return word === "live" && holdBook?.live(paneId) === true ? "holds" : word;
+        }
+      : undefined;
+  const hold = holdBook === undefined ? undefined : (paneId: string) => holdBook.note(paneId);
 
   engine.start();
   poker.start();
   const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
-  const withSurface = surface === undefined ? parts : { ...parts, surface };
+  const withHooks = hooks === undefined ? parts : { ...parts, hooks };
+  const withSurface = surface === undefined ? withHooks : { ...withHooks, surface };
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
-  return asks === undefined ? withSend : { ...withSend, asks };
+  const withAsks = asks === undefined ? withSend : { ...withSend, asks };
+  const withHold = hold === undefined ? withAsks : { ...withAsks, hold };
+  return driver === undefined ? withHold : { ...withHold, driver };
 };
 
 const registry = new SessionRegistry({
@@ -1468,6 +1614,19 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
+// Held sends of a session that no longer exists go, text and all (M56 spec 15 review).
+if (holdStore !== null && sendStore !== null) {
+  const dropped = SendProtocol.dropHoldsOutside(holdStore, sendStore, new Set(registry.all().map((runtime) => runtime.name)));
+  if (dropped > 0) console.log(`[send] dropped ${String(dropped)} held send(s) of sessions that no longer exist`);
+}
+// Take hook edges from here on: every session the registry knows has added its target. The hook
+// target file tells every emitter on this host to write its edges into this state dir too.
+edgeRouter?.start();
+// And hook holds (M56 spec 12), before the target file names this state dir: a hook that reads the
+// registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
+// or the path is not safe) runs with no holds: every permission stays a screen ask.
+if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
+hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2369,6 +2528,9 @@ const shutdown = async () => {
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
+  edgeRouter?.stop();
+  hookTarget?.remove();
+  holdServer?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

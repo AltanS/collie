@@ -1827,7 +1827,8 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `agy--fresh-idle.txt` | Fresh session: Antigravity header logo and session info, idle input box between horizontal rules, statusline below (`? for shortcuts`) | `idle` |
-| `agy--working.txt` | Mid-turn: tool calls, `⣾ Loading...` spinner with tip line, input box with `esc to cancel` status line | `working` |
+| `agy--working.txt` | Mid-turn (the capture of 2026-08-20, restored 2026-10-16): tool calls, a `⣟  Generating...` spinner row with a tip line, the box, and `esc to cancel` under it | `working` |
+| `agy--after-plan-idle.txt` | The 60-row capture of 2026-08-26 that stood as `agy--working.txt`: a `/plan` turn is over and the box is free, with `? for shortcuts` under it. Relabelled idle on 2026-10-16 (M56 spec 14), when the mid-turn capture below came back | `idle` |
 | `agy--done.txt` | Completed turn: tool output, assistant summary, idle input box | `idle` |
 | `agy--select-menu.txt` | AskUserQuestion single-select dialog: question, numbered options 1..3 with description sub-lines, free-text row "4. Write-in...", "↑/↓ Navigate · enter Select · esc Skip" footer | `blocked` |
 | `agy--permission-bash.txt` | Bash execution permission dialog: command, "Requesting permission for: ls -la /tmp", options 1..4 (Yes / allow in conversation / persist / No), "↑/↓ Navigate · tab Amend · ctrl+g edit/expand command" footer | `blocked` |
@@ -1931,7 +1932,8 @@ signature.
 | `muse--draft-blank-row.txt` | Two-paragraph draft: a blank row between the `❯` head and the continuation. The tail walk steps over it, so the prompt binds, the draft folds, and no card draws (#274) | `idle` |
 | `muse--draft-image-chip.txt` | An attached image path converted in place to `[Image #1]` (N in attach order). The read stays verbatim; the attach grammar maps it back for verify (#278) | `idle` |
 | `muse--draft-quoted-path.txt` | A non-image path double-quoted in place (`"/tmp/…"`). Same split: verbatim read, attach grammar verifies (#278) | `idle` |
-| `muse--working.txt` | Mid-turn: `◇ Double checking (2m 40s · esc to interrupt)` above the live composer | `working` |
+| `muse--working.txt` | A finished turn: the transcript ends `◆ Worked for 2m 57s · 4:24 PM` and the composer is free. The name is the first capture's; relabelled idle on 2026-10-16 (M56 spec 14), since no mid-turn screen was ever captured under it | `idle` |
+| `muse--turn-running.txt` | Derived 2026-10-16 from `muse--working.txt`: its last transcript row is replaced by the running row `◇ Double checking (2m 40s · esc to interrupt)`, in the form of the `Calling tools (1m 01s · esc to interrupt)` row of `muse--approval-ls-147.txt`. Not a live capture; a live one is pending | `working` |
 | `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
 | `muse--tip-loop.txt` | The same idle composer holding the rotated `/loop 10m <prompt> schedules a recurring prompt` placeholder tip — the tip rotates, and an unlisted one reads as a ghost draft (#274) | `idle` |
 | `muse--tip-paste.txt` | The same idle composer holding the `Paste an image with Ctrl+V — file paths and URLs work too` placeholder tip — the tip rotates per context (#278) | `idle` |
@@ -2167,6 +2169,67 @@ account offered.
 
 The last one is the reason a hook ask cannot be derived from the screen: the screen says free while
 the request waits.
+
+## A send during a running turn (captured 2026-10-16, Claude Code 2.1.301, Codex 0.163.0, herdr 0.9.4)
+
+Read through `herdr pane read --source visible --format ansi --raw`, byte for byte except one glyph,
+from a throwaway Herdr workspace (closed after) in `~/.cache/collie-lab/m56-queue-lab/project`. The pane was 120 columns
+by 40 rows; Claude Code was started under `stty cols 100 rows 40`, Codex used the full 120. Claude Code
+ran with the operator's own statusline (two rows: usage gauges, then model, folder and branch). The
+captures answer two questions: does the running sign fire on a finished turn's row, and does each
+harness take a message typed and entered while its turn runs. The one change: in the two
+`working-draft` and `working-queued-message` files the tip row's dash (`branch - 3 free reviews left`)
+is a hyphen, where Claude Code drew a long dash; the cell width is the same.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2301-working-quiet--w100.txt` | A turn waiting on a shell command. The live row is `* Wibbling… (4s · ↓ 304 tokens)`: a spinner glyph, a verb with `…`, and a timer in brackets. 2.1.301 prints no `esc to interrupt` anywhere while it runs. Reads `running` |
+| `claude--v2301-spinner-no-timer--w100.txt` | The first second of the same turn: `✶ Wibbling…` with no bracket and no timer yet. Reads `idle`: the running sign needs the timer. A send here goes ahead as a free send and the harness queues it all the same |
+| `claude--v2301-done-shell-running--w100.txt` | The turn ended while a background shell still runs: `✻ Worked for 6s · done 12:36 PM · 1 shell still running`, and `· 1 shell` in the footer. A finished row, no `…`, no bracket. Reads `idle` |
+| `claude--v2301-idle-after-turn--w100.txt` | The turn is over: `✻ Churned for 1s · done 12:37 PM`. Reads `idle` |
+| `claude--v2301-working-draft--w100.txt` | A running turn (`✽ Germinating… (4s · thinking with high effort)`) with `then give it a title` typed into the box and not entered. The footer drops its `· ← 11 agents` tail while the box holds text. Reads `running`, composer `draft` |
+| `claude--v2301-working-queued-message--w100.txt` | The same turn after Enter: the message stands above the spinner as `❯ then give it a title` with `ctrl+enter to send now` under it, and the box shows the faint placeholder `Press up to edit queued messages`. Claude Code queued it. Reads `running`, composer `empty` |
+| `claude--v2301-queued-taken--w100.txt` | After the turn: the queued message became the next turn and was answered, `✻ Cogitated for 1s · done 12:38 PM`. Reads `idle` |
+| `codex--v0163-working-draft--w120.txt` | Codex 0.163.0 mid-turn, `• Working (6s • esc to interrupt) · 1 background terminal running · …`, with `also say hello` typed into the box; the hint row reads `tab to queue message` |
+| `codex--v0163-working-steered--w120.txt` | The same turn after Enter: `› also say hello` stands in the transcript above `• Working (8s • esc to interrupt)` and the box is empty again. Enter took the message into the running turn (Tab would have queued it for after); the turn answered it before it ended |
+
+The running sign (`isRunningRow` in `lib/surface/cues.ts`) fires only on the live rows above. The
+finished rows (`✻ Worked for 6s · done …`, `✻ Churned for 1s · done …`, and the older `✻ Crunched for
+2s · done 7:10 PM` of `claude-lab--idle-after-turn--w82.txt`) never fire: they carry no `…` before a
+bracketed timer and no interrupt hint.
+
+pi 0.87.1 and opencode were measured in the same lab and gave no answer: pi's providers answered 401,
+and opencode updated itself on start and covered the turn with its update dialog. Neither has a
+profile, so neither ever reads `running`.
+
+## The agents panel under the box (2026-10-16 incident on lane 8788, Claude Code 2.1.301)
+
+On the operator's phone, 37 sends in three minutes were refused `unconfirmed` with `modal: unreadable`, and
+no key went out. The main turn was idle while a `/subtask` fork ran. Claude Code drew its agents
+panel under the box: `● main`, one `◯` row per agent, and the hints `↓ to view` and `↓ to manage`.
+Those rows did not walk as statusline and footer rows, so the cues read the `◯` rows as a checkbox
+list and `↓ to view` as a key hint. The fix names the panel rows and hints in the Claude profile
+(`idle.volatile.below.footerRows`). The frame walk steps over them, and no cue reads them. All three
+files are labelled `idle` and read free.
+
+| Fixture | Source | What's in it |
+|---|---|---|
+| `claude--v2301-fork-running-main-idle.txt` | Captured in the read-only investigation's sandbox pane | The main turn idle after a fork, the statusline, and a panel of `● main` and one `◯` agent row. Two private strings were replaced, same length: the account name in the reply became `demo-u`, and the sandbox path became `~/.cache/sample-lab/incident-0000/sandbox` |
+| `claude--v2301-synth-agents-panel.txt` | Hand-built from the incident screen | The incident shape: three statusline rows, a blank row, then `● main` and two `◯` agent rows |
+| `claude--v2301-synth-agents-panel-walk-fails.txt` | Hand-built from the incident screen | The same panel with `· ↓ to view` on the mode row and `↓ to manage` under the panel. Before the fix the walk failed here and the screen read `unreadable` |
+| `claude--v2301-lab-agents-panel-empty.txt` | Captured in the scratch-bridge lab, `tmux capture-pane -e` | A background agent runs. The box is empty, with a grey suggestion. The mode row ends `← for agents · ↓ to manage`, then a blank row, `● main` and one `◯` row. A plain send went in on this screen |
+| `claude--v2301-lab-agents-panel-draft.txt` | Same lab, one paste later | The same panel under a typed draft. The mode row drops its two hints, and the panel stays. Labelled `draft`, it reads `composer: draft` |
+| `claude--v2301-lab-agents-panel-more.txt` | Same lab, eleven agents | The panel shows `● main`, five `◯` rows and `↓ 6 more`. The profile names that row `agents-panel-more` |
+| `claude--v2301-lab-agents-panel-tasks-pill.txt` | Same lab, one ↓ from the box | The tasks pill is focused: the mode row ends `Enter to view tasks` |
+| `claude--v2301-lab-agents-panel-focused.txt` | Same lab, two ↓ from the box | The panel is focused: the mode row reads `↑/↓ to select`, and `❯ ● main` points at main. A typed key goes back to the box, so the label is `idle` |
+
+The two hand-built files carry a real reply from the transcript above the box. The folder in their
+statusline became `~/projects/sample-workspace`, the same length.
+The lab could not draw `↓ to manage` on a row of its own under the panel. In each lab screen it stood on
+the mode row. The hand-built walk-fails file keeps that shape.
+
+In the lab files the project folder became `~/.cache/sample-lab/lab-0000-00/work`, padded to the
+same length, and the session name on the box became `lab-sample`.
 
 ## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)
 
