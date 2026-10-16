@@ -1256,7 +1256,7 @@ export function AgentChat({
           return false;
         case "desk":
           setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
-          setStatus(result.detail ?? t("chat.status.askDesk"), "warn");
+          setStatus(result.detail ?? t("chat.status.askDesk"), "note");
           revalidator.revalidate();
           return false;
         case "gone":

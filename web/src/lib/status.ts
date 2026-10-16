@@ -4,7 +4,9 @@ import { useSyncExternalStore } from "react";
 // transitions, send/kill confirmations, errors) calls setStatus(); the header's <StatusArea/>
 // renders the latest one inline and it auto-dismisses. Replaces the toast overlays — there's
 // nothing to close, and it never covers the UI.
-export type StatusTone = "info" | "success" | "warn" | "error";
+// `info` is the quiet default (muted). `note` is a neutral fact worth a colour: it paints with
+// `status-info`, the blue of a fact that is not a warning (the desk answered before the phone).
+export type StatusTone = "info" | "note" | "success" | "warn" | "error";
 
 export interface StatusMessage {
   id: number;
