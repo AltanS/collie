@@ -2623,6 +2623,24 @@ describe("real screens from the fixture corpus", () => {
     expect(answer.receipt?.keys).toContain("Enter");
   });
 
+  // The review of 2026-10-16: with no `● main` over them, `◯` rows under the box are no panel. The
+  // frameless read keeps them in sight, so a send into a turn stops at "Something is open at the input box".
+  test("a list of ◯ rows under the box with no ● main over it is no panel: a send into a turn is refused", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.over = [LIVE_ROW];
+    // The popup walks as a footer, so only the frameless read sees it.
+    pane.status = ["  ⏵⏵ bypass permissions on (shift+tab to cycle)", "", "  ◯ first choice", "  ◯ second choice", "  Enter to select · Esc to cancel"];
+    const answer = await send("this must not land");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(answer.detail).toBe("Something is open at the input box.");
+    expect(pane.keysSeen).toEqual([]);
+    // The same turn with the agents panel under the box: the panel is named, and the send queues.
+    const panel = rig({ version: "2.1.301" });
+    panel.pane.over = [LIVE_ROW];
+    panel.pane.status = ["  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents", "", "  ● main", "  ◯ first agent   working   3s · ↓ 1k tokens", "  ◯ second agent   working   9s · ↓ 2k tokens"];
+    expect((await panel.send("carry on")).receipt).toMatchObject({ outcome: "sent" });
+  });
+
   for (const name of ["claude--menu-model-picker.txt", "claude--menu-resume-picker--w120-search.txt"]) {
     test(`a send into ${name} is refused with no key and no text`, async () => {
       const pane = still(fixture(name));

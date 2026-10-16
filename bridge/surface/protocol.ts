@@ -1462,7 +1462,7 @@ export class SendProtocol {
   /**
    * A refusal over a screen Collie could not read, kept as a negative example: the last read's bottom
    * cluster, and each cue of its framed read with its row. The ledger masks every row the same way as
-   * a sent example's, and the examples share one cap.
+   * a sent example's. Refusals keep their own cap, one per frame hash and reason a day.
    */
   private refusalExample(state: RunState, receipt: SendReceipt, key: CounterKey, refusedOn: Surface | undefined): void {
     const snap = state.lastRead ?? state.marks.s0;

@@ -33,8 +33,13 @@ export const WRITE_EVERY_MS = 60_000;
 export const DEFAULT_CAP = 5;
 /** The window the cap counts in. */
 export const CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
-/** The most example files kept; the oldest go first. */
+/** The most sent example files kept; the oldest go first. */
 export const MAX_EXAMPLES = 50;
+/** The most refused (negative) example files kept, on their own cap; the oldest go first. One per
+ *  frame hash and reason per day, so one screen refused many times fills one slot. */
+export const MAX_NEGATIVE_EXAMPLES = 10;
+/** The marker in a negative example's file name: `<at>-refused-<day>-<frame>-<reason>.json`. */
+const NEGATIVE_MARK = "-refused-";
 /** The most frame hashes one row keeps per day. A hash is nine bytes of a day's cluster; a few hundred is plenty. */
 export const MAX_FRAME_HASHES = 200;
 /** The inbox is cut back to its newest lines past this size. */
@@ -112,6 +117,11 @@ export interface CapState {
 }
 
 /** `YYYY-MM-DD` of a moment, in UTC, so a day file does not move with the zone. */
+/** A piece of a file name: letters, digits, `_` and `.` only; anything else becomes `_`. */
+function safeName(piece: string): string {
+  return piece.replace(/[^A-Za-z0-9_.]/gu, "_").slice(0, 64);
+}
+
 export function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -544,17 +554,26 @@ export class SurfaceLedger {
   }
 
   /** A probed send that settled, or a refusal over a screen Collie could not read: its bottom cluster
-   *  and its cue rows as shapes, at most {@link MAX_EXAMPLES} files together, oldest dropped. */
+   *  and its cue rows as shapes. Sent examples keep at most {@link MAX_EXAMPLES} files and refused ones
+   *  at most {@link MAX_NEGATIVE_EXAMPLES}, each cap on its own, oldest dropped. A refusal files once per
+   *  frame hash and reason per day: the same screen refused again adds nothing. */
   example(entry: ExampleEntry): void {
     try {
       mkdirSync(this.examplesDir, { recursive: true, mode: 0o700 });
       const at = this.now();
-      const name = `${String(at).padStart(14, "0")}-${entry.requestId}.json`;
+      const negative = entry.outcome === "refused";
+      const stamp = String(at).padStart(14, "0");
+      const key = `${NEGATIVE_MARK}${dayOf(at)}-${safeName(entry.frame)}-${safeName(entry.reason ?? "-")}`;
+      const present = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json"));
+      if (negative && present.some((file) => file.slice(stamp.length) === `${key}.json`)) return;
+      const name = negative ? `${stamp}${key}.json` : `${stamp}-${entry.requestId}.json`;
       const masked = { at, ...entry, cluster: entry.cluster.map(maskRow), text: `<typed:${String(entry.textLength)}>` };
       const body = entry.cues === undefined ? masked : { ...masked, cues: entry.cues.map((cue) => ({ ...cue, row: maskRow(cue.row) })) };
       writeFileSync(join(this.examplesDir, name), `${JSON.stringify(body)}\n`, { mode: 0o600 });
       const files = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json")).toSorted();
-      for (const old of files.slice(0, Math.max(0, files.length - MAX_EXAMPLES))) rmSync(join(this.examplesDir, old), { force: true });
+      const group = files.filter((file) => file.includes(NEGATIVE_MARK) === negative);
+      const keep = negative ? MAX_NEGATIVE_EXAMPLES : MAX_EXAMPLES;
+      for (const old of group.slice(0, Math.max(0, group.length - keep))) rmSync(join(this.examplesDir, old), { force: true });
     } catch (err) {
       this.warn(`[surface] could not write an example: ${err instanceof Error ? err.message : String(err)}`);
     }
