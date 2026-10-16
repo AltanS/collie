@@ -100,6 +100,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A program send becomes effective when the program writes it into the conversation.** The program writes a user item with the request id of the send. That item closes the receipt as effective. The counters move it from sent to effective, as a hook edge does.
 - **On this machine the phone sends a program's plain text through `/api/send`.** A tap on its question card goes through `/api/ask`. The composer tells a refusal at the thumb, as for a terminal pane. A send during a turn says Queued. Steer and Stop keep the program's own routes. A program on a crew member keeps its own routes for all writes.
 - **A program's pane settings list its Recent sends.** The sheet shows each receipt, and a queued send says so. It draws no cache switch, because a program has no prompt cache.
+- **The program send has its own entry in the ack manifest.** A test checks that every phone write says how the phone shows it.
 
 ### Changed
 

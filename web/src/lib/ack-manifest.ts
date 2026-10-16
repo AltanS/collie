@@ -64,6 +64,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The Send Protocol's request (M56 spec 05): the Send button holds its busy tone until the bridge answers with a receipt; a sent text empties the composer and appears in the mirror, any other outcome lands as a status line and, where it has one, an offer strip at the thumb.",
   },
+  postProgramSend: {
+    channel: "echo",
+    why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
+  },
   postAskAnswer: {
     channel: "echo",
     why: "A tap on a dialog card as one Answer to the bridge's ask (M56 spec 08): a sent answer reads as Sent and the mirror shows the dialog moving on; a changed or gone dialog lands as a status line and the card redraws from the next read.",
