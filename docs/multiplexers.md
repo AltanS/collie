@@ -439,12 +439,16 @@ install needs Claude Code 2.0.45 or later, the first version with this hook. It 
 - **No bridge, no hold.** With no bridge listening, or on any error, the hook prints nothing.
   Claude then shows its own dialog as before. The hook never answers on its own.
 - **The card shows the input shown.** That is the command, the file path or another key input.
-  It adds the risky Bash flags, and the size and start of the text a write puts in a file. Collie drops
-  characters that hide or turn text. It cuts the input shown at 1000 characters. A cut request is
-  never held: the card cannot show it all, so the dialog on the screen answers it.
-- **A held request owns only the dialog that shows its own input.** Collie compares the dialog with
-  the request's command or file. Any other dialog keeps its own card on the phone. The request then
-  waits on its hold card, and only a tap from that card answers it.
+  It adds the risky Bash flags, and the whole text a write puts in a file. Collie drops characters
+  that hide or turn text. The input shown has a limit of 1000 characters, the written text included.
+  A longer request is never held: the card cannot show it all, so the dialog on the screen answers it.
+  When the input has more lines than the box shows, the card says so.
+- **A held request owns only the dialog that shows that very request.** The dialog's header must
+  name the request's tool. It must say "from the ... agent" exactly when a subagent asks. It must
+  also show the whole first line of the input shown. When two held requests fit one dialog, none
+  owns it. Any other dialog keeps its own card on the phone. The request then waits on its hold
+  card, and only a tap from that card answers it. The card does not take a tap in the first 400 ms
+  after a new request shows.
 - **A subagent's request shows no dialog while the hook holds it.** This holds for Claude Code
   2.1.301. The hold card is then the only way to see it, so it shows the tool and the input shown.
 - **A background request waits up to the hold limit, even with no phone watching.** Then Collie
@@ -452,8 +456,8 @@ install needs Claude Code 2.0.45 or later, the first version with this hook. It 
 - **Questions and plans stay screen cards.** `AskUserQuestion` and `ExitPlanMode` are never held.
 
 The socket is `<stateDir>/hold/sock`. Its folder is mode 0700 and the socket is mode 0600, so
-another user cannot connect. Before it connects, the hook checks that the folder and the socket are
-yours. It also checks that nobody else can write to the folder. The bridge takes a request only from a process
+another user cannot connect. Before it connects, the hook checks that the socket, its folder and the
+state dir are yours. It also checks that nobody else can write to the two folders. The bridge takes a request only from a process
 it places on a pane. It drops every other request with one `surface.hold.dropped` line. The hook and
 the settings carry no token. Each card carries a hash of the tool, the input shown and the labels. A
 tap with another hash lets the hook go with no answer.
