@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,6 +32,9 @@ import type { TranscriptEntry, TranscriptPart } from "./types.ts";
 //  - tui-*.raw.txt  the TUI's screen, escapes and all, with its footer.
 
 const FIXTURES = join(import.meta.dir, "fixtures", "openclaw");
+
+// The GitHub Windows runner took 6.8 s on the session fixture the file-wide beforeEach writes, past bun's 5 s default.
+setDefaultTimeout(process.platform === "win32" ? 30_000 : 5_000);
 
 interface FixtureRow {
   seq: number;

@@ -23,7 +23,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-## [1.22.0] - 2026-10-16
+## [1.22.0] - 2026-10-17
 
 ### Added
 

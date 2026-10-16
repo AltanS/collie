@@ -2482,11 +2482,14 @@ assert_contains "$STDERR" "is a symlink"
 assert_eq "$(cat "$SETTINGS_ELSEWHERE")" "{}"
 rm -f "$CLAUDE_SETTINGS"
 
-# An unknown harness is a usage error, and writes nothing.
+# An unknown harness is a usage error, and writes nothing. Codex was the example here until M56
+# spec 13 gave it an emitter, so the name is now one no harness will ever take.
 rc=0
-beacon_env hooks install codex || rc=$?
+beacon_env hooks install not-a-harness || rc=$?
 assert_eq "$rc" "2"
+assert_contains "$STDERR" "usage: collie hooks install"
 [ ! -e "$CLAUDE_SETTINGS" ] || fail "a usage error still wrote a settings file"
+[ ! -e "${BEACON_HOME}/.codex" ] || fail "a usage error still wrote a Codex config"
 
 # ── The emitter ──────────────────────────────────────────────────────────────
 # Outside a multiplexer: nothing at all, and exit 0.
