@@ -21,12 +21,17 @@ export const SURFACE_FIXTURES_DIR = join(FIXTURES_DIR, "surface");
 /**
  * Dialog fixtures the generic cues cannot reach, with the reason. The cues-alone rule (fold.test.ts,
  * scripts/surface-corpus.ts) skips them by name; the reader of their own harness is what refuses a
- * reply there. A "-cut" fixture is skipped by its suffix instead.
+ * reply there. This map is the only mechanism for a new cues-blind fixture: name it here with its
+ * reason. (The older "-cut" suffix rule stays for the screens truncated on purpose; add no more.)
  */
 export const CUES_BLIND = new Map<string, string>([
   [
     "oc--update-available.txt",
     "opencode's Update Available dialog stands over the splash: three blank rows set it apart from the tip and path rows, so the bottom cluster never reaches it",
+  ],
+  [
+    "grok--trust-prompt.txt",
+    "Grok's folder trust prompt ends its choices in a key letter at the right edge (`Yes, proceed   y`, `No, quit   n`), which the single-key cue does not read",
   ],
 ]);
 

@@ -63,6 +63,28 @@ jobs:
       - name: Crew drill
         run: bun run test:crew
 
+  # The backend suite on the Bun floor (issue 438). `check` runs the newest Bun, so a test that only
+  # passes there would never show; MIN_BUN in cli/update-check.ts says the suite passes on the floor,
+  # and this job is what measures it. The version is pinned here and scripts/check-flake-bun.test.ts
+  # fails when it drifts from MIN_BUN. Its own job and no `needs`, like the crew drill, so a failure
+  # lands in the same run as every other one. Backend only: the web suite is Bun-independent (vitest).
+  bun-floor:
+    name: backend tests on the Bun floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      - name: Test (bridge)
+        run: bun test ./bridge
+      - name: Test (cli)
+        run: bun test ./cli
+      - name: Test (scripts)
+        run: bun test ./scripts
+
   # The durable example (M50 spec 10). Its own job: the example is a program with its own lockfile,
   # and Pi Durable never enters the root install. In `check`, bridge/mux/durable/example.test.ts
   # skips for want of that install; here it runs, so the wire, the adapter and the example are proven

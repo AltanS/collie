@@ -55,6 +55,30 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     );
   });
 
+  it("drops Muse 1.4.8's argument hint, painted in the rule's colour, after an exact command", () => {
+    // `❯ /model [<model-id>]` over one `/model` suggestion: the hint is not typed text.
+    expect(extractInputDraft(lines("muse--palette-hint.txt"))).toBe("/model");
+  });
+
+  it("reads the command alone when the highlighted first suggestion of several names it", () => {
+    // `/resume` lists two built-in skills under it; the bold first row is the one Enter runs.
+    expect(extractInputDraft(lines("muse--palette-hint-skills.txt"))).toBe("/resume");
+  });
+
+  it("stalls safe once the highlight has moved off the typed command", () => {
+    // After Down, Enter would run `/resume-claude`, so the typed text must not verify.
+    expect(extractInputDraft(lines("muse--palette-hint-moved.txt"))).not.toBe("/resume");
+  });
+
+  it("reads a command whose one suggestion is a built-in skill row, tags and all", () => {
+    // `  /plan · built-in · default skill  On an explicit planning request…` (Muse 1.4.8).
+    expect(extractInputDraft(lines("muse--palette-skill.txt"))).toBe("/plan");
+  });
+
+  it("keeps a typed argument, which arrives in the typed-text colour once the hint is gone", () => {
+    expect(extractInputDraft(lines("muse--palette-typed-arg.txt"))).toBe("/model x");
+  });
+
   it("reads attach tokens verbatim (the attach grammar verifies them, not this) (#278)", () => {
     expect(extractInputDraft(lines("muse--draft-image-chip.txt"))).toBe("[Image #1]");
     expect(extractInputDraft(lines("muse--draft-quoted-path.txt"))).toBe(

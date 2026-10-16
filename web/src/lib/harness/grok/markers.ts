@@ -142,9 +142,12 @@ export function isComposerHint(text: string): boolean {
 // qualifies: a looser bracket-run pattern would bless torn transcript ending in a bracket tag
 // (`[waiting]`, `[ERROR]`, …) — reproduced in review — and reopen exactly the hazard the
 // refusal guards. A new channel chip fails closed until a capture blesses it.
-const CHIP_ROW = /^\[stable\]$/;
+//
+// Grok Build 1.0.52 signed in with an API key prints that fact before the chip, `Logged in with API
+// key  │  [stable]` (live, 2026-10-15, grok--welcome-card.txt). Only that literal phrase is added.
+const CHIP_ROW = /^(?:Logged in with API key\s+│\s+)?\[stable\]$/;
 
-/** True when the row is exactly the startup screen's `[stable]` channel chip. */
+/** True when the row is exactly the startup screen's `[stable]` channel chip, or its API-key form. */
 export function isStatusChipRow(text: string): boolean {
   return CHIP_ROW.test(rstrip(text).trimStart());
 }
