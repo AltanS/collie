@@ -14,6 +14,7 @@ import {
 } from "../bridge/beacon/types.ts";
 import { asJsonString } from "../web/src/lib/json.ts";
 import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
+import { holdInputHash, shownInput } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { agentSettingsPath, settingsHold } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
@@ -440,6 +441,8 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
       };
       if (tool !== null) record = { ...record, tool };
       if (agent !== null) record = { ...record, agent };
+      // The input shown, hashed as the hold hashed it: the bridge ends only the hold of this very call.
+      if (tool !== null) record = { ...record, inputHash: holdInputHash(tool, shownInput(payload.tool_input, hold.inputShown, hold.inputDetails[tool])) };
       for (const stateDir of edgeStateDirs(deps)) {
         try {
           writeEdge(deps, stateDir, record);

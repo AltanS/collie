@@ -38,6 +38,7 @@ import type { LiftedDialog } from "../../web/src/lib/surface/lift.ts";
 import {
   decisionOf,
   dialogShowsRequest,
+  holdInputHash,
   HOLD_LINE_MAX,
   holdAsk,
   isElsewhereLine,
@@ -139,6 +140,23 @@ const timerSchedule = (run: () => void, ms: number): (() => void) => {
   timer.unref?.();
   return () => clearTimeout(timer);
 };
+
+/** What a hook edge says that a hold can use. */
+export interface EdgeInfo {
+  readonly tool: string | null;
+  readonly agent: string | null;
+  /** When the hook ran, in epoch ms. */
+  readonly at: number;
+  /** The tool edge's input hash (`holdInputHash`), or null. */
+  readonly inputHash: string | null;
+}
+
+/** Whether a tool edge is about this hold's own call. A tool edge with no input hash ends nothing. */
+function toolEdgeEnds(held: Held, info: EdgeInfo): boolean {
+  if (info.agent !== held.request.agent || info.tool !== held.request.tool) return false;
+  if (info.at < held.request.at || info.inputHash === null) return false;
+  return info.inputHash === holdInputHash(held.request.tool, held.request.input);
+}
 
 /** The key of a hold: its pane and its agent ("-" for the main session). */
 function holdKey(paneId: string, agent: string | null): string {
@@ -391,15 +409,15 @@ export class HoldBook {
    * hook) allowed it while the hook waited, or the phone's allow took effect. A turn edge on a main
    * session's request means the dialog is gone. A session edge voids the hold.
    */
-  edge(paneId: string, kind: EdgeKind, info: { readonly tool: string | null; readonly agent: string | null }): void {
+  edge(paneId: string, kind: EdgeKind, info: EdgeInfo): void {
     for (const held of this.holdsOn(paneId)) this.edgeOf(held, kind, info);
   }
 
-  private edgeOf(held: Held, kind: EdgeKind, info: { readonly tool: string | null; readonly agent: string | null }): void {
-    const matches = info.agent === held.request.agent && (info.tool === null || info.tool === held.request.tool);
+  private edgeOf(held: Held, kind: EdgeKind, info: EdgeInfo): void {
     switch (kind) {
       case "tool":
-        if (!matches) return;
+        // Only this very call: the same agent and tool, not older than the request, and the same input.
+        if (!toolEdgeEnds(held, info)) return;
         if (held.state === "held") return this.end(held, "desk");
         if (held.state === "sent") {
           this.settle(held, "phone");

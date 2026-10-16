@@ -1505,7 +1505,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         // the edge still counts, under its harness with no version, like a dropped one.
         if (!surface.edge(paneId, edge.kind, edge.at)) surfaceLedger?.edge({ harness: edge.record.harness, version: "-", profileId: "-", status: "-" }, edge.kind);
         if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.record.at);
-        holdBook?.edge(paneId, edge.kind, { tool: edge.record.tool ?? null, agent: edge.record.agent ?? null });
+        holdBook?.edge(paneId, edge.kind, { tool: edge.record.tool ?? null, agent: edge.record.agent ?? null, at: edge.record.at, inputHash: edge.record.inputHash ?? null });
       },
     };
     const holdTarget: HoldTarget =

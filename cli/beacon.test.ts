@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createHash } from "node:crypto";
+import { holdInputHash } from "../web/src/lib/surface/hold.ts";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
@@ -310,6 +311,15 @@ describe("the hook edges it writes (M56 spec 11)", () => {
       expect(edges(d.files)).toEqual([]);
       expect(beacons(d.files).size).toBe(0);
     }
+  });
+
+  test("a tool edge names the tool, the subagent and the hash of the input shown, never the input", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "sub-1", tool_input: { command: "touch secret-ish.txt" } }) });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    const [edge] = edges(d.files);
+    expect(edge).toMatchObject({ event: "PostToolUse", tool: "Bash", agent: "sub-1", inputHash: holdInputHash("Bash", "touch secret-ish.txt") });
+    const raw = [...d.files.entries].find(([path]) => path.startsWith(`${STATE}/edges/`))?.[1].text ?? "";
+    expect(raw).not.toContain("secret");
   });
 
   test("an edge needs no session id: the pid places it", async () => {

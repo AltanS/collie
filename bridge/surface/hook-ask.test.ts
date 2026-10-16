@@ -17,12 +17,12 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import type { Answer, AskReply } from "../../web/src/lib/surface/ask.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
-import { HOLD_WIRE_VERSION, holdHash, type HoldDecision, type HoldRequest } from "../../web/src/lib/surface/hold.ts";
+import { HOLD_WIRE_VERSION, holdHash, holdInputHash, type HoldDecision, type HoldRequest } from "../../web/src/lib/surface/hold.ts";
 import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { isFree, type Ask } from "../../web/src/lib/surface/surface.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
-import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
+import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
 import { KeyGate, type GateResult, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -207,6 +207,12 @@ function rig(screen: string): Rig {
   return { pane, gate, book, holds, answerer, clock, timers, counted, poll, answer, open, advance };
 }
 
+/** A tool edge of one call: the agent, the input it ran, the hook's time. */
+function toolEdge(agent: string | null, input = "mkfifo fixture-fifo", over: Partial<EdgeInfo> = {}): EdgeInfo {
+  return { tool: "Bash", agent, at: 2, inputHash: holdInputHash("Bash", input), ...over };
+}
+const TURN_EDGE: EdgeInfo = { tool: null, agent: null, at: 2, inputHash: null };
+
 /** No key left Collie: none reached the gate, and the pane saw none. */
 function expectNoKey(r: Rig): void {
   expect(r.gate.commits).toEqual([]);
@@ -262,7 +268,7 @@ describe("the hold matrix", () => {
     expect(r.holds.note(PANE)?.state).toBe("sent");
     expect(r.counted).toEqual(["phone"]);
     // The tool edge ends the Sent card.
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: null });
+    r.holds.edge(PANE, "tool", toolEdge(null));
     expect(r.holds.note(PANE)).toBeNull();
   });
 
@@ -335,7 +341,7 @@ describe("the hold matrix", () => {
     const r = rig(BASH);
     const { conn } = r.open();
     r.poll();
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: null });
+    r.holds.edge(PANE, "tool", toolEdge(null));
     expect(conn.released).toBe(1);
     expect(conn.replies).toEqual([]);
     expect(r.holds.note(PANE)?.state).toBe("desk");
@@ -346,7 +352,7 @@ describe("the hold matrix", () => {
     const { conn } = r.open();
     // The dialog never showed: the other hook allowed at once. The tool edge arrives.
     expect(r.poll()?.channel).toBe("hook");
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: null });
+    r.holds.edge(PANE, "tool", toolEdge(null));
     expect(conn.released).toBe(1);
     expect(conn.replies).toEqual([]);
     expect(r.counted).toEqual(["desk"]);
@@ -507,8 +513,8 @@ describe("the hold matrix", () => {
     expect(isFree(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 0, rows, ask: null }, idle).surface)).toBe(true);
     expect(isFree(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 0, rows, ask }, idle).surface)).toBe(false);
     // A turn edge of the main session does not end a subagent's hold; a main tool edge neither.
-    r.holds.edge(PANE, "prompt", { tool: null, agent: null });
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: null });
+    r.holds.edge(PANE, "prompt", TURN_EDGE);
+    r.holds.edge(PANE, "tool", toolEdge(null));
     expect(conn.released).toBe(0);
     // No dialog to adopt: only the hold card answers it. A tap from a screen card is refused.
     expect(r.holds.note(PANE)?.adopted).toBe(false);
@@ -518,7 +524,7 @@ describe("the hold matrix", () => {
     expect(reply.receipt?.outcome).toBe("sent");
     expect(conn.replies).toEqual(["allow"]);
     expect(r.holds.note(PANE)?.state).toBe("sent");
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: "agent-7" });
+    r.holds.edge(PANE, "tool", toolEdge("agent-7"));
     expect(r.holds.note(PANE)).toBeNull();
     expectNoKey(r);
   });
@@ -701,6 +707,22 @@ describe("a hold owns only the dialog it adopted", () => {
   });
 });
 
+describe("a tool edge ends only its own call", () => {
+  test("an older edge, another input, or an edge with no input hash ends nothing; this call's edge ends it", () => {
+    const r = rig(BASH);
+    const { conn } = r.open({ at: 100 });
+    r.poll();
+    r.holds.edge(PANE, "tool", toolEdge(null, "mkfifo fixture-fifo", { at: 99 }));
+    r.holds.edge(PANE, "tool", toolEdge(null, "mkfifo other"));
+    r.holds.edge(PANE, "tool", toolEdge(null, "mkfifo fixture-fifo", { at: 100, inputHash: null }));
+    r.holds.edge(PANE, "tool", toolEdge(null, "mkfifo fixture-fifo", { at: 100, tool: "Write" }));
+    expect(conn.released).toBe(0);
+    r.holds.edge(PANE, "tool", toolEdge(null, "mkfifo fixture-fifo", { at: 100 }));
+    expect(conn.released).toBe(1);
+    expect(r.counted).toEqual(["desk"]);
+  });
+});
+
 describe("holds by pane and agent", () => {
   test("two subagents hold on one pane at once: each keeps its own hold, edges end each by its agent", async () => {
     const r = rig(SUBAGENT_IDLE);
@@ -716,10 +738,10 @@ describe("holds by pane and agent", () => {
     expect(a.conn.replies).toEqual(["allow"]);
     expect(b.conn.replies).toEqual([]);
     // The second shows next. A tool edge of agent-1 does not end agent-2's hold.
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: "agent-1" });
+    r.holds.edge(PANE, "tool", toolEdge("agent-1", "touch a.txt"));
     expect(r.holds.note(PANE)?.input).toBe("touch b.txt");
     expect(b.conn.released).toBe(0);
-    r.holds.edge(PANE, "tool", { tool: "Bash", agent: "agent-2" });
+    r.holds.edge(PANE, "tool", toolEdge("agent-2", "touch b.txt"));
     expect(b.conn.released).toBe(1);
     expect(r.counted).toEqual(["phone", "desk"]);
   });

@@ -198,5 +198,7 @@ export function parseEdge(text: string): EdgeRecord | null {
   if (holds) record = { ...record, holds: true };
   if (tool !== null && shortText.test(tool)) record = { ...record, tool };
   if (agent !== null && shortText.test(agent)) record = { ...record, agent };
+  const inputHash = row.inputHash === undefined ? null : readText(row, "inputHash");
+  if (inputHash !== null && /^[0-9a-f]{1,64}$/u.test(inputHash)) record = { ...record, inputHash };
   return record;
 }

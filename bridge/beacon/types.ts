@@ -201,4 +201,10 @@ export interface EdgeRecord {
   readonly tool?: string;
   /** The subagent a tool edge came from (M56 spec 12). Absent for the main session. */
   readonly agent?: string;
+  /**
+   * The hash of the tool's input shown (`holdInputHash`), on a tool edge. The bridge ends a hold on a
+   * tool edge only when this matches the held request's input, so another call of the same tool
+   * never ends it. Absent from an older emitter, whose tool edges then end no hold.
+   */
+  readonly inputHash?: string;
 }
