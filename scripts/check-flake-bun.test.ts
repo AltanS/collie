@@ -90,6 +90,22 @@ describe("flake.nix and MIN_BUN", () => {
   });
 });
 
+describe("the floor job runs MIN_BUN", () => {
+  test("ci.yml has a bun-floor job that sets up exactly MIN_BUN and runs the three backend suites", () => {
+    const workflow = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
+    // SAFETY: `Bun.YAML.parse` answers plain data; the fields read are compared against strings.
+    const parsed = Bun.YAML.parse(workflow) as { jobs: Record<string, { needs?: unknown; steps: { uses?: string; run?: string; with?: Record<string, string> }[] }> };
+    const job = parsed.jobs["bun-floor"];
+    expect(job).toBeDefined();
+    expect(job!.needs).toBeUndefined();
+    const setup = job!.steps.filter((s) => s.uses?.startsWith("oven-sh/setup-bun@") === true);
+    expect(setup).toHaveLength(1);
+    expect(String(setup[0]?.with?.["bun-version"])).toBe(minBun());
+    const runs = job!.steps.map((s) => s.run);
+    for (const suite of ["./bridge", "./cli", "./scripts"]) expect(runs).toContain(`bun test ${suite}`);
+  });
+});
+
 describe("the Windows check runs the flake's Bun", () => {
   test("windows.yml pins setup-bun to flake.nix's bunVersion", () => {
     const workflow = readFileSync(join(ROOT, ".github", "workflows", "windows.yml"), "utf8");
