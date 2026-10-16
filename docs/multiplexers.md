@@ -424,36 +424,57 @@ $ collie hooks install claude --hold-permissions
 
 This adds one more hook, on Claude's `PermissionRequest`. When Claude asks for a permission, the
 hook holds the request and waits for your tap. The phone shows the request as a card. A tap on
-**Yes** or **No** goes back to Claude through the hook. Collie sends no key to the pane for it.
+**Yes** or **No** goes back to Claude through the hook. Collie sends no key to the pane for it. The
+install needs Claude Code 2.0.45 or later, the first version with this hook. It refuses an older one.
 
 - **The hook finds each running bridge the way hook edges do.** It reads `hook-targets/` and
-  holds with every live bridge. The first answer wins. The other phones then say "Answered on
-  another Collie".
-- **The desk still works.** Answer the dialog in the terminal, and the phone card says "Answered
-  at the desk". A tap after that is not used.
+  holds with every live bridge. The first answer wins. The other phones then say "Another Collie
+  answered".
+- **The desk still works.** Answer the dialog in the terminal, and the phone card says "The desk
+  answered first". Collie does not use a tap after that.
 - **Only Yes and No go through the hook.** An option such as "don't ask again" stays a screen
   answer. Collie refuses that tap on a held card.
 - **A held request has a time limit of 290 seconds.** After it, the dialog stays on the screen
   and becomes an ordinary card with a new id. An old tap never turns into keys.
 - **No bridge, no hold.** With no bridge listening, or on any error, the hook prints nothing.
   Claude then shows its own dialog as before. The hook never answers on its own.
-- **A subagent's request has no dialog on the screen.** The phone card is then the only way to
-  see it, so the card shows the tool and its input.
+- **The card shows the input shown.** That is the command, the file path or another key input.
+  It adds the risky Bash flags, and the size and start of the text a write puts in a file. Collie drops
+  characters that hide or turn text. It cuts the input shown at 1000 characters. A cut request is
+  never held: the card cannot show it all, so the dialog on the screen answers it.
+- **A held request owns only the dialog that shows its own input.** Collie compares the dialog with
+  the request's command or file. Any other dialog keeps its own card on the phone. The request then
+  waits on its hold card, and only a tap from that card answers it.
+- **A subagent's request shows no dialog while the hook holds it.** This holds for Claude Code
+  2.1.301. The hold card is then the only way to see it, so it shows the tool and the input shown.
+- **A background request waits up to the hold limit, even with no phone watching.** Then Collie
+  lets the hook go, and Claude shows the dialog on the screen. Claude 2.1.301 does not deny it.
 - **Questions and plans stay screen cards.** `AskUserQuestion` and `ExitPlanMode` are never held.
 
 The socket is `<stateDir>/hold/sock`. Its folder is mode 0700 and the socket is mode 0600, so
-another user cannot connect. The bridge takes a request only from a process it places on a pane.
-It drops every other request with one `surface.hold.dropped` line. The hook and the settings carry
-no token. Each card carries a hash of the tool, the input and the labels. A tap with another hash
-lets the hook go with no answer.
+another user cannot connect. Before it connects, the hook checks that the folder and the socket are
+yours. It also checks that nobody else can write to the folder. The bridge takes a request only from a process
+it places on a pane. It drops every other request with one `surface.hold.dropped` line. The hook and
+the settings carry no token. Each card carries a hash of the tool, the input shown and the labels. A
+tap with another hash lets the hook go with no answer.
+
+The pane info says "holds permissions" when the settings Claude reads hold the hook. Collie reads the
+user settings, the two project settings files and the managed settings. `disableAllHooks` turns the
+hold off, and so does `allowManagedHooksOnly` in the managed file.
 
 Run `collie hooks install claude` without the flag to take the hold out again. `collie doctor`
 says in how many settings files the hooks hold permissions.
 
-> **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
-> *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access
-> controls. The threat model and omitted fields are documented in
+> **Note.** Beacons and hook edges provide no control channel. They only change what Collie
+> *displays* and when it *reads* a pane. They cannot send text, inject keystrokes, rename panes,
+> close sessions, or bypass access controls. The threat model and omitted fields are documented in
 > [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
+>
+> The permission hold is the one control channel. A tap on the phone becomes Claude's answer to one
+> permission. Four things guard it. The socket is yours alone (mode 0600 in a 0700 folder), and the
+> hook checks this before it connects. The bridge answers only a process it places on a pane. The tap
+> must carry the hash of the tool, the input shown and the labels the card showed. The answer is only
+> ever a person's tap: Collie never allows or denies on its own.
 
 
 ---
