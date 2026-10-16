@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "id": "harbour",
   "name": "Harbour",
   "author": "Collie",
@@ -95,5 +95,12 @@
   },
   "fonts": {
     "ui": "atkinson"
+  },
+  "surface": {
+    "radius": "soft",
+    "shadow": "default",
+    "density": "default",
+    "weight": "default",
+    "border": "default"
   }
 }

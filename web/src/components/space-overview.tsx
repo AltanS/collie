@@ -4,7 +4,7 @@ import { FolderPlus, LayoutGrid, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
-import { ListGroup } from "@/components/ui/list-group";
+import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { StatusDot } from "@/components/status-badge";
 import { filterSpaces, nestWorktrees, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
@@ -151,9 +151,11 @@ export function SpaceOverview({
               "wrong part of the list" into scroll-up, type, scroll-down. */}
           {/* A ROW of the group, not a card inside it — a bordered box inside a bordered group is
               a box in a box. Opaque background, not transparent, so the rows scroll UNDER it while
-              it is stuck. */}
+              it is stuck. As the first row its top corners follow the group's (`--row-top`,
+              ui/list-group.tsx): under a soft or round theme a square opaque row would paint over
+              the group's rounded corner, and at Collie's 2px the radius is 0. */}
           {workspaces.length > 1 && (
-            <label className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 py-2">
+            <label className="sticky top-0 z-10 flex items-center gap-2 rounded-t-[var(--row-top,0px)] bg-background px-3.5 py-2">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
                 type="search"
@@ -196,6 +198,8 @@ export function SpaceOverview({
                     // a straight hairline reads as a fault. That holds for EVERY state — corners
                     // belong to the row's place in the list, never to what the row is doing.
                     "w-full text-left transition-colors active:scale-[0.99]",
+                    // The group's own corners, under a soft or round theme (ui/list-group.tsx).
+                    LIST_ROW_CORNERS,
                     !blocked && "hover:bg-muted/50",
                     // A worktree of the space above it. Indented rather than labelled: the nesting
                     // IS the sentence, and a badge would repeat it once per row.
@@ -212,12 +216,17 @@ export function SpaceOverview({
                       // a four-sided border: the box is then identical whether the row is blocked or
                       // not, so the text can't step sideways and the row can't grow. A full border
                       // would also land its bottom edge 1px above the list's own divide-y hairline
-                      // and read as a 2px double line under one row.
+                      // and read as a 2px double line under one row. `--edge-accent` is the radius
+                      // word's: the left rail under square corners, a 2px ring on all four sides
+                      // under soft or round ones (lib/theme/surface.ts), still no layout either way.
+                      // A marked row adds `--edge-shadow` as a second layer: none under sharp, a
+                      // soft shadow with the ring. The resting row keeps one transparent layer.
                       // 14px, matching every other row in the app: inside a 1px-bordered group
                       // that lands the content on the same x as a card row's content.
-                      "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]",
+                      "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[var(--edge-accent)_transparent]",
+                      LIST_ROW_CORNERS,
                       blocked &&
-                        "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]",
+                        "bg-status-blocked/5 shadow-[var(--edge-accent)_var(--color-status-blocked),var(--edge-shadow)]",
                     )}
                   >
                     {status ? (

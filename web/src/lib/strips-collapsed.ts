@@ -13,10 +13,10 @@ import { useSyncExternalStore } from "react";
 // or pane, and a first run that hides them hides the navigation with them. The summary bar keeps
 // that reachable in one tap once the operator has chosen it.
 //
-// The keyboard's override is NOT here: while the soft keyboard is up the rows stand down whatever
-// this says, and an expand taken in that state is transient local state in AgentChat that dies with
-// the keyboard. See the `composing` block there — a preference is what the operator chose, not what
-// the keyboard is currently costing them.
+// This is the WHOLE fold state. The soft keyboard does not override it: the rows used to stand
+// down on their own while the composer's keyboard was up, and the operator read that as a layout
+// shift and as his choice being undone (2026-10-16). Now the rows are as the last tap left them,
+// keyboard or not. See the fold block in components/agent-chat.tsx.
 
 const STORAGE_KEY = "collie:strips-collapsed:v1";
 const DEFAULT_COLLAPSED = false;
