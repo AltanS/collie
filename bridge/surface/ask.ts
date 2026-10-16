@@ -390,8 +390,11 @@ export class AskAnswerer {
       optionId: answer.optionId,
     });
     if (accepted.kind === "answered") {
+      // The id is spent, so the phone must not tap it again: the dialog on the screen now, if any,
+      // rides along under its own new id (a look, no key).
       const receipt = this.bareReceipt(answer, target, entry ?? null, accepted.record.paneGeneration, "refused", "ask_answered", []);
-      return { receipt, detail: sentenceOf("ask_answered")! };
+      const ask = await this.look(target, entry?.generation ?? accepted.record.paneGeneration);
+      return ask === null ? { receipt, detail: sentenceOf("ask_answered")! } : { receipt, ask, detail: sentenceOf("ask_answered")! };
     }
     if (accepted.kind === "replay") {
       const kept = accepted.record.receipt;
@@ -485,7 +488,11 @@ export class AskAnswerer {
   private async steps(state: AskRun): Promise<void> {
     const { answer, entry, target } = state;
     if (entry === undefined || entry.state === "voided") throw new AskEnded("refused", "ask_gone");
-    if (answer.hash !== entry.ask.hash) throw new AskEnded("refused", "ask_changed", { ask: this.deps.book.currentAsk(target.paneId) });
+    if (answer.hash !== entry.ask.hash) {
+      // Not the dialog the id was minted for. The id is spent by now, so the reply carries the
+      // screen's ask under a new id (a look, no key), or the phone would tap the spent id again.
+      throw new AskEnded("refused", "ask_changed", { ask: await this.look(target, entry.generation) });
+    }
     const index = entry.ask.options.findIndex((option) => option.id === answer.optionId);
     if (index < 0) throw new AskEnded("refused", "no_plan", { detail: "This dialog has no such option." });
     if (this.deps.generation(target.paneId) !== entry.generation) throw new AskEnded("refused", "pane_gone");
@@ -527,6 +534,32 @@ export class AskAnswerer {
     const after = await this.poll(state, "after", ASK_BOUNDS.after, (snap) => (snap.dialog === null || snap.dialog.hash !== bound.dialog!.hash ? "pass" : "wait"));
     state.marks.after = after.snap;
     if (after.verdict !== "pass") throw new AskEnded("unknown", "no_evidence", { detail: "The keys went out, but the dialog did not show it was answered." });
+  }
+
+  /**
+   * The pane's live ask, or one read of the pane lifted and published when the book holds none (the
+   * id just spent was the live one). Sends no key and takes no lock; a read that fails or runs past
+   * the check's bound is null.
+   */
+  private async look(target: AskTarget, generation: string): Promise<Ask | null> {
+    const live = this.deps.book.currentAsk(target.paneId);
+    if (live !== null) return live;
+    if (this.deps.generation(target.paneId) !== generation) return null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ASK_BOUNDS.check.ms);
+    });
+    try {
+      const grid = await Promise.race([this.deps.mux.readGrid(target.paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), late]);
+      if (grid === null || !grid.ok) return null;
+      const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(grid.value.text)), target.harness));
+      const match = await this.deps.profile(target.harness);
+      return this.deps.book.publish(target.paneId, generation, dialog, askLifetimeOf(match));
+    } catch {
+      return null;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   private publish(state: AskRun, dialog: LiftedDialog | null): Ask | null {

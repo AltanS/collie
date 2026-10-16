@@ -336,6 +336,11 @@ describe("askRoute", () => {
       expect(lines[0]).toContain('"action":"ask"');
       expect(lines[0]).toContain('"optionId":"1"');
       expect(lines[0]).not.toContain("mkfifo");
+      // The same answer again is the stored receipt: audited as a replay, and no key leaves.
+      const again = await askRoute(rt, ask.id, { pane: "%1", hash: ask.hash, optionId: "1", origin: "person_tap" }, context);
+      expect((await again.json()).replayed).toBe(true);
+      expect(keys).toEqual(["1"]);
+      expect(lines[1]).toContain('"replayed":true');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -56,6 +56,7 @@ export async function answerAsk(args: AskTapArgs): Promise<AskTapResult> {
     switch (reply.reason) {
       case "ask_changed":
       case "ask_unknown":
+      case "ask_answered":
         return { status: "changed", ask: reply.ask, why: reply.reason };
       case "ask_gone":
         return { status: "gone" };

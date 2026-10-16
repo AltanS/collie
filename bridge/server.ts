@@ -7008,8 +7008,10 @@ export async function askRoute(
   if (receipt !== undefined) {
     const detail: AuditDetail = { askId, optionId: answer.optionId, outcome: receipt.outcome, keys: [...receipt.keys] };
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    // A replay is the stored receipt of an earlier answer: no key left this time.
+    if (reply.replayed === true) detail.replayed = true;
     context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
-    if (receipt.keys.length > 0) {
+    if (receipt.keys.length > 0 && reply.replayed !== true) {
       rt.engine.noteInput();
       rt.engine.pokeNow();
     }

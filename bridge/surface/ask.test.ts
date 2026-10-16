@@ -408,11 +408,30 @@ describe("changed, replaced and repeated asks are refused with no key", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
-  test("a hash that is not the ask's is refused ask_changed with no key", async () => {
+  test("a hash that is not the ask's is refused ask_changed with no key; the screen's ask rides along under a new id", async () => {
     const { pane, poll, answer } = rig(BASH);
     const ask = poll()!;
     const reply = await answer(ask, "1", { hash: "00000000000000" });
     expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_changed", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+    // The id is spent: the reply names the same dialog under a new id, and that id answers it.
+    expect(reply.ask?.hash).toBe(ask.hash);
+    expect(reply.ask?.id).not.toBe(ask.id);
+    pane.onKeys = (_keys, p) => {
+      p.screen = IDLE;
+    };
+    const next = await answer(reply.ask!, "1");
+    expect(next.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+  });
+
+  test("an id answered before hands back the dialog still on the screen under a new id, no key", async () => {
+    const { pane, poll, answer } = rig(BASH);
+    const ask = poll()!;
+    await answer(ask, "1", { hash: "00000000000000" });
+    const again = await answer(ask, "1");
+    expect(again.receipt).toMatchObject({ outcome: "refused", reason: "ask_answered", keys: [] });
+    expect(again.ask?.hash).toBe(ask.hash);
+    expect(again.ask?.id).not.toBe(ask.id);
     expect(pane.keysSeen).toEqual([]);
   });
 
