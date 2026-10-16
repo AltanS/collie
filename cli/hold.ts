@@ -53,13 +53,14 @@ export function holdSocketPaths(deps: EdgeTargetDeps): string[] {
 }
 
 /**
- * Whether a socket path is safe to post a request to, checked before the connect. Its folder is this
- * user's own and private (a real folder, owned by this uid, writable by nobody else), and the socket
- * is a socket of this uid, never a link or a plain file. Another user who could plant a socket
- * there would read the request and could answer it.
+ * Whether a socket path is safe to post a request to, checked before the connect. Its folder and the
+ * state dir above it are this user's own (real folders, owned by this uid, writable by nobody else),
+ * and the socket is a socket of this uid, never a link or a plain file. Another user who could plant a
+ * socket there, or swap the hold folder inside a state dir they can write, would read the request
+ * and could answer it.
  */
 export function holdSocketSafe(deps: EdgeTargetDeps, path: string): boolean {
-  if (!privateDir(deps, dirname(path))) return false;
+  if (!privateDir(deps, dirname(path)) || !privateDir(deps, dirname(dirname(path)))) return false;
   if (deps.files.entryType(path) !== "other") return false;
   return deps.uid === undefined || deps.files.ownerUid(path) === deps.uid;
 }

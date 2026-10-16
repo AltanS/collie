@@ -666,6 +666,7 @@ function holdDeps(over: {
   };
   // Each socket a test names is a real socket in a private folder, as the bridge makes it.
   for (const path of Object.keys(sockets)) {
+    built.files.entryTypes.set(posixKey(dirname(dirname(path))), "directory");
     built.files.entryTypes.set(posixKey(dirname(path)), "directory");
     built.files.entryTypes.set(posixKey(path), "other");
   }
@@ -796,6 +797,8 @@ describe("hold: the socket is checked before the connect", () => {
   const cases: [string, (d: ReturnType<typeof holdDeps>) => void][] = [
     ["a folder others can write", (d) => d.files.modes.set("/state/hold", 0o777)],
     ["a folder another user owns", (d) => d.files.rootOwned.add("/state/hold")],
+    ["a state dir others can write", (d) => d.files.modes.set("/state", 0o777)],
+    ["a state dir another user owns", (d) => d.files.rootOwned.add("/state")],
     ["a socket another user owns", (d) => d.files.rootOwned.add(SOCK)],
     ["a link in the socket's place", (d) => d.files.entryTypes.set(SOCK, "symlink")],
     ["a plain file in the socket's place", (d) => d.files.entryTypes.delete(SOCK)],
