@@ -1,6 +1,6 @@
 # 0106: a theme is a closed file of named tokens
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-15
 - **Shipped in:** 1.22.0
 - **Amends in scope:** [ADR 0033](./0033-the-app-face-is-a-device-preference.md), the line that the design store

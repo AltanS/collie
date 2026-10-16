@@ -270,3 +270,6 @@ to honour `NO_COLOR`, capture it first, then read it.
 - A picker taller than the pane, which pushes the bottom rule off the screen.
 - A live tap on gentle-pi's `ask_user_choice` or pi's own selector through the phone: the reader is
   pinned on the captures and the source, and Down was sent by Herdr, but no tap went end to end.
+- A column-0 dialog between two same-colour rules that ends the screen with an unpainted footer reads
+  as a ready composer on a bare-rule editor (PR 450). Every captured pi footer is painted; the
+  bridge's send protocol probe is the second line.

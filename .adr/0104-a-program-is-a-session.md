@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Shipped in:** pending (1.22.0)
+- **Shipped in:** 1.22.0
 - **Amends in scope:** [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md), the rule
   that one Collie watches one mux
 - **Trail:** the second small Collie that a durable program needed under 0099, and a review of that
