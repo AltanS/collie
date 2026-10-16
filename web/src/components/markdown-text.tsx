@@ -266,6 +266,10 @@ function Span({ span }: { span: MdSpan }) {
       return <LinkSpan span={span} />;
     case "image":
       return <ImageSpan src={span.src} alt={span.alt} />;
+    case "stretch":
+      return <Spans spans={span.spans} />;
+    case "stretch-close":
+      return null;
     default:
       return <TextRun text={span.text} />;
   }

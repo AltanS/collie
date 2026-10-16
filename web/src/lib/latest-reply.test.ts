@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fold, locateReply, newestReply, PROBE_CHARS, replyProse, sourceOrderRows } from "./latest-reply";
+import { fullSpelling, skimSpelling } from "@/lib/stretch";
 import type { TranscriptEntry, TranscriptPart } from "./types";
 
 // The predicates behind "the mirror is only showing the end of this reply". The cases that matter are
@@ -548,5 +549,41 @@ describe("locateReply — real Grok replies", () => {
       fit: "clipped",
       endLine: 25,
     });
+  });
+});
+
+// A reply written with cc-stretch (`{{short|long}}`) reaches the screen spelled one of two ways: the
+// fullscreen view paints every stretch closed, as its short form, and the main screen paints every
+// stretch open with no closers. A screen with only some stretches opened is neither, and must fail
+// closed rather than be taken for this reply.
+describe("locateReply — a reply with stretches", () => {
+  const source = [
+    "{{Opening|The opening sentence spelled out in full}} keeps going with plenty of prose so the head probe has its own words.",
+    "",
+    "A middle paragraph that carries nothing but ordinary words, long enough to scroll the head off a short pane.",
+    "",
+    "Near the end sits {{alpha|the first long form}} and then {{beta|the second}}.",
+  ].join("\n");
+  const reply = turn("assistant", source);
+
+  it("calls the skim spelling clipped when its opening has scrolled off", () => {
+    const painted = rendered(skimSpelling(source)).split("\n").slice(2);
+    expect(locateReply(painted.join("\n"), reply)).toEqual({ fit: "clipped", endLine: painted.length - 1 });
+  });
+
+  it("calls the full spelling clipped when its opening has scrolled off", () => {
+    const painted = rendered(fullSpelling(source)).split("\n").slice(2);
+    expect(locateReply(painted.join("\n"), reply)).toEqual({ fit: "clipped", endLine: painted.length - 1 });
+  });
+
+  it("calls the whole skim spelling on screen whole", () => {
+    expect(locateReply(rendered(skimSpelling(source)), reply).fit).toBe("whole");
+  });
+
+  it("fails closed on a screen with only one stretch in the tail opened", () => {
+    expect(fold("the second «")).toBe("thesecond");
+    const partly = skimSpelling(source).replace("then beta.", "then the second «.");
+    expect(locateReply(rendered(partly), reply)).toEqual({ fit: "off-screen", endLine: -1 });
+    expect(locateReply(rendered(partly).split("\n").slice(2).join("\n"), reply).fit).toBe("off-screen");
   });
 });
