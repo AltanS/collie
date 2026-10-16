@@ -427,11 +427,11 @@ describe("codex: the notify setting in config.toml (M56 spec 13)", () => {
     expect(codexConfigPath(context({ CODEX_HOME: LAB_HOME }))).toBe(join(LAB_HOME, "config.toml"));
   });
 
-  test("codex: install puts one notify line at the top level, before the first table, and backs the file up once", () => {
+  test("codex: install puts one notify line at the top of the file, before the first statement, and backs the file up once", () => {
     const d = deps({ files: { [CONFIG]: OPERATOR } });
     expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
     const text = d.files.entries.get(CONFIG)!.text;
-    expect(text.split("\n").slice(0, 4)).toEqual(['model = "gpt-6-luna"', 'approval_policy = "on-request"', NOTIFY, ""]);
+    expect(text.split("\n").slice(0, 4)).toEqual([NOTIFY, 'model = "gpt-6-luna"', 'approval_policy = "on-request"', ""]);
     expect(text).toContain('[projects."/srv/work"]');
     expect(d.files.entries.get(`${CONFIG}.collie-backup`)?.text).toBe(OPERATOR);
     expect(notifyState(text.split("\n"))).toMatchObject({ kind: "ours", binary: OWN });
@@ -461,6 +461,64 @@ describe("codex: the notify setting in config.toml (M56 spec 13)", () => {
   test("codex: a notify key inside a table is not the setting; a multi-line notify array is refused", () => {
     expect(notifyState(["[profiles.fast]", 'notify = ["x"]'])).toEqual({ kind: "none", insertAt: 0 });
     expect(installNotify('notify = [\n  "x",\n]\n', OWN)).toMatchObject({ refuse: expect.stringContaining("cannot read") });
+  });
+
+  test("codex: the line goes after the leading comments and blank lines, before the first key", () => {
+    const text = ["# my Codex config", "# second comment", "", 'model = "gpt-6-luna"', ""].join("\n");
+    const done = installNotify(text, OWN);
+    expect(done).toEqual({ text: ["# my Codex config", "# second comment", "", NOTIFY, 'model = "gpt-6-luna"', ""].join("\n") });
+  });
+
+  test("codex: a nested multi-line array with `[` rows is one statement, not a table header (K4)", () => {
+    const text = ["matrix = [", "  [1, 2],", "  [3, 4],", "]", 'model = "gpt-6-luna"', "", "[projects.x]", 'notify = ["inside a table"]', ""].join("\n");
+    expect(notifyState(text.split("\n"))).toEqual({ kind: "none", insertAt: 0 });
+    const done = installNotify(text, OWN);
+    expect(done).toEqual({ text: `${NOTIFY}\n${text}` });
+    // A notify after the array, before the first table, is the top-level setting.
+    const theirs = ["matrix = [", "  [1, 2],", "]", 'notify = ["/bin/ding"]', "[projects.x]", ""].join("\n");
+    expect(notifyState(theirs.split("\n"))).toMatchObject({ kind: "theirs", line: 3 });
+  });
+
+  test("codex: a multi-line string that holds a `[` row and a notify row is one statement (K4)", () => {
+    const text = ['instructions = """', "Do this first.", "[not a table]", 'notify = ["not a setting"]', '"""', "literal = '''", "[also not a table]", "'''", 'model = "gpt-6-luna"', ""].join("\n");
+    expect(notifyState(text.split("\n"))).toEqual({ kind: "none", insertAt: 0 });
+    expect(installNotify(text, OWN)).toEqual({ text: `${NOTIFY}\n${text}` });
+    const after = `${text}notify = ["/bin/ding"]\n`;
+    expect(notifyState(after.split("\n"))).toMatchObject({ kind: "theirs", line: 9 });
+  });
+
+  test("codex: a file the scanner cannot read is refused with the line, and nothing is written (K4)", () => {
+    for (const broken of ['matrix = [\n  1,\n', 'instructions = """\nno end\n', 'name = "no end\n', "x = ]\n"]) {
+      const d = deps({ files: { [CONFIG]: broken } });
+      expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.FAIL);
+      expect(d.io.stderr.join("\n")).toMatch(/cannot read its TOML at line \d+/u);
+      expect(d.files.entries.get(CONFIG)!.text).toBe(broken);
+      expect(d.files.entries.has(`${CONFIG}.collie-backup`)).toBe(false);
+    }
+  });
+
+  test("codex: uninstall gives back the exact bytes of a file with no final line break (K5)", () => {
+    for (const original of ['model = "gpt-6-luna"', "# only a comment", '# a comment\nmodel = "x"\n[projects.y]\ntrust_level = "trusted"']) {
+      const d = deps({ files: { [CONFIG]: original } });
+      expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+      expect(d.files.entries.get(CONFIG)!.text).toContain(NOTIFY);
+      expect(d.files.entries.get(CONFIG)!.text.endsWith("\n")).toBe(false);
+      expect(cmdHooksUninstall(d, ["codex"])).toBe(EXIT.OK);
+      expect(d.files.entries.get(CONFIG)!.text).toBe(original);
+    }
+  });
+
+  test("codex: uninstall removes a file the install created, and keeps an empty file that was there (K5)", () => {
+    const created = deps({ env: { CODEX_HOME: LAB_HOME } });
+    const path = join(LAB_HOME, "config.toml");
+    expect(cmdHooksInstall(created, ["codex"])).toBe(EXIT.OK);
+    expect(cmdHooksUninstall(created, ["codex"])).toBe(EXIT.OK);
+    expect(created.files.entries.has(path)).toBe(false);
+    expect(created.io.stdout.join("\n")).toContain("The install had created it.");
+    const empty = deps({ files: { [CONFIG]: "" } });
+    expect(cmdHooksInstall(empty, ["codex"])).toBe(EXIT.OK);
+    expect(cmdHooksUninstall(empty, ["codex"])).toBe(EXIT.OK);
+    expect(empty.files.entries.get(CONFIG)?.text).toBe("");
   });
 
   test("codex: an old install for another binary is healed in place", () => {

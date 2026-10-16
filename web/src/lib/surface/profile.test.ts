@@ -129,7 +129,9 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(codex.idle.frame.bottom.column).toBe(2);
     expect(codex.idle.placeholders.sgr).toBe(2);
     expect(codex.idle.runningRows?.length).toBeGreaterThan(0);
-    expect(codex.keys.submit).toEqual(["Enter"]);
+    // Tab sends on an idle box and queues in a turn (lab, 0.150.0, 0.159.2, 0.163.0): Enter steers a turn.
+    expect(codex.keys.submit).toEqual(["Tab"]);
+    expect(codex.keys.commandSubmit).toEqual(["Enter"]);
     expect(codex.keys.enterWhileRunning).toBe("steers");
     expect(codex.keys.queueKey).toBe("Tab");
     expect(codex.reservedLeads).toEqual(["/", "!", "@"]);
@@ -167,6 +169,8 @@ describe("the codex profile (M56 spec 13)", () => {
     const queuedRow = parseProfile(rawCodex()).keys.queuedRow!;
     expect(new RegExp(queuedRow.pattern, "u").exec("  ↳ then add a short summary")?.groups?.text).toBe("then add a short summary");
     expect(new RegExp(queuedRow.hint, "u").test("    shift+← edit last queued message")).toBe(true);
+    // Codex 0.150.0 draws the same rows with another edit key (lab, 2026-10-16).
+    expect(new RegExp(queuedRow.hint, "u").test("    alt + ↑ edit last queued message")).toBe(true);
     expect(queuedRow.hintGap).toBe(0);
   });
 
@@ -191,7 +195,9 @@ describe("the codex profile (M56 spec 13)", () => {
 
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
-    ["codex: a submit key as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
+    ["codex: Enter as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
+    ["codex: Escape as a command key", ["keys", "commandSubmit"], ["Escape"], "keys.commandSubmit"],
+    ["codex: no command key", ["keys", "commandSubmit"], [], "keys.commandSubmit"],
     ["codex: a queue key on a harness whose Enter queues", ["keys", "enterWhileRunning"], "queues", "keys.queueKey"],
     ["codex: an unknown Enter mode", ["keys", "enterWhileRunning"], "sometimes", "keys.enterWhileRunning"],
     ["codex: a blank prompt anchor", ["idle", "frame", "prompt", "blank"], true, "idle.frame.prompt.blank"],
