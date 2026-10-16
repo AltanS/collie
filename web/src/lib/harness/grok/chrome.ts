@@ -280,6 +280,29 @@ function draftLineText(line: StyledLine): string {
   return text;
 }
 
+// After a slash command Grok paints its argument hint in grey (`❯ /model <model> [window] [effort]`,
+// 1.0.52, live 2026-10-15), and it stays while the model list is open. Read as draft, the phone
+// offered the hint back as a terminal draft to take over. Only that shape, in that grey, as the
+// row's last text, so the same words typed by the user (typed-text colour) stay in the draft.
+const ARG_HINT = /^(?:<[^<>]+>|\[[^[\]]+\])(?:\s+(?:<[^<>]+>|\[[^[\]]+\]))*$/;
+
+function withoutArgumentHint(line: StyledLine, text: string): string {
+  let offset = 0;
+  let hint: { at: number; length: number } | null = null;
+  for (const segment of line.segments) {
+    const body = segment.text.trim();
+    if (body !== "" && body !== "│") {
+      hint =
+        segment.style.color === "rgb(108,108,108)" && ARG_HINT.test(body)
+          ? { at: offset + segment.text.indexOf(body), length: body.length }
+          : null;
+    }
+    offset += segment.text.length;
+  }
+  if (hint === null || !/❯\s*\//.test(text.slice(0, hint.at))) return text;
+  return text.slice(0, hint.at) + " ".repeat(hint.length) + text.slice(hint.at + hint.length);
+}
+
 /**
  * The user's draft stranded in the composer. Grok writes it on the `│ ❯ … │` row and wraps onto
  * indented continuation rows below. Fragments join with a single space (soft wrap). Empty box → null.
@@ -296,7 +319,8 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
   const parts: string[] = [];
-  const prompt = composerPromptText(draftLineText(lines[box.firstDraftRow]!));
+  const first = lines[box.firstDraftRow]!;
+  const prompt = composerPromptText(withoutArgumentHint(first, draftLineText(first)));
   if (prompt === null) return null;
   parts.push(prompt.trim());
   for (let i = box.firstDraftRow + 1; i < box.bottom; i++) {
@@ -304,7 +328,14 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   }
 
   const draft = parts.filter((p) => p.length > 0).join(" ");
-  return draft.length === 0 ? null : draft;
+  if (draft.length === 0) return null;
+  // Under the slash popup, Enter runs the HIGHLIGHTED row. The typed text verifies only when that
+  // row is the typed command; on partial input (`/stat` over `❯ /statusline`) the highlighted command
+  // is folded in, so the reply guard cannot match and refuses rather than run a command nobody typed.
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const pointed = popupOnComposer(texts, box.top);
+  if (pointed !== null && pointed !== draft.split(/\s+/)[0]) return `${draft} ${pointed}`;
+  return draft;
 }
 
 /** Whether Grok's free-text composer is on screen at the tail. */
@@ -318,6 +349,56 @@ export function hasComposer(lines: StyledLine[]): boolean {
 // A rounded widget immediately above the composer is the residual fail-closed for anything we have
 // not captured yet.
 const USER_BUBBLE_EDGE = /^\s*[┌└]/;
+
+// Grok's welcome card: a rounded box holding the logo and its startup menu, `New worktree`,
+// `Resume session`, `Changelog`, `Quit` (every startup capture since 1.0.4x). It does not own the
+// keyboard: typing lands in the box below and the card goes (live, Grok Build 1.0.52, 2026-10-15).
+// Older builds printed a `Tip:` row between it and the box; the 1.0.52 changelog card sits right on
+// top of the box, where an unknown rounded widget fails closed, so it is named here.
+const WELCOME_MENU = [/\bNew worktree\b/, /\bResume session\b/, /\bQuit\b/];
+const ROUNDED_BOTTOM = /^\s*╰/;
+const ROUNDED_TOP = /^\s*╭/;
+const WELCOME_SCAN_ROWS = 40;
+
+// Grok's slash-command completion popup (1.0.52, live 2026-10-15): its rows sit between two rules
+// directly on top of the composer, the highlighted one led by `❯ /`, the rest by spaces and `/`. The
+// box below stays live: typing lands in it. A rule-bounded run holding a `❯ /` row is what tells it
+// from the model picker, whose pointer rows name a model, not a slash command.
+const POPUP_RULE = /^\s*─+(?:\d+─+)?$/;
+const POPUP_POINTED = /^\s*❯ (\/\S+)/;
+const POPUP_ROWS = 40;
+
+/** The highlighted command of a slash popup whose bottom rule is row `bottom`, or null for no popup. */
+function slashPopupPointed(texts: string[], bottom: number): string | null {
+  if (!POPUP_RULE.test(texts[bottom]!)) return null;
+  let pointed: string | null = null;
+  for (let row = bottom - 1; row >= 0 && bottom - row <= POPUP_ROWS; row--) {
+    const t = texts[row]!;
+    if (POPUP_RULE.test(t)) return pointed;
+    pointed = POPUP_POINTED.exec(t)?.[1] ?? pointed;
+  }
+  return null;
+}
+
+/** The slash popup's highlighted command when one sits right on top of the composer at `top`. */
+function popupOnComposer(texts: string[], top: number): string | null {
+  for (let i = top - 1; i >= 0; i--) {
+    if (isBlank(texts[i]!)) continue;
+    return slashPopupPointed(texts, i);
+  }
+  return null;
+}
+
+/** Whether the rounded box closing on row `bottom` is Grok's welcome card. */
+function closesWelcomeCard(texts: string[], bottom: number): boolean {
+  if (!ROUNDED_BOTTOM.test(texts[bottom]!)) return false;
+  for (let top = bottom - 1; top >= 0 && bottom - top <= WELCOME_SCAN_ROWS; top--) {
+    if (!ROUNDED_TOP.test(texts[top]!)) continue;
+    const inner = texts.slice(top + 1, bottom);
+    return WELCOME_MENU.every((row) => inner.some((t) => row.test(t)));
+  }
+  return false;
+}
 
 /**
  * Whether a phone reply would reach Grok's composer rather than a widget sitting on top of it.
@@ -339,7 +420,7 @@ export function composerReady(lines: StyledLine[]): boolean {
     const t = texts[i]!;
     if (isBlank(t)) continue;
     if (USER_BUBBLE_EDGE.test(t)) return true;
-    if (opensBox(t)) return false;
+    if (opensBox(t)) return closesWelcomeCard(texts, i) || slashPopupPointed(texts, i) !== null;
     return true;
   }
   return true;

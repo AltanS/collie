@@ -144,14 +144,20 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   // keeps the legacy read and stalls safe: Enter on partial input accepts the highlighted
   // suggestion (probed: `/us` ran `/usage`), so verifying the typed text there would bless a
   // command the operator did not type.
+  //
+  // Muse 1.4.8 adds two things (live, 2026-10-15): an argument hint after a complete command
+  // (`❯ /model [<model-id>]`), and skills listed under a command they prefix (`/resume` over
+  // `/resume-claude` and `/resume-codex`). Several rows qualify only when the first one is the
+  // highlighted one, bold, since Enter runs the highlighted row (probed: Down moved the bold to
+  // `/resume-claude`).
   const trimmed = prompt.trim();
   if (trimmed.startsWith("/")) {
-    const run: string[] = [];
-    for (let i = tail.prompt + 1; i < tail.rule; i++) run.push(texts[i]!);
-    if (run.length === 1) {
-      const suggestion = parsePaletteRow(run[0]!);
-      if (suggestion !== null && suggestion.command === trimmed) return trimmed;
-    }
+    const typed = withoutArgumentHint(lines[tail.prompt]!, lines[tail.rule]!, trimmed);
+    const run: number[] = [];
+    for (let i = tail.prompt + 1; i < tail.rule; i++) run.push(i);
+    const head = run.length === 0 ? null : parsePaletteRow(texts[run[0]!]!);
+    const several = run.length > 1 && run.every((i) => texts[i]!.startsWith("  /")) && rowIsHighlighted(lines[run[0]!]!, typed);
+    if (head !== null && head.command === typed && (run.length === 1 || several)) return typed;
   }
   const parts = [prompt.trim()];
   for (let i = tail.prompt + 1; i < tail.rule; i++) {
@@ -164,6 +170,26 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0 || INPUT_PLACEHOLDERS.has(draft)) return null;
   return draft;
+}
+
+/**
+ * The typed slash command with Muse's argument hint taken off. The hint (` [<model-id>]`) follows a
+ * complete command in Muse's muted chrome colour, the colour of the box's own bottom rule, and goes
+ * the moment an argument is typed, which arrives in the typed-text colour. So a trailing ` […]` run
+ * is the hint only when it wears the rule's colour; a literally typed `[x]` is kept.
+ */
+function withoutArgumentHint(row: StyledLine, rule: StyledLine, typed: string): string {
+  const last = row.segments.findLast((seg) => seg.text.trim() !== "");
+  const hint = last?.text.trim() ?? "";
+  if (last === undefined || !/^\[[^\]]*\]$/.test(hint) || !last.text.startsWith(" ")) return typed;
+  const ruleFg = rule.segments.find((seg) => seg.text.trim() !== "")?.fg;
+  if (ruleFg === undefined || last.fg !== ruleFg || !typed.endsWith(hint)) return typed;
+  return typed.slice(0, -hint.length).trimEnd();
+}
+
+/** Whether a palette row's command is painted bold, Muse's mark for the highlighted suggestion. */
+function rowIsHighlighted(row: StyledLine, command: string): boolean {
+  return row.segments.some((seg) => seg.bold === true && seg.text.trim() === command);
 }
 
 /** Whether Muse's free-text composer is on screen at the tail (the weaker, purely geometric claim). */

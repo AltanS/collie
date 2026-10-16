@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentOf,
+  CUES_BLIND,
   fixtureRows,
   idleFor,
   incidentScreens,
@@ -230,7 +231,14 @@ describe("the generic cues alone", () => {
   const others = FIXTURES.filter((name) => {
     const label = labelOf(name);
     // A "-cut" fixture is a screen truncated on purpose: it hides the footer that proves the dialog, and its uncut sibling is in the set.
-    return label.state === "dialog" && label.harness !== "claude" && label.harness !== "shell" && !name.endsWith("-cut.txt");
+    // CUES_BLIND names the dialogs whose bottom cluster the cues cannot reach, each with its reason.
+    return (
+      label.state === "dialog" &&
+      label.harness !== "claude" &&
+      label.harness !== "shell" &&
+      !name.endsWith("-cut.txt") &&
+      !CUES_BLIND.has(name)
+    );
   });
 
   it("cues alone: the set covers codex, pi, opencode, grok and omp", () => {

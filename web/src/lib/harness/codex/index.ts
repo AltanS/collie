@@ -29,6 +29,8 @@ import { detectApprovalRegion } from "./approval";
 import { detectAskRegion } from "./ask";
 import { detectTrustRegion } from "./trust";
 import { decorateCodexDisplay } from "./display";
+import { regionSignature, rstrip } from "./markers";
+import { detectSessionPicker } from "../session-picker";
 import { codexDraftCarriesSend } from "./paste";
 
 function raw(lines: StyledLine[]): Block {
@@ -64,6 +66,17 @@ export function codexBuildBlocks(lines: StyledLine[]): Block[] {
     const blocks: Block[] = [];
     if (before.length > 0) blocks.push(raw(before));
     blocks.push({ kind: "prompt-select", prompt: ask.model, lines: lines.slice(ask.startLine) });
+    return blocks;
+  }
+
+  // The highlighted session row is indented two columns: `  › 2d ago      Reply with OK`.
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const picker = detectSessionPicker(texts, /^\s*› \S/, (from, to) => regionSignature(lines, from, to + 1));
+  if (picker) {
+    const before = trimTrailingBlank(lines.slice(0, picker.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push(raw(before));
+    blocks.push({ kind: "menu", menu: picker.model, lines: lines.slice(picker.startLine) });
     return blocks;
   }
 
