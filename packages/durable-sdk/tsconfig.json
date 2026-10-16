@@ -20,7 +20,13 @@
     "skipLibCheck": true,
     "types": ["bun"],
     "lib": ["ESNext"],
-    "paths": { "@earendil-works/*": ["../../examples/durable-member/node_modules/@earendil-works/*"] }
+    // A `paths` target is a folder lookup that never reads a package's `exports`, so the wildcard serves package roots
+    // only. Each subpath the source imports gets its own line, the folder `exports` points into: tsc reads its
+    // index.d.ts and Bun its index.js. Without one, the import resolves only where a stray copy sits above the repo.
+    "paths": {
+      "@earendil-works/chord/context": ["../../examples/durable-member/node_modules/@earendil-works/chord/dist/context"],
+      "@earendil-works/*": ["../../examples/durable-member/node_modules/@earendil-works/*"]
+    }
   },
   "include": ["src"]
 }

@@ -32,6 +32,8 @@ const FIXTURES = readdirSync(PANES_DIR)
   .filter((name) => name.endsWith(".txt"))
   .toSorted();
 const NEGATIVE = new Set(["dialog", "screen"]);
+// A test that reads the whole corpus takes up to 1.3 s here and ran past 5 s on the GitHub runner; 20 s covers a runner four times slower.
+const CORPUS_WALK = { timeout: 20_000 };
 
 // Incident screens that read free when the one profile there is is applied to a harness it does not
 // describe. The Surface takes its profile from the binary, never from the screen, so this is a
@@ -111,7 +113,7 @@ describe("the idle matcher and the modal detector", () => {
     return askOf(read.surface.modal) !== null || read.cues?.strength === "strong";
   }
 
-  it("never both match one fixture, with its own profile", () => {
+  it("never both match one fixture, with its own profile", CORPUS_WALK, () => {
     const both = FIXTURES.filter((name) => {
       const read = own(name);
       return idleSignature(read) && modalDetector(read);
@@ -119,7 +121,7 @@ describe("the idle matcher and the modal detector", () => {
     expect(both).toEqual([]);
   });
 
-  it("never both match one fixture, with the one profile applied to every fixture", () => {
+  it("never both match one fixture, with the one profile applied to every fixture", CORPUS_WALK, () => {
     const both = FIXTURES.filter((name) => {
       const read = readScreen(fixtureRows(name), agentOf(labelOf(name).harness), CLAUDE);
       return idleSignature(read) && modalDetector(read);
@@ -127,7 +129,7 @@ describe("the idle matcher and the modal detector", () => {
     expect(both).toEqual([]);
   });
 
-  it("never both match: the matchers are not vacuous", () => {
+  it("never both match: the matchers are not vacuous", CORPUS_WALK, () => {
     const idle = FIXTURES.filter((name) => idleSignature(own(name))).length;
     const modal = FIXTURES.filter((name) => modalDetector(own(name))).length;
     expect(idle).toBeGreaterThan(30);
@@ -182,7 +184,7 @@ describe("perturbed fixtures", () => {
     expect(towardFree({ ...dialog, modal: { ask: ASK } }, dialog)).toEqual([]);
   });
 
-  it("perturb: the incident screens never become free", () => {
+  it("perturb: the incident screens never become free", CORPUS_WALK, () => {
     const wrong: string[] = [];
     for (const incident of incidentScreens()) {
       const profiles = WRONG_PROFILE_FREE.has(incident.sha) ? [idleFor(incident.agent)] : [idleFor(incident.agent), CLAUDE];
@@ -336,7 +338,7 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     }
   });
 
-  it("codex (a): the idle matcher and the modal detector never both match, on Codex fixtures and on every fixture", () => {
+  it("codex (a): the idle matcher and the modal detector never both match, on Codex fixtures and on every fixture", CORPUS_WALK, () => {
     expect(codexFixtures.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
     expect(FIXTURES.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
   });
@@ -385,7 +387,7 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     expect(isFree(readScreen(flush, "codex", CODEX).surface)).toBe(false);
   });
 
-  it("codex (d): the negative set never reads free with the Codex profile, the 0.156.1 approvals and pickers included", () => {
+  it("codex (d): the negative set never reads free with the Codex profile, the 0.156.1 approvals and pickers included", CORPUS_WALK, () => {
     const negative = FIXTURES.filter((name) => NEGATIVE.has(labelOf(name).state));
     const codexNegative = negative.filter((name) => labelOf(name).harness === "codex");
     for (const name of ["codex--v0156-approval-exec-2opt.txt", "codex--v0156-approval-patch.txt", "codex--approval-exec.txt", "codex--v0162-picker-model.txt"]) {
@@ -489,7 +491,7 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
     }
   });
 
-  it(`${id} (a): the idle matcher and the modal detector never both match, on its fixtures and on every fixture`, () => {
+  it(`${id} (a): the idle matcher and the modal detector never both match, on its fixtures and on every fixture`, CORPUS_WALK, () => {
     expect(mine.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
     expect(FIXTURES.filter((name) => signature(read(name)) && detector(read(name)))).toEqual([]);
   });
@@ -519,7 +521,7 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
     expect(isFree(r.surface), name).toBe(true);
   });
 
-  it(`${id} (d): the negative set never reads free with this profile, its mine dialogs included`, () => {
+  it(`${id} (d): the negative set never reads free with this profile, its mine dialogs included`, CORPUS_WALK, () => {
     const negative = FIXTURES.filter((name) => NEGATIVE.has(labelOf(name).state));
     expect(negative.filter((name) => labelOf(name).harness === id).length).toBeGreaterThan(0);
     const free = negative.filter((name) => isFree(read(name).surface) || isFree(read(name, PROFILE).surface));

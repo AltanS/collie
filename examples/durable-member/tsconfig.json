@@ -12,11 +12,11 @@
     // The example imports the SDK's source (packages/durable-sdk/src), and the SDK's `./pi` entry imports Pi Durable.
     // This sends those imports to this folder's install too, so the check sees the one Pi copy the program runs.
     // A `paths` target is a folder lookup that never reads a package's `exports`, so the wildcard serves package
-    // roots only. Each subpath the SDK imports gets its own line, pointing where `exports` points. Without one,
-    // tsc falls back to the node_modules folders above packages/durable-sdk and passes only on a machine with a
-    // stray copy there.
+    // roots only. Each subpath the SDK imports gets its own line, the folder `exports` points into: tsc reads its
+    // index.d.ts and Bun its index.js. Without one, the lookup falls back to the node_modules folders above
+    // packages/durable-sdk and passes only on a machine with a stray copy there.
     "paths": {
-      "@earendil-works/chord/context": ["./node_modules/@earendil-works/chord/dist/context/index.d.ts"],
+      "@earendil-works/chord/context": ["./node_modules/@earendil-works/chord/dist/context"],
       "@earendil-works/*": ["./node_modules/@earendil-works/*"]
     }
   },
