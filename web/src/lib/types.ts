@@ -5,6 +5,7 @@ import type { ApiErrorCode, ApiErrorDetail } from "@/lib/api-error-codes";
 import { t } from "@/lib/i18n";
 import type { HeldRow } from "@/lib/surface/send";
 import type { Surface } from "@/lib/surface/surface";
+import type { HoldNote } from "@/lib/surface/hold";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -205,8 +206,16 @@ export interface AgentView {
    * composer reads as `unknown(no-match)`.
    */
   surface?: Surface;
-  /** Mirrors `PaneWire.hooks` (M56 spec 11): the pane's hook source is `live` or `none`. Absent on an older bridge. */
-  hooks?: "live" | "none";
+  /**
+   * Mirrors `PaneWire.hooks` (M56 spec 11): the pane's hook source is `live` or `none`, or `holds`
+   * when its hooks also hold permissions for the phone (M56 spec 12). Absent on an older bridge.
+   */
+  hooks?: "live" | "holds" | "none";
+  /**
+   * Mirrors `PaneWire.hold` (M56 spec 12): the pane's hook-held permission, its tool, the input shown
+   * and its state. Absent when no hold waits or ended a moment ago, and on an older bridge.
+   */
+  hold?: HoldNote;
   /**
    * Mirrors `PaneWire.sendProtocol` (M56 spec 05): the bridge runs the Send Protocol for this pane, so
    * the composer sends through it. Absent means sending text is off there (`COLLIE_SEND_PROTOCOL=0`, or

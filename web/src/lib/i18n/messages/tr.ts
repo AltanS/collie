@@ -467,6 +467,18 @@ export const tr: Dictionary = {
   "chat.status.askMismatch": "Vurgu seçiminize ulaşmadı, bu nedenle hiçbir şey onaylanmadı",
   "chat.status.askGone": "İletişim kutusu kapandı; Collie ekranı tekrar okudu",
   "chat.status.askUnknown": "Cevabın gittiğine dair kanıt yok; ekran ne olduğunu gösteriyor",
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
+  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "Gönderme başarısız",
   "chat.status.wizardChanged": "Sihirbaz değişti, yenileniyor",
   "chat.status.noteSaved": "Not kaydedildi",
@@ -553,12 +565,12 @@ export const tr: Dictionary = {
   "ask.notAnswerable": "Bu soru telefondan cevaplanamaz.",
   "ask.late": "Zaten cevaplandı. Bu kart sonraki güncellemede kalkar.",
   "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",
-  "ask.decidedInProgram": "Programda kararlaştırıldı.",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "Bir yanıt verilmeden önce zaman aşımına uğradı.",
   "ask.expiresIn": "{time} içinde süresi doluyor",
   "ask.expired": "Süresi doldu",
   "ask.stale": "Bu soru değişti. Yeniden okuyun, ardından bir cevaba dokunun.",
-  "ask.stale.older": "Bu makine daha eski bir Collie çalıştırıyor ve cevapları buradan alamaz. Makineyi güncelleyin ya da programın içinden cevaplayın.",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "Cevabın ulaştığından emin olunamadı. Yeniden dene seçeneği cevabı bir kez daha gönderir.",
   "ask.retry": "Yeniden dene",
   "ask.refused": "Cevap reddedildi.",
@@ -592,15 +604,15 @@ export const tr: Dictionary = {
   "durable.composer.stopMoved": "Görüşme ilerledi, bu nedenle hiçbir şey durdurulmadı. Kontrol edin, hâlâ istiyorsanız tekrar durdurun.",
   "durable.composer.stopUnknown": "Durdurmanın ulaştığından emin olunamadı. Bir kez daha denemek için Durdur'a tekrar dokunun.",
   "durable.composer.maybe": "Zaten gönderilmiş olabilir. Tekrar göndermeden önce sohbeti kontrol edin.",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "Durdurma zaten uygulanmış olabilir. Sohbeti kontrol edin.",
@@ -628,7 +640,7 @@ export const tr: Dictionary = {
   "conversations.here": "Bu bölmede gösteriliyor",
   "conversations.loadMore": "Daha fazla yükle",
   "conversations.loading": "Yükleniyor…",
-  "conversations.empty": "Bu programda henüz konuşma yok.",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "Deneysel",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "yerel",
@@ -642,9 +654,9 @@ export const tr: Dictionary = {
   "space.program.open.other": "{count} açık konuşma",
   "space.program.waiting.one": "{count} konuşma sizi bekliyor",
   "space.program.waiting.other": "{count} konuşma sizi bekliyor",
-  "home.programs.title": "Programlar",
-  "conversations.unsupported": "Bu program konuşmalarının listesini tutmuyor.",
-  "conversations.unreachable": "Program yanıt vermedi. Birazdan tekrar deneyin.",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "Konuşmalar yüklenemedi. Tekrar deneyin.",
   "conversations.gone": "Bu konuşma artık mevcut değil.",
   "conversations.noItems": "Bu konuşmada henüz öge yok.",
@@ -654,7 +666,7 @@ export const tr: Dictionary = {
   "conversations.reopenFailed": "Konuşma yeniden açılamadı",
   "home.conversations.asks.one": "{count} açık soru",
   "home.conversations.asks.other": "{count} açık soru",
-  "newPage.starters.none": "Bu makinenin programı henüz başlatıcı sunmuyor.",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "Başlatıcılar",
   "newPage.starters.title": "Yeni konuşma",
   "prompt.feedback.cancel": "İptal",
@@ -679,7 +691,9 @@ export const tr: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. An agent that started before \"collie hooks install claude\" sends no reports.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
   "paneActions.title.fallback": "Bölme",
   "paneActions.settings.label": "Bölme ayarları",
   "paneActions.readOnly": "Salt okunur; bu cihazın bölmeleri yeniden adlandırma veya kapatma yetkisi yok.",
@@ -1028,7 +1042,7 @@ export const tr: Dictionary = {
   "space.space.titleWithLabel": "{label} alanı",
   "space.space.readOnly": "Salt okunur. Bu cihazın alanları yeniden adlandırma yetkisi yok.",
   "space.space.hostBlockSuffix": "{hostBlock}. Yanıt verene kadar yeniden adlandırma kullanılamaz.",
-  "space.space.empty.fallback": "Bu program bir alan için hiçbir eylem sunmuyor.",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "bu alanı adlandırın",
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
@@ -1071,7 +1085,7 @@ export const tr: Dictionary = {
   "connection.connected": "Bağlandı",
   "connection.reconnecting": "Yeniden bağlanıyor…",
   "connection.herdrDown": "Herdr ana makinede çalışmıyor",
-  "connection.tokenRefused": "Program belirteci reddetti. Bu eşteki COLLIE_DURABLE_TOKEN değerini kontrol edin.",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "Çevrimdışı: Collie'ye ulaşılamıyor",
   "connection.cantReach": "Collie'ye ulaşılamıyor",
   "connection.withLastSeen": "{cause}: son görülme {time}",
@@ -1959,7 +1973,7 @@ export const tr: Dictionary = {
   "pushTitle.machine.mem": "{machine} üzerinde bellek yüksek kalıyor",
   "pushTitle.machine.disk": "{machine} üzerinde disk dolu kalıyor",
   "pushTitle.ask.permission": "{pane} bölmesinde izin gerekiyor",
-  "pushTitle.ask.flood": "{host} üzerindeki bir program çok sayıda soru soruyor",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle, {link} tarafından geliştirilen bir konuşma modelidir.",

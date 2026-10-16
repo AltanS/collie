@@ -1,16 +1,16 @@
 # The durable SDK (experimental)
 
 > **Experimental.** The package, its API and the wire it speaks may change, or the feature may be
-> removed, in a later minor release. [Versions](#versions) says what that means for your program.
+> removed, in a later minor release. [Versions](#versions) says what that means for your durable agent.
 
-`@colliepwa/durable-sdk` is the npm package a program uses to show itself on your phone through
-Collie. This page lists every part of it. [Programs](durable-programs.md) has the quickstart and the
+`@colliepwa/durable-sdk` is the npm package a durable agent uses to show itself on your phone through
+Collie. This page lists every part of it. [Durable agents](durable-agents.md) has the quickstart and the
 setup on the Collie side, and [The durable wire](durable-wire.md) explains what travels between the
 two.
 
 ## Install and entries
 
-One install gives five entries: the root import for most programs, and four for a narrower need.
+One install gives five entries: the root import for most durable agents, and four for a narrower need.
 
 ```bash
 npm install @colliepwa/durable-sdk@experimental
@@ -23,27 +23,27 @@ bun add @colliepwa/durable-sdk@experimental
 | `@colliepwa/durable-sdk` | `openCollie` and the whole API. On Bun it serves the socket with the Bun server, elsewhere with the `node:http` server |
 | `@colliepwa/durable-sdk/bun` | The same API, always with the Bun server |
 | `@colliepwa/durable-sdk/node` | The same API, always with the `node:http` server, plus `NO_DESCENDANT_CHECK`, the line it writes at start |
-| `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a program that brings its own transport. No runtime import, so it runs wherever a web `Request` does |
-| `@colliepwa/durable-sdk/pi` | The glue for a Pi Durable program ([The Pi helpers](#the-pi-helpers)) |
+| `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. No runtime import, so it runs wherever a web `Request` does |
+| `@colliepwa/durable-sdk/pi` | The glue for a durable agent built on Pi Durable ([The Pi helpers](#the-pi-helpers)) |
 
 The package needs Node 22.19 or later, or Bun 1.4 or later, and has no runtime dependency. `./pi`
 needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later
-and below 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: a program that never imports `./pi` installs none.
+and below 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: a durable agent that never imports `./pi` installs none.
 
-The runtime decides whether the program can tell who answers. The descendant check refuses an act
-from the program itself or from a process it started, with 403 `caller-refused`. It covers answer,
+The runtime decides whether the durable agent can tell who answers. The descendant check refuses an act
+from the durable agent itself or from a process it started, with 403 `caller-refused`. It covers answer,
 send, stop, action, rename, close, reopen and starter. Reads stay open.
 
 | runtime | the descendant check | what you set |
 | --- | --- | --- |
 | Bun on Linux | On by default. Bun reads the caller's process id off the socket | Nothing. `callerCheck: "off"` turns it off |
 | Bun on macOS, or any other system but Linux | Cannot run. The start fails with an error that names `callerCheck` | `callerCheck: "off"` |
-| Node, any system | Cannot run: Node cannot read the caller of a socket. The program writes one line at start that says so | Nothing. `callerCheck` is not read |
+| Node, any system | Cannot run: Node cannot read the caller of a socket. The durable agent writes one line at start that says so | Nothing. `callerCheck` is not read |
 
 Without the check, any process of your user can answer a card, a tool the agent runs included. Run
 the agent's tools in a sandbox that cannot reach the socket. The socket needs a system with file
-owners, so on Windows `openCollie` stops at start. A program there serves `./core` behind TLS with a
-token instead ([Two ways to reach a program](durable-programs.md#two-ways-to-reach-a-program)).
+owners, so on Windows `openCollie` stops at start. A durable agent there serves `./core` behind TLS with a
+token instead ([Two ways to reach a durable agent](durable-agents.md#two-ways-to-reach-a-durable-agent)).
 
 ## Open a connection
 
@@ -64,9 +64,9 @@ With no `socket` option, the path comes from `COLLIE_DURABLE_SOCKET`, the variab
 | option | what it does | default |
 | --- | --- | --- |
 | `socket` | The socket path: absolute, at most 103 bytes. Its folder is made with mode `0700`, or must already be yours with mode `0700` | The `COLLIE_DURABLE_SOCKET` variable. Neither set: the start fails |
-| `hostName` | The program's own name in its hello, cut to 64 bytes. Required | None |
+| `hostName` | The durable agent's own name in its hello, cut to 64 bytes. Required | None |
 | `tailLimit` | How many raw events each pane keeps for Collie's reads | 500, at most 1000 |
-| `caps` | What the program says it can do ([Caps](#caps)) | Everything the SDK can do |
+| `caps` | What the durable agent says it can do ([Caps](#caps)) | Everything the SDK can do |
 | `callerCheck` | `descendant` or `off`. Read on Bun only | `descendant` |
 | `hooks` | One named place for each act the phone sends ([Hooks and history](#hooks-and-history)) | None |
 | `warn` | Where the SDK writes its one-line notes, for example about a Collie that speaks another wire version | `console.warn` |
@@ -82,15 +82,15 @@ Two more options exist on `createCore` only, not on `openCollie`: `receipts` and
 | `core` | The core behind the socket. A test, or a second transport, calls `core.handle` directly |
 | `workspace(id, { title, cwd? })` | A workspace, made once per id. Its `tab(id, { title })` gives a tab, and the tab's `pane(id, options)` a pane |
 | `starters(list)` | What the phone can start from the New page, at most 50. Each is `{ id, label, run }`, and `run` resolves to `{ paneId }` of the pane it showed |
-| `history(provider)` | Serve the program's own record of its conversations ([Hooks and history](#hooks-and-history)) |
+| `history(provider)` | Serve the durable agent's own record of its conversations ([Hooks and history](#hooks-and-history)) |
 | `ready()` | Call once every pane is shown, and after a restart once every open ask is raised again. Until then every route but hello answers 503 `starting` |
 | `close()` | Stop the server. Replies already on their way still go out, for at most 2 s, then the socket file goes |
 
-`close()` leaves open asks open on purpose: a shutdown is not an answer, and the program decides
+`close()` leaves open asks open on purpose: a shutdown is not an answer, and the durable agent decides
 what happens to the work that waits on one.
 
 `tab.pane(id, { title, harness, cwd?, sessionId? })` returns the pane that has that id when there is
-one, so a program can show a conversation twice without a second pane. Titles are cut to 256 bytes
+one, so a durable agent can show a conversation twice without a second pane. Titles are cut to 256 bytes
 and `harness` to 64. `cwd` is an absolute path, else it is left out.
 
 Every id follows the id rule: 1 to 128 bytes, no control character, no whitespace, and none of `/`,
@@ -108,7 +108,7 @@ A pane is one conversation, and its methods set what the phone shows for it.
 | `subtitle(text)` | One line under the title. `null` clears it | 120 characters |
 | `badge(value)` | `{ count }` or `{ text }` next to the title. `null` clears it | A count from 0 to 9999, a text of 12 characters |
 | `progress(value)` | `{ kind: "steps", steps }` or `{ kind: "percent", value, label? }`, drawn while the pane works or waits. `null` clears it | 12 steps, each label 60 characters, a value from 0 to 100 |
-| `actions(list)` | Buttons in the program's section of the belt: `{ id, label, icon?, busy?, disabled? }`. `null` clears them | 4 buttons, a label of 16 characters |
+| `actions(list)` | Buttons in the durable agent's section of the belt: `{ id, label, icon?, busy?, disabled? }`. `null` clears them | 4 buttons, a label of 16 characters |
 | `onAction(fn)` | Runs a tap on one of those buttons. Return `false` to refuse it | The phone sends no tap for a `busy` or `disabled` button |
 | `onSend(fn)` | Takes the phone's text, as `fn(text, { steer, requestId })` | 32 KiB of text |
 | `onAbort(fn)` | Takes Stop, as `fn({ requestId })` | None |
@@ -138,7 +138,7 @@ Write the same id again as it grows, at most every 250 ms, then once more with t
 
 Text over its limit is cut, and controls and invisible characters are removed. A bad `lang`, a bad
 `href`, a bad badge or a bad progress is a `TypeError` or a `RangeError` instead, because Collie would
-drop it. A program may not append `ask`, `ask-closed` or `state` events itself: `ask()` and `state()`
+drop it. A durable agent may not append `ask`, `ask-closed` or `state` events itself: `ask()` and `state()`
 write those.
 
 ## Questions
@@ -198,19 +198,19 @@ id, and an answer the phone sent across the restart lands. Raising an id that is
 | on the pane | what it does |
 | --- | --- |
 | `updateAsk(askId, patch)` | Changes an open ask in place: `title`, `reason`, `tool`, `options`, `placeholder`, `maxLength` or `fields`. Its revision rises by one, so an answer to the old form gets 409 `stale` and the phone asks for a fresh tap. False when the ask is not open |
-| `decideAsk(askId, answer?)` | The program decided the ask itself, somewhere other than the phone. With `answer`, the waiting `ask()` resolves with it. Without, it rejects with `AskClosed`. A later tap on the phone gets 409 `decided`, and the card says "Decided in the program." False when the ask is not open |
+| `decideAsk(askId, answer?)` | The durable agent decided the ask itself, somewhere other than the phone. With `answer`, the waiting `ask()` resolves with it. Without, it rejects with `AskClosed`. A later tap on the phone gets 409 `decided`, and the card says "Decided in the durable agent." False when the ask is not open |
 | `outcomeOf(askId)` | The first decision: `{ decidedBy, decidedAt, optionId?, effect? }`. The pane remembers its last 500. Undefined for an ask it never raised or forgot |
 
 `decidedBy` is `phone`, `program` or `timeout`. An ask passes its `expiresAt` and closes as decided
 by `timeout`: `ask()` rejects with `AskClosed`, whose `decidedBy` is `timeout`. The card shows the time
-left until then. A question that timed out or was decided in the program leaves one line in Chat,
+left until then. A question that timed out or was decided in the durable agent leaves one line in Chat,
 such as "Timed out before an answer: refund wants to run".
 
 An aborted `signal`, `pane.close()` and a close from the phone close the ask as decided by `program`,
 and `ask()` rejects with `AskClosed`.
 
 > **Caution.** An `allow-always` option lets every later call through after one answer. Over https the
-> token is the only gate, so a program there offers Allow and Deny only. `createCore` with
+> token is the only gate, so a durable agent there offers Allow and Deny only. `createCore` with
 > `allowAlways: false` makes an `allow-always` option a `TypeError`. The phone offers no
 > `allow-always` on an ask whose words were cut or cleaned, or that names no tool.
 
@@ -245,10 +245,10 @@ request id may try again. The per-pane handlers win over a hook. A pane with nei
 The SDK applies an accepted act itself. A rename sets the title. A close removes the target and
 everything inside it, and closes their open asks as stopped. A reopen without a hook puts back a pane
 this process closed; a conversation closed before a restart needs `onReopen`. The layout is made
-again on every start, so a program that wants a title or a close to outlive the process stores it in
+again on every start, so a durable agent that wants a title or a close to outlive the process stores it in
 its hook.
 
-`collie.history(provider)` serves every conversation, open and closed, from the program's own store.
+`collie.history(provider)` serves every conversation, open and closed, from the durable agent's own store.
 It turns the `history` cap on when `caps` is left out or names `history: true`.
 
 | `HistoryProvider` | returns |
@@ -270,10 +270,10 @@ default. A reader that fell behind it gets the pane's whole current view instead
 
 ## Caps
 
-A cap says the program can do one thing, and the phone draws a control only for a cap the program
+A cap says the durable agent can do one thing, and the phone draws a control only for a cap the durable agent
 declared.
 
-| cap | what the program takes |
+| cap | what the durable agent takes |
 | --- | --- |
 | `asks` | Raises questions and takes answers |
 | `starters` | Lists starters and runs one from the New page |
@@ -300,7 +300,7 @@ The root import also exports the parts `openCollie` is made of, and the rules it
 | `createCore(options)` | The core without a server. It takes the `openCollie` options but `socket` and `callerCheck`, plus `receipts` and `allowAlways`. It returns `epoch`, `workspace`, `starters`, `history`, `ready`, `isReady` and `handle(request)` |
 | `handle` | The wire as one function, a web `Request` in and a `Response` out. `core.handle(request)` is the usual way in |
 | `wireListener(core)` | `core.handle` as a `node:http` request listener, with `drained()` for a clean close |
-| `hello`, `versionLine` | The hello reply, and the one line a program writes for a version refusal |
+| `hello`, `versionLine` | The hello reply, and the one line a durable agent writes for a version refusal |
 | `mintId()` | A new random id, 128 bits as 32 hex characters |
 | `askIdFor(paneId, toolCallId)` | The derived ask id |
 | `AskClosed` | The error `ask()` rejects with when no answer came. It carries `by` and `decidedBy` |
@@ -329,7 +329,7 @@ history.
 | --- | --- |
 | `showConversation(loc, harness, conversation, o)` | Shows a conversation as a pane, history first, then live events. Send goes to Pi's `submit` with the request id, and Stop to its abort. Safe to call twice |
 | `PaneRegistry` | Which pane shows which conversation. After a restart, `reRaised(risky)` waits until each risky call without a result has asked again, so `ready()` comes after the asks |
-| `riskGuard({ panes, risky, words?, timeoutMs?, onTimeout? })` | A Pi extension whose `beforeTool` hook turns a call to a tool in `risky` into an Allow and Deny card. A denied call is blocked. With `timeoutMs`, the card expires, a call nobody answered is blocked, and `onTimeout(tool, title)` lets the program log it |
+| `riskGuard({ panes, risky, words?, timeoutMs?, onTimeout? })` | A Pi extension whose `beforeTool` hook turns a call to a tool in `risky` into an Allow and Deny card. A denied call is blocked. With `timeoutMs`, the card expires, a call nobody answered is blocked, and `onTimeout(tool, title)` lets the durable agent log it |
 | `askTools({ panes, words, timeoutMs?, onTimeout? })` | The support desk's two asking tools: `ask_queue`, a choice, and `ask_customer`, a text ask. With `timeoutMs`, an unanswered ask expires and the tool returns "timed out" |
 | `spawnHelperTool(o)` | The tool `spawn_helper`: a child conversation shown as a new pane, which returns the helper's answer |
 | `piHistory({ harness, panes, describe })` | A `HistoryProvider` that reads every entry of every Pi conversation |
@@ -340,7 +340,7 @@ history.
 | `PARTIAL_MS`, `RE_RAISE_MS` | 250 ms between two writes of a growing reply, and the 5000 ms `reRaised` waits at most |
 | `ESCALATED` | Example vocabulary: the support desk's notice for the Escalate button that `showConversation` adds with `escalate: true` |
 | `ASKING_TOOLS` | Example vocabulary: the names of the support desk's two asking tools |
-| `Submit`, `ReplyExtras` | The types of a custom `submit`, and of the items a program adds under a finished reply |
+| `Submit`, `ReplyExtras` | The types of a custom `submit`, and of the items a durable agent adds under a finished reply |
 
 The words a card shows come in as options, so `./pi` holds no text of the example but those two
 constants. It is written against Pi Durable 1.1.0. The support desk in `examples/durable-member/`
@@ -358,9 +358,9 @@ The package has its own version, apart from Collie's, and names the wire version
 Collie speaks one wire version and accepts the one before it for one minor release after a new one
 ships. When a Collie speaks none of your versions, the core writes one line through `warn`, once per
 version, for example
-`collie: Collie speaks wire v2, this program speaks v1. Update the program's SDK, or Collie.` The phone says the mismatch
-on the program's home, in Collie's own words. Update the older side.
+`collie: Collie speaks wire v2, this durable agent speaks v1. Update the agent's SDK, or Collie.` The phone says the mismatch
+on the durable agent's home, in Collie's own words. Update the older side.
 
 The package is published under the npm dist-tag experimental, never latest. If the durable wire goes
-at [the exit](durable-programs.md#the-exit), the package is deprecated
+at [the exit](durable-agents.md#the-exit), the package is deprecated
 ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).

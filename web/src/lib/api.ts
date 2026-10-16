@@ -1400,7 +1400,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
  */
 export async function postProgramSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
   if (textRouteFor({ program: true, crew: !isLead(scope), sendProtocol: true }) !== "api-send") {
-    throw new ApiError("A program on a crew member takes its own send route.", 400);
+    throw new ApiError("A durable agent on a crew member takes its own send route.", 400);
   }
   stampSend(body.pane);
   const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });

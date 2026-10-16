@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
+import { HOST } from "../bridge/host.ts";
 import {
   BEACON_SCHEMA_VERSION,
   EDGE_SCHEMA_VERSION,
@@ -14,6 +15,9 @@ import {
 } from "../bridge/beacon/types.ts";
 import { asJsonString } from "../web/src/lib/json.ts";
 import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
+import { holdInputHash, shownInput } from "../web/src/lib/surface/hold.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { agentHolds, agentSettingsPath, managedSettingsPath, projectSettingsPaths } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -290,14 +294,44 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
   }
 }
 
+/** A tool name or a subagent id: printable ASCII, short. */
+const TOOL_FIELD = /^[\x20-\x7e]{1,128}$/u;
+
+/**
+ * Whether the settings this agent reads hold Collie's permission hook right now (M56 spec 12): the
+ * user file, the project's two files under the folder the hook reports (`cwd`), and the managed file.
+ * Any of them can turn hooks off (`disableAllHooks`, or `allowManagedHooksOnly` in the managed one).
+ * The harness reloads hooks from these files while it runs (seen 2026-10-16 on 2.1.301), so the files
+ * are the truth for a running agent too. A few small reads; an unreadable file holds nothing.
+ */
+function holdsNow(deps: BeaconEmitDeps, event: string, cwd: string | null): boolean {
+  return agentHolds(
+    {
+      user: deps.files.read(agentSettingsPath(deps.ctx.env, deps.ctx.home)),
+      project: cwd === null ? [] : projectSettingsPaths(cwd).map((path) => deps.files.read(path)),
+      managed: deps.files.read(managedSettingsPath(HOST.platform)),
+    },
+    event,
+  );
+}
+
+/** The folder the hook reports the agent runs in, or null. */
+function cwdOf(payload: JsonObject): string | null {
+  const cwd = asJsonString(payload.cwd);
+  return cwd !== undefined && isAbsolute(cwd) && cwd.length < 4096 ? cwd : null;
+}
+
 /** A notification type: lower case and underscores. */
 const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
+
+/** What the registry walk needs: the emitter and the permission hold (`collie beacon hold`) share it. */
+export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
 
 /**
  * Whether a folder the emitter is about to write into is this user's own and private: a real folder,
  * not a link, owned by this uid, and writable by nobody else. A folder that fails is skipped.
  */
-function privateDir(deps: BeaconEmitDeps, dir: string): boolean {
+export function privateDir(deps: EdgeTargetDeps, dir: string): boolean {
   if (deps.files.entryType(dir) !== "directory") return false;
   const mode = deps.files.mode(dir);
   if (mode !== null && (mode & 0o022) !== 0) return false;
@@ -360,7 +394,7 @@ export function promptHashOf(deps: BeaconEmitDeps, stateDir: string, payload: Js
  * explicit `COLLIE_STATE_DIR` in the agent's environment is always one of them. With no live target
  * the edge goes to this emitter's own state dir, as it did before the registry.
  */
-export function edgeStateDirs(deps: BeaconEmitDeps): string[] {
+export function edgeStateDirs(deps: EdgeTargetDeps): string[] {
   const dirs: string[] = [];
   const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
   if (privateDir(deps, registry)) {
@@ -401,6 +435,40 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const payload = asObject(JSON.parse(await deps.readStdin()));
     if (payload === null) return EXIT.OK;
 
+    // The tool edge (M56 spec 12): a tool finished. It ends a "Sent" card of a hook-held permission,
+    // so it is written for a subagent too, with the subagent id and the tool name, and never a beacon.
+    const hold = loadProfiles().get(BEACON_HARNESS)?.hold;
+    if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
+      const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+      if (pidStartTime === null) return EXIT.OK;
+      const tool = readField(payload, "tool_name", TOOL_FIELD);
+      const agent = readField(payload, "agent_id", TOOL_FIELD);
+      let record: EdgeRecord = {
+        schemaVersion: EDGE_SCHEMA_VERSION,
+        harness: BEACON_HARNESS,
+        event: hold.toolEvent,
+        detail: null,
+        pid: deps.agentPid,
+        pidStartTime,
+        markers,
+        at: (deps.now ?? Date.now)(),
+        promptHash: null,
+        holds: holdsNow(deps, hold.event, cwdOf(payload)),
+      };
+      if (tool !== null) record = { ...record, tool };
+      if (agent !== null) record = { ...record, agent };
+      // The input shown, hashed as the hold hashed it: the bridge ends only the hold of this very call.
+      if (tool !== null) record = { ...record, inputHash: holdInputHash(tool, shownInput(payload.tool_input, hold.inputShown, hold.inputDetails[tool])) };
+      for (const stateDir of edgeStateDirs(deps)) {
+        try {
+          writeEdge(deps, stateDir, record);
+        } catch {
+          // No tool edge for this target. A Sent card there ends when the screen moves on.
+        }
+      }
+      return EXIT.OK;
+    }
+
     // A SUBAGENT IS NOT THE PANE. A payload carrying `agent_id` came from a Task running inside the
     // session, and its `session_id` is not the pane's identity — writing it would hand the pane a
     // conversation the operator cannot see in it.
@@ -420,6 +488,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
 
     // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
     // one target that cannot be written must not cost the others, and the other way round.
+    const holds = hold === undefined ? false : holdsNow(deps, hold.event, cwdOf(payload));
     for (const stateDir of edgeStateDirs(deps)) {
       try {
         writeEdge(deps, stateDir, {
@@ -432,6 +501,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
           markers,
           at: now,
           promptHash: promptHashOf(deps, stateDir, payload),
+          holds,
         });
       } catch {
         // No edge for this target. The screen still reads the pane on its own poll.

@@ -184,20 +184,20 @@ describe("durable history list", () => {
   it("says so in plain text when the program has no conversations", async () => {
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
     mount("/conversations");
-    expect(await screen.findByText("This program has no conversations yet.")).toBeInTheDocument();
+    expect(await screen.findByText("This durable agent has no conversations yet.")).toBeInTheDocument();
   });
 
   it("reads unsupported as text, not as an error", async () => {
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: false, reason: "unsupported" })));
     mount("/conversations");
-    expect(await screen.findByText("This program does not keep a list of its conversations.")).toBeInTheDocument();
+    expect(await screen.findByText("This durable agent does not keep a list of its conversations.")).toBeInTheDocument();
     expect(screen.getByLabelText("status")).toHaveTextContent("");
   });
 
   it("reads unreachable as text, not as an error", async () => {
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: false, reason: "unreachable" })));
     mount("/conversations");
-    expect(await screen.findByText("The program did not answer. Try again in a moment.")).toBeInTheDocument();
+    expect(await screen.findByText("The durable agent did not answer. Try again in a moment.")).toBeInTheDocument();
   });
 });
 

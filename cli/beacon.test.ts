@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { holdInputHash } from "../web/src/lib/surface/hold.ts";
+import { HOST } from "../bridge/host.ts";
+import { managedSettingsPath } from "./hold-entry.ts";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
-import { context, fakeFiles, STATE } from "./fakes.ts";
+import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -310,6 +314,32 @@ describe("the hook edges it writes (M56 spec 11)", () => {
       expect(edges(d.files)).toEqual([]);
       expect(beacons(d.files).size).toBe(0);
     }
+  });
+
+  test("a tool edge names the tool, the subagent and the hash of the input shown, never the input", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "PostToolUse", tool_name: "Bash", agent_id: "sub-1", tool_input: { command: "touch secret-ish.txt" } }) });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    const [edge] = edges(d.files);
+    expect(edge).toMatchObject({ event: "PostToolUse", tool: "Bash", agent: "sub-1", inputHash: holdInputHash("Bash", "touch secret-ish.txt") });
+    const raw = [...d.files.entries].find(([path]) => path.startsWith(`${STATE}/edges/`))?.[1].text ?? "";
+    expect(raw).not.toContain("secret");
+  });
+
+  test("an edge says holds only when the settings the agent reads hold permissions and no file turns hooks off", async () => {
+    const HOLD_ENTRY = JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "/opt/collie beacon hold # collie-beacon v1" }] }] } });
+    const userFile = join(HOME, ".claude", "settings.json");
+    const run = async (files: Record<string, string>): Promise<boolean | undefined> => {
+      const d = deps({ stdin: payload({ hook_event_name: "Stop", cwd: "/work/project" }) });
+      for (const [path, text] of Object.entries(files)) d.files.write(path, text);
+      await cmdBeaconEmit(d);
+      return edges(d.files)[0]?.holds;
+    };
+    expect(await run({ [userFile]: HOLD_ENTRY })).toBe(true);
+    expect(await run({ "/work/project/.claude/settings.json": HOLD_ENTRY })).toBe(true);
+    expect(await run({ [userFile]: HOLD_ENTRY, "/work/project/.claude/settings.local.json": '{"disableAllHooks":true}' })).toBeUndefined();
+    expect(await run({ [userFile]: HOLD_ENTRY, [managedSettingsPath(HOST.platform)]: '{"allowManagedHooksOnly":true}' })).toBeUndefined();
+    expect(await run({ [userFile]: HOLD_ENTRY, [managedSettingsPath(HOST.platform)]: '{"disableAllHooks":true}' })).toBeUndefined();
+    expect(await run({})).toBeUndefined();
   });
 
   test("an edge needs no session id: the pid places it", async () => {

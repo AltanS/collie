@@ -1486,11 +1486,18 @@ export function startServer(opts: {
       const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
-      if (from.send === undefined && from.driver === undefined) return surfaced;
+      // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
+      // The input is a command line, so it takes the mirror's mask like the ask's labels do. A program
+      // pane (M56 spec 14) takes its asks from its driver, so it never carries a hold.
+      const note = surface === undefined || from.driver !== undefined ? null : (from.hold?.(wire.paneId) ?? null);
+      // The option labels are screen text too. The hash stays: the hold card's tap carries it.
+      const withHold = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
+      if (from.send === undefined && from.driver === undefined) return withHold;
       // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
+      // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
       const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
       const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
-      return held.length === 0 ? { ...surfaced, sendProtocol: true as const } : { ...surfaced, sendProtocol: true as const, held: shown };
+      return held.length === 0 ? { ...withHold, sendProtocol: true as const } : { ...withHold, sendProtocol: true as const, held: shown };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {

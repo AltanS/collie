@@ -2620,7 +2620,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const row = run.byCheck.get("durable-socket")!;
     expect(row.status).toBe("error");
     expect(row.detail).toContain("nothing is at");
-    expect(row.remedy).toContain("start the program");
+    expect(row.remedy).toContain("start the durable agent");
     expect(run.byCheck.get("durable-hello")!.status).toBe("skipped");
   });
 
@@ -2674,7 +2674,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("not a durable program");
+    expect(row.detail).toContain("not a durable agent");
     expect(row.remedy).toContain("COLLIE_DURABLE_SOCKET");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });
@@ -2687,7 +2687,7 @@ describe.skipIf(SOCKET_ONLY_SKIP)("doctor durable", () => {
     const run = await findings(harness(null, [], { env: onDurable(fake.socketPath) }));
     const row = run.byCheck.get("durable-hello")!;
     expect(row.status).toBe("error");
-    expect(row.detail).toContain("program speaks 2..3, this Collie speaks 1..1");
+    expect(row.detail).toContain("the durable agent speaks 2..3, this Collie speaks 1..1");
     expect(run.byCheck.get("durable-socket")!.status).toBe("ok");
     expect(run.byCheck.get("durable-ready")!.status).toBe("skipped");
   });

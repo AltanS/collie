@@ -209,7 +209,7 @@ describe("control: the request id", () => {
   test("request id: Try again after an unknown outcome sends once more with the SAME id, and acts once", async () => {
     const { program, posts, r } = await durable();
     program.override = (path) => (path.endsWith("/send") ? new Response(JSON.stringify({ code: "internal" }), { status: 500 }) : undefined);
-    expect(await r.call("send", "conv-03")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: "program answered 500" } });
+    expect(await r.call("send", "conv-03")).toEqual({ status: 504, body: { ok: false, outcome: "unknown", detail: "the durable agent answered 500" } });
     expect(r.receipts.get(ID)?.state).toBe("unknown");
     program.override = null;
     expect((await r.call("send", "conv-03")).body).toEqual({ ok: true, outcome: "ok" });
@@ -410,9 +410,9 @@ describe("control: one shape for every outcome", () => {
 
   test("refused: 409 with the refusal's word, kept on the receipt; a gone pane is refused too", async () => {
     const cases: Array<[MuxControlOutcome, "unsupported" | "refused"]> = [
-      [{ kind: "unsupported", detail: "This program takes no text from here." }, "unsupported"],
-      [{ kind: "refused", detail: "program answered 409 request-id-reused" }, "refused"],
-      [{ kind: "gone", detail: "The conversation is not in the program's layout." }, "refused"],
+      [{ kind: "unsupported", detail: "This durable agent takes no text from here." }, "unsupported"],
+      [{ kind: "refused", detail: "the durable agent answered 409 request-id-reused" }, "refused"],
+      [{ kind: "gone", detail: "The conversation is not in the durable agent's layout." }, "refused"],
     ];
     for (const [outcome, reason] of cases) {
       const r = rig(new ScriptedAdapter([outcome]));

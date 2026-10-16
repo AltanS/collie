@@ -206,6 +206,12 @@ export class SurfaceShadow {
     return { panes, counters: Object.fromEntries(this.counters) };
   }
 
+  /** The persisted counter key of a pane (spec 09's row), or undefined before its first read. */
+  counterKeyOf(paneId: string): CounterKey | undefined {
+    const state = this.panes.get(paneId);
+    return state === undefined ? undefined : { harness: state.harness, version: state.version, profileId: state.profileId, status: state.status ?? "-" };
+  }
+
   /** The counter key of a pane: `harness@version`. */
   keyOf(paneId: string): string | undefined {
     const state = this.panes.get(paneId);

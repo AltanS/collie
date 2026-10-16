@@ -3,7 +3,7 @@
 These are the terminals Collie reads [sessions](sessions.md) from: Herdr, tmux, zellij, tuios and
 Tern. Collie drives one terminal per install, and Herdr is the default. This page covers pointing
 Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
-a pane. A program with no screen is not a terminal, and [Programs](durable-programs.md) covers it.
+a pane. A durable agent with no screen is not a terminal, and [Durable agents](durable-agents.md) covers it.
 
 tmux and zellij call their own top-level group a session. Collie shows it as a space.
 
@@ -92,8 +92,8 @@ tmux, zellij and tern require. They expose panes as generic shells, so without h
 `bash`.
 
 The command updates `~/.claude/settings.json` and leaves project configs untouched
-([details below](#collie-writes-hooks-into-claudes-own-settings)). Running Claude instances do not
-reload their configuration, so restart them.
+([details below](#collie-writes-hooks-into-claudes-own-settings)). Claude Code 2.1.301 reloads its
+hooks while it runs. Restart an older Claude.
 
 > **Note.** Herdr is not required in this mode. With `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij`, the
 > bridge loads only the selected adapter and ignores Herdr's socket. Discovery of several Herdr sessions across
@@ -161,9 +161,9 @@ Collie does not detect Tern on its own, as it does not detect tuios: name it wit
 
 ### durable notes
 
-A program that you attach is not a terminal, and it has no screen. [Programs](durable-programs.md)
-covers how to attach one with `collie durable attach`, the older form that drives a program alone
-with `COLLIE_MUX=durable`, the two ways to reach a program, what it can do on the phone, and what to
+A durable agent that you attach is not a terminal, and it has no screen. [Durable agents](durable-agents.md)
+covers how to attach one with `collie durable attach`, the older form that drives a durable agent alone
+with `COLLIE_MUX=durable`, the two ways to reach a durable agent, what it can do on the phone, and what to
 check when it shows as unreachable.
 
 ### tuios notes
@@ -247,7 +247,8 @@ Behavior details for Claude configuration changes:
   Project-level `.claude/settings.json` files are untouched.
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
-- **Running Claude processes do not reload configuration.** Restart agents to apply changes.
+- **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
+  if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
   beacons.
 - **Beacons are multiplexer-specific.** They record pane and session identifiers for the active
@@ -419,13 +420,82 @@ default state dir. A `COLLIE_STATE_DIR` in the agent's own environment always ge
 The pane info on the phone shows whether a pane sends hook edges:
 
 - **Hooks: live** means the agent in that pane sends hook edges.
-- **Hooks: none** means Collie has no hook edge from that pane. Either the hooks are not installed,
-  or the agent started before `collie hooks install claude`. Only that second agent needs a restart.
+- **Hooks: live, holds permissions** means the agent's hooks also hold permissions for the phone.
+  See [Permissions held for the phone](#permissions-held-for-the-phone).
+- **Hooks: none** means Collie has no hook edge from that pane. The hooks are not installed, or the
+  agent has not sent an event since the install. Claude Code 2.1.301 picks up new hooks while it
+  runs. Restart an older Claude.
 
 A bridge keeps the live panes across its own restart. The row stays "live" after a bridge restart.
 
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
+
+#### Permissions held for the phone
+
+```console
+$ collie hooks install claude --hold-permissions
+```
+
+This adds one more hook, on Claude's `PermissionRequest`. When Claude asks for a permission, the
+hook holds the request and waits for your tap. The phone shows the request as a card. A tap on
+**Yes** or **No** goes back to Claude through the hook. Collie sends no key to the pane for it.
+The install needs Claude Code 2.0.45 or later, the first version with this hook. It refuses an
+older one.
+
+- **The hook finds each running bridge the way hook edges do.** It reads `hook-targets/` and
+  holds with every live bridge. The first answer wins. The other phones then say "Another Collie
+  answered".
+- **The desk still works.** Answer the dialog in the terminal, and the phone card says "The desk
+  answered first". Collie does not use a tap after that.
+- **Only Yes and No go through the hook.** An option such as "don't ask again" stays a screen
+  answer. Collie refuses that tap on a held card.
+- **A held request has a time limit of 290 seconds.** After it, the dialog stays on the screen
+  and becomes an ordinary card with a new id. An old tap never turns into keys.
+- **No bridge, no hold.** With no bridge listening, or on any error, the hook prints nothing.
+  Claude then shows its own dialog as before. The hook never answers on its own.
+- **The card shows the input shown.** That is the command, the file path or another key input.
+  It adds the risky Bash flags, and the whole text a write puts in a file. Collie drops characters
+  that hide or turn text. The input shown has a limit of 1000 characters, the written text included.
+  Collie never holds a longer request: the card cannot show it all, so the dialog on the screen
+  answers it. When the input has more lines than the box shows, the card says so.
+- **A held request owns only the dialog that shows that very request.** The dialog's header must
+  name the request's tool. It must say "from the ... agent" exactly when a subagent asks, and name
+  the same type of subagent. Every line of the input must show on the dialog, in order. When two
+  held requests fit one dialog, none owns it. Any other dialog keeps its own card on the phone. The
+  request then waits on its hold card, and only a tap from that card answers it. The card does not
+  take a tap in the first 400 ms after a new request shows. If you answer that other dialog with
+  the keys and Claude then ends the hook, the hold card says that the keys answered it.
+- **A subagent's request shows no dialog while the hook holds it.** This holds for Claude Code
+  2.1.301. The hold card is then the only way to see it, so it shows the tool and the input shown.
+- **A background request waits up to the hold limit, even with no phone watching.** Then Collie
+  lets the hook go, and Claude shows the dialog on the screen. Claude 2.1.301 does not deny it.
+- **Questions and plans stay screen cards.** `AskUserQuestion` and `ExitPlanMode` are never held.
+
+The socket is `<stateDir>/hold/sock`. Its folder is mode 0700 and the socket is mode 0600, so
+another user cannot connect. Before it connects, the hook checks that the socket, its folder and the
+state dir are yours. It also checks that nobody else can write to the two folders. The bridge
+takes a request only from a process it places on a pane. It drops every other request with one
+`surface.hold.dropped` line. The hook and the settings carry no token. Each card carries a hash of
+the tool, the input shown and the labels. A tap with another hash lets the hook go with no answer.
+
+The pane info says "holds permissions" when the settings Claude reads hold the hook. Collie reads
+the user settings, the two project settings files and the managed settings. `disableAllHooks` turns
+the hold off, and so does `allowManagedHooksOnly` in the managed file.
+
+Run `collie hooks install claude` without the flag to take the hold out again. `collie doctor`
+says in how many settings files the hooks hold permissions.
+
+> **Note.** Beacons and hook edges provide no control channel. They only change what Collie
+> *displays* and when it *reads* a pane. They cannot send text, inject keystrokes, rename panes,
+> close sessions, or bypass access controls. The threat model and omitted fields are documented in
+> [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
+>
+> The permission hold is the one control channel. A tap on the phone becomes Claude's answer to one
+> permission. Four things guard it. The socket is yours alone (mode 0600 in a 0700 folder), and
+> the hook checks this before it connects. The bridge answers only a process it places on a pane.
+> The tap must carry the hash of the tool, the input shown and the labels the card showed. The
+> answer is only ever a person's tap: Collie never allows or denies on its own.
 
 #### Codex
 
@@ -476,12 +546,6 @@ Collie answers a Codex approval with one key: the option's digit, `y`, or Escape
 prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then
 presses Enter. A Codex question dialog also takes one key, the option's digit. In Codex 0.163.0 the
 digit answers at once. On the last question it sends all the answers.
-
-> **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
-> *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access
-> controls. The threat model and omitted fields are documented in
-> [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
-
 
 ## Harness profiles
 

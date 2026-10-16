@@ -89,7 +89,7 @@ describe("ProgramSpaceRow: the row's states", () => {
     const session = program("desk", {
       state: "unreachable",
       reachable: false,
-      notice: "Program speaks wire v3, this Collie speaks v1. Update Collie, or the program's SDK.",
+      notice: "The durable agent speaks wire v3, this Collie speaks v1. Update Collie, or the agent's SDK.",
     });
     const { row, slot, onOpen } = renderRow(session);
     expect(row.dataset.state).toBe("unreachable");
@@ -125,10 +125,10 @@ describe("ProgramSection", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("draws a Programs heading with the count and one row per program, in order", () => {
+  it("draws a Durable agents heading with the count and one row per program, in order", () => {
     const { container } = render(<ProgramSection programs={[program("desk"), program("billing")]} onOpen={() => {}} />);
     const section = container.querySelector<HTMLElement>('[data-slot="program-section"]')!;
-    expect(within(section).getByRole("heading").textContent).toContain("Programs");
+    expect(within(section).getByRole("heading").textContent).toContain("Durable agents");
     expect(within(section).getByRole("heading").textContent).toContain("2");
     const names = [...section.querySelectorAll('[data-slot="program-space-name"]')].map((n) => n.textContent);
     expect(names).toEqual(["desk", "billing"]);

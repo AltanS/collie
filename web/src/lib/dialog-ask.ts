@@ -24,6 +24,8 @@ export type AskTapResult =
   /** The dialog is not the one tapped. `ask` is the bridge's ask for the screen now, or null; `card` means the phone's card and the bridge's ask already disagreed, so nothing was posted. */
   | { readonly status: "changed"; readonly ask: Ask | null; readonly why: AskReason | "card" }
   | { readonly status: "gone" }
+  /** A hook-held ask (M56 spec 12): the desk, another hook or another Collie answered first. */
+  | { readonly status: "desk"; readonly detail: string | null }
   | { readonly status: "mismatch"; readonly ask: Ask | null }
   | { readonly status: "unknown"; readonly detail: string | null }
   | { readonly status: "refused"; readonly reason: AskReason | null; readonly detail: string | null }
@@ -35,6 +37,8 @@ export interface AskTapArgs {
   /** The ask the pane's Surface carries (or the one a refusal handed back). */
   readonly ask: Ask;
   readonly tap: CardTap;
+  /** Set by the hold card of a hook-held permission (M56 spec 12), and by nothing else. */
+  readonly via?: "hold-card";
 }
 
 /** One Answer for a tap on a dialog card. Never throws. */
@@ -43,7 +47,8 @@ export async function answerAsk(args: AskTapArgs): Promise<AskTapResult> {
   const optionId = askOptionFor(args.ask, args.tap);
   if (optionId === null) return { status: "changed", ask: null, why: "card" };
   try {
-    const reply = await postAskAnswer(args.ask.id, { pane: args.paneId, hash: args.ask.hash, optionId, origin: "person_tap" }, args.scope);
+    const body = { pane: args.paneId, hash: args.ask.hash, optionId, origin: "person_tap" } as const;
+    const reply = await postAskAnswer(args.ask.id, args.via === undefined ? body : { ...body, via: args.via }, args.scope);
     switch (reply.outcome) {
       case "sent":
         return { status: "sent" };
@@ -60,6 +65,8 @@ export async function answerAsk(args: AskTapArgs): Promise<AskTapResult> {
         return { status: "changed", ask: reply.ask, why: reply.reason };
       case "ask_gone":
         return { status: "gone" };
+      case "ask_desk":
+        return { status: "desk", detail: reply.detail };
       case "ask_mismatch":
         return { status: "mismatch", ask: reply.ask };
       default:

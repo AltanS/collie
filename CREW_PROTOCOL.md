@@ -256,14 +256,14 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/rename` | `POST …/rename` (`:283`) | forwarded |
 | `POST` | `/crew/v1/pane/:id/focus` | `POST …/focus` | forwarded — additive-optional (§7.1). Shows the pane on **the peer machine's** terminal; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
-| `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the program. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
-| `POST` | `/crew/v1/pane/:id/action` | `POST …/action` | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 07). A tap on one of the buttons a durable program lists for a pane, by `requestId` and `actionId`, with the `turnId` the phone saw when it names one: a turn that moved is refused with 409 and the current `turnId` and `askIds`, before anything reaches the program. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as a refusal, never as done |
+| `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
+| `POST` | `/crew/v1/pane/:id/action` | `POST …/action` | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 07). A tap on one of the buttons a durable agent lists for a pane, by `requestId` and `actionId`, with the `turnId` the phone saw when it names one: a turn that moved is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as a refusal, never as done |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
-| `POST` | `/crew/v1/space/:id/rename` | `POST /api/space/:id/rename` (`SPACE_ACTION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 05). Renames a space on a durable program that declares `renameSpace`; a member that predates it answers 404. |
-| `GET` | `/crew/v1/durable/conversations` | `GET /api/durable/conversations` (`DURABLE_CONVERSATIONS_ROUTE`) | proxied byte-for-byte, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). The conversation list of the durable program **the member runs**, open and closed, with the phone's `after` and `limit` riding through. A READ: attempted against a stale member, read budget, audited on neither side. A member whose adapter has no program history answers `{ available: false, reason: "unsupported" }`, and a peer that predates it answers 404, which the phone shows as a list it could not load |
-| `GET` | `/crew/v1/durable/conversation/:id/items` | `GET /api/durable/conversation/:id/items` (`DURABLE_CONVERSATION_ROUTE`) | proxied, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). One conversation's items, read from the member's program and never from its log, as History `entries`. A READ like the row above, and the lead masks it again as a History answer (§9.1) |
-| `POST` | `/crew/v1/durable/conversation/:id/reopen` | `POST /api/durable/conversation/:id/reopen` (`DURABLE_CONVERSATION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). Asks the member's program to show a closed conversation again. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12); audited as `durable.reopen` on both sides. A peer that predates it answers 404, which the phone reads as a refusal |
+| `POST` | `/crew/v1/space/:id/rename` | `POST /api/space/:id/rename` (`SPACE_ACTION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 05). Renames a space on a durable agent that declares `renameSpace`; a member that predates it answers 404. |
+| `GET` | `/crew/v1/durable/conversations` | `GET /api/durable/conversations` (`DURABLE_CONVERSATIONS_ROUTE`) | proxied byte-for-byte, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). The conversation list of the durable agent **the member runs**, open and closed, with the phone's `after` and `limit` riding through. A READ: attempted against a stale member, read budget, audited on neither side. A member whose adapter has no durable agent history answers `{ available: false, reason: "unsupported" }`, and a peer that predates it answers 404, which the phone shows as a list it could not load |
+| `GET` | `/crew/v1/durable/conversation/:id/items` | `GET /api/durable/conversation/:id/items` (`DURABLE_CONVERSATION_ROUTE`) | proxied, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). One conversation's items, read from the member's durable agent and never from its log, as History `entries`. A READ like the row above, and the lead masks it again as a History answer (§9.1) |
+| `POST` | `/crew/v1/durable/conversation/:id/reopen` | `POST /api/durable/conversation/:id/reopen` (`DURABLE_CONVERSATION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 11). Asks the member's durable agent to show a closed conversation again. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12); audited as `durable.reopen` on both sides. A peer that predates it answers 404, which the phone reads as a refusal |
 | `POST` | `/crew/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
 | `POST` | `/crew/v1/launch` | `POST /api/launch` | forwarded — additive-optional (§7.1). Runs an allowlisted `launchers.toml` row **on the peer**, from that peer's own rows; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does. Since 1.19.0 (ADR 0091) the body may instead name `harness` (an id from that peer's own `harnesses` list) or `shell: true`, plus `cwd` and `requestId`, all optional and additive: the receipt lives on the peer that made the pane. Since 1.19.0 (ADR 0095) the body may instead name `run`, a one-off line the peer checks against its own `[phone] run` switch and character rule and types into a fresh shell; the answer may carry `noPrompts`, and a run that worked joins that peer's own `commands-recent.json`. A peer that predates them answers 400 to a body without `command`, which the phone never sends to it, because that peer's launchers answer carries no `harnesses` |
 | `GET` | `/crew/v1/launchers` | `GET /api/launchers` | forwarded — additive-optional (§7.1), same pairing as above. Rows must come from the host that runs them, so this is a READ crossing the link rather than a second copy of `config`'s `launchers` field, which is why that field was retired from `/api/config` in the same change. Since 1.19.0 (ADR 0091) the answer may carry `harnesses: [{ id, label, found }]`, the agents that peer starts and whether each binary is on its login PATH; additive-optional, and its absence is how the phone tells an older peer apart. Since 1.19.0 (ADR 0094) it may also carry `adding` (that peer's `[phone]` switches, its `launchers.toml` path, its recipe table and the added rows it holds back), and each row may carry `source`, `id`, `kind`, `harness`, `noPrompts`, `addedBy`, `addedAt` and `addedAs`, all additive-optional. Since 1.19.0 (ADR 0095) it may also carry `recentRuns` (that peer's one-off command history) and `adding.run` (its `[phone] run` switch), additive-optional |
@@ -383,7 +383,7 @@ answering build:
 
 - `sessions` is **OPTIONAL**, added 2026-10-13 (M55): one card per session on this member,
   `{ name, kind, mux, caps, where, state, experimental }`, sent only by a member that runs a durable
-  program beside (or as) its multiplexer. **Absent means "the `mux` block answers for every session"**
+  agent beside (or as) its multiplexer. **Absent means "the `mux` block answers for every session"**
   (§7.1), which is how every lead read a member before the field existed, so an old lead ignores it and
   loses nothing it had. The lead replaces it on every successful hello, as it does `mux`, and answers
   `/api/config?host=<member>&session=<name>` from the card that names the session, else from `mux`. A
@@ -418,7 +418,7 @@ memory in the lead's state dir. A peer runs no guard for its own asks while it i
 guard's hourly breaker counts per member, and its one summary push names the member id. A solo
 collie runs the same guard over its own panes, under host `""`. The push for an ask says
 "Permission needed in <pane>", where <pane> is the pane's push name, so nothing of the ask crosses
-the push service. The one exception is words the program chose for it: an ask's optional `push`
+the push service. The one exception is words the durable agent chose for it: an ask's optional `push`
 (`title` up to 60 characters, `line` up to 120) replaces the headline after the pane's push name and
 the body. The lead cleans and cuts them again, because a member sent them, and masks them like every
 push.
@@ -670,7 +670,7 @@ updated machines, so build skew is the steady state (§7), and this section is t
   bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
 
 - **A pane gained an optional `subtitle` and an optional `badge`** (added 2026-10-13, M53). They come
-  from a durable program (`bridge/mux/durable/WIRE.md` section 7.11): one line under the pane's title
+  from a durable agent (`bridge/mux/durable/WIRE.md` section 7.11): one line under the pane's title
   (text, at most 120 characters) and a small mark next to it (`{ count }` from 0 to 9999, or `{ text }`
   of at most 12 characters). Additive-optional with the closed reading this section requires:
   **absent means none**, which the phone renders as nothing, exactly as before the fields. An older
@@ -678,7 +678,7 @@ updated machines, so build skew is the steady state (§7), and this section is t
   changes, for the reason the `cache` bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route,
   no new verb and no new header.
 
-- **A pane gained an optional `progress`** (added 2026-10-13, M53). It comes from a durable program
+- **A pane gained an optional `progress`** (added 2026-10-13, M53). It comes from a durable agent
   (`bridge/mux/durable/WIRE.md` section 7.12): `{ kind: "steps", steps }` with up to 12 labelled steps,
   or `{ kind: "percent", value, label? }` with a value from 0 to 100. Additive-optional with the closed
   reading this section requires: **absent means none**, which the phone renders as nothing, exactly as
@@ -1323,7 +1323,7 @@ prevents (`web/src/lib/api.ts:201-203`).
   snapshot (§11).
 - **A pane may carry `asks`** (additive-optional, §7.1, added 2026-10-12,
   [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): every open ask of a pane
-  whose adapter raises them as data, up to the program's 50 per pane. The lead adds no rule for it:
+  whose adapter raises them as data, up to the durable agent's 50 per pane. The lead adds no rule for it:
   the merge keeps a pane whole and only stamps `host`, so a member's asks reach the phone as the
   member listed them, and a lead that predates the field passes it through the same way. The lead's
   push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question is shown and
@@ -1333,9 +1333,9 @@ prevents (`web/src/lib/api.ts:201-203`).
   of a pane whose adapter takes guarded controls, which the phone sends back with a send or an abort.
   The merge passes it through like `asks`, and a lead that predates it does the same.
 - **A pane may carry `actions`** (additive-optional, §7.1, added 2026-10-13, M53 spec 07): the belt
-  buttons the program of a durable pane lists, at most four, each with an `id`, a `label` and optional
+  buttons the durable agent of a durable pane lists, at most four, each with an `id`, a `label` and optional
   `icon`, `busy` and `disabled`. The merge passes it through like `asks` and `turnId`, and a lead that
-  predates it does the same, so the phone draws no program buttons for a member it cannot read.
+  predates it does the same, so the phone draws no durable agent buttons for a member it cannot read.
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then

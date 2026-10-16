@@ -522,6 +522,18 @@ export const zh: Dictionary = {
   "chat.status.askMismatch": "高亮未到达你的选择，因此未确认任何内容",
   "chat.status.askGone": "对话框已消失；Collie 重新读取了屏幕",
   "chat.status.askUnknown": "无法证明回答已发出；屏幕显示了实际情况",
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
+  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "发送失败",
   "chat.status.wizardChanged": "向导已变动，正在刷新",
   "chat.status.noteSaved": "笔记已保存",
@@ -610,12 +622,12 @@ export const zh: Dictionary = {
   "ask.notAnswerable": "无法通过手机回答此提问。",
   "ask.late": "已回答。此卡片将在下次更新时消失。",
   "ask.notTaken": "未被接受。该问题可能稍后会再次出现。",
-  "ask.decidedInProgram": "已在程序中做出决定。",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "回答前已超时。",
   "ask.expiresIn": "将在 {time} 后过期",
   "ask.expired": "已过期",
   "ask.stale": "此提问已更改。请重新阅读，然后点击一个回答。",
-  "ask.stale.older": "此计算机运行较旧版本的 Collie，无法在此处接收回答。请更新它，或在程序中回答。",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "不确定回答是否已送达。重试会再次发送一次。",
   "ask.retry": "重试",
   "ask.refused": "回答被拒绝。",
@@ -649,15 +661,15 @@ export const zh: Dictionary = {
   "durable.composer.stopMoved": "对话已继续，因此未停止任何内容。请检查对话，如果仍需停止请再次操作。",
   "durable.composer.stopUnknown": "无法确认停止请求是否送达。再次点按“停止”可重试一次。",
   "durable.composer.maybe": "可能已发送。在重新发送前请检查聊天记录。",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "停止操作可能已生效。请检查聊天记录。",
@@ -685,7 +697,7 @@ export const zh: Dictionary = {
   "conversations.here": "显示在此窗格中",
   "conversations.loadMore": "加载更多",
   "conversations.loading": "正在加载…",
-  "conversations.empty": "此程序目前没有会话。",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "实验性功能",
   "space.program.line": "{mux}，{where}",
   "space.program.where.local": "本地",
@@ -699,9 +711,9 @@ export const zh: Dictionary = {
   "space.program.open.other": "{count} 个进行中的会话",
   "space.program.waiting.one": "{count} 个会话等待你的回应",
   "space.program.waiting.other": "{count} 个会话等待你的回应",
-  "home.programs.title": "程序",
-  "conversations.unsupported": "此程序不保存其会话列表。",
-  "conversations.unreachable": "程序未响应。请稍后重试。",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "无法加载会话。请重试。",
   "conversations.gone": "此会话已不存在。",
   "conversations.noItems": "此会话暂无内容。",
@@ -711,7 +723,7 @@ export const zh: Dictionary = {
   "conversations.reopenFailed": "无法重新打开会话",
   "home.conversations.asks.one": "{count} 个待处理提问",
   "home.conversations.asks.other": "{count} 个待处理提问",
-  "newPage.starters.none": "该机器上的程序尚未提供入门选项。",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "入门示例",
   "newPage.starters.title": "新会话",
   "prompt.feedback.cancel": "取消",
@@ -741,7 +753,9 @@ export const zh: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. An agent that started before \"collie hooks install claude\" sends no reports.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "窗格",
@@ -1105,7 +1119,7 @@ export const zh: Dictionary = {
   "space.space.titleWithLabel": "工作区 {label}",
   "space.space.readOnly": "只读。此设备未获重命名工作区的授权。",
   "space.space.hostBlockSuffix": "{hostBlock}。在收到响应前无法重命名。",
-  "space.space.empty.fallback": "此程序未提供针对工作区的操作。",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "为该工作区命名",
   "space.readOnly.notPaired": "未配对，请在设置中配对当前设备",
   "space.readOnly.expired": "配对已过期，请在设置中重新配对",
@@ -1162,7 +1176,7 @@ export const zh: Dictionary = {
   "connection.connected": "已连接",
   "connection.reconnecting": "正在重新连接…",
   "connection.herdrDown": "主机上的 Herdr 服务已停止",
-  "connection.tokenRefused": "程序拒绝了该令牌。请检查此节点上的 COLLIE_DURABLE_TOKEN。",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "离线：无法访问 Collie",
   "connection.cantReach": "无法连接至 Collie",
   "connection.withLastSeen": "{cause}，最后在线时间：{time}",
@@ -2115,7 +2129,7 @@ export const zh: Dictionary = {
   "pushTitle.machine.mem": "{machine} 的内存持续偏高",
   "pushTitle.machine.disk": "{machine} 的磁盘持续占满",
   "pushTitle.ask.permission": "{pane} 中需要权限",
-  "pushTitle.ask.flood": "{host} 上的某个程序正在发起多个询问",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle 是 {link} 的语音模型。",

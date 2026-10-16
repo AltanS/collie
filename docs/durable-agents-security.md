@@ -1,18 +1,18 @@
-# Security of a program
+# Security of a durable agent
 
 > **Experimental.** The wire, the SDK and this page may change, or the feature may be removed, in a
-> later minor release. [Programs](durable-programs.md) says what decides whether it stays.
+> later minor release. [Durable agents](durable-agents.md) says what decides whether it stays.
 
-A program is code you run or deploy, and Collie treats its words as untrusted text. This page says
-what a program can reach, what keeps others out of it, what Collie does to its text, and what the
+A durable agent is code you run or deploy, and Collie treats its words as untrusted text. This page says
+what a durable agent can reach, what keeps others out of it, what Collie does to its text, and what the
 audit log keeps. [Security](security.md) covers Collie as a whole.
 
-## What a program can and cannot do
+## What a durable agent can and cannot do
 
-A program asks, and a paired device decides. A program receives what you answer and send to it, and
+A durable agent asks, and a paired device decides. A durable agent receives what you answer and send to it, and
 the requests of the wire. Collie gives it no way into your terminals.
 
-| a program can | a program cannot |
+| a durable agent can | a durable agent cannot |
 | --- | --- |
 | Raise a question: a yes or a no, a choice, a line of text, or a short form | Answer its own question through Collie |
 | List starters and put up to four buttons of its own in the belt | Type into your terminals, or show a screen |
@@ -20,35 +20,35 @@ the requests of the wire. Collie gives it no way into your terminals.
 | Choose the words of its own push, inside the caps | Push more than the guard allows |
 
 Only a person's tap answers a question. The answer route runs for a paired device behind the write
-gate, and nothing in the bridge calls it for a program, a hook or a model output. On the phone,
-Always allow takes a second tap. A program that offers it holds the grant that needs the most care,
+gate, and nothing in the bridge calls it for a durable agent, a hook or a model output. On the phone,
+Always allow takes a second tap. A durable agent that offers it holds the grant that needs the most care,
 because one answer from a hostile tool would let every later call through without a question.
 
-The program, not Collie, enforces what an approved action does. A button of the program runs with
-the program's rights, and Collie only sends the tap.
+The durable agent, not Collie, enforces what an approved action does. A button of the durable agent runs with
+the durable agent's rights, and Collie only sends the tap.
 
-A program cannot flood your lock screen. Collie decides each question once, keyed on the program and
+A durable agent cannot flood your lock screen. Collie decides each question once, keyed on the durable agent and
 the tool call, and pushes it at most once. It allows 3 pushes per conversation a minute, 10 per host
 a minute and 30 per host an hour. The push that would be the 31st becomes one summary push, and the
 host sends no more until an hour after it. A card is always shown.
 
 > **Caution.** The same user can answer a question on a socket. A socket keeps other users out,
 > not a process of your own user, and that includes a tool your agent runs. The descendant check is
-> the program's own defence, and Collie cannot tell whether a program runs it.
+> the durable agent's own defence, and Collie cannot tell whether a durable agent runs it.
 
-With the check, a program refuses `answer`, `send`, `abort`, `action`, `rename`, `close`, `reopen`
+With the check, a durable agent refuses `answer`, `send`, `abort`, `action`, `rename`, `close`, `reopen`
 and `starter` from itself, from any process it started, and from a caller it cannot tell apart from
 them. The refusal is 403 `caller-refused`, and reads stay open. The check needs Bun on Linux, where
-the SDK reads the caller of a socket. The table says what it enforces where the program runs:
+the SDK reads the caller of a socket. The table says what it enforces where the durable agent runs:
 
-| where the program runs | what the descendant check enforces |
+| where the durable agent runs | what the descendant check enforces |
 | --- | --- |
-| Bun on Linux | It runs by default. The SDK reads the caller of each connection and refuses an act from the program, its descendants, or a caller it cannot place, with 403 `caller-refused` |
-| Bun elsewhere, such as macOS | It cannot run. `openCollie` stops at start with an error, unless the program passes `callerCheck: "off"`. With `off`, any process of your user can answer |
-| Node | It cannot run. The program starts and writes one warning line. Any process of your user can answer |
+| Bun on Linux | It runs by default. The SDK reads the caller of each connection and refuses an act from the durable agent, its descendants, or a caller it cannot place, with 403 `caller-refused` |
+| Bun elsewhere, such as macOS | It cannot run. `openCollie` stops at start with an error, unless the durable agent passes `callerCheck: "off"`. With `off`, any process of your user can answer |
+| Node | It cannot run. The durable agent starts and writes one warning line. Any process of your user can answer |
 
 Put the agent's tools in a sandbox that cannot reach the socket, treat the card as a notice rather
-than a gate, or run the program on Bun. `callerCheck: "off"` is the program's own choice to run
+than a gate, or run the durable agent on Bun. `callerCheck: "off"` is the durable agent's own choice to run
 without the check.
 
 ## The socket transport
@@ -76,7 +76,7 @@ A path that fails is unreachable at once, with no grace. `collie doctor` names t
 `durable-socket` row and gives the fix. A path with nothing at it reads `no socket at <path>`, which
 is not a privacy fault.
 
-A program built with the SDK makes the socket's folder with mode `0700` when it is not there. It
+A durable agent built with the SDK makes the socket's folder with mode `0700` when it is not there. It
 refuses to start in a folder that exists with another mode. It sets the socket to mode `0600`, and
 removes a dead socket file before it listens.
 
@@ -85,7 +85,7 @@ transport there.
 
 ## The token transport
 
-A URL and a token reach a program on another host, and the token is the whole gate.
+A URL and a token reach a durable agent on another host, and the token is the whole gate.
 
 ```bash
 openssl rand -hex 32
@@ -94,13 +94,13 @@ openssl rand -hex 32
 | rule | value |
 | --- | --- |
 | Token | 32 to 4096 bytes after trimming, printable ASCII with no space |
-| URL | `https://`, or `http://127.0.0.1:<port>` or `http://localhost:<port>` for a program on this machine. At most 2048 bytes. No user name, password, query or fragment |
+| URL | `https://`, or `http://127.0.0.1:<port>` or `http://localhost:<port>` for a durable agent on this machine. At most 2048 bytes. No user name, password, query or fragment |
 | Certificate | Checked as any client checks it. Collie has no switch to skip it |
 | Redirects | Collie follows none, so the token never reaches another host |
 
 Anyone who holds the token acts as your phone. They can read every conversation, answer every
 question, send text, stop a turn, rename or close, and run a starter. A TLS connection from
-the internet has no caller to check, so the descendant check does not exist here. A program reached
+the internet has no caller to check, so the descendant check does not exist here. A durable agent reached
 this way should offer Allow and Deny only, never an always-allow.
 
 The host sees the text. TLS ends at the host, so it sees each request, the token in its header
@@ -114,11 +114,11 @@ that holds it must be mode `0600`. Collie never prints the token. `collie durabl
 `(token set)`, `collie doctor` says `set, <n> bytes`, and no error or log line carries the value.
 `attach` reads it from the variable `--token-env` names, so it is in no command line.
 
-The token does not expire. To rotate it, give the program the new token before you restart Collie,
-or the phone says the program refused it. A program may accept a second token while a rotation runs:
+The token does not expire. To rotate it, give the durable agent the new token before you restart Collie,
+or the phone says the durable agent refused it. A durable agent may accept a second token while a rotation runs:
 the parked Cloudflare example takes `COLLIE_TOKEN` and, while it is set, `COLLIE_TOKEN_NEXT`
 ([ADR 0103](../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). The
-steps are in [Tokens](durable-programs.md#tokens).
+steps are in [Tokens](durable-agents.md#tokens).
 
 This is an outbound call that Collie makes to the URL you configured, and it is declined by
 attaching nothing. Each request carries `Authorization: Bearer <token>`, the wire version, the
@@ -127,14 +127,14 @@ without a body.
 
 Every poll over https is a request that your host may bill, and a "nothing changed" answer counts
 too. With no phone open the idle poll runs every 10 s, so Collie asks 8,640 times a day, and every
-2 s while a phone watches. A program that is down or refuses the token is asked at most once every
-10 s, and those requests are billed too. Use a paid plan for a program that Collie polls all day.
+2 s while a phone watches. A durable agent that is down or refuses the token is asked at most once every
+10 s, and those requests are billed too. Use a paid plan for a durable agent that Collie polls all day.
 
-## What Collie does to program text
+## What Collie does to a durable agent's text
 
-Collie cleans every string from a program before anything else reads it, and draws it as text.
+Collie cleans every string from a durable agent before anything else reads it, and draws it as text.
 
-A program should send strings inside the caps. Collie does not trust that it did. Each string goes
+A durable agent should send strings inside the caps. Collie does not trust that it did. Each string goes
 through three steps:
 
 1. **Controls go.** Collie removes C0 controls, DEL and C1 controls. Fields that hold several lines
@@ -159,8 +159,8 @@ is named by its id.
 | The output of a tool call | 16384 bytes |
 | The text of a message or a reply | 65536 bytes |
 | The text of a `markdown` or `code` item | 32768 bytes |
-| Text you send to a program | 1 to 32768 bytes, refused before it leaves |
-| One reply from a program | 16 KiB for `hello`, 4 MiB for a snapshot |
+| Text you send to a durable agent | 1 to 32768 bytes, refused before it leaves |
+| One reply from a durable agent | 16 KiB for `hello`, 4 MiB for a snapshot |
 
 Ids are never cleaned or cut. An id is 1 to 128 bytes with no control character, no whitespace and
 none of `/`, `?` or `#`, or the object that carries it is dropped.
@@ -174,9 +174,9 @@ items.
 
 ## What is logged
 
-Collie writes each write a phone makes to a program in `<state-dir>/audit.log`, mode `0600`.
+Collie writes each write a phone makes to a durable agent in `<state-dir>/audit.log`, mode `0600`.
 
-Each line carries the program's name as `session`, the paired device, and the event:
+Each line carries the durable agent's name as `session`, the paired device, and the event:
 
 | event | when | what the line keeps |
 | --- | --- | --- |
@@ -194,5 +194,5 @@ fields such as the request id, so the preview of a `send` goes with it. The log 
 after the fact. It does not stop anything.
 
 Collie also keeps a receipt for each answer, send, stop, button tap and starter, with no typed
-text. [Where Collie keeps a program's data](durable-programs.md#where-collie-keeps-a-programs-data)
+text. [Where Collie keeps a durable agent's data](durable-agents.md#where-collie-keeps-a-durable-agents-data)
 says how long.

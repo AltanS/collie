@@ -550,6 +550,13 @@ describe("parseProfile names the failing field", () => {
     ["a queued row pattern with no text group", ["keys", "queuedRow", "pattern"], "^❯ .*$", "keys.queuedRow.pattern"],
     ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
+    ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
+    ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
+    ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],
+    ["a hold with no deny option", ["hold", "options"], [{ label: "Yes", decision: "allow" }], "hold.options"],
+    ["a hold decision that is neither allow nor deny", ["hold", "decisions", 0, "decision"], "ask", "hold.decisions[0].decision"],
+    ["a hold decided line that is no expression", ["hold", "decidedLine"], "[unclosed", "hold.decidedLine"],
+    ["a missing hold denied line", ["hold", "deniedLine"], undefined, "hold.deniedLine"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {

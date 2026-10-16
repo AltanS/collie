@@ -350,6 +350,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the pane's hook source, live or none (M56 spec 11). It rides with `surface`
   // only, on a session that takes hook edges, and this harness builds none, so no golden byte moved.
   hooks: true,
+  // Not a crew dimension: the pane's hook-held permission (M56 spec 12). It rides with `surface` only,
+  // on a session that takes holds, and this harness builds none, so no golden byte moved.
+  hold: true,
   // Not a crew dimension: the Send Protocol's mark (M56 spec 05). It is on by default since spec 06
   // (COLLIE_SEND_PROTOCOL=0 turns text sending off), but a pane carries it only when its session runtime
   // has a Send Protocol, and this harness builds none, so it is absent here and no golden byte moved.
@@ -483,6 +486,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "hasSession",
       "held",
       "hint",
+      "hold",
       "hooks",
       "host",
       "kind",

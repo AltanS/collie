@@ -536,6 +536,18 @@ export const es: Dictionary = {
   "chat.status.askMismatch": "El resaltado no llegó a su elección, por lo que no se confirmó nada",
   "chat.status.askGone": "El diálogo ha desaparecido; Collie leyó la pantalla de nuevo",
   "chat.status.askUnknown": "No hay constancia de que la respuesta se haya enviado; la pantalla muestra lo ocurrido",
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
+  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "Error de envío",
   "chat.status.wizardChanged": "Asistente modificado: recargando",
   "chat.status.noteSaved": "Nota guardada",
@@ -624,12 +636,12 @@ export const es: Dictionary = {
   "ask.notAnswerable": "Esta pregunta no se puede responder desde el teléfono.",
   "ask.late": "Ya se respondió. Esta tarjeta desaparecerá en la próxima actualización.",
   "ask.notTaken": "No se aceptó. La pregunta puede volver a aparecer en un momento.",
-  "ask.decidedInProgram": "Decidido en el programa.",
+  "ask.decidedInProgram": "Decided in the durable agent.", // TODO wordsmith
   "ask.timedOut": "Se agotó el tiempo de espera antes de recibir una respuesta.",
   "ask.expiresIn": "Expira en {time}",
   "ask.expired": "Expirado",
   "ask.stale": "Esta pregunta cambió. Léala de nuevo y toque una respuesta.",
-  "ask.stale.older": "Este equipo ejecuta una versión anterior de Collie y no puede recibir respuestas aquí. Actualícelo o responda en el programa.",
+  "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the durable agent.", // TODO wordsmith
   "ask.unknown": "No hay certeza de que la respuesta haya llegado. Reintentar la envía una vez más.",
   "ask.retry": "Reintentar",
   "ask.refused": "Se rechazó la respuesta.",
@@ -663,15 +675,15 @@ export const es: Dictionary = {
   "durable.composer.stopMoved": "La conversación avanzó, por lo que no se detuvo nada. Compruébela y vuelva a parar si todavía lo desea.",
   "durable.composer.stopUnknown": "No hay certeza de que la parada haya llegado. Toque Detener de nuevo para reintentarlo una vez.",
   "durable.composer.maybe": "Puede que ya se haya enviado. Compruebe el chat antes de enviar de nuevo.",
-  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.askOpen": "The durable agent waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
   "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
-  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.notFree": "The durable agent cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The durable agent started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
   "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
-  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
-  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the durable agent's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The durable agent did not take the message.", // TODO wordsmith
   "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
-  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.unknown": "The durable agent did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
   "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
   "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "Puede que la parada ya se haya aplicado. Compruebe el chat.",
@@ -699,7 +711,7 @@ export const es: Dictionary = {
   "conversations.here": "Mostrado en este panel",
   "conversations.loadMore": "Cargar más",
   "conversations.loading": "Cargando…",
-  "conversations.empty": "Este programa aún no tiene conversaciones.",
+  "conversations.empty": "This durable agent has no conversations yet.", // TODO wordsmith
   "session.experimental": "Experimental",
   "space.program.line": "{mux}, {where}",
   "space.program.where.local": "local",
@@ -713,9 +725,9 @@ export const es: Dictionary = {
   "space.program.open.other": "{count} conversaciones abiertas",
   "space.program.waiting.one": "{count} conversación espera su respuesta",
   "space.program.waiting.other": "{count} conversaciones esperan su respuesta",
-  "home.programs.title": "Programas",
-  "conversations.unsupported": "Este programa no mantiene una lista de sus conversaciones.",
-  "conversations.unreachable": "El programa no respondió. Inténtelo de nuevo en un momento.",
+  "home.programs.title": "Durable agents", // TODO wordsmith
+  "conversations.unsupported": "This durable agent does not keep a list of its conversations.", // TODO wordsmith
+  "conversations.unreachable": "The durable agent did not answer. Try again in a moment.", // TODO wordsmith
   "conversations.loadFailed": "No se pudieron cargar las conversaciones. Inténtelo de nuevo.",
   "conversations.gone": "Esta conversación ya no existe.",
   "conversations.noItems": "Esta conversación aún no tiene elementos.",
@@ -725,7 +737,7 @@ export const es: Dictionary = {
   "conversations.reopenFailed": "No se pudo reabrir la conversación",
   "home.conversations.asks.one": "{count} pregunta abierta",
   "home.conversations.asks.other": "{count} preguntas abiertas",
-  "newPage.starters.none": "El programa de esta máquina todavía no ofrece elementos de inicio.",
+  "newPage.starters.none": "This machine's durable agent offers no starters yet.", // TODO wordsmith
   "newPage.starters.label": "Inicios",
   "newPage.starters.title": "Nueva conversación",
   "prompt.feedback.cancel": "Cancelar",
@@ -756,7 +768,9 @@ export const es: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. An agent that started before \"collie hooks install claude\" sends no reports.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Panel",
@@ -1120,7 +1134,7 @@ export const es: Dictionary = {
   "space.space.titleWithLabel": "Espacio {label}",
   "space.space.readOnly": "Solo lectura. Este dispositivo no está autorizado para cambiar el nombre de los espacios.",
   "space.space.hostBlockSuffix": "{hostBlock}. El cambio de nombre no está disponible hasta que responda.",
-  "space.space.empty.fallback": "Este programa no ofrece acciones para un espacio.",
+  "space.space.empty.fallback": "This durable agent offers no actions for a space.", // TODO wordsmith
   "space.space.placeholder": "asignar un nombre a este espacio",
   "space.readOnly.notPaired": "Sin emparejar. Vincula este dispositivo en Ajustes",
   "space.readOnly.expired": "Vinculación caducada. Vuelve a vincular en Ajustes",
@@ -1177,7 +1191,7 @@ export const es: Dictionary = {
   "connection.connected": "Conectado",
   "connection.reconnecting": "Reconectando…",
   "connection.herdrDown": "Herdr no responde en el host",
-  "connection.tokenRefused": "El programa rechazó el token. Revisa COLLIE_DURABLE_TOKEN en este par.",
+  "connection.tokenRefused": "The durable agent refused the token. Check COLLIE_DURABLE_TOKEN on this peer.", // TODO wordsmith
   "connection.offlineCantReach": "Sin conexión: no se puede conectar con Collie",
   "connection.cantReach": "No se puede conectar con Collie",
   "connection.withLastSeen": "{cause}. Última conexión: {time}",
@@ -2143,7 +2157,7 @@ export const es: Dictionary = {
   "pushTitle.machine.mem": "La memoria sigue alta en {machine}",
   "pushTitle.machine.disk": "El disco sigue lleno en {machine}",
   "pushTitle.ask.permission": "Se necesita permiso en {pane}",
-  "pushTitle.ask.flood": "Un programa en {host} está planteando muchas preguntas",
+  "pushTitle.ask.flood": "A durable agent on {host} is raising many asks", // TODO wordsmith
 
   // --- settings.speech and stt.model (Whistle, ADR 0096) ---
   "settings.speech.credit": "Whistle es un modelo de voz de {link}.",

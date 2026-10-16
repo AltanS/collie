@@ -251,17 +251,17 @@ describe("durable list", () => {
   test("with programs off the entries print as usual and the last line says so", async () => {
     const h = harness({ COLLIE_PROGRAMS: "off" }, { [FILE]: seed }, (url) => (url.includes("session=desk") ? new Response("{}") : new Response("", { status: 404 })));
     expect(await cmdDurableList(h.deps)).toBe(EXIT.OK);
-    expect(h.io.stdout.at(-1)).toBe("programs are off (COLLIE_PROGRAMS=off)");
+    expect(h.io.stdout.at(-1)).toBe("durable agents are off (COLLIE_PROGRAMS=off)");
     expect(h.io.stdout.join("\n")).toContain(`desk  socket ${SOCKET}  loaded`);
     const plain = harness({}, { [FILE]: seed }, () => new Response("{}"));
     await cmdDurableList(plain.deps);
-    expect(plain.io.stdout.join("\n")).not.toContain("programs are off");
+    expect(plain.io.stdout.join("\n")).not.toContain("durable agents are off");
   });
 
   test("an empty or missing file says so", async () => {
     const h = harness();
     expect(await cmdDurableList(h.deps)).toBe(EXIT.OK);
-    expect(h.io.stdout.join("\n")).toContain("no programs attached");
+    expect(h.io.stdout.join("\n")).toContain("no durable agents attached");
     expect(h.fetched).toEqual([]);
   });
 });

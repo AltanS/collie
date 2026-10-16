@@ -1,6 +1,6 @@
-# Durable member: a Pi Durable program in your crew
+# Durable member: a durable agent built on Pi Durable, in your crew
 
-Two programs that speak the durable socket wire to Collie. `hello.ts` is 10 lines of code and asks one question.
+Two durable agents that speak the durable socket wire to Collie. `hello.ts` is 10 lines of code and asks one question.
 `app.ts` is a small support desk built on [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable):
 it answers made-up support tickets for an online shop and shows each conversation to Collie. A Collie you
 attach it to lists those conversations, so you can read them on the phone and answer their questions
@@ -18,8 +18,8 @@ bun install --frozen-lockfile
 bun hello.ts
 ```
 
-The program prints `listening /run/user/1000/hello/app.sock` and waits. This is all of it, with the import a
-program of your own writes:
+The durable agent prints `listening /run/user/1000/hello/app.sock` and waits. This is all of it, with the import a
+durable agent of your own writes:
 
 ```ts
 import { openCollie } from "@colliepwa/durable-sdk";
@@ -37,7 +37,7 @@ await collie.close();
 
 It imports the SDK and nothing else, with no Pi Durable and no model. Attach it to your Collie
 ([below](#attach-it-to-your-collie)), open Collie on the phone, and the question "Deploy to staging?" waits
-on a card with Yes and No. Tap one. The program prints your answer and exits.
+on a card with Yes and No. Tap one. The durable agent prints your answer and exits.
 
 ## The support desk: app.ts
 
@@ -71,16 +71,16 @@ Use the path the app printed. For `hello.ts` the path ends in `hello/app.sock`. 
 the first command to restart in the same step.
 
 One Collie carries your terminal and the app together, so a host that already runs Collie with
-Herdr needs no second instance. The app appears in the Programs section on the phone.
-`collie durable list` shows each program you attached, and `collie doctor` checks the socket and
+Herdr needs no second instance. The app appears in the Durable agents section on the phone.
+`collie durable list` shows each durable agent you attached, and `collie doctor` checks the socket and
 says what is wrong when Collie cannot reach the app. The whole setup is on the
-[Programs page](../../docs/durable-programs.md).
+[Durable agents page](../../docs/durable-agents.md).
 
 Run the app as the same user as Collie. Keep the socket under `$XDG_RUNTIME_DIR`: the Collie service
 runs with a private `/tmp`, so it cannot see a socket in `/tmp`.
 
 A Collie with no terminal, such as a Windows host, can drive the app alone from its `.env` instead
-([A program alone in one Collie](../../docs/durable-programs.md#a-program-alone-in-one-collie)):
+([A durable agent alone in one Collie](../../docs/durable-agents.md#a-durable-agent-alone-in-one-collie)):
 
 ```sh
 COLLIE_MUX=durable
@@ -238,7 +238,7 @@ Every variable is optional.
 | `OPENROUTER_API_KEY` | not set | Your OpenRouter key. Pi reads it only when `REAL_MODEL` is set. |
 | `OPENAI_API_KEY` | not set | Your OpenAI key, for `REAL_PROVIDER=openai`. A ChatGPT sign-in stored in `auth.json` wins over it. |
 
-## Write your own program
+## Write your own durable agent
 
 The contract is [`WIRE.md`](../../bridge/mux/durable/WIRE.md). The decisions behind it are in
 [ADR 0099](../../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md) (the adapter),
@@ -252,7 +252,7 @@ The SDK is the package `@colliepwa/durable-sdk`, experimental, under the npm dis
 npm install @colliepwa/durable-sdk@experimental    # or: bun add @colliepwa/durable-sdk@experimental
 ```
 
-The programs in this folder import the package's source from `../../packages/durable-sdk/src` instead, so they run
+The durable agents in this folder import the package's source from `../../packages/durable-sdk/src` instead, so they run
 from a clone with no build. The code below, and the paths in the rest of this section, are the package's.
 
 ### Quickstart: one approval
@@ -272,8 +272,8 @@ if (!approval.approved) throw new Error(`refund not approved: ${approval.decided
 
 `requireApproval` waits for Allow or Deny on the phone. It returns `approved`, and a receipt: `decidedBy` is
 `phone`, `program` or `timeout`, and `decidedAt` is when. Only Allow from the phone approves. A timeout, a
-`signal` that aborts, and `pane.decideAsk(askId)` (the program decided it elsewhere) all return
-`approved: false`; `pane.decideAsk(askId, { optionId: "allow" })` approves from the program's side. A second tap
+`signal` that aborts, and `pane.decideAsk(askId)` (the durable agent decided it elsewhere) all return
+`approved: false`; `pane.decideAsk(askId, { optionId: "allow" })` approves from the durable agent's side. A second tap
 on the phone gets 409 `decided` with the first outcome, and nothing runs twice.
 
 `caps` is the whole list: a cap you do not name is off. Leave `caps` out to turn on everything the SDK can do.
@@ -291,14 +291,14 @@ The SDK imports nothing from Pi Durable outside its `./pi` entry, and a test che
   `{ kind: "user", requestId }` item names the send it came from (WIRE.md 7.15). The `./pi` entry does both.
 - `ask()` takes `expiresAt` (a `Date` or an ISO string). Past it the ask closes as decided by `timeout`, and the
   `ask()` promise rejects with `AskClosed` whose `decidedBy` is `timeout`. `pane.decideAsk(askId, answer?)` closes
-  an open ask as decided by the program: with an answer the `ask()` promise resolves with it, without one it rejects.
+  an open ask as decided by the durable agent: with an answer the `ask()` promise resolves with it, without one it rejects.
 - `subtitle(text | null)` sets one line under the title (at most 120 characters), and `badge({ count } | { text } | null)`
   a small mark next to it (a count from 0 to 9999, or at most 12 characters). Each raises `rev` only when the value changes.
 - `event({ type: "item", item })` also takes `{ kind: "markdown", text }`, `{ kind: "code", lang?, text }` (the
   language is a plain name such as `ts`) and `{ kind: "link", href, label? }` (`href` is an `https://` address).
   A bad language or address is a `TypeError`, so the wire never carries what the adapter would drop.
 - `progress({ kind: "steps", steps } | { kind: "percent", value, label? } | null)` says how far a working
-  conversation is: up to 12 steps (`done`, `running` or `todo`), or a value from 0 to 100. The program clears it
+  conversation is: up to 12 steps (`done`, `running` or `todo`), or a value from 0 to 100. The durable agent clears it
   when the run ends, and the phone draws it only while the pane works or waits.
 - `starters()` lists what the phone can start from the New page.
 - `hooks` gives each act the phone can send one named place, with a typed payload and the request id:
@@ -309,7 +309,7 @@ The SDK imports nothing from Pi Durable outside its `./pi` entry, and a test che
   has none: a pane with neither is 409 `not-supported`. Every payload type is exported from the package (`src/core/types.ts`).
 - The phone can give a workspace or a tab a new name (`rename` cap, on by default). The SDK sets the title and
   raises `rev`. `hooks.onRename` can keep the name, or return `false` to refuse it with 422. Set
-  `caps: { rename: false }` to take no rename at all. The layout is made again on every start, so a program
+  `caps: { rename: false }` to take no rename at all. The layout is made again on every start, so a durable agent
   that wants a name to outlive the process keeps it itself and uses it when it lays out: `app.ts` keeps the
   names in `titles.json` in its data folder, and the Cloudflare example keeps them in SQLite.
   A pane keeps the title the conversation gives it. The old top-level `onRename(target)` option still works
@@ -320,7 +320,7 @@ The SDK imports nothing from Pi Durable outside its `./pi` entry, and a test che
   and everything inside it from the layout, raises `rev`, and closes every open ask on those panes as `stopped`.
   Set `caps: { close: false }` to take no close at all. A repeat of a request id answers from the receipt and runs
   the hook once.
-- `history(provider)` serves the program's own record (WIRE.md 7.16, `history` cap): `provider.list(after, limit)`
+- `history(provider)` serves the durable agent's own record (WIRE.md 7.16, `history` cap): `provider.list(after, limit)`
   returns its conversations, open and closed, newest first, and `provider.items(id, after, limit)` the items of
   one, oldest first, or `undefined` for one it does not know. Each hands back its own cursor as `next`, at most
   512 bytes of printable ASCII. Once a provider is set, each pane's `sessionId` is its pane id; pass
@@ -355,7 +355,7 @@ into an ask, and runs a helper conversation as a tool. It imports nothing from t
 shows (the two questions, the items under a solved ticket) come in as options. It is written against
 `@earendil-works/pi-durable` 1.1.0, because it uses `entries({ order })` and `scanConversations`; on 1.0.x
 it does not type-check. `pi-durable/index.ts` is the old path, kept: it binds this example's words from
-`script.ts` to the helper. `script.ts` is the scripted model. A program on another framework writes its own
+`script.ts` to the helper. `script.ts` is the scripted model. A durable agent on another framework writes its own
 glue against the same handles. `app.ts` puts the parts together.
 
 ## Test

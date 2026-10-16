@@ -260,7 +260,7 @@ function versionRefusal(state: CoreState, version: number | undefined): Pick<Pro
 
 /** The line a program writes for a refusal: Collie's version first, then the program's own, as Collie's notice row words it. */
 export function versionLine(refusal: VersionRefusal): string {
-  return `Collie speaks wire v${refusal.collie[1]}, this program speaks v${refusal.program[1]}. Update the program's SDK, or Collie.`;
+  return `Collie speaks wire v${refusal.collie[1]}, this durable agent speaks v${refusal.program[1]}. Update the agent's SDK, or Collie.`;
 }
 
 export function hello(state: CoreState): Hello {
@@ -520,7 +520,7 @@ async function dispatch(request: Request, state: CoreState, call: CallInfo): Pro
         if ((await state.hooks.onReopen?.(target, requestId)) === false) throw new HttpError(422, "reopen-refused");
         // The SDK's own default: put back the pane it closed in this process, when the hook did not show one.
         if (store.paneOfConversation(id)?.open !== true) store.reopen(id);
-        if (store.paneOfConversation(id)?.open !== true) throw new HttpError(422, "reopen-refused", { message: "The program did not show the conversation again." });
+        if (store.paneOfConversation(id)?.open !== true) throw new HttpError(422, "reopen-refused", { message: "The durable agent did not show the conversation again." });
         return { ok: true };
       }, REOPEN_GROUP),
     );
