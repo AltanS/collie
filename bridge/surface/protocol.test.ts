@@ -83,12 +83,25 @@ class FakePane {
   codexWelcome: string[] = [];
   /** Codex mode only: a hint row that stays put, where null draws the hint Codex shows for the box. */
   codexHint: string | null = null;
+  /**
+   * Codex mode only: a turn runs with no working row on the screen, as while an answer streams in
+   * (lab, 0.163.0, 2026-10-16). Null reads the turn from the working row over the box.
+   */
+  turn: boolean | null = null;
+  /**
+   * Codex mode only: the 0.150 and 0.156 shape, where the queue hint takes the status row's place
+   * (`tab to queue message   99% context left`) once the box holds text in a turn. False draws the
+   * 0.159 and 0.163 shape: the status row stays and the hint takes the hint row's place under it.
+   */
+  queueHintOnStatus = false;
+  /** Codex mode only: the edit hint under the queued texts (0.159 and 0.163; 0.150 draws `alt + ↑`). */
+  queuedHint = "    shift+← edit last queued message";
 
   constructor(readonly mode: Mode = "claude") {}
 
-  /** Codex mode: a turn runs while a running row stands over the box. */
+  /** Codex mode: a turn runs while a running row stands over the box, or while {@link turn} says so. */
   private running(): boolean {
-    return this.over.some((row) => row.includes("esc to interrupt"));
+    return this.turn ?? this.over.some((row) => row.includes("esc to interrupt"));
   }
 
   private bump(): void {
@@ -129,12 +142,16 @@ class FakePane {
     }
     if (this.mode === "codex") {
       // Codex draws no edge glyphs: a blank row, the prompt and draft rows, a blank row, the status row, the hint row.
-      const queued = this.queued.length === 0 ? [] : ["", "• Queued follow-up inputs", ...this.queued.map((text) => `  ↳ ${text}`), "    shift+← edit last queued message"];
-      // Codex 0.163.0 (lab, 2026-10-16): the hint row goes once the box holds a character, and a turn shows its queue hint instead.
-      const shown = this.box === "" ? "  ← for agents · ? for shortcuts" : this.running() ? "  tab to queue message" : null;
+      const queued = this.queued.length === 0 ? [] : ["", "• Queued follow-up inputs", ...this.queued.map((text) => `  ↳ ${text}`), this.queuedHint];
+      // Codex (lab, 2026-10-16): the hint row goes once the box holds a character, and a turn shows its
+      // queue hint whenever the box holds text: under the status row (0.159, 0.163), or in its place (0.150, 0.156).
+      const queueHint = this.box !== "" && this.running();
+      const onStatus = queueHint && this.queueHintOnStatus;
+      const shown = this.box === "" ? "  ← for agents · ? for shortcuts" : queueHint && !onStatus ? "  tab to queue message" : null;
       const hint = this.codexHint ?? shown;
+      const status = onStatus ? `  tab to queue message${" ".repeat(60)}99% context left` : this.codexStatus;
       const welcome = this.box === "" ? this.codexWelcome : [];
-      rows.push(...welcome, ...this.over, ...queued, "", "", ...this.boxRows(), "", this.codexStatus, ...(hint === null ? [] : [hint]));
+      rows.push(...welcome, ...this.over, ...queued, "", "", ...this.boxRows(), "", status, ...(hint === null ? [] : [hint]));
       return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
@@ -204,7 +221,7 @@ class FakePane {
       } else if (key === "ctrl+j") {
         this.box += "\n";
       } else if (key === "Tab" && this.mode === "codex") {
-        // Codex 0.163.0 (lab, 2026-10-16): Tab queues a draft during a turn, sends it when idle, and does nothing on an empty box.
+        // Codex 0.150.0, 0.159.2 and 0.163.0 (lab, 2026-10-16): Tab queues a draft during a turn, sends it when idle, and does nothing on an empty box.
         if (this.box.length > 0 && this.running()) this.queued.push(this.box.replace(/\n/gu, " "));
         else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
@@ -908,14 +925,42 @@ describe("a command (M56 spec 06)", () => {
 /** The live running row of Claude Code 2.1.301 (claude--v2301-working-quiet--w100.txt): no interrupt hint. */
 const LIVE_ROW = "* Wibbling… (4s · ↓ 304 tokens)";
 
-describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
+describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)", () => {
   const CODEX_RUNNING = "• Working (4s • esc to interrupt)";
   const codex = (options: Parameters<typeof rig>[0] = {}): Rig => rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2", ...options });
+  /** The Codex profile as it was before Tab became the submit key: Enter submits, Tab queues. */
+  const enterSubmits = (profile: Profile): Profile => {
+    const { commandSubmit, ...keys } = profile.keys;
+    void commandSubmit;
+    return { ...profile, keys: { ...keys, submit: ["Enter"] } };
+  };
+  /** The Codex profile with no queue key. */
+  const noQueueKey = (profile: Profile): Profile => {
+    const { queueKey, ...keys } = profile.keys;
+    void queueKey;
+    return { ...profile, keys };
+  };
+  /** Rows of an answer that streams in above the box, one more on every read. */
+  const streams = (pane: FakePane): void => {
+    pane.turn = true;
+    pane.beforeRead = (p, n) => {
+      p.transcript.push(`streamed row ${String(n)}`);
+    };
+  };
+
+  test("a free Codex box: one write, Tab, sent, no queued field, never Enter", async () => {
+    const { pane, send } = codex();
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "codex", profileStatus: "verified", keys: ["Tab"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
 
   test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab, 0.163.0)", async () => {
     const { pane, send } = codex({ version: "0.163.0" });
     const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
   });
 
@@ -923,7 +968,7 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     const { pane, send } = codex({ version: "0.163.0" });
     pane.codexWelcome = CODEX_WELCOME;
     const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a row above the Codex box that gains text still fails the probe", async () => {
@@ -936,7 +981,7 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     };
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
-    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
@@ -946,18 +991,10 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     };
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
-    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
 
-  test("a free Codex box: probed or not, one write, Enter, sent, no queued field", async () => {
-    const { pane, send } = codex();
-    const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "codex", profileStatus: "verified", keys: ["Enter"] });
-    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
-    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
-  });
-
-  test("a running turn: probed, then Tab instead of Enter, sent, the receipt says queued", async () => {
+  test("a running turn: probed, Tab, and the queued row with the text makes the receipt say queued", async () => {
     const { pane, send } = codex();
     pane.over = [CODEX_RUNNING];
     const answer = await send("then add a short summary");
@@ -966,6 +1003,46 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(pane.queued).toEqual(["then add a short summary"]);
     expect(pane.box).toBe("");
     neverEscape(pane);
+  });
+
+  test("S0 read a running turn, but the turn ends before Tab: Tab sends, and with no queued row the receipt says sent", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) p.over = [];
+    };
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.queued).toEqual([]);
+    expect(pane.transcript.at(-1)).toBe("› then add a short summary");
+  });
+
+  test("S1 in a turn sees the queue hint under the status row (0.159 and 0.163 shape), and the send goes in queued", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    const hints: boolean[] = [];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) hints.push(p.render().split("\n").includes("  tab to queue message"));
+    };
+    const answer = await send("then add a short summary");
+    expect(hints).toEqual([true]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+  });
+
+  test("S1 in a turn sees the queue hint take the status row's place (0.150 and 0.156 shape), and the send goes in queued", async () => {
+    const { pane, send } = codex({ version: "0.156.1" });
+    pane.queueHintOnStatus = true;
+    pane.queuedHint = "    alt + ↑ edit last queued message";
+    pane.over = [CODEX_RUNNING];
+    const hints: boolean[] = [];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) hints.push(p.render().split("\n").some((row) => row.startsWith("  tab to queue message ") && row.endsWith("context left")));
+    };
+    const answer = await send("then add a short summary");
+    expect(hints).toEqual([true]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 
   test("a Codex transcript that echoes the prompt behind its glyph, the answer indented under it, is no open list at the box (lab, 0.163.0)", async () => {
@@ -986,14 +1063,65 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(pane.queued).toHaveLength(10);
   });
 
+  test("an answer that streams above a Codex box with no working row: the send presses Tab, never Enter, and the queued row says queued (lab, 0.163.0)", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["please list the files in this folder"]);
+  });
+
+  test("Submit of a draft while the answer streams with no working row presses Tab, never Enter (K1)", async () => {
+    const { pane, send } = codex();
+    pane.box = "half a thought";
+    streams(pane);
+    const answer = await send("half a thought", { mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys).toEqual(["Tab"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["half a thought"]);
+  });
+
+  test("a steering profile whose submit key is Enter: rows that move above the box route the send to the queue key, never Enter (K8)", async () => {
+    const { pane, send } = codex({ edit: enterSubmits });
+    // An answer that streams fast: a dozen rows a read, past the volatile band over the box.
+    pane.turn = true;
+    pane.beforeRead = (p, n) => {
+      for (let i = 0; i < 12; i++) p.transcript.push(`streamed row ${String(n)}.${String(i)}`);
+    };
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a steering profile whose submit key is Enter still presses Enter on a still, idle box", async () => {
+    const { pane, send } = codex({ edit: enterSubmits });
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
+  });
+
+  test("a command on an idle Codex box goes in with Enter, never Tab: Tab completes in the slash popup", async () => {
+    const { pane, send } = codex();
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+
+  test("Submit of a command draft on an idle Codex box presses Enter", async () => {
+    const { pane, send } = codex();
+    pane.box = "/compact";
+    const answer = await send("/compact", { mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+
   test("a Codex profile with no queue key refuses a send into a turn: turn_running, nothing typed", async () => {
-    const { pane, send } = codex({
-      edit: (profile) => {
-        const { queueKey, ...keys } = profile.keys;
-        void queueKey;
-        return { ...profile, keys };
-      },
-    });
+    const { pane, send } = codex({ edit: noQueueKey });
     pane.over = [CODEX_RUNNING];
     const answer = await send("then add a short summary");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
@@ -1021,6 +1149,17 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
+  test("Replace on a draft in a running Codex box goes in queued with Tab", async () => {
+    const { pane, send } = codex();
+    pane.over = [CODEX_RUNNING];
+    pane.box = "half a thought";
+    const replaced = await send("a new thought", { mode: "replace" });
+    expect(replaced.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(replaced.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.queued).toEqual(["a new thought"]);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
   test("a command waits for the Codex turn: refused turn_running, nothing typed", async () => {
     const { pane, send } = codex();
     pane.over = [CODEX_RUNNING];
@@ -1028,7 +1167,7 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(pane.calls).toEqual([]);
   });
 
-  test("a Codex screen with no box and a running row: the two-tap send presses Tab, never Enter, and says queued", async () => {
+  test("a Codex screen with no box and a running row: the two-tap send presses Tab, never Enter; with no box there is no witness, so no queued label", async () => {
     const { pane, send } = codex();
     pane.over = [CODEX_RUNNING];
     pane.codexStatus = "  something the profile does not know";
@@ -1037,20 +1176,14 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(first.receipt?.keys).toEqual([]);
     expect(first.rowsHash).toEqual(expect.any(String));
     const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
-    expect(manual.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(manual.receipt).toMatchObject({ outcome: "sent" });
     expect(manual.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.keysSeen).not.toContain("Enter");
     expect(pane.queued).toEqual(["then add a short summary"]);
   });
 
   test("a Codex screen with no box and a running row, and no queue key: the two-tap send is refused turn_running, nothing typed", async () => {
-    const { pane, send } = codex({
-      edit: (profile) => {
-        const { queueKey, ...keys } = profile.keys;
-        void queueKey;
-        return { ...profile, keys };
-      },
-    });
+    const { pane, send } = codex({ edit: noQueueKey });
     pane.over = [CODEX_RUNNING];
     pane.codexStatus = "  something the profile does not know";
     const first = await send("then add a short summary");
@@ -1058,36 +1191,6 @@ describe("codex: Enter steers a running turn, Tab queues (M56 spec 13)", () => {
     expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
-  });
-
-  test("an answer that streams above a Codex box with no working row is a turn: the send takes Tab, never Enter (lab, 0.163.0)", async () => {
-    const { pane, send } = codex();
-    pane.beforeRead = (p, n) => {
-      p.transcript.push(`streamed row ${String(n)}`);
-    };
-    const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
-    expect(pane.keysSeen).toContain("Tab");
-    expect(pane.keysSeen).not.toContain("Enter");
-  });
-
-  test("the working row comes back after S1 read idle: the hold read sees it, and the send takes Tab (lab, 0.163.0)", async () => {
-    const { pane, send } = codex();
-    pane.beforeRead = (p) => {
-      if (p.box.endsWith("the gap")) p.over = ["• Working (1s • esc to interrupt)"];
-    };
-    const answer = await send("a send in the gap");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["Tab"] });
-    expect(answer.receipt?.gapsMs?.s1).toBeGreaterThanOrEqual(700);
-    expect(pane.keysSeen).not.toContain("Enter");
-  });
-
-  test("a still idle Codex screen: the hold passes, and Enter submits after at least the hold time", async () => {
-    const { pane, send } = codex();
-    const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent" });
-    expect(answer.receipt?.queued).toBeUndefined();
-    expect(pane.keysSeen.at(-1)).toBe("Enter");
   });
 });
 
@@ -1120,7 +1223,7 @@ describe("a send into a running turn", () => {
     pane.enterSubmits = false;
     const answer = await send("then give it a title");
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
-    expect(answer.detail).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+    expect(answer.detail).toBe("The submit key did not reach the box. A dialog may have taken it. Check the transcript.");
     expect(answer.receipt?.queued).toBeUndefined();
   });
 
@@ -1618,7 +1721,7 @@ describe("a send into a running turn", () => {
       };
       const answer = await send("then give it a title");
       expect(answer.receipt, turn).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
-      expect(answer.detail, turn).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+      expect(answer.detail, turn).toBe("The submit key did not reach the box. A dialog may have taken it. Check the transcript.");
     }
   });
 
@@ -1627,7 +1730,7 @@ describe("a send into a running turn", () => {
     pane.status = ["  sonnet · project · main", "  ⏸ manual mode on"];
     streamAnswer(pane, typing);
     pane.afterInput = (p, what) => {
-      if (what.startsWith("type:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
+      if (what.startsWith("paste:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
     };
     const answer = await send("then give it a title");
     expect(pane.keysSeen.includes("Enter")).toBe(false);

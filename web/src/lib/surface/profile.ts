@@ -20,7 +20,9 @@ export type HookKind = "edge" | "ask";
 /**
  * What Enter does while a turn runs: `queues` (the text waits for the turn's end), `steers` (the text
  * goes into the running turn), `submits` or `ignored`. The Send Protocol presses Enter into a turn
- * only on `queues`; on any other mode it presses `keys.queueKey` when the profile names one.
+ * only on `queues`; on any other mode it presses `keys.queueKey` when the profile names one. A
+ * harness whose Enter steers may name a submit key that is not Enter at all (Codex: Tab sends on an
+ * idle box and queues in a turn), so no send of text ever presses Enter there.
  */
 export type EnterWhileRunning = "queues" | "steers" | "submits" | "ignored";
 
@@ -120,7 +122,14 @@ export interface Profile {
     readonly runningRows?: readonly string[];
   };
   readonly keys: {
+    /** The keys that send a text. Codex names Tab here: its Enter steers a running turn (`enterWhileRunning`). */
     readonly submit: readonly string[];
+    /**
+     * The keys that send a command or a text that starts with a reserved lead, when they are not
+     * `submit`. Optional: without it a command takes `submit`. Codex names Enter: Tab completes in its
+     * slash popup. Never Escape.
+     */
+    readonly commandSubmit?: readonly string[];
     readonly newline: readonly string[];
     readonly interrupt: readonly string[];
     /** One `key` press per typed character, plus `slack` more. Never Escape. */
@@ -135,7 +144,8 @@ export interface Profile {
     /**
      * The key that queues a message for after the running turn, on a harness whose Enter does not
      * queue (`enterWhileRunning` is not `queues`). Optional: without it, a send into a turn is refused.
-     * Never Escape and never a submit key.
+     * Never Escape and never Enter (what Enter does in a turn is `enterWhileRunning`). It may be the
+     * submit key itself, on a harness whose submit key sends on an idle box and queues in a turn.
      */
     readonly queueKey?: string;
     /**
@@ -391,9 +401,14 @@ export function parseProfile(raw: JsonValue): Profile {
   if (keysNode.queueKey !== undefined) {
     const queueKey = text(keysNode.queueKey, "keys.queueKey");
     if (/^(?:escape|esc)$/i.test(queueKey)) fail("keys.queueKey", "must not be Escape");
-    if (keys.submit.includes(queueKey)) fail("keys.queueKey", "must not be a submit key");
+    if (/^(?:enter|return)$/i.test(queueKey)) fail("keys.queueKey", "must not be Enter: keys.enterWhileRunning says what Enter does in a turn");
     if (keys.enterWhileRunning === "queues") fail("keys.queueKey", "is for a harness whose Enter does not queue");
     keys = { ...keys, queueKey };
+  }
+  if (keysNode.commandSubmit !== undefined) {
+    const commandSubmit = textList(keysNode.commandSubmit, "keys.commandSubmit", 1);
+    if (commandSubmit.some((key) => /^(?:escape|esc)$/i.test(key))) fail("keys.commandSubmit", "must not hold Escape");
+    keys = { ...keys, commandSubmit };
   }
   // Escape is never cleanup (ARCHITECTURE.md, Send Protocol): a profile cannot name it as the clear key.
   if (/^(?:escape|esc)$/i.test(keys.clear.key)) fail("keys.clear.key", "must not be Escape");

@@ -34,10 +34,11 @@
         "hints": ["^\\s*← for agents · \\? for shortcuts$", "^\\s*\\? for shortcuts$", "^\\s*[Tt]ab to queue message$"]
       }
     },
-    "runningRows": ["\\s·\\s[⠀-⣿]$", "^\\s*[Tt]ab to queue message\\b", "^\\s*shift\\+← edit last queued message$"]
+    "runningRows": ["\\s·\\s[⠀-⣿]$", "^\\s*[Tt]ab to queue message\\b", "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$"]
   },
   "keys": {
-    "submit": ["Enter"],
+    "submit": ["Tab"],
+    "commandSubmit": ["Enter"],
     "newline": ["ctrl+j"],
     "interrupt": ["Escape"],
     "clear": { "key": "Backspace", "slack": 16 },
@@ -51,7 +52,7 @@
     "queueKey": "Tab",
     "queuedRow": {
       "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",
-      "hint": "^\\s*shift\\+← edit last queued message\\s*$",
+      "hint": "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message\\s*$",
       "hintGap": 0
     }
   },
