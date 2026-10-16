@@ -65,6 +65,9 @@ export function runState(text: string, project: string): string {
     if (value !== undefined) keep[key] = value;
   }
   keep.hasCompletedOnboarding = true;
+  // Claude 2.1.301 asks a fresh config "Try the new fullscreen renderer?" until this counter reaches 3.
+  // The lab is a fresh config on every run, so the question would be its first screen every time.
+  keep.fullscreenUpsellSeenCount = 3;
   keep.projects = { [project]: { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true, allowedTools: [] } };
   return JSON.stringify(keep);
 }

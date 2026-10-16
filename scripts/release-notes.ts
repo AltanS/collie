@@ -427,6 +427,29 @@ function verifyBlock(repo: string, tag: string, version: string): string[] {
 }
 
 /**
+ * The page lines for agents the release was tagged over, from `claude 2.1.301` style entries.
+ * One line each: "claude, 2.1.301, not verified".
+ */
+export function driftLines(entries: readonly string[]): string[] {
+	return entries
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0)
+		.map((entry) => {
+			const [agent, version] = entry.split(/\s+/u);
+			return `- ${agent ?? entry}, ${version ?? "?"}, not verified`;
+		});
+}
+
+/**
+ * The agents a tag message names as not verified: the text after `Not verified:` as a list of
+ * `agent version` entries. A tag with no such line answers an empty list.
+ */
+export function notVerifiedOf(tagMessage: string): string[] {
+	const match = /^Not verified:\s*(.+)$/mu.exec(tagMessage);
+	return match?.[1] === undefined ? [] : match[1].split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+}
+
+/**
  * The whole release page body for one version.
  *
  * `previousTag` is a real tag on the remote or nothing. It is NOT derived from the CHANGELOG:
@@ -440,6 +463,7 @@ export function renderBody(
 	repo: string,
 	tag: string,
 	previousTag: string | null = null,
+	notVerified: readonly string[] = [],
 ): string {
 	const section = parseSection(changelog, version);
 	const anchor = changelogAnchor(version, section.date);
@@ -460,6 +484,11 @@ export function renderBody(
 		});
 		lines.push("");
 	}
+
+	// THE SOFT RELEASE GATE (M44 spec 08). A release tagged over a drift says so: one line per agent,
+	// "agent, version, not verified". Nothing is printed when no drift was named.
+	for (const line of driftLines(notVerified)) lines.push(line);
+	if (notVerified.length > 0) lines.push("");
 
 	lines.push(
 		`Full detail with commits: [${version} in the changelog](https://github.com/${repo}/blob/${tag}/CHANGELOG.md#${anchor})`,
@@ -491,18 +520,19 @@ function main(argv: string[]): void {
 	const tag = flag(argv, "tag");
 	const previousTag = flag(argv, "previous-tag");
 	const changelogPath = flag(argv, "changelog") ?? "CHANGELOG.md";
+	const notVerified = flag(argv, "not-verified");
 
 	if (!version || !repo || !tag) {
 		console.error(
 			"usage: bun scripts/release-notes.ts --version 1.6.0 --repo AltanS/collie --tag v1.6.0 " +
-				"[--previous-tag v1.5.6] [--changelog CHANGELOG.md]",
+				"[--previous-tag v1.5.6] [--changelog CHANGELOG.md] [--not-verified \"claude 2.1.301\"]",
 		);
 		process.exit(1);
 	}
 
 	try {
 		const changelog = readFileSync(changelogPath, "utf8");
-		process.stdout.write(renderBody(changelog, version, repo, tag, previousTag || null));
+		process.stdout.write(renderBody(changelog, version, repo, tag, previousTag || null, notVerifiedOf(`Not verified: ${notVerified ?? ""}`)));
 	} catch (error) {
 		console.error(`✗ release-notes: ${error instanceof Error ? error.message : String(error)}`);
 		process.exit(1);

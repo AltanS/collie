@@ -5,7 +5,7 @@
 // The adapter is Collie's own TmuxMux, pointed at that socket, so the protocol under test sends keys
 // and reads the screen the way the bridge does.
 
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { TmuxMux } from "../../../bridge/mux/tmux/adapter";
 import { resolveTmuxBinary, SpawnTmuxExec } from "../../../bridge/mux/tmux/exec";
 
@@ -39,7 +39,8 @@ export class LabTmux {
     this.binary = binary;
   }
 
-  private serverArgs(): string[] {
+  /** The flags every tmux call of this lab carries: no config file, and a socket of its own. */
+  serverArgs(): string[] {
     return ["-f", "/dev/null", "-L", this.socket];
   }
 
@@ -77,7 +78,12 @@ export class LabTmux {
       // The server may already be gone.
     }
     for (let i = 0; i < 20; i++) {
-      if (!(await this.alive())) return true;
+      if (!(await this.alive())) {
+        // tmux can leave the socket file behind when it dies on kill-server. Nothing answers on it,
+        // and the name holds this run's pid, so the file is ours to remove.
+        rmSync(this.socketPath(), { force: true });
+        return true;
+      }
       await Bun.sleep(100);
     }
     return false;
