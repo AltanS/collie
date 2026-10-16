@@ -25,12 +25,12 @@
     "input": "oklch(0.885 0.014 240)",
     "rule": "oklch(0.82 0.02 245)",
     "ring": "oklch(0.56 0.08 195)",
-    "status-blocked": "oklch(0.47 0.16 20)",
-    "status-working": "oklch(0.47 0.1 72)",
-    "status-done": "oklch(0.46 0.11 145)",
-    "status-idle": "oklch(0.46 0.05 280)",
-    "status-unknown": "oklch(0.42 0.045 280)",
-    "status-info": "oklch(0.46 0.11 225)",
+    "status-blocked": "oklch(0.45 0.16 20)",
+    "status-working": "oklch(0.45 0.1 72)",
+    "status-done": "oklch(0.44 0.11 145)",
+    "status-idle": "oklch(0.45 0.05 280)",
+    "status-unknown": "oklch(0.41 0.045 280)",
+    "status-info": "oklch(0.43 0.11 225)",
     "syntax-keyword": "oklch(0.47 0.14 258)",
     "syntax-string": "oklch(0.46 0.085 188)",
     "syntax-constant": "oklch(0.48 0.13 325)",
@@ -94,18 +94,39 @@
     "host-9": "oklch(0.66 0.15 278)"
   },
   "fonts": {
-    "ui": "atkinson"
+    "ui": "atkinson",
+    "display": "grotesk"
   },
   "surface": {
     "radius": "soft",
-    "shadow": "default",
+    "shadow": "lifted",
     "density": "default",
     "weight": "default",
     "border": "default",
-    "ground": "flat",
+    "ground": "grain",
     "chrome": "page",
     "rows": "rules",
-    "icons": "default",
+    "icons": "thin",
     "labels": "caps"
+  },
+  "ansi": {
+    "0": "#073642",
+    "1": "#dc322f",
+    "2": "#859900",
+    "3": "#eed98a",
+    "4": "#268bd2",
+    "5": "#d33682",
+    "6": "#2aa198",
+    "7": "#eee8d5",
+    "8": "#657b83",
+    "9": "#cb4b16",
+    "10": "#a4b832",
+    "11": "#f6e7b0",
+    "12": "#6aaee6",
+    "13": "#6c71c4",
+    "14": "#5fc4b9",
+    "15": "#fdf6e3",
+    "ink": "#839496",
+    "ground": "#002b36"
   }
 }

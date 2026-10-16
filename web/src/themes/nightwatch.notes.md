@@ -33,8 +33,9 @@ where Nightwatch picks its own values and what it measured. Numbers come from `c
 ## Light half
 
 - `background` is `oklch(0.945 0.012 70)` (#f2ece4), a warm paper at dusk. `card` is a step lighter
-  (0.975), `chrome`, `muted` and `secondary` a step darker (0.915), `accent` a step below that
-  (0.89). The switcher still gets three separate values: resting, hover, active.
+  (0.975), `chrome` and `muted` a step darker (0.915), `accent` a step below that (0.89). The
+  switcher still gets three separate values: resting, hover, active. `secondary` is the chrome band
+  (spec 18, see "The whole sheet"), a deeper tan at 0.87.
 - `primary` is a deep umber `oklch(0.47 0.1 60)`, the same hue as the dark amber but dark enough to
   be text: 6.0 on the page, 6.55 on the card, 6.55 under its light ink.
 - `rule` 1.44 on the page against `border` 1.20. `ring` 4.07 on the page, 3.72 on chrome.
@@ -81,7 +82,8 @@ Chip is `text-status-X` on `bg-status-X/15` over the ground (gate arithmetic, pl
 | rule on background (floor 1.3)         | 1.44  | 1.98  |
 | blocked apart from done (floor 0.15)   | 0.24  | 0.25  |
 
-Lowest 4.5 check: light, info chip on the page, 4.80. Dark, blocked chip on the card, 5.08.
+Lowest 4.5 check before the band: light, info chip on the page, 4.80. Dark, blocked chip on the
+card, 5.08. With the band (spec 18) the light low is `muted-foreground` on the band, 4.78.
 
 ## Syntax and hosts
 
@@ -93,16 +95,48 @@ on page, card or `muted/60`: light 5.98 (slot 5), dark 6.43 (slot 9).
 
 ## Known costs
 
-- The mirror. In dark it stays `#0a0a0a` on a black page, 1.06. In light it inverts to a neutral
-  rgb 245 on a warm page, 1.08, and the hue differs. A theme does not touch the mirror in v1. The
-  seam is faint; a later mirror palette can close it.
+- The mirror. Since spec 18 Nightwatch has its own terminal palette with a true black ground, so in
+  dark the mirror and the page are one black (1.00). In light the mirror inverts that black to
+  white on the warm page, 1.17, a faint seam the dark half pays for.
 - `components/ui/badge.tsx` draws its destructive variant as `bg-destructive text-white`, a literal.
   In dark, white on this red is 2.85; the default theme has the same flaw (2.89). No screen uses
   that variant today. Not a token, so not fixed here.
 
-## Shape (schema version 2)
+## The whole sheet (schema version 2, spec 18)
 
-`radius: sharp`, `shadow: flat`, `density: default`, `weight: bold`, `border: strong`: an instrument
-panel at night. On a true black page a shadow draws nothing, so the edges do the work: every border
-is 2px and the text is one step heavier, which Plex's real bold carries without a fake weight. The
-corners stay at Collie's 2px and the rows keep their size, so the on-call phone shows as much as before.
+An instrument panel at night: square, flat, heavy lines, a dim amber band across the top and the
+bottom, and an amber terminal on true black. Every one of the twelve tokens is named in the file.
+
+| token     | word or value       | spec 15 | why                                                                  |
+| --------- | ------------------- | ------- | -------------------------------------------------------------------- |
+| radius    | sharp               | sharp   | Square corners, an instrument and not a toy; the left accent bar stays. |
+| shadow    | flat                | flat    | A shadow draws nothing on true black, so the edges do the work.       |
+| density   | default             | default | The on-call phone shows as many rows as before.                       |
+| weight    | bold                | bold    | Plex has a real bold; one step heavier reads at night with less glare. |
+| border    | strong              | strong  | 2px lines carry the structure that shadows carry elsewhere.           |
+| ground    | flat                | flat    | A pattern on true black would light pixels the OLED should keep off.  |
+| chrome    | band                | page    | The header, tab bar and bottom bar stand on a dim amber band.         |
+| rows      | rules               | rules   | Rows in one framed group with a rule between them, dense and calm.    |
+| icons     | heavy               | default | A 2.5 stroke matches the bold text and the 2px lines.                 |
+| labels    | caps                | caps    | Small capitals read like the legends on a panel.                      |
+| display   | plex                | none    | Titles stay in Plex even when the Typeface card picks another face.   |
+| ansi      | warm amber palette  | none    | The terminal speaks the theme's amber on the page's own true black.   |
+
+- The band is `secondary`: dark `oklch(0.19 0.03 68)` (#1d1105), a brown near-black, 1.13 on the
+  page; light `oklch(0.87 0.032 70)` (#e2d1be), a deeper tan, 1.27 on the page. It was 0.24 and
+  0.915 before. `secondary` also fills the option buttons and the secondary button; their ink
+  (`secondary-foreground`) reads 13.69 dark and 10.82 light on it.
+- Band text: dark `foreground` 13.69, `muted-foreground` 6.90, `status-blocked` 5.78; light 12.17,
+  4.78 and 6.20. `primary` as an icon on the band: 8.20 dark, 4.73 light.
+- The palette, all eighteen keys, dark space. Ground `#000000`, ink `#e6d8c0` (14.95). Slots: 0
+  `#2a2420`, 1 `#d9644a`, 2 `#9fae5a`, 3 `#f4cc7c`, 4 `#6f97c4`, 5 `#c7869e`, 6 `#7fae9b`, 7
+  `#efe3cf`, 8 `#6b6058`, 9 `#ef8a5f`, 10 `#bcc77a`, 11 `#ffd98a`, 12 `#93b3d8`, 13 `#dba3b8`, 14
+  `#a0cbb8`, 15 `#fff4e0`. Reds lean to orange, yellows to amber, blues and cyans stay dusty, so
+  nothing on the screen is colder than the theme. Lowest slot on the ground: 8 at 3.44 (floor 3).
+  The bright set (3, 7, 11, 15) has a relative luminance of 0.64 to 0.91; the brightest of the rest
+  is 14 at 0.54 (line 0.6).
+
+### Lowest pairs, the whole report (58 checks, 0 fail)
+
+- Light: `muted-foreground` on the band, 4.78. Then the info chip on the page, 4.80.
+- Dark: the blocked chip on a card, 5.08. Then the unknown chip on a card, 5.35.

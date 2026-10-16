@@ -16,7 +16,7 @@
     "secondary": "oklch(0.93 0 0)",
     "secondary-foreground": "oklch(0.15 0 0)",
     "muted": "oklch(0.93 0 0)",
-    "muted-foreground": "oklch(0.42 0 0)",
+    "muted-foreground": "oklch(0.38 0 0)",
     "accent": "oklch(0.9 0 0)",
     "accent-foreground": "oklch(0.15 0 0)",
     "destructive": "oklch(0.5 0.2 27)",
@@ -25,18 +25,18 @@
     "input": "oklch(0.65 0 0)",
     "rule": "oklch(0.77 0 0)",
     "ring": "oklch(0.48 0.18 258)",
-    "status-blocked": "oklch(0.5 0.128 52)",
-    "status-working": "oklch(0.47 0.18 300)",
-    "status-done": "oklch(0.35 0.13 260)",
-    "status-idle": "oklch(0.45 0.03 250)",
-    "status-unknown": "oklch(0.41 0.03 250)",
-    "status-info": "oklch(0.46 0.08 220)",
+    "status-blocked": "oklch(0.43 0.11 52)",
+    "status-working": "oklch(0.45 0.18 300)",
+    "status-done": "oklch(0.34 0.17 265)",
+    "status-idle": "oklch(0.43 0.03 250)",
+    "status-unknown": "oklch(0.39 0.03 250)",
+    "status-info": "oklch(0.43 0.075 220)",
     "syntax-keyword": "oklch(0.47 0.18 345)",
     "syntax-string": "oklch(0.44 0.11 150)",
     "syntax-constant": "oklch(0.45 0.19 295)",
     "syntax-property": "oklch(0.44 0.075 195)",
     "syntax-entity": "oklch(0.46 0.09 95)",
-    "syntax-comment": "oklch(0.42 0 0)",
+    "syntax-comment": "oklch(0.38 0 0)",
     "host-0": "oklch(0.44 0.074 190)",
     "host-1": "oklch(0.44 0.18 350)",
     "host-2": "oklch(0.44 0.13 138)",
@@ -94,7 +94,8 @@
     "host-9": "oklch(0.78 0.15 172)"
   },
   "fonts": {
-    "ui": "geist"
+    "ui": "geist",
+    "display": "atkinson"
   },
   "surface": {
     "radius": "round",
@@ -102,10 +103,30 @@
     "density": "roomy",
     "weight": "default",
     "border": "default",
-    "ground": "flat",
+    "ground": "gradient",
     "chrome": "page",
-    "rows": "rules",
+    "rows": "cards",
     "icons": "default",
-    "labels": "caps"
+    "labels": "sentence"
+  },
+  "ansi": {
+    "0": "#3a332c",
+    "1": "#ff5f56",
+    "2": "#5fd068",
+    "3": "#ffd84a",
+    "4": "#5aa9ff",
+    "5": "#e07ce8",
+    "6": "#3fd6d0",
+    "7": "#f2efe9",
+    "8": "#8a827a",
+    "9": "#ff8a80",
+    "10": "#7ad683",
+    "11": "#ffeb8a",
+    "12": "#8cc4ff",
+    "13": "#f0a6f5",
+    "14": "#6ad8d2",
+    "15": "#ffffff",
+    "ink": "#f5f0e8",
+    "ground": "#1a1612"
   }
 }

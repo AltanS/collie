@@ -64,19 +64,26 @@ Nord's aurora at the lightness `collie` uses. Chip = ink over the ink at /15 ove
 
 | chip on         | blocked | working | done | idle | unknown | info |
 | --------------- | ------- | ------- | ---- | ---- | ------- | ---- |
-| light background | 5.03   | 4.85    | 4.76 | 5.07 | 5.85    | 4.67 |
-| light card      | 5.58    | 5.34    | 5.27 | 5.56 | 6.48    | 5.13 |
+| light background | 5.44   | 5.25    | 5.13 | 5.24 | 6.13    | 5.26 |
+| light card      | 6.04    | 5.78    | 5.63 | 5.80 | 6.72    | 5.78 |
+| light grain line | 4.82   | 4.66    | 4.56 | 4.66 | 5.44    | 4.67 |
 | dark background | 5.37    | 7.52    | 6.78 | 6.34 | 5.35    | 7.03 |
 | dark card       | 4.67    | 6.56    | 5.93 | 5.54 | 4.70    | 6.16 |
+| dark grain line | 4.72    | 6.65    | 6.01 | 5.61 | 4.71    | 6.24 |
+
+- Spec 18 moved the six light inks down by 0.02 to 0.03 in lightness (blocked 0.47 to 0.45,
+  working 0.47 to 0.45, done 0.46 to 0.44, idle 0.46 to 0.45, unknown 0.42 to 0.41, info 0.46 to
+  0.43), because the grain ground's line colour is darker than the page and every chip must clear
+  4.5 on it too. Dark needed no move.
 
 - Hues: blocked 20, working 72 to 80, done 140 to 145, info 225. Blocked and done are 0.24 apart in
   oklab light and 0.23 dark (floor 0.15).
 - Idle and unknown are a lavender grey (hue 280, chroma 0.045 to 0.05), unknown 0.04 to 0.06 darker
   than idle, as in `collie`. They needed more chroma than `collie`'s 0.03 because every surface here
   is already blue-grey: at 0.03 they read as plain muted text. RGB distance now: idle to unknown
-  19.9 light, 31.8 dark; idle to muted ink 22.4 and 45.0; unknown to muted ink 23.0 and 23.3.
-- Tightest cells: light info on the page (4.67), dark blocked on the card (4.67). Darken the light
-  one and lighten the dark one if either moves; never the reverse.
+  20.4 light, 31.8 dark; idle to muted ink 21.3 and 45.0; unknown to muted ink 26.5 and 23.3.
+- Tightest cells: light done on the grain line (4.56), dark blocked on the card (4.67). Darken the
+  light one and lighten the dark one if either moves; never the reverse.
 
 ## Syntax
 
@@ -88,14 +95,14 @@ for that reason.
 
 | ink      | light page | card | added | deleted | dark page | card | added | deleted |
 | -------- | ---------- | ---- | ----- | ------- | --------- | ---- | ----- | ------- |
-| keyword  | 6.03       | 6.69 | 5.10  | 4.97    | 8.26      | 7.32 | 6.56  | 6.93    |
-| string   | 5.85       | 6.49 | 4.95  | 4.82    | 9.82      | 8.70 | 7.80  | 8.24    |
-| constant | 6.06       | 6.72 | 5.13  | 4.99    | 8.26      | 7.32 | 6.56  | 6.93    |
-| property | 5.94       | 6.59 | 5.03  | 4.89    | 8.60      | 7.62 | 6.83  | 7.22    |
-| entity   | 6.18       | 6.86 | 5.23  | 5.10    | 11.18     | 9.90 | 8.88  | 9.38    |
-| comment  | 5.91       | 6.56 | 5.01  | 4.88    | 6.11      | 5.42 | 4.86  | 5.13    |
+| keyword  | 6.03       | 6.69 | 5.06  | 4.93    | 8.26      | 7.32 | 6.56  | 6.93    |
+| string   | 5.85       | 6.49 | 4.91  | 4.78    | 9.82      | 8.70 | 7.80  | 8.24    |
+| constant | 6.06       | 6.72 | 5.08  | 4.95    | 8.26      | 7.32 | 6.56  | 6.93    |
+| property | 5.94       | 6.59 | 4.98  | 4.86    | 8.60      | 7.62 | 6.83  | 7.22    |
+| entity   | 6.18       | 6.86 | 5.19  | 5.06    | 11.18     | 9.90 | 8.88  | 9.38    |
+| comment  | 5.91       | 6.56 | 4.96  | 4.84    | 6.11      | 5.42 | 4.86  | 5.13    |
 
-Every cell clears 4.5. The closest pair of inks is 0.079 apart in oklab (string and comment, light);
+Every cell clears 4.5 (spec 18: the light row tints follow the darker status inks; lowest string on a deleted row, 4.78). The closest pair of inks is 0.079 apart in oklab (string and comment, light);
 `collie`'s closest is 0.080.
 
 ## Hosts
@@ -111,19 +118,51 @@ status is sky against info at 0.043 light and cyan against info at 0.042 dark (`
 
 ## The mirror
 
-A theme does not touch the mirror in v1, so the seam is a fact to record, not to fix. Dark page
-against the mirror's #0a0a0a: 1.12 (the mirror reads as a slightly deeper well, like an editor's
-terminal panel). Light page against the inverted mirror's #f5f5f5: 1.06. The composer's chrome
-stands on the mirror at 1.18 light and 1.26 dark, so the grab handle still reads as a control.
+Since spec 18 Harbour carries its own terminal palette, so the mirror is a Solarized well. Dark: the
+ground `#002b36` (Solarized base03) on the page, 1.18, a blue-green well beside the blue-grey page.
+Light: the mirror inverts it to a pale cyan `#bae5f0`, 1.17 on the page. The composer's chrome
+still stands on the mirror as a control.
 
 ## Face
 
 Atkinson Hyperlegible Next (key `atkinson`), the Braille Institute face for low vision. Letters
 that are easy to mix up in a path or a hash (I l 1, 0 O) are drawn apart. Real weights 400 to 700.
 
-## Shape (schema version 2)
+## The whole sheet (schema version 2, spec 18)
 
-`radius: soft`, `shadow: default`, `density: default`, `weight: default`, `border: default`: calm,
-like an editor in the Nord family. Soft corners take the edge off the cool grey without turning a
-control into a pill, and everything else stays as Collie draws it, so the rows keep the density a
-terminal reader expects.
+Calm, like an editor: soft corners on lifted cards, a woven grain under the page, thin icon lines,
+a Space Grotesk title over an Atkinson body, and a Solarized terminal. Every one of the twelve
+tokens is named in the file.
+
+| token     | word or value        | spec 15 | why                                                                    |
+| --------- | -------------------- | ------- | ---------------------------------------------------------------------- |
+| radius    | soft                 | soft    | Takes the edge off the cool grey without turning a control into a pill. |
+| shadow    | lifted               | default | Soft corners alone were hard to see (spec 15 review); a lift shows them. |
+| density   | default              | default | Rows keep the density a terminal reader expects.                       |
+| weight    | default              | default | Atkinson's regular is already clear; the theme is quiet, not loud.     |
+| border    | default              | default | Lines stay 1px, as in an editor.                                       |
+| ground    | grain                | flat    | A fine woven texture under the page, like chart paper in a harbour office. |
+| chrome    | page                 | page    | The bars stay the page colour, so the grain runs edge to edge.         |
+| rows      | rules                | rules   | Rows in one framed group, like the lines of a file tree.               |
+| icons     | thin                 | default | A 1.5 stroke matches the light editor feel.                            |
+| labels    | caps                 | caps    | Small capitals read like the section heads of an editor sidebar.       |
+| display   | grotesk              | none    | Titles in Space Grotesk, the sister of Space Mono, a coder's face.     |
+| ansi      | Solarized-like       | none    | The terminal palette editor people know, on Solarized base03.          |
+
+- The palette, dark space. Ground `#002b36` (base03), ink `#839496` (base0, 4.75). Slots: 0
+  `#073642` (base02), 1 `#dc322f` red, 2 `#859900` green, 3 `#eed98a`, 4 `#268bd2` blue, 5
+  `#d33682` magenta, 6 `#2aa198` cyan, 7 `#eee8d5` (base2), 8 `#657b83` (base00), 9 `#cb4b16`
+  orange, 10 `#a4b832`, 11 `#f6e7b0`, 12 `#6aaee6`, 13 `#6c71c4` violet, 14 `#5fc4b9`, 15 `#fdf6e3`
+  (base3). Solarized's own accents fill 1 to 6, 9 and 13. Two places leave Solarized: its yellow
+  `#b58900` has a relative luminance of 0.29 and slot 3 belongs to the bright set (above 0.6), so
+  slot 3 is a light Solarized-tinted yellow; and Solarized puts greys in 10, 11, 12 and 14, where
+  base01 measures under 3 on base03, so those slots are lighter accents. Lowest slot on the ground:
+  1 at 3.25, then 9 at 3.26 and 5 at 3.30 (floor 3). The bright set has a luminance of 0.70 to 0.92;
+  the brightest of the rest is 14 at 0.45.
+- Space Grotesk is one extra woff2 (27 KB), loaded only under this theme, for the titles and the
+  header line.
+
+### Lowest pairs, the whole report (74 checks, 0 fail)
+
+- Light: the done chip on the grain line and destructive text on the grain line, both 4.56.
+- Dark: the blocked chip on a card, 4.67, then the unknown chip on a card, 4.70.

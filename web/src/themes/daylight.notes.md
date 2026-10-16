@@ -1,21 +1,23 @@
 # Daylight: the palette and why
 
 Daylight is for direct sun and for low vision. It keeps Collie's layout and status meaning and
-changes the colour, the face and the shape (see Shape at the end). Every value is oklch. The numbers below are measured with
+changes the colour, the face and the shape (see "The whole sheet" at the end). Every value is oklch. The numbers below are measured with
 `contrastReport` from `lib/theme/schema.ts` (plain sRGB alpha, the pessimistic side of the browser's
 oklab mix) and a scratch script that uses the same arithmetic for the pairs the report does not
 cover. Rerun both after any change; never estimate.
 
 ## Rules this theme holds
 
-- Body text at AAA, 7:1 or better, on the page and on a card, in both halves. That covers
-  `foreground` and `muted-foreground`, because quiet text is still text a person must read.
+- Body text at AAA, 7:1 or better, on the page, on a card and at the foot of the gradient ground,
+  in both halves. That covers `foreground` and `muted-foreground`, because quiet text is still text
+  a person must read.
 - `border` and `rule` a clear step stronger than collie's, and `rule` still the stronger of the two.
 - Status on a blue to orange axis. Red-green colour blindness keeps the blue to yellow axis, so
-  blocked (orange) and done (blue) stay apart for it. Lightness steps apart too: 0.15 in light, 0.13
-  in dark, so they also separate in greyscale. oklab distance 0.29 light, 0.30 dark (floor 0.25).
+  blocked (orange) and done (blue) stay apart for it. Lightness steps apart too: 0.09 in light, 0.13
+  in dark, so they also separate in greyscale. oklab distance 0.28 light, 0.30 dark (floor 0.25).
 - `destructive` is the one red. No status, syntax ink or host hue sits in the red band.
-- Every status chip (ink over its own 15 percent wash) at 4.5 or better on `background` and `card`.
+- Every status chip (ink over its own 15 percent wash) at 4.5 or better on `background`, `card` and
+  the foot of the gradient.
 - `themes.test.ts` holds the AAA floor, the 0.25 distance and the line steps as tests.
 
 ## Surfaces
@@ -39,17 +41,22 @@ cover. Rerun both after any change; never estimate.
 
 | token   | light              | dark              | role                     |
 | ------- | ------------------ | ----------------- | ------------------------ |
-| blocked | 0.50 0.128 52 orange | 0.81 0.13 60 orange | needs you, the warm end |
-| working | 0.47 0.18 300 violet | 0.77 0.12 300 violet | busy, cool but not blue |
-| done    | 0.35 0.13 260 blue   | 0.68 0.14 255 blue   | finished, the cool end  |
-| idle    | 0.45 0.03 250 grey   | 0.74 0.03 250 grey   | quiet pair, idle above  |
-| unknown | 0.41 0.03 250 grey   | 0.69 0.03 250 grey   | unknown 0.04 to 0.05 below |
-| info    | 0.46 0.08 220 teal   | 0.80 0.12 220 cyan   | not a status, the prerelease strip |
+| blocked | 0.43 0.11 52 orange  | 0.81 0.13 60 orange | needs you, the warm end |
+| working | 0.45 0.18 300 violet | 0.77 0.12 300 violet | busy, cool but not blue |
+| done    | 0.34 0.17 265 blue   | 0.68 0.14 255 blue   | finished, the cool end  |
+| idle    | 0.43 0.03 250 grey   | 0.74 0.03 250 grey   | quiet pair, idle above  |
+| unknown | 0.39 0.03 250 grey   | 0.69 0.03 250 grey   | unknown 0.04 to 0.05 below |
+| info    | 0.43 0.075 220 teal  | 0.80 0.12 220 cyan   | not a status, the prerelease strip |
 
-- Light lightness order: blocked 0.50, working 0.47, info 0.46, idle 0.45, unknown 0.41, done 0.35.
+- Light lightness order: working 0.45, blocked 0.43, info 0.43, idle 0.43, unknown 0.39, done 0.34.
+  Spec 18 moved the light statuses down (blocked from 0.50, working 0.47, done 0.35, idle 0.45,
+  unknown 0.41, info 0.46), because the gradient ground's foot is darker than the page and the
+  chips must clear 4.5 there too. Done gained chroma (0.13 to 0.17, hue 260 to 265, in gamut) so it
+  stays 0.28 from the darker blocked.
   Dark: blocked 0.81, info 0.80, working 0.77, idle 0.74, unknown 0.69, done 0.68.
 - Working is violet, not amber: amber beside orange would make working and blocked look alike, and
-  for red-green colour blindness they would merge. Violet and done blue are 0.12 apart in light.
+  for red-green colour blindness they would merge. Violet and done blue are 0.11 apart in lightness
+  in light, 0.15 in oklab.
 - Idle and unknown keep collie's pair rule: same hue, unknown below idle, chroma 0.03 so they read
   as a tint and not as `muted-foreground`.
 - The diff rows follow: added rows wash in done blue, deleted rows in blocked orange. Blue and
@@ -59,7 +66,8 @@ cover. Rerun both after any change; never estimate.
 
 - Syntax inks keep off the two row tints, so no blue near 255 and no orange near 52, and no red:
   keyword magenta 345, string green 150 (green is free here, added is blue), constant violet 295,
-  property teal 195, entity gold 95, comment equal to `muted-foreground`.
+  property teal 195, entity gold 95, comment equal to `muted-foreground` (both 0.38 in light since
+  spec 18, 0.42 before).
 - Host hues keep off blocked (40 to 85), done (245 to 270), working (285 to 315) and red. The ten:
   cyan 190, pink 350, lime 138, indigo 278, gold 95, sky 237, green 155, fuchsia 325,
   chartreuse 118, emerald 172, in slot order so neighbours sit far apart. Light at L 0.44 with the
@@ -74,43 +82,73 @@ is a real drawn weight, so `font-synthesis-weight: none` costs it nothing.
 
 ## Known and accepted
 
-- The pane mirror is not themed in v1 (ADR 0002). Its ground is `#0a0a0a` in dark and `#f5f5f5`
-  inverted in light. Against daylight's page that is 1.02:1 in dark and 1.04:1 in light, a whisper
-  of a seam. The direction asked for these two page values; closing the seam would need `0.97` and
-  `0.145`, which is collie again. Look at it on the phone in sun before the merge.
+- Spec 18 gives the mirror its own palette with a warm ground `#1a1612`. In dark that is 1.13 on
+  the page, a terminal well a shade above the black; in light it inverts to a warm near-white
+  `#ece8e4`, 1.17 on the page. Collie's own mirror sat at 1.02 and 1.04 here.
 
 ## Measured table
 
-`contrastReport` over `daylight.json`, both halves. Every finding passes.
+`contrastReport` over `daylight.json`, both halves, 74 checks. Every finding passes.
 
 | check                                  | light | dark  |
 | -------------------------------------- | ----- | ----- |
 | foreground on background               | 19.30 | 18.59 |
 | foreground on card                     | 20.14 | 16.60 |
-| muted-foreground on background         | 8.10  | 10.90 |
-| muted-foreground on card               | 8.45  | 9.74  |
+| foreground on the gradient foot        | 14.41 | 15.80 |
+| muted-foreground on background         | 9.63  | 10.90 |
+| muted-foreground on card               | 10.05 | 9.74  |
+| muted-foreground on the gradient foot  | 7.19  | 9.27  |
 | primary-foreground on primary          | 17.95 | 16.96 |
 | destructive-foreground on destructive  | 6.36  | 7.51  |
-| status-blocked chip, background / card | 4.83 / 5.05 | 8.64 / 7.19 |
-| status-working chip, background / card | 5.67 / 5.89 | 7.62 / 6.37 |
-| status-done chip, background / card    | 8.40 / 8.79 | 5.93 / 5.02 |
-| status-idle chip, background / card    | 5.68 / 5.91 | 7.20 / 6.04 |
-| status-unknown chip, background / card | 6.65 / 6.90 | 6.12 / 5.20 |
-| status-info chip, background / card    | 5.28 / 5.49 | 8.84 / 7.38 |
-| rule on background                     | 1.99  | 2.98  |
-| blocked apart from done (oklab)        | 0.29  | 0.30  |
+| status-blocked chip, background / card / foot | 6.34 / 6.59 / 4.84 | 8.64 / 7.19 / 6.79 |
+| status-working chip, background / card / foot | 6.11 / 6.34 / 4.66 | 7.62 / 6.37 / 6.01 |
+| status-done chip, background / card / foot    | 8.89 / 9.23 / 6.71 | 5.93 / 5.02 / 4.75 |
+| status-idle chip, background / card / foot    | 6.18 / 6.42 / 4.68 | 7.20 / 6.04 / 5.69 |
+| status-unknown chip, background / card / foot | 7.21 / 7.49 / 5.50 | 6.12 / 5.20 / 4.87 |
+| status-info chip, background / card / foot    | 5.97 / 6.20 / 4.56 | 8.84 / 7.38 / 6.97 |
+| destructive text on the gradient foot  | 4.75  | 6.42  |
+| rule on background / on the foot       | 1.99 / 1.48 | 2.98 / 3.14 |
+| blocked apart from done (oklab)        | 0.28  | 0.30  |
 
-Lowest finding: light, blocked chip on background, 4.83. Lowest in dark: done chip on card, 5.02.
+Lowest finding: light, the info chip on the gradient foot, 4.56, then the working chip there, 4.66.
+Dark: the done chip on the gradient foot, 4.75, then the unknown chip there, 4.87. The foot is
+`--background` mixed with 12 percent of `--primary` (surface.ts), near black in light and near white
+in dark, so the gradient darkens the light page and lifts the dark one.
 
 Outside the report, same arithmetic: border on background 1.46 light and 1.73 dark (collie 1.16 and
 1.26); rule 1.99 and 2.98 (collie 1.34 and 2.06); destructive as text on the page 6.36 and 7.56;
-syntax inks on page, card, added row and deleted row 5.46 or better in light (entity on the added
+syntax inks on page, card, added row and deleted row 5.43 or better in light (entity on the added
 row is the tightest) and 7.99 or better in dark; host glyphs 6.5 or better on their tag.
 
-## Shape (schema version 2)
+## The whole sheet (schema version 2, spec 18)
 
-`radius: round`, `shadow: lifted`, `density: roomy`, `weight: default`, `border: default`: open, airy
-and a little playful. The roomy step gives every row and control more air and a larger target in
-sun, and the lifted shadow sets a card or a floating button off a page that is nearly white. The
-weight and the border stay at the default because the colour already holds body text at 7:1 and
-the lines a clear step above Collie's.
+Open, airy and a little playful: round corners, rows as separate cards that float on a page which
+deepens toward the foot, roomy steps, sentence-case labels and Atkinson titles over a Geist body.
+Every one of the twelve tokens is named in the file.
+
+| token     | word or value          | spec 15 | why                                                                 |
+| --------- | ---------------------- | ------- | ------------------------------------------------------------------- |
+| radius    | round                  | round   | Soft, friendly corners; a marked row wears a ring, never a left bar. |
+| shadow    | lifted                 | lifted  | Cards rise off a near-white page that has little tone of its own.   |
+| density   | roomy                  | roomy   | More air and larger targets for a thumb in sun.                     |
+| weight    | default                | default | The colour already holds body text at 7:1; no need for a heavier face. |
+| border    | default                | default | The lines are already a step stronger than Collie's.                |
+| ground    | gradient               | flat    | The page deepens toward the foot, so white cards stand out below.   |
+| chrome    | page                   | page    | The bars stay the page colour, so the gradient is the one effect on the page. |
+| rows      | cards                  | rules   | Every row is its own lifted card with a gap, the playful look.      |
+| icons     | default                | default | Lucide's own 2 stroke matches Geist's regular weight.               |
+| labels    | sentence               | caps    | Section labels in sentence case read as friendly, not as legends.   |
+| display   | atkinson               | none    | Titles in Atkinson Hyperlegible, a second face for the low-vision promise. |
+| ansi      | high-contrast palette  | none    | Vivid slots on a warm dark ground, readable in glare.               |
+
+- The palette, dark space. Ground `#1a1612`, ink `#f5f0e8` (15.86). Slots: 0 `#3a332c`, 1
+  `#ff5f56`, 2 `#5fd068`, 3 `#ffd84a`, 4 `#5aa9ff`, 5 `#e07ce8`, 6 `#3fd6d0`, 7 `#f2efe9`, 8
+  `#8a827a`, 9 `#ff8a80`, 10 `#7ad683`, 11 `#ffeb8a`, 12 `#8cc4ff`, 13 `#f0a6f5`, 14 `#6ad8d2`, 15
+  `#ffffff`. Lowest slot on the ground: 8 at 4.76, then 1 at 6.02 (floor 3). The bright set has a
+  relative luminance of 0.71 to 1.00; the brightest of the rest is 14 at 0.57 (line 0.6).
+- Atkinson is one extra woff2 (23 KB), loaded only under this theme, for the titles and the header line.
+
+### Lowest pairs, the whole report (74 checks, 0 fail)
+
+- Light: the info chip on the gradient foot, 4.56.
+- Dark: the done chip on the gradient foot, 4.75.

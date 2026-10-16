@@ -123,6 +123,25 @@ describe("the shipped themes", () => {
     expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual([...SURFACE_TOKENS].toSorted());
   });
 
+  // M57 spec 18: each shipped theme uses the whole version 2 sheet, so it reads as another app and
+  // not as a recolour. Every one names a display face and a terminal palette, at least four surface
+  // words that are not the default, and no two share the same shape.
+  it.each(ids)("%s names a display face, a terminal palette and four or more surface words beside the default", (id) => {
+    const theme = shipped(id);
+    expect(theme.fonts?.display, "fonts.display").toBeDefined();
+    expect(theme.ansi, "ansi").toBeDefined();
+    const moved = SURFACE_TOKENS.filter((token) => theme.surface?.[token] !== SURFACE_DEFAULTS[token]);
+    expect(moved.length, moved.join(", ")).toBeGreaterThanOrEqual(4);
+  });
+
+  it("gives every shipped theme its own shape, display face and terminal ground", () => {
+    const themes = ids.map(shipped);
+    const wordSets = themes.map((t) => SURFACE_TOKENS.map((token) => t.surface?.[token]).join(" "));
+    expect(new Set(wordSets).size).toBe(themes.length);
+    expect(new Set(themes.map((t) => t.fonts?.display)).size).toBe(themes.length);
+    expect(new Set(themes.map((t) => t.ansi?.ground)).size).toBe(themes.length);
+  });
+
   it.each(ids)("%s passes every check of the contrast report in both halves", (id) => {
     const report = contrastReport(shipped(id), collie);
     expect(report.filter((f) => !f.pass)).toEqual([]);
@@ -137,8 +156,16 @@ describe("daylight holds its own floors", () => {
   const report = contrastReport(theme, shipped("collie"));
   const find = (half: "light" | "dark", check: string) => report.find((f) => f.half === half && f.check === check)?.ratio ?? 0;
 
-  it.each(["light", "dark"] as const)("%s: body text is AAA, 7:1 or better, on the page and on a card", (half) => {
-    for (const check of ["foreground on background", "foreground on card", "muted-foreground on background", "muted-foreground on card"]) {
+  it.each(["light", "dark"] as const)("%s: body text is AAA, 7:1 or better, on the page, on a card and at the foot of the gradient", (half) => {
+    expect(theme.surface?.ground).toBe("gradient");
+    for (const check of [
+      "foreground on background",
+      "foreground on card",
+      "muted-foreground on background",
+      "muted-foreground on card",
+      "foreground on the gradient ground",
+      "muted-foreground on the gradient ground",
+    ]) {
       expect(find(half, check), check).toBeGreaterThanOrEqual(7);
     }
   });
@@ -359,12 +386,16 @@ describe("every default shape word is today's CSS", () => {
   });
 
   it("writes no shape line for a shipped file without a surface block, and the words for one with", () => {
-    // Nightwatch ships with a surface block (spec 15); its version 1 copy is the colour-only case.
+    // Nightwatch ships version 2 parts (a surface block since spec 15, a display face and a terminal
+    // palette since spec 18); its version 1 copy without them is the colour-only case.
     const raw = JSON.parse(read("src/themes/nightwatch.json"));
     delete raw.surface;
+    delete raw.ansi;
+    raw.fonts = { ui: raw.fonts.ui };
     const collieFile = { name: "collie.json", raw: read("src/themes/collie.json") };
     const plain = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 1 }) }]);
-    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    if (!plain.ok) throw new Error(plain.errors.join("\n"));
+    expect(plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-|--ansi-|--font-display/);
     const withSurface = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
     if (!withSurface.ok) throw new Error(withSurface.errors.join("\n"));
     expect(withSurface.css).toContain("  --radius-md: 6px;\n");
