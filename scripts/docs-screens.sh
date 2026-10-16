@@ -29,8 +29,8 @@
 #     flipped on to reach the post-run "Tap to reload" state and flipped back off after,
 #     because that toggle drives a page-wide singleton every other band card also reads.
 #
-# The programs set (docs/durable-programs-on-the-phone.md) comes from the playground's "Durable
-# home" section (web/src/playground/sections/durable.tsx), reached at #durable. Each shot is one
+# The programs set (docs/durable-programs-on-the-phone.md) comes from the playground's "Programs
+# home" section (web/src/playground/sections/programs.tsx), reached at #programs. Each shot is one
 # card's component, found by the card's `data-state` handle rather than its prose label, and cropped
 # to its own box. Those components are `max-w-[390px]`, so the programs set runs at a 1600px
 # viewport, where the grid's columns are wide enough for the full 390. The crew card ("4: two
@@ -164,7 +164,7 @@ shoot_program_card() {
 if [ "$WHICH" != updates ]; then
   mkdir -p "$PROGRAMS_DIR"
   AB set viewport 1600 1000
-  AB open "$PLAYGROUND_URL#durable"
+  AB open "$PLAYGROUND_URL#programs"
   AB wait --load networkidle
   # A fresh `open` drops the emulated colour scheme, so light mode is asserted again (see below).
   AB set media light

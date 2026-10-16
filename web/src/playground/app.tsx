@@ -62,7 +62,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "dashboard", title: "Dashboard" }, load: () => import("./sections/dashboard").then((m) => ({ default: m.DashboardSection })) },
   { def: { id: "pane", title: "Pane" }, load: () => import("./sections/pane").then((m) => ({ default: m.PaneSection })) },
   { def: { id: "actions-row", title: "Actions row" }, load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })) },
-  { def: { id: "durable", title: "Durable home" }, load: () => import("./sections/durable").then((m) => ({ default: m.DurableSection })) },
+  { def: { id: "programs", title: "Programs home" }, load: () => import("./sections/programs").then((m) => ({ default: m.DurableSection })) },
   { def: { id: "crew", title: "Crew" }, load: () => import("./sections/crew").then((m) => ({ default: m.CrewSection })) },
   { def: { id: "machines", title: "Machines" }, load: () => import("./sections/machines").then((m) => ({ default: m.MachinesSection })) },
   { def: { id: "settings", title: "Settings" }, load: () => import("./sections/settings").then((m) => ({ default: m.SettingsSection })) },
