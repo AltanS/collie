@@ -381,6 +381,7 @@ export const de: Dictionary = {
   "composer.noEcho.useType": "Tippen-Modus nutzen",
   "composer.noEcho.dismissAria": "Passworthinweis verwerfen",
   "composer.protocol.sent": "Gesendet",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "Der Text wurde aus dem Feld entfernt. Dein Entwurf ist noch hier.",
   "composer.protocol.draft": "Im Feld steht schon ein Entwurf. Ergänzen, ersetzen oder abbrechen.",
   "composer.protocol.typed": "Dein Text steht im Feld, aber Enter wurde nicht gedrückt. Absenden oder verwerfen.",
@@ -388,6 +389,7 @@ export const de: Dictionary = {
   "composer.protocol.unknown": "Collie kann nicht feststellen, ob dies gesendet wurde. Lies den Bildschirm und sende erneut, falls es nicht übertragen wurde. Dein Entwurf bleibt erhalten.",
   "composer.protocol.busy": "Eine andere Sendung an diesen Bereich läuft noch. Warte und versuche es erneut.",
   "composer.protocol.notFree": "Das Eingabefeld ist nicht frei. Es wurde nichts getippt.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "Der Bildschirm stand nicht lange genug still, um ihn zu lesen. Es wurde nichts getippt. Versuche es erneut.",
   "composer.protocol.probeFailed": "Die Eingabe kam nicht im Eingabefeld an, daher wurde nichts getippt. Prüfe den Bereich.",
   "composer.protocol.reservedLead": "Ein Text, der mit / ! oder @ beginnt, hat einen eigenen Weg. Es wurde nichts getippt.",
@@ -414,6 +416,7 @@ export const de: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Getippt, nicht gesendet",
   "sendReceipts.outcome.refused": "Abgelehnt",
   "sendReceipts.outcome.unknown": "Unbekannt",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Tasten: {keys}",
   "sendReceipts.noKeys": "Es wurden keine Tasten gesendet.",
   "sendReceipts.gaps": "Gewartet: {gaps}",

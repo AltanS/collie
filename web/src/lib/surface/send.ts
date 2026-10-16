@@ -35,6 +35,9 @@ export const SEND_REASONS = [
   "write_failed",
   // refused: a text of more than one line on a pane whose newline key is unknown (no profile)
   "multiline",
+  // refused: the turn runs and this harness does not take typed input during a turn (its profile
+  // does not say it queues), or the text is a command, which never goes in during a turn
+  "turn_running",
   // typed_not_submitted: the text is in the box, Enter was not sent
   "mismatch",
   "changed",
@@ -152,6 +155,11 @@ export interface SendReceipt {
   readonly reason?: SendReason;
   /** Set on the `unconfirmed` refusal the cap adds, so the list can tell it from a plain one: the count, the limit and the harness and version it counted. */
   readonly cap?: SendCap;
+  /**
+   * Set on a `sent` that went in while the turn ran: the harness queued it for after the turn (its
+   * profile says Enter queues while running). Absent on every other receipt.
+   */
+  readonly queued?: true;
 }
 
 /**
@@ -172,6 +180,8 @@ export interface SendReceiptRow {
   readonly version: string | null;
   /** The cap's numbers, on the cap's refusal only (see {@link SendReceipt.cap}). */
   readonly cap?: SendCap;
+  /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
+  readonly queued?: true;
 }
 
 /** What `GET /api/send/receipts` answers: the newest first. */

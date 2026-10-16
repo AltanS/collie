@@ -375,6 +375,7 @@ export const ja: Dictionary = {
   "composer.noEcho.useType": "入力モードを使用",
   "composer.noEcho.dismissAria": "パスワードプロンプト通知を閉じる",
   "composer.protocol.sent": "送信しました",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "入力欄からテキストを削除しました。下書きはここに残っています。",
   "composer.protocol.draft": "入力欄にはすでに下書きがあります。追加、置換、またはキャンセルしてください。",
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
@@ -382,6 +383,7 @@ export const ja: Dictionary = {
   "composer.protocol.unknown": "Collieはこれが送信されたかどうかを判断できません。画面を確認し、送信されていなければもう一度送信してください。下書きは保持されています。",
   "composer.protocol.busy": "このペインへの別の送信がまだ実行中です。待ってから再試行してください。",
   "composer.protocol.notFree": "入力欄が空いていません。何も入力していません。",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "読み取りに必要な時間、画面が静止しませんでした。何も入力されませんでした。やり直してください。",
   "composer.protocol.probeFailed": "入力が入力欄に届かなかったため、何も入力していません。ペインを確認してください。",
   "composer.protocol.reservedLead": "/ ! @ で始まるテキストには専用の経路があります。何も入力していません。",
@@ -408,6 +410,7 @@ export const ja: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "入力済み、未送信",
   "sendReceipts.outcome.refused": "拒絶",
   "sendReceipts.outcome.unknown": "不明",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "キー: {keys}",
   "sendReceipts.noKeys": "キーは送信されませんでした。",
   "sendReceipts.gaps": "待機時間: {gaps}",

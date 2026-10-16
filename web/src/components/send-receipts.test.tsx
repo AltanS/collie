@@ -55,6 +55,14 @@ describe("SendReceiptsView", () => {
     expect(item).not.toHaveTextContent("Sent");
   });
 
+  it("a send queued behind the agent's turn is listed as Sent with the detail that it was queued", () => {
+    const queued: SendReceiptRow = { requestId: "req00010", at: NOW, mode: "send", outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"], gapsMs: {}, harness: "claude", version: "2.1.301" };
+    render(<SendReceiptsView rows={[queued]} now={NOW} />);
+    const item = screen.getByRole("listitem");
+    expect(item).toHaveTextContent("Sent");
+    expect(item).toHaveTextContent("Queued behind the agent's turn");
+  });
+
   it("the cap's refusal reads as the cap's sentence with the receipt's numbers, and names the harness alone without a version (send drill 3, 2)", () => {
     const refused: SendReceiptRow = { requestId: "req00008", at: NOW, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
     const withVersion: SendReceiptRow = { ...refused, requestId: "req00009", cap: { count: 5, limit: 5, harness: "codex", version: "0.163.0" } };

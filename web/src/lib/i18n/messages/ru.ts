@@ -322,6 +322,7 @@ export const ru: Dictionary = {
   "composer.noEcho.useType": "Использовать Type",
   "composer.noEcho.dismissAria": "Скрыть уведомление о запросе пароля",
   "composer.protocol.sent": "Отправлено",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "Текст удалён из поля. Черновик остался здесь.",
   "composer.protocol.draft": "В поле уже есть черновик. Дополните, замените или отмените.",
   "composer.protocol.typed": "Текст в поле, но Enter не нажат. Отправьте или удалите его.",
@@ -329,6 +330,7 @@ export const ru: Dictionary = {
   "composer.protocol.unknown": "Collie не может определить, было ли это отправлено. Прочитайте экран, затем отправьте снова, если отправка не удалась. Ваш черновик сохранен.",
   "composer.protocol.busy": "Другая отправка в эту панель ещё идёт. Подождите и повторите.",
   "composer.protocol.notFree": "Поле ввода занято. Ничего не введено.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "Экран не оставался неподвижным достаточно долго для чтения. Ничего не набрано. Повторите попытку.",
   "composer.protocol.probeFailed": "Ввод не попал в поле, поэтому ничего не введено. Проверьте панель.",
   "composer.protocol.reservedLead": "У текста, начинающегося с / ! или @, свой путь. Ничего не введено.",
@@ -355,6 +357,7 @@ export const ru: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Напечатано, не отправлено",
   "sendReceipts.outcome.refused": "Отклонено",
   "sendReceipts.outcome.unknown": "Неизвестно",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Клавиши: {keys}",
   "sendReceipts.noKeys": "Клавиши не отправлялись.",
   "sendReceipts.gaps": "Ожидание: {gaps}",

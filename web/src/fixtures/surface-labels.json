@@ -831,15 +831,50 @@
    "version": "2.1.299",
    "state": "dialog"
   },
+  "claude--v2301-done-shell-running--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-hold-subagent.txt": {
    "harness": "claude",
    "version": "2.1.301",
    "state": "running"
   },
+  "claude--v2301-idle-after-turn--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-idle.txt": {
    "harness": "claude",
    "version": "2.1.301",
    "state": "idle"
+  },
+  "claude--v2301-queued-taken--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-spinner-no-timer--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-working-draft--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-working-queued-message--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
+  },
+  "claude--v2301-working-quiet--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "running"
   },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
@@ -1745,6 +1780,16 @@
    "harness": "codex",
    "version": "0.163",
    "state": "idle"
+  },
+  "codex--v0163-working-draft--w120.txt": {
+   "harness": "codex",
+   "version": "0.163",
+   "state": "running"
+  },
+  "codex--v0163-working-steered--w120.txt": {
+   "harness": "codex",
+   "version": "0.163",
+   "state": "running"
   },
   "codex--working.txt": {
    "harness": "codex",

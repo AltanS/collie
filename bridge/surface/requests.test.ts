@@ -124,6 +124,17 @@ describe("phases and receipts", () => {
     expect(new RequestStore(dir).get(ID)).toBeNull();
   });
 
+  test("a queued receipt survives a restart; a queued field that is not true makes the file unreadable", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const receipt: SendReceipt = { ...receiptFor(record), queued: true };
+    first.settle(ID, receipt);
+    expect(new RequestStore(dir).get(ID)?.receipt).toEqual(receipt);
+    const broken = join(dir, `${ID}.json`);
+    writeFileSync(broken, readFileSync(broken, "utf8").replace('"queued":true', '"queued":"yes"'));
+    expect(new RequestStore(dir).get(ID)).toBeNull();
+  });
+
   test("after a crash, a request that sent its submit key but never settled ends unknown, and so does one that never got that far", () => {
     const store = new RequestStore(dir);
     store.accept(input());

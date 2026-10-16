@@ -31,6 +31,7 @@ describe("readSendReply", () => {
       surface: { revision: 2, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" },
       detail: "No input box was found.",
       cap: null,
+      queued: false,
     });
   });
 
@@ -82,6 +83,20 @@ describe("readSend", () => {
     expect(readSend(reply("sent", null))).toEqual({ clear: true, note: "sent", offers: [], surface: null, detail: null, toCard: false, cap: null });
     expect(readSend(reply("effective", null)).clear).toBe(true);
     expect(readSend(reply("unknown", "bound")).clear).toBe(false);
+  });
+
+  it("a send queued behind the running turn clears the draft and says it waits for the turn; the receipt's queued is read off the wire", () => {
+    const body: JsonObject = { receipt: { outcome: "sent", queued: true }, offers: [] };
+    const queued = readSendReply(body)!;
+    expect(queued.queued).toBe(true);
+    expect(readSend(queued)).toEqual({ clear: true, note: "queued", offers: [], surface: null, detail: null, toCard: false, cap: null });
+    expect(readSendReply({ receipt: { outcome: "sent", queued: "yes" }, offers: [] })!.queued).toBe(false);
+    expect(reply("sent", null).queued).toBe(false);
+  });
+
+  it("turn_running is the agent at work, its own sentence, never that the box is not free", () => {
+    expect(readSend(reply("refused", "turn_running", ["keys"], { surface: RUNNING }))).toMatchObject({ clear: false, note: "agentBusy", offers: [], surface: "running" });
+    expect(sendNote("refused", "turn_running")).toBe("agentBusy");
   });
 
   it("a discard empties the box and keeps the phone's draft", () => {
@@ -195,6 +210,16 @@ describe("the session page's rows (send drill 3)", () => {
     expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmed");
     expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirm ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
     expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
+  });
+
+  it("a send queued behind the turn wears Sent and says it was queued; queued is read off the wire only when true", () => {
+    const row: SendReceiptRow = { ...base, outcome: "sent", queued: true };
+    expect(receiptLabelKey(row.outcome)).toBe("sendReceipts.outcome.sent");
+    expect(receiptSentence(row, say)).toBe("sendReceipts.queued");
+    const wire = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "claude", version: "2.1.301" };
+    const rows = readSendReceipts({ receipts: [{ ...wire, queued: true }, { ...wire, requestId: "r2abcdefgh", queued: 1 }] });
+    expect(rows.receipts[0]!.queued).toBe(true);
+    expect(rows.receipts[1]!.queued).toBeUndefined();
   });
 
   it("reads the cap of a row off the wire and drops one that is not whole", () => {

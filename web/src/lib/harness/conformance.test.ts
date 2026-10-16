@@ -113,6 +113,15 @@ const NEUTRAL = new Set([
   // background subagent waits for its approval (no dialog is drawn on the main screen at all).
   "claude--v2301-idle.txt",
   "claude--v2301-hold-subagent.txt",
+  // Claude Code 2.1.301 around a running turn (the send-queue lab, 2026-10-16): a live spinner, a
+  // finished turn's row, a draft and a queued message above the box. An ordinary box, no dialog.
+  "claude--v2301-done-shell-running--w100.txt",
+  "claude--v2301-idle-after-turn--w100.txt",
+  "claude--v2301-queued-taken--w100.txt",
+  "claude--v2301-spinner-no-timer--w100.txt",
+  "claude--v2301-working-draft--w100.txt",
+  "claude--v2301-working-queued-message--w100.txt",
+  "claude--v2301-working-quiet--w100.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

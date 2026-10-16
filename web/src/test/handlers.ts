@@ -483,12 +483,18 @@ export interface SendAnswerParts {
   readonly detail?: string;
   /** The cap's answer (M56 spec 09): the count, the limit, the harness and its version. */
   readonly cap?: { readonly count: number; readonly limit: number; readonly harness: string; readonly version: string };
+  /** The receipt's `queued`: the send went in while the turn ran and waits for its end. */
+  readonly queued?: boolean;
 }
 
 /** An answer body the way the bridge writes one: a receipt with the outcome and reason, then the offers. */
 export function sendAnswer(id: string, outcome: string | null, reason?: string, parts: SendAnswerParts = {}): JsonObject {
   const body: JsonObject = { offers: [...(parts.offers ?? [])] };
-  if (outcome !== null) body.receipt = reason === undefined ? { requestId: id, outcome, keys: [] } : { requestId: id, outcome, reason, keys: [] };
+  if (outcome !== null) {
+    const receipt: JsonObject = reason === undefined ? { requestId: id, outcome, keys: [] } : { requestId: id, outcome, reason, keys: [] };
+    if (parts.queued === true) receipt.queued = true;
+    body.receipt = receipt;
+  }
   if (parts.rowsHash !== undefined) body.rowsHash = parts.rowsHash;
   if (parts.surface !== undefined) body.surface = parseJsonObject(JSON.stringify(parts.surface)) ?? {};
   if (parts.detail !== undefined) body.detail = parts.detail;

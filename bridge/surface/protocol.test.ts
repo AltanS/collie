@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
+import { profileFor, resetProfileLog, type Profile } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
@@ -186,7 +186,9 @@ function nextId(): string {
   return `req-${String(ids).padStart(6, "0")}`;
 }
 
-function rig(options: { mode?: Mode; version?: string; harness?: string; paste?: boolean; pane?: FakePane; storeDir?: string; ledger?: SurfaceLedger } = {}): Rig {
+function rig(
+  options: { mode?: Mode; version?: string; harness?: string; paste?: boolean; pane?: FakePane; storeDir?: string; ledger?: SurfaceLedger; edit?: (profile: Profile) => Profile } = {},
+): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
@@ -202,7 +204,11 @@ function rig(options: { mode?: Mode; version?: string; harness?: string; paste?:
     store,
     locks,
     ring,
-    profile: (harness: string) => Promise.resolve(profileFor(harness, version, { log: () => undefined })),
+    profile: (harness: string) => {
+      const match = profileFor(harness, version, { log: () => undefined });
+      const edit = options.edit;
+      return Promise.resolve(match === null || edit === undefined ? match : { ...match, profile: edit(match.profile) });
+    },
     generation: () => "gen-1",
     ledger: options.ledger,
     now,
@@ -818,6 +824,103 @@ describe("a command (M56 spec 06)", () => {
   });
 });
 
+// ── a send into a running turn ──
+
+/** The live running row of Claude Code 2.1.301 (claude--v2301-working-quiet--w100.txt): no interrupt hint. */
+const LIVE_ROW = "* Wibbling… (4s · ↓ 304 tokens)";
+
+describe("a send into a running turn", () => {
+  test("an empty box on a harness that queues: typed, Enter through the gate, sent, the receipt says queued", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+    expect(pane.box).toBe("");
+    expect(pane.transcript.at(-1)).toBe("> then give it a title");
+    neverEscape(pane);
+  });
+
+  test("the transcript the turn prints while the text goes in does not stop the send", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.beforeRead = (p, n) => {
+      p.transcript.push(`streamed reply row ${String(n)}`);
+    };
+    expect((await send("then give it a title")).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.transcript).toContain("> then give it a title");
+  });
+
+  test("S2 needs the box empty: the running sign alone is no evidence the text was taken", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.enterSubmits = false;
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(answer.receipt?.queued).toBeUndefined();
+  });
+
+  test("a dialog that opens while the text goes in still holds the Enter", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:")) p.over = ["● Pick one", "  ❯ 1. Red", "    2. Blue", "  Enter to select · Esc to cancel"];
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toEqual([]);
+  });
+
+  test("a draft in the box keeps the draft offers, and Add to it goes in queued", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.box = "half a thought";
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(pane.calls).toEqual([]);
+    const added = await send(" and the rest", { mode: "append" });
+    expect(added.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.transcript.at(-1)).toBe("> half a thought and the rest");
+  });
+
+  test("a command waits for the turn: refused turn_running, nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    expect((await send("/compact", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a send on a free box carries no queued field", async () => {
+    const { send } = rig();
+    const answer = await send("please fix the failing test in the parser");
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+  });
+
+  test("the list of recent sends carries queued", async () => {
+    const { pane, send, protocol } = rig();
+    pane.over = [LIVE_ROW];
+    await send("then give it a title");
+    expect(protocol.recent("%1")[0]).toMatchObject({ outcome: "sent", queued: true });
+  });
+
+  test("with no frame, a running row that ticks between prepare and commit is not a moved screen", async () => {
+    const { pane, send } = rig({ mode: "generic" });
+    let second = 5;
+    pane.transcript.push(`• Working (${String(second)}s • esc to interrupt)`);
+    pane.beforeRead = (p) => {
+      second++;
+      p.transcript[p.transcript.length - 1] = `• Working (${String(second)}s • esc to interrupt)`;
+    };
+    const first = await send("also say hello");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    const commit = await send("also say hello", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+});
+
 describe("S0", () => {
   test("a dialog on screen is refused not_free with the Surface, nothing typed", async () => {
     const { pane, send } = rig();
@@ -838,11 +941,25 @@ describe("S0", () => {
     expect(pane.calls).toEqual([]);
   });
 
-  test("a running turn is refused not_free", async () => {
-    const { pane, send } = rig();
+  test("a running turn on a harness that does not queue is refused turn_running, nothing typed", async () => {
+    const { pane, send } = rig({ edit: (profile) => ({ ...profile, keys: { ...profile.keys, enterWhileRunning: "ignored" } }) });
     pane.over = ["✻ Thinking… (12s · esc to interrupt)"];
-    expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    expect(answer.offers).toEqual(["keys"]);
     expect(pane.calls).toEqual([]);
+  });
+
+  test("a timer that ticks between the two reads is not a moved box", async () => {
+    const { pane, send } = rig();
+    let second = 12;
+    pane.over = [`✻ Thinking… (${String(second)}s · ↓ 300 tokens)`];
+    pane.beforeRead = (p) => {
+      second++;
+      p.over = [`✻ Thinking… (${String(second)}s · ↓ ${String(300 + second)} tokens)`];
+    };
+    expect((await send("hello there, agent")).receipt).toMatchObject({ outcome: "sent", queued: true });
   });
 
   test("a box that changes between the two reads is refused not_free", async () => {

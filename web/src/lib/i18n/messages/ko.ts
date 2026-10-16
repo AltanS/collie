@@ -374,6 +374,7 @@ export const ko: Dictionary = {
   "composer.noEcho.useType": "Type 모드 사용",
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.protocol.sent": "보냄",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "입력란에서 텍스트를 지웠습니다. 초안은 여기에 남아 있습니다.",
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
@@ -381,6 +382,7 @@ export const ko: Dictionary = {
   "composer.protocol.unknown": "Collie가 전송 여부를 확인할 수 없습니다. 화면을 읽은 후 전송되지 않았다면 다시 전송하십시오. 작성 중인 초안은 유지됩니다.",
   "composer.protocol.busy": "이 창으로 보내는 다른 작업이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
   "composer.protocol.notFree": "입력란이 비어 있지 않습니다. 아무것도 입력하지 않았습니다.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "화면이 읽을 수 있을 만큼 오래 정지해 있지 않았습니다. 아무것도 입력되지 않았습니다. 다시 시도하십시오.",
   "composer.protocol.probeFailed": "입력이 입력란에 닿지 않아 아무것도 입력하지 않았습니다. 창을 확인하세요.",
   "composer.protocol.reservedLead": "/ ! @ 로 시작하는 텍스트는 따로 처리됩니다. 아무것도 입력하지 않았습니다.",
@@ -407,6 +409,7 @@ export const ko: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "입력됨, 전송되지 않음",
   "sendReceipts.outcome.refused": "거부됨",
   "sendReceipts.outcome.unknown": "알 수 없음",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "키: {keys}",
   "sendReceipts.noKeys": "전송된 키가 없습니다.",
   "sendReceipts.gaps": "대기 시간: {gaps}",

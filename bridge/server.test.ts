@@ -701,6 +701,18 @@ describe("pane write prompt binding", () => {
     expect(client.keys).toEqual([["w1:p1", ["1"]]]);
   });
 
+  test("Send now while the turn runs: the queue's declared keys pass with no read of the screen", async () => {
+    // The screen of a running Claude Code 2.1.301 turn with a message queued (`ctrl+enter to send now`).
+    // The keys door never asks the Surface: a running turn is never a refusal here, like the Stop key.
+    const client = new FakePaneClient();
+    client.text = readFileSync(join(import.meta.dir, "../web/src/fixtures/panes/claude--v2301-working-queued-message--w100.txt"), "utf8");
+    const { audit } = auditEntries();
+    const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["ctrl+Enter"] }), audit, "phone", "default");
+    expect(res.status).toBe(200);
+    expect(client.reads).toEqual([]);
+    expect(client.keys).toEqual([["w1:p1", ["ctrl+Enter"]]]);
+  });
+
   test("reply without expected_prompt writes without an extra pane read", async () => {
     const client = new FakePaneClient();
     const { audit } = auditEntries();

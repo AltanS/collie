@@ -3939,6 +3939,20 @@ describe("outcome at the thumb", () => {
     expect(refusalText()).toBe("");
   });
 
+  it("sent and queued behind the turn: the draft goes, and the header says it waits for the turn, not a refusal", async () => {
+    await send(() => sendAnswer("x", "sent", undefined, { queued: true }), { surface: SURFACES.running });
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    await waitFor(() => expect(header()).toBe("Queued. The agent takes it after this turn."));
+    expect(refusalText()).toBe("");
+  });
+
+  it("refused turn_running: the agent is working, said as that, with the draft kept", async () => {
+    await send(() => sendAnswer("x", "refused", "turn_running", { offers: ["keys"], surface: SURFACES.running }), { surface: SURFACES.running });
+    await waitFor(() => expect(refusalText()).toMatch(/The agent is working\. Send again when it is done\./u));
+    expect(refusalText()).not.toMatch(/not free/iu);
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+  });
+
   it("refused draft_present: Add to it, Replace and Cancel, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }));
     const strip = await screen.findByTestId("send-offers");

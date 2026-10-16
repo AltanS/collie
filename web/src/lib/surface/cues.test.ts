@@ -163,6 +163,32 @@ describe("cue shapes", () => {
   });
 });
 
+describe("the running sign on live captures (Claude Code 2.1.301, Codex 0.163.0, 2026-10-16)", () => {
+  // The rows of the fixtures claude--v2301-*--w100.txt and codex--v0163-working-*--w120.txt, as read.
+  // 2.1.301 prints no interrupt hint while it runs: the live row is a spinner with `…` and a timer.
+  it("a live row fires: a spinner glyph, a verb with an ellipsis, a bracketed timer", () => {
+    expect(isRunningRow("* Wibbling… (4s · ↓ 304 tokens)")).toBe(true);
+    expect(isRunningRow("✽ Germinating… (4s · thinking with high effort)")).toBe(true);
+    expect(isRunningRow("· Germinating… (7s · thinking with high effort)")).toBe(true);
+    expect(isRunningRow("• Working (8s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close")).toBe(true);
+  });
+
+  it("a finished turn's row never fires, whatever follows it", () => {
+    expect(isRunningRow("✻ Worked for 6s · done 12:36 PM · 1 shell still running")).toBe(false);
+    expect(isRunningRow("✻ Churned for 1s · done 12:37 PM")).toBe(false);
+    expect(isRunningRow("✻ Cogitated for 1s · done 12:38 PM")).toBe(false);
+    expect(isRunningRow("✻ Crunched for 12s")).toBe(false);
+    expect(isRunningRow("✻ Waiting for 1 background agent to finish")).toBe(false);
+    expect(isRunningRow("  Worked for 5s • 12:42 PM")).toBe(false);
+  });
+
+  it("the first second of a turn, before its timer shows, and the queued message's hint do not fire", () => {
+    expect(isRunningRow("✶ Wibbling…")).toBe(false);
+    expect(isRunningRow("  ctrl+enter to send now")).toBe(false);
+    expect(isRunningRow("  ◯ general-purpose  Create m56s2.txt file                   9s · ↓ 28.4k tokens")).toBe(false);
+  });
+});
+
 describe("overlay shapes in the no-frame cluster", () => {
   const kinds = (rows: string[]) => readCues(plainRows(rows), null).cues.map((cue) => cue.kind);
 

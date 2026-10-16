@@ -318,6 +318,7 @@ export const pt: Dictionary = {
   "composer.noEcho.useType": "Usar Digitar",
   "composer.noEcho.dismissAria": "Dispensar aviso de solicitação de senha",
   "composer.protocol.sent": "Enviado",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "O texto foi removido da caixa. Seu rascunho continua aqui.",
   "composer.protocol.draft": "A caixa já tem um rascunho. Acrescente, substitua ou cancele.",
   "composer.protocol.typed": "Seu texto está na caixa, mas o Enter não foi pressionado. Envie ou descarte.",
@@ -325,6 +326,7 @@ export const pt: Dictionary = {
   "composer.protocol.unknown": "O Collie não consegue identificar se isso foi enviado. Leia a tela e tente enviar novamente se o envio não tiver ocorrido. Seu rascunho foi mantido.",
   "composer.protocol.busy": "Outro envio para este painel ainda está em andamento. Aguarde e tente de novo.",
   "composer.protocol.notFree": "A caixa de entrada não está livre. Nada foi digitado.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "A tela não ficou estável tempo suficiente para ser lida. Nada foi digitado. Tente novamente.",
   "composer.protocol.probeFailed": "A digitação não chegou à caixa de entrada, então nada foi digitado. Confira o painel.",
   "composer.protocol.reservedLead": "Um texto que começa com / ! ou @ tem seu próprio caminho. Nada foi digitado.",
@@ -351,6 +353,7 @@ export const pt: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Digitado, não enviado",
   "sendReceipts.outcome.refused": "Recusado",
   "sendReceipts.outcome.unknown": "Desconhecido",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Teclas: {keys}",
   "sendReceipts.noKeys": "Nenhuma tecla foi enviada.",
   "sendReceipts.gaps": "Aguardou: {gaps}",

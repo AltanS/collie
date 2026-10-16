@@ -379,6 +379,7 @@ export const es: Dictionary = {
   "composer.noEcho.useType": "Usar Escribir",
   "composer.noEcho.dismissAria": "Descartar aviso de contraseña",
   "composer.protocol.sent": "Enviado",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "El texto se quitó del cuadro. Tu borrador sigue aquí.",
   "composer.protocol.draft": "El cuadro ya tiene un borrador. Añade, reemplaza o cancela.",
   "composer.protocol.typed": "Tu texto está en el cuadro, pero no se pulsó Intro. Envíalo o descártalo.",
@@ -386,6 +387,7 @@ export const es: Dictionary = {
   "composer.protocol.unknown": "Collie no puede determinar si esto se envió. Lea la pantalla y vuelva a enviar si no se envió. Su borrador se conserva.",
   "composer.protocol.busy": "Otro envío a este panel sigue en curso. Espera e inténtalo de nuevo.",
   "composer.protocol.notFree": "El cuadro de entrada no está libre. No se escribió nada.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "La pantalla no se mantuvo quieta el tiempo suficiente para leerla. No se escribió nada. Intente de nuevo.",
   "composer.protocol.probeFailed": "La escritura no llegó al cuadro de entrada, así que no se escribió nada. Revisa el panel.",
   "composer.protocol.reservedLead": "Un texto que empieza por / ! o @ tiene su propia ruta. No se escribió nada.",
@@ -412,6 +414,7 @@ export const es: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Escrito, no enviado",
   "sendReceipts.outcome.refused": "Rechazado",
   "sendReceipts.outcome.unknown": "Desconocido",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Teclas: {keys}",
   "sendReceipts.noKeys": "No se enviaron teclas.",
   "sendReceipts.gaps": "Tiempo de espera: {gaps}",

@@ -18,6 +18,13 @@
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`
 // A request past the sum of the bounds ends `unknown` and releases the lock. Escape is never sent.
 //
+// A send into a running turn: when the screen shows the turn running, no modal and an empty box, and
+// the harness's profile says Enter queues while running (`keys.enterWhileRunning: "queues"`), the send
+// goes ahead and the harness takes it after the turn. The turn prints above the box while the text
+// goes in, so the probe and S1 let the transcript move; no modal cue may grow and the rows under the
+// box keep their count. S2 needs the box empty, because the running sign shows from the start. The
+// receipt says `queued`. A harness whose profile does not queue is refused `turn_running`.
+//
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
 // spot (the row and column where the probe character appeared) is what S1 and S2 compare against.
@@ -34,7 +41,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { readCues, runningSign } from "../../web/src/lib/surface/cues.ts";
+import { isRunningRow, readCues, runningSign } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -237,7 +244,8 @@ interface Snap {
   readonly rows: readonly FrameRow[];
   /** Row texts, trailing blanks cut. */
   readonly texts: readonly string[];
-  /** Row texts with faint (SGR 2) runs dropped, trailing blanks cut: a placeholder is faint. */
+  /** Row texts with faint (SGR 2) runs dropped, trailing blanks cut: a placeholder is faint. A running
+   *  row stands as one fixed mark ({@link steadyRow}), so its ticking timer moves no compare. */
   readonly plain: readonly string[];
   readonly frame: Frame | null;
   readonly surface: Surface;
@@ -273,6 +281,19 @@ interface RowWindow {
 function bottomWindow(texts: readonly string[]): RowWindow {
   const end = contentEnd(texts);
   return { first: Math.max(0, end - CLUSTER_ROWS), end };
+}
+
+/** What a running row stands as in a compare: its timer and token count tick on every read. */
+const RUNNING_ROW = "\u0000running";
+
+/**
+ * A row's plain text as the compares of a pane with no frame see it: a row that shows a running sign
+ * (a spinner with a timer, an interrupt hint) stands as one fixed mark, so a timer that ticked
+ * between two reads is not a moved screen, a probe that changed two rows, or a row that gained text.
+ * A row that stops being a running row, or turns into one, still changes every compare.
+ */
+function steadyRow(row: string): string {
+  return isRunningRow(row) ? RUNNING_ROW : row;
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -340,6 +361,27 @@ function lostTextOnly(before: readonly string[], after: readonly string[]): bool
   }
   return true;
 }
+
+/**
+ * What a send into a running turn asks of a framed pane: no modal cue grew and the rows under the box
+ * keep their count. The transcript above may change, because the running turn prints there while the
+ * text goes in (live on Claude Code 2.1.301: the reply streams above the box).
+ */
+function turnOutsideUnchanged(before: Snap, after: Snap): boolean {
+  if (before.frame === null || after.frame === null) return false;
+  if (cueAppeared(before, after)) return false;
+  return rowsBelow(before, before.frame) === rowsBelow(after, after.frame);
+}
+
+/** Whether the harness takes a message typed and entered while its turn runs: its profile says Enter queues. */
+function queuesInTurn(match: ProfileMatch | null): boolean {
+  return match?.profile.keys.enterWhileRunning === "queues";
+}
+
+/** The detail of a send refused because the turn runs. */
+const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
+/** The detail of a command refused because the turn runs. */
+const COMMAND_IN_TURN = "A command waits until the turn ends.";
 
 /** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
 function aboveLostOnly(before: Snap, after: Snap): boolean {
@@ -680,6 +722,8 @@ interface RunState {
   command: boolean;
   /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
   heldOther: boolean;
+  /** S0 read a running turn on a harness that queues: the text goes in during the turn and waits for its end. */
+  queued: boolean;
   stepStart: number;
 }
 
@@ -775,6 +819,7 @@ export class SendProtocol {
       const row: RowDraft = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
       if (receipt.reason !== undefined) row.reason = receipt.reason;
       if (receipt.cap !== undefined) row.cap = receipt.cap;
+      if (receipt.queued === true) row.queued = true;
       rows.push(row);
     }
     return rows;
@@ -886,6 +931,7 @@ export class SendProtocol {
       manual: false,
       command: request.mode === "command",
       heldOther: false,
+      queued: false,
       stepStart: at,
     };
   }
@@ -913,6 +959,7 @@ export class SendProtocol {
     const receipt: ReceiptDraft = { ...base };
     if (reason !== undefined) receipt.reason = reason;
     if (cap !== undefined) receipt.cap = cap;
+    if (state.queued && (outcome === "sent" || outcome === "effective")) receipt.queued = true;
     return receipt;
   }
 
@@ -1038,7 +1085,7 @@ export class SendProtocol {
         return;
       }
       case "replace": {
-        const frame = this.draftFrame(s0);
+        const frame = this.draftFrame(state, s0);
         // S0 ends with its two reads; emptying the box is its own step with its own bound.
         this.lap(state, "s0");
         if (boxText(frame).length > 0) {
@@ -1049,7 +1096,7 @@ export class SendProtocol {
         break;
       }
       case "append":
-        this.draftFrame(s0);
+        this.draftFrame(state, s0);
         break;
       case "send":
       case "command":
@@ -1087,10 +1134,24 @@ export class SendProtocol {
     this.lap(state, "s2");
   }
 
-  /** The S0 rule for a plain send: free goes ahead; a draft is refused with the offers; unknown(no-match) needs the person's rows hash. */
+  /**
+   * The S0 rule for a plain send: free goes ahead; a draft is refused with the offers; unknown(no-match)
+   * needs the person's rows hash. A running turn with no modal over a found box: an empty box goes
+   * ahead when the harness queues (the receipt says `queued`), a draft is refused with its offers, and
+   * a harness that does not queue, or a command, is refused `turn_running`.
+   */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
     if (isFree(surface)) return;
+    if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
+      if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+      if (state.request.mode !== "send") throw new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
+      if (surface.composer === "draft") {
+        throw new Ended("refused", "draft_present", { surface, framed: true, detail: "The box already holds a draft." });
+      }
+      state.queued = true;
+      return;
+    }
     if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") {
       throw new Ended("refused", "draft_present", { surface, framed: s0.frame !== null, detail: "The box already holds a draft." });
     }
@@ -1146,7 +1207,7 @@ export class SendProtocol {
   private typedBox(state: RunState, s0: Snap, holds: (box: string) => boolean, lines: readonly string[]): Located | null {
     const { surface, frame } = s0;
     if (frame !== null) {
-      if (holds(boxText(this.draftFrame(s0)))) return null;
+      if (holds(boxText(this.draftFrame(state, s0)))) return null;
       state.heldOther = true;
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
@@ -1161,11 +1222,19 @@ export class SendProtocol {
     return found;
   }
 
-  /** The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. */
-  private draftFrame(s0: Snap): Frame {
+  /**
+   * The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. While
+   * the turn runs the box is open on a harness that queues (what goes in waits for the turn's end);
+   * on one that does not, the turn is the refusal.
+   */
+  private draftFrame(state: RunState, s0: Snap): Frame {
     const { surface, frame } = s0;
-    if (frame === null || surface.turn !== "idle" || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
+    if (frame === null || surface.turn === "unknown" || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
       throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+    }
+    if (surface.turn === "running") {
+      if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+      state.queued = true;
     }
     return frame;
   }
@@ -1239,7 +1308,7 @@ export class SendProtocol {
         : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", liftDialog(blocks), askLifetimeOf(state.match));
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
-    const plain = rows.map(plainOf);
+    const plain = rows.map((row) => steadyRow(plainOf(row)));
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     return {
@@ -1254,6 +1323,7 @@ export class SendProtocol {
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
       bareCues: readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
       hash: shortHash(texts.join("\n")),
+      // A running row is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
     };
   }
@@ -1281,6 +1351,9 @@ export class SendProtocol {
     await this.sleep(S0_GAP_MS);
     const second = await readInBound();
     if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+    // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
+    // count, a statusline) move on their own while a turn runs. With no frame the bottom window is
+    // compared with its running rows masked, for the same reason.
     const key = (snap: Snap): string => {
       if (snap.frame !== null) return snap.texts.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
       const win = bottomWindow(snap.plain);
@@ -1369,7 +1442,7 @@ export class SendProtocol {
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
-        const outside = state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
+        const outside = state.queued ? turnOutsideUnchanged(s0, snap) : state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
         return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outside ? "pass" : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
@@ -1456,7 +1529,7 @@ export class SendProtocol {
    */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
-    const { command, manual } = state;
+    const { command, manual, queued } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
       if (!command && cueAppeared(s0, snap)) {
@@ -1469,7 +1542,7 @@ export class SendProtocol {
           why = "mismatch";
           return "wait";
         }
-        if (!(manual ? aboveLostOnly(s0, snap) : command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
+        if (!(queued ? turnOutsideUnchanged(s0, snap) : manual ? aboveLostOnly(s0, snap) : command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
           why = "changed";
           return "wait";
         }
@@ -1523,10 +1596,13 @@ export class SendProtocol {
    * own screen (a picker, a panel) in the box's place.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
-    const { command, manual } = state;
+    const { command, manual, queued } = state;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
         if (snap.frame === null) return command ? "pass" : "wait";
+        // Queued behind a running turn: the running sign showed before Enter, so only the box letting
+        // go of the text is evidence that the harness took it.
+        if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
         return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame) ? "pass" : "wait";
       }

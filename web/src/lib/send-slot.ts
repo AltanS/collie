@@ -33,8 +33,9 @@ export interface ComposerFacts {
  * - `offline`: the field stays typeable, Send waits for a live read.
  * - `answer`: `modal ask`; with a draft the slot is the word "Answer the dialog", which goes to the
  *   card and sends nothing; an empty box keeps its microphone.
- * - `running`: `turn running`; Send asks the bridge, which refuses while the turn runs, and the key
- *   pad is the way to stop it.
+ * - `running`: `turn running`; Send asks the bridge, which types the text and presses Enter where the
+ *   harness queues a message for after the turn (the answer says `queued`), and refuses where it does
+ *   not; the key pad is the way to stop the turn.
  * - `manual`: `unknown(no-match)`, a weak cue, or `modal unreadable`; Send takes two taps, prepare
  *   then commit with the hash of the rows the person saw.
  * - `wait`: `unknown` from a stale, torn or contested read; Send asks the bridge for a fresh read.

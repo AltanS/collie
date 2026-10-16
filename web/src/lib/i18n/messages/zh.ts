@@ -365,6 +365,7 @@ export const zh: Dictionary = {
   "composer.noEcho.useType": "使用“输入”模式",
   "composer.noEcho.dismissAria": "关闭密码提示通知",
   "composer.protocol.sent": "已发送",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "文本已从输入框中移除。你的草稿仍在这里。",
   "composer.protocol.draft": "输入框中已有草稿。可追加、替换或取消。",
   "composer.protocol.typed": "你的文本在输入框中，但没有按 Enter。请发送或丢弃。",
@@ -372,6 +373,7 @@ export const zh: Dictionary = {
   "composer.protocol.unknown": "Collie 无法确认此内容是否已发送。请查看屏幕，若未送出请重新发送。您的草稿已保留。",
   "composer.protocol.busy": "此窗格的另一次发送仍在进行。请稍候再试。",
   "composer.protocol.notFree": "输入框不空闲。未输入任何内容。",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "屏幕静止时间不足以完成读取。未键入任何内容。请重试。",
   "composer.protocol.probeFailed": "输入没有进入输入框，因此未输入任何内容。请检查窗格。",
   "composer.protocol.reservedLead": "以 / ! 或 @ 开头的文本有自己的通道。未输入任何内容。",
@@ -398,6 +400,7 @@ export const zh: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "已键入，未发送",
   "sendReceipts.outcome.refused": "已拒绝",
   "sendReceipts.outcome.unknown": "未知",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "按键：{keys}",
   "sendReceipts.noKeys": "未发送任何按键。",
   "sendReceipts.gaps": "等待时间：{gaps}",

@@ -1068,7 +1068,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
-  function afterVerifiedSend(t: string, isDraft: boolean) {
+  function afterVerifiedSend(t: string, isDraft: boolean, queued = false) {
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
@@ -1090,7 +1090,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setJustSent(true);
     if (sentTimer.current) clearTimeout(sentTimer.current);
     sentTimer.current = setTimeout(() => setJustSent(false), 1500);
-    setStatus(translate("composer.status.sent"), "success");
+    // A send that went in while the agent worked waits for the turn's end: the status line says so,
+    // in the place "Sent" stands, never as a refusal.
+    setStatus(translate(queued ? "composer.protocol.queued" : "composer.status.sent"), "success");
     const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
     setLastSent(preview);
     if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
@@ -1155,7 +1157,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const { reply, reading } = res;
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(t, isDraft);
+        afterVerifiedSend(t, isDraft, reading.note === "queued");
         return true;
       }
       setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });

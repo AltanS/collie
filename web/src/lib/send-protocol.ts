@@ -39,6 +39,8 @@ export interface SendReply {
   readonly detail: string | null;
   /** Set when the cap asks for one more confirm (M56 spec 09): the next commit carries `capAck`. */
   readonly cap: SendCap | null;
+  /** The receipt says the send went in while the turn ran: the harness queued it for after the turn. */
+  readonly queued: boolean;
 }
 
 const OFFERS: readonly SendOffer[] = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"];
@@ -111,6 +113,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     surface: readSurface(node.surface),
     detail: asJsonString(node.detail) ?? null,
     cap: readSendCap(node.cap),
+    queued: receipt?.queued === true,
   };
 }
 
@@ -153,6 +156,7 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     const row: RowDraft = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
     if (reason !== null) row.reason = reason;
     if (cap !== null) row.cap = cap;
+    if (node.queued === true) row.queued = true;
     receipts.push(row);
   }
   return { receipts };
@@ -161,6 +165,7 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
 /** The sentence an answer gets: a key under `composer.protocol.*`. */
 export type SendNote =
   | "sent"
+  | "queued"
   | "discarded"
   | "draft"
   | "typed"
@@ -168,6 +173,7 @@ export type SendNote =
   | "capConfirm"
   | "unknown"
   | "busy"
+  | "agentBusy"
   | "notFree"
   | "bound"
   | "probeFailed"
@@ -225,13 +231,20 @@ export interface SendReading {
   readonly cap: SendCap | null;
 }
 
-/** The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline` takes the plain refusal, and the bridge's detail says to send one line at a time. */
+/**
+ * The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline`
+ * takes the plain refusal, and the bridge's detail says to send one line at a time. `turn_running`
+ * (a harness that does not take a message during a turn) says the agent is working, not that the box
+ * is taken.
+ */
 function refusalNote(reason: SendReason | null): SendNote {
   switch (reason) {
     case "busy":
       return "busy";
     case "not_free":
       return "notFree";
+    case "turn_running":
+      return "agentBusy";
     case "bound":
       return "bound";
     case "draft_present":
@@ -302,10 +315,14 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
 /**
  * The sentence under a row's label, or null when it has none. A reason reads as the composer's sentence
  * for it; the cap's refusal, which carries its numbers, reads as the cap's sentence with them filled in;
- * a discard carries no reason and has its own sentence.
+ * a discard carries no reason and has its own sentence; a send queued behind the turn says so.
  */
-export function receiptSentence(row: SendReceiptRow, say: (key: `composer.protocol.${SendNote}`, vars?: Record<string, string>) => string): string | null {
+export function receiptSentence(
+  row: SendReceiptRow,
+  say: (key: `composer.protocol.${SendNote}` | "sendReceipts.queued", vars?: Record<string, string>) => string,
+): string | null {
   if (row.outcome === "discarded") return say("composer.protocol.discarded");
+  if (row.queued === true) return say("sendReceipts.queued");
   if (row.reason === undefined) return null;
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
     return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
@@ -321,7 +338,8 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   const note = sendNote(reply.outcome, reply.reason);
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
-  if (note === "sent") return { clear: true, note, offers: [] };
+  // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.
+  if (note === "sent") return { clear: true, note: reply.queued ? "queued" : note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };
   return { clear: false, note, offers };
 }

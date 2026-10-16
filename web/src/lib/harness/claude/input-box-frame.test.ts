@@ -99,6 +99,13 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2283-plugin-marketplaces-updated--w82.txt",
     "claude--v2301-hold-subagent.txt",
     "claude--v2301-idle.txt",
+    "claude--v2301-done-shell-running--w100.txt",
+    "claude--v2301-idle-after-turn--w100.txt",
+    "claude--v2301-queued-taken--w100.txt",
+    "claude--v2301-spinner-no-timer--w100.txt",
+    "claude--v2301-working-draft--w100.txt",
+    "claude--v2301-working-queued-message--w100.txt",
+    "claude--v2301-working-quiet--w100.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

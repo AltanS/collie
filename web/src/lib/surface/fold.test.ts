@@ -276,6 +276,30 @@ function screen(seq: number, at: number, rows: ScreenInput["rows"], revision = s
   return { seq, source: "screen", at, revision, rows, ask };
 }
 
+describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", () => {
+  const read = (name: string) => readScreen(fixtureRows(name), agentOf("claude"), idleFor("claude")).surface;
+
+  it("a finished turn's leftover row reads idle and free", () => {
+    for (const name of ["claude--v2301-idle-after-turn--w100.txt", "claude--v2301-done-shell-running--w100.txt", "claude--v2301-queued-taken--w100.txt"]) {
+      expect(read(name), name).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+      expect(isFree(read(name)), name).toBe(true);
+    }
+  });
+
+  it("a live running row reads running, with the box empty or holding a draft", () => {
+    expect(read("claude--v2301-working-quiet--w100.txt")).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    expect(read("claude--v2301-working-draft--w100.txt")).toMatchObject({ turn: "running", modal: "none", composer: "draft" });
+  });
+
+  it("a queued message reads running with an empty box: its placeholder is faint and its hint row is no modal", () => {
+    expect(read("claude--v2301-working-queued-message--w100.txt")).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("the first second of a turn, a spinner with no timer yet, reads idle: a send there goes ahead and is queued all the same", () => {
+    expect(read("claude--v2301-spinner-no-timer--w100.txt")).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+  });
+});
+
 describe("foldSurface", () => {
   const context = { idle: CLAUDE, pollMs: 1000 };
 

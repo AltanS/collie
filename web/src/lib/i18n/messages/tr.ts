@@ -318,6 +318,7 @@ export const tr: Dictionary = {
   "composer.noEcho.useType": "Type kullanın",
   "composer.noEcho.dismissAria": "Parola istemi bildirimini kapat",
   "composer.protocol.sent": "Gönderildi",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "Metin kutudan kaldırıldı. Taslağın hâlâ burada.",
   "composer.protocol.draft": "Kutuda zaten bir taslak var. Ekle, değiştir veya iptal et.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
@@ -325,6 +326,7 @@ export const tr: Dictionary = {
   "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini belirleyemiyor. Ekranı okuyun, gitmediyse tekrar gönderin. Taslağınız saklanır.",
   "composer.protocol.busy": "Bu bölmeye başka bir gönderim hâlâ sürüyor. Bekle ve yeniden dene.",
   "composer.protocol.notFree": "Giriş kutusu boş değil. Hiçbir şey yazılmadı.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "Ekran okunacak kadar uzun süre sabit durmadı. Hiçbir şey yazılmadı. Tekrar deneyin.",
   "composer.protocol.probeFailed": "Yazılan giriş kutusuna ulaşmadı, bu yüzden hiçbir şey yazılmadı. Bölmeyi kontrol et.",
   "composer.protocol.reservedLead": "/ ! veya @ ile başlayan metnin kendi yolu var. Hiçbir şey yazılmadı.",
@@ -351,6 +353,7 @@ export const tr: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Yazıldı, gönderilmedi",
   "sendReceipts.outcome.refused": "Reddedildi",
   "sendReceipts.outcome.unknown": "Bilinmiyor",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Tuşlar: {keys}",
   "sendReceipts.noKeys": "Hiçbir tuş gönderilmedi.",
   "sendReceipts.gaps": "Beklendi: {gaps}",

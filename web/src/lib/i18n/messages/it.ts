@@ -318,6 +318,7 @@ export const it: Dictionary = {
   "composer.noEcho.useType": "Usa Digita",
   "composer.noEcho.dismissAria": "Ignora avviso di richiesta password",
   "composer.protocol.sent": "Inviato",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "Il testo è stato tolto dal campo. La tua bozza è ancora qui.",
   "composer.protocol.draft": "Il campo contiene già una bozza. Aggiungi, sostituisci o annulla.",
   "composer.protocol.typed": "Il tuo testo è nel campo, ma Invio non è stato premuto. Invialo o scartalo.",
@@ -325,6 +326,7 @@ export const it: Dictionary = {
   "composer.protocol.unknown": "Collie non può determinare se l'invio è avvenuto. Legga lo schermo, quindi invii di nuovo se l'operazione non è riuscita. La Sua bozza viene conservata.",
   "composer.protocol.busy": "Un altro invio a questo riquadro è ancora in corso. Attendi e riprova.",
   "composer.protocol.notFree": "Il campo di input non è libero. Non è stato scritto nulla.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "Lo schermo non è rimasto fermo abbastanza a lungo per la lettura. Non è stato digitato nulla. Riprovi.",
   "composer.protocol.probeFailed": "La scrittura non è arrivata nel campo, quindi non è stato scritto nulla. Controlla il riquadro.",
   "composer.protocol.reservedLead": "Un testo che inizia con / ! o @ ha un suo percorso. Non è stato scritto nulla.",
@@ -351,6 +353,7 @@ export const it: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Digitato, non inviato",
   "sendReceipts.outcome.refused": "Rifiutato",
   "sendReceipts.outcome.unknown": "Sconosciuto",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Tasti: {keys}",
   "sendReceipts.noKeys": "Nessun tasto inviato.",
   "sendReceipts.gaps": "Attesa: {gaps}",

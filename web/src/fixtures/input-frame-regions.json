@@ -850,6 +850,22 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2301-done-shell-running--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2301-hold-subagent.txt",
   "frame": {
    "top": 16,
@@ -869,6 +885,22 @@
   }
  },
  {
+  "fixture": "claude--v2301-idle-after-turn--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2301-idle.txt",
   "frame": {
    "top": 5,
@@ -880,6 +912,86 @@
    "status": {
     "first": 8,
     "last": 8
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-queued-taken--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-spinner-no-timer--w100.txt",
+  "frame": {
+   "top": 35,
+   "prompt": 36,
+   "bottom": 37,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 38,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-working-draft--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "then give it a title",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-working-queued-message--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "Press up to edit queued messages",
+   "placeholder": true,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-working-quiet--w100.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
    },
    "footer": null
   }

@@ -2168,6 +2168,38 @@ account offered.
 The last one is the reason a hook ask cannot be derived from the screen: the screen says free while
 the request waits.
 
+## A send during a running turn (captured 2026-10-16, Claude Code 2.1.301, Codex 0.163.0, herdr 0.9.4)
+
+Read through `herdr pane read --source visible --format ansi --raw`, byte for byte except one glyph,
+from a throwaway Herdr workspace (closed after) in `~/.cache/collie-lab/m56-queue-lab/project`. The pane was 120 columns
+by 40 rows; Claude Code was started under `stty cols 100 rows 40`, Codex used the full 120. Claude Code
+ran with the operator's own statusline (two rows: usage gauges, then model, folder and branch). The
+captures answer two questions: does the running sign fire on a finished turn's row, and does each
+harness take a message typed and entered while its turn runs. The one change: in the two
+`working-draft` and `working-queued-message` files the tip row's dash (`branch - 3 free reviews left`)
+is a hyphen, where Claude Code drew a long dash; the cell width is the same.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2301-working-quiet--w100.txt` | A turn waiting on a shell command. The live row is `* Wibbling… (4s · ↓ 304 tokens)`: a spinner glyph, a verb with `…`, and a timer in brackets. 2.1.301 prints no `esc to interrupt` anywhere while it runs. Reads `running` |
+| `claude--v2301-spinner-no-timer--w100.txt` | The first second of the same turn: `✶ Wibbling…` with no bracket and no timer yet. Reads `idle`: the running sign needs the timer. A send here goes ahead as a free send and the harness queues it all the same |
+| `claude--v2301-done-shell-running--w100.txt` | The turn ended while a background shell still runs: `✻ Worked for 6s · done 12:36 PM · 1 shell still running`, and `· 1 shell` in the footer. A finished row, no `…`, no bracket. Reads `idle` |
+| `claude--v2301-idle-after-turn--w100.txt` | The turn is over: `✻ Churned for 1s · done 12:37 PM`. Reads `idle` |
+| `claude--v2301-working-draft--w100.txt` | A running turn (`✽ Germinating… (4s · thinking with high effort)`) with `then give it a title` typed into the box and not entered. The footer drops its `· ← 11 agents` tail while the box holds text. Reads `running`, composer `draft` |
+| `claude--v2301-working-queued-message--w100.txt` | The same turn after Enter: the message stands above the spinner as `❯ then give it a title` with `ctrl+enter to send now` under it, and the box shows the faint placeholder `Press up to edit queued messages`. Claude Code queued it. Reads `running`, composer `empty` |
+| `claude--v2301-queued-taken--w100.txt` | After the turn: the queued message became the next turn and was answered, `✻ Cogitated for 1s · done 12:38 PM`. Reads `idle` |
+| `codex--v0163-working-draft--w120.txt` | Codex 0.163.0 mid-turn, `• Working (6s • esc to interrupt) · 1 background terminal running · …`, with `also say hello` typed into the box; the hint row reads `tab to queue message` |
+| `codex--v0163-working-steered--w120.txt` | The same turn after Enter: `› also say hello` stands in the transcript above `• Working (8s • esc to interrupt)` and the box is empty again. Enter took the message into the running turn (Tab would have queued it for after); the turn answered it before it ended |
+
+The running sign (`isRunningRow` in `lib/surface/cues.ts`) fires only on the live rows above. The
+finished rows (`✻ Worked for 6s · done …`, `✻ Churned for 1s · done …`, and the older `✻ Crunched for
+2s · done 7:10 PM` of `claude-lab--idle-after-turn--w82.txt`) never fire: they carry no `…` before a
+bracketed timer and no interrupt hint.
+
+pi 0.87.1 and opencode were measured in the same lab and gave no answer: pi's providers answered 401,
+and opencode updated itself on start and covered the turn with its update dialog. Neither has a
+profile, so neither ever reads `running`.
+
 ## Surface corpus: labels and quoted-dialog transcripts (M56 spec 04, built 2026-10-15)
 
 `web/src/fixtures/surface-labels.json` gives every fixture in this folder one hand-checked row:

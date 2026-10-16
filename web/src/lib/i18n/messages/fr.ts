@@ -318,6 +318,7 @@ export const fr: Dictionary = {
   "composer.noEcho.useType": "Utiliser Type",
   "composer.noEcho.dismissAria": "Ignorer la notification de demande de mot de passe",
   "composer.protocol.sent": "Envoyé",
+  "composer.protocol.queued": "Queued. The agent takes it after this turn.", // TODO wordsmith
   "composer.protocol.discarded": "Le texte a été retiré du champ. Votre brouillon est toujours ici.",
   "composer.protocol.draft": "Le champ contient déjà un brouillon. Ajoutez, remplacez ou annulez.",
   "composer.protocol.typed": "Votre texte est dans le champ, mais Entrée n'a pas été pressée. Envoyez-le ou supprimez-le.",
@@ -325,6 +326,7 @@ export const fr: Dictionary = {
   "composer.protocol.unknown": "Collie ne peut pas savoir si l'envoi a réussi. Lisez l'écran, puis renvoyez si ce n'est pas parti. Votre brouillon est conservé.",
   "composer.protocol.busy": "Un autre envoi vers ce volet est en cours. Attendez, puis réessayez.",
   "composer.protocol.notFree": "Le champ de saisie n'est pas libre. Rien n'a été tapé.",
+  "composer.protocol.agentBusy": "The agent is working. Send again when it is done.", // TODO wordsmith
   "composer.protocol.bound": "L'écran n'est pas resté immobile assez longtemps pour être lu. Rien n'a été saisi. Réessayez.",
   "composer.protocol.probeFailed": "La saisie n'est pas arrivée dans le champ, donc rien n'a été tapé. Vérifiez le volet.",
   "composer.protocol.reservedLead": "Un texte qui commence par / ! ou @ a sa propre voie. Rien n'a été tapé.",
@@ -351,6 +353,7 @@ export const fr: Dictionary = {
   "sendReceipts.outcome.typed_not_submitted": "Saisi, non envoyé",
   "sendReceipts.outcome.refused": "Refusé",
   "sendReceipts.outcome.unknown": "Inconnu",
+  "sendReceipts.queued": "Queued behind the agent's turn", // TODO wordsmith
   "sendReceipts.keys": "Touches : {keys}",
   "sendReceipts.noKeys": "Aucune touche n'a été envoyée.",
   "sendReceipts.gaps": "Attente : {gaps}",

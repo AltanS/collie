@@ -138,6 +138,8 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (node.reason !== undefined && reason === undefined) return undefined;
   const cap = node.cap === undefined ? undefined : readSendCap(node.cap);
   if (cap === null) return undefined;
+  // `queued` is true or absent; anything else is not a receipt this module wrote.
+  if (node.queued !== undefined && node.queued !== true) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
@@ -165,6 +167,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const whole: ReceiptDraft = { ...receipt };
   if (reason !== undefined) whole.reason = reason;
   if (cap !== undefined) whole.cap = cap;
+  if (node.queued === true) whole.queued = true;
   return whole;
 }
 
