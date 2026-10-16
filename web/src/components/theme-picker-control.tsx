@@ -1,11 +1,9 @@
 import { useRef, useState, type CSSProperties } from "react";
-import { Palette } from "lucide-react";
+import { ChevronDown, Palette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Chip } from "@/components/ui/chip";
 import { CopyableBlock } from "@/components/ui/copyable-block";
-import { LabelledStrip } from "@/components/ui/labelled-strip";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
@@ -41,7 +39,6 @@ import {
   displayDeclarations,
   fullSurfaceDeclarations,
   resolveSurface,
-  wordDeclarations,
   type Ansi,
   type Declaration,
 } from "@/lib/theme/surface";
@@ -58,7 +55,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 // refused, and it does not trust its own preview: Apply goes through `addImported`, which parses the
 // theme again, because the store is the door to storage and checks at the door.
 //
-// NOTHING MOVES (DESIGN.md §2). The strip scrolls inside a fixed row, the three buttons are always
+// NOTHING MOVES (DESIGN.md §2). The theme is one select row, the three buttons are always
 // there (Remove is a disabled slot while the active theme is not an imported one), and the promise
 // line is static. The only thing that floats is the sheet.
 
@@ -110,38 +107,6 @@ function collieTheme(): Theme {
 /** The sRGB hex of a token in one half of a theme, a half or a token it leaves out filled from `collie`. */
 function hexOf(theme: Theme, half: "light" | "dark", token: ThemeToken): string {
   return toSrgbHex(fillHalves(theme, collieTheme())[half][token] ?? "");
-}
-
-/** A 12px disc split on the diagonal: the theme's light `background` above, its dark one below. */
-function ThemeGlyph({ theme }: { theme: Theme }) {
-  const light = hexOf(theme, "light", "background");
-  const dark = hexOf(theme, "dark", "background");
-  return (
-    <span
-      aria-hidden
-      className="size-3 shrink-0 rounded-full border border-border"
-      style={{ background: `linear-gradient(135deg, ${light} 50%, ${dark} 50%)` }}
-    />
-  );
-}
-
-/**
- * The custom properties a theme's chip wears: the declarations of the theme's own radius and weight
- * words (surface.ts), a word the theme leaves out at its default. The chip's `rounded-md` and
- * `font-medium` read `--radius-md` and `--font-weight-medium` from the nearest box that sets them,
- * so each chip shows its theme's corner and weight whatever theme the page wears. Collie's words
- * are the defaults, so its chip draws what it drew before. Only these two: the chips of one strip
- * share the page's density and border, so every chip in a row has the same height, and the shape
- * that differs from chip to chip is the corner and the weight.
- */
-export function themeChipStyle(theme: Theme): CSSProperties {
-  const surface = resolveSurface(theme.surface);
-  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
-  // only because CSSProperties has no index signature for `--*`. Names and values come from surface.ts.
-  return Object.fromEntries([
-    ...wordDeclarations("radius", surface.radius),
-    ...wordDeclarations("weight", surface.weight),
-  ]) as CSSProperties;
 }
 
 /** The size refusal for a file the card will not even read. The same words the parser uses. */
@@ -592,29 +557,37 @@ export function ThemePickerControl() {
         </div>
       </div>
 
-      {/* The theme strip WRAPS rather than scrolls: four to twelve chips fit no phone row, and a
-          chip half under the card's edge reads as cut, worse under a roomy theme. gap-y-3 is 12px,
-          twice the 6px each chip's tap box reaches past its edge (STRIP_TAP_TARGET), so the hit
-          boxes of two rows touch and never overlap. */}
-      <LabelledStrip label={t("theme.title")} className="border-t border-border" scrollerClassName="flex-wrap gap-y-3">
-        {/* `contents`: the group has no box of its own, so the pills stay direct flex items of the
-            scroller and the strip lays out exactly as the space strip does. */}
-        <div role="radiogroup" aria-label={t("theme.title")} className="contents">
-          {/* Each chip sits in a box-less span that carries its theme's radius and weight, so the
-              strip previews every theme's shape (themeChipStyle). */}
-          {all.map((theme) => (
-            <span key={theme.id} className="contents" style={themeChipStyle(theme)} data-testid="theme-chip-shape">
-              <Chip
-                radio
-                label={theme.name}
-                glyph={<ThemeGlyph theme={theme} />}
-                active={theme.id === active.id}
-                onClick={() => setActiveTheme(theme.id)}
-              />
-            </span>
-          ))}
+      {/* One row, built like the Typeface card's Family row: the label on the left, a native select on
+          the right. The chip strip it replaces wrapped onto two rows and grew with every imported
+          theme; a select takes the four shipped themes and up to eight imported ones in one row. The
+          wrapper owns the border and the chevron, `appearance-none` removes the engine's caret, and
+          `shrink-0` keeps a long theme name from resizing the row. A change is a chip tap as it was:
+          `setActiveTheme`, which ignores an id it does not hold. */}
+      <div data-slot="list-group" className="border-t border-border">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <label htmlFor="pref-theme" className="text-sm font-medium">
+            {t("theme.title")}
+          </label>
+          <div className="relative min-w-0 shrink-0">
+            <select
+              id="pref-theme"
+              value={active.id}
+              onChange={(event) => setActiveTheme(event.target.value)}
+              className="min-h-11 max-w-[60vw] appearance-none truncate rounded-md border border-border/60 bg-background py-2 pl-3 pr-9 text-sm font-medium text-foreground"
+            >
+              {all.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
         </div>
-      </LabelledStrip>
+      </div>
 
       <div className="grid grid-cols-3 gap-2 border-t border-border p-3">
         <Button type="button" variant="outline" className="h-11" onClick={startImport}>
