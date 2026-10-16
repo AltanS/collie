@@ -580,17 +580,22 @@ export class AskAnswerer {
       const countOf = (texts: readonly string[]): number => texts.filter((row) => decided.test(row)).length;
       const before = state.marks.check === null ? 0 : countOf(state.marks.check.texts);
       let sawLine = false;
-      // The tool edge of this very call is proof too (it settles the hold as phone). Claude Code draws
-      // one hook line for a group of calls, so a second call of a group adds no line. Found in the lab.
+      // The tool edge of this very call is proof of an allow too (it settles the hold as phone). Claude
+      // Code draws one hook line for a group of calls, so a second call of a group adds no line. Found
+      // in the lab. A tool edge after a deny is proof of the desk (it settles the hold as desk).
+      const edgeAllowed = (): boolean => held.outcome === "phone" && decision === "allow";
       const after = await this.poll(state, "after", ASK_BOUNDS.after, (snap) => {
-        if (countOf(snap.texts) > before || held.outcome === "phone") {
+        if (countOf(snap.texts) > before || edgeAllowed()) {
           sawLine = true;
           return "pass";
         }
-        return "wait";
+        return held.outcome === "desk" ? "pass" : "wait";
       }).catch(() => ({ snap: null, verdict: "wait" as const }));
       state.marks.after = after.snap;
-      if (sawLine || held.outcome === "phone") {
+      if (held.outcome === "desk") {
+        return this.holdReply(answer, target, held, "refused", "ask_desk", state, { detail: "The desk answered first. Collie did not use your answer." }, decision);
+      }
+      if (sawLine || edgeAllowed()) {
         holds.settle(held, "phone");
         return this.holdReply(answer, target, held, "sent", undefined, state, {}, decision);
       }

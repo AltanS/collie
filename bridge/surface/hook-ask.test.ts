@@ -320,6 +320,24 @@ describe("the hold matrix", () => {
     expectNoKey(r);
   });
 
+  test("a phone deny, then this call's tool edge: the desk's yes landed first, the reply says so", async () => {
+    const r = rig(BASH);
+    const { conn } = r.open();
+    const ask = r.poll()!;
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0 && pane.screen !== DESK_DONE) {
+        pane.screen = DESK_DONE;
+        r.holds.edge(PANE, "tool", toolEdge(null));
+      }
+    };
+    const reply = await r.answer(ask, "3");
+    expect(conn.replies).toEqual(["deny"]);
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_desk", decision: "deny", keys: [] });
+    expect(r.counted).toEqual(["desk"]);
+    expect(r.holds.note(PANE)?.state).toBe("desk");
+    expectNoKey(r);
+  });
+
   test("an older turn's hook line above the dialog is not this answer's evidence", async () => {
     const OLD = `⏺ Bash(touch a)\n  ⎿  Allowed by PermissionRequest hook\n`;
     const r = rig(`${OLD}${BASH}`);

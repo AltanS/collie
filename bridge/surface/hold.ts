@@ -432,6 +432,10 @@ export class HoldBook {
         // Only this very call: the same agent and tool, not older than the request, and the same input.
         if (!toolEdgeEnds(held, info)) return;
         if (held.state === "held") return this.end(held, "desk");
+        if (held.state === "sent" && held.decision === "deny") {
+          // The phone sent a deny, yet the tool ran: the desk's yes landed first.
+          return this.settle(held, "desk");
+        }
         if (held.state === "sent") {
           this.settle(held, "phone");
           held.note = null;

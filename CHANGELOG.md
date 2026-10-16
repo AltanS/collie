@@ -159,6 +159,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A phone No that lost to a Yes at the desk now reads as "The desk answered first".** The tool ran, so the card no longer says Sent. Only an allow counts the tool edge as proof of the phone's answer.
 - **A Yes on the main dialog's card no longer allows a subagent's request.** An older background hold took the main Bash dialog through a file name. Now a hold takes a dialog only when the header names its tool and agent, and the whole input line shows.
 - **A phone tap on a Claude dialog no longer fails with "the dialog changed".** The ask id was bound to the 40 rows above the first option. A tool row's bullet blinks there about once a second, so the id changed under each tap. Now the id covers the dialog block only, from its top edge to the key hints. Collie refuses a tap on a dialog with no top edge, and never binds to the rows above it.
 - **A crew member takes a push from a shallow lead.** A lead on a Herdr-managed install has a shallow checkout, so its bundle held the commit without its parent, and the member's fetch refused it with "did not send all necessary objects"; `crew update` and `crew add` then reported a build failure although nothing had been built. The member now unbundles the same objects, checks out the lead's commit and records it in `.git/shallow` when the parent is missing; a member that has the parent still fetches as before and keeps its full history. Thanks @OowhitecatoO (#444)
