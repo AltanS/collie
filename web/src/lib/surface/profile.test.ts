@@ -258,7 +258,12 @@ describe("the Claude ranges and the ledger", () => {
     expect(match?.profile.id).toBe("claude");
   });
 
-  it("holds provisional for Claude 2.1.300, the field version of 2026-10-15", () => {
-    expect(profileFor("claude", "2.1.300", { log: () => {} })?.status).toBe("provisional");
+  it("serves Claude 2.1.300, the field version of 2026-10-15, by the ledger's row", () => {
+    // Provisional while the ledger is below 2.1.300, verified once a lab pass moves the row to it or past it.
+    // A fixed "provisional" here went red on the first real bump, so the nightly lab's own pass commit failed CI.
+    const [rowMajor = 0, rowMinor = 0, rowPatch = 0] = row.version.split(".").map(Number);
+    const key = (major: number, minor: number, patch: number): number => major * 1_000_000 + minor * 1_000 + patch;
+    const verified = key(rowMajor, rowMinor, rowPatch) >= key(2, 1, 300);
+    expect(profileFor("claude", "2.1.300", { log: () => {} })?.status).toBe(verified ? "verified" : "provisional");
   });
 });
