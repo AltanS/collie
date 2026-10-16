@@ -3948,8 +3948,8 @@ describe("outcome at the thumb", () => {
 
   it("refused turn_running: the agent is working, said as that, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "turn_running", { offers: ["keys"], surface: SURFACES.running }), { surface: SURFACES.running });
-    await waitFor(() => expect(refusalText()).toMatch(/The agent is working\. Send again when it is done\./u));
-    expect(refusalText()).not.toMatch(/not free/iu);
+    await waitFor(() => expect(refusalText()).not.toBe(""));
+    expect(refusalText()).toBe("The agent is working. Send again when it is done.");
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
   });
 

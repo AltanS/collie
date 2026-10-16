@@ -9,10 +9,10 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { profileFor, resetProfileLog, type Profile } from "../../web/src/lib/surface/profile.ts";
+import { profileFor, resetProfileLog, type Profile, type ProfileStatus } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 
@@ -51,6 +51,8 @@ class FakePane {
   readsSeen = 0;
   calls: string[] = [];
   keysSeen: string[] = [];
+  /** A whole screen to answer every read with, as a capture holds it; null draws the fake box. */
+  fixed: string | null = null;
   /** Runs after every text write or key, for scripted changes. */
   afterInput: ((pane: FakePane, what: string) => void) | null = null;
   /** Runs before every read; may change the screen or return a promise to hold the read. */
@@ -80,6 +82,7 @@ class FakePane {
   }
 
   render(): string {
+    if (this.fixed !== null) return this.fixed;
     const rows = [...this.transcript, ""];
     if (this.echo !== null) rows.push(` Search: ${this.echo.field}`, ...this.list, "");
     if (this.dialog !== null) {
@@ -187,7 +190,17 @@ function nextId(): string {
 }
 
 function rig(
-  options: { mode?: Mode; version?: string; harness?: string; paste?: boolean; pane?: FakePane; storeDir?: string; ledger?: SurfaceLedger; edit?: (profile: Profile) => Profile } = {},
+  options: {
+    mode?: Mode;
+    version?: string;
+    harness?: string;
+    paste?: boolean;
+    pane?: FakePane;
+    storeDir?: string;
+    ledger?: SurfaceLedger;
+    edit?: (profile: Profile) => Profile;
+    status?: ProfileStatus;
+  } = {},
 ): Rig {
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
   const clock = { now: 1_000_000 };
@@ -206,8 +219,9 @@ function rig(
     ring,
     profile: (harness: string) => {
       const match = profileFor(harness, version, { log: () => undefined });
-      const edit = options.edit;
-      return Promise.resolve(match === null || edit === undefined ? match : { ...match, profile: edit(match.profile) });
+      if (match === null) return Promise.resolve(null);
+      const { edit, status } = options;
+      return Promise.resolve({ ...match, profile: edit === undefined ? match.profile : edit(match.profile), status: status ?? match.status });
     },
     generation: () => "gen-1",
     ledger: options.ledger,
@@ -904,6 +918,76 @@ describe("a send into a running turn", () => {
     pane.over = [LIVE_ROW];
     await send("then give it a title");
     expect(protocol.recent("%1")[0]).toMatchObject({ outcome: "sent", queued: true });
+  });
+
+  test("a box holding a command: a send gets the draft offers, and Add to it and Submit are refused turn_running; Replace goes in queued", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.box = "/compact";
+    expect((await send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect((await send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await send("/compact", { mode: "submit" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    expect((await send("hello instead", { mode: "replace" })).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.transcript.at(-1)).toBe("> hello instead");
+  });
+
+  test("a popup open at the box during a turn (claude-lab--working-popup-open--w82.txt) is refused at S0, nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.fixed = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--working-popup-open--w82.txt"), "utf8");
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", keys: [] });
+    expect(answer.receipt?.reason).toBe("not_free");
+    expect(answer.detail).toBe("Something is open at the input box.");
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a dialog that replaces the box while the probe stands there fails the probe, and no key follows it", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.dialog = DIALOG;
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a dialog that opens as the Enter goes out ends unknown(dialog_after_enter), pointing at the card", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what === "keys:Enter") p.dialog = DIALOG;
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.surface?.modal).not.toBe("none");
+    expect(answer.detail).toBe("A dialog opened as the message went in. Check the card before you answer it.");
+  });
+
+  test("a revoked range or a version the binary did not report never queues", async () => {
+    const revoked = rig({ status: "revoked" });
+    revoked.pane.over = [LIVE_ROW];
+    expect((await revoked.send("hello there")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    const unread = rig({ version: "no version here" });
+    unread.pane.over = [LIVE_ROW];
+    expect((await unread.send("hello there")).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    const provisional = rig({ version: "2.1.301" });
+    provisional.pane.over = [LIVE_ROW];
+    expect((await provisional.send("hello there")).receipt).toMatchObject({ outcome: "sent", queued: true, profileStatus: "provisional" });
+  });
+
+  test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {
+    expect(steadyRow("* Wibbling… (4s · ↓ 304 tokens)")).toBe(steadyRow("✶ Wibbling… (5s · ↓ 310 tokens)"));
+    expect(steadyRow("• Working (8s • esc to interrupt) · 1 background terminal running")).toBe(steadyRow("• Working (9s • esc to interrupt) · 1 background terminal running"));
+    // A dialog row that walks like a running row still changes when its words change.
+    expect(steadyRow("2. No, tell Claude... (3m)")).not.toBe(steadyRow("2. No, tell Claude to wait... (3m)"));
+    expect(steadyRow("2. No, tell Claude... (3m)")).toBe("2. No, tell Claude... (0m)");
+    expect(steadyRow("an answer row (12s)")).toBe("an answer row (12s)");
   });
 
   test("with no frame, a running row that ticks between prepare and commit is not a moved screen", async () => {

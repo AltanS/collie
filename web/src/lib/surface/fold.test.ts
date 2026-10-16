@@ -72,6 +72,29 @@ describe("the label file", () => {
   });
 });
 
+describe("running labels", () => {
+  const readsFree = (name: string): boolean => {
+    const label = LABELS.fixtures[name]!;
+    return isFree(readScreen(fixtureRows(name), agentOf(label.harness), idleFor(label.harness)).surface);
+  };
+
+  it("no fixture labelled running reads free, except the known mismatches, each with its reason", () => {
+    const free = Object.entries(LABELS.fixtures)
+      .filter(([name, label]) => label.state === "running" && readsFree(name))
+      .map(([name]) => name)
+      .toSorted();
+    expect(free).toEqual(Object.keys(LABELS.knownMismatches).toSorted());
+  });
+
+  it("every known mismatch is a running label that still reads free", () => {
+    for (const [name, why] of Object.entries(LABELS.knownMismatches)) {
+      expect(LABELS.fixtures[name]?.state, name).toBe("running");
+      expect(why.length, name).toBeGreaterThan(20);
+      expect(readsFree(name), name).toBe(true);
+    }
+  });
+});
+
 describe("the idle matcher and the modal detector", () => {
   // The idle matcher is the profile's idle signature: the frame is found, the composer is empty and
   // the turn idle, and no cue at all sits at the frame. The modal detector is a block reader's typed

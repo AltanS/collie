@@ -94,6 +94,11 @@ describe("readSend", () => {
     expect(reply("sent", null).queued).toBe(false);
   });
 
+  it("a queued send whose Enter met a dialog is unknown and points to the card, with the bridge's sentence", () => {
+    const read = readSend(reply("unknown", "dialog_after_enter", ["keys"], { surface: RUNNING, detail: "A dialog opened as the message went in. Check the card before you answer it." }));
+    expect(read).toMatchObject({ clear: false, note: "unknown", offers: [], toCard: true, detail: "A dialog opened as the message went in. Check the card before you answer it." });
+  });
+
   it("turn_running is the agent at work, its own sentence, never that the box is not free", () => {
     expect(readSend(reply("refused", "turn_running", ["keys"], { surface: RUNNING }))).toMatchObject({ clear: false, note: "agentBusy", offers: [], surface: "running" });
     expect(sendNote("refused", "turn_running")).toBe("agentBusy");

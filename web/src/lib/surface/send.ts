@@ -50,6 +50,9 @@ export const SEND_REASONS = [
   "crash",
   "lost_lock",
   "no_evidence",
+  // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
+  // have taken the Enter, so the person checks the card before answering it
+  "dialog_after_enter",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 

@@ -22,8 +22,10 @@
 // the harness's profile says Enter queues while running (`keys.enterWhileRunning: "queues"`), the send
 // goes ahead and the harness takes it after the turn. The turn prints above the box while the text
 // goes in, so the probe and S1 let the transcript move; no modal cue may grow and the rows under the
-// box keep their count. S2 needs the box empty, because the running sign shows from the start. The
-// receipt says `queued`. A harness whose profile does not queue is refused `turn_running`.
+// box keep their count, and the Surface must claim no modal. S2 needs the box empty, because the
+// running sign shows from the start; a dialog there ends `unknown(dialog_after_enter)`. The receipt
+// says `queued`. A harness whose profile does not queue, a command, and a box that would go out as a
+// command are refused `turn_running`; something open at the box is refused `not_free`.
 //
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
@@ -245,8 +247,11 @@ interface Snap {
   /** Row texts, trailing blanks cut. */
   readonly texts: readonly string[];
   /** Row texts with faint (SGR 2) runs dropped, trailing blanks cut: a placeholder is faint. A running
-   *  row stands as one fixed mark ({@link steadyRow}), so its ticking timer moves no compare. */
+   *  row's spinner glyph and bracketed digits are fixed marks ({@link steadyRow}), so its ticking
+   *  timer moves no compare. */
   readonly plain: readonly string[];
+  /** {@link plain} as read, nothing masked: what the lab's example keeps. */
+  readonly plainRaw: readonly string[];
   readonly frame: Frame | null;
   readonly surface: Surface;
   readonly cueStrength: "none" | "weak" | "strong";
@@ -283,17 +288,22 @@ function bottomWindow(texts: readonly string[]): RowWindow {
   return { first: Math.max(0, end - CLUSTER_ROWS), end };
 }
 
-/** What a running row stands as in a compare: its timer and token count tick on every read. */
-const RUNNING_ROW = "\u0000running";
+/** A spinner glyph at the start of a running row: one or two characters with no letter and no digit. */
+const SPINNER_LEAD = /^(\s*)[^\p{L}\p{N}\s]{1,2}(?=\s)/u;
+/** A bracketed run on a running row: where its timer and its token count stand. */
+const BRACKET = /\([^()]*\)/gu;
 
 /**
- * A row's plain text as the compares of a pane with no frame see it: a row that shows a running sign
- * (a spinner with a timer, an interrupt hint) stands as one fixed mark, so a timer that ticked
- * between two reads is not a moved screen, a probe that changed two rows, or a row that gained text.
- * A row that stops being a running row, or turns into one, still changes every compare.
+ * A row's plain text as the compares of a pane with no frame see it. On a row that shows a running
+ * sign (a spinner with a timer, an interrupt hint), the spinner glyph at its start and the digits
+ * inside its brackets read as fixed marks, so a timer and a token count that ticked between two reads
+ * are not a moved screen, a probe that changed two rows, or a row that gained text. Every other
+ * character of the row still counts: a row such as "2. No, tell Claude... (3m)" that changes its
+ * words, or stops being a running row, still changes every compare.
  */
-function steadyRow(row: string): string {
-  return isRunningRow(row) ? RUNNING_ROW : row;
+export function steadyRow(row: string): string {
+  if (!isRunningRow(row)) return row;
+  return row.replace(SPINNER_LEAD, "$1*").replace(BRACKET, (run) => run.replace(/\d+/gu, "0"));
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -373,15 +383,28 @@ function turnOutsideUnchanged(before: Snap, after: Snap): boolean {
   return rowsBelow(before, before.frame) === rowsBelow(after, after.frame);
 }
 
-/** Whether the harness takes a message typed and entered while its turn runs: its profile says Enter queues. */
+/**
+ * Whether the harness takes a message typed and entered while its turn runs: its profile says Enter
+ * queues, for a version the binary reported, on a range that is not revoked. A provisional range
+ * counts (a new version takes the probed path, which every send into a turn takes anyway).
+ */
 function queuesInTurn(match: ProfileMatch | null): boolean {
-  return match?.profile.keys.enterWhileRunning === "queues";
+  if (match === null || match.version === null || match.status === "revoked") return false;
+  return match.profile.keys.enterWhileRunning === "queues";
 }
 
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";
+/** The detail of a send into a turn refused because something is open at the box (a popup over or under it). */
+const OPEN_AT_BOX = "Something is open at the input box.";
+/**
+ * The detail of a queued send whose Enter met a dialog. Measured on Claude Code 2.1.301 (2026-10-16):
+ * an Enter that lands 0, 25, 50, 100 or 200 ms after a permission dialog draws answers it with the
+ * dialog's first option, so the person must look at the card before answering it again.
+ */
+const DIALOG_AFTER_ENTER = "A dialog opened as the message went in. Check the card before you answer it.";
 
 /** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
 function aboveLostOnly(before: Snap, after: Snap): boolean {
@@ -1022,12 +1045,12 @@ export class SendProtocol {
       ledger.send(key, { outcome: receipt.outcome, reason: receipt.reason, probed });
       const s0 = state.marks.s0;
       if (probed && s0 !== null && (receipt.outcome === "sent" || receipt.outcome === "effective")) {
-        const win = bottomWindow(s0.plain);
+        const win = bottomWindow(s0.plainRaw);
         ledger.example({
           requestId: receipt.requestId,
           ...key,
           outcome: receipt.outcome,
-          cluster: s0.plain.slice(win.first, win.end),
+          cluster: s0.plainRaw.slice(win.first, win.end),
           frame: s0.rowsHash,
           textLength: receipt.textLength,
         });
@@ -1144,12 +1167,11 @@ export class SendProtocol {
     const { surface } = s0;
     if (isFree(surface)) return;
     if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
-      if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-      if (state.request.mode !== "send") throw new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
+      this.gateTurn(state, s0, s0.frame);
       if (surface.composer === "draft") {
+        state.queued = false;
         throw new Ended("refused", "draft_present", { surface, framed: true, detail: "The box already holds a draft." });
       }
-      state.queued = true;
       return;
     }
     if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") {
@@ -1232,11 +1254,34 @@ export class SendProtocol {
     if (frame === null || surface.turn === "unknown" || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
       throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     }
-    if (surface.turn === "running") {
-      if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-      state.queued = true;
-    }
+    if (surface.turn === "running") this.gateTurn(state, s0, frame);
     return frame;
+  }
+
+  /**
+   * The rule for anything that goes into a running turn (a send, Add to it, Replace, Submit, Discard):
+   * the harness must queue; nothing may be open at the box (a popup above or under it that the frame
+   * walks past, read by the frameless cues); and what the box would hold once Enter goes out must not
+   * be a command (a request in mode command, or a box text plus the new text that starts with a
+   * reserved lead). Then the request is queued.
+   */
+  private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
+    const { surface } = s0;
+    const { request } = state;
+    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+    if (s0.bareCues === "strong") throw new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
+    if (request.mode === "discard") {
+      state.queued = true;
+      return;
+    }
+    const text = sendLines(request.text).join("");
+    const box = boxText(frame);
+    const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
+    const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+    if (request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null)) {
+      throw new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
+    }
+    state.queued = true;
   }
 
   private checkGeneration(state: RunState, outcome: "refused" | "typed_not_submitted"): void {
@@ -1308,7 +1353,8 @@ export class SendProtocol {
         : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", liftDialog(blocks), askLifetimeOf(state.match));
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
-    const plain = rows.map((row) => steadyRow(plainOf(row)));
+    const plainRaw = rows.map(plainOf);
+    const plain = plainRaw.map(steadyRow);
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     return {
@@ -1317,13 +1363,14 @@ export class SendProtocol {
       rows,
       texts,
       plain,
+      plainRaw,
       frame,
       surface,
       cueStrength: readCues(rows, frame).strength,
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
       bareCues: readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
       hash: shortHash(texts.join("\n")),
-      // A running row is masked (steadyRow): a ticking timer is not a screen the person did not see.
+      // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
     };
   }
@@ -1440,6 +1487,8 @@ export class SendProtocol {
     let landing: Landing | null = null;
     const typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, (snap) => {
       if (s0.frame !== null) {
+        // Queued: the Surface's own claim decides, not only a cue that grew. A dialog over the box fails.
+        if (state.queued && (snap.frame === null || snap.surface.modal !== "none")) return "fail";
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
         const outside = state.queued ? turnOutsideUnchanged(s0, snap) : state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
@@ -1532,7 +1581,7 @@ export class SendProtocol {
     const { command, manual, queued } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
-      if (!command && cueAppeared(s0, snap)) {
+      if (!command && (cueAppeared(s0, snap) || (queued && snap.surface.modal !== "none"))) {
         why = "modal_cue";
         return "fail";
       }
@@ -1597,11 +1646,18 @@ export class SendProtocol {
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const { command, manual, queued } = state;
+    let dialog = false;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
+        // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
+        // The box gone, the Surface claiming a modal, or a cue that grew ends the request on its own.
+        if (queued && (snap.frame === null || snap.surface.modal !== "none" || cueAppeared(s0, snap))) {
+          dialog = true;
+          return "fail";
+        }
         if (snap.frame === null) return command ? "pass" : "wait";
-        // Queued behind a running turn: the running sign showed before Enter, so only the box letting
-        // go of the text is evidence that the harness took it.
+        // Queued: the running sign showed before Enter, so only the box letting go of the text is
+        // evidence that the harness took it.
         if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
         return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame) ? "pass" : "wait";
@@ -1621,6 +1677,7 @@ export class SendProtocol {
       return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
     });
     state.marks.s2 = result.snap;
+    if (dialog) throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: DIALOG_AFTER_ENTER }));
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
   }
 

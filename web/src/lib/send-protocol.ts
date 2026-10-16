@@ -358,7 +358,9 @@ export function readSend(reply: SendReply): SendReading {
   const offers = reply.offers.filter((offer) => offer !== "keys");
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
-  const toCard = surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable";
+  // A queued send whose Enter met a dialog points to the card too, whatever the dialog read as.
+  const toCard =
+    surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
   // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
   return { ...base, surface, detail: base.clear || cap !== null ? null : reply.detail, toCard, cap };
