@@ -654,3 +654,72 @@ describe("foldSurface", () => {
     expect(rowsOf("a\nb")).toHaveLength(2);
   });
 });
+
+// The 2026-10-16 incident on lane 8788: 37 sends refused `unconfirmed` with `modal: unreadable` while a
+// fork ran and Claude Code 2.1.301 drew its agents panel under a free box. The capture and the two
+// hand-built screens are labelled idle; each must read free, and the panel must be the frame's footer.
+describe("the agents panel under the box (incident 2026-10-16)", () => {
+  const PANEL = ["claude--v2301-fork-running-main-idle.txt", "claude--v2301-synth-agents-panel.txt", "claude--v2301-synth-agents-panel-walk-fails.txt"];
+
+  for (const name of PANEL) {
+    it(`${name} reads free, the panel walked as the footer and no cue read`, () => {
+      expect(LABELS.fixtures[name]?.state).toBe("idle");
+      const read = readScreen(fixtureRows(name), "claude", CLAUDE);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+      expect(read.frame?.volatile.footer).not.toBeNull();
+      expect(read.frame?.volatile.named.some((hit) => hit.name === "agents-panel-main")).toBe(true);
+      expect(read.cues?.cues).toEqual([]);
+    });
+  }
+  // The review of 2026-10-16: a dialog drawn between the statusline and the panel must never pass as
+  // a second footer. Each reads unreadable or as a dialog, never free.
+  const RULE40 = "─".repeat(40);
+  const PANEL_ROWS = ["", "  ● main", "  ◯ general-purpose   Reading a file     2m 3s · ↓ 120.1k tokens"];
+  const OVER_PANEL = {
+    "a Yes/No pointer list": ["  Do you want to proceed?", " ❯ 1. Yes", "   2. No"],
+    "a menu with its select hint": [" ❯ Option A", "   Option B", "  Enter to select · Esc to cancel"],
+    "a list ending in the view hint": [" ❯ item one", "   item two", "  Enter to select · ↓ to view"],
+  } satisfies Record<string, readonly string[]>;
+  for (const [what, dialog] of Object.entries(OVER_PANEL)) {
+    it(`${what} over the panel never reads free`, () => {
+      const rows = rowsOf(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", ...dialog, ...PANEL_ROWS].join("\n"));
+      const read = readScreen(rows, "claude", CLAUDE);
+      expect(modalWord(read.surface.modal)).not.toBe("none");
+      expect(isFree(read.surface)).toBe(false);
+    });
+  }
+
+  it("twelve agent rows under main do not read free", () => {
+    const agents = Array.from({ length: 12 }, (_, i) => `  ◯ agent-${String(i)}   working   ${String(i)}s · ↓ 1k tokens`);
+    const rows = rowsOf(["● done", "", RULE40, "❯ ", RULE40, "  ⏵⏵ auto mode on · 1 shell", "", "  ● main", ...agents].join("\n"));
+    expect(isFree(readScreen(rows, "claude", CLAUDE).surface)).toBe(false);
+  });
+
+  // The scratch-bridge lab on 2026-10-16 (Claude Code 2.1.301, a background agent running): the panel
+  // stays under the box while the box holds a draft; only the mode row drops its two hints.
+  it("the lab screens read free with an empty box and with a draft", () => {
+    for (const [name, composer, state] of [
+      ["claude--v2301-lab-agents-panel-empty.txt", "empty", "idle"],
+      ["claude--v2301-lab-agents-panel-draft.txt", "draft", "draft"],
+    ] as const) {
+      expect(LABELS.fixtures[name]?.state).toBe(state);
+      const read = readScreen(fixtureRows(name), "claude", CLAUDE);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer });
+      expect(read.frame?.volatile.named.map((hit) => hit.name)).toEqual(["agents-panel-main", "agents-panel-agent"]);
+      expect(read.cues?.cues).toEqual([]);
+    }
+  });
+
+  // Eleven agents: the panel shows five and "↓ 6 more". One ↓ focuses the tasks pill, two the panel.
+  it("the lab's eleven-agent panel reads free, with the tasks pill focused and with the panel focused", () => {
+    for (const name of ["claude--v2301-lab-agents-panel-more.txt", "claude--v2301-lab-agents-panel-tasks-pill.txt", "claude--v2301-lab-agents-panel-focused.txt"]) {
+      expect(LABELS.fixtures[name]?.state).toBe("idle");
+      const read = readScreen(fixtureRows(name), "claude", CLAUDE);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+      const names = read.frame?.volatile.named.map((hit) => hit.name) ?? [];
+      expect(names[0]).toBe("agents-panel-main");
+      expect(names.at(-1)).toBe("agents-panel-more");
+      expect(read.cues?.cues).toEqual([]);
+    }
+  });
+});

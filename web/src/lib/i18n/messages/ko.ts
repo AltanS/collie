@@ -422,6 +422,7 @@ export const ko: Dictionary = {
   "composer.protocol.commit": "여기에 입력",
   "composer.protocol.keys": "키",
   "composer.protocol.openKeys": "키 열기",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "오늘 Collie가 {harness} {version}에서 이 화면을 {count}회 읽지 못했습니다. 화면을 확인한 다음 확인 후 입력을 탭하십시오.",
   "composer.protocol.commitCap": "확인 후 입력",
   "sendReceipts.title": "최근 전송",

@@ -429,6 +429,7 @@ export const de: Dictionary = {
   "composer.protocol.commit": "Hier tippen",
   "composer.protocol.keys": "Tasten",
   "composer.protocol.openKeys": "Tasten öffnen",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie konnte diesen Bildschirm auf {harness} {version} heute {count}-mal nicht lesen. Prüfe den Bildschirm, wähle dann Bestätigen und tippen.",
   "composer.protocol.commitCap": "Bestätigen und tippen",
   "sendReceipts.title": "Kürzliche Sendungen",

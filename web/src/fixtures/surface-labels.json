@@ -841,6 +841,36 @@
    "version": "2.1.301",
    "state": "idle"
   },
+  "claude--v2301-fork-running-main-idle.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-draft.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "draft"
+  },
+  "claude--v2301-lab-agents-panel-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-focused.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-more.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-lab-agents-panel-tasks-pill.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
   "claude--v2301-hold-subagent.txt": {
    "harness": "claude",
    "version": "2.1.301",
@@ -865,6 +895,16 @@
    "harness": "claude",
    "version": "2.1.301",
    "state": "running"
+  },
+  "claude--v2301-synth-agents-panel-walk-fails.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
+  },
+  "claude--v2301-synth-agents-panel.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "idle"
   },
   "claude--v2301-working-draft--w100.txt": {
    "harness": "claude",

@@ -75,6 +75,24 @@ describe("the bottom cluster", () => {
     expect(readCues(rows, frame).cluster.length).toBe(12);
   });
 
+  // The 2026-10-16 incident on lane 8788: the agents panel's two agent rows read as a checkbox list
+  // and its "↓ to view" hint as a key hint, so a free box read unreadable.
+  it("skips the named panel on a walk that holds, and reads it when the walk fails", () => {
+    const panel = ["  ● main", "  ◯ general-purpose   Reading a file   2m 3s · ↓ 120.1k tokens", "  ◯ fork-name   a task   31s · ↓ 40.2k tokens"];
+    const mode = "  ⏵⏵ bypass permissions on · 2 background tasks · ↓ to view";
+    const held = plainRows(["● done", RULE, "❯ ", RULE, mode, "", ...panel, "", "  ↓ to manage"]);
+    const heldFrame = findInputFrame(held, IDLE)!;
+    expect(heldFrame.volatile.named).toHaveLength(5);
+    expect(readCues(held, heldFrame).strength).toBe("none");
+    // Too many statusline rows: the walk fails, nothing is named, and the panel is in sight again.
+    const tall = Array.from({ length: IDLE.volatile.below.maxRows }, (_, i) => `  status ${String(i)}`);
+    const failed = plainRows(["● done", RULE, "❯ ", RULE, ...tall, mode, "", ...panel, "", "  ↓ to manage"]);
+    const failedFrame = findInputFrame(failed, IDLE)!;
+    expect(failedFrame.volatile.status).toBeNull();
+    expect(failedFrame.volatile.named).toEqual([]);
+    expect(readCues(failed, failedFrame).strength).not.toBe("none");
+  });
+
   it(`ends the no-frame cluster at ${String(CLUSTER_GAP_ROWS)} blank rows`, () => {
     const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "a reply", "more reply", "last line"]);
     const cues = readCues(rows, null);

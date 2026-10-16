@@ -126,6 +126,16 @@ const NEUTRAL = new Set([
   "claude--v2301-working-draft--w100.txt",
   "claude--v2301-working-queued-message--w100.txt",
   "claude--v2301-working-quiet--w100.txt",
+  // Claude Code 2.1.301's agents panel under a free box while a fork runs (the 2026-10-16 incident
+  // on lane 8788): an ordinary box with a footer, no dialog.
+  "claude--v2301-fork-running-main-idle.txt",
+  "claude--v2301-synth-agents-panel.txt",
+  "claude--v2301-synth-agents-panel-walk-fails.txt",
+  "claude--v2301-lab-agents-panel-empty.txt",
+  "claude--v2301-lab-agents-panel-draft.txt",
+  "claude--v2301-lab-agents-panel-more.txt",
+  "claude--v2301-lab-agents-panel-tasks-pill.txt",
+  "claude--v2301-lab-agents-panel-focused.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

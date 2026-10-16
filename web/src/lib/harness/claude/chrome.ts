@@ -394,11 +394,16 @@ function tailNamesAMenu(text: string, texts: string[]): boolean {
 
 // Claude's own status hints. They read like a modal's "<key> to <verb>" footer but belong to the
 // live composer: the default footer paints "esc to interrupt" while a turn runs and "↓ to manage"
-// while background tasks or monitors exist. A modal's footer says "Esc to cancel" / "to close" /
+// while background tasks or monitors exist. Claude Code 2.1.301 paints "↓ to view" on the mode row
+// while background tasks run (the 2026-10-16 incident on lane 8788, the agents panel under the box). A modal's footer says "Esc to cancel" / "to close" /
 // "to select", never these. The footer is clipped with "…" on a narrow pane, so "esc to inter…" is
 // the same hint cut short.
 const ESC_TO_INTERRUPT = /^esc to (?:interrupt|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
 const DOWN_TO_MANAGE = /^↓ to (?:manage|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
+const DOWN_TO_VIEW = /^↓ to (?:view|v(?:i(?:e)?)?…)$/i;
+// Claude Code 2.1.301 with the tasks pill focused (one ↓ from the box, lab 2026-10-16): the mode
+// row's last segment reads "Enter to view tasks", or that hint cut short.
+const ENTER_TO_VIEW_TASKS = /^enter to (?:view tasks|view t(?:a(?:s(?:k)?)?)?…|v(?:i(?:e(?:w)?)?)?…)$/i;
 
 // Claude Code 2.1.291 prints "ctrl+g to edit in <editor>" while the draft holds more than one line:
 // right-aligned on the statusline's row, or on a row of its own at 40 columns
@@ -409,7 +414,7 @@ const DRAFT_EDIT_HINT = /^ctrl\+g to edit\b[^·]*$/i;
 
 function isStatusHint(segment: string, draftEditHint: boolean): boolean {
   const t = segment.trim();
-  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t) || (draftEditHint && DRAFT_EDIT_HINT.test(t));
+  return ESC_TO_INTERRUPT.test(t) || DOWN_TO_MANAGE.test(t) || DOWN_TO_VIEW.test(t) || ENTER_TO_VIEW_TASKS.test(t) || (draftEditHint && DRAFT_EDIT_HINT.test(t));
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   dayOf,
   KEEP_DAYS,
   MAX_EXAMPLES,
+  MAX_NEGATIVE_EXAMPLES,
   parseDay,
   readDays,
   maskRow,
@@ -361,6 +362,48 @@ describe("the examples folder", () => {
     expect(names).toHaveLength(MAX_EXAMPLES);
     expect(names[0]).toContain("req-000007");
     expect(names.at(-1)).toContain(`req-${String(MAX_EXAMPLES + 6).padStart(6, "0")}`);
+  });
+
+  // The review of 2026-10-16: refusals repeat on one screen, so they get their own small cap and
+  // one file per frame hash and reason per day, and never push the sent examples out.
+  const refusal = (n: number, frame: string, reason = "unconfirmed") => ({
+    ...entry(n),
+    outcome: "refused" as const,
+    reason,
+    modal: "unreadable" as const,
+    frame,
+  });
+
+  test("refused examples keep their own cap of ten, and the sent examples keep their fifty", () => {
+    const l = ledger();
+    for (let n = 0; n < MAX_EXAMPLES; n++) {
+      clock.now = START + n;
+      l.example(entry(n));
+    }
+    for (let n = 0; n < MAX_NEGATIVE_EXAMPLES + 4; n++) {
+      clock.now = START + 1000 + n;
+      l.example(refusal(n, `f${String(n).padStart(4, "0")}`));
+    }
+    const names = readdirSync(l.examplesDir).toSorted();
+    const negative = names.filter((name) => name.includes("-refused-"));
+    expect(negative).toHaveLength(MAX_NEGATIVE_EXAMPLES);
+    expect(negative[0]).toContain("f0004");
+    expect(names.length - negative.length).toBe(MAX_EXAMPLES);
+  });
+
+  test("a refusal files once per frame hash and reason per day", () => {
+    const l = ledger();
+    for (let n = 0; n < 5; n++) {
+      clock.now = START + n;
+      l.example(refusal(n, "same0"));
+    }
+    l.example(refusal(9, "same0", "not_free"));
+    l.example(refusal(10, "other"));
+    expect(readdirSync(l.examplesDir)).toHaveLength(3);
+    // The next day the same screen and reason file again.
+    clock.now = START + 24 * 60 * 60 * 1000;
+    l.example(refusal(11, "same0"));
+    expect(readdirSync(l.examplesDir)).toHaveLength(4);
   });
 
   test("maskRow keeps whitespace and box drawing, and hides letters, digits and symbols in every script", () => {

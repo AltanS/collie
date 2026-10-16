@@ -413,6 +413,7 @@ export const zh: Dictionary = {
   "composer.protocol.commit": "在此输入",
   "composer.protocol.keys": "按键",
   "composer.protocol.openKeys": "打开按键",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie 今天在 {harness} {version} 上未能读取此屏幕 {count} 次。请检查屏幕，然后点按“确认并键入”。",
   "composer.protocol.commitCap": "确认并键入",
   "sendReceipts.title": "最近发送记录",

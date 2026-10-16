@@ -99,6 +99,24 @@ describe("readSend", () => {
     expect(read).toMatchObject({ clear: false, note: "unknown", offers: [], toCard: true, detail: "A dialog opened as the message went in. Check the card before you answer it." });
   });
 
+  // The 2026-10-16 field case: "Collie cannot read this screen" stood twice, the phone's sentence and
+  // the bridge's English under it.
+  it("drops the bridge's sentence only where it repeats the phone's own, and keeps it everywhere else", () => {
+    const detail = "Collie cannot read this screen. Check the pane, then tap Type here.";
+    const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" };
+    expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"], { surface: unreadable, detail })).detail).toBeNull();
+    for (const reason of ["stale_surface", "busy", "pane_gone", "draft_present"]) {
+      expect(readSend(reply("refused", reason, ["commit"], { detail: "The bridge's line." })).detail).toBeNull();
+    }
+    // not_free: the plain line goes, a line that names what is open stays.
+    expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "The input box is not free." })).detail).toBeNull();
+    expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "Something is open at the input box." })).detail).toBe("Something is open at the input box.");
+    expect(readSend(reply("refused", "turn_running", [], { surface: RUNNING, detail: "A command waits until the turn ends." })).detail).toBe("A command waits until the turn ends.");
+    expect(readSend(reply("refused", "multiline", ["keys"], { detail: "Send one line at a time." })).detail).toBe("Send one line at a time.");
+    expect(readSend(reply("refused", "a_reason_from_a_newer_bridge", ["keys"], { detail: "A newer bridge's reason." })).detail).toBe("A newer bridge's reason.");
+    expect(readSend(reply("unknown", "a_reason_from_a_newer_bridge", ["keys"], { detail: "A newer bridge's reason." })).detail).toBe("A newer bridge's reason.");
+  });
+
   it("turn_running is the agent at work, its own sentence, never that the box is not free", () => {
     expect(readSend(reply("refused", "turn_running", ["keys"], { surface: RUNNING }))).toMatchObject({ clear: false, note: "agentBusy", offers: [], surface: "running" });
     expect(sendNote("refused", "turn_running")).toBe("agentBusy");
@@ -204,9 +222,9 @@ describe("the cap's extra confirm", () => {
     expect(reading).toMatchObject({ clear: false, note: "capConfirm", offers: ["commit"], cap: CAP, detail: null });
   });
 
-  it("an unconfirmed refusal with no cap stays the ordinary one", () => {
+  it("an unconfirmed refusal with no cap stays the ordinary one, its own sentence with no English under it", () => {
     const reading = readSend(readSendReply(body("unconfirmed", undefined))!);
-    expect(reading).toMatchObject({ note: "unconfirmed", cap: null, detail: "The bridge's own English." });
+    expect(reading).toMatchObject({ note: "unconfirmed", cap: null, detail: null });
   });
 
   it("a cap on any other refusal is ignored", () => {

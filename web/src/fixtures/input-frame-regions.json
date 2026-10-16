@@ -866,6 +866,25 @@
   }
  },
  {
+  "fixture": "claude--v2301-fork-running-main-idle.txt",
+  "frame": {
+   "top": 31,
+   "prompt": 32,
+   "bottom": 33,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 34,
+    "last": 36
+   },
+   "footer": {
+    "first": 38,
+    "last": 39
+   }
+  }
+ },
+ {
   "fixture": "claude--v2301-hold-subagent.txt",
   "frame": {
    "top": 16,
@@ -917,6 +936,101 @@
   }
  },
  {
+  "fixture": "claude--v2301-lab-agents-panel-draft.txt",
+  "frame": {
+   "top": 33,
+   "prompt": 34,
+   "bottom": 35,
+   "label": "lab-sample",
+   "text": "draft text in the box",
+   "placeholder": false,
+   "status": {
+    "first": 36,
+    "last": 36
+   },
+   "footer": {
+    "first": 38,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-empty.txt",
+  "frame": {
+   "top": 33,
+   "prompt": 34,
+   "bottom": 35,
+   "label": "lab-sample",
+   "text": "reply with the single word ping",
+   "placeholder": true,
+   "status": {
+    "first": 36,
+    "last": 36
+   },
+   "footer": {
+    "first": 38,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-focused.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-more.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-lab-agents-panel-tasks-pill.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": "lab-sample",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 31
+   },
+   "footer": {
+    "first": 33,
+    "last": 39
+   }
+  }
+ },
+ {
   "fixture": "claude--v2301-queued-taken--w100.txt",
   "frame": {
    "top": 34,
@@ -946,6 +1060,44 @@
     "last": 39
    },
    "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-synth-agents-panel-walk-fails.txt",
+  "frame": {
+   "top": 29,
+   "prompt": 30,
+   "bottom": 31,
+   "label": "1.22.0",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 32,
+    "last": 34
+   },
+   "footer": {
+    "first": 36,
+    "last": 40
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-synth-agents-panel.txt",
+  "frame": {
+   "top": 30,
+   "prompt": 31,
+   "bottom": 32,
+   "label": "1.22.0",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 33,
+    "last": 35
+   },
+   "footer": {
+    "first": 37,
+    "last": 39
+   }
   }
  },
  {

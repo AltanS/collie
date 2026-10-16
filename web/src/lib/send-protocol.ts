@@ -393,8 +393,24 @@ export function readSend(reply: SendReply): SendReading {
   const toCard =
     surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
-  // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
-  return { ...base, surface, detail: base.clear || cap !== null ? null : reply.detail, toCard, cap };
+  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply) ? null : reply.detail, toCard, cap };
+}
+
+/**
+ * Whether the phone's own sentence already says what the bridge's English detail says (the
+ * 2026-10-16 field case, "Collie cannot read this screen" twice). Only for a refusal, and only for
+ * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
+ * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
+ * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
+ * (a `not_free` that names what is open, a dialog that Enter may have answered).
+ */
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present"]);
+const PLAIN_NOT_FREE = "The input box is not free.";
+
+function ownSentence(reply: SendReply): boolean {
+  if (reply.outcome !== "refused" || reply.reason === null) return false;
+  if (REPEATS_THE_NOTE.has(reply.reason)) return true;
+  return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;
 }
 
 /** The mode a tap on an offer sends, or null for one that sends nothing (`cancel`, `keys`). A commit keeps a command a command. */

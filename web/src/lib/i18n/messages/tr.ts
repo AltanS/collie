@@ -366,6 +366,7 @@ export const tr: Dictionary = {
   "composer.protocol.commit": "Buraya yaz",
   "composer.protocol.keys": "Tuşlar",
   "composer.protocol.openKeys": "Tuşları Aç",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie, bugün {harness} {version} üzerinde bu ekranı {count} kez okuyamadı. Ekranı kontrol edin, ardından Onayla ve yaz'a dokunun.",
   "composer.protocol.commitCap": "Onayla ve yaz",
   "sendReceipts.title": "Son gönderilenler",

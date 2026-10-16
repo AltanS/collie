@@ -100,6 +100,15 @@ export interface CardDockProps {
   wrap?: boolean;
 }
 
+/** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
+ *  docks a card too, but it answers nothing. */
+const DIALOG_CARD_KINDS: ReadonlySet<Block["kind"]> = new Set<Block["kind"]>(["prompt-select", "wizard", "preview-select", "multi-select", "menu", "unread-dialog"]);
+
+/** Whether the dock shows a dialog card for these blocks: the place "Answer the dialog" goes to. */
+export function hasDialogCard(blocks: CardDockProps["blocks"]): boolean {
+  return blocks.some((block) => DIALOG_CARD_KINDS.has(block.kind));
+}
+
 /** The one card on screen, as a React element, or null when every block is raw. */
 function liftedCard({
   blocks,

@@ -423,6 +423,7 @@ export const ja: Dictionary = {
   "composer.protocol.commit": "ここに入力",
   "composer.protocol.keys": "キー",
   "composer.protocol.openKeys": "キーを開く",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "本日、{harness} {version} でCollieがこの画面を読み取れなかった回数は{count}回です。画面を確認し、「確認して入力」をタップしてください。",
   "composer.protocol.commitCap": "確認して入力",
   "sendReceipts.title": "最近の送信",

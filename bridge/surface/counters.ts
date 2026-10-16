@@ -33,8 +33,13 @@ export const WRITE_EVERY_MS = 60_000;
 export const DEFAULT_CAP = 5;
 /** The window the cap counts in. */
 export const CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
-/** The most example files kept; the oldest go first. */
+/** The most sent example files kept; the oldest go first. */
 export const MAX_EXAMPLES = 50;
+/** The most refused (negative) example files kept, on their own cap; the oldest go first. One per
+ *  frame hash and reason per day, so one screen refused many times fills one slot. */
+export const MAX_NEGATIVE_EXAMPLES = 10;
+/** The marker in a negative example's file name: `<at>-refused-<day>-<frame>-<reason>.json`. */
+const NEGATIVE_MARK = "-refused-";
 /** The most frame hashes one row keeps per day. A hash is nine bytes of a day's cluster; a few hundred is plenty. */
 export const MAX_FRAME_HASHES = 200;
 /** The inbox is cut back to its newest lines past this size. */
@@ -126,6 +131,11 @@ export interface CapState {
 }
 
 /** `YYYY-MM-DD` of a moment, in UTC, so a day file does not move with the zone. */
+/** A piece of a file name: letters, digits, `_` and `.` only; anything else becomes `_`. */
+function safeName(piece: string): string {
+  return piece.replace(/[^A-Za-z0-9_.]/gu, "_").slice(0, 64);
+}
+
 export function dayOf(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -365,15 +375,34 @@ export interface InboxEntry {
   readonly count: number;
 }
 
-/** A probed send that settled, kept as a positive example: the bottom cluster as a shape, the text as a length. */
+/** A cue a refusal's read found: its kind, and its row as a shape. */
+export interface ExampleCue {
+  readonly kind: string;
+  /** The cue's row inside `cluster`, or null when it sits above the cluster. */
+  readonly at: number | null;
+  /** The cue's row as read. Masked like the cluster before it is written. */
+  readonly row: string;
+}
+
+/**
+ * A request kept as an example: the bottom cluster as a shape, the text as a length. A probed send
+ * that settled is a positive one. A refusal whose modal read `unreadable` or `unknown` is a negative
+ * one, with its reason, its modal and the cues that read: the shape a reader may have to learn.
+ */
 export interface ExampleEntry {
   readonly requestId: string;
   readonly harness: string;
   readonly version: string;
   readonly profileId: string;
   readonly status: string;
-  readonly outcome: "sent" | "effective";
-  /** The bottom cluster of S0, rows as shapes. */
+  readonly outcome: "sent" | "effective" | "refused";
+  /** A refusal's reason. */
+  readonly reason?: string;
+  /** A refusal's modal. */
+  readonly modal?: "unreadable" | "unknown";
+  /** A refusal's cues, read with the frame the profile found. */
+  readonly cues?: readonly ExampleCue[];
+  /** The bottom cluster of the read, rows as shapes: S0 for a send, the last read for a refusal. */
   readonly cluster: readonly string[];
   /** The short hash of the cluster, the same one a refusal names. */
   readonly frame: string;
@@ -559,21 +588,32 @@ export class SurfaceLedger {
     }
   }
 
-  /** The folder of positive examples. `collie doctor` names it. */
+  /** The folder of examples, positive and negative. `collie doctor` names it. */
   get examplesDir(): string {
     return join(this.dir, "examples");
   }
 
-  /** A probed send that settled: its S0 bottom cluster as a shape, at most {@link MAX_EXAMPLES} files, oldest dropped. */
+  /** A probed send that settled, or a refusal over a screen Collie could not read: its bottom cluster
+   *  and its cue rows as shapes. Sent examples keep at most {@link MAX_EXAMPLES} files and refused ones
+   *  at most {@link MAX_NEGATIVE_EXAMPLES}, each cap on its own, oldest dropped. A refusal files once per
+   *  frame hash and reason per day: the same screen refused again adds nothing. */
   example(entry: ExampleEntry): void {
     try {
       mkdirSync(this.examplesDir, { recursive: true, mode: 0o700 });
       const at = this.now();
-      const name = `${String(at).padStart(14, "0")}-${entry.requestId}.json`;
-      const body = { at, ...entry, cluster: entry.cluster.map(maskRow), text: `<typed:${String(entry.textLength)}>` };
+      const negative = entry.outcome === "refused";
+      const stamp = String(at).padStart(14, "0");
+      const key = `${NEGATIVE_MARK}${dayOf(at)}-${safeName(entry.frame)}-${safeName(entry.reason ?? "-")}`;
+      const present = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json"));
+      if (negative && present.some((file) => file.slice(stamp.length) === `${key}.json`)) return;
+      const name = negative ? `${stamp}${key}.json` : `${stamp}-${entry.requestId}.json`;
+      const masked = { at, ...entry, cluster: entry.cluster.map(maskRow), text: `<typed:${String(entry.textLength)}>` };
+      const body = entry.cues === undefined ? masked : { ...masked, cues: entry.cues.map((cue) => ({ ...cue, row: maskRow(cue.row) })) };
       writeFileSync(join(this.examplesDir, name), `${JSON.stringify(body)}\n`, { mode: 0o600 });
       const files = readdirSync(this.examplesDir).filter((file) => file.endsWith(".json")).toSorted();
-      for (const old of files.slice(0, Math.max(0, files.length - MAX_EXAMPLES))) rmSync(join(this.examplesDir, old), { force: true });
+      const group = files.filter((file) => file.includes(NEGATIVE_MARK) === negative);
+      const keep = negative ? MAX_NEGATIVE_EXAMPLES : MAX_EXAMPLES;
+      for (const old of group.slice(0, Math.max(0, group.length - keep))) rmSync(join(this.examplesDir, old), { force: true });
     } catch (err) {
       this.warn(`[surface] could not write an example: ${err instanceof Error ? err.message : String(err)}`);
     }

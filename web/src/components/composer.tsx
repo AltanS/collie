@@ -80,7 +80,7 @@ import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
 import { useSttRecorder } from "@/hooks/use-stt-recorder";
 import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
-import { phoneRefusal, readingRefusal, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
+import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -128,6 +128,9 @@ interface ComposerProps {
    * no text and no key. The same tap is the control of a refusal notice whose screen holds an ask or
    * an overlay Collie cannot read. */
   onAnswerDialog?: () => void;
+  /** A dialog card stands in the card dock. A refusal notice offers "Answer the dialog" only then: an
+   *  unreadable screen with no card has nothing to go to (the 2026-10-16 field case). */
+  dialogCard?: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -334,7 +337,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -599,7 +602,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // nowhere in the header, which a phone has scrolled off or put under the keyboard when Send is tapped
   // (field case 2026-10-15, M56 spec 07): a refusal, a text left in the box, a send that ended unknown,
   // no answer, a link that is down, a dialog that owns the keys.
-  const [sendRefusal, setSendRefusal] = useState<SendRefusal | null>(null);
+  const [sendRefusal, setSendRefusalState] = useState<SendRefusal | null>(null);
+  // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
+  // the one the person hid with its ✕ or the offers' ✕. A hidden notice stays hidden until a refusal
+  // reads another Surface (its hash or its revision) or says other words, or a tap meets the same
+  // refusal with no offers (see setSendRefusal).
+  const [shownRefusalKey, setShownRefusalKey] = useState<string | null>(null);
+  const [hiddenRefusalKey, setHiddenRefusalKey] = useState<string | null>(null);
+  /**
+   * Raise or clear the notice. `on` is the Surface the bridge's answer carried, else the one on screen.
+   * A refusal with no offers that repeats the hidden notice shows it again: with no offers strip,
+   * the notice is the tap's only visible answer (review of 2026-10-16). With offers, the strip answers.
+   */
+  function setSendRefusal(next: SendRefusal | null, on: Surface | null = shownSurface, offers = false) {
+    setSendRefusalState(next);
+    const key = next === null ? null : refusalKey(next, on);
+    setShownRefusalKey(key);
+    if (key !== null && !offers) setHiddenRefusalKey((hidden) => (hidden === key ? null : hidden));
+  }
+  const hideRefusal = () => setHiddenRefusalKey(shownRefusalKey);
   // The reason a destructive line is held for a second tap, said at the Send slot (it was a header line,
   // which holds nothing a person must act on, M56 spec 07). Shown only while the confirm is armed.
   const [destructiveNote, setDestructiveNote] = useState<string | null>(null);
@@ -1144,8 +1165,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return true;
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
-      setProtocolOffer(reading.offers.length === 0 || resend !== undefined ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
-      setSendRefusal(readingRefusal(reading));
+      const offered = reading.offers.length > 0 && resend === undefined;
+      setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
+      setSendRefusal(readingRefusal(reading), reply.surface ?? shownSurface, offered);
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
@@ -1218,10 +1240,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The refusal's reason at the thumb. Not in Type mode, and not beside the password notice, which
   // already says why at this spot. With an ask it stands beside the "Answer the dialog" word: a send
   // that came from a quick reply has no other place to be told.
-  const refusalShown = sendRefusal !== null && !direct.active && noEcho === null;
+  const refusalShown = sendRefusal !== null && shownRefusalKey !== hiddenRefusalKey && !direct.active && noEcho === null;
   // The way on, as buttons in the notice: the card, the screen, the Keys dock. Each only where it can do
   // something: the Screen when it is not showing, the Keys dock when it can open and is not open.
-  const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined;
+  const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined && dialogCard;
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
@@ -1794,7 +1816,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
         <Collapse open={protocolOffer !== null}>
           {protocolOffer !== null && (
-            <SendOfferStrip offers={protocolOffer.offers} disabled={sending || locked} onOffer={onProtocolOffer} onDismiss={() => setProtocolOffer(null)} capConfirm={protocolOffer.capAck} />
+            <SendOfferStrip
+              offers={protocolOffer.offers}
+              disabled={sending || locked}
+              onOffer={onProtocolOffer}
+              // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type
+              // here" with no Type here to tap is a sentence about a button that is gone.
+              onDismiss={() => {
+                setProtocolOffer(null);
+                hideRefusal();
+              }}
+              capConfirm={protocolOffer.capAck}
+            />
           )}
         </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
@@ -1860,6 +1893,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {sendRefusal !== null && (
             <SendRefusalNotice
               refusal={sendRefusal}
+              onDismiss={hideRefusal}
               action={
                 refusalCard || refusalScreen || refusalKeys ? (
                   <span className="flex flex-wrap justify-end gap-1">

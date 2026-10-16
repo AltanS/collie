@@ -76,7 +76,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { isRunningRow, readCues, readCuesFor, runningSign } from "../../web/src/lib/surface/cues.ts";
+import { isRunningRow, readCues, readCuesFor, runningSign, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -315,6 +315,8 @@ interface Snap {
   readonly frame: Frame | null;
   readonly surface: Surface;
   readonly cueStrength: "none" | "weak" | "strong";
+  /** The cues of the framed read behind {@link cueStrength}, for a refusal's example. */
+  readonly cues: readonly Cue[];
   /** The generic cues of the bottom cluster read as if no frame were found: a popup under the box
    *  that walks like a status row escapes the framed read, never this one. Compared with S0's. */
   readonly bareCues: "none" | "weak" | "strong";
@@ -335,6 +337,13 @@ function plainOf(row: FrameRow): string {
   let out = "";
   for (const run of row.segments) if (run.dim !== true) out += run.text;
   return out.trimEnd();
+}
+
+/** The rows with each row the profile names as a footer row (`frame.volatile.named`) read as blank. */
+function withoutNamedRows(rows: readonly FrameRow[], frame: Frame | null): readonly FrameRow[] {
+  if (frame === null || frame.volatile.named.length === 0) return rows;
+  const named = new Set(frame.volatile.named.map((hit) => hit.row));
+  return rows.map((row, i) => (named.has(i) ? { segments: [] } : row));
 }
 
 /** The index past the last non-blank row. */
@@ -1892,7 +1901,7 @@ export class SendProtocol {
     const outcome = this.settleOpen(state, end.outcome);
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap);
     this.deps.store.settle(state.record.id, receipt);
-    this.count(state, receipt);
+    this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
     return answerWith({ receipt, offers: end.extra.offers ?? offersFor(outcome, receipt.reason, framed) }, end.extra);
   }
@@ -1904,10 +1913,11 @@ export class SendProtocol {
   }
 
   /**
-   * One settled request into the counters, and a probed send that went out into the examples folder.
-   * Never throws and never waits on anything: a counter is not a verdict.
+   * One settled request into the counters, and an example into the examples folder: a probed send
+   * that went out, or a refusal whose modal read `unreadable` or `unknown` (`refusedOn`, the answer's
+   * Surface, else the last read's). Never throws and never waits on anything: a counter is not a verdict.
    */
-  private count(state: RunState, receipt: SendReceipt): void {
+  private count(state: RunState, receipt: SendReceipt, refusedOn?: Surface): void {
     const { ledger } = this.deps;
     if (ledger === undefined) return;
     try {
@@ -1926,9 +1936,38 @@ export class SendProtocol {
           textLength: receipt.textLength,
         });
       }
+      if (receipt.outcome === "refused") this.refusalExample(state, receipt, key, refusedOn);
     } catch (err) {
       console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * A refusal over a screen Collie could not read, kept as a negative example: the last read's bottom
+   * cluster, and each cue of its framed read with its row. The ledger masks every row the same way as
+   * a sent example's. Refusals keep their own cap, one per frame hash and reason a day.
+   */
+  private refusalExample(state: RunState, receipt: SendReceipt, key: CounterKey, refusedOn: Surface | undefined): void {
+    const snap = state.lastRead ?? state.marks.s0;
+    if (snap === null) return;
+    const modal = (refusedOn ?? snap.surface).modal;
+    if (modal !== "unreadable" && modal !== "unknown") return;
+    const win = bottomWindow(snap.plainRaw);
+    this.deps.ledger?.example({
+      requestId: receipt.requestId,
+      ...key,
+      outcome: "refused",
+      reason: receipt.reason ?? "-",
+      modal,
+      cues: snap.cues.map((cue) => ({
+        kind: cue.kind,
+        at: cue.row >= win.first && cue.row < win.end ? cue.row - win.first : null,
+        row: snap.texts[cue.row] ?? "",
+      })),
+      cluster: snap.plainRaw.slice(win.first, win.end),
+      frame: snap.rowsHash,
+      textLength: receipt.textLength,
+    });
   }
 
   // ── The steps ──
@@ -2270,8 +2309,10 @@ export class SendProtocol {
     const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const plain = plainRaw.map((row) => steadyRow(row, signs));
     const win = bottomWindow(texts);
-    const framed = readCuesFor(rows, frame, idle);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
+    const framed = readCuesFor(rows, frame, idle);
+    // The frameless reads never see a row the profile names as a footer row (the frame found it).
+    const bare = withoutNamedRows(rows, frame);
     const snap: Snap = {
       revision: grid.value.revision,
       gateRevision,
@@ -2283,6 +2324,7 @@ export class SendProtocol {
       surface,
       cueStrength: framed.strength,
       cuesUnderBox: frame !== null && framed.cues.length > 0 && framed.cues.every((cue) => cue.row > frame.bottom),
+      cues: framed.cues,
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
       // A harness that draws its dialogs in the box's place (`idle.dialogsInBox`) keeps them in.
       // A box with a blank top edge has no rule between it and the transcript, and that transcript
@@ -2290,11 +2332,11 @@ export class SendProtocol {
       // it), which reads as a pointer list with no anchor. There only the rows under the box count.
       bareCues:
         frame !== null && idle?.dialogsInBox === true
-          ? readCuesFor(rows, frame, idle).strength
+          ? framed.strength
           : frame !== null && idle?.frame.top.blank === true
-            ? readCues(rows.slice(frame.bottom + 1), null).strength
-            : readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
-      belowCues: frame === null ? "none" : readCues(rows.slice(frame.bottom + 1), null).strength,
+            ? readCues(bare.slice(frame.bottom + 1), null).strength
+            : readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null).strength,
+      belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null).strength,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.

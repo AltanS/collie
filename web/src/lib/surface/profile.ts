@@ -85,6 +85,14 @@ export interface FrameAnchor {
   readonly open?: true;
 }
 
+/** A named row under the box (`idle.volatile.below.footerRows`). */
+export interface FooterRow {
+  /** What the row is, for a trace or a log line. */
+  readonly name: string;
+  /** A regular expression source, matched on the row with its trailing space cut. */
+  readonly pattern: string;
+}
+
 /**
  * The rows a box always draws under the draft that hold no draft text (a model row inside the box,
  * and the padding between it and the bottom edge). The interior walk (`idle.frame.walk`) takes them
@@ -193,6 +201,13 @@ export interface Profile {
          * under the box. Optional.
          */
         readonly hints?: readonly string[];
+        /**
+         * Rows the harness draws under its box that are neither a statusline nor a dialog, each with a
+         * name and a regular expression source (Claude Code's agents panel and its hints). The frame
+         * walk steps over them: a run of them at the bottom, set apart by a blank row, is a footer of
+         * its own. No modal cue reads a row one of them matches. Optional.
+         */
+        readonly footerRows?: readonly FooterRow[];
       };
     };
     /**
@@ -483,13 +498,32 @@ function volatileAbove(node: JsonObject): Profile["idle"]["volatile"]["above"] {
   return { maxRows, losesText: true };
 }
 
-/** `idle.volatile.below`: its row counts, and the hint rows only when the profile names them. */
+/** `idle.volatile.below.footerRows`: each row a unique name and a pattern that cannot match a blank row. */
+function footerRows(value: JsonValue | undefined): FooterRow[] {
+  const path = "idle.volatile.below.footerRows";
+  const names = new Set<string>();
+  return list(value, path).map((item, i) => {
+    const at = `${path}[${String(i)}]`;
+    const node = object(item, at);
+    const name = text(field(node, "name", at), `${at}.name`);
+    if (names.has(name)) fail(`${at}.name`, "is used twice");
+    names.add(name);
+    const compiled = pattern(field(node, "pattern", at), `${at}.pattern`);
+    if (compiled.test("")) fail(`${at}.pattern`, "must not match a blank row");
+    return { name, pattern: compiled.source };
+  });
+}
+
+/** `idle.volatile.below`: its row counts, and the hint rows and named footer rows only when the profile names them. */
 function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const maxRows = whole(field(node, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0);
   const footerMaxRows = whole(field(node, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0);
-  if (node.hints === undefined) return { maxRows, footerMaxRows };
-  const hints = list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source);
-  return { maxRows, footerMaxRows, hints };
+  const base: Profile["idle"]["volatile"]["below"] = { maxRows, footerMaxRows };
+  const withHints =
+    node.hints === undefined
+      ? base
+      : { ...base, hints: list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source) };
+  return node.footerRows === undefined ? withHints : { ...withHints, footerRows: footerRows(node.footerRows) };
 }
 /** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
 function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {

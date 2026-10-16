@@ -66,13 +66,23 @@ export interface Frame {
    *  in the placeholder's SGR attribute. An empty interior is not a placeholder. */
   readonly placeholder: boolean;
   /** Rows a fold must ignore when it compares two reads. `above` is the band over the top edge;
-   *  `status` and `footer` are the run under the bottom edge, when the rows there walk as one. */
+   *  `status` and `footer` are the run under the bottom edge, when the rows there walk as one.
+   *  `named` lists the rows of the profile's named footer run (`idle.volatile.below.footerRows`) on a
+   *  walk that holds, and nothing on one that fails: no modal cue reads these rows. */
   readonly volatile: {
     readonly above: RowSpan | null;
     readonly status: RowSpan | null;
     readonly footer: RowSpan | null;
+    readonly named: readonly NamedRow[];
   };
   readonly anchorsHit: readonly FrameAnchorHit[];
+}
+
+/** A row under the bottom edge that a named footer row of the profile matches. */
+export interface NamedRow {
+  readonly row: number;
+  /** The profile's name for the row. */
+  readonly name: string;
 }
 
 /** One anchor, compiled: its pattern, the cells it must span, its column, and whether it is a blank row. */
@@ -96,10 +106,16 @@ interface CompiledInterior {
   readonly under: RegExp | null;
 }
 
+interface CompiledFooterRow {
+  readonly name: string;
+  readonly pattern: RegExp;
+}
+
 interface Compiled {
   readonly top: CompiledAnchor;
   readonly prompt: CompiledAnchor;
   readonly bottom: CompiledAnchor;
+  readonly footerRows: readonly CompiledFooterRow[];
   readonly interior: CompiledInterior;
 }
 
@@ -125,6 +141,7 @@ function compile(idle: IdleProfile): Compiled {
     // `d` gives the draft hole's offset, so the placeholder test reads only the runs inside it.
     prompt: compileAnchor(prompt, "du"),
     bottom: compileAnchor(bottom, "u"),
+    footerRows: (idle.volatile.below.footerRows ?? []).map((row) => ({ name: row.name, pattern: new RegExp(row.pattern, "u") })),
     interior: {
       rows: rows === undefined ? null : new RegExp(rows, "u"),
       trailerRow: trailer === undefined ? null : new RegExp(trailer.row, "u"),
@@ -252,6 +269,65 @@ interface BelowRun {
   readonly footer: RowSpan | null;
 }
 
+/** The index of the first named footer row at or after `from` that matches the row, or -1. */
+function footerRowIndex(text: string, rows: readonly CompiledFooterRow[], from: number): number {
+  if (isBlank(text)) return -1;
+  const trimmed = text.trimEnd();
+  for (let k = from; k < rows.length; k++) if (rows[k]!.pattern.test(trimmed)) return k;
+  return -1;
+}
+
+/** The statusline run, the footer, and the named rows under the bottom edge (`Frame.volatile`). */
+interface NamedBelowRun extends BelowRun {
+  readonly named: readonly NamedRow[];
+}
+
+/**
+ * The run under the bottom edge with the profile's named footer rows (`idle.volatile.below.footerRows`).
+ *
+ * The named run sits at the bottom. It starts on a row the FIRST entry of the list matches, set
+ * apart by a blank row over it, and every row after it matches a later entry in the list's order
+ * (the first entry only once); blank rows may stand between. It is at most `footerMaxRows` tall.
+ * Anything else is no named run, and the rows walk as before ({@link walkBelow}) with nothing named.
+ *
+ * Over an accepted run the rows walk as a statusline with NO footer of their own, so a popup or a
+ * dialog between the statusline and the run fails the walk instead of passing as a second footer.
+ * A failed walk names nothing: every row stays in the cues' sight. On a good walk `named` holds the
+ * run's rows, and the last statusline row when an entry matches it (a hint on the mode row).
+ */
+function walkBelowNamed(texts: readonly string[], bottom: number, end: number, idle: IdleProfile, rows: readonly CompiledFooterRow[]): NamedBelowRun {
+  const below = idle.volatile.below;
+  const plain = (): NamedBelowRun => ({ ...walkBelow(texts, bottom, end, below), named: [] });
+  if (rows.length === 0) return plain();
+
+  // Up from the last row over blank rows and rows a later entry matches, to the first entry's row.
+  let first = end - 1;
+  while (first > bottom && (isBlank(texts[first]!) || footerRowIndex(texts[first]!, rows, 1) >= 0)) first--;
+  if (first <= bottom + 1 || footerRowIndex(texts[first]!, rows, 0) !== 0 || !isBlank(texts[first - 1]!)) return plain();
+  if (end - first > below.footerMaxRows) return plain();
+
+  // Down the run: each row matches an entry at or after the last one, never the first entry again.
+  const named: NamedRow[] = [{ row: first, name: rows[0]!.name }];
+  let at = 1;
+  for (let j = first + 1; j < end; j++) {
+    if (isBlank(texts[j]!)) continue;
+    const k = footerRowIndex(texts[j]!, rows, at);
+    if (k < 0) return plain();
+    named.push({ row: j, name: rows[k]!.name });
+    at = k;
+  }
+
+  let rest = first;
+  while (rest > bottom + 1 && isBlank(texts[rest - 1]!)) rest--;
+  const run = walkBelow(texts, bottom, rest, { ...below, footerMaxRows: 0 });
+  if (run.status === null && rest > bottom + 1) return { status: null, footer: null, named: [] };
+  if (run.status !== null) {
+    const k = footerRowIndex(texts[run.status.last]!, rows, 1);
+    if (k >= 0) named.unshift({ row: run.status.last, name: rows[k]!.name });
+  }
+  return { status: run.status, footer: { first, last: end - 1 }, named };
+}
+
 /**
  * The run under the bottom edge, walked bottom-up from the last non-blank row: an optional footer of
  * at most `footerMaxRows` rows divided off by a blank run, then at most `maxRows` status rows that
@@ -365,7 +441,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
 
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
-  const { status, footer } = walkBelow(texts, bottom, end, idle.volatile.below);
+  const { status, footer, named } = walkBelowNamed(texts, bottom, end, idle, c.footerRows);
   const aboveRows = Math.min(idle.volatile.above.maxRows, top);
   const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
 
@@ -375,7 +451,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
     label: label.length > 0 ? label : null,
     interior: { first: top + 1, prompt, last: bottom - 1, text },
     placeholder: byText || bySgr,
-    volatile: { above, status, footer },
+    volatile: { above, status, footer, named },
     anchorsHit,
   };
 }
@@ -474,7 +550,8 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
-  const { status, footer } = open ? { status: null, footer: null } : walkBelow(texts, bottom, end, idle.volatile.below);
+  // An open box ends on the screen's last row, so nothing is under it to walk or name.
+  const { status, footer, named } = open ? { status: null, footer: null, named: [] } : walkBelowNamed(texts, bottom, end, idle, c.footerRows);
   const aboveRows = Math.min(idle.volatile.above.maxRows, top);
   const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
 
@@ -484,7 +561,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     label: label.length > 0 ? label : null,
     interior: { first: top + 1, prompt, last: open ? bottom : bottom - 1, text },
     placeholder: byText || bySgr,
-    volatile: { above, status, footer },
+    volatile: { above, status, footer, named },
     anchorsHit,
   };
 }

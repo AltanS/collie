@@ -180,6 +180,19 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(queuedRow.hintGap).toBe(0);
   });
 
+  it("claude: the footer rows name the agents panel and its hints, and no statusline row (incident 2026-10-16)", () => {
+    const rows = parseProfile(rawClaude()).idle.volatile.below.footerRows!;
+    const nameOf = (text: string): string | null => rows.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
+    expect(nameOf("  ● main")).toBe("agents-panel-main");
+    expect(nameOf("  ◯ general-purpose   Reading profileFor in profile.ts      2m 3s · ↓ 120.1k tokens")).toBe("agents-panel-agent");
+    expect(nameOf("❯ ◯ alright-it-seems  alright it seems a new issue arrived      31s · ↓ 40.2k tokens")).toBe("agents-panel-agent");
+    expect(nameOf("  ↓ to manage")).toBe("agents-panel-manage-hint");
+    expect(nameOf("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 2 background tasks · ↓ to view · ← 11 agents")).toBe("tasks-view-hint");
+    expect(nameOf("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 1 shell · ← 11 agents")).toBeNull();
+    expect(nameOf("  CTX:8% CACHE:99% LIMITS 5h:9%/4h:21m 7d:70%/4d:06h")).toBeNull();
+    expect(nameOf("  [Fable·medium] ~/projects/sample-workspace on main*")).toBeNull();
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -550,6 +563,11 @@ describe("parseProfile names the failing field", () => {
     ["a queued row pattern with no text group", ["keys", "queuedRow", "pattern"], "^❯ .*$", "keys.queuedRow.pattern"],
     ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
+    ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
+    ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
+    ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
+    ["a footer row that is no expression", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "[unclosed", "idle.volatile.below.footerRows[0].pattern"],
+    ["a footer row that matches a blank row", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "^\\s*$", "idle.volatile.below.footerRows[0].pattern"],
     ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
     ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
     ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],

@@ -366,6 +366,7 @@ export const it: Dictionary = {
   "composer.protocol.commit": "Scrivi qui",
   "composer.protocol.keys": "Tasti",
   "composer.protocol.openKeys": "Apri i tasti",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Oggi Collie non è riuscito a leggere questo schermo su {harness} {version} per {count} volte. Verifichi lo schermo, poi tocchi Conferma e digita.",
   "composer.protocol.commitCap": "Conferma e digita",
   "sendReceipts.title": "Invii recenti",
