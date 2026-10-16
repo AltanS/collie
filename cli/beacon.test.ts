@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseBeacon } from "../bridge/beacon/parse.ts";
-import { beaconFileName, beaconKey } from "../bridge/beacon/paths.ts";
-import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
-import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit } from "./beacon.ts";
+import { createHash } from "node:crypto";
+
+import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
+import { beaconFileName, beaconKey, EDGE_FILE, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
+import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
+import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -94,13 +96,15 @@ describe("the status map", () => {
       ["UserPromptSubmit", undefined, "working"],
       ["Stop", undefined, "idle"],
       ["SessionEnd", undefined, "idle"],
-      ["Notification", "idle_prompt", "waiting"],
+      ["Notification", undefined, "waiting"],
     ]);
+    // The idle kind writes `waiting`; the permission and question kinds write an edge and no beacon.
+    expect(BEACON_HOOKS.at(-1)?.details).toEqual({ idle_prompt: "waiting", permission_prompt: null, elicitation_dialog: null });
   });
 
   test("each event writes its own status", async () => {
     for (const registration of BEACON_HOOKS) {
-      const d = deps({ stdin: payload({ hook_event_name: registration.event }) });
+      const d = deps({ stdin: payload({ hook_event_name: registration.event, notification_type: "idle_prompt" }) });
       expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
       const [text] = [...beacons(d.files).values()];
       expect(parseBeacon(text ?? "")?.status).toBe(registration.status);
@@ -165,9 +169,8 @@ describe("the beacon it writes", () => {
   test("lands by rename, not by writing the live file — and the temp file does not survive", async () => {
     const d = deps();
     await cmdBeaconEmit(d);
-    const renames = d.files.ops.filter((op) => op.startsWith("mv "));
+    const renames = d.files.ops.filter((op) => op.startsWith("mv ") && op.includes(`${STATE}/beacons/`));
     expect(renames).toHaveLength(1);
-    expect(renames[0]).toContain(`${STATE}/beacons/`);
     expect([...d.files.entries.keys()].filter((p) => p.endsWith(".tmp"))).toEqual([]);
   });
 
@@ -176,7 +179,8 @@ describe("the beacon it writes", () => {
     const d = deps();
     const spy = { ...d, files: { ...d.files, mkdirp: (_p: string, mode?: number) => void modes.push(mode ?? -1) } };
     await cmdBeaconEmit(spy);
-    expect(modes).toEqual([0o700]);
+    // The edge spool first, then the beacons directory: both owner-only.
+    expect(modes).toEqual([0o700, 0o700]);
   });
 });
 
@@ -253,5 +257,99 @@ describe("it never fails, and it never speaks", () => {
   test("stdin that never resolves as text is exit 0", async () => {
     const d = { ...deps(), readStdin: () => Promise.reject(new Error("EIO")) };
     expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+  });
+});
+
+describe("the hook edges it writes (M56 spec 11)", () => {
+  const HERDR: Environment = { HERDR_PANE_ID: "w54:pW", HERDR_SOCKET_PATH: "/home/pat/.config/herdr/herdr.sock" };
+  const SALT = "0123456789abcdef0123456789abcdef";
+
+  function edges(files: ReturnType<typeof fakeFiles>): EdgeRecord[] {
+    const out: EdgeRecord[] = [];
+    for (const [path, entry] of files.entries) {
+      const name = path.slice(`${STATE}/edges/`.length);
+      if (path.startsWith(`${STATE}/edges/`) && EDGE_FILE.test(name)) {
+        const record = parseEdge(entry.text);
+        if (record !== null) out.push(record);
+      }
+    }
+    return out;
+  }
+
+  test("reads Herdr's pane and socket raw, so a Herdr pane gets edges too", () => {
+    expect(readEnvMarkers(HERDR)).toEqual([{ namespace: "herdr", scope: "/home/pat/.config/herdr/herdr.sock", pane: "w54:pW" }]);
+  });
+
+  test("each registered event writes one edge with the agent pid, its start time and the markers", async () => {
+    for (const registration of BEACON_HOOKS) {
+      const d = deps({ env: HERDR, stdin: payload({ hook_event_name: registration.event, notification_type: "idle_prompt" }) });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      const [edge, ...rest] = edges(d.files);
+      expect(rest).toEqual([]);
+      expect(edge?.event).toBe(registration.event);
+      expect(edge?.pid).toBe(AGENT_PID);
+      expect(edge?.pidStartTime).toBe(START_TIME);
+      expect(edge?.markers).toEqual(readEnvMarkers(HERDR));
+      expect(edge?.at).toBe(1_700_000_000_000);
+    }
+  });
+
+  test("a permission notification writes an edge with its kind, and no beacon", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission" }) });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    expect(edges(d.files).map((edge) => [edge.event, edge.detail])).toEqual([["Notification", "permission_prompt"]]);
+    expect(beacons(d.files).size).toBe(0);
+  });
+
+  test("a notification kind it does not list writes nothing at all", async () => {
+    for (const kind of ["auth_success", undefined, "Bad Kind"]) {
+      const d = deps({ stdin: payload({ hook_event_name: "Notification", notification_type: kind }) });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      expect(edges(d.files)).toEqual([]);
+      expect(beacons(d.files).size).toBe(0);
+    }
+  });
+
+  test("an edge needs no session id: the pid places it", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop", session_id: undefined }) });
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)).toHaveLength(1);
+    expect(beacons(d.files).size).toBe(0);
+  });
+
+  test("a prompt edge holds the salted hash of the prompt, never the text", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "UserPromptSubmit", prompt: "  ship the secret-ish thing \n" }) });
+    d.files.write(`${STATE}/sends/.salt`, `${SALT}\n`);
+    await cmdBeaconEmit(d);
+    const [edge] = edges(d.files);
+    const expected = createHash("sha256").update(SALT).update("\u0000").update("ship the secret-ish thing").digest("hex");
+    expect(edge?.promptHash).toBe(expected);
+    const raw = [...d.files.entries].find(([path]) => path.startsWith(`${STATE}/edges/`))?.[1].text ?? "";
+    expect(raw).not.toContain("secret");
+  });
+
+  test("a collapsed paste is unwrapped before the hash, so it matches the text the send typed", () => {
+    const wrapped = '\n\n<pasted_content id="f27a">\nline 1\nline 2\n</pasted_content id="f27a">\n';
+    expect(unwrapPrompt(wrapped).trim()).toBe("line 1\nline 2");
+  });
+
+  test("no salt, no hash: the send store never ran here", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "UserPromptSubmit", prompt: "hello" }) });
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)[0]?.promptHash).toBeNull();
+  });
+
+  test("a full spool takes no more edges: no bridge is taking them", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop" }) });
+    for (let i = 0; i < EDGE_SPOOL_MAX; i++) d.files.write(`${STATE}/edges/${String(i)}-1-aa.json`, "{}");
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)).toEqual([]);
+    expect(beacons(d.files).size).toBe(1);
+  });
+
+  test("a subagent's event writes no edge", async () => {
+    const d = deps({ stdin: payload({ hook_event_name: "Stop", agent_id: "sub-1" }) });
+    await cmdBeaconEmit(d);
+    expect(edges(d.files)).toEqual([]);
   });
 });

@@ -186,13 +186,14 @@ describe("the command it writes", () => {
 });
 
 describe("the merge", () => {
-  test("adds exactly the registered events, matcher included", () => {
+  test("adds exactly the registered events, with no Notification matcher", () => {
     const outcome = installDocument(null, COMMAND);
     expect(outcome.kind).toBe("document");
     const text = outcome.kind === "document" ? serializeSettings(outcome.document) : "";
     const hooks = JSON.parse(text).hooks;
     expect(Object.keys(hooks)).toEqual(BEACON_HOOKS.map((r) => r.event));
-    expect(hooks.Notification[0].matcher).toBe("idle_prompt");
+    // No matcher since M56 spec 11: the dialog kinds are hook edges too, and the emitter picks the kinds.
+    expect(hooks.Notification[0].matcher).toBeUndefined();
     // A registration with no matcher writes no `matcher` key at all — not `null`, not `""`.
     expect(Object.keys(hooks.UserPromptSubmit[0])).toEqual(["hooks"]);
     expect(hooks.Stop[0].hooks).toEqual([{ type: "command", command: COMMAND, timeout: 10 }]);
@@ -502,6 +503,21 @@ describe("status --check", () => {
     expect(d.io.stdout).toEqual([]);
     expect(d.io.stderr).toEqual([]);
     expect(d.files.ops).toEqual([]);
+  });
+
+  test("says behind for an install from before M56 spec 11, whose Notification still matches idle_prompt, and install heals it", () => {
+    const groups = (r: (typeof BEACON_HOOKS)[number]) =>
+      r.event === "Notification" ? [{ matcher: "idle_prompt", hooks: [{ type: "command", command: COMMAND }] }] : [{ hooks: [{ type: "command", command: COMMAND }] }];
+    const before = serializeSettings({ hooks: Object.fromEntries(BEACON_HOOKS.map((r) => [r.event, groups(r)])) });
+    const d = deps({ files: { [SETTINGS]: before } });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
+    cmdHooksStatus(d);
+    expect(d.io.stdout.join("\n")).toContain("4/5 events");
+    cmdHooksInstall(d, ["claude"]);
+    const healed = JSON.parse(d.files.entries.get(SETTINGS)!.text).hooks;
+    expect(healed.Notification).toHaveLength(1);
+    expect(healed.Notification[0].matcher).toBeUndefined();
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
   });
 
   test("says behind for entries at a marker version this build no longer writes", () => {

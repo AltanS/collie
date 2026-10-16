@@ -1814,8 +1814,9 @@ describe("beacon-hooks-claude", () => {
     expect(finding.status).toBe("ok");
     expect(finding.remedy).toBeNull();
     expect(finding.detail).toContain(OWN_BINARY);
-    // Installed anyway under Herdr is still ✓, and says out loud that nothing here needs it.
+    // Installed under Herdr is still ✓, and says that Herdr needs it for hook edges only.
     expect(finding.detail).toContain("does not need");
+    expect(finding.detail).toContain("hook edges only");
   });
 
   test("a stale marker version is a warn whose remedy is the self-heal", async () => {

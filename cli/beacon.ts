@@ -1,13 +1,18 @@
+import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 
-import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir } from "../bridge/beacon/paths.ts";
+import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import {
   BEACON_SCHEMA_VERSION,
+  EDGE_SCHEMA_VERSION,
   type BeaconMarker,
   type BeaconRecord,
   type BeaconStatus,
+  type EdgeRecord,
 } from "../bridge/beacon/types.ts";
+import { asJsonString } from "../web/src/lib/json.ts";
+import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -102,6 +107,15 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     scopeVar: "ZELLIJ_SESSION_NAME",
     scopeOf: (raw) => raw,
   },
+  {
+    // Herdr exports its own wire id (`w54:pW`) and the socket of the server that owns the pane
+    // (M56 spec 11). Herdr names its agents itself, so a Herdr marker never names a pane's agent: it
+    // places the hook edges on a Herdr pane, and nothing else.
+    namespace: "herdr",
+    paneVar: "HERDR_PANE_ID",
+    scopeVar: "HERDR_SOCKET_PATH",
+    scopeOf: (raw) => raw,
+  },
 ];
 
 /**
@@ -146,17 +160,24 @@ export function readEnvMarkers(env: Environment): BeaconMarker[] {
  * pane key — the beacon is keyed by the pane, so a later event simply overwrites the same file. It is
  * registered with no matcher for that reason: every source is the same sentence.
  *
- * THE MATCHER IS THE WAITING SIGNAL, NEVER A MESSAGE STRING. `Notification` fires for several
- * notification types; the registration in `cli/hooks.ts` carries `matcher: "idle_prompt"`, so the
- * only `Notification` payloads that reach this process are the idle ones. The `idle_prompt` message
- * string is undocumented and nothing here parses it — a status derived from prose is a status that
- * changes when the prose does.
+ * THE NOTIFICATION TYPE IS THE WAITING SIGNAL, NEVER A MESSAGE STRING. `Notification` fires for
+ * several notification types. Since M56 spec 11 the registration carries no matcher, so every type
+ * reaches this process, and `details` below picks by `notification_type`: `idle_prompt` writes
+ * `waiting`, the permission and question types write an edge only, and every other type writes
+ * nothing. The message string is undocumented and nothing here parses it. A status derived from prose
+ * is a status that changes when the prose does.
  */
 export interface HookRegistration {
   readonly event: string;
   /** Matched against `notification_type` by Claude Code itself. Absent means "every occurrence". */
   readonly matcher?: string;
   readonly status: BeaconStatus;
+  /**
+   * For an event with kinds (`Notification`, by `notification_type`): the kinds this emitter speaks
+   * for, each with the beacon status it writes, or null for "an edge only, no beacon". A kind not
+   * listed writes nothing at all. Absent means the event has no kinds and `status` holds.
+   */
+  readonly details?: Readonly<Record<string, BeaconStatus | null>>;
 }
 
 export const BEACON_HOOKS: readonly HookRegistration[] = [
@@ -172,7 +193,15 @@ export const BEACON_HOOKS: readonly HookRegistration[] = [
   // `prompt_input_exit` / `other` really mean the agent is gone, and for all four the honest word
   // right now is the same one.
   { event: "SessionEnd", status: "idle" },
-  { event: "Notification", matcher: "idle_prompt", status: "waiting" },
+  // No matcher since M56 spec 11: the permission and question kinds are hook edges too (a modal is up).
+  // They write an edge and no beacon. A permission prompt is not the agent waiting for its next
+  // prompt, and a `waiting` there would hold the pane at "needs you" until the turn's Stop. The idle
+  // kind still writes `waiting`, as before.
+  {
+    event: "Notification",
+    status: "waiting",
+    details: { idle_prompt: "waiting", permission_prompt: null, elicitation_dialog: null },
+  },
 ];
 
 /** The harness this emitter speaks for, in the journal registry's vocabulary. */
@@ -255,6 +284,52 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
   }
 }
 
+/** A notification type: lower case and underscores. */
+const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
+
+/**
+ * Write one edge file into the spool (M56 spec 11): a temp name, then a rename, so the bridge never
+ * reads half of one. Nothing is written past {@link EDGE_SPOOL_MAX} files: no bridge is taking them,
+ * and a full spool must not grow without end.
+ */
+function writeEdge(deps: BeaconEmitDeps, record: EdgeRecord): void {
+  const dir = edgesDir(deps.ctx.stateDir);
+  deps.files.mkdirp(dir, BEACON_DIR_MODE);
+  if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) return;
+  const name = `${String(record.at)}-${String(record.pid)}-${randomBytes(4).toString("hex")}.json`;
+  const temp = join(dir, `.${name}.tmp`);
+  try {
+    deps.files.write(temp, `${JSON.stringify(record)}\n`, 0o600);
+    deps.files.rename(temp, join(dir, name));
+  } catch (err) {
+    deps.files.remove(temp);
+    throw err;
+  }
+}
+
+/**
+ * The prompt as Claude Code hands it, unwrapped. A collapsed paste arrives as
+ * `\n\n<pasted_content id="f27a">\n<text>\n</pasted_content id="f27a">\n` (M56 spec 01 lab, Table 5),
+ * so the wrapper is cut before the hash. Only this emitter knows that form.
+ */
+export function unwrapPrompt(prompt: string): string {
+  return prompt.replace(/<pasted_content id="[^"]*">\n?([\s\S]*?)\n?<\/pasted_content id="[^"]*">/gu, "$1");
+}
+
+/**
+ * The salted hash of the prompt a `UserPromptSubmit` carried, or null. The salt is the send store's own
+ * (`<stateDir>/sends/.salt`, bridge/surface/requests.ts), so the hash matches a send's receipt and is
+ * worth nothing to a reader without it. No salt (the Send Protocol never ran) means no hash. The
+ * prompt text itself is never written anywhere.
+ */
+export function promptHashOf(deps: BeaconEmitDeps, payload: JsonObject): string | null {
+  const prompt = asJsonString(payload.prompt);
+  if (prompt === undefined || prompt.length === 0) return null;
+  const salt = deps.files.read(join(deps.ctx.stateDir, "sends", ".salt"))?.trim();
+  if (salt === undefined || salt.length === 0) return null;
+  return createHash("sha256").update(salt).update("\u0000").update(normalizePrompt(unwrapPrompt(prompt))).digest("hex");
+}
+
 /**
  * `collie beacon emit` — one hook event in, at most one beacon file out.
  *
@@ -279,22 +354,46 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const event = payload.hook_event_name;
     const registration = BEACON_HOOKS.find((row) => row.event === event);
     if (registration === undefined) return EXIT.OK;
-
-    const session = readField(payload, "session_id", SESSION_ID);
-    if (session === null) return EXIT.OK;
+    // An event with kinds speaks only for the kinds it lists. `undefined` here is "not ours".
+    const detail = registration.details === undefined ? null : readField(payload, "notification_type", NOTIFICATION_TYPE);
+    const status = registration.details === undefined ? registration.status : detail === null ? undefined : registration.details[detail];
+    if (status === undefined) return EXIT.OK;
 
     const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
     if (pidStartTime === null) return EXIT.OK;
+    const now = (deps.now ?? Date.now)();
+
+    // The edge first, in its own guard: a beacon that cannot be written must not cost the edge, and
+    // the other way round.
+    try {
+      writeEdge(deps, {
+        schemaVersion: EDGE_SCHEMA_VERSION,
+        harness: BEACON_HARNESS,
+        event: registration.event,
+        detail,
+        pid: deps.agentPid,
+        pidStartTime,
+        markers,
+        at: now,
+        promptHash: promptHashOf(deps, payload),
+      });
+    } catch {
+      // No edge for this event. The screen still reads the pane on its own poll.
+    }
+
+    if (status === null) return EXIT.OK;
+    const session = readField(payload, "session_id", SESSION_ID);
+    if (session === null) return EXIT.OK;
 
     writeBeacon(deps, {
       schemaVersion: BEACON_SCHEMA_VERSION,
       harness: BEACON_HARNESS,
       session: { kind: "id", value: session },
-      status: registration.status,
+      status,
       pid: deps.agentPid,
       pidStartTime,
       markers,
-      heartbeatMs: (deps.now ?? Date.now)(),
+      heartbeatMs: now,
     });
     return EXIT.OK;
   } catch {

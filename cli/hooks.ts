@@ -270,8 +270,18 @@ export function markedCommandsByEvent(document: JsonValue | null): (string | nul
   const section = asObject(asObject(document)?.hooks) ?? {};
   return BEACON_HOOKS.map((registration) => {
     const groups = asArray(section[registration.event]) ?? [];
-    return groups.map((group) => markedCommandIn(group)).find((found) => found !== null) ?? null;
+    // A group of ours with another matcher than this build writes counts as missing: since M56 spec 11
+    // the Notification entry has no matcher, and an older `idle_prompt` one never sends the dialog
+    // kinds. So such a file reads as partly installed, and `install` heals it in place.
+    const current = groups.filter((group) => matcherOf(group) === registration.matcher);
+    return current.map((group) => markedCommandIn(group)).find((found) => found !== null) ?? null;
   });
+}
+
+/** A group's `matcher` as text, or undefined when it has none. */
+function matcherOf(group: JsonValue): string | undefined {
+  const matcher = asObject(group)?.matcher;
+  return matcher === undefined || matcher === null ? undefined : String(matcher);
 }
 
 export type HookDocument =
