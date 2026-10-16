@@ -252,15 +252,18 @@ test("the voice takeover's ring stays centred on its button under every density"
   }
 });
 
-// THE THEME STRIP HOLDS EVERY CHIP (M57 spec 15). The Theme card's strip wraps instead of scrolling,
-// so under a roomy shipped theme no chip sits half under the card's edge. The density walk above
-// skips horizontal scrollers, so this checks the strip itself: under Daylight (roomy, round) and
-// under Collie, at 360 and 390 wide, every chip's box lies inside the card's box.
+// THE THEME SELECT LIES INSIDE ITS CARD. The Theme card picks a theme from one select field, a row
+// like Language's and Typeface's, so four shipped themes and the imported ones never wrap or spill.
+// The density walk above covers its 44px floor; this checks that the select's box lies inside the
+// card's box at 360 and 390 wide under each shipped theme (Daylight is the roomy one), and that its
+// options start with the four shipped names in order.
 for (const theme of [
-  { id: "daylight", design: { font: "geist", theme: "daylight" } },
   { id: "collie", design: {} },
+  { id: "nightwatch", design: { theme: "nightwatch" } },
+  { id: "daylight", design: { font: "geist", theme: "daylight" } },
+  { id: "harbour", design: { theme: "harbour" } },
 ] as const) {
-  test(`the theme strip holds every chip inside the card under ${theme.id} at 360 and 390`, async ({ browser }, testInfo) => {
+  test(`the Theme select lies inside the card under ${theme.id} at 360 and 390`, async ({ browser }, testInfo) => {
     onlyOnePhone(testInfo);
     for (const width of [360, 390]) {
       const context = await browser.newContext(contextOptions(testInfo, { width, height: 844 }));
@@ -269,23 +272,26 @@ for (const theme of [
       await page.addInitScript((design) => localStorage.setItem("collie:design:v1", design), JSON.stringify(theme.design));
       await open(page, "/settings/appearance", undefined);
       await page.evaluate(() => document.fonts.ready);
-      const boxes = await page.evaluate(() => {
-        const group = document.querySelector('[role="radiogroup"]');
-        const card = group?.closest('[data-slot="card"]')?.getBoundingClientRect();
-        const radios = [...(group?.querySelectorAll('[role="radio"]') ?? [])].map((el) => {
-          const box = el.getBoundingClientRect();
-          return { name: el.textContent ?? "", left: box.left, right: box.right, top: box.top, bottom: box.bottom };
-        });
-        return { card: card ? { left: card.left, right: card.right, top: card.top, bottom: card.bottom } : null, radios };
+      const select = page.getByRole("combobox", { name: "Theme", exact: true });
+      await expect(select).toHaveCount(1);
+      await expect(select).toHaveValue(theme.id);
+      const seen = await select.evaluate((el) => {
+        const card = el.closest('[data-slot="card"]')?.getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+        return {
+          card: card ? { left: card.left, right: card.right, top: card.top, bottom: card.bottom } : null,
+          box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+          options: el instanceof HTMLSelectElement ? [...el.options].map((option) => option.textContent ?? "") : [],
+        };
       });
       const at = `${theme.id} at ${width}px`;
-      expect(boxes.card, `${at}: the card`).not.toBeNull();
-      expect(boxes.radios.map((r) => r.name), `${at}: the four shipped chips`).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
-      const card = boxes.card ?? { left: 0, right: 0, top: 0, bottom: 0 };
-      const outside = boxes.radios
-        .filter((r) => r.left < card.left || r.right > card.right || r.top < card.top || r.bottom > card.bottom)
-        .map((r) => r.name);
-      expect(outside, `${at}: chips not fully inside the card`).toEqual([]);
+      expect(seen.card, `${at}: the card`).not.toBeNull();
+      expect(seen.options.slice(0, 4), `${at}: the four shipped names`).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
+      const card = seen.card ?? { left: 0, right: 0, top: 0, bottom: 0 };
+      expect(seen.box.left, `${at}: select left of the card`).toBeGreaterThanOrEqual(card.left);
+      expect(seen.box.right, `${at}: select right of the card`).toBeLessThanOrEqual(card.right);
+      expect(seen.box.top, `${at}: select above the card`).toBeGreaterThanOrEqual(card.top);
+      expect(seen.box.bottom, `${at}: select below the card`).toBeLessThanOrEqual(card.bottom);
       await context.close();
     }
   });

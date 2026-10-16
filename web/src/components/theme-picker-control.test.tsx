@@ -9,7 +9,7 @@ import { THEME_TOKENS, parseTheme, type Theme } from "@/lib/theme/schema";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
 // imports a fresh graph over a storage it seeded itself. Only `collie` ships on the branch that
-// wrote this file, so the pills are checked against the store's own shipped list and never against
+// wrote this file, so the options are checked against the store's own shipped list and never against
 // four hard-coded names.
 
 const web = resolve(import.meta.dirname, "../..");
@@ -64,29 +64,48 @@ describe("ThemePickerControl", () => {
     URL.revokeObjectURL = objectUrls.revoke;
   });
 
-  it("draws one pill per shipped theme, in the store's order, then the imported ones, as a radiogroup", async () => {
-    const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
+  it("draws one Theme row: a select with the shipped themes in the store's order, then the imported ones by name", async () => {
+    const { ThemePickerControl, store } = await load([copy("zed", "Zed"), copy("mine", "Mine")]);
     render(<ThemePickerControl />);
-    const group = screen.getByRole("radiogroup", { name: "Theme" });
-    const radios = within(group).getAllByRole("radio");
-    const names = [...store.shippedThemes().map((theme) => theme.name), "Mine"];
-    expect(radios.map((radio) => radio.textContent)).toEqual(names);
-    expect(radios.map((radio) => radio.getAttribute("aria-checked"))).toEqual(
-      names.map((name) => String(name === "Collie")),
-    );
+    const select = screen.getByRole("combobox", { name: "Theme" });
+    const options = within(select).getAllByRole("option");
+    const shipped = store.shippedThemes().map((theme) => theme.name);
+    expect(shipped).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
+    expect(options.map((option) => option.textContent)).toEqual([...shipped, "Zed", "Mine"]);
+    expect(select).toHaveValue("collie");
+    // The chip strip is gone: no radio group, no radios.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
   });
 
-  it("applies a tapped theme at once and writes the choice", async () => {
+  it("selects the current theme, also when it is an imported one", async () => {
+    const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
+    store.setActiveTheme("mine");
+    render(<ThemePickerControl />);
+    expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("mine");
+  });
+
+  it("applies a chosen theme at once and writes the choice", async () => {
     const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
     render(<ThemePickerControl />);
-    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
-    expect(screen.getByRole("radio", { name: "Mine" })).toHaveAttribute("aria-checked", "true");
+    const select = screen.getByRole("combobox", { name: "Theme" });
+    await userEvent.selectOptions(select, "Mine");
+    expect(select).toHaveValue("mine");
     expect(store.activeThemeId()).toBe("mine");
     expect(JSON.parse(localStorage.getItem(DESIGN_KEY) ?? "{}").theme).toBe("mine");
     expect(document.documentElement.style.getPropertyValue("--background")).toContain("light-dark(");
-    await userEvent.click(screen.getByRole("radio", { name: "Collie" }));
+    await userEvent.selectOptions(select, "Collie");
+    expect(select).toHaveValue("collie");
     expect(store.activeThemeId()).toBe("collie");
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
+  });
+
+  it("applies a shipped theme other than the default", async () => {
+    const { ThemePickerControl, store } = await load();
+    render(<ThemePickerControl />);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Harbour");
+    expect(store.activeThemeId()).toBe("harbour");
+    expect(JSON.parse(localStorage.getItem(DESIGN_KEY) ?? "{}").theme).toBe("harbour");
   });
 
   it("says what a theme cannot do, in a line that is always there", async () => {
@@ -103,49 +122,21 @@ describe("ThemePickerControl", () => {
     const { ThemePickerControl } = await load([copy("mine", "Mine")]);
     render(<ThemePickerControl />);
     expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Mine");
     expect(screen.getByRole("button", { name: "Remove" })).toBeEnabled();
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Daylight");
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
   });
 
   it("falls back to collie when the active imported theme is removed", async () => {
     const { ThemePickerControl, store } = await load([copy("mine", "Mine")]);
     render(<ThemePickerControl />);
-    await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Mine");
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(store.activeThemeId()).toBe("collie");
-    expect(screen.queryByRole("radio", { name: "Mine" })).toBeNull();
-    expect(screen.getByRole("radio", { name: "Collie" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("option", { name: "Mine" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("collie");
     expect(localStorage.getItem(LIBRARY_KEY)).toBeNull();
-  });
-
-  it("dresses each chip in its own theme's radius and weight, and collie's in the default words", async () => {
-    const { ThemePickerControl, store } = await load([
-      copy("mine", "Mine", (theme) => {
-        theme.version = 2;
-        theme.surface = { radius: "round", weight: "bold", border: "strong" };
-      }),
-    ]);
-    render(<ThemePickerControl />);
-    const group = screen.getByRole("radiogroup", { name: "Theme" });
-    const boxes = within(group).getAllByTestId("theme-chip-shape");
-    const themes = [...store.shippedThemes(), ...store.library()];
-    expect(boxes).toHaveLength(themes.length);
-    const chipVarsOf = (box: HTMLElement) => ({
-      radius: box.style.getPropertyValue("--radius-md"),
-      weight: box.style.getPropertyValue("--font-weight-medium"),
-      spacing: box.style.getPropertyValue("--spacing"),
-      border: box.style.getPropertyValue("--surface-border-width"),
-    });
-    const byName = new Map(boxes.map((box) => [box.textContent, chipVarsOf(box)]));
-    // Collie: the default words, which are the values the page draws without a theme.
-    expect(byName.get("Collie")).toEqual({ radius: "2px", weight: "500", spacing: "", border: "" });
-    // An imported theme's own words; its border word does not reach the chip.
-    expect(byName.get("Mine")).toEqual({ radius: "12px", weight: "600", spacing: "", border: "" });
-    // The wrapper draws no box, so the chips stay direct flex items of the strip.
-    for (const box of boxes) {
-      expect(box).toHaveClass("contents");
-      expect(within(box).getByRole("radio")).toBeInTheDocument();
-    }
   });
 
   describe("import", () => {
@@ -246,7 +237,8 @@ describe("ThemePickerControl", () => {
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       expect(store.library().map((theme) => theme.id)).toEqual(["same"]);
       expect(store.activeThemeId()).toBe("same");
-      expect(screen.getByRole("radio", { name: "Same" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("combobox", { name: "Theme" })).toHaveValue("same");
+      expect(screen.getByRole("option", { name: "Same" })).toBeInTheDocument();
       expect(JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}").themes).toHaveLength(1);
     });
 
@@ -485,7 +477,7 @@ describe("ThemePickerControl", () => {
         names.push(this.download);
       });
       render(<ThemePickerControl />);
-      await userEvent.click(screen.getByRole("radio", { name: "Mine" }));
+      await userEvent.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "Mine");
       await userEvent.click(screen.getByRole("button", { name: "Export" }));
       expect(URL.createObjectURL).toHaveBeenCalledOnce();
       expect(names).toEqual(["mine.collie-theme.json"]);
