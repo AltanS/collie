@@ -494,6 +494,18 @@ describe("agy: the /resume Conversations picker lifts as a menu (1.3.5)", () => 
     expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu")).toBe(false);
   });
 
+  // A third review (2026-10-16): a delete confirmation painted in place of the pager row, footer intact.
+  it("does not lift the picker when a row inside the list asks for a key", () => {
+    const rows = read("agy--resume-picker.txt").map((l) => lineText(l).trimEnd());
+    const pager = rows.findIndex((t) => /\[\d+-\d+ of \d+ items\]/.test(t));
+    expect(pager).toBeGreaterThan(0);
+    for (const prompt of ["Delete 'X'? Press Y to confirm", "Delete 'X'? [y/N]"]) {
+      const edited = rows.map((t, i) => (i === pager ? prompt : t));
+      const lines = splitLines(parseAnsi(edited.join("\n")));
+      expect(buildBlocks(lines, { agent: "agy" }).some((b) => b.kind === "menu"), prompt).toBe(false);
+    }
+  });
+
   // A second review built these two the same way (2026-10-16).
   it("does not lift the picker when an indented row follows the status", () => {
     const rows = read("agy--resume-picker.txt").map((l) => lineText(l).trimEnd());
