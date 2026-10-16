@@ -39,12 +39,20 @@ describe("the Claude login copy", () => {
     expect(existsSync(target)).toBe(false);
   });
 
-  test("a token with enough time is copied with mode 600 into the run folder", () => {
+  test("a token with enough time is copied into the run folder, with no refresh token and an empty MCP config", () => {
     const target = join(temp(), "config");
     const minutes = seedClaude(target, "/p", source(60));
     expect(minutes).toBeGreaterThan(55);
-    expect(statSync(join(target, ".credentials.json")).mode & 0o777).toBe(0o600);
     expect(readFileSync(join(target, ".credentials.json"), "utf8")).not.toContain("refresh");
+    expect(JSON.parse(readFileSync(join(target, "empty-mcp.json"), "utf8"))).toEqual({ mcpServers: {} });
+  });
+
+  // POSIX only: Windows has no file modes, so statSync reports 0o666 there. The skip is named in
+  // scripts/windows-suites.ps1 (scripts budget).
+  test.skipIf(process.platform === "win32")("POSIX only: the login copy has mode 600", () => {
+    const target = join(temp(), "config");
+    seedClaude(target, "/p", source(60));
+    expect(statSync(join(target, ".credentials.json")).mode & 0o777).toBe(0o600);
   });
 
   test("a missing login defers the run", () => {

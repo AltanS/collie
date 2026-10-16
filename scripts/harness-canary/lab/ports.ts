@@ -9,11 +9,13 @@ import { profileFor } from "../../../web/src/lib/surface/profile";
 import { loadSlashLists } from "../slash-commands";
 import { binaryPath, serverEnv, type HarnessSpec, type RunDirs } from "./harnesses";
 import { LabCounters, labProfile, runAskLeg, runSendLeg, TmuxPane, type LegEnv } from "./legs";
+import { ensureClone } from "./clone";
 import { openIssue, publishPass } from "./publish";
 import type { LabPorts, SessionFacts } from "./run";
 import { LabDeferred, LabInfraError, seedClaude, type SeedSource } from "./seed";
+import { realLiveness } from "./sweep";
 import { LabTmux, paneCommand } from "./tmux";
-import { SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact } from "./verdict";
+import { isDialogScreen, SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact } from "./verdict";
 import { runWalk } from "./walk";
 
 const INSTALL_TIMEOUT_MS = 6 * 60_000;
@@ -68,7 +70,16 @@ async function waitStarted(pane: TmuxPane, log: (line: string) => void): Promise
 
 export function realPorts(options: RealOptions = {}): LabPorts {
   const env = options.env ?? process.env;
+  // The tmux server of the session that runs now. A signal handler stops it through `stopAll`.
+  let active: LabTmux | null = null;
   return {
+    liveness: realLiveness,
+    clone: (source, labRoot) => ensureClone(source, labRoot),
+    async stopAll(): Promise<void> {
+      const tmux = active;
+      active = null;
+      if (tmux !== null) await tmux.stop();
+    },
     async preflight(spec: HarnessSpec, dirs: RunDirs): Promise<void> {
       if (resolveTmuxBinary("") === null) throw new LabDeferred("no tmux binary on this machine");
       if (Bun.which("npm") === null) throw new LabDeferred("no npm on PATH");
@@ -92,9 +103,10 @@ export function realPorts(options: RealOptions = {}): LabPorts {
 
     async session(spec, dirs, version, log): Promise<SessionFacts> {
       const tmux = new LabTmux();
+      active = tmux;
       const counters = new LabCounters();
       try {
-        const command = paneCommand(spec.env(dirs), binaryPath(dirs, spec), spec.startArgs);
+        const command = paneCommand(spec.env(dirs), binaryPath(dirs, spec), spec.startArgs(dirs));
         await tmux.start(dirs.project, command, serverEnv(env));
         log(`tmux server ${tmux.socket} started`);
         const mux = tmux.adapter();
@@ -103,33 +115,42 @@ export function realPorts(options: RealOptions = {}): LabPorts {
         const pane = new TmuxPane(mux, gate, paneId, spec.id);
         await waitStarted(pane, log);
 
-        const walked = await runWalk(pane, loadSlashLists(spec.id));
-        for (const line of walked.log) log(line);
+        // The walk logs each line as it writes it, so every line carries its own time.
+        const walked = await runWalk(pane, loadSlashLists(spec.id), log);
         const screens: ScreenFact[] = [...walked.screens];
         const profile = profileFor(spec.id, version, { log });
         const turns = { used: 0, cap: spec.turnCap };
         let send: SendFact | null = null;
         let ask: AskFact | null = null;
 
-        const walkClean = walked.walk.reached && walked.walk.returned && walked.walk.startedTurn === null && walked.walk.menuRead;
+        // A dialog the Surface read as free ends the walk, and the run is already a fail. No send or ask
+        // goes into a screen the reader cannot tell from a free box.
+        const freeDialog = screens.some((screen) => isDialogScreen(screen) && screen.free);
+        const walkClean = walked.walk.reached && walked.walk.returned && walked.walk.startedTurn === null && walked.walk.menuRead && !freeDialog;
+        let sendNote = freeDialog ? "skipped: a dialog read free during the walk" : undefined;
+        let askNote = sendNote;
         if (labProfile(spec.id, version, log) !== null && walkClean) {
           const leg: LegEnv = { harness: spec.id, version, mux, pane, sendsDir: dirs.sends, project: dirs.project, counters, turns, log };
           const sent = await runSendLeg(leg);
           send = sent.fact;
+          sendNote = sent.note;
+          askNote = "skipped: the send did not settle";
           screens.push(...sent.screens);
           if (sent.note.length > 0) log(`send leg: ${sent.note}`);
           if (send !== null && SETTLED_OUTCOMES.includes(send.outcome)) {
             const asked = await runAskLeg(leg);
             ask = asked.fact;
+            askNote = asked.note;
             screens.push(...asked.screens);
             if (asked.note.length > 0) log(`ask leg: ${asked.note}`);
           }
         }
         return {
-          facts: { profile: profile?.status ?? "none", walk: walked.walk, screens, send, ask, turns: turns.used },
+          facts: { profile: profile?.status ?? "none", walk: walked.walk, screens, send, ask, turns: turns.used, sendNote, askNote },
           counters: [...counters.lines, `key presses by the lab: ${String(pane.keysSent)}`, `screen reads: ${String(pane.reads)}`, `key gate sends: ${JSON.stringify(gate.sentBy())}`],
         };
       } finally {
+        active = null;
         const gone = await tmux.stop();
         log(`tmux server ${tmux.socket}: ${gone && !tmux.leftover() ? "stopped, socket gone" : "NOT STOPPED"}`);
       }

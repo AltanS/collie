@@ -8,6 +8,7 @@
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { EMPTY_MCP_FILE } from "./harnesses";
 import { join } from "node:path";
 import { asJsonObject, asJsonNumber, parseJson, type JsonObject } from "../../../web/src/lib/json";
 
@@ -86,5 +87,7 @@ export function seedClaude(configDir: string, project: string, source: SeedSourc
   chmodSync(target, 0o600);
   const state = existsSync(source.stateFile) ? readFileSync(source.stateFile, "utf8") : "{}";
   writeFileSync(join(configDir, ".claude.json"), runState(state, project), { mode: 0o600 });
+  // `--strict-mcp-config` reads this file and nothing else, so no MCP server of the person starts.
+  writeFileSync(join(configDir, EMPTY_MCP_FILE), `${JSON.stringify({ mcpServers: {} })}\n`);
   return minutesLeft;
 }

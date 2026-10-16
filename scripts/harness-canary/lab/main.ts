@@ -6,11 +6,11 @@
 //   bun scripts/harness-canary/lab/main.ts                        run each new version once
 //   bun scripts/harness-canary/lab/main.ts --version claude=2.1.301
 //
-// The ritual `nightly-harness-lab` calls it with --open-issue. A hand run never opens an issue.
+// The ritual `nightly-harness-lab` never opens an issue. A person may pass --open-issue on a hand run.
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { exitCodeOf, fileNotify, parseCli, runCandidates, stateDirOf, summaryLine, USAGE, pending, type Candidate } from "./cli";
+import { exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, USAGE, pending, type Candidate } from "./cli";
 import { FEEDS, readFeed } from "./feeds";
 import { realPorts } from "./ports";
 import { findRow, loadLedger } from "./lab-ledger";
@@ -28,6 +28,14 @@ async function main(): Promise<number> {
   if (cli === "help") {
     console.log(USAGE);
     return 0;
+  }
+
+  if (!cli.plan) {
+    const problem = repoProblem(cli.repo);
+    if (problem !== null) {
+      console.error(problem);
+      return 2;
+    }
   }
 
   const candidates: Candidate[] = cli.pairs.map((pair) => ({ ...pair, source: "named on the command line" }));

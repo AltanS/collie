@@ -4,6 +4,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { checkSource, defaultLabRoot, LAB_DIR_ENV } from "./clone";
 import { FEEDS } from "./feeds";
 import { HARNESSES } from "./harnesses";
 import { ledgerPath, loadLedger, markNotified, findRow } from "./lab-ledger";
@@ -25,13 +26,14 @@ export interface CliOptions {
   readonly ledger: string;
   readonly openIssue: boolean;
   readonly issueRepo: string | null;
+  /** False with `--no-publish`: a pass settles the row and makes no commit. */
+  readonly publish: boolean;
   readonly plan: boolean;
   readonly maxRuns: number;
   /** watch.ts only: `harness=version` the installed binary pretends to be. */
   readonly fakeVersions: readonly { readonly harness: string; readonly version: string }[];
 }
 
-export const LAB_DIR_ENV = "COLLIE_HARNESS_LAB_DIR";
 export const DEFAULT_MAX_RUNS = 4;
 
 export const USAGE = `Usage: bun scripts/harness-canary/lab/main.ts [options]
@@ -43,13 +45,17 @@ fail writes an issue as files. It never pushes. A pair in the ledger is never ru
 
   --harness a,b       harnesses to read (default: ${Object.keys(FEEDS).join(",")})
   --version h=x.y.z   run this pair and skip the feeds (comma list allowed)
-  --repo PATH         the repo a pass commit branches from (default: this checkout)
+  --repo PATH         the repo whose origin the lab clones (default: this checkout). The lab never writes
+                      into it. The pass branch comes from the lab's own clone under the lab root. A path
+                      under ~/apps and a checkout with a detached HEAD are refused.
   --lab-root DIR      run directories, logs, issues, worktrees (default: ~/.cache/collie-lab/harness-lab,
                       or $${LAB_DIR_ENV})
   --ledger PATH       the lab ledger (default: ~/.local/state/collie-harness-lab/ledger.json, or
                       $COLLIE_HARNESS_LAB_LEDGER)
-  --open-issue        run gh issue create on a fail. Only the ritual sets this.
-  --issue-repo O/N    the repo for --open-issue (default: the origin of --repo)
+  --open-issue        run gh issue create on a fail, after it checks that the label exists. A person sets
+                      this. The ritual never does: a public issue is posted after Altan has seen the draft.
+  --issue-repo O/N    the repo for --open-issue
+  --no-publish        a pass settles the row and makes no commit (a dry run of the legs)
   --plan              read the feeds and the ledger, print what would run, run nothing
   --max-runs N        most pairs one invocation runs (default: ${String(DEFAULT_MAX_RUNS)})
   -h, --help          print this`;
@@ -68,10 +74,11 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
   let pairs: { harness: string; version: string }[] = [];
   let fakeVersions: { harness: string; version: string }[] = [];
   let repo = repoRoot;
-  let labRoot = env[LAB_DIR_ENV] !== undefined && env[LAB_DIR_ENV] !== "" ? resolve(env[LAB_DIR_ENV]) : join(home, ".cache", "collie-lab", "harness-lab");
+  let labRoot = resolve(defaultLabRoot(env, home));
   let ledger = ledgerPath(env, home);
   let open = false;
   let issueRepo: string | null = null;
+  let publish = true;
   let plan = false;
   let maxRuns = DEFAULT_MAX_RUNS;
   const value = (i: number, flag: string): string => {
@@ -117,6 +124,9 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
         issueRepo = value(i, arg);
         i++;
         break;
+      case "--no-publish":
+        publish = false;
+        break;
       case "--plan":
       case "--dry-run":
         plan = true;
@@ -132,7 +142,8 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
         throw new Error(`unknown option "${arg}"`);
     }
   }
-  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, plan, maxRuns, fakeVersions };
+  if (fakeVersions.length > 0 && !plan) throw new Error("--fake-version needs --dry-run: a fake version must never start a real run");
+  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions };
 }
 
 /** The pairs the ledger has no row for, in the order given, at most `max`. A pair named twice counts once. */
@@ -196,10 +207,13 @@ export async function runCandidates(candidates: readonly Candidate[], cli: CliOp
       ledgerPath: cli.ledger,
       openIssue: cli.openIssue,
       issueRepo: cli.issueRepo ?? undefined,
+      publish: cli.publish,
       now,
     };
     const outcome = await runLab(options, ports);
     outcomes.push(outcome);
+    // A deferral writes no row, so it would be a silent night. One notify line makes it visible.
+    if (outcome.status === "deferred") notify(`harness lab: ${outcome.harness} ${outcome.version} deferred: ${outcome.note}`);
     if (tellOnce(cli.ledger, outcome, notify)) told++;
   }
   return { outcomes, told };
@@ -216,4 +230,14 @@ export function exitCodeOf(outcomes: readonly LabOutcome[]): number {
 
 export function stateDirOf(ledgerFile: string): string {
   return dirname(ledgerFile);
+}
+
+/** The reason the repo is refused, or null. Called before a run, so a bad `--repo` stops the command at once. */
+export function repoProblem(repo: string): string | null {
+  try {
+    checkSource(repo);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 }

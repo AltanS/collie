@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { draftIssue, ISSUE_LABEL, LEDGER_REL, moveProfile, openIssue, profileRel, publishPass, realGit, writeIssueFiles, type Git, type PassInput } from "./publish";
+import { draftIssue, ISSUE_LABEL, labelExists, LEDGER_REL, moveProfile, openIssue, profileRel, publishPass, realGit, writeIssueFiles, type Git, type GitResult, type PassInput } from "./publish";
 import { type RedactContext } from "./redact";
 import { judge, type LabFacts, type ScreenFact } from "./verdict";
 
@@ -136,17 +136,40 @@ describe("the fail issue", () => {
     expect(existsSync(files.markdown)).toBe(true);
   });
 
-  test("gh issue create runs only through openIssue, with the label and the body file", () => {
+  test("gh issue create runs only through openIssue, after the label is checked", () => {
     const labRoot = temp();
     const issue = draftIssue(facts, judge(facts), "log", [], ctx);
     const files = writeIssueFiles(labRoot, "claude", "2.1.301", issue);
-    let seen: readonly string[] = [];
-    const url = openIssue(files, issue, "AltanS/collie", (args) => {
-      seen = args;
-      return { code: 0, stdout: "https://github.com/AltanS/collie/issues/1\n", stderr: "" };
-    });
-    expect(url).toBe("https://github.com/AltanS/collie/issues/1");
-    expect(seen).toEqual(expect.arrayContaining(["issue", "create", "--repo", "AltanS/collie", "--label", "harness-drift", "--body-file", files.markdown]));
-    expect(() => openIssue(files, issue, "AltanS/collie", () => ({ code: 1, stdout: "", stderr: "no" }))).toThrow(/gh issue create failed/);
+    const seen: (readonly string[])[] = [];
+    const gh = (args: readonly string[]): GitResult => {
+      seen.push(args);
+      return args[0] === "label" ? { code: 0, stdout: JSON.stringify([{ name: "bug" }, { name: "harness-drift" }]), stderr: "" } : { code: 0, stdout: "https://github.com/AltanS/collie/issues/1\n", stderr: "" };
+    };
+    expect(openIssue(files, issue, "AltanS/collie", gh)).toBe("https://github.com/AltanS/collie/issues/1");
+    expect(seen[0]).toEqual(expect.arrayContaining(["label", "list", "--repo", "AltanS/collie"]));
+    expect(seen[1]).toEqual(expect.arrayContaining(["issue", "create", "--repo", "AltanS/collie", "--label", "harness-drift", "--body-file", files.markdown]));
+    expect(() => openIssue(files, issue, "AltanS/collie", (args) => (args[0] === "label" ? gh(args) : { code: 1, stdout: "", stderr: "no" }))).toThrow(/gh issue create failed/);
+  });
+
+  test("a missing label stops openIssue before any issue is created, and the message says so", () => {
+    const labRoot = temp();
+    const issue = draftIssue(facts, judge(facts), "log", [], ctx);
+    const files = writeIssueFiles(labRoot, "claude", "2.1.301", issue);
+    const verbs: string[] = [];
+    const gh = (args: readonly string[]): GitResult => {
+      verbs.push(args.slice(0, 2).join(" "));
+      return { code: 0, stdout: JSON.stringify([{ name: "bug" }]), stderr: "" };
+    };
+    expect(() => openIssue(files, issue, "AltanS/collie", gh)).toThrow(/label "harness-drift" does not exist in AltanS\/collie/);
+    expect(verbs).toEqual(["label list"]);
+    expect(() => labelExists("AltanS/collie", "x", () => ({ code: 1, stdout: "", stderr: "denied" }))).toThrow(/gh label list failed/);
+  });
+
+  test("the pass commit body states the real send and ask results", () => {
+    const repo = makeRepo();
+    const labRoot = temp();
+    const done = publishPass({ repo, labRoot, harness: "claude", version: "2.1.301", date: "2026-10-16", log: "x", evidence: "one probed send (sent), one ask answer (effective, declined file made: false)" });
+    const body = realGit(done.worktree, ["log", "-1", "--format=%B"]).stdout;
+    expect(body).toContain("Result: one probed send (sent), one ask answer (effective, declined file made: false).");
   });
 });

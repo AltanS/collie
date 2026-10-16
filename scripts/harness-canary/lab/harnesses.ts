@@ -35,7 +35,7 @@ export interface HarnessSpec {
   /** The file under `<bin>/node_modules/.bin/`. */
   readonly binName: string;
   /** Flags after the binary for a throwaway start. Never a flag that reads or writes the person's config. */
-  readonly startArgs: readonly string[];
+  readonly startArgs: (dirs: RunDirs) => readonly string[];
   /** The environment the agent gets on top of the lab's short list. */
   readonly env: (dirs: RunDirs) => Readonly<Record<string, string>>;
   /** Whether the lab copies the person's login into the run directory. */
@@ -63,6 +63,9 @@ export interface HarnessTable {
   readonly [id: string]: HarnessSpec | undefined;
 }
 
+/** The MCP config a Claude run gets: no servers. The file sits in the run's config folder. */
+export const EMPTY_MCP_FILE = "empty-mcp.json";
+
 /** The model turns one Claude run may spend: the send, the ask request, and what Claude does after a No. */
 export const CLAUDE_TURN_CAP = 4;
 
@@ -72,7 +75,8 @@ export const HARNESSES: Readonly<HarnessTable> = {
     npm: "@anthropic-ai/claude-code",
     binName: "claude",
     // Haiku is the cheap model. `default` asks before a shell command, which the ask leg needs.
-    startArgs: ["--model", "haiku", "--permission-mode", "default"],
+    // `--strict-mcp-config` with an empty file: no MCP server of the person's runs inside the lab.
+    startArgs: (dirs) => ["--model", "haiku", "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(dirs.config, EMPTY_MCP_FILE)],
     env: (dirs) => ({ CLAUDE_CONFIG_DIR: dirs.config, DISABLE_AUTOUPDATER: "1", DISABLE_TELEMETRY: "1" }),
     seedsLogin: true,
     turnCap: CLAUDE_TURN_CAP,
@@ -81,7 +85,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     id: "codex",
     npm: "@openai/codex",
     binName: "codex",
-    startArgs: ["-c", "check_for_update_on_startup=false"],
+    startArgs: () => ["-c", "check_for_update_on_startup=false"],
     env: (dirs) => ({ ...homeEnv(dirs), CODEX_HOME: join(dirs.home, ".codex") }),
     seedsLogin: false,
     turnCap: 0,
@@ -90,7 +94,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     id: "pi",
     npm: "@earendil-works/pi-coding-agent",
     binName: "pi",
-    startArgs: ["--thinking", "off"],
+    startArgs: () => ["--thinking", "off"],
     env: (dirs) => ({ ...homeEnv(dirs), PI_CODING_AGENT_DIR: join(dirs.home, ".pi") }),
     seedsLogin: false,
     turnCap: 0,
@@ -99,7 +103,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     id: "opencode",
     npm: "opencode-ai",
     binName: "opencode",
-    startArgs: [],
+    startArgs: () => [],
     env: (dirs) => ({ ...homeEnv(dirs), OPENCODE_DISABLE_AUTOUPDATE: "1" }),
     seedsLogin: false,
     turnCap: 0,

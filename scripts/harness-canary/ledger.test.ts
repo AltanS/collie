@@ -185,6 +185,14 @@ describe("the lab ledger: skip a pair that has a row", () => {
     expect(JSON.parse(readFileSync(path, "utf8")).rows[0].startedAt).toBeUndefined();
   });
 
+  test("a running row carries the pid of its run, and a settled row drops it", () => {
+    const path = fresh();
+    claim(path, "claude", "2.1.301", "2026-10-16", "/log", NOW, 4321);
+    expect(findRow(readLedger(path), "claude", "2.1.301")?.pid).toBe(4321);
+    settle(path, "claude", "2.1.301", { result: "pass" });
+    expect(findRow(readLedger(path), "claude", "2.1.301")?.pid).toBeUndefined();
+  });
+
   test("markNotified keeps the row and remembers the verdict told", () => {
     const path = fresh();
     claim(path, "claude", "2.1.301", "2026-10-16", "/log", NOW);

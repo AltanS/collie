@@ -2,19 +2,21 @@
 // The version-change trigger (M44 spec 06, carried by M56 spec 10). It compares each installed agent
 // with the verified-versions ledger. For an agent that is NEWER, it runs the lab on the installed
 // version: the same lab, the same one-run-per-version ledger and the same pass and fail ends as the
-// nightly feed run (lab/main.ts). The nightly ritual `nightly-harness-lab` is what schedules it; no
-// systemd unit is made here.
+// nightly feed run (lab/main.ts). NOTHING SCHEDULES THIS SCRIPT. The ritual `nightly-harness-lab` runs
+// lab/main.ts, and no systemd unit is made here. A person runs this one by hand, for example after
+// a Claude update, when the feed has not named the new version yet. The two share one ledger, so
+// they never run the same version twice.
 //
 //   bun scripts/harness-canary/watch.ts --dry-run --fake-version claude=99.0.0
 //   bun scripts/harness-canary/watch.ts
 //
-// --fake-version h=x.y.z       pretend the installed binary prints that version.
+// --fake-version h=x.y.z       pretend the installed binary prints that version. Needs --dry-run.
 // --dry-run                    print what would run and run nothing.
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { compareVersions, driftState, installedVersion, loadLedger as loadVerified } from "../harness-drift";
-import { exitCodeOf, fileNotify, parseCli, pending, runCandidates, stateDirOf, summaryLine, USAGE, type Candidate, type CliOptions } from "./lab/cli";
+import { exitCodeOf, fileNotify, parseCli, pending, repoProblem, runCandidates, stateDirOf, summaryLine, USAGE, type Candidate, type CliOptions } from "./lab/cli";
 import { HARNESSES } from "./lab/harnesses";
 import { realPorts } from "./lab/ports";
 
@@ -47,6 +49,13 @@ async function main(): Promise<number> {
   if (cli === "help") {
     console.log(USAGE.replace("bun scripts/harness-canary/lab/main.ts", "bun scripts/harness-canary/watch.ts"));
     return 0;
+  }
+  if (!cli.plan) {
+    const problem = repoProblem(cli.repo);
+    if (problem !== null) {
+      console.error(problem);
+      return 2;
+    }
   }
   const candidates = newerThanLedger(cli);
   if (cli.plan) {

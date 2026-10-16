@@ -42,6 +42,8 @@ export interface LabRow {
   readonly notified?: string | undefined;
   /** When the row was claimed, epoch milliseconds. Only `running` needs it. */
   readonly startedAt?: number | undefined;
+  /** The process that holds a `running` row. A dead pid means the run died, and the sweep settles the row. */
+  readonly pid?: number | undefined;
 }
 
 export interface LabLedger {
@@ -80,7 +82,7 @@ function parseRow(path: string, value: JsonValue | undefined, index: number): La
   if (date === undefined || !DAY.test(date)) throw new LedgerError(path, `${at}.date is not YYYY-MM-DD`);
   if (result === undefined) throw new LedgerError(path, `${at}.result is not one of ${RESULTS.join(", ")}`);
   if (log === undefined) throw new LedgerError(path, `${at}.log is missing`);
-  return { harness, version, date, result, log, note: asJsonString(node.note), notified: asJsonString(node.notified), startedAt: asJsonNumber(node.startedAt) };
+  return { harness, version, date, result, log, note: asJsonString(node.note), notified: asJsonString(node.notified), startedAt: asJsonNumber(node.startedAt), pid: asJsonNumber(node.pid) };
 }
 
 /**
@@ -101,6 +103,7 @@ function rowJson(row: LabRow): JsonObject {
   if (row.note !== undefined) out.note = row.note;
   if (row.notified !== undefined) out.notified = row.notified;
   if (row.startedAt !== undefined) out.startedAt = row.startedAt;
+  if (row.pid !== undefined) out.pid = row.pid;
   return out;
 }
 
@@ -172,7 +175,7 @@ function takeLock(lock: string, now: number): boolean {
  * Take a pair: write its `running` row. False when the pair already has a row (another run took it,
  * or an earlier run finished it), and nothing is written. Call it before the first paid step.
  */
-export function claim(path: string, harness: string, version: string, today: string, log: string, now: number): boolean {
+export function claim(path: string, harness: string, version: string, today: string, log: string, now: number, pid: number = process.pid): boolean {
   if (!VERSION.test(version)) throw new LedgerError(path, `"${version}" is not x.y.z`);
   // A lock directory makes read-then-write one step: two runs on the same pair cannot both claim it.
   // A run that finds the lock held takes it as "someone else has this pair" and does nothing.
@@ -182,7 +185,7 @@ export function claim(path: string, harness: string, version: string, today: str
   try {
     const ledger = loadLedger(path, now);
     if (!shouldRun(ledger, harness, version)) return false;
-    writeLedger(path, { rows: [...ledger.rows, { harness, version, date: today, result: "running", log, startedAt: now }] });
+    writeLedger(path, { rows: [...ledger.rows, { harness, version, date: today, result: "running", log, startedAt: now, pid }] });
     return true;
   } finally {
     rmdirSync(lock);
@@ -195,8 +198,9 @@ export function settle(path: string, harness: string, version: string, patch: { 
   const row = findRow(ledger, harness, version);
   if (row === undefined) throw new LedgerError(path, `${harness} ${version} was never claimed`);
   // A settled row has no start time: only a claim needs one.
-  const { startedAt, ...kept } = row;
+  const { startedAt, pid, ...kept } = row;
   void startedAt;
+  void pid;
   const next: LabRow = { ...kept, result: patch.result, note: patch.note ?? kept.note, log: patch.log ?? kept.log };
   writeLedger(path, { rows: ledger.rows.map((candidate) => (candidate === row ? next : candidate)) });
   return next;

@@ -9,7 +9,7 @@
 // FAIL: an issue written as files (a JSON file with the title, the label and the body, and the same
 // body as Markdown) under `<lab root>/issues/`. The body holds the redacted screens, the Surface
 // verdicts and the counters. `gh issue create` runs only when the caller passes `openIssue`, which the
-// ritual does and a hand run does not.
+// ritual never does: a public issue is posted by a person, after Altan has seen the draft.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -109,7 +109,18 @@ export const BODY_LINES = 160;
 export function commitMessage(input: PassInput): string {
   const lines = input.log.split("\n");
   const body = lines.length > BODY_LINES ? [...lines.slice(0, BODY_LINES), `... ${String(lines.length - BODY_LINES)} more lines in the run log`] : lines;
-  return [`Harness lab: ${input.harness} ${input.version} verified`, "", `The nightly harness lab ran ${input.harness} ${input.version} on ${input.date}.`, "The walk, the Surface over every screen, one probed send and one ask answer passed.", "This commit moves two files: the verified-versions row and the profile range.", "", "Run log:", "", ...body, ""].join("\n");
+  return [
+    `Harness lab: ${input.harness} ${input.version} verified`,
+    "",
+    `The nightly harness lab ran ${input.harness} ${input.version} on ${input.date}.`,
+    `Result: ${input.evidence}.`,
+    "This commit moves two files: the verified-versions row and the profile range.",
+    "",
+    "Run log:",
+    "",
+    ...body,
+    "",
+  ].join("\n");
 }
 
 export function publishPass(input: PassInput, git: Git = realGit): PassResult {
@@ -210,8 +221,25 @@ export const realGh: Gh = (args) => {
   return { code: run.exitCode, stdout: run.stdout.toString(), stderr: run.stderr.toString() };
 };
 
-/** `gh issue create`. Only the ritual's `--open-issue` flag reaches this. Returns the issue URL. */
+/** Whether the repo has the label. A `gh label list` that fails is an error: a missing label must not be guessed. */
+export function labelExists(repoSlug: string, label: string, gh: Gh = realGh): boolean {
+  const run = gh(["label", "list", "--repo", repoSlug, "--limit", "200", "--json", "name"]);
+  if (run.code !== 0) throw new Error(`gh label list failed (${String(run.code)}): ${run.stderr.trim()}`);
+  const parsed = parseJson(run.stdout);
+  const names = Array.isArray(parsed) ? parsed : [];
+  return names.some((entry) => asJsonString(asJsonObject(entry)?.name) === label);
+}
+
+/**
+ * `gh issue create`, for a human run with `--open-issue`. The ritual never calls it: a public issue is
+ * posted only after Altan has seen the draft. It checks that the label exists first, and says so when it
+ * does not, because `gh issue create --label` on a missing label fails after the lab has spent its run.
+ * Returns the issue URL.
+ */
 export function openIssue(files: IssueFiles, issue: IssueDraft, repoSlug: string, gh: Gh = realGh): string {
+  for (const label of issue.labels) {
+    if (!labelExists(repoSlug, label, gh)) throw new Error(`the label "${label}" does not exist in ${repoSlug}: create it first (gh label create ${label} --repo ${repoSlug}), then post the draft ${files.markdown}`);
+  }
   const args = ["issue", "create", "--repo", repoSlug, "--title", issue.title, "--body-file", files.markdown, ...issue.labels.flatMap((label) => ["--label", label])];
   const run = gh(args);
   if (run.code !== 0) throw new Error(`gh issue create failed (${String(run.code)}): ${run.stderr.trim()}`);

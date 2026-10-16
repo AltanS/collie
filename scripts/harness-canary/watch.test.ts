@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { exitCodeOf, parseCli, pending, runCandidates, type Candidate, type CliOptions } from "./lab/cli";
 import { claim, findRow, readLedger, settle } from "./lab/lab-ledger";
 import type { LabPorts, SessionFacts } from "./lab/run";
-import { LabInfraError } from "./lab/seed";
+import { LabDeferred, LabInfraError } from "./lab/seed";
 import type { ScreenFact } from "./lab/verdict";
 import { newerThanLedger } from "./watch";
 
@@ -29,19 +29,22 @@ function setup(patch: Partial<CliOptions> = {}): Rig {
   const root = mkdtempSync(join(tmpdir(), "lab-watch-"));
   dirs.push(root);
   const told: string[] = [];
-  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, plan: false, maxRuns: 4, fakeVersions: [], ...patch };
+  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, publish: true, plan: false, maxRuns: 4, fakeVersions: [], ...patch };
   return { cli, told, notify: (line) => told.push(line) };
 }
 
 const idle: ScreenFact = { leg: "start", label: "start", expects: "idle", surface: { turn: "idle", composer: "empty", modal: "none" }, free: true, cue: "none", rows: [] };
 const dialog = (free: boolean): ScreenFact => ({ leg: "walk", label: "/model", expects: "dialog", surface: { turn: "unknown", composer: "unknown", modal: "ask" }, free, cue: "strong", rows: ["Select model"] });
 const facts = (free: boolean): SessionFacts => ({
-  facts: { profile: "provisional", walk: { reached: true, returned: true, menuRead: true, startedTurn: null, sent: [], unclassified: [], missing: [] }, screens: [idle, dialog(free)], send: { outcome: "sent", probed: true, keys: 1 }, ask: null, turns: 1 },
+  facts: { profile: "provisional", walk: { reached: true, returned: true, menuRead: true, startedTurn: null, sent: [], unclassified: [], missing: [] }, screens: [idle, dialog(free)], send: { outcome: "sent", probed: true, keys: 1 }, ask: { outcome: "sent", fileCreated: false }, turns: 1 },
   counters: [],
 });
 
 function ports(session: () => Promise<SessionFacts>, install?: LabPorts["install"], seen: string[] = []): LabPorts {
   return {
+    liveness: { isAlive: () => false, servers: () => [], killServer: async () => {} },
+    async stopAll() {},
+    clone: (source) => source,
     async preflight() {},
     install:
       install ??
@@ -205,5 +208,26 @@ describe("the lab command line", () => {
     expect(() => argv("--version", "claude=latest")).toThrow(/x\.y\.z/);
     expect(() => argv("--version", "nope=1.0.0")).toThrow(/unknown harness/);
     expect(() => argv("--bogus")).toThrow(/unknown option/);
+  });
+
+  test("a deferral is not a silent night: one notify line, no ledger row", async () => {
+    const { cli, told, notify } = setup();
+    const deferred: LabPorts = {
+      ...ports(async () => facts(false)),
+      async preflight() {
+        throw new LabDeferred("the Claude access token has 16 minutes left");
+      },
+    };
+    const done = await runCandidates(CAND, cli, deferred, notify, () => NOW);
+    expect(done.outcomes[0]?.status).toBe("deferred");
+    expect(told).toHaveLength(1);
+    expect(told[0]).toContain("deferred: the Claude access token has 16 minutes left");
+    expect(existsSync(cli.ledger)).toBe(false);
+  });
+
+  test("--fake-version needs --dry-run, and --no-publish is read", () => {
+    expect(() => parseCli(["--fake-version", "claude=99.0.0"], "/c", {}, "/home/u")).toThrow(/needs --dry-run/);
+    const ok = parseCli(["--fake-version", "claude=99.0.0", "--dry-run", "--no-publish"], "/c", {}, "/home/u");
+    expect(ok).toMatchObject({ plan: true, publish: false });
   });
 });
