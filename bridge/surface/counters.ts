@@ -72,6 +72,8 @@ export interface CounterRow extends CounterKey {
   effective: number;
   /** Sends that ended `unknown`. */
   unknown_outcome: number;
+  /** Sends that ended `typed_not_submitted`: the text went into the box, Enter did not. */
+  typed_not_submitted: number;
 }
 
 /** One day's file. */
@@ -112,7 +114,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0 };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0 };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -182,6 +184,7 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     sent: count("sent"),
     effective: count("effective"),
     unknown_outcome: count("unknown_outcome"),
+    typed_not_submitted: count("typed_not_submitted"),
   };
 }
 
@@ -225,6 +228,7 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.sent += from.sent;
   into.effective += from.effective;
   into.unknown_outcome += from.unknown_outcome;
+  into.typed_not_submitted += from.typed_not_submitted;
 }
 
 /** The rows of several days added up by key, sorted by harness, then version. */
@@ -441,6 +445,7 @@ export class SurfaceLedger {
     else if (end.outcome === "sent") row.sent++;
     else if (end.outcome === "effective") row.effective++;
     else if (end.outcome === "unknown") row.unknown_outcome++;
+    else if (end.outcome === "typed_not_submitted") row.typed_not_submitted++;
     if (end.probed) row.probed++;
     this.touch();
   }

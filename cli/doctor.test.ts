@@ -2781,7 +2781,7 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     const line = byCheck.get("surface-agent-2.1.301")!;
     expect(line.status).toBe("ok");
     expect(line.detail).toBe(
-      "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2",
+      "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0",
     );
   });
 
