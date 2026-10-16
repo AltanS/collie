@@ -659,6 +659,7 @@ describe("pane write prompt binding", () => {
     expected_prompt?: string | number | null;
     expected_styled?: string | number | null;
     expected_columns?: { start: number; end: number } | number[] | string | null;
+    expected_tail_lines?: number | string | null;
   }
 
   function request(body: PaneActionBody): Request {
@@ -1373,6 +1374,73 @@ describe("pane write prompt binding", () => {
               : await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
           expect(res.status).toBe(400);
           expect(await res.text()).toBe("bad expected_columns");
+          expect(client.reads).toEqual([]);
+          expect(client.keys).toEqual([]);
+          expect(client.texts).toEqual([]);
+        }
+      }
+    });
+  });
+
+  // `expected_tail_lines` (web/src/lib/tail-lines.ts): how many of the read's last non-blank rows the
+  // region may end in, for a harness that paints its own live chrome under a dialog (Hermes's
+  // spinner, countdown hint, status bar and input row). Same single read; the bridge only counts.
+  describe("expected_tail_lines", () => {
+    const PANEL = ["╭─ needs your input ─╮", "│ ❯ 1. Red          │", "╰────────────────────╯"];
+    const CHROME = ["  spinner (12.0s)", "  hint (3540s)", " status ⏱ 12s", "────", "? ❯", "────"];
+    const REGION = PANEL.join("\n");
+
+    test("a region seven rows up passes with a window of 8; the keys go after ONE read, and the audit records it", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME, "ticked"].join("\n");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_tail_lines: 8 };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, "phone", "default");
+      expect(res.status).toBe(200);
+      expect(client.reads).toHaveLength(1);
+      expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: true, tailLines: 8 } });
+    });
+
+    test("the same region without the field is refused as not_in_tail (an older phone fails closed)", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "prompt_changed", reason: "not_in_tail" });
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).not.toHaveProperty("promptBinding.tailLines");
+    });
+
+    test("a region further up than the declared window is still refused", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME, "a", "b"].join("\n");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_tail_lines: 8 };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "prompt_changed", reason: "not_in_tail" });
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { passed: false, tailLines: 8 } });
+    });
+
+    test("expected_tail_lines without expected_prompt, or not a window from 6 to 12, is a 400 before any read or write", async () => {
+      const bad: PaneActionBody["expected_tail_lines"][] = [5, 13, 0, -8, 7.5, "8", null];
+      for (const route of ["keys", "reply"] as const) {
+        for (const expected_tail_lines of [...bad, 8]) {
+          const client = new FakePaneClient();
+          const { audit } = auditEntries();
+          const alone = expected_tail_lines === 8;
+          const body = alone
+            ? { keys: ["1"], text: "hello", expected_tail_lines }
+            : { keys: ["1"], text: "hello", expected_prompt: REGION, expected_tail_lines };
+          const res =
+            route === "keys"
+              ? await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default")
+              : await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("bad expected_tail_lines");
           expect(client.reads).toEqual([]);
           expect(client.keys).toEqual([]);
           expect(client.texts).toEqual([]);

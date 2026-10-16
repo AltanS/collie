@@ -192,6 +192,20 @@ export interface PromptModel {
    * `identityDiff` compares it: a model that gained, lost or moved its range is another reading.
    */
   bindColumns?: ColumnRange;
+  /**
+   * How many of the read's last non-blank rows the region may end in, when that is more than the
+   * bridge's default six (`lib/tail-lines.ts`). Set ONLY by a grammar that has recognised every row
+   * below its region as its harness's OWN chrome, painted live under the dialog: Hermes's classic CLI
+   * keeps a spinner, a countdown hint, a status bar and the input row under every panel, six or seven
+   * rows that tick every second and so cannot be bound. The phone sends it as `expected_tail_lines`
+   * beside the region and the bridge widens its tail window to it, never past `MAX_TAIL_LINES`. Built
+   * with `tailLinesFor`, which adds one row of headroom. Absent means the default window, which every
+   * other grammar binds; an older bridge ignores the field, keeps six rows and refuses the tap.
+   *
+   * Not part of identity: it counts chrome outside the dialog, which a status row that wraps may
+   * move by one without the dialog changing at all.
+   */
+  bindTail?: number;
 }
 
 /**
