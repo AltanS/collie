@@ -697,6 +697,19 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
   });
 
+  it("the Screen pill shows the raw rows in one tap, without a stored preference, and a second tap brings the cards back", async () => {
+    const user = userEvent.setup();
+    renderChat({ text: MENU_TEXT });
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    const pill = screen.getByRole("button", { name: "Show the screen rows, without cards" });
+    await user.click(pill);
+    expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
+    expect(screen.getByText(/1\. Yes/)).toBeInTheDocument();
+    expect(localStorage.getItem("collie:display-prefs:v4")).toBeNull();
+    await user.click(pill);
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+  });
+
   // "Tap to type" — on, the mirror is one big "start typing" target; off, it is a document. The
   // pref must gate ONLY the focus, never the mirror's own controls: someone who turned it off to
   // stop the keyboard appearing has not asked to lose the prompt buttons.
@@ -3519,6 +3532,21 @@ describe("AgentChat — the chat body", () => {
     await user.click(screen.getByRole("button", { name: "Terminal view" }));
     await waitFor(() => expect(screen.getByText(/recent pane output/)).toBeInTheDocument());
     expect(screen.queryByText("what changed today?")).toBeNull();
+  });
+
+  // M56 spec 07: the way out. The Screen pill on the belt is the raw rows in one tap, in every state.
+  it("the Screen pill leaves Chat for the terminal rows in one tap, and the next tap goes back", async () => {
+    chooseChat("chat");
+    const user = userEvent.setup();
+    renderChat({ agent: journalAgent() });
+    await screen.findByText("what changed today?");
+    const pill = screen.getByRole("button", { name: "Show the screen rows, without cards" });
+    await user.click(pill);
+    await waitFor(() => expect(screen.getByText(/recent pane output/)).toBeInTheDocument());
+    expect(screen.queryByText("what changed today?")).toBeNull();
+    // Nothing was stored: the device's standing choice is still Chat, and the second tap shows it again.
+    await user.click(pill);
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
   });
 
   // A pane with no journal SHOWS the switch and explains itself; it never hides.

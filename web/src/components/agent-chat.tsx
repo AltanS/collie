@@ -329,7 +329,13 @@ export function AgentChat({
   const mirrorFace = mirrorFont(prefs.fontFamily);
   // Raw-terminal escape hatch: when on, every Claude grammar is bypassed and the plain mirror shows,
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
-  const grammarsOn = !prefs.rawTerminal;
+  //
+  // THE SCREEN PILL (M56 spec 07) is the same hatch in one tap, for this view of the pane only: the
+  // composer's belt turns the rows on and off, in every state of the Surface, and nothing is stored.
+  // It ends when the pane is left (this component is keyed by pane), and a pane with no screen has no
+  // pill (Chat is its only body).
+  const [screenForced, setScreenForced] = useState(false);
+  const grammarsOn = !prefs.rawTerminal && !screenForced;
   const isShell = agent?.kind === "shell";
   // A bare shell that just became an agent pane. The hook is the EDGE and nothing else: opening a
   // pane that has been running Claude for an hour announces nothing, because this mount never
@@ -990,7 +996,7 @@ export function AgentChat({
   // closed", the controls locked, and a step back to the list once connected). No ghost row, no
   // history kept on the phone, no recovery verb. A dropped conversation that comes back in a later
   // snapshot is simply a pane again.
-  const chatChosen = gridless || dash.prefs.paneView === "chat";
+  const chatChosen = gridless || (dash.prefs.paneView === "chat" && !screenForced);
   // The chat route is asked only where a session exists to read: a pane with none has nothing for
   // it to answer. The poll that already exists moves it (ADR 0073); disabled is free.
   const chatFetch = chatChosen && historyAvailable;
@@ -2829,6 +2835,8 @@ export function AgentChat({
                     onToggle: () => setDrawer(drawer === "display" ? null : "display"),
                   }}
                   onSent={onSent}
+                  // The Screen pill on the belt: the raw rows, in one tap, in every state (M56 spec 07).
+                  screen={gridless ? undefined : { on: screenForced, onToggle: () => setScreenForced((on) => !on) }}
                   // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.
                   pullHandle={pullHandle}

@@ -346,16 +346,17 @@ export const en = {
   "composer.placeholder.permissionWaiting": "Permission is waiting",
   "composer.placeholder.questionWaiting": "Question is waiting",
   "composer.placeholder.direct": "Type into the terminal…",
-  // The way out (M56 spec 07): the placeholder names the state, whatever the state is. Each sentence ends on
-  // what the next tap does. A free box keeps "Type a reply…".
-  "composer.placeholder.running": "The agent is working. Keys can stop it.",
-  "composer.placeholder.draft": "A draft is in the box. Send offers Add or Replace.",
-  "composer.placeholder.unreadable": "Collie cannot read what is open. Use Screen or Keys.",
-  "composer.placeholder.noMatch": "Collie cannot find the input box. Send takes two taps.",
-  "composer.placeholder.contested": "Two reads disagree. Send reads the screen again.",
-  "composer.placeholder.stale": "Last read {age} ago. Send reads the screen again.",
-  "composer.placeholder.staleNoAge": "The last read is old. Send reads the screen again.",
-  "composer.placeholder.torn": "The screen was moving. Send reads it again.",
+  // The way out (M56 spec 07): the placeholder names the state, whatever the state is. The field is one
+  // line on a phone, so each is the name and nothing more; what to do next is the notice beside Send.
+  // A free box keeps "Type a reply…".
+  "composer.placeholder.running": "The agent is working",
+  "composer.placeholder.draft": "A draft is in the box",
+  "composer.placeholder.unreadable": "Cannot read what is open",
+  "composer.placeholder.noMatch": "Input box not found",
+  "composer.placeholder.contested": "Two reads disagree",
+  "composer.placeholder.stale": "Last read {age} ago",
+  "composer.placeholder.staleNoAge": "The last read is old",
+  "composer.placeholder.torn": "The screen was moving",
   "composer.placeholder.shell": "Type a shell command…",
   "composer.placeholder.reply": "Type a reply…",
   "composer.mic.unavailable": "Voice input is unavailable",

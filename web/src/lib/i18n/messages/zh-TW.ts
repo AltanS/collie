@@ -304,14 +304,14 @@ export const zhTW: Dictionary = {
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
   "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "輸入終端機指令…",
-  "composer.placeholder.running": "The agent is working. Keys can stop it.", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box. Send offers Add or Replace.", // TODO wordsmith
-  "composer.placeholder.unreadable": "Collie cannot read what is open. Use Screen or Keys.", // TODO wordsmith
-  "composer.placeholder.noMatch": "Collie cannot find the input box. Send takes two taps.", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree. Send reads the screen again.", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago. Send reads the screen again.", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old. Send reads the screen again.", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving. Send reads it again.", // TODO wordsmith
+  "composer.placeholder.running": "The agent is working", // TODO wordsmith
+  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
+  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
+  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
+  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
+  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
+  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
+  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
   "composer.placeholder.shell": "輸入 Shell 指令…",
   "composer.placeholder.reply": "輸入回覆內容…",
   "composer.mic.unavailable": "語音輸入不可用",

@@ -1,6 +1,6 @@
 // The Send Protocol's offers at the thumb (M56 spec 05): one strip under the field with a button per
-// next action the bridge's answer offered, and a ✕ that sends nothing. Spec 07 completes the outcome
-// rendering; this is the v1 behind the flag.
+// next action the bridge's answer offered, and a ✕ that sends nothing. The words of the outcome, and the
+// way on (the card, the screen, the Keys dock), are the notice beside it (M56 spec 07, composer.tsx).
 
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
