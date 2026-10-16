@@ -1,0 +1,19 @@
+[0m[38;2;99;148;255m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[1mTrust project folder?[0m                                                                                                 
+ [0m[1m/tmp/collie-pi-sandbox/a-folder-name-long-enough-to-wrap-the-way-the-captured-path-did-then-some-padding-again--/sand [0m
+ [0m[1mboxdir/trust-probe[0m                                                                                                    
+                                                                                                                       
+ [0m[1mThis allows pi to load .pi settings and resources, install missing project packages, and execute project extensions.[0m  
+
+ → Trust                                                                                                               
+   Trust parent folder                                                                                                 
+ (/tmp/collie-pi-sandbox/a-folder-name-long-enough-to-wrap-the-way-the-captured-path-did-then-some-padding-again--/san 
+ dboxdir)                                                                                                              
+   Trust (this session only)                                                                                           
+   Do not trust                                                                                                        
+   Do not trust (this session only)                                                                                    
+
+ [0m[2m↑↓ navigate[0m  [0m[2menter select[0m  [0m[2mescape/ctrl+c cancel[0m                                                                       
+
+[0m[38;2;99;148;255m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m

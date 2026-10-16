@@ -527,7 +527,13 @@ export function installScript(opts: {
     'VMSG=$("$GIT" -C "$WORK/verify" bundle verify "$WORK/bundle.part" 2>&1 >/dev/null) || { echo "error: the pushed bundle did not verify: $VMSG" >&2; exit 22; }',
     'mv "$WORK/bundle.part" "$WORK/bundle"',
     'if [ -d "$ROOT/.git" ]; then',
-    '  "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD',
+    // A lead on a shallow checkout (every Herdr-managed install, ADR 0006) bundles its commit
+    // without the parent, and a bundle carries no shallow marker, so this fetch refuses whenever
+    // the member lacks that parent. Unbundling stores the same objects without the connectivity
+    // check; the pin is unchanged, because the checkout below still names the lead's commit.
+    '  if ! "$GIT" -C "$ROOT" fetch --no-tags --update-shallow "$WORK/bundle" HEAD 2>"$WORK/fetch.err"; then',
+    '    "$GIT" -C "$ROOT" bundle unbundle "$WORK/bundle" >/dev/null 2>>"$WORK/fetch.err" || { cat "$WORK/fetch.err" >&2; echo "error: the pushed bundle could not be applied to $ROOT" >&2; exit 28; }',
+    "  fi",
     '  "$GIT" -C "$ROOT" checkout --detach "$COMMIT"',
     // Never `mv` a fresh clone onto an existing non-checkout: `mv a b` when `b` is a directory puts
     // `a` INSIDE it, which would leave a working Collie at a path nothing else knows about.
@@ -541,6 +547,21 @@ export function installScript(opts: {
     '  "$GIT" -C "$ROOT.part" checkout --detach "$COMMIT"',
     '  mv "$ROOT.part" "$ROOT"',
     "fi",
+    // Either way the commit may now name a parent this checkout does not have. Record the commit as
+    // a shallow boundary, as `git fetch --depth` would have, or git reads the history as broken
+    // (`rev-list` and `fsck` fail). A checkout that has the parent is left alone, so a full clone
+    // keeps its history (ADR 0006). Two costs come with the boundary. A merge that arrives with one
+    // parent missing is cut as a whole, so the parent the member does hold drops out of view, though
+    // not off disk. And the checkout now reads as shallow, so `collie update` there fetches with
+    // `--depth 1` from then on, as it already does on a Herdr-managed checkout. The parents come off
+    // the commit's own header: `git log` would try to read the very parent that is missing, fail,
+    // and leave the loop with nothing to check.
+    `for PARENT in $("$GIT" -C "$ROOT" cat-file commit "$COMMIT" | sed -n '/^$/q; s/^parent //p'); do`,
+    '  if ! "$GIT" -C "$ROOT" cat-file -e "$PARENT^{commit}" 2>/dev/null; then',
+    '    grep -qx "$COMMIT" "$ROOT/.git/shallow" 2>/dev/null || printf \'%s\\n\' "$COMMIT" >> "$ROOT/.git/shallow"',
+    "    break",
+    "  fi",
+    "done",
     'GOT=$("$GIT" -C "$ROOT" rev-parse HEAD)',
     '[ "$GOT" = "$COMMIT" ] || { echo "error: checkout is at $GOT, expected $COMMIT" >&2; exit 23; }',
     // The shim's bootstrap, verbatim in mechanism: prepend Bun's own directory and build from source.

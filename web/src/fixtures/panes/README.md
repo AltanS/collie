@@ -80,6 +80,8 @@ host, key or token remains; `/tmp/pi110-lab/work` is the stock pi sandbox.
 | `pi--omo-v5130-panel-picker-tree.txt` | 40 rows, `/tree` with the panel beside its header | Escape card |
 | `pi--v110-stock-picker-resume.txt` | Stock pi 1.1.0 `/resume` picker | Escape card |
 | `pi--v110-stock-picker-tree.txt` | Stock pi 1.1.0 `/tree` picker | Escape card |
+| `pi--trust-prompt.txt` | pi 1.2.0 started in an untrusted folder holding a project skill: `Trust project folder?`, the folder, the explanation, five unnumbered options with `→` on Trust (the parent folder wrapped under its option) and `↑↓ navigate  enter select  escape/ctrl+c cancel`, between two rules. Read with a throwaway `PI_CODING_AGENT_DIR`; both paths became one invented sandbox path of the same length, split where the real one wrapped | lifts (pi/trust.ts), a walked trust card plus Cancel (Escape) |
+| `pi--trust-prompt-moved.txt` | The same prompt after one Down: `→` on Trust parent folder. Its walk pair | lifts |
 
 ### Derived, not captured: a dialog taller than the pane (2026-10-15)
 
@@ -439,6 +441,8 @@ hostname or session id is on the kept rows.
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--v0159-task-title.txt` | `Reply with only OK.` answered `OK`, the empty composer, and the status row `  gpt-5.6-sol low · /tmp/collie-canary-project · Generate task title`. `composerReady` must be TRUE | `idle` |
+| `codex--resume-picker.txt` | Codex 0.159.3 `/resume`: `Resume a previous session`, filter rows, `  › 2d ago      Reply with OK` highlighted, the two-row `enter resume … esc exit …` / `… ↑/↓ browse` footer. Lifts as a menu: Up/Down, Resume (Enter), Exit (Escape). Visible-screen read 2026-10-15 in a throwaway Herdr session; the sessions listed are earlier canary runs | `blocked` |
+| `codex--resume-picker-moved.txt` | Same picker after Down: the highlight on the second session, so the menu signature differs | `blocked` |
 
 ## Codex reporter capture (#294, 2026-09-27, macOS, Herdr 0.9.1, SCRUBBED)
 
@@ -1894,6 +1898,8 @@ signature.
 | `muse--approval-ls-147.txt` | Muse Code 1.4.7 `ls` approval, `⟩` on option 1 (#424) | `blocked` |
 | `muse--approval-date-147.txt` | Muse Code 1.4.7 `date` approval, `⟩` on option 2 (#424) | `blocked` |
 | `muse--trust-prompt-147.txt` | Muse Code 1.4.7 workspace trust prompt (#424) | `blocked` |
+| `muse--resume-picker.txt` | Muse Code 1.4.8 `/resume`: the same picker as Codex's, the highlighted session led by `⟩` at column 0 (the search field's `  ⟩ Search` is indented), footer ending `↑/↓ browse  pgup/pgdn page`. Lifts as a menu: Up/Down, Resume, Exit. Visible-screen read 2026-10-15; the sessions are earlier canary runs | `blocked` |
+| `muse--resume-picker-moved.txt` | Same picker after Down: the highlight on the second session | `blocked` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -1935,6 +1941,7 @@ wrap, Tab does nothing, Enter confirms, Escape declines, no digit).
 | `oc--slash-palette.txt` | `/` typed: the command list painted inside the box, above the input row. The composer still holds the keyboard | `idle` |
 | `oc--command-palette.txt` | The ctrl+p palette, `Commands … esc` over `Search`, over the middle of the screen; on 1.18.32 it also cuts through the rule | `idle` |
 | `oc--agents-picker.txt` | The `/agents` picker, `Select agent … esc` over `Search`, floating over the splash while the composer's tail stays intact underneath. The picker-shape check refuses it | `idle` |
+| `oc--update-available.txt` | opencode 1.18.34 at launch with a newer release out: the `Update Available … esc` confirm dialog, two body rows, and `Skip  Confirm` with Confirm highlighted, over the splash. No `Search` row, so it is not a picker; `confirmDialogUp` refuses the composer and the card offers Escape, which dismissed it live (2026-10-15). Recent-buffer read in a throwaway Herdr session; the wrapped cwd row became `/tmp/collie-oc-sandbox:master` at the same width and its second row blank, and the model and provider labels became `mini demo host`. Enter (Confirm) was never pressed | `blocked` |
 | `oc--command-palette-query.txt` | The ctrl+p palette with the filter `mod` typed, which stands where `Search` was. A known gap, pinned as `it.fails`: `composerReady` answers true here | `done` |
 | `oc--permission-bash.txt` | The bash permission dialog: `△ Permission required`, the heading `# Shell command`, the command `$ echo fixture-corpus-probe`, chips `Allow once` / `Allow always` / `Reject` with the pointer on `Allow once` | `blocked` |
 | `oc--permission-bash--moved.txt` | After one `Right`: pointer on `Allow always`. The body does not change | `blocked` |

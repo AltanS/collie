@@ -1540,3 +1540,34 @@ describe("opencode question dialog chrome", () => {
     }
   });
 });
+
+describe("opencode: the Update Available confirm dialog holds the keyboard (1.18.34)", () => {
+  // `Confirm` is the highlighted button there, so Enter would install the update: a reply must never
+  // be typed into this screen. Escape dismisses it (live 2026-10-15), which the card offers.
+  const lines = () => loadLines("oc--update-available.txt");
+
+  it("refuses the composer and binds nothing", () => {
+    expect(hasComposer(lines())).toBe(false);
+    expect(composerPrompt(lines())).toBeNull();
+  });
+
+  it("counts as a modal, so the card offers Escape", () => {
+    expect(modalOnScreen(lines())).toBe(true);
+  });
+
+  it("is not a picker: no Search row", () => {
+    expect(pickerOverlayUp(lines())).toBe(false);
+  });
+
+  it("still holds the keyboard when a narrow pane wraps the body onto more rows", () => {
+    // The capture puts the buttons six rows under the title. Each extra body row a narrower pane adds
+    // pushes them one further down, so the window must have room (opencode/chrome.ts).
+    const base = lines();
+    const body = base.findIndex((l) => lineText(l).includes("update now?"));
+    for (const extra of [1, 2, 4]) {
+      const wrapped = [...base.slice(0, body + 1), ...Array.from({ length: extra }, () => base[body]!), ...base.slice(body + 1)];
+      expect(hasComposer(wrapped), `${extra} extra rows`).toBe(false);
+      expect(modalOnScreen(wrapped), `${extra} extra rows`).toBe(true);
+    }
+  });
+});
