@@ -903,6 +903,11 @@ density, weight and border are closed words from the schema (version 2, the `sur
 terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
 tint it in schema version 1.
 
+**A marked row takes `--edge-accent`.** A row marked as selected or blocked by an inset shadow writes
+`shadow-[var(--edge-accent)_<colour>]`, never the offsets. The radius word sets them: a 2px bar on
+the left edge under `sharp` (the Collie theme), a 2px ring on all four sides under `soft` and
+`round`, because a left accent bar is never combined with rounded corners.
+
 **The rules a theme does not relax.** §4 still holds under every theme: chrome is the page
 colour with a rule, red marks harm, a raised panel is `card`. A shipped theme passes the contrast
 gate: every status chip at `/15` over `background` and `card` at 4.5:1 or better, body text at

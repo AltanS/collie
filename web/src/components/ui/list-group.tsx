@@ -30,6 +30,19 @@ import { cn } from "@/lib/utils";
  * sections used to be a gap list of `Card`s too; that changed 2026-09-14 (agent-list.tsx) — their
  * rows are flat now, so they use this wrapper the same as every workspace group.
  */
+/**
+ * The corners a painted row takes from its place in the group. A row is square (see the herd rows),
+ * but under a soft or round theme a square, painted first or last row (a tint, a hover fill, an
+ * opaque sticky row) covers the group's rounded corner and the frame looks cut. So the group's first
+ * child sets `--row-top` and its last child `--row-bottom` to the group's inner corner, and the
+ * painted part of a row reads them through {@link LIST_ROW_CORNERS}. Two pixels inside the group's
+ * own radius, floored at 0: at Collie's 2px both are 0, so the default look does not change, and a
+ * middle row never rounds. The two classes on the group spell the value out, because Tailwind reads
+ * class names from the source text and cannot see one built from a variable.
+ */
+/** The classes a painted part of a ListGroup row wears so its outer corners follow the group's. */
+export const LIST_ROW_CORNERS = "rounded-t-[var(--row-top,0px)] rounded-b-[var(--row-bottom,0px)]";
+
 function ListGroup({
   className,
   as: Comp = "div",
@@ -38,7 +51,11 @@ function ListGroup({
   return (
     <Comp
       data-slot="list-group"
-      className={cn("flex flex-col divide-y divide-border rounded-sm border border-rule", className)}
+      className={cn(
+        "flex flex-col divide-y divide-border rounded-sm border border-rule",
+        "[&>:first-child]:[--row-top:max(0px,calc(var(--radius-sm)_-_2px))] [&>:last-child]:[--row-bottom:max(0px,calc(var(--radius-sm)_-_2px))]",
+        className,
+      )}
       {...props}
     />
   );
