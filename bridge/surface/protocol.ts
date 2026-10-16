@@ -343,6 +343,22 @@ function withoutLead(lines: readonly string[]): string[] {
   return [first.slice(1).trimStart(), ...lines.slice(1)];
 }
 
+/** A mode marker a harness may draw in front of a command's text once it read the lead: `!`, `$`, `>`. */
+const MODE_MARKER = /^\s*[^\p{L}\p{N}\s]{1,3}/u;
+
+/**
+ * Whether the box holds a command's text: as written, with its lead cut, or with the lead turned into
+ * a mode marker in front of the rest (`! echo ok` for `!echo ok`). White space and wrapping are
+ * ignored, as in {@link boxMatches}.
+ */
+export function commandBoxMatches(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
+  if (boxMatches(box, prefix, lines, collapse)) return true;
+  const rest = withoutLead(lines);
+  if (boxMatches(box, prefix, rest, collapse)) return true;
+  const marker = MODE_MARKER.exec(box);
+  return marker !== null && boxMatches(box.slice(marker[0].length), prefix, rest, collapse);
+}
+
 function isSpace(ch: string | undefined): boolean {
   return ch !== undefined && /\s/u.test(ch);
 }
@@ -547,6 +563,8 @@ interface RunState {
   probed: boolean;
   /** The screen at S0 took the manual Send (no profile, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
+  /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
+  command: boolean;
   stepStart: number;
 }
 
@@ -741,6 +759,7 @@ export class SendProtocol {
       keys: [],
       probed: false,
       manual: false,
+      command: request.mode === "command",
       stepStart: at,
     };
   }
@@ -856,6 +875,9 @@ export class SendProtocol {
         throw new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
       }
     }
+    // Submit and Discard name the text the box holds: a command's text may stand there with its lead read as a mode marker.
+    if ((request.mode === "submit" || request.mode === "discard") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
+    const holds = (box: string): boolean => (state.command ? commandBoxMatches : boxMatches)(box, "", lines, collapseOf(match));
 
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
@@ -866,7 +888,7 @@ export class SendProtocol {
     switch (request.mode) {
       case "submit": {
         const frame = this.draftFrame(s0);
-        if (!boxMatches(boxText(frame), "", lines, collapseOf(match))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        if (!holds(boxText(frame))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);
@@ -877,7 +899,7 @@ export class SendProtocol {
       }
       case "discard": {
         const frame = this.draftFrame(s0);
-        if (!boxMatches(boxText(frame), "", lines, collapseOf(match))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        if (!holds(boxText(frame))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
         this.lap(state, "s0");
         await this.clear(state, s0);
         this.lap(state, "clear");
@@ -1269,14 +1291,13 @@ export class SendProtocol {
 
   /**
    * S1: the box holds exactly the text, and nothing else moved. A `command` lets the rows under the box
-   * move and lets a cue show there (its own popup), and takes the box with the lead read as the
-   * prompt glyph (a shell line's `!`); the transcript above must still stand still. A manual send
-   * lets the rows under the box and the rest of the box move; a cue that grows still fails it.
+   * move and lets a cue show there (its own popup), and takes the box with the lead cut or read as a
+   * mode marker (a shell line's `!` as `! `); the transcript above must still stand still. A manual
+   * send lets the rows under the box and the rest of the box move; a cue that grows still fails it.
    */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
-    const command = state.request.mode === "command";
-    const { manual } = state;
+    const { command, manual } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
       if (!command && cueAppeared(s0, snap)) {
@@ -1285,7 +1306,7 @@ export class SendProtocol {
       }
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
-        if (!boxMatches(boxText(snap.frame), prefix, lines, collapse) && !(command && boxMatches(boxText(snap.frame), prefix, withoutLead(lines), collapse))) {
+        if (!(command ? commandBoxMatches : boxMatches)(boxText(snap.frame), prefix, lines, collapse)) {
           why = "mismatch";
           return "wait";
         }
@@ -1340,8 +1361,7 @@ export class SendProtocol {
    * own screen (a picker, a panel) in the box's place.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
-    const command = state.request.mode === "command";
-    const { manual } = state;
+    const { command, manual } = state;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
         if (snap.frame === null) return command ? "pass" : "wait";

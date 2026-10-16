@@ -12,7 +12,7 @@ import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, t
 import { profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, GENERIC_PROBE, LOCK_BOUND_MS, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 
@@ -630,6 +630,41 @@ describe("a command (M56 spec 06)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
   });
 
+  test("a shell line in the send drill's shape (a6): the box reads `! echo ok` and the row under it `! for shell mode`; sent, then Submit of the same text holds too", async () => {
+    // The rows of /tmp/send-drill/shots/a6-claude-bang.png, also read live in the M56 lab on Claude
+    // 2.1.301: the bang turns into the prompt glyph with a space after it, the status row turns into
+    // the shell-mode hint.
+    const shellMode = (p: FakePane, what: string): void => {
+      if (p.box.startsWith("!")) p.status = ["  ! for shell mode"];
+      if (what.endsWith("Enter")) p.status = ["  sonnet · project · main"];
+    };
+    // Provisional, as in the drill: the command is probed first.
+    const sent = rig({ version: "2.1.999" });
+    sent.pane.bangPrompt = true;
+    sent.pane.afterInput = shellMode;
+    const answer = await sent.send("!echo ok", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(sent.pane.transcript.at(-1)).toBe("> !echo ok");
+
+    // Submit after a typed_not_submitted names the text with its lead; the box shows it without.
+    const held = rig();
+    held.pane.bangPrompt = true;
+    held.pane.afterInput = shellMode;
+    held.pane.box = "!echo ok";
+    held.pane.status = ["  ! for shell mode"];
+    const submit = await held.send("!echo ok", { mode: "submit" });
+    expect(submit.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(held.pane.box).toBe("");
+  });
+
+  test("a command whose box shows a mode marker in front of the text is matched without its lead", async () => {
+    const { pane, send } = rig();
+    const render = pane.render.bind(pane);
+    pane.render = () => render().replace("❯ !echo ok", "❯ $ echo ok");
+    const answer = await send("!echo ok", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
   test("a command that opens its own screen after Enter is taken: the box went away", async () => {
     const { pane, send } = rig();
     pane.afterInput = (p, what) => {
@@ -1179,6 +1214,11 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #2 +11 lines]", "", ["x".repeat(500)], collapse)).toBe(false);
     expect(boxMatches("a [Pasted text #1] b", "", ["a", "y".repeat(300), "b"], collapse)).toBe(true);
     expect(boxMatches("[Pasted text #2]", "", ["short"], null)).toBe(false);
+  });
+
+  test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {
+    for (const box of ["!echo ok", "! echo ok", "echo ok", "$ echo ok", "[!] echo ok", "! echo ok"]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(true);
+    for (const box of ["echo okay", "x echo ok", "!echo", ""]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(false);
   });
 
   test("probeLanding with freeBelow: the rest of the landing row may change and a row under it may go blank, never show other text", () => {
