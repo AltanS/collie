@@ -29,9 +29,10 @@ describe("offersFor", () => {
     expect(offersFor("refused", "draft_present", false)).toEqual(["keys"]);
   });
 
-  it("offers submit and discard only on a framed typed_not_submitted", () => {
+  it("offers submit and discard on every typed_not_submitted, with a frame or without", () => {
     expect(offersFor("typed_not_submitted", "changed", true)).toEqual(["submit", "discard", "keys"]);
-    expect(offersFor("typed_not_submitted", "changed", false)).toEqual(["keys"]);
+    expect(offersFor("typed_not_submitted", "changed", false)).toEqual(["submit", "discard", "keys"]);
+    expect(offersFor("typed_not_submitted", "mismatch", false)).toEqual(["submit", "discard", "keys"]);
   });
 
   it("offers the commit tap on unconfirmed, nothing after a send", () => {

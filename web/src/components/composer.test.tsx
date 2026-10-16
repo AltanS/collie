@@ -19,7 +19,7 @@ import { type ServerSummary } from "@/lib/types";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
-import { SEND_REASONS, type SendReason } from "@/lib/surface/send";
+import { offersFor, SEND_REASONS, type SendReason } from "@/lib/surface/send";
 import { WAY_OUT_STATES, type WayOutState } from "@/lib/way-out";
 import { wayOutCase } from "@/test/way-out-states";
 
@@ -3957,6 +3957,29 @@ describe("outcome at the thumb", () => {
     expect(recordedSends()[1]).toMatchObject({ mode: "submit" });
     expect(recordedSends()[1]!.id).not.toBe(first);
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
+  });
+
+  // Send drill 2 (Codex on Herdr, 2026-10-16): a typed_not_submitted on a pane with no frame showed the
+  // typed sentence with only Take over and Open Keys. Submit and Discard show for every reason, and each
+  // carries the rows hash of the answer, so the bridge acts only on the screen the person saw.
+  it.each(["mismatch", "changed", "modal_cue", "stale_token", "submit_failed"] as const)(
+    "typed_not_submitted %s with no frame: Submit and Discard show, and Submit carries the rows hash it was offered with",
+    async (reason) => {
+      const user = await send(() => sendAnswer("x", "typed_not_submitted", reason, { offers: offersFor("typed_not_submitted", reason, false), rowsHash: "0f00ba", surface: SURFACES.noMatch }));
+      await screen.findByRole("button", { name: "Submit" });
+      expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+      expect(refusalText()).toMatch(/Your text is in the box, but Enter was not pressed\. Submit it or discard it\./u);
+      await user.click(screen.getByRole("button", { name: "Submit" }));
+      await waitFor(() => expect(recordedSends()).toHaveLength(2));
+      expect(recordedSends()[1]).toMatchObject({ mode: "submit", text: "hello there", rowsHash: "0f00ba" });
+    },
+  );
+
+  it("typed_not_submitted with no frame: Discard carries the rows hash it was offered with", async () => {
+    const user = await send(() => sendAnswer("x", "typed_not_submitted", "mismatch", { offers: offersFor("typed_not_submitted", "mismatch", false), rowsHash: "0f00ba", surface: SURFACES.noMatch }));
+    await user.click(await screen.findByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ mode: "discard", text: "hello there", rowsHash: "0f00ba" });
   });
 
   it("typed_not_submitted changed with the text in the box (send drill a6): the typed sentence, not that the box held a draft", async () => {

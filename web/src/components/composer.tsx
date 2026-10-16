@@ -1190,8 +1190,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (mode === null) return;
     // Added to a draft, the text starts after one space, as a person typing on would put it.
     const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
-    // After the cap's notice the commit is the extra confirm: it carries `capAck` (M56 spec 09).
-    void sendThroughProtocol(words, held.isDraft, mode, offer === "commit" ? held.rowsHash : null, offer === "commit" && held.capAck);
+    // The commit, Submit and Discard carry the rows hash of the answer the person read: the bridge goes
+    // ahead only while the screen still hashes the same. After the cap's notice the commit is the extra
+    // confirm: it carries `capAck` (M56 spec 09).
+    const seen = offer === "commit" || offer === "submit" || offer === "discard" ? held.rowsHash : null;
+    void sendThroughProtocol(words, held.isDraft, mode, seen, offer === "commit" && held.capAck);
   }
 
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the

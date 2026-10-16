@@ -180,7 +180,8 @@ export interface SendAnswer {
 export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {
   if (outcome === "refused" && reason === "draft_present") return framed ? ["append", "replace", "cancel"] : ["keys"];
   if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
-  if (outcome === "typed_not_submitted") return framed ? ["submit", "discard", "keys"] : ["keys"];
+  // Every reason: the person reads the screen and decides; with no frame the bridge binds both to the rows hash.
+  if (outcome === "typed_not_submitted") return ["submit", "discard", "keys"];
   if (outcome === "refused" || outcome === "unknown") return ["keys"];
   return [];
 }

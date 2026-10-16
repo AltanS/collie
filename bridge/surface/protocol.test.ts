@@ -1075,6 +1075,75 @@ describe("the offers as new requests", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
+  /** Codex on Herdr with a row under the box that changes once the box holds more than the probe: S1 never passes. */
+  const stuckCodex = () => {
+    const pane = new HerdrCodexPane();
+    const render = pane.render.bind(pane);
+    pane.render = () => (pane.box.length > 1 ? render().replace("  GPT-6-Luna medium", "  ❯ hello-world.ts") : render());
+    return { r: rig({ pane, harness: "codex" }), pane };
+  };
+  const typedNotSubmitted = async (r: Rig, text: string): Promise<SendAnswer> => {
+    const look = await r.send(text);
+    return r.send(text, { rowsHash: look.rowsHash! });
+  };
+
+  test("typed_not_submitted on a pane with no frame offers Submit and Discard, and carries the rows hash it saw", async () => {
+    const { r } = stuckCodex();
+    const answer = await typedNotSubmitted(r, "hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch", keys: ["probe", "Backspace"] });
+    expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+    expect(answer.rowsHash).toMatch(/^[0-9a-f]+$/u);
+  });
+
+  test("submit with no frame: Enter through the gate on the rows the person saw, and sent once the box reads empty again", async () => {
+    const { r, pane } = stuckCodex();
+    const typed = await typedNotSubmitted(r, "hello there");
+    const answer = await r.send("hello there", { mode: "submit", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> hello there");
+    neverEscape(pane);
+  });
+
+  test("discard with no frame: Backspace as often as the text is long plus the slack, and discarded once the box reads empty", async () => {
+    const { r, pane } = stuckCodex();
+    const typed = await typedNotSubmitted(r, "hello there");
+    pane.keysSeen = [];
+    const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(pane.box).toBe("");
+    expect(pane.keysSeen).toEqual(Array.from({ length: "hello there".length + 16 }, () => "Backspace"));
+    neverEscape(pane);
+  });
+
+  test("submit and discard with no frame need the rows hash, and a screen that moved since is refused with both offers again", async () => {
+    const { r, pane } = stuckCodex();
+    const typed = await typedNotSubmitted(r, "hello there");
+    pane.keysSeen = [];
+    expect((await r.send("hello there", { mode: "submit" })).receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    // The status row under the box changes: inside the rows the hash covers.
+    const drawn = pane.render.bind(pane);
+    pane.render = () => drawn().replace(" · ~/", " · Reply ready · ~/");
+    const moved = await r.send("hello there", { mode: "submit", rowsHash: typed.rowsHash! });
+    expect(moved.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface", keys: [] });
+    expect(moved.offers).toEqual(["submit", "discard", "keys"]);
+    expect(moved.rowsHash).not.toBe(typed.rowsHash);
+    expect(pane.keysSeen).toEqual([]);
+    expect((await r.send("hello there", { mode: "submit", rowsHash: moved.rowsHash! })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test("submit on a framed box that shows other text goes on the rows hash the person saw; without it, it is refused", async () => {
+    const { pane, send } = rig();
+    pane.dropLastChar = true;
+    const typed = await send("hello world");
+    expect(typed.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(typed.offers).toEqual(["submit", "discard", "keys"]);
+    pane.dropLastChar = false;
+    expect((await send("hello world", { mode: "submit" })).receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    const answer = await send("hello world", { mode: "submit", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> hello worl");
+  });
+
   test("discard: the box is emptied with Backspace, and the outcome says discarded", async () => {
     const { pane, send } = rig();
     pane.box = "do not send this";

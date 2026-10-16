@@ -586,7 +586,16 @@ function typedOnLanding(s0: readonly string[], now: readonly string[], landing: 
  * nothing and never passes here.
  */
 function emptyBoxBack(s0: readonly string[], now: readonly string[], landing: Landing, typed: string): boolean {
-  const empty = wsFree(s0[landing.row] ?? "");
+  return emptiedTo(s0[landing.row] ?? "", now, typed);
+}
+
+/**
+ * Whether a row of the bottom window reads as `empty` (the box with nothing in it: its prompt glyph,
+ * a placeholder's plain part) and from that row down nothing holds the typed text. An empty form that
+ * is blank proves nothing and never passes.
+ */
+function emptiedTo(emptyRow: string, now: readonly string[], typed: string): boolean {
+  const empty = wsFree(emptyRow);
   if (empty.length === 0) return false;
   const win = bottomWindow(now);
   for (let i = win.end - 1; i >= win.first; i--) {
@@ -594,6 +603,33 @@ function emptyBoxBack(s0: readonly string[], now: readonly string[], landing: La
     return !flat(now.slice(i)).includes(flat([typed]));
   }
   return false;
+}
+
+/** Where a text stands in a read with no frame: its row, and the row's plain text before it (the box's head). */
+interface Located {
+  readonly row: number;
+  readonly head: string;
+  /** The text as it was found: as written, or with a command's lead cut. */
+  readonly text: string;
+}
+
+/**
+ * The lowest spot of the bottom window where the read goes on with `text` (wrapped or not, white space
+ * ignored): on a pane with no frame, the box that holds a text typed earlier. Null when it stands
+ * nowhere there.
+ */
+export function locateText(plain: readonly string[], text: string): Located | null {
+  const want = flat([text]);
+  if (want.length === 0) return null;
+  const first = [...want][0]!;
+  const win = bottomWindow(plain);
+  for (let row = win.end - 1; row >= win.first; row--) {
+    const line = plain[row] ?? "";
+    for (let i = line.indexOf(first); i >= 0; i = line.indexOf(first, i + 1)) {
+      if (flat([line.slice(i), ...plain.slice(row + 1, win.end)]).startsWith(want)) return { row, head: line.slice(0, i), text };
+    }
+  }
+  return null;
 }
 
 // ── The run ──────────────────────────────────────────────────────────────────────────────────────
@@ -625,6 +661,8 @@ interface EndNote {
   detail?: string;
   framed?: boolean;
   cap?: SendCap;
+  /** The offers, when an end's own differ from the shared rules (a Submit or Discard to look at again). */
+  offers?: SendOffer[];
 }
 
 /** An answer being built, field by field. */
@@ -870,7 +908,7 @@ export class SendProtocol {
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
-    return answerWith({ receipt, offers: offersFor(end.outcome, end.reason, framed) }, end.extra);
+    return answerWith({ receipt, offers: end.extra.offers ?? offersFor(end.outcome, end.reason, framed) }, end.extra);
   }
 
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
@@ -935,21 +973,22 @@ export class SendProtocol {
 
     switch (request.mode) {
       case "submit": {
-        const frame = this.draftFrame(s0);
-        if (!holds(boxText(frame))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        const located = this.typedBox(state, s0, holds, lines);
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);
         this.lap(state, "commit");
-        await this.awaitSent(state, s0, null, lines);
+        if (s0.frame !== null) await this.awaitSent(state, s0, null, lines);
+        else await this.awaitBareEmpty(state, located);
         this.lap(state, "s2");
         return;
       }
       case "discard": {
-        const frame = this.draftFrame(s0);
-        if (!holds(boxText(frame))) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        const located = this.typedBox(state, s0, holds, lines);
+        if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
         this.lap(state, "s0");
-        await this.clear(state, s0);
+        if (located === null) await this.clear(state, s0);
+        else await this.clearBare(state, located);
         this.lap(state, "clear");
         return;
       }
@@ -1049,6 +1088,27 @@ export class SendProtocol {
       if (err instanceof Ended) throw err;
       console.warn(`[surface] cap failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * Submit and Discard after `typed_not_submitted`: the box the text went into. A framed box that holds
+   * the text goes ahead as it always did. Anything else (a framed box that shows other text, or a pane
+   * with no frame) goes ahead on the rows hash the person saw with that answer, and only while the rows
+   * still hash the same: the person read the screen and chose. With no frame the text is looked up in
+   * the bottom window, so S2 and the clear know the box; null when it stands nowhere there, or with a
+   * frame.
+   */
+  private typedBox(state: RunState, s0: Snap, holds: (box: string) => boolean, lines: readonly string[]): Located | null {
+    const { surface, frame } = s0;
+    if (frame !== null && holds(boxText(this.draftFrame(s0)))) return null;
+    if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+    const hash = state.request.rowsHash;
+    if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: "The box no longer holds this text." });
+    if (hash !== s0.rowsHash) {
+      throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
+    }
+    if (frame !== null) return null;
+    return locateText(s0.plain, lines.join("")) ?? (state.command ? locateText(s0.plain, withoutLead(lines).join("")) : null);
   }
 
   /** The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. */
@@ -1386,7 +1446,10 @@ export class SendProtocol {
     });
     if (result.verdict === "pass" && result.snap !== null) return result.snap;
     state.marks.s1 = result.snap;
-    throw new Ended("typed_not_submitted", why, sawNote(result.snap, { framed: s0.frame !== null }));
+    // The rows hash binds a later Submit or Discard to the screen this answer saw.
+    const note: EndNote = { framed: s0.frame !== null };
+    if (result.snap !== null) note.rowsHash = result.snap.rowsHash;
+    throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 
   /** Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. */
@@ -1399,7 +1462,7 @@ export class SendProtocol {
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
-      throw new Ended("typed_not_submitted", reason, { framed: s1.frame !== null, detail: result.reason === "mux" ? result.refusal.detail : result.detail });
+      throw new Ended("typed_not_submitted", reason, { framed: s1.frame !== null, rowsHash: s1.rowsHash, detail: result.reason === "mux" ? result.refusal.detail : result.detail });
     }
     state.keys.push(...keys);
   }
@@ -1433,6 +1496,28 @@ export class SendProtocol {
     });
     state.marks.s2 = result.snap;
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
+  }
+
+  /**
+   * S2 of a Submit on a pane with no frame: the box found at S0 reads empty again (its head alone) and
+   * nothing from there down holds the text. With no box found there is no evidence: `unknown`.
+   */
+  private async awaitBareEmpty(state: RunState, located: Located | null): Promise<void> {
+    const result = located === null ? null : await this.poll(state, "s2", BOUNDS.s2, (snap) => (emptiedTo(located.head, snap.plain, located.text) ? "pass" : "wait"));
+    state.marks.s2 = result?.snap ?? null;
+    if (result?.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
+  }
+
+  /**
+   * Discard on a pane with no frame: the clear key as many times as the text has characters plus the
+   * profile's slack, in one batch through the gate, then reads until the box found at S0 reads empty.
+   */
+  private async clearBare(state: RunState, located: Located): Promise<void> {
+    const clearKey = state.match?.profile.keys.clear ?? GENERIC_CLEAR;
+    const count = Math.min(CLEAR_BATCH, [...located.text].length + clearKey.slack);
+    await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
+    const result = await this.poll(state, "clear", CLEAR_BOUND, (snap) => (emptiedTo(located.head, snap.plain, located.text) ? "pass" : "wait"));
+    if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
   }
 
   /** Empties a framed box with the profile's clear key, in batches with a read between. Never Escape. */
