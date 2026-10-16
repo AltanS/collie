@@ -452,9 +452,10 @@ edge, and the screen read after it decides whether the pane is free. The limits:
 
 Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
 message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
-running turn, so Collie never presses Enter for a message. A command still takes Enter, because Tab
-completes in the slash popup. The receipt says queued only when Codex shows the queued row with
-the text.
+running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.
+It takes Enter on an idle box, and waits during a turn. Tab would complete a `/` command, and
+Codex runs a `!` text as a shell command. The receipt says queued only when
+Codex shows the queued row with the text.
 
 Collie answers a Codex approval with one key: the option's digit, `y`, or Escape. Only the trust
 prompt of Codex 0.156 walks. There Collie presses the arrow keys, reads the pointer back, then

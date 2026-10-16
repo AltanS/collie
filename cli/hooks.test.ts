@@ -487,6 +487,19 @@ describe("codex: the notify setting in config.toml (M56 spec 13)", () => {
     expect(notifyState(after.split("\n"))).toMatchObject({ kind: "theirs", line: 9 });
   });
 
+  test("codex: a table whose path starts with notify is refused with its line, and nothing is written (N1)", () => {
+    for (const header of ["[notify]", "[notify.desktop]", '["notify".x]', "[[notify]]"]) {
+      const text = ['model = "gpt-6-luna"', "", "[projects.x]", 'trust_level = "trusted"', "", header, 'sound = "ding"', ""].join("\n");
+      const d = deps({ files: { [CONFIG]: text } });
+      expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.FAIL);
+      expect(d.io.stderr.join("\n")).toContain("table named notify at line 6");
+      expect(d.files.entries.get(CONFIG)!.text).toBe(text);
+      expect(d.files.entries.has(`${CONFIG}.collie-backup`)).toBe(false);
+    }
+    // A table that only starts with the same letters is no clash.
+    expect(installNotify('[notifications]\nsound = "ding"\n', OWN)).toEqual({ text: `${NOTIFY}\n[notifications]\nsound = "ding"\n` });
+  });
+
   test("codex: a file the scanner cannot read is refused with the line, and nothing is written (K4)", () => {
     for (const broken of ['matrix = [\n  1,\n', 'instructions = """\nno end\n', 'name = "no end\n', "x = ]\n"]) {
       const d = deps({ files: { [CONFIG]: broken } });

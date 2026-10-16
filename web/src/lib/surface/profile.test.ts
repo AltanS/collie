@@ -134,7 +134,10 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(codex.keys.commandSubmit).toEqual(["Enter"]);
     expect(codex.keys.enterWhileRunning).toBe("steers");
     expect(codex.keys.queueKey).toBe("Tab");
-    expect(codex.reservedLeads).toEqual(["/", "!", "@"]);
+    // `/` opens a command and `!` a shell command on Codex; an `@` text is a message, and takes Tab.
+    // Lab, 0.163.0, 2026-10-16: Tab on an idle `!ls` does nothing (the box is in Shell mode), and a
+    // queued `!ls` runs as a shell command after the turn, so `!` is never sent with Tab.
+    expect(codex.reservedLeads).toEqual(["/", "!"]);
     expect(codex.probe).toMatchObject({ char: "⌁", status: "verified" });
     expect(codex.hooks["agent-turn-complete"]).toBe("edge");
     expect(codex.edges?.events["agent-turn-complete"]).toBe("stop");
