@@ -149,6 +149,58 @@ describe("daylight holds its own floors", () => {
   });
 });
 
+// The counsel pairs (M57 spec 12, measured 2026-10-16). Destructive and blocked are drawn as text
+// as well as marks, and the Send slot's refusal is the `status-working chip` pair under another
+// name. Every shipped theme clears 4.5 on all of them, collie light `destructive` on `background`
+// (4.38 rounded, the look the app always had; floored to 4.37 for it) being the one value that sets its own floor instead.
+describe("the counsel pairs", () => {
+  const collie = shipped("collie");
+  const pairs = ["destructive text on background", "destructive text on card", "status-blocked text on background", "status-blocked text on card"];
+
+  it.each(SHIPPED_THEME_IDS.filter((id) => id !== "collie"))("%s holds 4.5 for destructive and blocked text and 3 for the icon", (id) => {
+    const report = contrastReport(shipped(id), collie);
+    for (const half of ["light", "dark"] as const) {
+      for (const check of pairs) {
+        const f = report.find((r) => r.half === half && r.check === check);
+        expect(f?.floor, `${half} ${check}`).toBe(4.5);
+        expect(f?.ratio, `${half} ${check}`).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const check of ["destructive on background", "destructive on card"]) {
+        const f = report.find((r) => r.half === half && r.check === check);
+        expect(f?.floor).toBe(3);
+        expect(f?.pass, `${half} ${check}`).toBe(true);
+      }
+    }
+  });
+
+  it("gives collie its own measured floor for the one pair under 4.5, and 4.5 elsewhere", () => {
+    const report = contrastReport(collie, collie);
+    const floors = report.filter((r) => pairs.includes(r.check)).map((r) => [r.half, r.check, r.floor]);
+    expect(floors).toContainEqual(["light", "destructive text on background", 4.37]);
+    expect(floors).toContainEqual(["light", "destructive text on card", 4.5]);
+    expect(floors).toContainEqual(["dark", "destructive text on background", 4.5]);
+    expect(report.filter((r) => pairs.includes(r.check) && !r.pass)).toEqual([]);
+  });
+
+  it("measures the refusal notice, status-working text on its 15 percent wash, on page and card in every theme", () => {
+    for (const id of SHIPPED_THEME_IDS) {
+      const report = contrastReport(shipped(id), collie);
+      for (const half of ["light", "dark"] as const) {
+        for (const ground of ["background", "card"]) {
+          const f = report.find((r) => r.half === half && r.check === `status-working chip on ${ground}`);
+          expect(f?.pass, `${id} ${half} ${ground}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("refuses a theme whose destructive text is worse than the default's", () => {
+    const worse: Theme = { version: 1, id: "worse", name: "Worse", light: { destructive: "#e0a0a0" } };
+    const fails = contrastReport(worse, collie).filter((r) => !r.pass).map((r) => r.check);
+    expect(fails).toContain("destructive text on background");
+  });
+});
+
 describe("themes.css", () => {
   const dir = resolve(web, "src/themes");
   const files = readdirSync(dir)
