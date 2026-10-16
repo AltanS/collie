@@ -61,6 +61,18 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --surface-border-width: 1px;
+  --ground-image: none;
+  --band-ground: var(--background);
+  --band-rule: var(--rule);
+  --row-gap: 0px;
+  --row-rule: var(--surface-border-width);
+  --row-edge: 0px;
+  --row-corner: 0px;
+  --row-shadow: 0 0 #0000;
+  --row-inset: 0px;
+  --icon-stroke: 2;
+  --label-transform: uppercase;
+  --label-tracking: 0.025em;
 }
 
 :root[data-theme="harbour"] {
@@ -124,6 +136,18 @@
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --surface-border-width: 1px;
+  --ground-image: none;
+  --band-ground: var(--background);
+  --band-rule: var(--rule);
+  --row-gap: 0px;
+  --row-rule: var(--surface-border-width);
+  --row-edge: 0px;
+  --row-corner: 0px;
+  --row-shadow: 0 0 #0000;
+  --row-inset: 0px;
+  --icon-stroke: 2;
+  --label-transform: uppercase;
+  --label-tracking: 0.025em;
 }
 
 :root[data-theme="nightwatch"] {
@@ -187,4 +211,16 @@
   --font-weight-medium: 600;
   --font-weight-semibold: 700;
   --surface-border-width: 2px;
+  --ground-image: none;
+  --band-ground: var(--background);
+  --band-rule: var(--rule);
+  --row-gap: 0px;
+  --row-rule: var(--surface-border-width);
+  --row-edge: 0px;
+  --row-corner: 0px;
+  --row-shadow: 0 0 #0000;
+  --row-inset: 0px;
+  --icon-stroke: 2;
+  --label-transform: uppercase;
+  --label-tracking: 0.025em;
 }

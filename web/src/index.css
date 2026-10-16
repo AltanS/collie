@@ -238,6 +238,58 @@
      second shadow layer is --edge-shadow: none under sharp, a soft shadow with the ring. */
   --edge-accent: inset 2px 0 0 0;
   --edge-shadow: 0 0 #0000;
+  /* THE SEVEN MORE A THEME MAY PICK (M57 spec 17, lib/theme/surface.ts). Each is the value the app
+     drew before, so the Collie theme sets none of them and looks the same:
+       ground  `--ground-image`, painted on `html` over the page colour (the html rule below);
+       chrome  `--band-ground` and `--band-rule`, the fill and edge of the header, the tab bar and the
+               bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
+       rows    the rows of a list group (the `[data-slot="list-group"]` rule below): `--row-gap`
+               between rows, `--row-rule` the width of the group's frame, and each row's own
+               `--row-edge` border, `--row-corner` radius and `--row-shadow`, and `--row-inset`,
+               the air around the rows of a list that sits flush in a card or a sheet;
+       icons   `--icon-stroke`, the stroke of every lucide icon, lucide's own 2;
+       labels  `--label-transform` and `--label-tracking`, read by the `label-caps` utility, today's
+               `uppercase` and Tailwind's `tracking-wide` (0.025em);
+       display `--font-display`, the face of `h1`, `h2` and the header's brand line, the UI face
+               unless a theme names one of the stacks below.
+     The mirror's own ink and ground are NOT declared here: lib/ansi.ts and components/mirror-space.ts
+     read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
+     block sets them. src/themes/themes.test.ts holds every default word equal to these. */
+  --ground-image: none;
+  --band-ground: var(--background);
+  --band-rule: var(--rule);
+  --row-gap: 0px;
+  --row-rule: var(--surface-border-width);
+  --row-edge: 0px;
+  --row-corner: 0px;
+  --row-shadow: 0 0 #0000;
+  --row-inset: 0px;
+  --icon-stroke: 2;
+  --label-transform: uppercase;
+  --label-tracking: 0.025em;
+  --font-display: var(--font-sans);
+  /* The six shipped faces as stacks a theme's display face can name (`--font-display:
+     var(--face-<id>)`). The same stacks as the `:root.font-*` blocks and the @theme default below,
+     held equal by src/fonts.test.ts. A stack names a family; the browser fetches its file only when a
+     drawn element asks for it, so a stack nobody uses costs no byte. */
+  --face-system:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --face-grotesk:
+    "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-aldrich:
+    "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-plex:
+    "IBM Plex Sans", "IBM Plex Sans Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-geist:
+    "Geist", "Geist Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --face-atkinson:
+    "Atkinson Hyperlegible Next", "Atkinson Hyperlegible Next Fallback", ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -583,6 +635,8 @@
   --color-input: var(--input);
   --color-rule: var(--rule);
   --color-ring: var(--ring);
+  --color-band-ground: var(--band-ground);
+  --color-band-rule: var(--band-rule);
 
   --color-status-blocked: var(--status-blocked);
   --color-status-working: var(--status-working);
@@ -1073,18 +1127,94 @@
   [data-slot="collie-mark"] {
     --spacing: 0.25rem;
   }
+  /* THE ICON STROKE (M57 spec 17). lucide-react puts the class `lucide` and the attribute
+     `stroke-width="2"` on every icon it draws; a CSS value beats a presentation attribute, and the
+     paths inherit it. The default is lucide's own 2. Hand-drawn svgs carry no `lucide` class and keep
+     their own widths. In the base layer, so a `stroke-*` utility on one icon still wins. */
+  svg.lucide {
+    stroke-width: var(--icon-stroke);
+  }
+  /* THE DISPLAY FACE (M57 spec 17). The page titles and the header's brand line wear
+     `--font-display`, which is the UI face unless a theme names another. Every `h1` and `h2` the app
+     draws is chrome (agent markdown renders its headings as `div`s, components/markdown-text.tsx), and
+     a `font-*` utility on one still wins, as this sits in the base layer. */
+  h1,
+  h2,
+  [data-slot="header-identity"] {
+    font-family: var(--font-display);
+  }
   html {
     /* Respect notches; keep the app glued to the viewport edges on mobile. */
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+    /* THE PAGE IS PAINTED HERE, not on body (M57 spec 17). The root's background is the canvas, so
+       this is the colour every gap and every overscroll shows, as body's used to be. A theme's
+       `ground` word lays `--ground-image` over it: `none` for Collie, so the pixels are the ones
+       body drew. `min-height: 100%` makes a gradient span at least the viewport. No
+       `background-attachment: fixed`: mobile WebKit ignores it and Android Chrome repaints the
+       whole ground on every scroll frame. The browser-chrome colour is the flat top edge of the
+       ground (use-theme.ts), which is where every gradient starts. */
+    min-height: 100%;
+    background-color: var(--background);
+    background-image: var(--ground-image);
   }
   body {
-    @apply bg-background text-foreground;
+    /* No fill of its own: a body fill would cover the ground on html. The canvas under it is
+       html's `--background`, the colour this rule used to paint. */
+    @apply text-foreground;
     /* Spelled here rather than left to Tailwind's `--default-font-family`, so the app's face is a
        fact you can read in this file instead of a preflight default you have to know about. */
     font-family: var(--font-sans);
     overscroll-behavior-y: none;
   }
+}
+
+/* THE ROWS OF A LIST GROUP (M57 spec 17). ui/list-group.tsx and the hand-rolled lists that carry
+   `data-slot="list-group"` draw their rows through this one rule, so a theme's `rows` word reaches
+   them all. Under `rules` (the default) each row has no edge of its own and the line between two rows
+   is the bottom border of the upper one, exactly what `divide-y` drew; under `cards` each row has its
+   own border, corner and extra-small shadow, and `--row-gap` of air above it. The corners a painted
+   row part reads (`--row-top`, `--row-bottom`, ui/list-group.tsx LIST_ROW_CORNERS) follow each row's
+   own corner. In the components layer, so a row's own utilities (a marked row's inset shadow, a
+   border of its own, a margin) still win, as they did over `divide-y`. Cards keep the square-corner
+   rule: under `sharp` a card row has Collie's 2px corner and a marked row its left bar; under soft or
+   round the radius word's ring replaces the bar. A list without a frame of its own sits flush in a
+   card or a sheet, so under `cards` its rows get `--row-inset` of air from the card's edges and from
+   its rounded corners; ui/list-group.tsx and the key board editor draw their own frame and opt out
+   with `p-0`. */
+@layer components {
+  [data-slot="list-group"] {
+    padding: var(--row-inset);
+  }
+  [data-slot="list-group"] > * {
+    --row-top: max(0px, calc(var(--row-corner) - 2px));
+    --row-bottom: max(0px, calc(var(--row-corner) - 2px));
+    border-width: var(--row-edge);
+    /* A card row's own corner; under rules, the group's inner corner on the first and last row (0 at
+       Collie's 2px), so a row that paints itself does not cover the frame's rounded corner. */
+    border-radius:
+      max(var(--row-corner), var(--row-top)) max(var(--row-corner), var(--row-top))
+      max(var(--row-corner), var(--row-bottom)) max(var(--row-corner), var(--row-bottom));
+    box-shadow: var(--row-shadow);
+  }
+  [data-slot="list-group"] > :not(:last-child) {
+    border-bottom-width: var(--surface-border-width);
+  }
+  [data-slot="list-group"] > :not(:first-child) {
+    margin-top: var(--row-gap);
+  }
+}
+
+/* THE SMALL SECTION LABEL (M57 spec 17): the uppercase, slightly tracked tier every section name
+   wears (ui/section-label.tsx and the hand-written labels). A theme's `labels` word sets the two
+   properties; the defaults are `uppercase` and Tailwind's `tracking-wide`, 0.025em. `label-tracking`
+   is the same spacing for a label written as it is (a SectionLabel with `caps={false}`). */
+@utility label-caps {
+  text-transform: var(--label-transform, uppercase);
+  letter-spacing: var(--label-tracking, 0.025em);
+}
+@utility label-tracking {
+  letter-spacing: var(--label-tracking, 0.025em);
 }
 
 /* React Router's view transitions stay off (removed). But React Router can still fire document.startViewTransition

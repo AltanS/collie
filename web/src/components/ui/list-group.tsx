@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
  * as five lines with a ghost around them. This refines the card/chip/input split rather than
  * breaking it: those are control boxes, not region boundaries.
  *
+ * ROWS AS CARDS (M57 spec 17). Under a theme's `rows: cards` the frame and the lines go, and each
+ * row becomes its own bordered, rounded card with air above it (index.css). The markup is the same.
+ *
  * NOT for a gap list. Where the rows are already bordered objects with air between them — the
  * pane-switcher's `Card` rows — the row IS the container, and wrapping them would be a box inside
  * a box. A gap list gets no group border, ever. The dashboard's "Needs you" and "Ready · unseen"
@@ -42,6 +45,10 @@ import { cn } from "@/lib/utils";
  */
 /** The classes a painted part of a ListGroup row wears so its outer corners follow the group's. */
 export const LIST_ROW_CORNERS = "rounded-t-[var(--row-top,0px)] rounded-b-[var(--row-bottom,0px)]";
+/** The same for a painted part that fills only the START of a row (two buttons side by side): its left corners. */
+export const LIST_ROW_CORNERS_START = "rounded-tl-[var(--row-top,0px)] rounded-bl-[var(--row-bottom,0px)]";
+/** The same for a painted part that fills only the END of a row: its right corners. */
+export const LIST_ROW_CORNERS_END = "rounded-tr-[var(--row-top,0px)] rounded-br-[var(--row-bottom,0px)]";
 
 function ListGroup({
   className,
@@ -50,13 +57,18 @@ function ListGroup({
 }: React.HTMLAttributes<HTMLElement> & { as?: "div" | "dl" | "ul" }) {
   return (
     <Comp
+      {...props}
+      // After the props, so no caller can rename it: index.css finds the rows by this slot.
       data-slot="list-group"
       className={cn(
-        "flex flex-col divide-y divide-border rounded-sm border border-rule",
+        // The line between two rows, each row's own edge and the air between them are index.css's
+        // `[data-slot="list-group"]` rule, which a theme's `rows` word drives (M57 spec 17). The frame
+        // is `--row-rule` wide: the border width under `rules`, none under `cards`. `p-0`: the frame is
+        // this group's own, so it takes none of the inset a list flush in a card gets under `cards`.
+        "flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule p-0",
         "[&>:first-child]:[--row-top:max(0px,calc(var(--radius-sm)_-_2px))] [&>:last-child]:[--row-bottom:max(0px,calc(var(--radius-sm)_-_2px))]",
         className,
       )}
-      {...props}
     />
   );
 }

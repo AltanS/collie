@@ -13,6 +13,7 @@ import { hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   DEFAULT_THEME_ID,
+  THEME_TOKENS,
   contrastReport,
   fillHalves,
   parseTheme,
@@ -34,7 +35,18 @@ import {
   useActiveTheme,
   useLibrary,
 } from "@/lib/theme/store";
-import { SURFACE_TOKENS, fullSurfaceDeclarations, resolveSurface, wordDeclarations } from "@/lib/theme/surface";
+import {
+  ANSI_KEYS,
+  SURFACE_TOKENS,
+  displayDeclarations,
+  fullSurfaceDeclarations,
+  resolveSurface,
+  wordDeclarations,
+  type Ansi,
+  type Declaration,
+} from "@/lib/theme/surface";
+import { isShippedFont } from "@/lib/shipped-fonts";
+import { SectionLabel } from "@/components/ui/section-label";
 
 // The Theme card (M57): which colour theme this device wears, and the way in and out for a theme
 // file. It sits directly ABOVE the Appearance three-way (System, Light, Dark) on purpose: the first
@@ -79,6 +91,7 @@ const REFUSAL_KEYS = {
   "no-half": "theme.refusal.no-half",
   "reserved-id": "theme.refusal.reserved-id",
   surface: "theme.refusal.surface",
+  ansi: "theme.refusal.ansi",
 } as const satisfies Record<RefusalCode, MessageKey>;
 
 const HALF_KEYS = {
@@ -222,18 +235,32 @@ function Swatches({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
   );
 }
 
+/** The display face a file names, or the UI face: the declaration a sample box sets for its titles. */
+function displayOf(theme: Theme): readonly Declaration[] {
+  const face = theme.fonts?.display;
+  return face !== undefined && isShippedFont(face) ? displayDeclarations(face) : [["--font-display", "var(--font-sans)"]];
+}
+
+/** Declarations as a style object. */
+function styleOf(declarations: readonly Declaration[]): CSSProperties {
+  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
+  // only because CSSProperties has no index signature for `--*`. Names come from surface.ts and the
+  // token list, values from the table or from the parser's checked colours.
+  return Object.fromEntries(declarations) as CSSProperties;
+}
+
 /**
  * The file's shape, drawn: a small card with a line of text and a button-like block, inside a box
- * that carries the declarations of the file's five shape words (a word it leaves out is the default
- * one). The utilities inside read `--radius-*`, `--spacing`, `--font-weight-*` and the `--surface-*`
+ * that carries the declarations of the file's shape words (a word it leaves out is the default one).
+ * The utilities inside read `--radius-*`, `--spacing`, `--font-weight-*` and the `--surface-*`
  * properties from the nearest box that sets them, so the sample wears the file's shape while the
- * sheet around it keeps the page's. Below it, the five words as the file spells them.
+ * sheet around it keeps the page's. Under it, one small page per half in the file's own colours: the
+ * band at the top, the ground under it, a section label and two rows (spec 17). Then the words.
  */
 function SurfaceSample({ theme }: { theme: Theme }) {
   const surface = resolveSurface(theme.surface);
-  // SAFETY: React passes custom properties through to the style attribute verbatim; the cast exists
-  // only because CSSProperties has no index signature for `--*`. Names and values come from surface.ts.
-  const style = Object.fromEntries(fullSurfaceDeclarations(theme.surface)) as CSSProperties;
+  const style = styleOf([...fullSurfaceDeclarations(theme.surface), ...displayOf(theme)]);
+  const display = theme.fonts?.display;
   return (
     <div>
       <div className="mb-1 text-xs text-muted-foreground">{t("theme.preview.shape")}</div>
@@ -252,13 +279,88 @@ function SurfaceSample({ theme }: { theme: Theme }) {
           </span>
         </div>
       </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <PageSample theme={theme} half="light" />
+        <PageSample theme={theme} half="dark" />
+      </div>
       <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground" data-testid="theme-shape-words">
         {SURFACE_TOKENS.map((token) => (
           <li key={token}>
             {token}: {surface[token]}
           </li>
         ))}
+        {display !== undefined && <li>display: {display}</li>}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * One half of the file as a small page: the half's colours (a token it leaves out from `collie`) and
+ * the file's words as custom properties on one box, its `color-scheme` set to the half. The band reads
+ * `--band-ground` and `--band-rule`, the ground `--background` and `--ground-image`, the title the
+ * display face, the icon the stroke, the label the label case, and the two rows the rows rule in
+ * index.css. Decorative: the words below say the same in text.
+ */
+function PageSample({ theme, half }: { theme: Theme; half: "light" | "dark" }) {
+  const filled = fillHalves(theme, collieTheme())[half];
+  const colours = THEME_TOKENS.flatMap((token): Declaration[] => {
+    const value = filled[token];
+    return value === undefined ? [] : [[`--${token}`, value]];
+  });
+  const style = { ...styleOf([...colours, ...fullSurfaceDeclarations(theme.surface), ...displayOf(theme)]), colorScheme: half };
+  return (
+    <div
+      aria-hidden
+      data-testid={`theme-page-sample-${half}`}
+      style={style}
+      className="overflow-hidden rounded-md border border-border text-foreground"
+    >
+      <div className="flex h-7 items-center gap-1.5 border-b border-band-rule bg-band-ground px-2">
+        <Palette className="size-3.5 shrink-0" />
+        <span className="truncate text-xs font-semibold [font-family:var(--font-display)]">{theme.name}</span>
+      </div>
+      <div className="bg-background px-2 pt-1.5 pb-2 [background-image:var(--ground-image)]">
+        <SectionLabel placement="above">{t(HALF_KEYS[half])}</SectionLabel>
+        <div data-slot="list-group" className="flex flex-col rounded-sm border-[length:var(--row-rule)] border-rule">
+          <div className="h-4" />
+          <div className="h-4" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The file's terminal palette, when it carries one: the sixteen slots on the palette's own ground, in
+ * order, each a swatch named by its slot and its hex for a reader who cannot see it, and the ink as a
+ * line of text. Always dark: the mirror is drawn in dark space, and light inverts it as a whole.
+ */
+function AnsiStrip({ ansi }: { ansi: Ansi }) {
+  const slots = ANSI_KEYS.filter((key) => key !== "ink" && key !== "ground");
+  return (
+    <div>
+      <div className="mb-1 text-xs text-muted-foreground">{t("theme.preview.ansi")}</div>
+      <div data-testid="theme-ansi-strip" className="rounded-md border border-border p-1.5" style={{ background: ansi.ground }}>
+        <div className="flex gap-0.5">
+          {slots.map((key) => {
+            const hex = toSrgbHex(ansi[key]);
+            return (
+              <span
+                key={key}
+                role="img"
+                aria-label={`ansi ${key} ${hex}`}
+                title={`ansi ${key} ${hex}`}
+                className="h-5 min-w-0 flex-1 rounded-sm"
+                style={{ background: ansi[key] }}
+              />
+            );
+          })}
+        </div>
+        <div className="mt-1 truncate font-mono text-xs" style={{ color: ansi.ink }}>
+          $ ansi.ink {toSrgbHex(ansi.ink)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -301,6 +403,8 @@ export function ThemePreviewSheet({ theme, onApply, onCancel }: PreviewSheetProp
           </div>
 
           <SurfaceSample theme={theme} />
+
+          {theme.ansi !== undefined && <AnsiStrip ansi={theme.ansi} />}
 
           <div className="flex flex-col gap-2">
             {halves !== "both" && (

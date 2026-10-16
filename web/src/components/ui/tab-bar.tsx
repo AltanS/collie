@@ -49,7 +49,7 @@ export function TabBar<V extends string>({ items, active, onSelect, label, class
     <nav
       aria-label={label}
       data-slot="tab-bar"
-      className={cn("shrink-0 border-t border-rule bg-background pb-[env(safe-area-inset-bottom)]", className)}
+      className={cn("shrink-0 border-t border-band-rule bg-band-ground pb-[env(safe-area-inset-bottom)]", className)}
     >
       <div className="flex">
         {items.map((it) => {

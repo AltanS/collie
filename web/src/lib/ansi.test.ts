@@ -114,6 +114,18 @@ describe("parseAnsi — SGR colour & weight", () => {
     expect(segs[0]!.bg).toBe("#fafafa");
   });
 
+  // M57 spec 17: the DATA stays the literal (a reader compares it, and the styled region the phone
+  // sends spells it), and only the PAINT reads the theme's mirror colours, with the literal as the
+  // fallback, so the default pixels do not move.
+  it("paints a colourless inverse through the theme's mirror colours, with the literals as fallbacks", () => {
+    const segs = parseAnsi(`${ESC}[7mx`);
+    expect(segs[0]!.style.color).toBe("var(--mirror-ground, #0a0a0a)");
+    expect(segs[0]!.style.backgroundColor).toBe("var(--mirror-ink, #fafafa)");
+    const coloured = parseAnsi(`${ESC}[7;31;42mx`);
+    expect(coloured[0]!.style.color).toBe("var(--ansi-2)");
+    expect(coloured[0]!.style.backgroundColor).toBe("var(--ansi-1)");
+  });
+
   it("skips OSC sequences (window title) without leaking them into the text", () => {
     const segs = parseAnsi(`${ESC}]0;the title${"\x07"}visible`);
     expect(visible(`${ESC}]0;the title${"\x07"}visible`)).toBe("visible");

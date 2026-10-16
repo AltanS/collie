@@ -258,11 +258,11 @@ describe("CollieHome — the lost badge", () => {
     expect(getByRole("button", { name: "Collie home, reconnecting" })).toBeInTheDocument();
   });
 
-  it("sits on the page colour with the ring cut, in the danger token", () => {
+  it("sits on the header's band colour (the page colour in Collie) with the ring cut, in the danger token", () => {
     const { container } = render(<CollieHome trouble lost />);
     const cls = badge(container)?.getAttribute("class") ?? "";
-    expect(cls).toMatch(/bg-background/);
-    expect(cls).toMatch(/ring-background/);
+    expect(cls).toMatch(/bg-band-ground/);
+    expect(cls).toMatch(/ring-band-ground/);
     expect(cls).toMatch(/text-status-blocked/);
   });
 });

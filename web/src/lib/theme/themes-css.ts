@@ -9,8 +9,9 @@
 // equal by `src/themes/themes.test.ts`, so applying it needs no attribute and no property. Every
 // other shipped theme writes one `:root[data-theme="<id>"]` block with all tokens, each half filled
 // from `collie` where the file leaves a token out, and then the declarations of the shape words its
-// `surface` block names (surface.ts). A theme with no surface block writes no shape line, so a
-// version 1 file writes exactly what it wrote before version 2.
+// `surface` block names, its display face and its terminal palette (surface.ts `versionTwoDeclarations`).
+// A theme with none of the three writes no shape line, so a version 1 file writes exactly what it
+// wrote before version 2.
 
 import {
   DEFAULT_THEME_ID,
@@ -20,7 +21,7 @@ import {
   parseTheme,
   type Theme,
 } from "./schema";
-import { surfaceDeclarations } from "./surface";
+import { versionTwoDeclarations } from "./surface";
 
 /** One shipped theme file: its file name (`nightwatch.json`) and its text. */
 export interface ThemeFile {
@@ -70,7 +71,7 @@ export function buildThemesCss(files: readonly ThemeFile[]): ThemesCss {
     .map((theme) => {
       const filled = fillHalves(theme, base);
       const lines = THEME_TOKENS.map((token) => `  --${token}: ${lightDark(filled, token)};`);
-      for (const [property, value] of surfaceDeclarations(theme.surface)) lines.push(`  ${property}: ${value};`);
+      for (const [property, value] of versionTwoDeclarations(theme)) lines.push(`  ${property}: ${value};`);
       return `\n:root[data-theme="${theme.id}"] {\n${lines.join("\n")}\n}\n`;
     });
   return { ok: true, css: THEMES_CSS_HEADER + blocks.join("") };

@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Star } from "lucide-react";
 
 import { Collapse } from "@/components/ui/collapse";
-import { ListGroup } from "@/components/ui/list-group";
+import { LIST_ROW_CORNERS_END, LIST_ROW_CORNERS_START, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { folderName, hasFolders, type FolderList } from "@/lib/folders";
 import { t } from "@/lib/i18n";
@@ -89,7 +89,10 @@ function Section({ title, rows, starred, home, onUse, onStar }: SectionProps) {
                     type="button"
                     onClick={() => onUse(folder)}
                     aria-label={t("space.new.folders.use", { path: shown })}
-                    className="flex min-h-11 min-w-0 flex-1 flex-col justify-center py-1.5 pl-3.5 text-left font-mono transition-colors active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    className={cn(
+                      "flex min-h-11 min-w-0 flex-1 flex-col justify-center py-1.5 pl-3.5 text-left font-mono transition-colors active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                      LIST_ROW_CORNERS_START,
+                    )}
                   >
                     <span className="truncate text-sm">{folderName(folder)}</span>
                     <span className="truncate text-xs text-muted-foreground">{shown}</span>
@@ -105,7 +108,10 @@ function Section({ title, rows, starred, home, onUse, onStar }: SectionProps) {
                         : t("space.new.folders.star", { folder: shown })
                     }
                     onClick={() => onStar(folder, !starred)}
-                    className="flex size-11 shrink-0 items-center justify-center text-muted-foreground transition-colors active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    className={cn(
+                      "flex size-11 shrink-0 items-center justify-center text-muted-foreground transition-colors active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                      LIST_ROW_CORNERS_END,
+                    )}
                   >
                     <Star aria-hidden className={cn("size-4", starred && "fill-current text-foreground")} />
                   </button>

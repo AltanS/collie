@@ -52,6 +52,7 @@ export const tr: Dictionary = {
   "theme.preview.cancel": "İptal",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "Tüm kontrast kontrolleri başarılı.",
   "theme.preview.contrast.fail": "{half}: {check} {ratio} ölçüyor. Alt sınır {floor}.",
   "theme.preview.contrast.more": "ve {count} kontrol daha başarısız",
@@ -72,6 +73,7 @@ export const tr: Dictionary = {
   "theme.refusal.font": "Yazı tipi seçimi geçerli değil.",
   "theme.refusal.no-half": "Dosya hiçbir renk ayarlamıyor.",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "Bu kimlik, birlikte gelen bir temaya ait. Kendi kopyanızı içe aktarmak için dosyadaki \"id\" değerini değiştirin.",
   "settings.haptics.title": "Dokunsal geri bildirim",
   "settings.haptics.description": "Bir tuşa veya hızlı yanıta bastığınızda kısa bir titreşim.",

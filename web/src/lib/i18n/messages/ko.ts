@@ -57,6 +57,7 @@ export const ko: Dictionary = {
   "theme.preview.cancel": "취소",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "모든 대비 검사를 통과했습니다.",
   "theme.preview.contrast.fail": "{half}: {check} 측정값은 {ratio}입니다. 최솟값은 {floor}입니다.",
   "theme.preview.contrast.more": "외 {count}개의 검사 실패",
@@ -77,6 +78,7 @@ export const ko: Dictionary = {
   "theme.refusal.font": "글꼴 선택이 올바르지 않습니다.",
   "theme.refusal.no-half": "파일에 지정된 색상이 없습니다.",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "이 ID는 기본 제공 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
 
   // --- settings.haptics ---

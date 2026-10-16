@@ -51,7 +51,7 @@ export function LatestReply({
             open && "rotate-90",
           )}
         />
-        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="text-[11px] font-semibold label-caps text-muted-foreground">
           {t("chat.fullReply.title")}
         </span>
         {/* Says which of the two sources you are looking at, since the toggle swaps them rather than

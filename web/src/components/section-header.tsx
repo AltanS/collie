@@ -106,7 +106,7 @@ export function SectionHeader({
   const type =
     toneName === "strong" && !accent
       ? "text-[13px] font-semibold tracking-normal"
-      : "text-xs font-semibold uppercase tracking-wide";
+      : "text-xs font-semibold label-caps";
 
   return (
     // No horizontal inset of its own: R2 — a section label begins on the page gutter, on the same

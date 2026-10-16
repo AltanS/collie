@@ -1012,7 +1012,7 @@ describe("Files: entries git ignores, and the filter", () => {
   const hiddenLine = (count: number) => en["files.ignored.hidden"].replace("{count}", String(count));
   const counted = (shown: number, total: number) => en["files.filter.shown"].replace("{shown}", String(shown)).replace("{total}", String(total));
   const names = () =>
-    within(document.querySelector<HTMLElement>('[data-slot="file-rows"]')!)
+    within(document.querySelector<HTMLElement>('[data-list="file-rows"]')!)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label")!.split(",")[0]);
   const stored = (): boolean | undefined => asJsonBoolean(asJsonObject(JSON.parse(localStorage.getItem("collie:dash-prefs:v1") ?? "{}"))?.filesShowIgnored);

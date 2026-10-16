@@ -200,7 +200,7 @@ function MemberSheet({
       {(member.isLead || isDeputy) && (
         // `rounded-md` (2px): an icon plus an uppercase word is a stadium, not a circle. Full-round
         // is reserved for shapes whose width equals their height.
-        <span className="flex w-fit items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        <span className="flex w-fit items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
           {member.isLead ? (
             <Crown className="size-2.5" aria-hidden />
           ) : (

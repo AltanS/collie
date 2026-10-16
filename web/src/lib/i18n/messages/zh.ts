@@ -57,6 +57,7 @@ export const zh: Dictionary = {
   "theme.preview.cancel": "取消",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "所有对比度检查均已通过。",
   "theme.preview.contrast.fail": "{half}：{check} 测得 {ratio}。最低要求为 {floor}。",
   "theme.preview.contrast.more": "还有另外 {count} 项检查失败",
@@ -77,6 +78,7 @@ export const zh: Dictionary = {
   "theme.refusal.font": "字体选择无效。",
   "theme.refusal.no-half": "文件未设置任何颜色。",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "此 ID 属于随附主题。修改文件中的 \"id\" 以导入你的副本。",
 
   // --- settings.haptics ---

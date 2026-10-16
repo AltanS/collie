@@ -153,7 +153,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{s.name}</span>
                         {s.isPrimary && (
-                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
                             {t("connection.session.primary")}
                           </span>
                         )}

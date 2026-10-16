@@ -157,7 +157,7 @@ function WatchedPanes({
           {t("settings.notify.watched.empty")}
         </p>
       ) : (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul data-slot="list-group" className="border-t border-border">
           {entries?.map((entry) => (
             <li key={entry.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
               <div className="min-w-0">

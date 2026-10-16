@@ -103,7 +103,8 @@ describe("the header — the one shared shell", () => {
     expect(header).not.toBeNull();
     const fill = /(?:^|\s)bg-([a-z][a-z-]*)(?:\/\d+)?(?=\s|$)/.exec(header?.className ?? "");
     // A bare token, no `/opacity`: chrome is the page colour outright, never a wash over content.
-    expect(fill?.[0].trim()).toBe("bg-background");
+    // `band-ground` is the page colour under Collie and the theme's band under `chrome: band` (M57 spec 17).
+    expect(fill?.[0].trim()).toBe("bg-band-ground");
     expect(markPaper(container)).toBe(`var(--${fill?.[1]})`);
   });
 

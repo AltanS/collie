@@ -185,7 +185,7 @@ export function OptionGroupCaption({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 pl-0.5">
       {accentTick}
-      <span className="font-content text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="font-content text-[11px] font-medium label-caps text-muted-foreground">
         {children}
       </span>
     </div>

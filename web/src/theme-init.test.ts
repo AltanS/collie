@@ -8,6 +8,8 @@ import type { JsonObject } from "@/lib/json";
 import { COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
 import {
+  ANSI_KEYS,
+  VERSION_TWO_PROPERTIES,
   SURFACE_INIT_LINE,
   SURFACE_INIT_MARKER,
   SURFACE_PROPERTIES,
@@ -223,7 +225,9 @@ describe("theme-init.js and lib/theme/surface.ts agree", () => {
 
   it("takes the property names and values from its table, never from the stored object", () => {
     expect(init).toContain("root.style.setProperty(decl[x][0], decl[x][1])");
-    expect(init).toContain("if (s[SURFACE[n][0]] !== SURFACE[n][1][w][0]) continue;");
+    expect(init).toContain("if (s[SURFACE[n][0]] === SURFACE[n][1][w][0]) set(SURFACE[n][1][w][1]);");
+    expect(init).toContain("if (f.display === DISPLAY[m][0]) set(DISPLAY[m][1]);");
+    expect(init).toContain("if (all) for (var r = 0; r < ANSI.length; r++) root.style.setProperty(ANSI[r][1], a[ANSI[r][0]]);");
   });
 
   it.each(SURFACE_TOKENS.flatMap((token) => surfaceWords(token).map((word) => [token, word] as const)))(
@@ -237,7 +241,18 @@ describe("theme-init.js and lib/theme/surface.ts agree", () => {
   );
 
   it("sets the same declarations as the store for a block that names every token", () => {
-    const surface = { radius: "round", shadow: "lifted", density: "roomy", weight: "bold", border: "strong" } as const;
+    const surface = {
+      radius: "round",
+      shadow: "lifted",
+      density: "roomy",
+      weight: "bold",
+      border: "strong",
+      ground: "grain",
+      chrome: "band",
+      rows: "cards",
+      icons: "heavy",
+      labels: "sentence",
+    } as const;
     expect(initSurface(surface)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }));
     expect(initSurface(surface)).toHaveLength(SURFACE_PROPERTIES.length);
   });
@@ -264,5 +279,67 @@ describe("theme-init.js and lib/theme/surface.ts agree", () => {
       "collie:themes:v1": JSON.stringify(midnight(1)),
     });
     expect(seen.properties).toHaveLength(THEME_TOKENS.length);
+  });
+});
+
+// ── The display face and the palette (M57 spec 17) ────────────────────────────────────────────────
+
+/** A dark-space palette that passes the gate: Collie's own index.css palette on its own ground. */
+const PALETTE = {
+  "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
+  "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
+  "12": "#3b8eea", "13": "#d670d6", "14": "#29b8db", "15": "#ffffff", ink: "#fafafa", ground: "#0a0a0a",
+} as const;
+
+function initVersionTwo(extra: JsonObject): Array<[string, string]> {
+  const theme = midnight(1).themes[0];
+  const seen = runInit({
+    "collie:design:v1": JSON.stringify({ theme: "midnight" }),
+    "collie:themes:v1": JSON.stringify({ version: 1, themes: [{ ...theme, version: 2, ...extra }] }),
+  });
+  return seen.properties.filter(([property]) => VERSION_TWO_PROPERTIES.includes(property));
+}
+
+function storeVersionTwo(theme: Theme): Array<[string, string]> {
+  const root = document.documentElement;
+  root.removeAttribute("style");
+  applyTheme(theme, "imported");
+  const out: Array<[string, string]> = [];
+  for (const property of VERSION_TWO_PROPERTIES) {
+    const value = root.style.getPropertyValue(property);
+    if (value !== "") out.push([property, value]);
+  }
+  root.removeAttribute("style");
+  return out;
+}
+
+describe("theme-init.js sets the display face and the palette as the store does", () => {
+  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"])("display face %s", (face) => {
+    const fromInit = initVersionTwo({ fonts: { display: face } });
+    expect(fromInit).toEqual([["--font-display", `var(--face-${face})`]]);
+    expect(fromInit).toEqual(storeVersionTwo({ ...midnightTheme(), version: 2, fonts: { display: face } }));
+  });
+
+  it("sets all eighteen palette properties for a whole palette, the same as the store", () => {
+    const fromInit = initVersionTwo({ ansi: PALETTE });
+    expect(fromInit).toHaveLength(ANSI_KEYS.length);
+    expect(fromInit).toEqual(storeVersionTwo({ ...midnightTheme(), version: 2, ansi: PALETTE }));
+    expect(new Map(fromInit).get("--mirror-ground")).toBe("#0a0a0a");
+    expect(new Map(fromInit).get("--ansi-11")).toBe("#f5f543");
+  });
+
+  it("sets nothing for a face or a palette outside the tables", () => {
+    const partial = Object.fromEntries(Object.entries(PALETTE).filter(([key]) => key !== "ground"));
+    for (const extra of [
+      { fonts: { display: "comic" } },
+      { fonts: { display: "constructor" } },
+      { fonts: { display: ["geist"] } },
+      { ansi: partial },
+      { ansi: { ...PALETTE, "3": "red" } },
+      { ansi: { ...PALETTE, ground: "#0a0a0a; color: red" } },
+      { ansi: "#000000" },
+    ]) {
+      expect(initVersionTwo(extra), JSON.stringify(extra)).toEqual([]);
+    }
   });
 });

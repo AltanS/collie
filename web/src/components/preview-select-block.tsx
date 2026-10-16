@@ -156,7 +156,7 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
       {preview.preview.length > 0 && (
         <div className="rounded-lg border border-border bg-muted/20 px-2 py-1.5">
           {pointedLabel && (
-            <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mb-1 text-[10px] font-medium label-caps text-muted-foreground">
               {t("dialog.preview.previewLabel", { label: pointedLabel })}
             </div>
           )}

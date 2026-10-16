@@ -54,6 +54,7 @@ export const ru: Dictionary = {
   "theme.preview.cancel": "Отмена",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "Все проверки контрастности пройдены.",
   "theme.preview.contrast.fail": "{half}: {check} дает значение {ratio}. Нижний порог: {floor}.",
   "theme.preview.contrast.more": "Еще не пройдено проверок: {count}",
@@ -74,6 +75,7 @@ export const ru: Dictionary = {
   "theme.refusal.font": "Недопустимый выбор шрифта.",
   "theme.refusal.no-half": "Файл не задает цвета.",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "Этот ID принадлежит встроенной теме. Измените \"id\" в файле, чтобы импортировать свою копию.",
   "settings.haptics.title": "Тактильный отклик",
   "settings.haptics.description": "Короткая вибрация при нажатии клавиши или быстрого ответа.",

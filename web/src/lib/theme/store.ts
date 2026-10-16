@@ -9,7 +9,8 @@
 //     it sets `data-theme="<id>"` on <html> and nothing else.
 //   * An imported theme lives in the library (localStorage, validated) and is applied as inline
 //     custom properties on <html>, one per token, each a `light-dark()` pair, plus the declarations
-//     of the shape words its `surface` block names (surface.ts), and only those.
+//     of the shape words its `surface` block names, its display face and its terminal palette
+//     (surface.ts `versionTwoDeclarations`), and only those.
 //
 // STORAGE IS NOT TRUSTED, TWICE. A library entry goes through `parseTheme` when it is loaded, and
 // the theme goes through it again inside `applyTheme`, because the only way to be sure that nothing
@@ -42,7 +43,7 @@ import {
   toSrgbHex,
   type Theme,
 } from "./schema";
-import { SURFACE_PROPERTIES, surfaceDeclarations } from "./surface";
+import { VERSION_TWO_PROPERTIES, resolveSurface, versionTwoDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
 export const LIBRARY_STORAGE_KEY = "collie:themes:v1";
@@ -255,8 +256,8 @@ export function initTheme(): void {
  *   * shipped: `data-theme="<id>"`, the id taken from `SHIPPED_THEME_IDS` and not from the file.
  *   * imported: no attribute, and one inline custom property per token in `THEME_TOKENS`, each
  *     `light-dark(<light>, <dark>)`, a half the theme leaves out filled from `collie`; then the
- *     declarations of each shape word the theme names. A shape token it leaves out sets nothing, so
- *     the stylesheet's default holds.
+ *     declarations of each shape word the theme names, its display face and its palette. A part it
+ *     leaves out sets nothing, so the stylesheet's default holds.
  *
  * The theme is validated here again, whoever calls and wherever it came from. A theme that does not
  * validate is not applied: the device shows `collie`, and the console says why.
@@ -286,8 +287,9 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   delete root.dataset.theme;
   const filled = fillHalves(checked, defaultTheme());
   for (const token of THEME_TOKENS) root.style.setProperty(`--${token}`, lightDark(filled, token));
-  // The property names and values come from the table in surface.ts; the file only picked the words.
-  for (const [property, value] of surfaceDeclarations(checked.surface)) root.style.setProperty(property, value);
+  // The property names come from surface.ts; the file only picked the words, the face and the
+  // palette's colours, which the parser has checked.
+  for (const [property, value] of versionTwoDeclarations(checked)) root.style.setProperty(property, value);
   setMetaColours(metaOf(checked));
 }
 
@@ -301,15 +303,21 @@ function reset(): void {
 
 function clearInline(root: HTMLElement): void {
   for (const token of THEME_TOKENS) root.style.removeProperty(`--${token}`);
-  for (const property of SURFACE_PROPERTIES) root.style.removeProperty(property);
+  for (const property of VERSION_TWO_PROPERTIES) root.style.removeProperty(property);
 }
 
-/** The browser-chrome colours of a theme: its two `background` values, filled from `collie`, as sRGB hex. */
+/**
+ * The browser-chrome colours of a theme, filled from `collie`, as sRGB hex: the colour of the band the
+ * header stands on, so the status bar above it shows no seam. That is `background` under `chrome:
+ * page` (the default) and `secondary` under `chrome: band`. A gradient or grain ground starts at
+ * `background` at the top edge, so the ground word does not move it.
+ */
 function metaOf(theme: Theme): MetaColours {
   const filled = fillHalves(theme, defaultTheme());
+  const edge = resolveSurface(theme.surface).chrome === "band" ? "secondary" : "background";
   return {
-    light: toSrgbHex(filled.light.background ?? ""),
-    dark: toSrgbHex(filled.dark.background ?? ""),
+    light: toSrgbHex(filled.light[edge] ?? ""),
+    dark: toSrgbHex(filled.dark[edge] ?? ""),
   };
 }
 

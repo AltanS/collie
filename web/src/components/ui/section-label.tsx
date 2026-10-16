@@ -29,8 +29,8 @@ import { cn } from "@/lib/utils";
 export type SectionLabelPlacement = "inline" | "above";
 
 const PLACEMENT = {
-  inline: "shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
-  above: "mb-1 block text-[10px] uppercase leading-none tracking-wide text-muted-foreground",
+  inline: "shrink-0 text-[11px] font-semibold text-muted-foreground",
+  above: "mb-1 block text-[10px] leading-none text-muted-foreground",
 } satisfies Record<SectionLabelPlacement, string>;
 
 interface SectionLabelProps {
@@ -42,9 +42,18 @@ interface SectionLabelProps {
    * label. Without it the label is a stray word in front of an unnamed run of buttons.
    */
   id?: string;
+  /**
+   * `false` for a label written as it is, in the label's size and spacing but not in capitals (a file
+   * path, a heading the catalog already cases). Default `true`: the theme's label case, capitals in
+   * Collie (`label-caps`, M57 spec 17). Use this, not a `normal-case` class: both would set the same
+   * property and the stylesheet's order, not the class order, would pick the winner.
+   */
+  caps?: boolean;
 }
 
 // The small uppercase tag that names a control/navigation row — Spaces · Tabs · Panes · Controls.
+// The case and the spacing are the theme's `labels` word, through the `label-caps` utility in
+// index.css: capitals and Tailwind's `tracking-wide` (0.025em) in Collie, as written under `sentence`.
 // One component so the "name the section" pattern stays visually identical everywhere it's used.
 //
 // This primitive owns the TYPE only: what the word looks like. It renders a <span> and therefore
@@ -53,9 +62,9 @@ interface SectionLabelProps {
 // belongs to a sibling primitive, `LabelledStrip` in `ui/labelled-strip.tsx`, which composes this
 // one and passes it `placement="above"` and an `id`. Anything that wants the "above" placement
 // should reach for that pair rather than for this half alone.
-export function SectionLabel({ children, className, placement = "inline", id }: SectionLabelProps) {
+export function SectionLabel({ children, className, placement = "inline", id, caps = true }: SectionLabelProps) {
   return (
-    <span id={id} className={cn(PLACEMENT[placement], className)}>
+    <span id={id} className={cn(PLACEMENT[placement], caps ? "label-caps" : "label-tracking", className)}>
       {children}
     </span>
   );

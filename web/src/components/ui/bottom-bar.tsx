@@ -17,7 +17,7 @@ function BottomBar({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="bottom-bar"
-      className={cn("sticky bottom-0 shrink-0 border-t border-rule bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]", className)}
+      className={cn("sticky bottom-0 shrink-0 border-t border-band-rule bg-band-ground p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]", className)}
       {...props}
     />
   );

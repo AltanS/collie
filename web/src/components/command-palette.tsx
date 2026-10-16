@@ -88,7 +88,7 @@ export function CommandPalette({
       </div>
 
       {!q && (
-        <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <p className="mb-2 text-[11px] label-caps text-muted-foreground">
           {t("commands.common.hint", { count: all.length })}
         </p>
       )}

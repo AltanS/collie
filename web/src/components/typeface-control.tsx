@@ -72,7 +72,7 @@ export function TypefaceControl() {
         </div>
       </div>
 
-      <div className="divide-y divide-border border-t border-border">
+      <div data-slot="list-group" className="border-t border-border">
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <label htmlFor="pref-typeface" className="text-sm font-medium">
             {t("settings.typeface.family")}

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "@/lib/json";
@@ -7,7 +10,9 @@ import {
   THEME_TOKENS,
   THEME_VERSION,
   THEME_VERSIONS_READ,
+  ANSI_BRIGHT_LUMINANCE,
   contrast,
+  mixOklab,
   versionOf,
   contrastReport,
   fillHalves,
@@ -19,9 +24,12 @@ import {
   type Refusal,
   type Theme,
 } from "./schema";
-import { SURFACE_DEFAULTS, SURFACE_TOKENS, resolveSurface, surfaceWords } from "./surface";
+import { ANSI_KEYS, SURFACE_DEFAULTS, SURFACE_TOKENS, resolveSurface, surfaceWords } from "./surface";
+import { BRIGHT_FG_LUMINANCE, luminance as museLuminance } from "../harness/muse/display";
 
 const CAP = { maxBytes: 64 * 1024 };
+
+const read = (p: string) => readFileSync(resolve(import.meta.dirname, "../../..", p), "utf8");
 
 function file(extra: JsonObject): string {
   return JSON.stringify({ version: 1, id: "mine", name: "Mine", light: { background: "#ffffff" }, ...extra });
@@ -560,5 +568,168 @@ describe("the surface block", () => {
   it("does not read a word through the prototype", () => {
     const raw = '{"version":2,"id":"mine","name":"Mine","light":{"background":"#ffffff"},"surface":{"radius":"constructor","__proto__":{"radius":"soft"}}}';
     expect(codes(parseTheme(raw, CAP))).toEqual(["surface surface.radius", "unknown-key surface.__proto__"]);
+  });
+});
+
+// ── Spec 17: the display face, the terminal palette, and the ground and band checks ──────────────
+
+describe("the display face", () => {
+  it.each(["system", "grotesk", "aldrich", "plex", "geist", "atkinson"])("accepts %s, and the file is version 2", (face) => {
+    const result = parseTheme(v2({ fonts: { display: face } }), CAP);
+    expect(result.ok && result.theme.fonts).toEqual({ display: face });
+    expect(result.ok && result.theme.version).toBe(2);
+  });
+
+  it("keeps the UI face beside it, and a UI face alone stays version 1", () => {
+    const both = parseTheme(v2({ fonts: { ui: "plex", display: "geist" } }), CAP);
+    expect(both.ok && both.theme.fonts).toEqual({ ui: "plex", display: "geist" });
+    const ui = parseTheme(v2({ fonts: { ui: "plex" } }), CAP);
+    expect(ui.ok && ui.theme.version).toBe(1);
+  });
+
+  it.each([["comic-sans"], [1], [["geist"]], [null], ["Geist"], ["constructor"]])("refuses %j as a display face, naming it", (value) => {
+    const result = parseTheme(v2({ fonts: { display: value } }), CAP);
+    expect(codes(result)).toEqual(["font fonts.display"]);
+    expect(refusals(result)[0]?.detail).toContain('"fonts.display"');
+  });
+
+  it("refuses a display face in a file that says version 1", () => {
+    const result = parseTheme(file({ fonts: { display: "geist" } }), CAP);
+    expect(codes(result)).toEqual(["version version"]);
+    expect(refusals(result)[0]?.detail).toContain('"fonts.display"');
+  });
+});
+
+function shippedCollie(): Theme {
+  const base = parseTheme(read("src/themes/collie.json"), { ...CAP, allowReservedId: true });
+  if (!base.ok) throw new Error("collie.json no longer parses");
+  return base.theme;
+}
+
+/** Collie's own index.css palette on its own ground: a palette that passes the gate. */
+const PALETTE = {
+  "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
+  "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
+  "12": "#3b8eea", "13": "#d670d6", "14": "#29b8db", "15": "#ffffff", ink: "#fafafa", ground: "#0a0a0a",
+};
+
+describe("the terminal palette", () => {
+  it("keeps a whole palette that passes the gate, normalised, as version 2", () => {
+    const result = parseTheme(v2({ ansi: { ...PALETTE, "1": "#CD3131", ink: "oklch(0.985 0 0)" } }), CAP);
+    expect(result.ok && result.theme.version).toBe(2);
+    expect(result.ok && result.theme.ansi?.["1"]).toBe("#cd3131");
+    expect(result.ok && result.theme.ansi?.ink).toBe("oklch(0.985 0 0)");
+    expect(result.ok && Object.keys(result.theme.ansi ?? {})).toEqual([...ANSI_KEYS]);
+  });
+
+  it("refuses a palette in a file that says version 1", () => {
+    expect(codes(parseTheme(file({ ansi: PALETTE }), CAP))).toEqual(["version version"]);
+  });
+
+  it("refuses a partial palette and names what it lacks", () => {
+    const partial = Object.fromEntries(Object.entries(PALETTE).filter(([key]) => key !== "7" && key !== "ground"));
+    const result = parseTheme(v2({ ansi: partial }), CAP);
+    expect(codes(result)).toEqual(["ansi ansi"]);
+    expect(refusals(result)[0]?.detail).toContain("It lacks: 7, ground.");
+  });
+
+  it("refuses an unknown key, a value that is not a colour, a translucent one and a block that is not an object", () => {
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "16": "#ffffff" } }), CAP))).toEqual(["unknown-key ansi.16"]);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "2": "green" } }), CAP))).toEqual(["ansi ansi.2"]);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "2": 2 } }), CAP))).toEqual(["ansi ansi.2"]);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "2": "#0dbc7980" } }), CAP))).toEqual(["ansi ansi.2"]);
+    expect(codes(parseTheme(v2({ ansi: "#000000" }), CAP))).toEqual(["ansi ansi"]);
+  });
+
+  it("refuses ink under 4.5:1 on the ground, naming ansi.ink", () => {
+    const result = parseTheme(v2({ ansi: { ...PALETTE, ink: "#555555" } }), CAP);
+    expect(codes(result)).toEqual(["ansi ansi.ink"]);
+    expect(refusals(result)[0]?.detail).toContain("The floor is 4.5.");
+  });
+
+  it("refuses a ground lighter than the ink: the palette is dark-space", () => {
+    const light = { ...PALETTE, ink: "#0a0a0a", ground: "#fafafa" };
+    expect(codes(parseTheme(v2({ ansi: light }), CAP))).toContain("ansi ansi.ground");
+  });
+
+  it("holds slots 1 to 7 and 9 to 15 at 3:1 on the ground, and lets slot 0 be black", () => {
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "4": "#202040" } }), CAP))).toEqual(["ansi ansi.4"]);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "8": "#202020" } }), CAP))).toEqual(["ansi ansi.8"]);
+    expect(parseTheme(v2({ ansi: { ...PALETTE, "0": "#000000" } }), CAP).ok).toBe(true);
+  });
+
+  it("keeps the bright set the Muse decorator names: 3, 7, 11, 15 above the line, every other slot at or below it", () => {
+    expect(ANSI_BRIGHT_LUMINANCE).toBe(BRIGHT_FG_LUMINANCE);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "3": "#a0a000" } }), CAP))).toEqual(["ansi ansi.3"]);
+    expect(codes(parseTheme(v2({ ansi: { ...PALETTE, "10": "#69ff94" } }), CAP))).toEqual(["ansi ansi.10"]);
+    // The schema's luminance and the decorator's agree on the line for the default palette.
+    for (const [key, hex] of Object.entries(PALETTE)) {
+      if (key === "ink" || key === "ground") continue;
+      const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+      expect(museLuminance(r ?? 0, g ?? 0, b ?? 0) > BRIGHT_FG_LUMINANCE, key).toBe(["3", "7", "11", "15"].includes(key));
+    }
+  });
+
+  it("collects every failing slot at once", () => {
+    const result = parseTheme(v2({ ansi: { ...PALETTE, "1": "#300000", "5": "#300030" } }), CAP);
+    expect(codes(result)).toEqual(["ansi ansi.1", "ansi ansi.5"]);
+  });
+});
+
+describe("the ground and the band in the contrast report", () => {
+  const collie = shippedCollie();
+
+  it("mixes in oklab the way color-mix draws it", () => {
+    expect(mixOklab("#336699", "#336699", 40)).toBe("#336699");
+    expect(mixOklab("#000000", "#ffffff", 0)).toBe("#000000");
+    expect(mixOklab("#000000", "#ffffff", 100)).toBe("#ffffff");
+    expect(mixOklab("oklch(0 0 0)", "oklch(1 0 0)", 50)).toBe(toSrgbHex("oklch(0.5 0 0)"));
+  });
+
+  it("adds no check for a flat ground under page chrome, so the report is the one it was", () => {
+    const plain = contrastReport(collie, collie).map((f) => f.check);
+    const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "page" } }, collie).map((f) => f.check);
+    expect(flat).toEqual(plain);
+  });
+
+  it.each(["gradient", "grain"] as const)("measures the page's text again on the %s ground's other end", (ground) => {
+    const report = contrastReport({ ...collie, version: 2, surface: { ground } }, collie);
+    const checks = report.filter((f) => f.check.endsWith(`the ${ground} ground`)).map((f) => `${f.half} ${f.check}`);
+    expect(checks).toContain(`light foreground on the ${ground} ground`);
+    expect(checks).toContain(`dark muted-foreground on the ${ground} ground`);
+    expect(checks).toContain(`dark status-blocked chip on the ${ground} ground`);
+    expect(checks).toContain(`light rule on the ${ground} ground`);
+    expect(checks).toHaveLength(2 * 11);
+  });
+
+  it("measures on the oklab mix index.css draws: the gradient's 12 percent of primary", () => {
+    const theme: Theme = { ...collie, version: 2, surface: { ground: "gradient" } };
+    const report = contrastReport(theme, collie);
+    const end = mixOklab(collie.dark?.background ?? "", collie.dark?.primary ?? "", 12);
+    const f = report.find((r) => r.half === "dark" && r.check === "foreground on the gradient ground");
+    expect(f?.ratio).toBe(Math.round(contrast(collie.dark?.foreground ?? "", end) * 100) / 100);
+  });
+
+  it("fails a gradient whose bottom end loses the text", () => {
+    const dark = { ...collie.dark, background: "#000000", primary: "#ffffff", foreground: "#767676" };
+    const report = contrastReport({ ...collie, version: 2, dark, surface: { ground: "gradient" } }, collie);
+    expect(report.find((f) => f.half === "dark" && f.check === "foreground on background")?.pass).toBe(true);
+    expect(report.find((f) => f.half === "dark" && f.check === "foreground on the gradient ground")?.pass).toBe(false);
+  });
+
+  it("measures the band's text on secondary under `chrome: band`", () => {
+    const report = contrastReport({ ...collie, version: 2, surface: { chrome: "band" } }, collie);
+    const band = report.filter((f) => f.check.endsWith("on the band"));
+    expect(band.map((f) => `${f.half} ${f.check}`)).toEqual([
+      "light foreground on the band",
+      "light muted-foreground on the band",
+      "light status-blocked on the band",
+      "dark foreground on the band",
+      "dark muted-foreground on the band",
+      "dark status-blocked on the band",
+    ]);
+    expect(band.find((f) => f.half === "light" && f.check === "foreground on the band")?.ratio).toBe(
+      Math.round(contrast(collie.light?.foreground ?? "", collie.light?.secondary ?? "") * 100) / 100,
+    );
   });
 });

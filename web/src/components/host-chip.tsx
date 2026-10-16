@@ -166,7 +166,7 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
           // of chrome type with nothing to line up with, and its 10px glyph in a 12px box reads flush
           // there regardless, so it is left as it is.
           caption
-            ? "items-center text-[10px]/3 font-medium uppercase tracking-wide"
+            ? "items-center text-[10px]/3 font-medium label-caps"
             : // `max-w-[8rem]` and `shrink-0` are AddressTag's one decision, kept here too (issue
               // #264): the run never gives up width to its neighbours, and the NAME truncates inside
               // it instead. Without the cap, a member id derived from a long hostname (26 chars,

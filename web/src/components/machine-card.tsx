@@ -42,7 +42,7 @@ import { cn } from "@/lib/utils";
 /** The "Lead" mark. `rounded-md` is 2px: an icon plus an uppercase word is a stadium, not a circle. */
 export function LeadBadge() {
   return (
-    <span className="flex h-5 items-center gap-1 rounded-md bg-muted px-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+    <span className="flex h-5 items-center gap-1 rounded-md bg-muted px-1.5 text-[10px] font-medium label-caps text-muted-foreground">
       <Crown className="size-2.5" aria-hidden />
       {t("connection.host.lead")}
     </span>

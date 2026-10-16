@@ -334,7 +334,10 @@ describe("theme-init.js and lib/design.ts agree", () => {
     // The default wears no class on either side — that is what keeps JavaScript off the first-paint
     // path for every device that never opened the setting.
     expect(fontClass(DEFAULT_FONT)).toBe("");
-    expect(init).not.toContain(`"${DEFAULT_FONT}"`);
+    // The generated table line names every face as a theme's DISPLAY face (M57 spec 17), which is a
+    // custom property and never a class; the rest of the script must not name the default.
+    const withoutTable = init.split("\n").filter((line) => !line.startsWith("  var SURFACE = ")).join("\n");
+    expect(withoutTable).not.toContain(`"${DEFAULT_FONT}"`);
   });
 
   // Operator faces get NO pre-paint path: their family name only exists once /api/config answers,

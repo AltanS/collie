@@ -101,6 +101,11 @@
     "shadow": "flat",
     "density": "default",
     "weight": "bold",
-    "border": "strong"
+    "border": "strong",
+    "ground": "flat",
+    "chrome": "page",
+    "rows": "rules",
+    "icons": "default",
+    "labels": "caps"
   }
 }

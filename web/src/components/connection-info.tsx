@@ -47,7 +47,7 @@ export function ConnectionInfo({
           <p className="text-sm text-muted-foreground">{t("settings.connection.description")}</p>
         </div>
       </div>
-      <dl className="divide-y divide-border border-t border-border">
+      <dl data-slot="list-group" className="border-t border-border">
         <Row label={t("settings.connection.row.endpoint")} mono>
           {host}
         </Row>

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, ListFilter, ListTree, Search, X } from "lucide-react";
 
-import { ListGroup } from "@/components/ui/list-group";
+import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
@@ -154,7 +154,7 @@ function RepoSections({
             className="flex scroll-mt-4 flex-col"
           >
             {headed && (
-              <SectionLabel className="mb-1.5 flex min-w-0 items-baseline gap-2 normal-case">
+              <SectionLabel caps={false} className="mb-1.5 flex min-w-0 items-baseline gap-2">
                 <span className="min-w-0 truncate">{tn("changes.repoFiles", repo.files.length, { name: repo.name })}</span>
                 {mine && <span className="shrink-0 text-primary">{t("changes.thisPane")}</span>}
               </SectionLabel>
@@ -185,7 +185,7 @@ export function ChangesList({
               <button
                 type="button"
                 onClick={() => onOpen({ repo: repo.relPath, path: file.path })}
-                className="flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted"
+                className={cn("flex min-h-11 w-full items-center gap-3 px-3.5 py-2 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
               >
                 <StatusLetter status={file.status} />
                 <ChangePath path={file.path} className="flex-1" />
@@ -327,7 +327,7 @@ function TreeRows({
                 aria-label={tn("changes.tree.folderAria", node.fileCount, { name: node.label })}
                 onClick={() => onToggle(folderKey(repo.relPath, node.key))}
                 style={indent(node.depth)}
-                className="flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted"
+                className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
               >
                 <ChevronRight
                   aria-hidden
@@ -354,7 +354,7 @@ function TreeRows({
               type="button"
               onClick={() => onOpen({ repo: repo.relPath, path: node.file.path })}
               style={indent(node.depth)}
-              className="flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted"
+              className={cn("flex min-h-11 w-full items-center gap-3 py-2 pr-3.5 text-left transition-colors active:bg-muted", LIST_ROW_CORNERS)}
             >
               <StatusLetter status={node.file.status} />
               <MiddleTruncate text={node.name} className="flex-1 font-mono text-[13px] font-medium text-foreground" />

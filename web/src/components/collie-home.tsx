@@ -343,8 +343,8 @@ export function CollieHome({
           SIZES the header; it just stops being the short child. Keep the two numbers apart: 40 is the
           mark, 44 is the touchable box it is centred in.
 
-          `paper` is the header's own ground, which is `bg-background` (app-header.tsx — chrome is
-          the page colour, separated by a rule, not a fill). It is the colour of the knockout that
+          `paper` is the header's own ground, which is `bg-band-ground` (app-header.tsx: chrome is
+          the page colour, separated by a rule, not a fill, unless a theme says `chrome: band`). It is the colour of the knockout that
           makes a near-side bead read as being IN FRONT of the head; anything else shows up as a
           halo around those beads, so this value tracks the ground and is not a taste choice. The
           two are COUPLED and the coupling is easy to forget, so app-header.test.tsx fails if the
@@ -364,13 +364,14 @@ export function CollieHome({
           size={40}
           weight="header"
           loading={bloom || ((round || busy) && !lost)}
-          paper="var(--background)"
+          paper="var(--band-ground)"
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
-            the corner of the 44px box (inside it, so the tap target does not grow) on the page colour
-            with the same `ring-2 ring-background` cut the status dot in agent-chat wears, which keeps
+            the corner of the 44px box (inside it, so the tap target does not grow) on the header's own
+            ground (`band-ground`, the page colour unless a theme says `chrome: band`) with a `ring-2`
+            cut of that ground, like the one the status dot in agent-chat wears, which keeps
             it legible over the orbit. The same two icons as the strip, picked by the host's `online`
             flag. Decorative: the button's own label already says "not connected". `text-status-blocked`
             is the danger token the red strip uses. It is outside the ramped subtree's animation set
@@ -380,7 +381,7 @@ export function CollieHome({
             data-slot="collie-lost-badge"
             data-icon={online ? "cloud-off" : "wifi-off"}
             aria-hidden
-            className="absolute bottom-0.5 right-0.5 size-3.5 rounded-full bg-background p-px text-status-blocked ring-2 ring-background"
+            className="absolute bottom-0.5 right-0.5 size-3.5 rounded-full bg-band-ground p-px text-status-blocked ring-2 ring-band-ground"
           />
         ) : null}
       </span>

@@ -57,6 +57,7 @@ export const de: Dictionary = {
   "theme.preview.cancel": "Abbrechen",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "Jede Kontrastprüfung ist bestanden.",
   "theme.preview.contrast.fail": "{half}: {check} misst {ratio}. Der Mindestwert ist {floor}.",
   "theme.preview.contrast.more": "und {count} weitere Prüfungen schlagen fehl",
@@ -77,6 +78,7 @@ export const de: Dictionary = {
   "theme.refusal.font": "Die Schriftauswahl ist ungültig.",
   "theme.refusal.no-half": "Die Datei legt keine Farben fest.",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "Diese ID gehört zu einem mitgelieferten Design. Ändere \"id\" in der Datei, um deine Kopie zu importieren.",
 
   // --- settings.haptics ---

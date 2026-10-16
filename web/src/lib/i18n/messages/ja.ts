@@ -56,6 +56,7 @@ export const ja: Dictionary = {
   "theme.preview.cancel": "キャンセル",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "すべてのコントラストチェックに合格しました。",
   "theme.preview.contrast.fail": "{half}: {check} の測定値は {ratio} です。最小値は {floor} です。",
   "theme.preview.contrast.more": "ほか {count} 件のチェックに失敗しました",
@@ -76,6 +77,7 @@ export const ja: Dictionary = {
   "theme.refusal.font": "フォントの選択が無効です。",
   "theme.refusal.no-half": "ファイルで色が設定されていません。",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "このIDは同梱のテーマのものです。ファイルをインポートするには、ファイル内の\"id\"を変更してください。",
 
   // --- settings.haptics ---

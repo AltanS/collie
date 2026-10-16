@@ -431,7 +431,7 @@ function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: 
         pending !== undefined && "opacity-70",
       )}
     >
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-status-working">
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold label-caps text-status-working">
         <User className="size-3.5" />
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
@@ -890,7 +890,7 @@ function QuestionBlock({
         {question.multiple && <p className="text-xs text-muted-foreground">{t("chat.question.multiple")}</p>}
       </div>
       {(question.options.length > 0 || typed.length > 0) && (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul data-slot="list-group" className="border-t border-border">
           {question.options.map((o, i) => {
             const picked = chosen?.includes(o.label) === true;
             return (

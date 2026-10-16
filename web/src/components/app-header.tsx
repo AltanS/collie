@@ -208,14 +208,16 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           → 245 (mirror) in the 120px where --background's 0.97 was picked precisely to close the seam
           against the inverted mirror. The band only existed because `border-border/60` measures 1.09:1
           on the page and could not carry the separation alone; `border-rule` is 1.34:1 light / 2.06:1
-          dark and can. COUPLED: CollieHome's `paper` is the knockout colour and must name this same
-          background or every near-side bead grows a halo — app-header.test.tsx asserts the two agree.
+          dark and can. The fill is `bg-band-ground`, which IS the page colour unless a theme says
+          `chrome: band` (M57 spec 17, then the secondary fill and a --border rule). COUPLED: CollieHome's
+          `paper` is the knockout colour and must name this same token or every near-side bead grows a
+          halo, and app-header.test.tsx asserts the two agree.
           `mx-auto w-full max-w-screen-sm` on the claim's say-so: the header used to live INSIDE each
           route's own content column, so it inherited that column's width for free. Hoisted, it has to
           state it — otherwise the dashboard's 640px rule would silently become the viewport's. */}
       <header
         className={cn(
-          "sticky top-0 z-20 flex flex-col border-b bg-background",
+          "sticky top-0 z-20 flex flex-col border-b bg-band-ground",
           /*
            * THE NOTCH IS THIS BAR'S, ALWAYS. The header is the first thing on the screen in every
            * state: the strip band (`ui/strip-host.tsx`) hangs UNDER it as an overlay, never above it,
@@ -229,7 +231,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
           // when it comes back.
-          claim.hidden ? "border-transparent" : "border-rule",
+          claim.hidden ? "border-transparent" : "border-band-rule",
           claim.width === "column" && "mx-auto w-full max-w-screen-sm",
           claim.width === "wide" &&
             "mx-auto w-full max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]",

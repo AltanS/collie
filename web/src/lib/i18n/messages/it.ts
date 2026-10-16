@@ -52,6 +52,7 @@ export const it: Dictionary = {
   "theme.preview.cancel": "Annulla",
   "theme.preview.shape": "Shape", // TODO wordsmith
   "theme.preview.shape.sample": "Sample", // TODO wordsmith
+  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
   "theme.preview.contrast.pass": "Tutti i controlli di contrasto sono superati.",
   "theme.preview.contrast.fail": "{half}: {check} misura {ratio}. Il valore minimo è {floor}.",
   "theme.preview.contrast.more": "e altri {count} controlli non sono superati",
@@ -72,6 +73,7 @@ export const it: Dictionary = {
   "theme.refusal.font": "La scelta del carattere non è valida.",
   "theme.refusal.no-half": "Il file non imposta alcun colore.",
   "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
+  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
   "theme.refusal.reserved-id": "Questo ID appartiene a un tema incluso. Modifichi \"id\" nel file per importare la Sua copia.",
   "settings.haptics.title": "Feedback aptico",
   "settings.haptics.description": "Una breve vibrazione quando premi un tasto o una risposta rapida.",

@@ -3,15 +3,16 @@
 //
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
 // dark), an optional bundled UI face, and from version 2 an optional `surface` block of shape words
-// (`surface.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
+// (`surface.ts`), an optional display face (`fonts.display`) and an optional terminal palette (`ansi`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
 // VERSIONS. The parser reads 1 and 2 and hands back the LOWEST version that holds the content: 2
-// when the theme carries a surface block, 1 when it does not. So a colour-only theme is stored and
+// when the theme carries a surface block, a display face or a palette, 1 when it carries none. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
-// `surface` block in a file that says version 1 is refused: the file is older than the block.
+// `surface` block, a `fonts.display` or an `ansi` block in a file that says version 1 is refused: the
+// file is older than the block.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
 // about the first problem and hiding the next nine makes them fix a file nine more times. So
@@ -24,9 +25,22 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
 import { SHIPPED_FONTS } from "../shipped-fonts";
-import { SURFACE_TOKENS, isSurfaceToken, surfaceWordOf, surfaceWords, type Surface, type SurfaceToken } from "./surface";
+import {
+  ANSI_KEYS,
+  GROUND_GRADIENT_END,
+  GROUND_GRAIN_LINE,
+  SURFACE_TOKENS,
+  isSurfaceToken,
+  resolveSurface,
+  surfaceWordOf,
+  surfaceWords,
+  type Ansi,
+  type AnsiKey,
+  type Surface,
+  type SurfaceToken,
+} from "./surface";
 
-/** The highest schema version this build reads and writes. Only a theme with a shape needs it. */
+/** The highest schema version this build reads and writes. Only a theme with a shape, a display face or a palette needs it. */
 export const THEME_VERSION = 2;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
@@ -109,9 +123,18 @@ export interface Theme {
   author?: string;
   light?: Half;
   dark?: Half;
-  fonts?: { ui: string };
+  /** The UI face, and from version 2 the display face for titles. Each one of the shipped faces. */
+  fonts?: ThemeFonts;
   /** Version 2: the shape words the file names. Absent, or a token left out, is the default word. */
   surface?: Surface;
+  /** Version 2: the terminal palette, all eighteen colours, dark-space and gate-checked. */
+  ansi?: Ansi;
+}
+
+/** A theme's faces. Either may be absent; an empty `fonts` object carries no key. */
+export interface ThemeFonts {
+  ui?: string;
+  display?: string;
 }
 
 export type RefusalCode =
@@ -126,7 +149,8 @@ export type RefusalCode =
   | "font"
   | "no-half"
   | "reserved-id"
-  | "surface";
+  | "surface"
+  | "ansi";
 
 /**
  * Why a file was refused. `path` is where (`$` for the whole file, `dark.status-blocked`,
@@ -153,7 +177,7 @@ export interface ParseThemeOptions {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_MAX = 40;
 const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface"] as const;
+const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -210,8 +234,9 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const author = readAuthor(doc, refusals);
   const light = readHalf(doc, "light", refusals);
   const dark = readHalf(doc, "dark", refusals);
-  const fonts = readFonts(doc, refusals);
+  const fonts = readFonts(doc, version, refusals);
   const surface = readSurface(doc, version, refusals);
+  const ansi = readAnsi(doc, version, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -223,7 +248,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
 
   if (refusals.length > 0 || id === undefined || name === undefined) return refuse(refusals);
 
-  const theme: Theme = { version: surface === undefined ? 1 : 2, id, name };
+  const theme: Theme = { version: 1, id, name };
   // Assigned, never spread: an absent field must carry NO key, so an export round-trips to the
   // same text the person imported.
   if (author !== undefined) theme.author = author;
@@ -231,6 +256,8 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (countTokens(dark) > 0) theme.dark = dark;
   if (fonts !== undefined) theme.fonts = fonts;
   if (surface !== undefined) theme.surface = surface;
+  if (ansi !== undefined) theme.ansi = ansi;
+  theme.version = versionOf(theme);
   return { ok: true, theme };
 }
 
@@ -272,9 +299,18 @@ function unknownKey(path: string): Refusal {
 
 const READ_TEXT = THEME_VERSIONS_READ.join(" and ");
 
-/** The version a theme is written as: 2 when it carries a shape, 1 when it does not. */
+/** The version a theme is written as: 2 when it carries a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
-  return theme.surface === undefined ? 1 : 2;
+  return theme.surface === undefined && theme.ansi === undefined && theme.fonts?.display === undefined ? 1 : 2;
+}
+
+/** The refusal of a version 2 block in a file that says version 1. */
+function olderThanBlock(block: string): Refusal {
+  return {
+    code: "version",
+    path: "version",
+    detail: `A file with ${block} must say version ${THEME_VERSION}. This one says version 1.`,
+  };
 }
 
 function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undefined {
@@ -299,13 +335,7 @@ function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undef
  */
 function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): Surface | undefined {
   if (doc.surface === undefined) return undefined;
-  if (version === 1) {
-    refusals.push({
-      code: "version",
-      path: "version",
-      detail: `A file with a "surface" block must say version ${THEME_VERSION}. This one says version 1.`,
-    });
-  }
+  if (version === 1) refusals.push(olderThanBlock('a "surface" block'));
   const block = asJsonObject(doc.surface);
   if (block === undefined) {
     refusals.push({
@@ -352,6 +382,21 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
     case "border":
       surface.border = surfaceWordOf("border", value);
       return surface.border !== undefined;
+    case "ground":
+      surface.ground = surfaceWordOf("ground", value);
+      return surface.ground !== undefined;
+    case "chrome":
+      surface.chrome = surfaceWordOf("chrome", value);
+      return surface.chrome !== undefined;
+    case "rows":
+      surface.rows = surfaceWordOf("rows", value);
+      return surface.rows !== undefined;
+    case "icons":
+      surface.icons = surfaceWordOf("icons", value);
+      return surface.icons !== undefined;
+    case "labels":
+      surface.labels = surfaceWordOf("labels", value);
+      return surface.labels !== undefined;
   }
 }
 
@@ -446,28 +491,176 @@ function readHalf(doc: JsonObject, which: (typeof HALVES)[number], refusals: Ref
   return half;
 }
 
-function readFonts(doc: JsonObject, refusals: Refusal[]): { ui: string } | undefined {
+function readFonts(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): ThemeFonts | undefined {
   if (doc.fonts === undefined) return undefined;
   const fonts = asJsonObject(doc.fonts);
   if (fonts === undefined) {
-    refusals.push({ code: "font", path: "fonts", detail: '"fonts" must be an object with one key, "ui".' });
+    refusals.push({ code: "font", path: "fonts", detail: '"fonts" must be an object with the keys "ui" and "display".' });
     return undefined;
   }
   for (const key of Object.keys(fonts)) {
-    if (key !== "ui") refusals.push(unknownKey(`fonts.${key}`));
+    if (key !== "ui" && key !== "display") refusals.push(unknownKey(`fonts.${key}`));
   }
-  if (fonts.ui === undefined) return undefined;
-  const ui = asJsonString(fonts.ui);
-  const shipped = SHIPPED_FONTS.find((font) => font === ui);
+  const out: ThemeFonts = {};
+  const ui = readFace(fonts, "ui", refusals);
+  if (ui !== undefined) out.ui = ui;
+  if (fonts.display !== undefined && version === 1) refusals.push(olderThanBlock('a "fonts.display" face'));
+  const display = readFace(fonts, "display", refusals);
+  if (display !== undefined) out.display = display;
+  return Object.keys(out).length === 0 ? undefined : out;
+}
+
+/** One face of the `fonts` object: absent, or one of the shipped faces. Anything else is refused with its path. */
+function readFace(fonts: JsonObject, key: "ui" | "display", refusals: Refusal[]): string | undefined {
+  if (fonts[key] === undefined) return undefined;
+  const value = asJsonString(fonts[key]);
+  const shipped = SHIPPED_FONTS.find((font) => font === value);
   if (shipped === undefined) {
     refusals.push({
       code: "font",
-      path: "fonts.ui",
-      detail: `"fonts.ui" must be one of the faces Collie ships: ${SHIPPED_FONTS.join(", ")}.`,
+      path: `fonts.${key}`,
+      detail: `"fonts.${key}" must be one of the faces Collie ships: ${SHIPPED_FONTS.join(", ")}.`,
     });
     return undefined;
   }
-  return { ui: shipped };
+  return shipped;
+}
+
+// ── The terminal palette (M57 spec 17) ────────────────────────────────────────────────────────
+//
+// THE GATE, AND WHY EACH PART. The palette replaces the mirror's sixteen slots and its own ink and
+// ground (`--ansi-0..15`, `--mirror-ink`, `--mirror-ground`). It is authored in dark space, like
+// index.css's own palette, because light inverts the mirror wholesale (.adr/0002). A colour that
+// fails is refused, never warned about: an agent's output is the thing a person reads most, and a
+// slot nobody can see is a lost line, not a style.
+//   * all eighteen or none: half a palette would mix two palettes in one pane;
+//   * opaque: a translucent slot would change with whatever it is laid over;
+//   * ink on ground at 4.5:1, the text floor, and the ground darker than the ink (dark space);
+//   * slots 1 to 7 and 9 to 15 at 3:1 on the ground, the floor for a colour that must be seen. Slot 0
+//     is black, the colour a terminal draws as "no colour", and is exempt; slot 8 is checked;
+//   * the bright set. The Muse decorator (lib/harness/muse/display.ts) treats slots 3, 7, 11 and 15 as
+//     the bright foregrounds, the ones it darkens on a light native mirror, by a fixed list held against
+//     index.css's palette at relative luminance {@link ANSI_BRIGHT_LUMINANCE}. A theme's palette must
+//     keep that list true: those four above the line, every other slot at or below it.
+
+/** The relative luminance line of the bright set: `BRIGHT_FG_LUMINANCE` in muse/display.ts, held equal by a test. */
+export const ANSI_BRIGHT_LUMINANCE = 0.6;
+/** The slots that must sit above the line; every other slot must not. */
+export const ANSI_BRIGHT_SLOTS: readonly AnsiKey[] = ["3", "7", "11", "15"];
+const ANSI_SLOT_FLOOR = 3;
+
+function readAnsi(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): Ansi | undefined {
+  if (doc.ansi === undefined) return undefined;
+  if (version === 1) refusals.push(olderThanBlock('an "ansi" block'));
+  const block = asJsonObject(doc.ansi);
+  if (block === undefined) {
+    refusals.push({
+      code: "ansi",
+      path: "ansi",
+      detail: `"ansi" must be an object with a colour for each of: ${ANSI_KEYS.join(", ")}.`,
+    });
+    return undefined;
+  }
+  for (const key of Object.keys(block)) {
+    if (!ANSI_KEYS.some((k) => k === key)) refusals.push(unknownKey(`ansi.${key}`));
+  }
+  const missing = ANSI_KEYS.filter((key) => block[key] === undefined);
+  if (missing.length > 0) {
+    refusals.push({
+      code: "ansi",
+      path: "ansi",
+      detail: `"ansi" must hold all ${ANSI_KEYS.length} colours or none. It lacks: ${missing.join(", ")}.`,
+    });
+  }
+  const values: Partial<Record<AnsiKey, Rgba>> = {};
+  const texts: Partial<Ansi> = {};
+  let valid = true;
+  for (const key of ANSI_KEYS) {
+    if (block[key] === undefined) continue;
+    const raw = asJsonString(block[key]);
+    const text = raw === undefined ? undefined : normaliseColour(raw);
+    const rgba = text === undefined ? undefined : toRgba(text);
+    if (text === undefined || rgba === undefined) {
+      refusals.push({
+        code: "ansi",
+        path: `ansi.${key}`,
+        detail: `"ansi.${key}" is not a colour. Use #rrggbb or oklch(L C H).`,
+      });
+      valid = false;
+      continue;
+    }
+    if (rgba.alpha < 1) {
+      refusals.push({ code: "ansi", path: `ansi.${key}`, detail: `"ansi.${key}" must be opaque, with no alpha.` });
+      valid = false;
+      continue;
+    }
+    values[key] = rgba;
+    texts[key] = text;
+  }
+  if (missing.length > 0 || !valid) return undefined;
+  const ansi = completeAnsi(texts);
+  const ground = values.ground;
+  const ink = values.ink;
+  if (ansi === undefined || ground === undefined || ink === undefined) return undefined;
+
+  const before = refusals.length;
+  const inkRatio = ratio(ink, ground);
+  if (inkRatio < TEXT_FLOOR) {
+    refusals.push({
+      code: "ansi",
+      path: "ansi.ink",
+      detail: `"ansi.ink" on "ansi.ground" measures ${round2(inkRatio)}. The floor is ${TEXT_FLOOR}.`,
+    });
+  }
+  if (luminance(ground) >= luminance(ink)) {
+    refusals.push({
+      code: "ansi",
+      path: "ansi.ground",
+      detail: '"ansi.ground" must be darker than "ansi.ink": the mirror is drawn in dark space.',
+    });
+  }
+  for (const key of ANSI_KEYS) {
+    if (key === "ink" || key === "ground") continue;
+    const slot = values[key];
+    if (slot === undefined) continue;
+    const r = ratio(slot, ground);
+    if (key !== "0" && r < ANSI_SLOT_FLOOR) {
+      refusals.push({
+        code: "ansi",
+        path: `ansi.${key}`,
+        detail: `"ansi.${key}" on "ansi.ground" measures ${round2(r)}. The floor is ${ANSI_SLOT_FLOOR}.`,
+      });
+    }
+    const bright = ANSI_BRIGHT_SLOTS.includes(key);
+    const lum = luminance(slot);
+    if (bright && lum <= ANSI_BRIGHT_LUMINANCE) {
+      refusals.push({
+        code: "ansi",
+        path: `ansi.${key}`,
+        detail: `"ansi.${key}" is a bright slot and needs a relative luminance above ${ANSI_BRIGHT_LUMINANCE}. It has ${round2(lum)}.`,
+      });
+    }
+    if (!bright && lum > ANSI_BRIGHT_LUMINANCE) {
+      refusals.push({
+        code: "ansi",
+        path: `ansi.${key}`,
+        detail: `"ansi.${key}" must have a relative luminance of ${ANSI_BRIGHT_LUMINANCE} or less; only slots ${ANSI_BRIGHT_SLOTS.join(", ")} are bright. It has ${round2(lum)}.`,
+      });
+    }
+  }
+  return refusals.length === before ? ansi : undefined;
+}
+
+/** The palette when every key has its value, else `undefined`. */
+function completeAnsi(texts: Partial<Ansi>): Ansi | undefined {
+  const out: Partial<Ansi> = {};
+  for (const key of ANSI_KEYS) {
+    const value = texts[key];
+    if (value === undefined) return undefined;
+    out[key] = value;
+  }
+  // SAFETY: the loop above returned unless every one of the eighteen keys holds a value.
+  return out as Ansi;
 }
 
 function countTokens(half: Half): number {
@@ -596,6 +789,20 @@ function toOklab(value: string): [number, number, number] | undefined {
   const c = toRgba(value);
   if (c === undefined) return undefined;
   return linearToOklab(decode(c.r), decode(c.g), decode(c.b));
+}
+
+/**
+ * `color-mix(in oklab, <base> <100 - percent>%, <mix>)` of two accepted colours, as the opaque sRGB
+ * hex the browser paints: each colour to oklab, a straight line between them, back to sRGB. Alpha is
+ * dropped, as the ground colours it serves are opaque. A value that is not a colour gives `#000000`.
+ */
+export function mixOklab(base: string, mix: string, percent: number): string {
+  const a = toOklab(base);
+  const b = toOklab(mix);
+  if (a === undefined || b === undefined) return "#000000";
+  const t = percent / 100;
+  const [r, g, bl] = oklabToLinear(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+  return `#${hex2(encode(r))}${hex2(encode(g))}${hex2(encode(bl))}`;
 }
 
 function hex2(channel: number): string {
@@ -770,6 +977,36 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
       push(`status-blocked text on ${groundToken}`, contrast(values["status-blocked"] ?? "", values[groundToken] ?? ""), TEXT_FLOOR);
     }
     push("rule on background", contrast(values.rule ?? "", values.background ?? ""), RULE_FLOOR);
+
+    // THE GROUND AND THE BAND (M57 spec 17). A gradient or a grain changes the page colour under the
+    // text from the top to the bottom, so every pair measured on `background` above is measured again
+    // on the other end: the gradient's bottom colour, or the grain's line colour, each the oklab mix
+    // index.css draws. Under `chrome: band` the header and the two bars stand on `secondary`, so the
+    // text they hold is measured there.
+    const surface = resolveSurface(theme.surface);
+    const groundMix = surface.ground === "gradient" ? GROUND_GRADIENT_END : surface.ground === "grain" ? GROUND_GRAIN_LINE : undefined;
+    if (groundMix !== undefined) {
+      const end = mixOklab(values[groundMix.base] ?? "", values[groundMix.mix] ?? "", groundMix.percent);
+      const where = `the ${surface.ground} ground`;
+      push(`foreground on ${where}`, contrast(values.foreground ?? "", end), TEXT_FLOOR);
+      push(`muted-foreground on ${where}`, contrast(values["muted-foreground"] ?? "", end), TEXT_FLOOR);
+      const endRgba = toRgba(end);
+      for (const status of STATUS_TOKENS) {
+        const ink = rgba(status);
+        const value =
+          ink === undefined || endRgba === undefined ? 1 : ratio(over(ink, endRgba, ink.alpha), over(ink, endRgba, CHIP_ALPHA * ink.alpha));
+        push(`${status} chip on ${where}`, value, TEXT_FLOOR);
+      }
+      const onPage = findings.find((f) => f.half === half && f.check === "destructive text on background");
+      push(`destructive text on ${where}`, contrast(values.destructive ?? "", end), onPage?.floor ?? TEXT_FLOOR);
+      push(`status-blocked text on ${where}`, contrast(values["status-blocked"] ?? "", end), TEXT_FLOOR);
+      push(`rule on ${where}`, contrast(values.rule ?? "", end), RULE_FLOOR);
+    }
+    if (surface.chrome === "band") {
+      for (const ink of ["foreground", "muted-foreground", "status-blocked"] as const) {
+        push(`${ink} on the band`, contrast(values[ink] ?? "", values.secondary ?? ""), TEXT_FLOOR);
+      }
+    }
 
     const blocked = toOklab(values["status-blocked"] ?? "");
     const done = toOklab(values["status-done"] ?? "");

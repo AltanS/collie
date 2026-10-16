@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
 import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
-import { SURFACE_DEFAULTS, SURFACE_TOKENS, wordDeclarations } from "@/lib/theme/surface";
+import { SHIPPED_FONTS as FACES } from "@/lib/shipped-fonts";
+import { SURFACE_DEFAULTS, SURFACE_TOKENS, displayDeclarations, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -369,5 +370,93 @@ describe("every default shape word is today's CSS", () => {
     expect(withSurface.css).toContain("  --radius-md: 6px;\n");
     expect(withSurface.css).toContain("  --spacing: 0.28rem;\n");
     expect(withSurface.css).not.toContain("--surface-shadow");
+  });
+});
+
+// ── The seven more tokens (M57 spec 17) ──────────────────────────────────────────────────────────
+//
+// Same rule as above: every default is what the app drew before. The literals each one replaced are
+// read from the stylesheet, Tailwind's theme, or lucide's own defaults on disk.
+
+describe("every default word of spec 17 is today's CSS", () => {
+  const root = rootDeclarations();
+  const inline = themeBlock("@theme inline {");
+  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//g, "");
+  const DEFAULTS = {
+    ground: wordDeclarations("ground", SURFACE_DEFAULTS.ground),
+    chrome: wordDeclarations("chrome", SURFACE_DEFAULTS.chrome),
+    rows: wordDeclarations("rows", SURFACE_DEFAULTS.rows),
+    icons: wordDeclarations("icons", SURFACE_DEFAULTS.icons),
+    labels: wordDeclarations("labels", SURFACE_DEFAULTS.labels),
+  };
+  const defaultOf = (token: keyof typeof DEFAULTS) => DEFAULTS[token];
+
+  it("declares every default word's properties on :root with the word's own values", () => {
+    for (const token of ["ground", "chrome", "rows", "icons", "labels"] as const) {
+      for (const [property, value] of defaultOf(token)) expect(root.get(property), property).toBe(value);
+    }
+  });
+
+  it("ground: flat is no image, and the page colour moved from body to html unchanged", () => {
+    expect(new Map(defaultOf("ground")).get("--ground-image")).toBe("none");
+    const html = /\n {2}html \{([\s\S]*?)\n {2}\}/.exec(bare)?.[1] ?? "";
+    expect(html).toContain("background-color: var(--background);");
+    expect(html).toContain("background-image: var(--ground-image);");
+    expect(html).toContain("min-height: 100%;");
+    expect(bare).not.toContain("background-attachment");
+    const body = /\n {2}body \{([\s\S]*?)\n {2}\}/.exec(bare)?.[1] ?? "";
+    expect(body).toContain("@apply text-foreground;");
+    expect(body).not.toContain("bg-background");
+  });
+
+  it("chrome: page is the page colour and --rule, and the two band colours read them", () => {
+    expect(defaultOf("chrome")).toEqual([
+      ["--band-ground", "var(--background)"],
+      ["--band-rule", "var(--rule)"],
+    ]);
+    expect(inline.get("--color-band-ground")).toBe("var(--band-ground)");
+    expect(inline.get("--color-band-rule")).toBe("var(--band-rule)");
+  });
+
+  it("rows: rules is the framed group with a border-wide line between rows and no edge, corner, shadow or gap", () => {
+    expect(new Map(defaultOf("rows"))).toEqual(
+      new Map([
+        ["--row-gap", "0px"],
+        ["--row-rule", "var(--surface-border-width)"],
+        ["--row-edge", "0px"],
+        ["--row-corner", "0px"],
+        ["--row-shadow", "0 0 #0000"],
+        ["--row-inset", "0px"],
+      ]),
+    );
+    expect(bare).toMatch(/\[data-slot="list-group"\] > :not\(:last-child\) \{\s*border-bottom-width: var\(--surface-border-width\);/);
+  });
+
+  it("icons: default is lucide's own stroke width", () => {
+    const lucide = read("node_modules/lucide-react/dist/esm/defaultAttributes.mjs");
+    const stroke = /strokeWidth:\s*(\d+(?:\.\d+)?)/.exec(lucide)?.[1];
+    expect(new Map(defaultOf("icons")).get("--icon-stroke")).toBe(stroke);
+    expect(bare).toMatch(/svg\.lucide \{\s*stroke-width: var\(--icon-stroke\);/);
+  });
+
+  it("labels: caps is `uppercase` and Tailwind's `tracking-wide`", () => {
+    const words = new Map(defaultOf("labels"));
+    expect(words.get("--label-transform")).toBe("uppercase");
+    expect(words.get("--label-tracking")).toBe(tailwind("--tracking-wide"));
+    expect(bare).toMatch(/@utility label-caps \{\s*text-transform: var\(--label-transform, uppercase\);\s*letter-spacing: var\(--label-tracking, 0\.025em\);/);
+  });
+
+  it("display: no display face is the UI face, and each face's stack is the one its Typeface class sets", () => {
+    expect(root.get("--font-display")).toBe("var(--font-sans)");
+    for (const face of FACES) {
+      const [[, value] = ["", ""]] = displayDeclarations(face);
+      expect(value).toBe(`var(--face-${face})`);
+      const stack = root.get(`--face-${face}`);
+      const own =
+        face === "aldrich"
+          ? inline.get("--font-sans")
+          : flat(/--font-sans:\s*([^;]+);/.exec(bare.slice(bare.indexOf(`:root.font-${face} {`)))?.[1] ?? "");
+      expect(stack, face).toBe(own);
+    }
   });
 });

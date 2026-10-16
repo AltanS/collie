@@ -296,7 +296,7 @@ describe("ThemePickerControl", () => {
       return JSON.stringify({ ...copy("shaped", "Shaped"), version: 2, surface });
     }
 
-    it("draws the file's shape on its own sample and names the five words", async () => {
+    it("draws the file's shape on its own sample and names the ten words", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
       pick(container, fileOf(surfaceFile({ radius: "round", shadow: "lifted", density: "roomy", weight: "bold" })));
@@ -323,7 +323,105 @@ describe("ThemePickerControl", () => {
         "density: roomy",
         "weight: bold",
         "border: default",
+        "ground: flat",
+        "chrome: page",
+        "rows: rules",
+        "icons: default",
+        "labels: caps",
       ]);
+    });
+
+    // ── Spec 17: the seven more tokens in the preview ───────────────────────────────────────────
+    const PALETTE = {
+      "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
+      "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
+      "12": "#3b8eea", "13": "#d670d6", "14": "#29b8db", "15": "#ffffff", ink: "#fafafa", ground: "#14141e",
+    };
+
+    it("draws one small page per half in the file's colours, with its band, ground, rows, icons, labels and display face", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      const file = {
+        ...copy("paged", "Paged", (t) => {
+          t.dark = { ...t.dark, secondary: "#223344", background: "#101820" };
+        }),
+        version: 2,
+        surface: { ground: "grain", chrome: "band", rows: "cards", icons: "thin", labels: "sentence" },
+        fonts: { display: "geist" },
+      };
+      pick(container, fileOf(JSON.stringify(file)));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      const dark = within(dialog).getByTestId("theme-page-sample-dark");
+      expect(dark.style.colorScheme).toBe("dark");
+      expect(dark.style.getPropertyValue("--background")).toBe("#101820");
+      expect(dark.style.getPropertyValue("--secondary")).toBe("#223344");
+      expect(dark.style.getPropertyValue("--band-ground")).toBe("var(--secondary)");
+      expect(dark.style.getPropertyValue("--ground-image")).toContain("repeating-linear-gradient(45deg");
+      expect(dark.style.getPropertyValue("--row-gap")).toBe("8px");
+      expect(dark.style.getPropertyValue("--icon-stroke")).toBe("1.5");
+      expect(dark.style.getPropertyValue("--label-transform")).toBe("none");
+      expect(dark.style.getPropertyValue("--font-display")).toBe("var(--face-geist)");
+      expect(dark.querySelector(".bg-band-ground")).not.toBeNull();
+      expect(dark.querySelector('[data-slot="list-group"]')?.children).toHaveLength(2);
+      expect(dark.querySelector("svg.lucide")).not.toBeNull();
+      expect(within(dialog).getByTestId("theme-page-sample-light").style.colorScheme).toBe("light");
+      const words = [...within(dialog).getByTestId("theme-shape-words").querySelectorAll("li")].map((li) => li.textContent);
+      expect(words).toEqual(expect.arrayContaining(["ground: grain", "chrome: band", "rows: cards", "icons: thin", "labels: sentence", "display: geist"]));
+    });
+
+    it("draws the file's terminal palette as sixteen swatches on its ground", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify({ ...copy("term", "Term"), version: 2, ansi: PALETTE })));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(dialog).toHaveTextContent("Terminal colours");
+      const strip = within(dialog).getByTestId("theme-ansi-strip");
+      expect(strip.style.background).toBe("rgb(20, 20, 30)");
+      const swatches = within(strip).getAllByRole("img");
+      expect(swatches).toHaveLength(16);
+      expect(swatches[3]).toHaveAccessibleName("ansi 3 #e5e510");
+      expect(strip).toHaveTextContent("ansi.ink #fafafa");
+    });
+
+    it("draws no palette strip for a file without one", async () => {
+      const { ThemePickerControl } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify(copy("plain", "Plain"))));
+      const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
+      expect(within(dialog).queryByTestId("theme-ansi-strip")).toBeNull();
+      const dark = within(dialog).getByTestId("theme-page-sample-dark");
+      expect(dark.style.getPropertyValue("--ground-image")).toBe("none");
+      expect(dark.style.getPropertyValue("--font-display")).toBe("var(--font-sans)");
+    });
+
+    it("refuses a palette that fails its gate, naming the slot, and applies nothing", async () => {
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(JSON.stringify({ ...copy("dim", "Dim"), version: 2, ansi: { ...PALETTE, "4": "#20203a" } })));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent("A terminal colour is not valid, or it fails its contrast floor.");
+      expect(dialog).toHaveTextContent("ansi.4");
+      expect(store.library()).toHaveLength(0);
+    });
+
+    it("exports the seven tokens as the file named them", async () => {
+      const { themeFileText } = await load();
+      const raw = {
+        ...copy("all", "All"),
+        version: 2,
+        fonts: { display: "plex" },
+        surface: { ground: "gradient", chrome: "band", rows: "cards", icons: "heavy", labels: "sentence" },
+        ansi: PALETTE,
+      };
+      const parsed = parseTheme(JSON.stringify(raw), { maxBytes: 64 * 1024 });
+      if (!parsed.ok) throw new Error(parsed.refusals.map((r) => r.detail).join("\n"));
+      const out = JSON.parse(themeFileText(parsed.theme));
+      expect(out.version).toBe(2);
+      expect(out.surface).toEqual(raw.surface);
+      expect(out.fonts).toEqual({ display: "plex" });
+      expect(out.ansi).toEqual(PALETTE);
+      const again = parseTheme(themeFileText(parsed.theme), { maxBytes: 64 * 1024 });
+      expect(again.ok && again.theme).toEqual(parsed.theme);
     });
 
     it("draws a version 1 file at the default shape", async () => {

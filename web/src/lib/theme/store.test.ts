@@ -4,10 +4,11 @@ import { resolve } from "node:path";
 import { renderHook, act } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { MetaColours } from "@/hooks/use-theme";
 import { parseJsonObject } from "@/lib/json";
 
 import { THEME_TOKENS, fillHalves, parseTheme, toSrgbHex, type Theme } from "./schema";
-import { SURFACE_PROPERTIES } from "./surface";
+import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES } from "./surface";
 
 // The store keeps module-scope state (the design store, the library, the metas), so each case
 // imports a fresh graph over a storage it seeded itself.
@@ -36,6 +37,13 @@ function midnight(id = "midnight", extra: Partial<Theme> = {}): Theme {
     ...extra,
   };
 }
+
+/** Collie's own index.css palette on its own ground: a palette that passes the gate. */
+const PALETTE = {
+  "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
+  "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
+  "12": "#3b8eea", "13": "#d670d6", "14": "#29b8db", "15": "#ffffff", ink: "#fafafa", ground: "#0a0a0a",
+};
 
 /** A stored blob as text. Tests pass objects through here, and a hand-edited blob as a plain string. */
 const blob = JSON.stringify;
@@ -379,6 +387,7 @@ describe("useActiveTheme", () => {
 
 describe("the shape words of an imported theme (schema version 2)", () => {
   const surfaceSet = () => SURFACE_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "");
+  const versionTwoSet = () => VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "");
 
   it("sets the declarations of the words the theme names, and only those", async () => {
     const { store } = await boot();
@@ -401,13 +410,25 @@ describe("the shape words of an imported theme (schema version 2)", () => {
 
   it("takes every shape property off on the way back to collie or to another theme", async () => {
     const { store } = await boot();
-    const all = { radius: "round", shadow: "flat", density: "roomy", weight: "bold", border: "strong" } as const;
-    store.addImported(midnight("shaped", { version: 2, surface: all }));
+    const all = {
+      radius: "round",
+      shadow: "flat",
+      density: "roomy",
+      weight: "bold",
+      border: "strong",
+      ground: "gradient",
+      chrome: "band",
+      rows: "cards",
+      icons: "thin",
+      labels: "sentence",
+    } as const;
+    store.addImported(midnight("shaped", { version: 2, surface: all, fonts: { display: "geist" }, ansi: PALETTE }));
     store.addImported(midnight("plain"));
     store.setActiveTheme("shaped");
     expect(surfaceSet()).toEqual([...SURFACE_PROPERTIES]);
+    expect(versionTwoSet()).toEqual([...VERSION_TWO_PROPERTIES]);
     store.setActiveTheme("plain");
-    expect(surfaceSet()).toEqual([]);
+    expect(versionTwoSet()).toEqual([]);
     store.setActiveTheme("shaped");
     store.setActiveTheme("collie");
     expect(root().getAttribute("style") ?? "").toBe("");
@@ -448,3 +469,46 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     expect(root().style.getPropertyValue("--font-weight-semibold")).toBe("700");
   });
 });
+
+// ── Spec 17: the band colour on the browser chrome, the display face and the palette ─────────────
+describe("the seven more tokens on an imported theme", () => {
+  it("gives the theme-color metas the band colour under `chrome: band`, and the page colour under `page` and any ground", async () => {
+    const { store, theme } = await boot();
+    const banded = midnight("banded", { version: 2, surface: { chrome: "band" } });
+    store.addImported(banded);
+    store.addImported(midnight("ground", { version: 2, surface: { ground: "gradient", chrome: "page" } }));
+    store.setActiveTheme("banded");
+    const secondary = fillHalvesOf(banded, "secondary");
+    expect(theme.metaColours()).toEqual(secondary);
+    expect(metas()).toEqual([secondary.light, secondary.dark]);
+    store.setActiveTheme("ground");
+    expect(theme.metaColours()).toEqual({ light: toSrgbHex(collie().light?.background ?? ""), dark: "#123456" });
+  });
+
+  it("sets the display face and the eighteen palette properties, and nothing for a theme without them", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("faced", { version: 2, fonts: { display: "plex" }, ansi: PALETTE }));
+    store.setActiveTheme("faced");
+    expect(root().style.getPropertyValue("--font-display")).toBe("var(--face-plex)");
+    expect(ANSI_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual([...ANSI_PROPERTIES]);
+    expect(root().style.getPropertyValue("--mirror-ink")).toBe("#fafafa");
+    expect(root().style.getPropertyValue("--ansi-4")).toBe("#2472c8");
+    store.addImported(midnight());
+    store.setActiveTheme("midnight");
+    expect(VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual([]);
+  });
+
+  it("applies nothing for a stored palette that fails the gate", async () => {
+    const { store } = await boot();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const theme = midnight("dim", { version: 2 });
+    Object.assign(theme, { ansi: { ...PALETTE, "4": "#101010" } });
+    store.applyTheme(theme, "imported");
+    expect(root().getAttribute("style") ?? "").toBe("");
+  });
+});
+
+function fillHalvesOf(theme: Theme, token: "secondary"): MetaColours {
+  const filled = fillHalves(theme, collie());
+  return { light: toSrgbHex(filled.light[token] ?? ""), dark: toSrgbHex(filled.dark[token] ?? "") };
+}
