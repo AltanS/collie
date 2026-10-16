@@ -357,6 +357,12 @@ function framedCueGrew(before: Snap, after: Snap): boolean {
   return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength];
 }
 
+/**
+ * How long after S2 the late witness reads. Claude Code 2.1.301 empties the box one redraw before it
+ * draws the queued row (lab, 2026-10-16: the row stood there 0.6 s after the receipt).
+ */
+const LATE_WITNESS_MS = 300;
+
 /** How many rows above a queued hint are read for the queued texts. */
 const QUEUED_SCAN_ROWS = 24;
 
@@ -1205,6 +1211,7 @@ export class SendProtocol {
         if (s0.frame !== null) await this.awaitSent(state, s0, null, lines);
         else await this.awaitBareEmpty(state, located);
         this.lap(state, "s2");
+        await this.lateWitness(state, lines);
         return;
       }
       case "discard": {
@@ -1266,6 +1273,7 @@ export class SendProtocol {
     this.lap(state, "commit");
     await this.awaitSent(state, s0, landing, lines);
     this.lap(state, "s2");
+    await this.lateWitness(state, lines);
   }
 
   /**
@@ -1824,6 +1832,29 @@ export class SendProtocol {
     if (witnessed && result.verdict === "pass") state.queued = true;
     if (dialog) throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: DIALOG_AFTER_ENTER }));
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
+  }
+
+  /**
+   * The late witness: a send that went in on a harness that queues, whose receipt would not say
+   * `queued`, gets one more read {@link LATE_WITNESS_MS} after S2, outside S2's timing. The harness's
+   * queued row with the text there makes the receipt say `queued`. Nothing else on that read counts:
+   * a dialog, a read that fails or comes too late, or the request's bound changes no outcome; only the
+   * label stays off. A command, a pane with no box at S2 and a receipt that says `queued` already skip it.
+   */
+  private async lateWitness(state: RunState, lines: readonly string[]): Promise<void> {
+    const queuedRow = state.match?.profile.keys.queuedRow;
+    if (queuedRow === undefined || !queuesInTurn(state.match) || state.queued || state.command) return;
+    if ((state.marks.s2?.frame ?? null) === null) return;
+    const s1Frame = state.marks.s1?.frame ?? null;
+    const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
+    if (state.deadline - this.now() <= LATE_WITNESS_MS * 2) return;
+    try {
+      await this.sleep(LATE_WITNESS_MS);
+      const snap = await this.readNow(state, "witness");
+      if (snap !== null && showsQueued(snap, queuedRow, sentText)) state.queued = true;
+    } catch {
+      // A late read that fails is only a missing witness: the send already went in.
+    }
   }
 
   /**

@@ -1177,6 +1177,87 @@ describe("a send into a running turn", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
+  /** What a late queued row reports: how many reads came after Enter. */
+  interface LateRow {
+    readsAfterEnter(): number;
+  }
+  /** After Enter: the box empties at once, and the queued row shows only from the `from`-th read on (null: never). */
+  const queuedRowLate = (pane: FakePane, from: number | null, text: string): LateRow => {
+    let after = 0;
+    let entered = false;
+    const stream = pane.beforeRead;
+    pane.afterInput = (p, what) => {
+      if (what !== "keys:Enter") return;
+      entered = true;
+      p.transcript = p.transcript.filter((row) => !row.startsWith("> "));
+    };
+    pane.beforeRead = async (p, n) => {
+      await stream?.(p, n);
+      if (!entered) return;
+      after++;
+      if (from !== null && after >= from) p.over = [`❯ ${text}`, "  ctrl+enter to send now"];
+    };
+    return { readsAfterEnter: () => after };
+  };
+
+  test("the late witness: the queued row shows only on the read after S2, and the receipt says queued", async () => {
+    for (const streaming of [false, true]) {
+      const { pane, send } = rig({ version: "2.1.301" });
+      if (streaming) streamAnswer(pane, typing);
+      else pane.height = 16;
+      const late = queuedRowLate(pane, 2, "then give it a title");
+      const answer = await send("then give it a title");
+      expect(answer.receipt, String(streaming)).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+      expect(late.readsAfterEnter(), String(streaming)).toBe(2);
+    }
+  });
+
+  test("the late witness that never shows: sent, and the receipt does not say queued", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    streamAnswer(pane, typing);
+    const late = queuedRowLate(pane, null, "then give it a title");
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(late.readsAfterEnter()).toBe(2);
+  });
+
+  test("a dialog on the late read changes nothing: sent, not queued", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.height = 16;
+    let after = 0;
+    pane.beforeRead = (p) => {
+      if (!p.keysSeen.includes("Enter")) return;
+      if (++after === 2) p.dialog = DIALOG;
+    };
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(after).toBe(2);
+  });
+
+  test("no late read where Enter does not queue, where S0 read running, or where S2 saw the queued row", async () => {
+    const submits = rig({ version: "2.1.301", edit: (profile) => ({ ...profile, keys: { ...profile.keys, enterWhileRunning: "submits" } }) });
+    const a = queuedRowLate(submits.pane, 2, "then give it a title");
+    expect((await submits.send("then give it a title")).receipt?.queued).toBeUndefined();
+    expect(a.readsAfterEnter()).toBe(1);
+
+    const running = rig({ version: "2.1.301" });
+    running.pane.over = [LIVE_ROW];
+    let after = 0;
+    running.pane.beforeRead = (p) => {
+      if (p.keysSeen.includes("Enter")) after++;
+    };
+    expect((await running.send("then give it a title")).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(after).toBe(1);
+
+    const seen = rig({ version: "2.1.301" });
+    seen.pane.drawsQueuedRow = true;
+    const b = queuedRowLate(seen.pane, 1, "then give it a title");
+    expect((await seen.send("then give it a title")).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(b.readsAfterEnter()).toBe(1);
+  });
+
   test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {
     expect(steadyRow("* Wibbling… (4s · ↓ 304 tokens)")).toBe(steadyRow("✶ Wibbling… (5s · ↓ 310 tokens)"));
     expect(steadyRow("• Working (8s • esc to interrupt) · 1 background terminal running")).toBe(steadyRow("• Working (9s • esc to interrupt) · 1 background terminal running"));
