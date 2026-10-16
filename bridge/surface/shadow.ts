@@ -24,7 +24,8 @@ import { redactText } from "../redact.ts";
 import type { AgentView } from "../types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { foldSurface, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
+import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
+import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
 import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
@@ -35,8 +36,6 @@ import type { Block } from "../../web/src/lib/blocks.ts";
 
 /** How many rows of the viewport one shadow read asks for. `viewport` scope never moves a screen. */
 export const SHADOW_READ_LINES = 120;
-/** How many inputs the per-pane log keeps. The fold reads the newest read and the newest tick. */
-export const SHADOW_LOG_LIMIT = 8;
 /** How long a binary version read is trusted before it is read again. */
 export const VERSION_TTL_MS = 10 * 60_000;
 /** The bound on one version command. */
@@ -95,18 +94,38 @@ export interface ShadowOptions {
    * id and status in the day file, and an `unknown` one files the hash of its bottom cluster. Called
    * inside a try; it never changes the Surface.
    */
-  readonly ledger?: { read(key: CounterKey, surface: Surface, frame: string | null): void } | undefined;
+  readonly ledger?: { read(key: CounterKey, surface: Surface, frame: string | null): void; edge?(key: CounterKey, word: string): void } | undefined;
   /**
    * The session's ask book and the pane generation (M56 spec 08). With it every lifted dialog gets the
    * book's single-use id, the one the answer route knows; without it (the Send Protocol off) an ask
    * is named by its content alone and nothing answers it.
    */
   readonly asks?: { readonly book: AskBook; readonly generation: (paneId: string) => string | null };
+  /**
+   * Runs `run` after `ms` and returns a cancel (M56 spec 11: the fresh read an edge asks for).
+   * Defaults to an unref'd timer. A test passes its own clock.
+   */
+  readonly schedule?: (run: () => void, ms: number) => () => void;
 }
 
+/** The default scheduler: an unref'd timer, cancelled by clearing it. */
+const timerSchedule = (run: () => void, ms: number): (() => void) => {
+  const timer = setTimeout(run, ms);
+  timer.unref?.();
+  return () => clearTimeout(timer);
+};
+
 interface PaneState {
-  log: SurfaceInput[];
+  /** The fold's state: the newest read, the edges' blocks and the lost-Stop count (M56 spec 11). */
+  fold: FoldState;
   seq: number;
+  /** The pane as the newest poll saw it, so an edge's fresh read can read it again. */
+  agent: AgentView;
+  /** The profile's edge timing. */
+  settleMs: number;
+  rereadMs: number;
+  /** The cancel of the fresh read an edge asked for, while it waits. */
+  reread: (() => void) | null;
   lastLegacy: boolean;
   /** The read last counted and logged: its revision and a hash of its text (see `observePane`). */
   countedRead: string | null;
@@ -203,14 +222,18 @@ export class SurfaceShadow {
     if (this.observing) {
       for (const state of this.panes.values()) {
         this.push(state, { seq: ++state.seq, source: "tick", at });
-        if (state.read !== null) state.read = foldSurface(state.log, { idle: state.idle, pollMs: this.options.pollMs });
+        if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
       }
       return;
     }
     this.observing = true;
     try {
       const live = new Set(agents.map((a) => a.paneId));
-      for (const id of this.panes.keys()) if (!live.has(id)) this.panes.delete(id);
+      for (const [id, state] of this.panes) {
+        if (live.has(id)) continue;
+        state.reread?.();
+        this.panes.delete(id);
+      }
       for (const agent of agents) {
         try {
           await this.observePane(agent, at);
@@ -256,11 +279,32 @@ export class SurfaceShadow {
     const status = profile === null ? null : version === "unread" ? "provisional" : (profileFor(profile.id, version)?.status ?? null);
     const idle = profile?.idle ?? null;
 
+    const edges = profile?.edges ?? DEFAULT_EDGE_PROFILE;
     let state = this.panes.get(agent.paneId);
     if (state === undefined) {
-      state = { log: [], seq: 0, lastLegacy: false, countedRead: null, lastRevision: 0, read: null, harness, version, status, profileId: profile?.id ?? "-", idle, logged: new Map() };
+      state = {
+        fold: emptyFoldState(),
+        seq: 0,
+        agent,
+        settleMs: edges.settleMs,
+        rereadMs: edges.rereadMs,
+        reread: null,
+        lastLegacy: false,
+        countedRead: null,
+        lastRevision: 0,
+        read: null,
+        harness,
+        version,
+        status,
+        profileId: profile?.id ?? "-",
+        idle,
+        logged: new Map(),
+      };
       this.panes.set(agent.paneId, state);
     }
+    state.agent = agent;
+    state.settleMs = edges.settleMs;
+    state.rereadMs = edges.rereadMs;
     state.harness = harness;
     state.version = version;
     state.status = status;
@@ -285,7 +329,7 @@ export class SurfaceShadow {
       state.lastLegacy = this.options.compare === false ? false : legacyFree(rows, blocks, harness);
     }
 
-    const read = foldSurface(state.log, { idle, pollMs: this.options.pollMs });
+    const read = readFold(state.fold, this.contextOf(state));
     state.read = read;
     if (state.countedRead === readKey) return;
     state.countedRead = readKey;
@@ -299,9 +343,56 @@ export class SurfaceShadow {
     return asks.book.publish(paneId, asks.generation(paneId) ?? "gone", liftDialog(blocks), profile?.ask?.lifetimeMs ?? ASK_LIFETIME_MS);
   }
 
+  private contextOf(state: PaneState): FoldContext {
+    return { idle: state.idle, pollMs: this.options.pollMs, settleMs: state.settleMs };
+  }
+
+  /** One input into the pane's fold. A block the screen ended with free reads is a lost-Stop incident. */
   private push(state: PaneState, input: SurfaceInput): void {
-    state.log.push(input);
-    if (state.log.length > SHADOW_LOG_LIMIT) state.log.splice(0, state.log.length - SHADOW_LOG_LIMIT);
+    const before = state.fold.lostStops;
+    state.fold = stepFold(state.fold, input, this.contextOf(state));
+    if (state.fold.lostStops === before) return;
+    this.countEdge(state, "lost-stop");
+    this.log(`[surface] surface.lost-stop pane=${state.agent.paneId} harness=${state.harness} version=${state.version}`);
+  }
+
+  /**
+   * A hook edge placed on this pane (M56 spec 11). It goes into the fold, which marks the newest read
+   * stale, and a fresh read follows after the profile's re-read delay. The edge is counted by kind. A
+   * pane the shadow has not read yet takes no edge: it has no Surface to change. Returns whether the
+   * pane took it. Never throws.
+   */
+  edge(paneId: string, kind: EdgeKind, at: number): boolean {
+    const state = this.panes.get(paneId);
+    if (state === undefined) return false;
+    try {
+      this.push(state, { seq: ++state.seq, source: "edge", at, kind });
+      if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
+      this.countEdge(state, kind);
+      state.reread?.();
+      state.reread = (this.options.schedule ?? timerSchedule)(() => {
+        state.reread = null;
+        // The pane may have left: only a pane still in the map is read again.
+        if (this.panes.get(paneId) !== state) return;
+        this.observePane(state.agent, this.now()).catch((err) => {
+          console.warn(`[surface] fresh read of ${paneId} failed: ${String(err)}`);
+        });
+      }, state.rereadMs);
+    } catch (err) {
+      console.warn(`[surface] edge on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return true;
+  }
+
+  /** One edge word into the persisted counters (a kind, or `lost-stop`). A failure is a warning. */
+  private countEdge(state: PaneState, word: string): void {
+    const ledger = this.options.ledger;
+    if (ledger?.edge === undefined) return;
+    try {
+      ledger.edge({ harness: state.harness, version: state.version, profileId: state.profileId, status: state.status ?? "-" }, word);
+    } catch (err) {
+      console.warn(`[surface] counters failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** One new read into the persisted counters. A failure is a warning, never a different Surface. */

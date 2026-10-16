@@ -347,6 +347,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the pane's input surface (M56 spec 04). Only Surface shadow mode fills it,
   // and it is off by default, so it is absent on every pane here and no golden byte moved.
   surface: true,
+  // Not a crew dimension: the pane's hook source, live or none (M56 spec 11). It rides with `surface`
+  // only, on a session that takes hook edges, and this harness builds none, so no golden byte moved.
+  hooks: true,
   // Not a crew dimension: the Send Protocol's mark (M56 spec 05). It is on by default since spec 06
   // (COLLIE_SEND_PROTOCOL=0 turns text sending off), but a pane carries it only when its session runtime
   // has a Send Protocol, and this harness builds none, so it is absent here and no golden byte moved.
@@ -476,6 +479,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "gitHead",
       "hasSession",
       "hint",
+      "hooks",
       "host",
       "kind",
       "lastActiveAt",
@@ -1094,6 +1098,10 @@ const STATE_DIR_ENTRIES = [
   // Written only when a pane that carries asks opens or closes one: a bridge with no durable pane,
   // and no peer with one, never writes it.
   "durable-asks.json",
+  // The hook edges (M56 spec 11): a spool directory the bridge takes from and empties, and one no
+  // bridge module ever writes into. The emitter behind `collie hooks install` fills it, so an instance
+  // whose operator never installed the hooks never has this directory at all.
+  "edges",
   // The new-space sheet's folder list (M40/02, #289), and a §11 row RENEGOTIATED ON PURPOSE: it is
   // the one entry here a solo instance's own operator writes through ordinary use, from the phone.
   // Absent until the first space created with a folder or the first star — both are acts, and a

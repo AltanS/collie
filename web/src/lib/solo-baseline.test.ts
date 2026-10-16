@@ -144,6 +144,8 @@ const AGENT_VIEW_KEYS = {
   actions: true,
   // Not a crew dimension: the pane's input surface (M56 spec 04), present only while the bridge runs Surface shadow mode.
   surface: true,
+  // Not a crew dimension: the pane's hook source, live or none (M56 spec 11), present only with `surface`.
+  hooks: true,
   // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
   // and it is off by default, so it is absent on every pane here and no golden byte moved.
   sendProtocol: true,
@@ -249,6 +251,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "gitHead",
       "hasSession",
       "hint",
+      "hooks",
       "host",
       "kind",
       "lastActiveAt",

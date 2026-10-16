@@ -31,6 +31,11 @@ function words(record: Readonly<Record<string, number>>): string {
   return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
+function edgeWords(row: CounterRow): string[] {
+  const total = Object.values(row.edges).reduce((sum, n) => sum + n, 0);
+  return total === 0 ? [] : [`edges ${String(total)}${words(row.edges)}`];
+}
+
 function rowLine(row: CounterRow): string {
   const unknown = unknownTotal(row);
   const refused = Object.values(row.refused).reduce((sum, n) => sum + n, 0);
@@ -48,6 +53,8 @@ function rowLine(row: CounterRow): string {
     `unknown-outcome ${String(row.unknown_outcome)}`,
     `typed-not-submitted ${String(row.typed_not_submitted)}`,
     `discarded ${String(row.discarded)}`,
+    // Hook edges (M56 spec 11) only where a pane took one, so a host without hooks reads as before.
+    ...edgeWords(row),
   ].join(" · ");
 }
 

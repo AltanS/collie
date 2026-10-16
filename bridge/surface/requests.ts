@@ -339,7 +339,22 @@ export class RequestStore {
     this.write({ ...known, phase: "submit-sent", submitSentAt: this.now() });
   }
 
-  /** The request's end: its receipt. A settled record never changes again. */
+  /**
+   * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11) becomes
+   * `effective`, its reason dropped. That is the one change a settled record can take, and it takes it
+   * once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
+   */
+  markEffective(id: string): "sent" | "unknown" | null {
+    const known = this.get(id);
+    const receipt = known?.receipt;
+    if (known === null || known.phase !== "settled" || receipt === undefined) return null;
+    if (receipt.outcome !== "sent" && receipt.outcome !== "unknown") return null;
+    const { reason: _dropped, ...rest } = receipt;
+    this.write({ ...known, receipt: { ...rest, outcome: "effective" } });
+    return receipt.outcome;
+  }
+
+  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`). */
   settle(id: string, receipt: SendReceipt): SendRecord | null {
     const known = this.get(id);
     if (known === null) return null;

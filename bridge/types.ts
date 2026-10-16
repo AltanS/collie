@@ -275,6 +275,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   surface?: Surface;
   /**
+   * Whether the pane's hook source is live (M56 spec 11): `live` while the harness's own hooks send
+   * edges from the pane's process, `none` otherwise (hooks not installed, or the pane started before
+   * the install). Present only with `surface`, on a session whose adapter can place edges. Absent from
+   * an older bridge.
+   */
+  hooks?: "live" | "none";
+  /**
    * Present (and `true`) when this bridge runs the Send Protocol (`COLLIE_SEND_PROTOCOL=1`, M56 spec
    * 05) and the pane carries a Surface: the phone's composer then sends through `POST /api/send`.
    * Absent otherwise, so a bridge without the flag sends the same bytes as before.

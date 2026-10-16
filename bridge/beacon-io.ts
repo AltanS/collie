@@ -7,15 +7,16 @@
 // three are filled, and it sits OUTSIDE that directory so the rule stays greppable rather than
 // remembered.
 //
-// It reads and it never writes. Nothing here can cause a send, a key, a rename or a close — a beacon
-// is a hint, never a control channel (.adr/0024).
+// It reads and it never writes, with one exception: the edge spool (M56 spec 11) deletes each edge
+// file it took, so an edge is taken once. Nothing here can cause a send, a key, a rename or a close: a
+// beacon and an edge are hints, never a control channel (.adr/0024).
 
 import { readFileSync } from "node:fs";
-import { readdir, readFile, lstat } from "node:fs/promises";
+import { readdir, readFile, lstat, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
-import { beaconsDir, BEACON_FILE_SUFFIX } from "./beacon/paths.ts";
+import { beaconsDir, BEACON_FILE_SUFFIX, EDGE_FILE, edgesDir } from "./beacon/paths.ts";
 import type { BeaconDirectory, BeaconLiveness, BeaconSweepDeps } from "./beacon/reader.ts";
 import type { JsonValue } from "./json.ts";
 import type { Environment } from "../cli/context.ts";
@@ -167,4 +168,45 @@ function readTextFile(path: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ── The edge spool (M56 spec 11) ──────────────────────────────────────────────
+
+/** The edge spool seam: every edge file's text, each taken once (read, then deleted). */
+export interface EdgeSpool {
+  take(): Promise<readonly string[]>;
+}
+
+/** The most edge files one take reads. The emitter caps the spool at the same order of size. */
+const EDGE_TAKE_MAX = 512;
+
+/**
+ * The edge spool on disk: `<stateDir>/edges/`. Names that are not edge files (a temp file mid-write,
+ * anything foreign) are left alone. A symlink or a non-file is deleted unread. Every failure is
+ * "nothing to take": the screen still reads every pane on its own poll.
+ */
+export function fileEdgeSpool(stateDir: string): EdgeSpool {
+  const dir = edgesDir(stateDir);
+  return {
+    async take(): Promise<readonly string[]> {
+      let names: string[];
+      try {
+        names = (await readdir(dir)).filter((name) => EDGE_FILE.test(name)).toSorted().slice(0, EDGE_TAKE_MAX);
+      } catch {
+        return [];
+      }
+      const texts: string[] = [];
+      for (const name of names) {
+        const path = join(dir, name);
+        try {
+          const stats = await lstat(path);
+          if (stats.isFile()) texts.push(await readFile(path, "utf8"));
+        } catch {
+          // Gone between the listing and the read: another take had it.
+        }
+        await rm(path, { force: true }).catch(() => undefined);
+      }
+      return texts;
+    },
+  };
 }

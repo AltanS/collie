@@ -102,6 +102,11 @@ export interface SessionParts {
   send?: SendProtocol;
   /** Set with `send`: the session's Ask answerer (M56 spec 08), `POST /api/ask/<id>`. */
   asks?: AskAnswerer;
+  /**
+   * Set with `surface` on a terminal session whose adapter has a beacon matcher (M56 spec 11): whether
+   * a pane's hook source is live. The pane info on the phone says "hooks: live" or "hooks: none".
+   */
+  hooks?: (paneId: string) => "live" | "none";
 }
 
 /** A fully-built, running session runtime: its parts plus its identity in the registry. */

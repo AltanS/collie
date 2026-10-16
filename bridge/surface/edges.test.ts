@@ -1,0 +1,278 @@
+// Hook edges into the Surface (M56 spec 11): an edge is keyed to the harness pid and placed on one pane
+// through the multiplexer markers; an edge no pane can take is logged and dropped; a placed edge goes
+// into the pane's fold and asks for a fresh read; and no edge ever makes a free.
+
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import type { BeaconMatcher } from "../beacon/decorate.ts";
+import type { BeaconLiveness } from "../beacon/reader.ts";
+import { EDGE_SCHEMA_VERSION, type BeaconMarker, type EdgeRecord } from "../beacon/types.ts";
+import type { EdgeSpool } from "../beacon-io.ts";
+import type { ForegroundProcess } from "../journal/types.ts";
+import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import type { AgentView } from "../types.ts";
+import { isFree } from "../../web/src/lib/surface/surface.ts";
+import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge } from "./edges.ts";
+import { SurfaceShadow } from "./shadow.ts";
+
+const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
+const screen = (name: string): string => readFileSync(join(PANES, name), "utf8");
+const IDLE = "claude-lab--idle-after-turn--w82.txt";
+const RUNNING = "claude--working-esc-to-interrupt.txt";
+const PERMISSION = "claude-lab--permission-bash--w82.txt";
+/** The harness the fixtures were captured under. Test files may name it. */
+const HARNESS = "claude";
+
+const PID = 4242;
+const START = 777;
+const SOCKET = "/run/mux.sock";
+
+function marker(pane: string, scope = SOCKET, namespace = "mux"): BeaconMarker {
+  return { namespace, scope, pane };
+}
+
+function record(over: Partial<EdgeRecord> = {}): EdgeRecord {
+  return { schemaVersion: EDGE_SCHEMA_VERSION, harness: HARNESS, event: "Stop", detail: null, pid: PID, pidStartTime: START, markers: [marker("w1:p1")], at: 1_000_000, promptHash: null, ...over };
+}
+
+function matcher(scope: string | null = SOCKET, namespace = "mux"): BeaconMatcher {
+  return {
+    namespace,
+    scope: () => Promise.resolve(scope),
+    matches: (pane, m, s) => m.scope === s && m.pane === pane.paneId,
+    notesWithoutHooks: { agentDetection: "-", agentSessionRef: "-" },
+  };
+}
+
+const alive: BeaconLiveness = { startTimeOf: (pid) => Promise.resolve(pid === PID ? START : null) };
+
+function target(over: Partial<EdgeTarget> & { panes?: string[]; got?: { paneId: string; edge: PlacedEdge }[] } = {}): EdgeTarget {
+  const got = over.got ?? [];
+  const base: EdgeTarget = {
+    session: over.session ?? "main",
+    matcher: over.matcher ?? matcher(),
+    paneIds: () => over.panes ?? ["w1:p1", "w1:p2"],
+    deliver: over.deliver ?? ((paneId, edge) => void got.push({ paneId, edge })),
+  };
+  if (over.foreground === undefined) return base;
+  return { ...base, foreground: over.foreground };
+}
+
+function foreground(pids: (number | undefined)[]): (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>> {
+  return () => Promise.resolve(muxOk(pids.map((pid) => (pid === undefined ? { argv: ["x"] } : { argv: ["x"], pid }))));
+}
+
+describe("placing an edge", () => {
+  test("keys an edge to its pid and places it on the one pane its marker names", async () => {
+    const placed = await placeEdge(record(), [target()], alive);
+    expect(placed.kind === "placed" && placed.paneId).toBe("w1:p1");
+  });
+
+  test("drops an edge whose marker names no pane, or names one in another scope", async () => {
+    expect(await placeEdge(record({ markers: [marker("w9:p9")] }), [target()], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
+    expect(await placeEdge(record({ markers: [marker("w1:p1", "/other.sock")] }), [target()], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
+    expect(await placeEdge(record(), [target({ matcher: matcher(null) })], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
+  });
+
+  test("drops an edge two sessions both claim: ambiguity is absence", async () => {
+    const placed = await placeEdge(record(), [target({ session: "a" }), target({ session: "b" })], alive);
+    expect(placed).toEqual({ kind: "dropped", reason: "ambiguous" });
+  });
+
+  test("drops an edge whose pid is gone, or was reused by another process", async () => {
+    expect(await placeEdge(record({ pid: 99 }), [target()], alive)).toEqual({ kind: "dropped", reason: "dead-pid" });
+    expect(await placeEdge(record({ pidStartTime: 1 }), [target()], alive)).toEqual({ kind: "dropped", reason: "dead-pid" });
+  });
+
+  test("checks the pid against the pane's foreground where the multiplexer reports pids", async () => {
+    expect((await placeEdge(record(), [target({ foreground: foreground([PID, 5]) })], alive)).kind).toBe("placed");
+    expect(await placeEdge(record(), [target({ foreground: foreground([5, 6]) })], alive)).toEqual({ kind: "dropped", reason: "not-foreground" });
+    // No pid reported (argv only): the marker and the live pid are the evidence.
+    expect((await placeEdge(record(), [target({ foreground: foreground([undefined]) })], alive)).kind).toBe("placed");
+  });
+
+  test("maps the event to a kind through the edge's own harness profile", () => {
+    expect(kindOfEdge(record({ event: "UserPromptSubmit" }))).toBe("prompt");
+    expect(kindOfEdge(record({ event: "Notification", detail: "permission_prompt" }))).toBe("dialog");
+    expect(kindOfEdge(record({ harness: "no-profile-here", event: "Stop" }))).toBe("reread");
+  });
+});
+
+class FakeSpool implements EdgeSpool {
+  files: string[] = [];
+  take(): Promise<readonly string[]> {
+    const out = this.files;
+    this.files = [];
+    return Promise.resolve(out);
+  }
+}
+
+function router(targets: EdgeTarget[], liveness: BeaconLiveness = alive) {
+  const spool = new FakeSpool();
+  const lines: string[] = [];
+  const drops: string[] = [];
+  let clock = 1_000_000;
+  const r = new EdgeRouter({
+    spool,
+    liveness,
+    targets: () => targets,
+    onDrop: (_record, reason) => drops.push(reason),
+    log: (line) => lines.push(line),
+    now: () => clock,
+  });
+  return { r, spool, lines, drops, advance: (ms: number) => (clock += ms) };
+}
+
+describe("the edge router", () => {
+  test("logs each placed edge with its pid key, hands it to the pane, and the pane's hooks read live", async () => {
+    const got: { paneId: string; edge: PlacedEdge }[] = [];
+    const { r, spool, lines } = router([target({ got })]);
+    expect(r.hooksOf("main", "w1:p1")).toBe("none");
+    spool.files.push(JSON.stringify(record({ event: "UserPromptSubmit" })));
+    await r.tick();
+    expect(got.map((g) => [g.paneId, g.edge.kind])).toEqual([["w1:p1", "prompt"]]);
+    expect(lines.some((line) => line.includes(EDGE_TAG) && line.includes(`pid=${String(PID)}`) && line.includes("event=UserPromptSubmit"))).toBe(true);
+    expect(r.hooksOf("main", "w1:p1")).toBe("live");
+    expect(r.hooksOf("main", "w1:p2")).toBe("none");
+  });
+
+  test("drops and counts garbage, an old edge and an unplaced pid, and logs the unplaced pid", async () => {
+    const got: { paneId: string; edge: PlacedEdge }[] = [];
+    const { r, spool, lines, drops } = router([target({ got })]);
+    spool.files.push("not json", JSON.stringify(record({ at: 1_000_000 - EDGE_MAX_AGE_MS - 1 })), JSON.stringify(record({ pid: 99 })));
+    await r.tick();
+    expect(got).toEqual([]);
+    expect(drops).toEqual(["unparsed", "old", "dead-pid"]);
+    expect(lines.filter((line) => line.includes(`${EDGE_TAG}.dropped`))).toEqual([`[surface] ${EDGE_TAG}.dropped reason=dead-pid event=Stop pid=99`]);
+  });
+
+  test("an end edge closes the source; a gone pid closes it too and hands the pane one end edge", async () => {
+    let living = true;
+    const liveness: BeaconLiveness = { startTimeOf: () => Promise.resolve(living ? START : null) };
+    const got: { paneId: string; edge: PlacedEdge }[] = [];
+    const { r, spool, advance } = router([target({ got })], liveness);
+    spool.files.push(JSON.stringify(record({ event: "SessionStart" })));
+    await r.tick();
+    expect(r.hooksOf("main", "w1:p1")).toBe("live");
+    spool.files.push(JSON.stringify(record({ event: "SessionEnd" })));
+    await r.tick();
+    expect(r.hooksOf("main", "w1:p1")).toBe("none");
+
+    spool.files.push(JSON.stringify(record({ event: "Stop" })));
+    await r.tick();
+    expect(r.hooksOf("main", "w1:p1")).toBe("live");
+    living = false;
+    advance(HOOK_LIVENESS_MS);
+    await r.tick();
+    expect(r.hooksOf("main", "w1:p1")).toBe("none");
+    expect(got.map((g) => g.edge.kind)).toEqual(["start", "end", "stop", "end"]);
+  });
+});
+
+class FakeMux {
+  screens = new Map<string, { text: string; revision: number }>();
+  set(paneId: string, name: string, revision: number): void {
+    this.screens.set(paneId, { text: screen(name), revision });
+  }
+  readGrid = (paneId: string, _request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
+    const s = this.screens.get(paneId);
+    if (s === undefined) return Promise.resolve({ ok: false, reason: "gone", detail: "no such pane" });
+    return Promise.resolve({ ok: true, value: { paneId, text: s.text, truncated: false, revision: s.revision } });
+  };
+}
+
+function agent(paneId: string): AgentView {
+  return { paneId, workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", agent: HARNESS, status: "idle", cwd: "/x", focused: false };
+}
+
+function shadowRig() {
+  const mux = new FakeMux();
+  let clock = 1_000_000;
+  const pending: { run: () => void; ms: number }[] = [];
+  const counted: string[] = [];
+  const shadow = new SurfaceShadow({
+    mux,
+    pollMs: 1000,
+    compare: false,
+    log: () => undefined,
+    now: () => clock,
+    version: () => Promise.resolve("2.1.296"),
+    schedule: (run, ms) => {
+      const entry = { run, ms };
+      pending.push(entry);
+      return () => void pending.splice(pending.indexOf(entry), 1);
+    },
+    ledger: { read: () => undefined, edge: (_key, word) => void counted.push(word) },
+  });
+  /** Runs the fresh read an edge asked for, after the clock moved past its delay. */
+  const reread = async (): Promise<void> => {
+    const next = pending.shift();
+    if (next === undefined) throw new Error("no fresh read was asked for");
+    clock += next.ms;
+    next.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+  return { mux, shadow, pending, counted, reread, advance: (ms: number) => (clock += ms) };
+}
+
+describe("edges in the shadow", () => {
+  test("never free: a Stop edge while the screen still shows the spinner keeps the turn running", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", RUNNING, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.advance(100);
+    s.shadow.edge("w1:p1", "prompt", s.advance(0));
+    await s.reread();
+    expect(s.shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    s.shadow.edge("w1:p1", "stop", s.advance(50));
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+    await s.reread();
+    expect(s.shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+    // The screen agrees later: only a fresh read of an idle box makes the free.
+    s.mux.set("w1:p1", IDLE, 2);
+    await s.shadow.observe([agent("w1:p1")]);
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+    expect(s.counted).toEqual(["prompt", "stop"]);
+  });
+
+  test("never free: no edge kind frees a dialog on screen, and each edge asks for one fresh read", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", PERMISSION, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    for (const kind of ["stop", "start", "end", "reread", "dialog", "prompt"] as const) {
+      s.shadow.edge("w1:p1", kind, s.advance(10));
+      expect(s.pending).toHaveLength(1);
+      await s.reread();
+      expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
+    }
+  });
+
+  test("an edge marks the read stale until the fresh read, and a pane not read yet takes none", async () => {
+    const s = shadowRig();
+    expect(s.shadow.edge("w1:p9", "stop", 0)).toBe(false);
+    s.mux.set("w1:p1", IDLE, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.shadow.edge("w1:p1", "reread", s.advance(10));
+    expect(s.shadow.surfaceOf("w1:p1")?.reason).toBe("stale");
+    await s.reread();
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+  });
+
+  test("a lost Stop: three free reads over ten seconds end the block, counted once", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", RUNNING, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.shadow.edge("w1:p1", "prompt", s.advance(10));
+    await s.reread();
+    s.mux.set("w1:p1", IDLE, 2);
+    for (const step of [2000, 5000, 5000]) {
+      s.advance(step);
+      await s.shadow.observe([agent("w1:p1")]);
+    }
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+    expect(s.counted).toEqual(["prompt", "lost-stop"]);
+  });
+});

@@ -10,7 +10,7 @@ import type { ProfileStatus } from "./profile";
 import type { Surface } from "./surface";
 
 /**
- * The closed list of outcomes. `effective` needs a matching UserPromptSubmit edge (spec 11), so v1 closes as `sent`.
+ * The closed list of outcomes. `effective` needs a matching prompt edge (spec 11); without one a send closes as `sent`.
  * `discarded` is a Discard that emptied the box: nothing went to the agent, so it is never a send.
  */
 export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown"] as const;

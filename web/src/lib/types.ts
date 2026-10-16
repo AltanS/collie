@@ -204,6 +204,8 @@ export interface AgentView {
    * composer reads as `unknown(no-match)`.
    */
   surface?: Surface;
+  /** Mirrors `PaneWire.hooks` (M56 spec 11): the pane's hook source is `live` or `none`. Absent on an older bridge. */
+  hooks?: "live" | "none";
   /**
    * Mirrors `PaneWire.sendProtocol` (M56 spec 05): the bridge runs the Send Protocol for this pane, so
    * the composer sends through it. Absent means sending text is off there (`COLLIE_SEND_PROTOCOL=0`, or

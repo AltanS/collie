@@ -66,6 +66,7 @@ import {
   type SendStep,
 } from "../../web/src/lib/surface/send.ts";
 import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { closingReceipt, normalizePrompt, RECEIPT_EDGE_WINDOW_MS, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
@@ -152,7 +153,21 @@ export interface SendLedger {
   capState(harness: string, version: string): CapState;
   inbox(entry: InboxEntry): void;
   example(entry: ExampleEntry): void;
+  /** A settled send a prompt edge confirmed (M56 spec 11). Optional, so an older ledger still fits. */
+  confirmEffective?(key: CounterKey, from: "sent" | "unknown"): void;
 }
+
+/** A receipt a prompt edge may still close (M56 spec 11): open from the submit key until the window ends. */
+interface OpenSend extends OpenReceipt {
+  readonly key: CounterKey;
+  /** Settled already, as `sent` or `unknown`: a match writes the record again. */
+  settled: boolean;
+  /** Matched while the request still ran: its `sent` settles as `effective`. */
+  effective: boolean;
+}
+
+/** The most open receipts one protocol keeps. The oldest go first. */
+const OPEN_SENDS_MAX = 64;
 
 export interface SendDeps {
   readonly mux: ProtocolMux;
@@ -823,6 +838,8 @@ export class SendProtocol {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly inFlight = new Map<string, Promise<SendAnswer>>();
+  /** Receipts a prompt edge may close as `effective` (M56 spec 11), oldest first. */
+  private readonly openSends: OpenSend[] = [];
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -846,6 +863,63 @@ export class SendProtocol {
       rows.push(row);
     }
     return rows;
+  }
+
+  /**
+   * A prompt edge on a pane (M56 spec 11): the harness took a prompt whose salted hash is `promptHash`.
+   * The newest open receipt on the pane with the same hash closes as `effective`: at once when it has
+   * settled, or at its settle when it still runs. Returns the request id it closed, or null. Never
+   * throws; a counter or a write that fails is a warning.
+   */
+  promptEdge(paneId: string, promptHash: string, at: number): string | null {
+    this.pruneOpen(at);
+    const match = closingReceipt(this.openSends, paneId, promptHash, at);
+    if (match === null) return null;
+    const entry = this.openSends.find((open) => open.id === match.id);
+    if (entry === undefined) return null;
+    if (!entry.settled) {
+      entry.effective = true;
+      return entry.id;
+    }
+    this.openSends.splice(this.openSends.indexOf(entry), 1);
+    try {
+      const from = this.deps.store.markEffective(entry.id);
+      if (from !== null) this.deps.ledger?.confirmEffective?.(entry.key, from);
+      return from === null ? null : entry.id;
+    } catch (err) {
+      console.warn(`[send] could not close ${entry.id} as effective: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** Drops open receipts past the window, and the oldest past the cap. */
+  private pruneOpen(now: number): void {
+    for (let i = this.openSends.length - 1; i >= 0; i--) {
+      if (now - this.openSends[i]!.at > RECEIPT_EDGE_WINDOW_MS) this.openSends.splice(i, 1);
+    }
+    if (this.openSends.length > OPEN_SENDS_MAX) this.openSends.splice(0, this.openSends.length - OPEN_SENDS_MAX);
+  }
+
+  /** The submit key is about to go out: the receipt opens for a prompt edge. */
+  private openSend(state: RunState): void {
+    const at = this.now();
+    this.pruneOpen(at);
+    // The lines as they were written: the harness reports what it took, control bytes and markers cut.
+    const promptHash = this.deps.store.hashText(normalizePrompt(sendLines(state.request.text).join("\n")));
+    this.openSends.push({ id: state.record.id, paneId: state.target.paneId, promptHash, at, key: this.keyOf(state), settled: false, effective: false });
+  }
+
+  /** At settle: a matched `sent` becomes `effective`; a `sent` or `unknown` stays open; any other end closes it. */
+  private settleOpen(state: RunState, outcome: SendOutcome): SendOutcome {
+    const entry = this.openSends.find((open) => open.id === state.record.id);
+    if (entry === undefined) return outcome;
+    if (entry.effective && (outcome === "sent" || outcome === "unknown")) {
+      this.openSends.splice(this.openSends.indexOf(entry), 1);
+      return "effective";
+    }
+    if (outcome === "sent" || outcome === "unknown") entry.settled = true;
+    else this.openSends.splice(this.openSends.indexOf(entry), 1);
+    return outcome;
   }
 
   /** One request, start to receipt. Never throws for a pane's state; every end is an answer. */
@@ -1019,11 +1093,12 @@ export class SendProtocol {
   }
 
   private settle(state: RunState, end: Ended): SendAnswer {
-    const receipt = this.receiptOf(state, end.outcome, end.reason, end.extra.cap);
+    const outcome = this.settleOpen(state, end.outcome);
+    const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap);
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
-    return answerWith({ receipt, offers: end.extra.offers ?? offersFor(end.outcome, end.reason, framed) }, end.extra);
+    return answerWith({ receipt, offers: end.extra.offers ?? offersFor(outcome, receipt.reason, framed) }, end.extra);
   }
 
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
@@ -1631,6 +1706,7 @@ export class SendProtocol {
     const { gate, store } = this.deps;
     const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     store.markSubmitSent(state.record.id);
+    this.openSend(state);
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;

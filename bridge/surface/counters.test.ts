@@ -102,7 +102,7 @@ describe("the day file", () => {
 
     const first = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
     expect(Object.values(first!.rows)).toEqual([
-      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0 },
+      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0, edges: {} },
     ]);
     const second = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-17"), "utf8")));
     expect(Object.values(second!.rows)).toHaveLength(1);
@@ -231,7 +231,7 @@ describe("the day file", () => {
     expect(parseDay("text")).toBeNull();
     expect(parseDay({ date: "yesterday" })).toBeNull();
     const day = parseDay({ date: "2026-10-16", rows: { x: { harness: "a", version: "1", profileId: "p", status: "verified", free: "many", unknown: { weird: -3, fine: 2 } }, y: 5 }, unknownFrames: { k: ["abc", 7, "XYZ!"] }, manualAt: { k: [1, "x", 2] } });
-    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0 }]);
+    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {} }]);
     expect(day!.unknownFrames).toEqual({ k: ["abc"] });
     expect(day!.manualAt).toEqual({ k: [1, 2] });
   });
@@ -351,5 +351,23 @@ describe("the examples folder", () => {
   test("maskRow keeps whitespace and box drawing, and hides letters, digits and symbols in every script", () => {
     expect(maskRow("sk-or-v1-abc123! \u256d\u2500\u256e")).toBe("aaxaaxa0xaaa000x \u256d\u2500\u256e");
     expect(maskRow("sk-or-v1-secret  \u2502 \u041f\u0440\u0438\u0432\u0435\u0442 \u65e5\u672c \u273b 12:30  ")).toBe("aaxaaxa0xaaaaaa  \u2502 aaaaaa aa x 00x00");
+  });
+});
+
+describe("hook edges in the counters (M56 spec 11)", () => {
+  test("counts each edge word per row, and a confirmed send moves from sent to effective", () => {
+    const l = ledger();
+    l.edge(KEY, "stop");
+    l.edge(KEY, "stop");
+    l.edge(KEY, "lost-stop");
+    l.send(KEY, { outcome: "sent", probed: false });
+    l.confirmEffective(KEY, "sent");
+    l.flush();
+    const [row] = l.rows();
+    expect(row?.edges).toEqual({ stop: 2, "lost-stop": 1 });
+    expect(row?.sent).toBe(0);
+    expect(row?.effective).toBe(1);
+    const day = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
+    expect(Object.values(day!.rows)[0]?.edges).toEqual({ stop: 2, "lost-stop": 1 });
   });
 });

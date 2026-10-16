@@ -22,7 +22,7 @@ import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
+import { beaconReader, fileEdgeSpool, hooksInstalledProbe, procBeaconLiveness } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -216,6 +216,7 @@ import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
+import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { loadProfiles, profileFor, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 
@@ -1205,7 +1206,10 @@ const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env }
  */
 function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter {
   const matcher = factoryFor(muxRegistry, adapter.mux)?.beaconMatcher?.(target);
-  const seeing = matcher === undefined ? adapter : withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled });
+  // Herdr has a matcher too since M56 spec 11, for the hook edges, but it sees agents on its own wire:
+  // the decorator wraps only an adapter that cannot.
+  const blind = matcher !== undefined && !adapter.capabilities.supports.agentDetection && !adapter.capabilities.supports.agentSessionRef;
+  const seeing = blind ? withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled }) : adapter;
   // The hint tier sits OUTSIDE the decorator, so it reads the DECORATED declaration and retires
   // itself the moment that declaration says agents are visible (M11/05). Applied to every adapter,
   // including one that was never decorated: it suppresses itself there for the same reason.
@@ -1273,6 +1277,24 @@ if (sendStore !== null) {
 // Created with either flag, so an instance that computes no Surface touches no new file. It never
 // blocks a send and never changes a verdict.
 const surfaceLedger = cfg.sendProtocol || cfg.surfaceShadow ? new SurfaceLedger(cfg.stateDir) : null;
+// The hook edges (M56 spec 11): the harness's own hook writes one file per event into
+// `<stateDir>/edges/`, and this router places each on one pane of a terminal session. Built with the
+// Surface, so an instance that computes no Surface takes no edge. Each session that can take edges
+// adds its target in `makeSession`; the router reads only the targets of sessions still registered.
+const edgeTargets = new Map<string, EdgeTarget>();
+const edgeRouter =
+  surfaceLedger === null
+    ? null
+    : new EdgeRouter({
+        spool: fileEdgeSpool(cfg.stateDir),
+        liveness: procBeaconLiveness(),
+        targets: () => {
+          const live = new Set(registry.ordered().map((runtime) => runtime.name));
+          return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
+        },
+        // A dropped edge counts under its own harness, with no version: no pane named one.
+        onDrop: (record) => surfaceLedger.edge({ harness: record?.harness ?? "-", version: "-", profileId: "-", status: "-" }, "dropped"),
+      });
 const sendVersions = new VersionCache();
 /** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
 async function sendProfile(harness: string): Promise<ProfileMatch | null> {
@@ -1430,10 +1452,34 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
       : undefined;
 
+  // This session's hook edges (M56 spec 11): a terminal session with a Surface and a beacon matcher.
+  // Herdr has a matcher for this alone; tmux and zellij use the one that lifts their agents.
+  const edgeMatcher = surface === undefined || edgeRouter === null ? undefined : factoryFor(muxRegistry, built.adapter.mux)?.beaconMatcher?.(target);
+  if (surface !== undefined && edgeRouter !== null && edgeMatcher !== undefined) {
+    const foreground = herdr.foregroundProcesses?.bind(herdr);
+    const edgeTarget: EdgeTarget = {
+      session: name,
+      matcher: edgeMatcher,
+      paneIds: () => {
+        const { agents, shellPanes } = engine.current();
+        return [...agents, ...shellPanes].map((pane) => pane.paneId);
+      },
+      deliver: (paneId, edge) => {
+        surface.edge(paneId, edge.kind, edge.at);
+        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.at);
+      },
+    };
+    edgeTargets.set(name, foreground === undefined ? edgeTarget : { ...edgeTarget, foreground });
+  } else {
+    edgeTargets.delete(name);
+  }
+  const hooks = edgeTargets.has(name) && edgeRouter !== null ? (paneId: string) => edgeRouter.hooksOf(name, paneId) : undefined;
+
   engine.start();
   poker.start();
   const parts = built.probe === undefined ? { herdr, engine, poker, notifications } : { herdr, engine, poker, notifications, program: built.probe };
-  const withSurface = surface === undefined ? parts : { ...parts, surface };
+  const withHooks = hooks === undefined ? parts : { ...parts, hooks };
+  const withSurface = surface === undefined ? withHooks : { ...withHooks, surface };
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
   return asks === undefined ? withSend : { ...withSend, asks };
 };
@@ -1468,6 +1514,8 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
+// Take hook edges from here on: every session the registry knows has added its target.
+edgeRouter?.start();
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2369,6 +2417,7 @@ const shutdown = async () => {
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
+  edgeRouter?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

@@ -1476,9 +1476,12 @@ export function startServer(opts: {
     // With the Send Protocol on (M56 spec 05) every terminal pane also says so, a bare shell and an
     // agent pane not read yet included (M56 spec 06), and the phone's composer then sends through it;
     // with the protocol off the field is absent and the composer offers the keys only.
+    // A pane that carries a Surface on a session that takes hook edges (M56 spec 11) also says whether
+    // its hook source is live, for the pane info: `hooks: "live"` or `"none"`.
     const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
       const surface = from.surface?.surfaceOf(wire.paneId);
-      const surfaced = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+      const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
+      const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
       return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
     };
     const sources = widen ? registry.ordered() : [rt];

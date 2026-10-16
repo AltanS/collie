@@ -1886,3 +1886,51 @@ describe("counters, the cap and the examples", () => {
     expect(protocol.recent("%1", 1)).toHaveLength(1);
   });
 });
+
+// ── a prompt edge closes a receipt (M56 spec 11) ──
+
+describe("a prompt edge closes a receipt as effective", () => {
+  const hashOf = (deps: SendDeps, text: string) => deps.store.hashText(text);
+
+  test("after the receipt settled: the stored receipt becomes effective, once", async () => {
+    const { send, protocol, deps, clock } = rig();
+    const answer = await send("please fix the failing test in the parser");
+    const id = answer.receipt!.requestId;
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(protocol.promptEdge("%1", hashOf(deps, "please fix the failing test in the parser"), clock.now)).toBe(id);
+    expect(deps.store.get(id)?.receipt?.outcome).toBe("effective");
+    expect(protocol.promptEdge("%1", hashOf(deps, "please fix the failing test in the parser"), clock.now)).toBeNull();
+  });
+
+  test("while the request still runs: the receipt settles as effective", async () => {
+    const { pane, send, protocol, deps, clock } = rig();
+    let fired = false;
+    pane.afterInput = (_p, what) => {
+      if (what !== "keys:Enter" || fired) return;
+      fired = true;
+      protocol.promptEdge("%1", hashOf(deps, "multi line\nsecond"), clock.now);
+    };
+    const answer = await send("multi line\nsecond");
+    expect(answer.receipt?.outcome).toBe("effective");
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+  });
+
+  test("closes nothing for another text, another pane, or past the window", async () => {
+    const { send, protocol, deps, clock } = rig();
+    const answer = await send("the text that was typed");
+    const hash = hashOf(deps, "the text that was typed");
+    expect(protocol.promptEdge("%1", hashOf(deps, "a different prompt"), clock.now)).toBeNull();
+    expect(protocol.promptEdge("%2", hash, clock.now)).toBeNull();
+    expect(protocol.promptEdge("%1", hash, clock.now + 11 * 60_000)).toBeNull();
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("sent");
+  });
+
+  test("a refused send opens no receipt: an edge finds nothing to close", async () => {
+    const { pane, send, protocol, deps, clock } = rig();
+    pane.box = "a draft the person typed";
+    const answer = await send("hello there");
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(protocol.promptEdge("%1", hashOf(deps, "hello there"), clock.now)).toBeNull();
+  });
+});

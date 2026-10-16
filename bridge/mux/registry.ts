@@ -60,12 +60,13 @@ export interface MuxAdapterFactory {
   readonly mux: string;
   create(target: MuxTarget): MuxAdapter;
   /**
-   * How a beacon's environment markers name one of this adapter's panes (M11/03), or absent when this
-   * multiplexer is never decorated.
+   * How a beacon's environment markers name one of this adapter's panes (M11/03), or absent when no
+   * marker can name one.
    *
-   * ABSENT IS THE HERDR CASE and it is not an omission: an adapter that already reports the agent and
-   * its session from its own wire has a stronger source of truth than a beacon, and the decorator
-   * refuses to wrap it. So the field's presence is exactly "this adapter is blind and can be taught".
+   * Two readers use it. The decorator lifts agent identity with it, and only on an adapter that is
+   * blind: an adapter that reports the agent and its session from its own wire (Herdr) has a stronger
+   * source of truth, and the decorator refuses to wrap it. The hook edges (M56 spec 11) place an edge
+   * on a pane with it, on every adapter that has one, Herdr included.
    *
    * It takes the TARGET rather than the built adapter, so it stays symmetric with {@link create} and
    * needs no way to reach inside one. The matcher builds its own transport from the same target,
@@ -86,9 +87,8 @@ export interface MuxAdapterFactory {
    * The ssh targets this multiplexer already knows about, offered to the operator as candidates for
    * `collie crew add` (ADR 0036 (c)) — or absent when this multiplexer links no machines.
    *
-   * **ABSENT IS A REAL ANSWER and it is the tmux and zellij case**, exactly as with
-   * {@link beaconMatcher}: neither one has a machine list at all, so neither one offers candidates,
-   * and there is nothing for them to implement. The field's presence is precisely "this multiplexer
+   * **ABSENT IS A REAL ANSWER and it is the tmux and zellij case**: neither one has a machine list
+   * at all, so neither one offers candidates, and there is nothing for them to implement. The field's presence is precisely "this multiplexer
    * keeps a list of machines".
    *
    * On the FACTORY and not on the built adapter, because the answer is not a pane question. A

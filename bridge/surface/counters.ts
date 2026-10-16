@@ -76,6 +76,12 @@ export interface CounterRow extends CounterKey {
   typed_not_submitted: number;
   /** Discards that emptied the box. Never counted under `sent`: nothing went to the agent. */
   discarded: number;
+  /**
+   * Hook edges (M56 spec 11), by word: each edge kind (`prompt`, `stop`, `dialog`, `start`, `end`,
+   * `reread`) as a pane took it, `lost-stop` for a block the screen ended with free reads, and
+   * `dropped` for an edge no pane could be found for (counted under the edge's harness, version `-`).
+   */
+  edges: Record<string, number>;
 }
 
 /** One day's file. */
@@ -116,7 +122,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0 };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {} };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -188,6 +194,7 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     unknown_outcome: count("unknown_outcome"),
     typed_not_submitted: count("typed_not_submitted"),
     discarded: count("discarded"),
+    edges: parseCountMap(node.edges),
   };
 }
 
@@ -233,6 +240,7 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.unknown_outcome += from.unknown_outcome;
   into.typed_not_submitted += from.typed_not_submitted;
   into.discarded += from.discarded;
+  for (const [word, n] of Object.entries(from.edges)) bump(into.edges, word, n);
 }
 
 /** The rows of several days added up by key, sorted by harness, then version. */
@@ -452,6 +460,25 @@ export class SurfaceLedger {
     else if (end.outcome === "typed_not_submitted") row.typed_not_submitted++;
     else if (end.outcome === "discarded") row.discarded++;
     if (end.probed) row.probed++;
+    this.touch();
+  }
+
+  /** One hook edge word (M56 spec 11): an edge kind a pane took, `lost-stop`, or `dropped`. */
+  edge(key: CounterKey, word: string): void {
+    const row = this.row(key);
+    bump(row.edges, word);
+    this.touch();
+  }
+
+  /**
+   * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11): it moves to
+   * `effective`. An outcome counted on an earlier day stays there; today's row only gains the effective.
+   */
+  confirmEffective(key: CounterKey, from: "sent" | "unknown"): void {
+    const row = this.row(key);
+    if (from === "sent" && row.sent > 0) row.sent--;
+    if (from === "unknown" && row.unknown_outcome > 0) row.unknown_outcome--;
+    row.effective++;
     this.touch();
   }
 
