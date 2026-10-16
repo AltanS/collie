@@ -351,10 +351,11 @@ instead. A program gets the same Send and Ask as a terminal pane.
   The program's answer is the proof, and the receipt names the request id the program took. During a
   turn the program keeps the text for after that turn, and the receipt says `queued`.
 - **The outcomes.** A send ends `sent`, `refused` with a reason, or `unknown`. `unknown` means the
-  program did not say it took the text. A send becomes `effective` when the program writes it into
-  the conversation. The program's `user` item names the request id of that send. Read the chat before you send it again. An open question
-  refuses a send until you answer it. A turn that started after you looked refuses the send, and
-  nothing reaches the program.
+  program did not say it took the text. Read the chat before you send it again. A send becomes
+  `effective` when the program writes it into the conversation. The program's `user` item names the
+  request id of that send. A plain send is refused while any question is open, even one Collie
+  cannot read. Answer the question, or use Steer or Stop. A turn that started after you looked
+  refuses the send, and nothing reaches the program.
 - **A question.** `POST /api/ask/<id>` answers it. The ask id is for one use only. The answer carries
   the hash of the question you saw. The bridge compares it with the question the program lists now. When the two differ, nothing reaches the program, and the reply shows the question as it is
   now. The answer goes to the program by the program's own ask id. No key is ever sent. The receipt
@@ -369,11 +370,13 @@ instead. A program gets the same Send and Ask as a terminal pane.
 - **The counters.** `collie doctor` counts these reads and outcomes in one row, `program`.
 
 On this machine the phone uses these routes. A plain send goes through `/api/send`, and a tap on the
-question card goes through `/api/ask`. The composer tells the outcome at the thumb, as for a
-terminal pane. The pane's Recent sends list shows each receipt, and a queued send says so. Steer and
-Stop stay on the conversation's own routes, because a steer is not part of the Send Protocol. A
-program on a crew member keeps the conversation's own routes for all writes. Each route checks the
-turn before the text reaches the program.
+question card goes through `/api/ask`. The composer tells the outcome at the thumb in the program's
+words. When a question blocks the send, a button goes to its card. The pane's Recent sends list
+shows each receipt, and a queued send says so. Steer and Stop stay on the conversation's own routes,
+because a steer is not part of the Send Protocol. A program on a crew member keeps the
+conversation's own routes for all writes. Each route checks the turn before the text reaches the
+program. All writes to one conversation share one lock. While a send runs, Steer, Stop
+and a card answer are refused as busy.
 
 ## Versions
 
