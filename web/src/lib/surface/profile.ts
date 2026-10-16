@@ -59,11 +59,37 @@ export interface FrameAnchor {
    *  edge); the prompt anchor must hold `draft` (the hole). */
   readonly pattern: string;
   readonly minCells?: number;
-  /** The row's text starts in exactly this column: that many spaces, then a character that is no space. */
+  /** The row's text starts in exactly this column: that many spaces, then a character that is no space.
+   *  With `maxColumn`, in any column from this one to that one. */
   readonly column: number;
+  /** The last column the row's text may start in. For a box that moves sideways (a splash screen
+   *  centres it). Optional. */
+  readonly maxColumn?: number;
   /** The edge is a blank row. Only the top and bottom anchors may be blank. */
   readonly blank?: true;
+  /**
+   * The bottom anchor only, on the interior walk: the box has no bottom edge and ends on the last
+   * non-blank row of the screen. The anchor's pattern is not read.
+   */
+  readonly open?: true;
 }
+
+/**
+ * The rows a box always draws under the draft that hold no draft text (a model row inside the box,
+ * and the padding between it and the bottom edge). The interior walk (`idle.frame.walk`) takes them
+ * off the draft.
+ */
+export interface FrameTrailer {
+  /** A regular expression source for the one row that must stand last inside the box. */
+  readonly row: string;
+  /** A regular expression source for the padding rows allowed between that row and the bottom edge. */
+  readonly pad?: string;
+  /** How many padding rows at most. */
+  readonly maxPad: number;
+}
+
+/** How the frame module walks to a box. `edges` is the walk up from a bottom edge to a prompt row and a top edge. */
+export type FrameWalk = "edges" | "interior";
 
 export interface Profile {
   readonly id: string;
@@ -79,6 +105,7 @@ export interface Profile {
       readonly top: FrameAnchor;
       /** Must hold the named group `draft`: the hole where the person's text sits. */
       readonly prompt: FrameAnchor;
+      /** With `open` set (interior walk only), the box has no bottom edge: it ends on the last row of the screen. */
       readonly bottom: FrameAnchor;
       /** Spaces in front of a wrapped draft row inside the box. */
       readonly continuationIndent: number;
@@ -86,9 +113,37 @@ export interface Profile {
       /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
        *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
       readonly maxTailRows: number;
+      /**
+       * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
+       * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
+       * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
+       * nearest top edge. The prompt row is then the first row under it that matches the prompt anchor,
+       * and a blank row may match, so a box with no prompt glyph can be framed.
+       */
+      readonly walk?: FrameWalk;
+      /**
+       * The interior walk only. A regular expression source: the rows of the box are one unbroken run
+       * of rows that match it, and the top edge is the first row of the run. Without it the top edge is
+       * the nearest row that matches the top anchor.
+       */
+      readonly rows?: string;
+      /** The interior walk only. Rows under the draft that are no draft text. Optional. */
+      readonly trailer?: FrameTrailer;
+      /**
+       * The interior walk only. A regular expression source with the named group `text`, applied to
+       * every interior row that is not the prompt row to take the draft text out of it. Without it a
+       * row counts as its trimmed text.
+       */
+      readonly continuation?: string;
     };
     readonly placeholders: {
       readonly texts: readonly string[];
+      /**
+       * Text that starts with one of these is a placeholder too, for a harness whose placeholder holds
+       * a suggestion that changes. Optional. A draft that starts the same way reads as a placeholder,
+       * which stalls a send and never sends one into a dialog.
+       */
+      readonly prefixes?: readonly string[];
       /** The SGR attribute the placeholder renders with (2 is faint). */
       readonly sgr: number;
     };
@@ -118,6 +173,13 @@ export interface Profile {
      * always count. For a harness that marks a turn on its own status rows.
      */
     readonly runningRows?: readonly string[];
+    /**
+     * Rows that mean a dialog is drawn over the screen above a live box, as regular expression
+     * sources, read on every row above the box. A harness that draws its pickers and notices over
+     * the transcript and leaves the box on screen needs them: the box looks free under a dialog.
+     * A match makes the modal `unreadable`. Optional.
+     */
+    readonly overlayRows?: readonly string[];
   };
   readonly keys: {
     readonly submit: readonly string[];
@@ -165,7 +227,10 @@ export interface Profile {
     /** An ask older than this, in ms, is voided once the screen no longer shows it. */
     readonly lifetimeMs: number;
   };
-  /** Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one. */
+  /**
+   * Hook event name to what it is for the Surface: an `edge` forces a re-read, an `ask` carries one.
+   * Empty for a harness with no hook Collie can install.
+   */
   readonly hooks: Readonly<Record<string, HookKind>>;
   /**
    * What each edge is for the fold, and its timing (M56 spec 11). Optional: a profile without it maps
@@ -187,6 +252,7 @@ export class ProfileError extends Error {
 const STATUSES = ["verified", "provisional", "revoked"] as const;
 const PROBE_STATUSES = ["verified", "provisional"] as const;
 const HOOK_KINDS = ["edge", "ask"] as const;
+const FRAME_WALKS = ["edges", "interior"] as const;
 const ENTER_MODES = ["queues", "steers", "submits", "ignored"] as const;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -260,8 +326,13 @@ function anchor(value: JsonValue | undefined, path: string, needsGroup: string |
     fail(`${path}.pattern`, `must hold the named group ${needsGroup}`);
   }
   const column = whole(field(node, "column", path), `${path}.column`, 0);
-  const base: FrameAnchor = { pattern: compiled.source, column };
+  const maxColumn = node.maxColumn === undefined ? undefined : whole(node.maxColumn, `${path}.maxColumn`, column);
+  const base: FrameAnchor = maxColumn === undefined ? { pattern: compiled.source, column } : { pattern: compiled.source, column, maxColumn };
   const withCells = node.minCells === undefined ? base : { ...base, minCells: whole(node.minCells, `${path}.minCells`, 1) };
+  if (node.open !== undefined) {
+    if (node.open !== true) fail(`${path}.open`, "must be true when present");
+    return { ...withCells, open: true };
+  }
   if (node.blank === undefined) return withCells;
   if (node.blank !== true) fail(`${path}.blank`, "must be true when present");
   if (!mayBeBlank) fail(`${path}.blank`, "only the top and bottom anchors may be blank");
@@ -315,6 +386,55 @@ function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const hints = list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source);
   return { maxRows, footerMaxRows, hints };
 }
+/** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
+function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
+  const base = {
+    texts: textList(field(node, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
+    sgr: whole(field(node, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
+  };
+  if (node.prefixes === undefined) return base;
+  return { ...base, prefixes: textList(node.prefixes, "idle.placeholders.prefixes", 1) };
+}
+
+/** `idle.frame.trailer`: the last row inside the box, and the padding rows under it. */
+function parseTrailer(value: JsonValue): FrameTrailer {
+  const node = object(value, "idle.frame.trailer");
+  const row = pattern(field(node, "row", "idle.frame.trailer"), "idle.frame.trailer.row").source;
+  const maxPad = node.maxPad === undefined ? 0 : whole(node.maxPad, "idle.frame.trailer.maxPad", 0);
+  if (node.pad === undefined) {
+    if (maxPad > 0) fail("idle.frame.trailer.maxPad", "needs a pad pattern");
+    return { row, maxPad };
+  }
+  return { row, pad: pattern(node.pad, "idle.frame.trailer.pad").source, maxPad };
+}
+
+/** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */
+function parseFrame(frameNode: JsonObject): Profile["idle"]["frame"] {
+  const walk = frameNode.walk === undefined ? "edges" : oneOf(frameNode.walk, "idle.frame.walk", FRAME_WALKS);
+  const base = {
+    top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
+    prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft", false),
+    continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
+    maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
+    maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
+  };
+  if (walk === "edges") {
+    for (const key of ["rows", "trailer", "continuation"] as const) {
+      if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
+    }
+    const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
+    if (edgeBottom.open === true) fail("idle.frame.bottom.open", "belongs to the interior walk");
+    return { ...base, bottom: edgeBottom };
+  }
+  const interior = { ...base, bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true), walk };
+  const withRows = frameNode.rows === undefined ? interior : { ...interior, rows: pattern(frameNode.rows, "idle.frame.rows").source };
+  const withTrailer = frameNode.trailer === undefined ? withRows : { ...withRows, trailer: parseTrailer(frameNode.trailer) };
+  if (frameNode.continuation === undefined) return withTrailer;
+  const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
+  if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
+  return { ...withTrailer, continuation: continuation.source };
+}
+
 export function parseProfile(raw: JsonValue): Profile {
   const root = object(raw, "profile");
   const id = text(field(root, "id", ""), "id");
@@ -336,18 +456,8 @@ export function parseProfile(raw: JsonValue): Profile {
   const aboveNode = object(field(volatileNode, "above", "idle.volatile"), "idle.volatile.above");
   const belowNode = object(field(volatileNode, "below", "idle.volatile"), "idle.volatile.below");
   const idle: Profile["idle"] = {
-    frame: {
-      top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
-      prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft", false),
-      bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true),
-      continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
-      maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
-      maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
-    },
-    placeholders: {
-      texts: textList(field(placeholderNode, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
-      sgr: whole(field(placeholderNode, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
-    },
+    frame: parseFrame(frameNode),
+    placeholders: parsePlaceholders(placeholderNode),
     volatile: { above: volatileAbove(aboveNode), below: volatileBelow(belowNode) },
   };
 
@@ -355,7 +465,12 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.runningRows === undefined
       ? undefined
       : list(idleNode.runningRows, "idle.runningRows").map((item, i) => pattern(item, `idle.runningRows[${String(i)}]`).source);
-  const idleBlock: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const withRunning: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const overlayRows =
+    idleNode.overlayRows === undefined
+      ? undefined
+      : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
+  const idleBlock: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
@@ -433,7 +548,6 @@ export function parseProfile(raw: JsonValue): Profile {
   const hooks = Object.fromEntries(
     Object.keys(hooksNode).map((event) => [event, oneOf(hooksNode[event], `hooks.${event}`, HOOK_KINDS)]),
   );
-  if (Object.keys(hooks).length === 0) fail("hooks", "must name at least one event");
 
   const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
 

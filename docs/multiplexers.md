@@ -457,6 +457,24 @@ running turn, and Tab queues the message for after the turn. The receipt then sa
 > [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
 
 
+## Harness profiles
+
+Collie sends a message from the phone only when it can read the input box of the agent. A profile
+file describes that box for one agent: where the box starts and ends, how a draft looks, which key
+sends, and which text the agent draws for a long paste. An agent with no profile still works. Collie
+types into it with stricter generic rules.
+
+| Agent | Enter during a turn | Long paste form | Profile checked against |
+| ----- | ------------------- | --------------- | ----------------------- |
+| OpenCode | Queues the message | `[Pasted ~12 lines]` | 1.18.33 |
+
+- **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line. Collie finds the
+  box by those rows. A message sent into a running turn waits in the transcript with a `QUEUED`
+  badge until the turn ends. A newline in a message goes in as Ctrl+J. A message longer than the
+  box can show is refused, because Collie cannot read it back.
+
+A version above the checked one still works, and the receipt says `provisional`.
+
 ---
 
 [← back to the README](../README.md)

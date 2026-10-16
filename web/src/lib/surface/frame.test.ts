@@ -489,3 +489,38 @@ describe("the Claude profile's frame bounds", () => {
     expect(IDLE.volatile.below).toEqual({ maxRows: 8, footerMaxRows: 8 });
   });
 });
+
+// M56 spec 14: the interior walk, for a harness whose box has side rows (and no rule on top) or no
+// bottom row at all. The rows below are the OpenCode shape the profile reads.
+describe("the interior walk (M56 spec 14)", () => {
+  const OC = requireProfile("opencode").idle;
+  const BOTTOM = `  ╹${"▀".repeat(30)}`;
+  const box = (...rows: string[]): string[] => ["  ┃", ...rows, "  ┃", "  ┃  Build · Model Provider", BOTTOM, "   /work/dir                       1K (1%) · $0.00  ctrl+p"];
+
+  it("finds a draft row and an empty box", () => {
+    const frame = findInputFrame(lines("reply", "", ...box("  ┃  hello there")), OC)!;
+    expect(frame.interior.text).toBe("hello there");
+    expect(frame.top).toBe(2);
+    const empty = findInputFrame(lines("reply", "", ...box("  ┃")), OC)!;
+    expect(empty.interior.text).toBe("");
+    expect(empty.placeholder).toBe(false);
+  });
+
+  it("joins the continuation rows of a wrapped draft", () => {
+    const frame = findInputFrame(lines("", ...box("  ┃  first line", "  ┃  second line")), OC)!;
+    expect(frame.interior.text).toBe("first line second line");
+  });
+
+  it("marks the placeholder by its prefix", () => {
+    expect(findInputFrame(lines("", ...box("  ┃  Ask anything… \"Fix broken tests\"")), OC)!.placeholder).toBe(true);
+  });
+
+  it("does not take a quoted box far above the real one for part of it", () => {
+    const frame = findInputFrame(lines("  ┃  quoted", "", "text", ...box("  ┃  real")), OC)!;
+    expect(frame.interior.text).toBe("real");
+  });
+
+  it("finds no box in rows that only start with the side mark", () => {
+    expect(findInputFrame(lines("  ┃  a", "  ┃  b", "output"), OC)).toBeNull();
+  });
+});

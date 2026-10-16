@@ -10,7 +10,9 @@
 //  - `turn`: idle when the frame is found and no running sign is in its volatile rows, running when
 //    one is, unknown otherwise.
 //  - `modal`: the ask a reader lifted; else `unreadable` on a strong generic cue; else `unknown` on a
-//    weak one; else `none` when the frame is found; else `unknown`.
+//    weak one; else `unreadable` when a row of the profile's `overlayRows` stands above the frame
+//    (a dialog drawn over the transcript, the box left on screen); else `none` when the frame is
+//    found; else `unknown`.
 //  - `composer`: empty on the placeholder or an empty interior, draft on text, unreachable when the
 //    pane could not be read, unknown otherwise.
 //  - `reason`: stale when the newest read is older than two poll intervals at the newest input, or
@@ -33,7 +35,7 @@
 // Pure: no DOM, no Bun API, no harness name. One log and one context always give one Surface.
 
 import { readCues, runningSign, type CueRead } from "./cues";
-import { findInputFrame, frameEdge, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { coveredFrame, findInputFrame, frameEdge, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
 
@@ -223,6 +225,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   if (input.ask !== null) modal = { ask: input.ask };
   else if (cues.strength === "strong") modal = "unreadable";
   else if (cues.strength === "weak") modal = "unknown";
+  else if (frame !== null && idle !== null && coveredFrame(rows, frame, idle)) modal = "unreadable";
   else if (frame !== null) modal = "none";
   else modal = "unknown";
 

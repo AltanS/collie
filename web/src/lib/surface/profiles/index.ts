@@ -4,6 +4,7 @@
 import type { JsonValue } from "../../json";
 import claude from "./claude.json";
 import codex from "./codex.json";
+import opencode from "./opencode.json";
 
 /** Raw profile JSON by file stem. Parsed and checked by `parseProfile` (../profile.ts). */
-export const PROFILE_FILES = { claude, codex } satisfies Readonly<Record<string, JsonValue>>;
+export const PROFILE_FILES = { claude, codex, opencode } satisfies Readonly<Record<string, JsonValue>>;

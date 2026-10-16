@@ -228,6 +228,129 @@ describe("the Codex ranges and the ledger", () => {
   });
 });
 
+/**
+ * The profiles of M56 spec 14. Each row names the harness's own samples: rows its anchors must take
+ * and rows they must refuse. The ledger rows (verified-versions.json) and the profile ranges must say
+ * the same thing, as for Codex.
+ */
+interface Spec14Case {
+  readonly id: string;
+  readonly binary: string;
+  readonly versionOutput: string;
+  readonly version: string;
+  /** A version above the ledger row, which the profile reads as provisional. */
+  readonly above: string;
+  /** Rows an idle box is made of: each must match the anchor it names. */
+  readonly takes: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string; readonly draft?: string }[];
+  /** Rows an anchor must refuse. */
+  readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
+  readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
+  readonly enterWhileRunning: "queues" | "steers" | undefined;
+}
+
+const SPEC14_CASES: readonly Spec14Case[] = [
+  {
+    id: "opencode",
+    binary: "opencode",
+    versionOutput: "1.19.2",
+    version: "1.19.2",
+    above: "1.19.2",
+    takes: [
+      { anchor: "top", row: "  ┃" },
+      { anchor: "prompt", row: "  ┃  hello there", draft: "hello there" },
+      { anchor: "prompt", row: "  ┃" },
+      { anchor: "bottom", row: "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀" },
+    ],
+    refuses: [
+      { anchor: "bottom", row: "  ┃" },
+      { anchor: "bottom", row: "  ────────────────" },
+      { anchor: "top", row: "  ┃  hello there" },
+    ],
+    collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
+    enterWhileRunning: "queues",
+  },
+];
+
+describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
+  const profile = (): Profile => loadProfiles().get(c.id)!;
+  const pattern = (anchor: "top" | "prompt" | "bottom"): RegExp => new RegExp(profile().idle.frame[anchor].pattern, "u");
+
+  it(`${c.id}: carries every field the spec names`, () => {
+    const p = profile();
+    expect(p.identity.versionCommand[0]).toBe(c.binary);
+    expect(versionFromOutput(p, c.versionOutput)).toBe(c.version);
+    expect(p.idle.frame.prompt.pattern).toContain("(?<draft>");
+    expect(p.idle.runningRows?.length).toBeGreaterThan(0);
+    expect(p.keys.submit).toEqual(["Enter"]);
+    expect(p.keys.interrupt.length).toBeGreaterThan(0);
+    expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);
+    expect(p.reservedLeads).toEqual(["/", "!", "@"]);
+    expect(p.probe.char.length).toBeGreaterThan(0);
+    expect(p.paste).toEqual({ bracketed: true });
+    expect(p.hooks).toBeDefined();
+  });
+
+  it(`${c.id}: the anchors take the rows of an idle box and refuse the others`, () => {
+    for (const { anchor, row, draft } of c.takes) {
+      const hit = pattern(anchor).exec(row);
+      expect(hit, `${anchor}: ${row}`).not.toBeNull();
+      if (draft !== undefined) expect(hit?.groups?.["draft"]).toBe(draft);
+    }
+    for (const { anchor, row } of c.refuses) expect(pattern(anchor).test(row), `${anchor}: ${row}`).toBe(false);
+  });
+
+  it(`${c.id}: matches its own long-paste form`, () => {
+    const hit = new RegExp(profile().collapse.pattern, "u").exec(c.collapse.text);
+    expect(hit?.groups?.[c.collapse.group]).toBe(c.collapse.value);
+  });
+
+  it(`${c.id}: verified through the ledger row, provisional above it`, () => {
+    // SAFETY: the ledger is this repo's own committed JSON; every agent row has a version and a verified date, and the key is a harness id from this table.
+    const row = (ledgerJson.agents as Record<string, { version: string; verified: string }>)[c.id]!;
+    const verified = profile().versions.filter((range) => range.status === "verified");
+    expect(verified).toHaveLength(1);
+    expect(verified[0]!.verifiedThrough).toBe(row.version);
+    expect(verified[0]!.verifiedOn).toBe(row.verified);
+    expect(verified[0]!.range.endsWith(` - ${row.version}`)).toBe(true);
+    expect(profileFor(c.id, row.version, { log: () => {} })?.status).toBe("verified");
+    resetProfileLog();
+    expect(profileFor(c.id, c.above, { log: () => {} })?.status).toBe(c.above === row.version ? "verified" : "provisional");
+  });
+
+  it(`${c.id}: the probe is verified or says why not`, () => {
+    const p = profile();
+    expect(["verified", "provisional"]).toContain(p.probe.status);
+    expect(p.probe.note.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the frame schema of the interior walk (M56 spec 14)", () => {
+  const rawOpencode = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "opencode.json"), "utf8"))!;
+  const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
+    ["an unknown walk", ["idle", "frame", "walk"], "diagonal", "idle.frame.walk"],
+    ["rows that are no expression", ["idle", "frame", "rows"], "[unclosed", "idle.frame.rows"],
+    ["a trailer row that is no expression", ["idle", "frame", "trailer", "row"], "[unclosed", "idle.frame.trailer.row"],
+    ["a continuation with no text group", ["idle", "frame", "continuation"], "^ *┃ .*$", "idle.frame.continuation"],
+    ["an overlay row that is no expression", ["idle", "overlayRows", 0], "[unclosed", "idle.overlayRows[0]"],
+    ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
+  ];
+  for (const [name, path, value, field] of cases) {
+    it(`refuses ${name}`, () => {
+      expect(failure(change(rawOpencode(), path, value)).path).toBe(field);
+    });
+  }
+
+  it("keeps rows, a trailer and a continuation out of the edges walk", () => {
+    expect(failure(change(rawOpencode(), ["idle", "frame", "walk"], "edges")).path).toMatch(/^idle\.frame\./u);
+    expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
+    expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
+  });
+
+  it("accepts a profile that names no hook", () => {
+    expect(parseProfile(rawOpencode()).hooks).toEqual({});
+  });
+});
+
 describe("parseProfile names the failing field", () => {
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["a missing section", ["keys"], undefined, "keys"],
