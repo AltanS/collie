@@ -1516,6 +1516,16 @@
    "version": "unversioned",
    "state": "running"
   },
+  "codex--resume-picker-moved.txt": {
+   "harness": "codex",
+   "version": "0.159",
+   "state": "dialog"
+  },
+  "codex--resume-picker.txt": {
+   "harness": "codex",
+   "version": "0.159",
+   "state": "dialog"
+  },
   "codex--submitted-fill-labelled-rule.txt": {
    "harness": "codex",
    "version": "unversioned",
@@ -2031,6 +2041,16 @@
    "version": "unversioned",
    "state": "other"
   },
+  "muse--resume-picker-moved.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "dialog"
+  },
+  "muse--resume-picker.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "dialog"
+  },
   "muse--tasks-popup-approval.txt": {
    "harness": "muse",
    "version": "unversioned",
@@ -2344,6 +2364,11 @@
   "oc--slash-palette.txt": {
    "harness": "opencode",
    "version": "unversioned",
+   "state": "dialog"
+  },
+  "oc--update-available.txt": {
+   "harness": "opencode",
+   "version": "1.18.34",
    "state": "dialog"
   },
   "oc--working.txt": {
@@ -3075,6 +3100,16 @@
    "harness": "pi",
    "version": "unversioned",
    "state": "other"
+  },
+  "pi--trust-prompt-moved.txt": {
+   "harness": "pi",
+   "version": "1.2.0",
+   "state": "dialog"
+  },
+  "pi--trust-prompt.txt": {
+   "harness": "pi",
+   "version": "1.2.0",
+   "state": "dialog"
   },
   "pi--v085-working-editor.txt": {
    "harness": "pi",
