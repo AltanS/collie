@@ -196,6 +196,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The Windows test run covers the held queue, the hook edges and the lab paths.** The tests compare paths and line endings the way Windows writes them, and the mode-bit checks run only where a file has mode bits.
 - **A command no longer presses Enter into a dialog drawn under the box.** Only the command's own popup rows are excused there now. A dialog the Surface reads stops the send before Enter, with the text left in the box.
 - **A message to Codex during a streaming answer goes into the queue again.** Codex 0.163.0 keeps the turn's prompt row at the top while the answer scrolls under it. Collie read that as a moved screen and refused the probe. One pinned top row now passes, and the rows under it must still scroll.
 - **Claude Code's usage panel over the box reads as a dialog.** `/cost` and `/usage` can open a panel above the box during a turn. Its "Esc to cancel" row now marks a dialog, so Collie types nothing into it.

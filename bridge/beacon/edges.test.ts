@@ -151,7 +151,7 @@ describe("the hook target registry on disk", () => {
   });
 
   test("without XDG_STATE_HOME the registry sits under ~/.local/state/collie", () => {
-    expect(hookTargetsDir({}, "/home/pat")).toBe("/home/pat/.local/state/collie/hook-targets");
+    expect(hookTargetsDir({}, "/home/pat")).toBe(join("/home/pat", ".local", "state", "collie", "hook-targets"));
   });
 });
 

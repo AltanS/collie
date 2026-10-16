@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { exitCodeOf, parseCli, pending, runCandidates, sweepAtStart, type Candidate, type CliOptions } from "./lab/cli";
 import { claim, findRow, readLedger, settle } from "./lab/lab-ledger";
 import type { LabPorts, SessionFacts } from "./lab/run";
@@ -193,8 +193,8 @@ describe("the lab command line", () => {
   test("the defaults: this checkout, the state ledger, no issue opened", () => {
     const cli = argv();
     expect(cli.repo).toBe("/checkout");
-    expect(cli.ledger).toBe("/home/u/.local/state/collie-harness-lab/ledger.json");
-    expect(cli.labRoot).toBe("/home/u/.cache/collie-lab/harness-lab");
+    expect(cli.ledger).toBe(join("/home/u", ".local", "state", "collie-harness-lab", "ledger.json"));
+    expect(cli.labRoot).toBe(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")));
     expect(cli.openIssue).toBe(false);
   });
 
