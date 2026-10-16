@@ -1938,7 +1938,7 @@ function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
 // than assuming. `agentDetection` is a declared mux capability (`bridge/mux/capabilities.ts`), and it
 // is the whole question:
 //
-//  • Declared (Herdr) — the multiplexer names the agent and its status from its own wire. The emitter
+//  • Declared (Herdr), the multiplexer names the agent and its status from its own wire. The emitter
 //    is optional there (it adds the hook edges of M56 spec 11), and a red line here would exit this
 //    verb non-zero on a perfectly healthy machine. An operator who learns to ignore one red line ignores the next. `ok`.
 //  • Absent (tmux, zellij) — the emitter is the ONLY thing that can give that adapter sight

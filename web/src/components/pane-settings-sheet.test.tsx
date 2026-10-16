@@ -170,7 +170,7 @@ describe("PaneSettingsSheet — the real hooks, end to end", () => {
   });
 });
 
-describe("PaneSettingsView — the pane's hook edges (M56 spec 11)", () => {
+describe("PaneSettingsView, the pane's hook edges (M56 spec 11)", () => {
   test("says hooks: live when the agent's own hooks report from the pane", () => {
     render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} hooks="live" />);
     expect(screen.getByText("Hooks: live")).toBeInTheDocument();
