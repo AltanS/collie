@@ -1112,6 +1112,22 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Tab");
   });
 
+  test("`!ls` is a shell command on Codex: Enter on an idle box, refused in a turn, never Tab (lab, 0.163.0)", async () => {
+    // Lab, 2026-10-16: on an idle box Tab does nothing with `!ls` (Shell mode) and Enter runs it; in a
+    // turn Tab queues it, and it runs as a shell command after the turn. So it is a command, never Tab.
+    const idle = codex();
+    const sent = await idle.send("!ls", { mode: "command" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("Enter");
+    expect(idle.pane.keysSeen).not.toContain("Tab");
+    expect((await idle.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+    const busy = codex();
+    busy.pane.over = [CODEX_RUNNING];
+    expect((await busy.send("!ls", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await busy.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+    expect(busy.pane.keysSeen).toEqual([]);
+  });
+
   test("an `@` text is a message on Codex: it goes in with Tab, never Enter (N2)", async () => {
     const { pane, send } = codex();
     const answer = await send("@README.md sum this file up");
