@@ -337,6 +337,8 @@ export const en = {
   "composer.placeholder.gone": "Pane is gone",
   "composer.placeholder.readOnly": "Read-only — not authorised",
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
+  "composer.placeholder.unreachable": "Can't reach the input box",
+  "composer.placeholder.sendOff": "Sending is off on this machine",
   "composer.placeholder.dialogWaiting": "Dialog is waiting",
   "composer.placeholder.menuWaiting": "Menu is waiting",
   "composer.placeholder.permissionWaiting": "Permission is waiting",
@@ -363,7 +365,6 @@ export const en = {
   "composer.attach.listAria": "Attachments",
   "composer.attach.removeAria": "Remove {name}",
   "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
-  "composer.send.typeAnyway": "Type anyway?",
   "composer.send.reallySend": "Really send?",
   "composer.send.dialogFirst": "Answer the dialog",
   "composer.send.stopTypingAria": "Stop typing into terminal",
@@ -373,14 +374,7 @@ export const en = {
     "Too long to keep as a saved draft — it survives switching panes, but not closing the app.",
   "composer.draft.holdsMask": "This reply holds masked text (••••). The pane gets the dots, not the secret.",
   "composer.status.dialogWaiting": "A dialog is waiting — answer it first, then send.",
-  "composer.status.unreadDialog":
-    "Collie cannot read this dialog. {key} is on the card. Tap Send again to type anyway.",
-  "composer.status.paneNotWritable": "Pane is no longer writable — nothing was sent",
-  "composer.status.inputChanged":
-    "The input box changed while clearing it — nothing was typed. Check the pane.",
-  "composer.status.clearFailed": "Couldn't clear the terminal input",
   "composer.status.sent": "Sent ✓",
-  "composer.status.tapAgainToType": "{error} Tap Send again to type anyway.",
   "composer.discard.confirmKeys.one": "Tap again to discard {count} queued key",
   "composer.discard.confirmKeys.other": "Tap again to discard {count} queued keys",
   "composer.destructive.confirm": "Destructive: {reason} — tap Send again to confirm",
@@ -407,6 +401,7 @@ export const en = {
   "composer.protocol.unknown": "Collie cannot tell if this was sent. Check the pane before you send again.",
   "composer.protocol.busy": "Another send on this pane is still running. Wait, then try again.",
   "composer.protocol.notFree": "The input box is not free. Nothing was typed.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.",
   "composer.protocol.probeFailed": "Typing did not land in the input box, so nothing was typed. Check the pane.",
   "composer.protocol.reservedLead": "A text that starts with / ! or @ has its own route. Nothing was typed.",
   "composer.protocol.moved": "The screen changed. Check the pane, then send again.",
@@ -423,6 +418,19 @@ export const en = {
   "composer.protocol.commit": "Type here",
   "composer.protocol.keys": "Keys",
   "composer.protocol.dismissAria": "Dismiss the send offers",
+  // What the bridge saw on the screen when a send did not go (M56 spec 06), said after the verdict.
+  "composer.surface.free": "The input box was free.",
+  "composer.surface.running": "The agent was working.",
+  "composer.surface.askMenu": "A menu was open.",
+  "composer.surface.askPermission": "A permission question was open.",
+  "composer.surface.askQuestion": "A question was open.",
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.",
+  "composer.surface.draft": "The box held a draft.",
+  "composer.surface.unreachable": "The input box could not be reached.",
+  "composer.surface.unknown": "Collie could not find the input box.",
+  "composer.surface.stale": "The last read of the screen was too old.",
+  "composer.surface.torn": "The screen changed while Collie read it.",
+  "composer.surface.contested": "Two readings of the screen did not agree.",
   "composer.offline.draftNote": "The draft stays on this phone and is never sent by itself.",
   "composer.offline.draftNote.dismissAria": "Dismiss the offline draft note",
   "composer.draftPreview.title": "Draft in terminal",
@@ -1442,24 +1450,6 @@ export const en = {
   "dialog.preview.removeNoteAria": "Remove note",
   "dialog.preview.noteAria": "Note",
   "dialog.preview.addNote": "Add a note to this answer",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox":
-    "The agent's input box isn't on screen — a menu or dialog is probably up. Nothing was typed.",
-  "reply.blocked.noEcho":
-    "That's a password prompt — it shows nothing as you type, so Send can never confirm the text arrived. Nothing was typed.",
-  "reply.blocked.composerLeft":
-    "The agent's input box left the screen while its input line was being cleared — a menu or dialog is probably up. Your message wasn't typed.",
-  "reply.refused.multiline":
-    "This input submits on a new line, so a multi-line message would be cut at the first break. Put it on one line. Nothing was typed.",
-  "reply.refused.multilineMidway":
-    "This input submits on a new line, so a multi-line message was cut at its first break. The part before it is already in the pane. Put the message on one line.",
-  "reply.stalled.noEcho":
-    "That's a password prompt — it shows nothing as you type, so the text can't be confirmed and nothing was submitted. What you typed is already in the pane.",
-  "reply.stalled.generic":
-    "Message didn't reach the input box — a dialog may be waiting, and if you were answering it by key that key likely landed. Nothing was submitted.",
-  "reply.stalled.modal":
-    "Message didn't reach the input box — a dialog, menu, or overlay was holding the keyboard, so the text landed there instead. Nothing was submitted.",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "Note input didn't open — check the pane",

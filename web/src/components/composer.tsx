@@ -28,10 +28,15 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { keepsOldRoute, offerMode, readSend } from "@/lib/send-protocol";
-import type { SendMode, SendOffer, SendRequestBody } from "@/lib/surface/send";
-import { requestIdFor, type IntentId } from "@/lib/durable-control";
-import { mintRequestId } from "@/lib/worktree-name";
+import { offerMode, type SendReading } from "@/lib/send-protocol";
+import { modeFor, sendText } from "@/lib/reply-action";
+import { askNoun, fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
+import type { Surface } from "@/lib/surface/surface";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { detectNoEchoPrompt } from "@/lib/no-echo";
+import type { SendMode, SendOffer } from "@/lib/surface/send";
+import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -66,8 +71,6 @@ import { AttachmentChip, type ComposerAttachment } from "@/components/attachment
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
-import { keyLabel } from "@/lib/key-queue";
-import { sendGuardedReply } from "@/lib/reply-action";
 import { useLive } from "@/lib/liveness";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { scopeKey, type Scope } from "@/lib/scope";
@@ -85,9 +88,15 @@ export interface ComposerHandle {
 
 interface ComposerProps {
   paneId: string;
-  /** The bridge runs the Send Protocol for this pane (`PaneWire.sendProtocol`, M56 spec 05): Send posts
-   *  one request to `POST /api/send` instead of the guarded reply. Absent, nothing here changes. */
-  sendProtocol?: boolean;
+  /**
+   * The pane's input surface as the bridge last read it (M56 spec 06): what owns the agent's keyboard.
+   * The Send slot is a pure function of this and the three facts below (`lib/send-slot.ts`). The
+   * caller turns a fact it knows before any read into `composer: unreachable` (a machine the lead
+   * cannot reach, a bridge whose Send Protocol is off), and names the reason in `unreachableNote`.
+   */
+  surface: Surface;
+  /** Why the box cannot be reached, for the placeholder, when `surface.composer` is `unreachable`. */
+  unreachableNote?: string;
   /** Which machine + which named session the pane lives in — scopes every write to the right Herdr. */
   scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
@@ -104,16 +113,6 @@ interface ComposerProps {
   /** This device isn't authorised to type — locks the composer with a distinct placeholder. */
   readOnly: boolean;
   /**
-   * The pane's MACHINE is not reachable from the lead, so a write would be refused before it left
-   * the lead (CREW_PROTOCOL.md §10.3) — the refusal text, naming the host, or undefined when writes
-   * may proceed. Always undefined on a solo install, so nothing here changes for one machine.
-   *
-   * Locks the composer exactly as `readOnly` does. It is NOT folded into `readOnly` by the caller
-   * because the two say different things and the operator's next move differs: one is "this device
-   * will never be allowed to type", the other is "this machine is quiet, wait for the next poll".
-   */
-  hostBlock?: string;
-  /**
    * The soft keyboard is up, so this dock is standing on it rather than on the screen's own bottom
    * edge. Read ONCE by the pane (agent-chat.tsx, `composing`) and passed down — never re-derived
    * here, or the boundary animates out of step with the two rows above that read the same fact.
@@ -124,20 +123,9 @@ interface ComposerProps {
    * the screen has none to give. The `0.5rem` of real breathing room stays, in both states.
    */
   composing?: boolean;
-  /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
-   * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
-  dialogPresent: boolean;
-  /** …and that dialog is the UNREAD-DIALOG CARD (.adr/0053): no grammar read the screen, so the
-   * refusal below is a GUESS about an unknown screen rather than a parsed fact. It still refuses —
-   * that is the point — but it arms the two-tap override and names the card's key, so a splash
-   * screen or an alt-screen tool that trips the card's four conditions costs one extra tap instead
-   * of a locked composer. False while any READ dialog is up, where the refusal stands flat. */
-  dialogUnread?: boolean;
-  /** What the READ dialog on screen is called, so the placeholder names it ("Menu is waiting").
-   * Absent reads "Dialog is waiting". */
-  dialogNoun?: DialogNoun | null;
   /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
-   * no text and no key. */
+   * no text and no key. The same tap is the control of a refusal notice whose screen holds an ask or
+   * an overlay Collie cannot read. */
   onAnswerDialog?: () => void;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
@@ -146,8 +134,9 @@ interface ComposerProps {
    * APPEARANCE of the read-only draft preview, so a one-poll blip or an in-flight send never flashes it. */
   terminalDraft: string | null;
   /** The SAME draft, but the RAW per-poll value (pre-stabilisation). Once the preview is showing, its
-   * text tracks this live so host typing streams into it; it also drives the send()-time pre-clear (the
-   * actual current "❯" line) and unmounts the preview when it goes null. Never written into the input. */
+   * text tracks this live so host typing streams into it, and it unmounts the preview when it goes
+   * null. Never written into the input, and never swept by the phone: since M56 spec 06 the bridge
+   * refuses a send onto a draft (`draft_present`) and offers Add, Replace or Cancel. */
   rawTerminalDraft: string | null;
   /** Mirror display prefs — the mirror (in AgentChat) reads the same single instance, so they're
    * threaded through rather than each calling useDisplayPrefs. Only the DRAFT field's own size and
@@ -228,13 +217,8 @@ interface ComposerProps {
 type ComposerDrawer = "quick" | "cmd" | "keys" | null;
 
 
-// Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text. Exported
-// so the test can pin the WAIT ITSELF (the reply never overtakes the sweep) against the constant
-// rather than against a copy of its value — the number is a measured judgement call (issue #156).
-export const TUI_SETTLE_MS = 350;
-
 // Grace window after a send during which a terminal draft matching what we just sent is treated as
-// our own in-flight reply (still on the "❯" line before the bridge's pending Enter lands), NOT a
+// our own in-flight reply (still on the "❯" line before the bridge's Enter lands), NOT a
 // stranded draft. Wide enough to cover a slow tailnet round-trip; the parent's cross-poll
 // stabilisation (useStableTerminalDraft) closes the other half of the same window.
 const SENT_ECHO_GRACE_MS = 5_000;
@@ -342,8 +326,16 @@ const DIALOG_PLACEHOLDER = {
   dialog: "composer.placeholder.dialogWaiting",
 } as const satisfies Record<DialogNoun, MessageKey>;
 
+/** The sentence for an answer that did not send: the bridge's verdict, then what it saw on the screen. */
+function answerSentence(reading: SendReading): string {
+  const note = translate(`composer.protocol.${reading.note}`);
+  // A draft refusal already says what the screen held.
+  if (reading.surface === null || reading.note === "draft") return note;
+  return `${note} ${translate(`composer.surface.${reading.surface}`)}`;
+}
+
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, sendProtocol = false, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, dialogUnread, dialogNoun, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
+  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right" },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -362,41 +354,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // setting renders from the stylesheet's own `--font-mono`, byte for byte as before.
   const draftStyle: CSSProperties = { fontSize: `${draftFontPx}px` };
   if (terminalFace !== undefined) draftStyle.fontFamily = terminalFace;
-  // Every write affordance is off when the pane is gone, this device is read-only, OR the pane's
-  // machine is unreachable from the lead. All three are "the write cannot land"; only the copy below
-  // differs, because only the copy tells you what to do about it.
-  // …plus a fourth: the multiplexer underneath cannot type into a pane at all (M10/06). It is a
-  // FOURTH reason, ANDed in rather than folded into any of the three, because capability gating
-  // composes with the app's locks and never substitutes for one — a pane that is gone stays gone
-  // however capable the multiplexer is, and vice versa.
-  //
-  // Two capabilities, one lock: a reply is `typeText` then `sendKeys` (bridge/mux/capabilities.ts),
-  // and half a reply is not a feature. `typeText`'s reason is preferred when both are missing —
-  // it is the half that fails first.
-  // Asked of the machine this row is on (M22/03) — the ambient scope IS the target here, exactly as
-  // `writeHost` below says of the write itself.
+  // THE SEND SLOT (M56 spec 06): one pure function of the pane's Surface and three facts (gone,
+  // read-only, offline), in lib/send-slot.ts. The multiplexer underneath that cannot type into a pane
+  // at all (M10/06) is one more way the box is out of reach, so it folds into `composer: unreachable`
+  // with the multiplexer's own words, as the caller folds a machine the lead cannot reach. Two
+  // capabilities, one fact: a reply is `typeText` then `sendKeys` (bridge/mux/capabilities.ts), and
+  // half a reply is not a feature. Asked of the machine this row is on (M22/03).
   const canType = useMuxCapability("typeText", scope);
   const canSendKeys = useMuxCapability("sendKeys", scope);
   const missingSend = !canType.capable ? canType : !canSendKeys.capable ? canSendKeys : null;
-  const locked = gone || readOnly || hostBlock !== undefined || missingSend !== null;
+  const shownSurface = missingSend !== null ? unreachable(surface) : surface;
+  const unreachableWords =
+    missingSend !== null
+      ? missingSend.note || translate("composer.placeholder.noMuxSend")
+      : (unreachableNote ?? translate("composer.placeholder.unreachable"));
   // The machine every write on this row lands on, as words for a confirm. The Keys dock header used
   // to carry a chip for it; that header now holds the KEYS label and the pencil and nothing else
   // (M48 spec 03), because the pane header already names the machine.
   // Its display name, or undefined when there is no crew — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
-  // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
-  // `locked` once, up front, but its pre-clear sweep goes out on the far side of the pre-flight's
-  // pane read; a re-render that locks the composer in that window must be able to stop the most
-  // destructive keys this component sends. Every other write affordance is either disabled by React
-  // or funnelled through `pressKeys`, which is synchronous with its own check.
-  const lockedRef = useRef(locked);
-  lockedRef.current = locked;
-  // M46 spec 11: nothing is sent from cached state. Deliberately NOT folded into `locked`: that one
-  // also disables the field, and a person may keep typing while the bridge is away (the draft saves
-  // as before, drafts.ts). It gates every path that reaches the pane (send, raw keys, the belt) and
-  // nothing else. There is no outbox: a send refused here is gone, the draft stays in the box.
+  // M46 spec 11: nothing is sent from cached state. The field stays typeable while the bridge is
+  // away (the draft saves as before, drafts.ts); the slot gates every path that reaches the pane
+  // (send, raw keys, the belt) and nothing else. There is no outbox: a send refused here is gone, the
+  // draft stays in the box.
   const live = useLive(paneId, scope);
   const offline = stale === true || !live;
+  const slot = sendSlot(shownSurface, { gone, readOnly, offline });
+  // The field itself is off only when nothing typed here can ever leave for this pane: a gone pane,
+  // a read-only device, a box out of reach. Derived from the slot, never passed in.
+  const locked = fieldLocked(slot);
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
   // The one-line note while Send is off for want of a live read: what happens to the words already
@@ -583,28 +569,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
   const sendConfirm = usePendingConfirm();
-  // Two-tap override for a `blocked` pre-flight ("the input box isn't on screen"). Separate from
-  // sendConfirm so a destructive-command confirm and an override can't clobber each other, and given
-  // a longer window than the 3s default: unlike "Really send?", this one asks you to read a sentence
-  // explaining WHY nothing was typed before deciding to overrule it.
-  const forceConfirm = usePendingConfirm(10_000);
-
-  // The password prompt the last refused send was looking at, if it was one (#103). Set from the
-  // guard's own live read — never re-derived from `display`, which is a snapshot — and cleared by the
-  // ✕, by arming Type, by a send that goes through, and by leaving the pane. Not persisted: it is a
-  // statement about what is on screen right now.
+  // The password prompt the last refused send was looking at, if it was one (#103). Since M56 spec 06
+  // the phone reads nothing before a send; this is a display read of the screen the composer already
+  // has (`text`), taken when the bridge refused or left the text unsubmitted, and only to say so and
+  // offer Type. Cleared by the x, by arming Type, by a send that goes through, and by leaving the
+  // pane. Not persisted: it is a statement about what is on screen right now.
   //
   // It is state AND a ref because it has two jobs on two clocks: the strip renders from the state,
   // while the draft write-through (updateInput, above) has to stop storing keystrokes in the same tick
   // the outcome lands, not on the render after. `noticeNoEcho` is the only writer of both — go through
   // it, or the two disagree and the gap is measured in stored passwords.
   const [noEcho, setNoEcho] = useState<{ prompt: string; typed: boolean } | null>(null);
-  // Why the last send was refused when no READ dialog explains it: the unread card's first tap, or a
-  // `blocked` pre-flight. The header shows the same sentence, but on a phone that line is scrolled
-  // off or under the keyboard when Send is tapped, so it stands at the Send slot too while the
-  // "Type anyway?" override it explains is armed (see `refusalShown`). The m51-10 case, a dialog a
-  // grammar read, has its own word in the Send slot and never sets this.
-  const [sendRefusal, setSendRefusal] = useState<string | null>(null);
+  // Why the bridge did not send the last text: its sentence, what it saw on the screen, its own words,
+  // and whether the screen holds a card to go to. The header shows the same sentence, but on a phone
+  // that line is scrolled off or under the keyboard when Send is tapped, so it stands at the Send
+  // slot too until the next send, a tap on an offer, or the strip's x. A modal ask has its own word in
+  // the Send slot and never sets this.
+  const [sendRefusal, setSendRefusal] = useState<{ sentence: string; detail: string | null; toCard: boolean } | null>(null);
   const noEchoRef = useRef<{ prompt: string; typed: boolean } | null>(null);
 
   /** Raise or clear the password-prompt notice. Raising it also DROPS the stored draft: at that moment
@@ -644,7 +625,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
-      forceConfirm.reset();
+      setSendRefusal(null);
       noticeNoEcho(null); // the notice's whole job was to get you here
       // The field is a live keyboard from here, not a draft, so an Undo would have nowhere to go.
       endUndoWindow();
@@ -690,11 +671,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // ── THE ORBIT TURNS WHILE THE OPERATOR'S WORK IS IN FLIGHT (lib/busy.ts) ───────────────────────
   //
   // Three intervals, declared where the state already lives, so the Collie mark in the header spins
-  // for exactly as long as the work does and not a frame longer. `sending` spans the whole guarded
-  // send (type → settle → verify → submit), which is the interval the operator is actually waiting
-  // through; `uploading` spans the attachment POST; the recorder's `transcribing` phase spans the trip to
-  // the provider. Each is a boolean this component already renders from, so nothing new is tracked —
-  // the mark just reads what the composer already knows.
+  // for exactly as long as the work does and not a frame longer. `sending` spans the whole Send
+  // Protocol request (the bridge reads, types, checks and presses Enter), which is the interval the
+  // operator is actually waiting through; `uploading` spans the attachment POST; the recorder's
+  // `transcribing` phase spans the trip to the provider. Each is a boolean this component already
+  // renders from, so nothing new is tracked: the mark just reads what the composer already knows.
   //
   // NOT the poll, and not `recorder.busy`: the poll is ambient (lib/busy.ts says why at the counter),
   // and a RECORDING is the operator working, not the app — the voice takeover already says
@@ -759,8 +740,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * DEFAULT: it lands in the draft at the caret, and the operator reads it before sending — a
    * transcript is text of unusually low confidence going into a real terminal.
    *
-   * HANDS-FREE: it goes out through `send()`, the same guarded path the Send button uses, with every
-   * pre-flight and the reply guard intact (ADR 0029 — through the guards, never around them). Three
+   * HANDS-FREE: it goes out through `send()`, the same Send Protocol request the Send button makes,
+   * with the bridge's guard intact (ADR 0029: through the guards, never around them). Three
    * things withdraw it, and all three fall back to inserting rather than refusing:
    *
    *  • **A draft is already in the box.** Merging dictated words onto text the operator typed and
@@ -768,13 +749,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    *    instead, where the Send button is still theirs to press.
    *  • **A password prompt is on screen** (ADR 0017). Typing behaves the same way there — the pane
    *    gets nothing until the operator acts — and a spoken secret is the last thing to auto-submit.
-   *  • **The composer can't send at all** (locked, or a dialog owns the keyboard). `send()` would
-   *    refuse anyway; inserting keeps the words.
+   *  • **The composer can't send at all** (the field is locked, the pane is offline, or a modal ask
+   *    owns the keyboard). `send()` would refuse anyway; inserting keeps the words.
    */
   function acceptTranscript(transcript: string) {
     const draftEmpty = inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
     const mayHandsFree =
-      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && !dialogPresent;
+      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && slot !== "answer";
     if (mayHandsFree) {
       void send(transcript, false);
       return;
@@ -809,7 +790,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
-  // line (during the bridge's send_text→settle→Enter gap) and NOT treat it as a stranded draft. A
+  // line (between the bridge's type and its Enter) and NOT treat it as a stranded draft. A
   // ref, not state: it feeds a render-time derivation but must not itself trigger re-renders.
   const lastSentRef = useRef<{ text: string; at: number } | null>(null);
   // Trailing-edge debounce for post-keypress revalidation: a burst of raw key sends (arrow-key
@@ -822,9 +803,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const adapter = adapterFor(agent ?? undefined);
 
   // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
-  // reply still echoing on the "❯" line before the bridge's pending Enter — suppress both the preview
-  // AND the destructive clear-prefix on the next Send. Applied to the raw and the stabilised value
-  // alike (during the echo both carry our text). Recomputed each render (each poll re-renders), so it
+  // reply still echoing on the "❯" line before the bridge's Enter, so suppress the preview. Applied
+  // to the raw and the stabilised value alike (during the echo both carry our text). Recomputed each
+  // render (each poll re-renders), so it
   // lapses on its own once the grace expires or the echo resolves; a genuinely stranded draft (never
   // matches a recent send) is untouched.
   const suppressEcho = (draft: string | null): string | null => {
@@ -839,7 +820,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     return draft;
   };
   // effectiveStable gates the preview's APPEARANCE (stabilised value); effectiveRaw is the live line
-  // its text tracks and that the send()-time pre-clear sweeps.
+  // its text tracks.
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
@@ -964,9 +945,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
   // survives), mark that exact text handled (so it can't instantly re-latch the preview — the raw line
-  // still holds it until the host clears it), and hide the preview. No keys touch the terminal here —
-  // the stranded line is only ever swept by the send()-time pre-clear. If the host keeps typing and
-  // produces a DIFFERENT draft afterwards, the preview honestly reappears with the new text.
+  // still holds it until the host clears it), and hide the preview. No keys touch the terminal here,
+  // and the phone never sweeps the line: a send onto it meets the bridge's draft offers. If the host
+  // keeps typing and produces a DIFFERENT draft afterwards, the preview honestly reappears with the
+  // new text.
   function takeOverDraft() {
     if (effectiveRaw === null) return;
     const draft = effectiveRaw;
@@ -1042,8 +1024,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
-  // What a VERIFIED send does to this composer, from the guarded reply route and from the Send
-  // Protocol alike: the draft goes, the ✓ flashes, the pill says sent, the preview keeps the text.
+  // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
+  // mark flashes, the pill says sent, the preview keeps the text.
   function afterVerifiedSend(t: string, isDraft: boolean) {
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
@@ -1071,213 +1053,79 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setLastSent(preview);
     if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
     lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
-    forceConfirm.reset(); // a clean send disarms any leftover override
+    setSendRefusal(null); // a clean send answers the last refusal
     noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
     onSent(); // you just acted, so snap the mirror back to the live tail to see the result
   }
 
-  // Resolves true only on a VERIFIED send (the text was seen in the pane's input box before the
-  // submit key went out). The quick-reply grid consumes the verdict to drive its own ✓ and to decide
-  // whether to close its dock, so every early return below has to answer honestly.
-  async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
+  // Resolves true only on a send the bridge confirmed (`sent` or `effective`). The quick-reply grid
+  // consumes the verdict to drive its own check mark and to decide whether to close its dock, so
+  // every early return below has to answer honestly.
+  //
+  // THE ONE TEXT PATH (M56 spec 06). Every text goes to the bridge as one Send Protocol request: the
+  // bridge reads the screen fresh, refuses a dialog, a draft or a screen it cannot read before any key,
+  // probes where it must, and answers with a receipt. The phone reads nothing before a send and sends
+  // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
+  // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
+  // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
+  async function send(value: string, isDraft: boolean): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending) return false;
     if (offlineRef.current) {
       setStatus(translate("composer.send.reconnect"), "error");
       return false;
     }
-    // The Send Protocol (M56 spec 05), when the bridge marks this pane: the bridge reads the screen,
-    // refuses a dialog or a draft before any key and answers with a receipt, so none of the phone-side
-    // guards below run. A text with a reserved lead keeps the old route, whose slash palette and
-    // mention path own it; so does a pane on another machine, whose link does not carry the route yet.
-    if (sendProtocol && !scope?.host && !keepsOldRoute(t)) return sendThroughProtocol(t, isDraft, "send", null);
-    // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
-    // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
-    // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
-    // kept: the user answers the dialog with its own buttons, then taps Send again. We never
-    // queue-and-auto-send, because the text may be a reaction to state the dialog just changed —
-    // sending is consent, and the conditions moved.
-    if (dialogPresent) {
-      // A READ dialog is a parsed fact: the refusal stands flat, and the way through it is its own
-      // buttons.
-      if (!dialogUnread) {
-        setStatus(translate("composer.status.dialogWaiting"), "error");
-        return false;
-      }
-      // The unread card is the one dialog whose refusal is not the end of the conversation. Its four
-      // conditions are heuristics about a screen NOTHING could read (.adr/0053), and a splash or an
-      // alt-screen tool can trip all four — so the first Send arms the SAME deliberate second-tap
-      // override a `blocked` pre-flight arms below (.adr/0009's "A second Send overrides it
-      // deliberately") and names the key the card is offering. The second tap arrives here with
-      // `force` already set by onSendClick and falls through to type.
-      if (!force) {
-        forceConfirm.confirm("force");
-        const reason = translate("composer.status.unreadDialog", { key: keyLabel(adapter?.cancelKey ?? "") });
-        setSendRefusal(reason);
-        setStatus(reason, "error");
-        return false;
-      }
+    // A modal ask is a parsed fact: its own buttons answer it, and its word stands in the Send slot.
+    // A typed text would be refused by the bridge anyway; the phone does not ask (spec 10).
+    if (slot === "answer") {
+      setStatus(translate("composer.status.dialogWaiting"), "error");
+      return false;
     }
+    return sendThroughProtocol(t, isDraft, modeFor(t), null);
+  }
+
+  // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
+  // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
+  // ends the intent, and every offer it makes is a new one with a new id. Resolves true only on
+  // `sent` or `effective`.
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null): Promise<boolean> {
     setSending(true);
+    setSendRefusal(null);
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
-    // The operator has just acted on this pane, so the poller should watch it land. Stamped HERE —
-    // after the refusals above, before the round trip — because the burst is about the operator's
-    // attention, not about the send's verdict: a send that stalls or is blocked is exactly a moment
-    // they are staring at the mirror. Kept despite `api.sendKeys` / `api.sendReply` stamping every
-    // write: the guarded send reads the pane and may type nothing at all, and the operator is
-    // watching from the tap on, not from the first key.
+    // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      // Guarded: types the text, verifies it reached the input box, and only THEN sends the submit
-      // key. A "stalled" outcome means nothing was submitted and the draft must survive (#34).
-      const res = await sendGuardedReply({
-        paneId,
-        text: t,
-        agent,
-        scope,
-        force,
-        // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
-        // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip
-        // when there's no draft: a blind sweep races the TUI and Enter can fire before the PTY
-        // settles. Keys on effectiveRaw (the actual current line, echo-suppressed), so our own
-        // in-flight echo never triggers a (destructive) clear of a message that's already on its way,
-        // and a live host draft is swept exactly once whether or not the user took it over first.
-        //
-        // Handed to the guard rather than run out here, because these are the most destructive keys
-        // the composer sends and everything deciding to send them is a SNAPSHOT. `effectiveRaw` and
-        // `dialogPresent` are both derived from the mirror's `display`, which lags the live pane by a
-        // poll while following and is frozen outright while the user has scrolled back or opened
-        // find. A dialog that went up in that gap leaves `dialogPresent` false and a draft still
-        // visible, and the sweep lands in the dialog — the #34 failure one step upstream of where
-        // #34 was fixed. The guard runs this ONLY after a live read has positively seen the composer,
-        // which is why it is named for that and not for its position: `force` included, since a
-        // forced retry is armed by a `blocked` outcome, i.e. by the app having just PROVEN a dialog
-        // owns the keyboard. A forced send therefore types without sweeping and stalls if the line
-        // really did hold a draft — which is what it did anyway, since the same detector that could
-        // not see the box cannot read our text back out of it either.
-        onComposerSeen: async ({ promptRegion }) => {
-          if (effectiveRaw === null) return { ok: true as const, keysSent: false };
-          // The props that lock this composer are a SNAPSHOT too, and `send()` read them before the
-          // pre-flight's round-trip. A pane that died or a device that lost write access inside that
-          // window leaves the composer rendered locked while this burst is still queued behind an
-          // await — and unlike every other key this component sends, the burst does not go through
-          // `pressKeys`, which refuses when locked. Re-read the live value instead of the closure's.
-          if (lockedRef.current) {
-            return { ok: false as const, error: translate("composer.status.paneNotWritable") };
-          }
-          // Overshoot well past the snapshotted length: the count comes from the LAST-POLLED line, so
-          // anything the host typed inside the poll gap (~1.5s) isn't counted. Extra Backspace on an
-          // already-empty input is a no-op, so a generous margin costs nothing and shrinks the window
-          // where a mid-gap host burst leaves a remnant that corrupts the send.
-          const clearCount = [...effectiveRaw].length + 32;
-          // BOUND to the prompt row the pre-flight's read actually saw. Ordering is not a freshness
-          // bound: the read's answer describes the pane at the moment the BRIDGE snapshotted it, and
-          // these keys go out when the answer arrives — a whole network round-trip later, capped only
-          // by GET_TIMEOUT_MS. `expected_prompt` hands the last word to the bridge, which re-reads the
-          // pane immediately before send_keys and 409s (`prompt_changed`) when that row has gone, so
-          // the window shrinks to two local RPCs. Same mitigation every dialog tap gets from
-          // lib/dialog-guard.ts, which is the one place in this app that could already refuse a key on
-          // exactly the evidence this burst used to accept.
-          const clearRes = await api.sendKeys(
-            paneId,
-            ["ctrl+k", ...Array(clearCount).fill("Backspace")],
-            scope,
-            promptRegion ?? undefined,
-          );
-          if (!clearRes.ok) {
-            // A refused binding is the guard doing its job, not a transport failure — say so, because
-            // the user's next move is to look at the pane rather than to retry into whatever is now
-            // on it. Nothing was typed either way: this aborts the send before the reply text.
-            if (clearRes.code === "prompt_changed") {
-              return {
-                ok: false as const,
-                error: translate("composer.status.inputChanged"),
-              };
-            }
-            return {
-              ok: false as const,
-              error: describeApiError(clearRes, translate("composer.status.clearFailed")),
-            };
-          }
-          scheduleKeyRevalidate();
-          await new Promise((resolve) => setTimeout(resolve, TUI_SETTLE_MS));
-          // `keysSent` — the burst plus this settle is exactly the window the guard re-reads across
-          // before it types, so the message doesn't follow the keys into a dialog that opened inside
-          // it.
-          return { ok: true as const, keysSent: true };
-        },
-      });
-      if (res.status === "sent") {
-        afterVerifiedSend(t, isDraft);
-        return true;
-      } else if (res.status === "blocked") {
-        // The pre-flight refused: NOTHING was typed. That is usually right (a menu owns the keyboard),
-        // but the adapter can only report what it can see, so the user gets a deliberate override —
-        // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
-        // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
-        forceConfirm.confirm("force");
-        // A password prompt gets the notice AND keeps the override: the notice explains the screen and
-        // offers the control that works, the override stays for the case where the detection is wrong.
-        noticeNoEcho(res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null);
-        const reason = translate("composer.status.tapAgainToType", { error: res.error });
-        setSendRefusal(reason);
-        setStatus(reason, "error");
+      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, held: protocolIntent.current });
+      if (res.status === "noAnswer") {
+        // No answer: the id stays, so the next tap on the same text asks for the same request.
+        protocolIntent.current = res.intent;
+        setStatus(translate("composer.protocol.retry", { error: res.error }), "error");
         return false;
-      } else {
-        // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
-        // probably holding focus). "error" with textDelivered = the text is in the pane but the
-        // submit failed. Either way the draft stays put: the user checks the pane rather than
-        // double-sending, and on a stall their message is still here to re-send once the dialog is
-        // answered.
-        //
-        // Except at a password prompt, where the draft staying put is the wrong call and the notice
-        // says so: the text is already IN the pane (unsubmitted), so a re-send types a second copy of
-        // a secret rather than recovering a lost message. The notice's handoff is what clears it.
-        noticeNoEcho(
-          res.status === "stalled" && res.noEcho !== undefined
-            ? { prompt: res.noEcho, typed: true }
-            : null,
-        );
+      }
+      protocolIntent.current = null;
+      if (res.status === "refused") {
         setStatus(res.error, "error");
         return false;
       }
-    } catch (e) {
-      setStatus(describeThrownError(e), "error");
-      return false;
-    } finally {
-      setSending(false);
-    }
-  }
-
-  // One Send Protocol request. The id is kept for a retry of the same intent (mode, rows hash, text)
-  // until an answer arrives, so a lost answer never sends twice; an answer ends the intent, and every
-  // offer it makes is a new one with a new id. Resolves true only on `sent` or `effective`.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null): Promise<boolean> {
-    setSending(true);
-    endUndoWindow();
-    stampSend(paneId);
-    const intent = requestIdFor(protocolIntent.current, `${mode}\u0000${rowsHash ?? ""}\u0000${t}`, mintRequestId);
-    protocolIntent.current = intent;
-    try {
-      const body: SendRequestBody = { id: intent.requestId, pane: paneId, text: t, mode };
-      const reply = await api.postSend(rowsHash === null ? body : { ...body, rowsHash }, scope);
-      protocolIntent.current = null;
-      const reading = readSend(reply);
+      const { reply, reading } = res;
       if (reading.clear) {
         setProtocolOffer(null);
         afterVerifiedSend(t, isDraft);
         return true;
       }
       setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers });
-      setStatus(translate(`composer.protocol.${reading.note}`), reading.note === "discarded" ? "success" : "error");
+      const sentence = answerSentence(reading);
+      if (reading.note !== "discarded") setSendRefusal({ sentence, detail: reading.detail, toCard: reading.toCard });
+      // A password prompt on the screen the composer already shows (#103): the bridge could not see
+      // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
+      // A display read only; the bridge's answer is the verdict.
+      const prompt = detectNoEchoPrompt(splitLines(parseAnsi(text)));
+      if (prompt !== null) noticeNoEcho({ prompt, typed: reading.note === "typed" || reading.note === "unknown" });
+      setStatus(sentence, reading.note === "discarded" ? "success" : "error");
       // The person's next look is the pane: snap the mirror to the live tail, as a send does.
       onSent();
-      return false;
-    } catch (e) {
-      // No answer: the id stays, so the next tap on the same text asks for the same request.
-      setStatus(translate("composer.protocol.retry", { error: describeThrownError(e) }), "error");
       return false;
     } finally {
       setSending(false);
@@ -1288,8 +1136,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function onProtocolOffer(offer: SendOffer) {
     const held = protocolOffer;
     setProtocolOffer(null);
+    setSendRefusal(null);
     if (held === null || sending || locked) return;
-    const mode = offerMode(offer);
+    const mode = offerMode(offer, held.text);
     if (mode === null) return;
     // Added to a draft, the text starts after one space, as a person typing on would put it.
     const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
@@ -1300,16 +1149,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
   function onSendClick() {
-    // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
-    // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
     const line = composeLine(input, attachments);
-    if (forceConfirm.pending === "force") {
-      forceConfirm.reset();
-      send(line, true, true);
-      return;
-    }
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
@@ -1327,14 +1169,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     send(line, true);
   }
   const confirmingSend = sendConfirm.pending === "send";
-  const forcingSend = forceConfirm.pending === "force";
-  // A dialog the screen reader parsed (not the unread-card heuristic) refuses every send, so the Send
-  // slot and the placeholder say so. The unread card keeps its two-tap override instead.
-  const readDialogOwnsKeys = dialogPresent && !dialogUnread && !direct.active;
-  // The refusal's reason at the thumb, for as long as the override it explains is armed. Not with a
-  // read dialog (its own word stands in the Send slot), not in Type mode, and not beside the
-  // password notice, which already says why at this spot.
-  const refusalShown = forcingSend && sendRefusal !== null && !readDialogOwnsKeys && !direct.active && noEcho === null;
+  // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
+  const askOwnsKeys = slot === "answer" && !direct.active;
+  // The refusal's reason at the thumb. Not with an ask (its own word stands in the Send slot), not in
+  // Type mode, and not beside the password notice, which already says why at this spot.
+  const refusalShown = sendRefusal !== null && !askOwnsKeys && !direct.active && noEcho === null;
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -1480,7 +1319,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /**
    * THE BELT'S X (M40 spec 04, issue #291): the text, the chips and the stored draft go, and nothing
    * is sent to the pane. It is the phone's own draft and only that; the agent's input box keeps its
-   * own ways (the Keys tray, and the reply guard's sweep before a send).
+   * own ways (the Keys tray, and the bridge's Replace offer on a send).
    *
    * What went is held for Undo, previews and all, which is the one difference from
    * `clearComposedDraft`: those previews are released when the window ends without an Undo, not
@@ -1497,7 +1336,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     };
     endUndoWindow();
     sendConfirm.reset();
-    forceConfirm.reset();
     attachmentsRef.current = [];
     setAttachments([]);
     caretRef.current = null;
@@ -1876,7 +1714,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
-            NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
+            NOTICE beside the unchanged two-tap Send ("Type here"), never a replacement for it. */}
         <Collapse open={noEcho !== null && !direct.active}>
           {noEcho !== null && !direct.active && (
             <NoEchoNotice
@@ -1924,14 +1762,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.tooLong")}
           </p>
         </Collapse>
-        {/* WHY THE SEND WAS REFUSED, AT THE THUMB (DESIGN.md §11, a contextual notice). The same
-            sentence the header shows, beside the "Type anyway?" override it explains, for as long as
-            that override is armed. A refusal used to name its reason only in the header, which a
-            phone has scrolled off or put under the keyboard by the time Send is tapped (the m51-10
-            field case, for the screens no grammar reads). Its one control goes where the reason
-            points: with the unread-dialog card on screen, to that card and its first button, the
-            same way as the "Answer the dialog" word. With no card there is nothing to go to, so the
-            notice carries no control. */}
+        {/* WHY THE SEND DID NOT GO, AT THE THUMB (DESIGN.md §11, a contextual notice). The same
+            sentence the header shows: the bridge's verdict and what it saw on the screen, with the
+            bridge's own words under it when it gave any (M56 spec 06). A refusal used to name its
+            reason only in the header, which a phone has scrolled off or put under the keyboard by the
+            time Send is tapped (the m51-10 field case). Its one control goes where the reason points:
+            with an ask or an overlay Collie cannot read on the screen, to that card and its first
+            button, the same way as the "Answer the dialog" word. With no card there is nothing to go
+            to, so the notice carries no control. */}
         <Collapse open={refusalShown}>
           {sendRefusal !== null && (
             <Notice
@@ -1940,14 +1778,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="mb-2"
               icon={<TriangleAlert />}
               action={
-                dialogUnread && onAnswerDialog !== undefined ? (
+                sendRefusal.toCard && onAnswerDialog !== undefined ? (
                   <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => onAnswerDialog()}>
                     {translate("composer.send.dialogFirst")}
                   </Button>
                 ) : undefined
               }
             >
-              <span data-slot="composer-refusal">{sendRefusal}</span>
+              <span data-slot="composer-refusal">{sendRefusal.sentence}</span>
+              {sendRefusal.detail !== null && (
+                <span data-slot="composer-refusal-detail" className="block text-muted-foreground">
+                  {sendRefusal.detail}
+                </span>
+              )}
             </Notice>
           )}
         </Collapse>
@@ -1955,8 +1798,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             pasted it here, and the pane would receive the dots, not the secret. A CONDITION for as
             long as the text stays, like the line above, so it is derived at render and clears when
             the dots are deleted or the draft is sent. A caution and never a block: a `••••` can be
-            meant (a password placeholder in a README), and reply-action.ts accepts it as a mask slot
-            on purpose when it reads the pane back. */}
+            meant (a password placeholder in a README), and lib/draft-match.ts accepts it as a mask
+            slot on purpose when it reads the pane back. */}
         <Collapse open={!direct.active && holdsMask(input)}>
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
             {translate("composer.draft.holdsMask")}
@@ -2078,16 +1921,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? translate("composer.placeholder.gone")
                 : readOnly
                   ? translate("composer.placeholder.readOnly")
-                  : // Names the machine, because on a crew "why can't I type?" has two possible
-                    // answers and only one of them is about this device.
-                    hostBlock
-                    ? hostBlock
-                    : // The multiplexer cannot type here at all — its own words where it gave any, so
-                      // the placeholder says what is true of THIS terminal rather than blaming the app.
-                      missingSend !== null
-                      ? missingSend.note || translate("composer.placeholder.noMuxSend")
-                    : readDialogOwnsKeys
-                      ? translate(DIALOG_PLACEHOLDER[dialogNoun ?? "dialog"])
+                  : // The box is out of reach, in words that say why: the machine the lead cannot
+                    // reach, the multiplexer that cannot type here, a bridge with sending off.
+                    slot === "unreachable"
+                    ? unreachableWords
+                    : askOwnsKeys
+                      ? translate(DIALOG_PLACEHOLDER[askNoun(shownSurface) ?? "dialog"])
                     : direct.active
                       ? translate("composer.placeholder.direct")
                       : isShell
@@ -2189,7 +2028,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               even now that attach stands near the box's own right edge: the panel is `right-0
               min-w-44` against its anchor, and the gap between attach and that edge is NOT fixed —
               the primary action beside it is a size-9 icon square most of the time but widens into
-              a text button ("Type anyway?" / "Really send?") the moment a confirm is armed, which
+              a text button ("Answer the dialog" / "Really send?") when its slot holds a word, which
               would slide the menu sideways if it followed the button instead of the box. Anchoring
               to the box keeps the picker's own right edge pinned to the box's right edge no matter
               which shape the primary action is wearing.
@@ -2221,8 +2060,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
           </AnchoredMenu>
-          {readDialogOwnsKeys && hasDraft ? (
-            // A READ dialog owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
+          {askOwnsKeys && hasDraft ? (
+            // A modal ask owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
             // and not only in the header StatusArea: on a phone that line is scrolled off or under
             // the keyboard when Send is tapped (field case 2026-10-15, ADR 0009). The word replaces
             // Send only once there is a draft to refuse; an empty box keeps its microphone and the
@@ -2236,32 +2075,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-label={translate("composer.send.dialogFirst")}
             >
               {translate("composer.send.dialogFirst")}
-            </Button>
-          ) : !direct.active && forcingSend ? (
-            // The pre-flight refused and the user is being offered the override. Labelled for what it
-            // actually does — TYPE the text into whatever is on screen — not "send", because the
-            // submit key is still conditional on the verify step behind it.
-            //
-            // NOT a `Collapse`, and that is not an exception to the rule above. The explanation of
-            // WHY the send was refused is already in the top pills — send() publishes it through
-            // `composer.status.tapAgainToType`, carrying the adapter's own reason — so there is no
-            // in-flow strip here to animate. What is left is one control swapped for another in a
-            // slot that already exists, on the horizontal axis; `Collapse` animates a row's HEIGHT,
-            // so wrapping it would animate nothing and add a wrapper between the flex row and its
-            // child. §2 is kept by the button box being the same height in all four branches.
-            //
-            // The two confirm branches are the only ones that carry a WORD, so they are the only
-            // ones that are not square: `h-9` to match the round faces beside them, and `shrink-0`
-            // keeps the word whole; the field is the one flex item that gives up width for it.
-            <Button
-              variant="destructive"
-              className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
-              onClick={onSendClick}
-              disabled={locked || offline || !hasDraft || sending}
-              title={offline ? translate("composer.send.reconnect") : undefined}
-              aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.typeAnyway")}
-            >
-              {translate("composer.send.typeAnyway")}
             </Button>
           ) : !direct.active && confirmingSend ? (
             <Button

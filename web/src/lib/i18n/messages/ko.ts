@@ -304,6 +304,8 @@ export const ko: Dictionary = {
   "composer.placeholder.gone": "창이 닫혔습니다",
   "composer.placeholder.readOnly": "읽기 전용: 권한 없음",
   "composer.placeholder.noMuxSend": "이 터미널에는 입력할 수 없습니다",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -330,7 +332,6 @@ export const ko: Dictionary = {
   "composer.attach.listAria": "첨부 파일",
   "composer.attach.removeAria": "{name} 제거",
   "composer.attach.inFront": "텍스트에서 해당 표시가 사라졌으므로 전송 시 {name}을(를) 앞에 둡니다.",
-  "composer.send.typeAnyway": "그대로 입력할까요?",
   "composer.send.reallySend": "전송할까요?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "터미널 입력 중단",
@@ -339,14 +340,7 @@ export const ko: Dictionary = {
   "composer.draft.tooLong": "임시 저장 용량을 초과했습니다. 창 전환 시에는 유지되지만 앱 종료 시 삭제됩니다.",
   "composer.draft.holdsMask": "이 답장에는 가려진 텍스트(••••)가 들어 있습니다. 창에는 비밀 정보가 아닌 점이 전달됩니다.",
   "composer.status.dialogWaiting": "대기 중인 대화상자가 있습니다. 먼저 응답해야 전송할 수 있습니다.",
-  "composer.status.unreadDialog":
-    "Collie가 이 대화상자를 읽을 수 없습니다. 카드에 {key}이(가) 있습니다. 그래도 입력하려면 전송을 다시 누르세요.", // wordsmith
-  "composer.status.paneNotWritable": "창에 쓸 수 없는 상태입니다. 아무것도 전송되지 않았습니다.",
-  "composer.status.inputChanged":
-    "입력 초기화 중 내용이 변경되어 전송이 취소되었습니다. 창을 확인하십시오.",
-  "composer.status.clearFailed": "터미널 입력을 비우지 못했습니다",
   "composer.status.sent": "전송 완료 ✓",
-  "composer.status.tapAgainToType": "{error} 무시하고 입력하려면 전송을 다시 누르세요.",
   "composer.discard.confirmKeys.one": "대기 중인 키 {count}개를 삭제하려면 다시 누르세요.",
   "composer.discard.confirmKeys.other": "대기 중인 키 {count}개를 삭제하려면 다시 누르세요.",
   "composer.destructive.confirm": "주의가 필요한 명령: {reason}. 확인하려면 전송을 다시 누르세요.",
@@ -373,6 +367,7 @@ export const ko: Dictionary = {
   "composer.protocol.unknown": "보냈는지 알 수 없습니다. 다시 보내기 전에 창을 확인하세요.",
   "composer.protocol.busy": "이 창으로 보내는 다른 작업이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
   "composer.protocol.notFree": "입력란이 비어 있지 않습니다. 아무것도 입력하지 않았습니다.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "입력이 입력란에 닿지 않아 아무것도 입력하지 않았습니다. 창을 확인하세요.",
   "composer.protocol.reservedLead": "/ ! @ 로 시작하는 텍스트는 따로 처리됩니다. 아무것도 입력하지 않았습니다.",
   "composer.protocol.moved": "화면이 바뀌었습니다. 창을 확인한 뒤 다시 보내세요.",
@@ -389,6 +384,18 @@ export const ko: Dictionary = {
   "composer.protocol.commit": "여기에 입력",
   "composer.protocol.keys": "키",
   "composer.protocol.dismissAria": "보내기 옵션 닫기",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "초안은 이 휴대폰에 남아 있으며 저절로 전송되지 않습니다.",
   "composer.offline.draftNote.dismissAria": "오프라인 초안 안내 닫기",
   "composer.draftPreview.title": "터미널 임시 저장본",
@@ -1416,24 +1423,6 @@ export const ko: Dictionary = {
   "dialog.preview.removeNoteAria": "메모 삭제",
   "dialog.preview.noteAria": "메모",
   "dialog.preview.addNote": "이 답변에 메모 추가",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox":
-    "에이전트 입력창을 찾을 수 없습니다. 메뉴나 대화상자가 활성화되어 있을 수 있습니다. 입력된 내용이 없습니다.",
-  "reply.blocked.noEcho":
-    "비밀번호 입력 프롬프트에서는 화면에 텍스트가 표시되지 않아 전송 여부를 검증할 수 없습니다. 입력된 내용이 없습니다.",
-  "reply.blocked.composerLeft":
-    "입력 라인을 정리하는 동안 에이전트 입력창이 비활성화되었습니다. 메시지가 입력되지 않았습니다.",
-  "reply.refused.multiline":
-    "이 입력창은 줄바꿈 시 전송되므로 여러 줄 메시지는 첫 줄바꿈에서 잘립니다. 한 줄로 작성하세요. 입력된 내용이 없습니다.",
-  "reply.refused.multilineMidway":
-    "이 입력창은 줄바꿈 시 전송되므로 여러 줄 메시지가 첫 줄바꿈에서 잘렸습니다. 그 앞부분은 이미 창에 입력되어 있습니다. 한 줄로 작성하세요.",
-  "reply.stalled.noEcho":
-    "비밀번호 입력 프롬프트에서는 화면 표시가 없어 전송 여부를 검증할 수 없습니다. 작성한 내용은 창에 남아 있습니다.",
-  "reply.stalled.generic":
-    "메시지가 입력창에 전달되지 않았습니다. 대화상자가 입력을 기다리는 중일 수 있으며, 키 입력을 전송했다면 해당 키만 반영되었을 수 있습니다. 제출된 내용은 없습니다.",
-  "reply.stalled.modal":
-    "메시지가 입력창에 전달되지 않았습니다. 대화상자, 메뉴 또는 오버레이가 키보드를 점유하고 있어 텍스트가 그리로 전달되었습니다. 제출된 내용은 없습니다.",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "메모 입력창이 열리지 않았습니다. 창 상태를 확인하십시오.",

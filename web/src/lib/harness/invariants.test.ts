@@ -31,7 +31,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "../ansi";
 import { lineText, splitLines, type StyledLine } from "../blocks";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 import { displayWidth } from "../text-width";
 import { agyAdapter } from "./agy";
 import { claudeAdapter } from "./claude";

@@ -252,6 +252,8 @@ export const it: Dictionary = {
   "composer.placeholder.gone": "Il riquadro non esiste più",
   "composer.placeholder.readOnly": "Sola lettura: non autorizzato",
   "composer.placeholder.noMuxSend": "Impossibile scrivere in questo terminale",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -278,7 +280,6 @@ export const it: Dictionary = {
   "composer.attach.listAria": "Allegati",
   "composer.attach.removeAria": "Rimuovi {name}",
   "composer.attach.inFront": "Il marcatore non è più nel testo, quindi Invia mette {name} davanti.",
-  "composer.send.typeAnyway": "Digitare comunque?",
   "composer.send.reallySend": "Inviare davvero?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Interrompi digitazione nel terminale",
@@ -287,12 +288,7 @@ export const it: Dictionary = {
   "composer.draft.tooLong": "Troppo lungo per salvarlo come bozza: resta cambiando riquadro, ma non chiudendo l'app.",
   "composer.draft.holdsMask": "Questa risposta contiene testo mascherato (••••). Il riquadro riceve i puntini, non il segreto.",
   "composer.status.dialogWaiting": "C'è una finestra di dialogo in attesa: rispondi prima di inviare.",
-  "composer.status.unreadDialog": "Collie non può leggere questa finestra. {key} è sulla scheda. Tocca di nuovo Invia per digitare comunque.",
-  "composer.status.paneNotWritable": "Il riquadro non è più scrivibile: non è stato inviato nulla",
-  "composer.status.inputChanged": "Il campo di input è cambiato durante la cancellazione: nulla è stato digitato. Controlla il riquadro.",
-  "composer.status.clearFailed": "Impossibile cancellare l'input del terminale",
   "composer.status.sent": "Inviato ✓",
-  "composer.status.tapAgainToType": "{error} Tocca di nuovo Invia per digitare comunque.",
   "composer.discard.confirmKeys.one": "Tocca di nuovo per scartare {count} tasto in coda",
   "composer.discard.confirmKeys.other": "Tocca di nuovo per scartare {count} tasti in coda",
   "composer.destructive.confirm": "Distruttivo: {reason}, tocca di nuovo Invia per confermare",
@@ -315,6 +311,7 @@ export const it: Dictionary = {
   "composer.protocol.unknown": "Collie non sa se è stato inviato. Controlla il riquadro prima di inviare di nuovo.",
   "composer.protocol.busy": "Un altro invio a questo riquadro è ancora in corso. Attendi e riprova.",
   "composer.protocol.notFree": "Il campo di input non è libero. Non è stato scritto nulla.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "La scrittura non è arrivata nel campo, quindi non è stato scritto nulla. Controlla il riquadro.",
   "composer.protocol.reservedLead": "Un testo che inizia con / ! o @ ha un suo percorso. Non è stato scritto nulla.",
   "composer.protocol.moved": "La schermata è cambiata. Controlla il riquadro, poi invia di nuovo.",
@@ -331,6 +328,18 @@ export const it: Dictionary = {
   "composer.protocol.commit": "Scrivi qui",
   "composer.protocol.keys": "Tasti",
   "composer.protocol.dismissAria": "Chiudi le opzioni di invio",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "La bozza resta su questo telefono e non viene mai inviata da sola.",
   "composer.offline.draftNote.dismissAria": "Ignora la nota sulla bozza offline",
   "composer.draftPreview.title": "Bozza nel terminale",
@@ -1294,14 +1303,6 @@ export const it: Dictionary = {
   "dialog.preview.removeNoteAria": "Rimuovi nota",
   "dialog.preview.noteAria": "Nota",
   "dialog.preview.addNote": "Aggiungi una nota a questa risposta",
-  "reply.blocked.noBox": "Il campo di input dell'agent non è a schermo: forse c'è un menu o una finestra di dialogo. Nessun testo digitato.",
-  "reply.blocked.noEcho": "È una richiesta di password: non mostra nulla mentre digiti, quindi Invia non può confermare l'arrivo del testo. Nessun testo digitato.",
-  "reply.blocked.composerLeft": "Il campo di input dell'agent è scomparso durante la cancellazione della riga: forse c'è un menu o una finestra di dialogo. Il messaggio non è stato digitato.",
-  "reply.refused.multiline": "Questo campo invia con un a capo, quindi un messaggio su più righe verrebbe troncato al primo stacco. Mettilo su una sola riga. Nessun testo digitato.",
-  "reply.refused.multilineMidway": "Questo campo invia con un a capo, quindi un messaggio su più righe è stato troncato al primo stacco. La prima parte è già nel riquadro. Mettilo su una sola riga.",
-  "reply.stalled.noEcho": "È una richiesta di password: non mostra nulla mentre digiti, quindi non si può confermare il testo e nulla è stato inviato. Il testo digitato è già nel riquadro.",
-  "reply.stalled.generic": "Il messaggio non ha raggiunto il campo di input: potrebbe esserci una finestra di dialogo in attesa. Se rispondevi da tastiera, il tasto è probabilmente arrivato. Nulla è stato inviato.",
-  "reply.stalled.modal": "Il messaggio non ha raggiunto il campo di input: una finestra di dialogo, un menu o un overlay tratteneva la tastiera e il testo è finito lì. Nulla è stato inviato.",
   "previewAction.note.notOpened": "L'input della nota non si è aperto: controlla il riquadro",
   "previewAction.note.clearFailed": "Impossibile cancellare la nota esistente: controlla il riquadro",
   "previewAction.note.textFailed": "Il testo della nota non è arrivato: controlla il riquadro",

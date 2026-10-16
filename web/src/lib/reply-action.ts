@@ -1,711 +1,78 @@
-// The free-text reply path's race guard.
+// The free-text reply: one Send Protocol request (M56 spec 06).
 //
-// Every OTHER path that types into a live TUI (prompt-, wizard-, preview-action) refuses to send a
-// key it hasn't first verified the pane is ready for — "Enter is never sent blind". The reply path
-// was the one exception: it typed the text, waited a fixed 350ms, and fired the submit key with
-// nothing checking what was on screen.
+// This file used to hold the phone's own race guard for issue #34: a pre-flight read of the pane, a
+// type-then-verify loop that polled the screen until the text showed in the input box, a sweep of a
+// stranded draft and a settle wait before Enter. All of it lived on the phone because the bridge's old
+// reply route typed, waited a fixed 350 ms and pressed Enter blind. The bridge now runs the Send
+// Protocol on every text (bridge/surface/protocol.ts): it reads the screen fresh at S0, refuses a
+// dialog, a draft or a screen it cannot read before any key, probes where it must, checks the box
+// before Enter and answers with a receipt. So the phone reads nothing before a send and sends no key
+// of its own. What remains here is the request id, the call and the outcome mapping.
 //
-// That is issue #34, reproduced on a real pane: with a Claude permission dialog focused, the typed
-// text is swallowed and the submit key ANSWERS THE DIALOG — approving whatever option was
-// highlighted (Claude highlights "Yes" by default). The message is destroyed and the bridge still
-// reports {ok:true}, because both Herdr RPCs genuinely succeeded: an ack means "herdr took the
-// bytes" (HERDR_API.md), never "the TUI acted on them". So the bridge cannot detect this; only a
-// client that can read the input box can.
-//
-// The fix makes the submit key CONDITIONAL on evidence the text reached the input box: type
-// unsubmitted → poll fresh reads until the adapter sees our text on the "❯" line → only then
-// submit. If it never appears, NO key is sent and the caller keeps the draft. This is the same
-// choreography submitPreviewNote already uses for the note field, applied to the main input.
+// The per-harness draft and status readers stay, for display only: the stranded-draft preview, the
+// echo suppression (lib/draft-match.ts) and the status line.
 
-import { fetchPane, sendReply } from "./api";
-import { describeApiError, describeThrownError } from "./api-error-message";
-import { parseAnsi } from "./ansi";
-import { splitLines, type StyledLine } from "./blocks";
+import { postSend } from "./api";
+import { describeThrownError } from "./api-error-message";
+import { requestIdFor, type IntentId } from "./durable-control";
 import { t } from "./i18n";
-import { graphemeSegmenter } from "./env";
-import { adapterFor, type HarnessAdapter } from "./harness";
-import { POLL_ATTEMPTS, POLL_DELAY_MS, defaultSleep, type Sleep } from "./harness/guard";
 import { isLive } from "./liveness";
-import { detectNoEchoPrompt } from "./no-echo";
 import type { Scope } from "./scope";
+import { isCommand, readSend, type SendReading, type SendReply } from "./send-protocol";
+import type { SendMode, SendRequestBody } from "./surface/send";
+import { mintRequestId } from "./worktree-name";
+
+export interface ReplyArgs {
+  readonly paneId: string;
+  readonly text: string;
+  /** Which machine and which named session the pane lives in. */
+  readonly scope?: Scope | undefined;
+  /** `send`, or `command` for a reserved lead, when absent. An offer names its own mode. */
+  readonly mode?: SendMode;
+  /** The rows the person saw, for a commit after an `unconfirmed` refusal. */
+  readonly rowsHash?: string | null;
+  /** The intent the last tap left without an answer: the same intent keeps its request id. */
+  readonly held: IntentId | null;
+  /** Test seam for the request id. */
+  readonly mint?: () => string;
+}
 
 export type ReplyOutcome =
-  /** Text was verified in the input box and the submit key went through. */
-  | { status: "sent" }
+  /** The bridge answered. `reading.clear` is true only on `sent` or `effective`. */
+  | { readonly status: "answered"; readonly reply: SendReply; readonly reading: SendReading }
   /**
-   * The PRE-FLIGHT refused: a live read could not see an input box on screen, so NO REPLY TEXT was
-   * typed and no submit key was sent. Distinct from `stalled`, which is reported only after the text
-   * has already gone into the pane. The caller keeps the draft and may offer a deliberate override
-   * (`force`). The caller's `onComposerSeen` work may have run before a re-confirming refusal — but
-   * only ever on the path where a live read had just seen the composer, which is the invariant that
-   * whole callback exists to enforce.
-   *
-   * `noEcho` carries the password prompt the refusing read was looking at, when it was one — see
-   * lib/no-echo.ts.
+   * No answer arrived (a dropped link, a timeout, a body the phone cannot read). The intent comes
+   * back: the next tap on the same text asks for the same request id, so a lost answer never sends
+   * twice.
    */
-  | { status: "blocked"; error: string; noEcho?: string }
-  /** Text never reached the input box — NO submit key was sent. The caller MUST keep the draft.
-   *  `noEcho`: the prompt the last verification read saw, when the reason the text never appeared is
-   *  that the screen is deliberately not showing it — see lib/no-echo.ts. */
-  | { status: "stalled"; error: string; noEcho?: string }
-  /** Transport/RPC failure. `textDelivered` = text is in the pane but unsubmitted; don't resend. */
-  | { status: "error"; error: string; textDelivered?: boolean }
+  | { readonly status: "noAnswer"; readonly error: string; readonly intent: IntentId }
   /**
-   * Nothing was read, typed or sent: the bridge has not answered a read for this pane lately, so the
-   * screen the caller acted on may be cached or hours old (M46 spec 11). The caller keeps the draft.
-   * There is no queue and no retry: a person sends again once the pane reads live.
+   * Nothing was asked: the bridge has not answered a read for this pane lately (M46 spec 11), so the
+   * screen the person acted on may be old. No queue and no retry: a person sends again once the pane
+   * reads live.
    */
-  | { status: "refused"; reason: "offline"; error: string };
+  | { readonly status: "refused"; readonly reason: "offline"; readonly error: string };
 
-/** Minimum visible characters that must match before we believe the input box holds OUR text. */
-export const MIN_MATCH_CHARS = 8;
-
-const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
-
-/**
- * The bridge's secret mask (`bridge/redact.ts`, `COLLIE_REDACT`, default on): a known secret shape on
- * screen reaches the phone as one `•` per hidden character. The operator's own send is never masked,
- * so a reply that carries a key reads back from the box as that key's mask. A mask character in the
- * draft therefore stands for exactly ONE printable ASCII character of `sent` (every pattern the bridge
- * masks is printable ASCII), or for a literal `•` the operator typed. Length and position still have
- * to agree, so a draft that dropped or altered a visible character still fails.
- */
-const REDACT_MASK = "•";
-const REDACT_SLOT = "(?:•|[\\x21-\\x7e])";
-const PRINTABLE_ASCII = /^[\x21-\x7e]$/;
-
-/** The exact gap extractInputDraft's fold inserts at a wrap seam: one plain space, always. Any
- *  other gap on screen is whitespace the operator really typed, so `sent` must carry it too. */
-const FOLD_SEAM = " ";
-
-/** `Intl.Segmenter` is the newest platform API anything in this bundle depends on (Firefox 125,
- *  Safari 14.1), and this module is in the main chunk — composer.tsx imports it eagerly, so a
- *  module-scope `new Intl.Segmenter` on an engine without it throws at evaluation and white-screens
- *  the whole PWA at boot. Feature-detect instead: an unsupported engine must lose grapheme
- *  precision, never the app. The `null` branches below fall back to per-code-point counting, which
- *  is exactly what this check did before clusters were understood at all — a match that stops mid
- *  cluster slips through there, as it always did. */
-const GRAPHEMES = graphemeSegmenter();
-
-/** A cluster nobody can see: whitespace, or formatting controls that render as nothing at all
- *  (LRM/RLM, zero-width space, soft hyphen). A cluster that merely CONTAINS one still counts — the
- *  ZWJ inside a family emoji is joining visible characters, not standing in for them. */
-const UNREADABLE = /^[\s\p{Default_Ignorable_Code_Point}]+$/u;
-
-/** Visible characters. The floor below is a claim about how much of the message is legible on
- *  screen, so it must count what a reader counts — one emoji is one character, not the 11 UTF-16
- *  code units a ZWJ family sequence happens to occupy, and an invisible control is not a character
- *  at all however many of them are threaded through the text.
- *
- *  Segmenting the string AS GIVEN matters: stripping its spaces first can fuse the neighbours into
- *  one cluster. "🇯 🇵" is two characters, but strip the space and the regional indicators pair into
- *  the single flag "🇯🇵" — one character, and a floor half as high as it should be. */
-function visibleLength(s: string): number {
-  let n = 0;
-  if (GRAPHEMES === null) {
-    // Code points, not code units — a lone surrogate half is never a character on any engine.
-    for (const ch of s) if (!UNREADABLE.test(ch)) n += 1;
-    return n;
-  }
-  for (const segment of GRAPHEMES.segment(s)) if (!UNREADABLE.test(segment.segment)) n += 1;
-  return n;
+/** The mode of a text with no offer behind it: a reserved lead is a command, everything else a send. */
+export function modeFor(text: string): SendMode {
+  return isCommand(text) ? "command" : "send";
 }
 
-/** Every offset in `s` where one visible character ends and the next begins, plus both ends. A match
- *  that starts or stops anywhere else has sliced a character in half — "👩‍👧‍👦" is a code-unit
- *  substring of "👨‍👩‍👧‍👦", but it is a DIFFERENT character and must not verify as that one. */
-function characterBoundaries(s: string): Set<number> {
-  const bounds = new Set<number>([s.length]);
-  if (GRAPHEMES === null) {
-    let i = 0;
-    for (const ch of s) {
-      bounds.add(i);
-      i += ch.length;
-    }
-    return bounds;
-  }
-  for (const segment of GRAPHEMES.segment(s)) bounds.add(segment.index);
-  return bounds;
-}
-
-/**
- * Whether the input box's visible draft is evidence that `sent` landed there. The box WINDOWS a long
- * draft (only its tail is on screen) and FOLDS its wrapped lines together with a space, so exact
- * equality is too strict — the strongest claim that survives both is that the draft's visible
- * characters appear contiguously in what we typed.
- *
- * The fold is the subtle part. extractInputDraft joins the box's visual lines with a space, which
- * restores a REAL space only when the box happened to wrap at a word boundary; wrapping mid-run (CJK
- * has no spaces to break at) fabricates a space the sent text never had. The joined string cannot
- * say which kind each of its spaces is, and one string can hold both — "これは pull request です"
- * wrapped mid-CJK has a genuine space AND a fabricated one. So the ambiguity is per-SEAM, not
- * per-string, and no language test can resolve it.
- *
- * Hence: split the draft on whitespace and require its non-space runs to appear in `sent` in order,
- * with only whitespace between them. Every visible character still has to be there, contiguously and
- * in order — only the WIDTH of a gap the fold could have produced is treated as unknowable, which is
- * exactly what the fold destroyed. A draft that dropped or altered a non-space character still fails.
- *
- * Only a gap spelled exactly like the fold's own seam (one plain space) may collapse to nothing, and
- * only that gap is loosened at all. Any other gap — a run of spaces, a tab, an ideographic space —
- * is whitespace the terminal actually rendered, so `sent` must carry that same whitespace verbatim.
- * Without the distinction the guard would accept a screen holding "危険　実行" for a send of
- * "危険実行", or "delete　file" for "delete file": different messages, both authorised.
- *
- * The match must also land on visible-character boundaries, because a code-unit substring can cut a
- * character in half — "👩‍👧‍👦" sits inside "👨‍👩‍👧‍👦" without being it.
- *
- * The length floor stops a short unrelated remnant ("y", "n", a placeholder) from passing as a
- * match; for a send shorter than the floor, the whole thing must be there. It counts non-space
- * characters, since spaces are the part we just agreed not to trust.
- */
-export function draftCarriesSend(sent: string, draft: string | null): boolean {
-  if (draft === null) return false;
-  // Odd indices are the gaps, even indices the runs — the gaps decide how strict each seam is.
-  const parts = draft.trim().split(/(\s+)/);
-  const runs = parts.filter((_part, i) => i % 2 === 0);
-  const gaps = parts.filter((_part, i) => i % 2 === 1);
-  if (runs.length === 0 || runs[0]!.length === 0) return false;
-
-  const visible = runs.reduce((n, run) => n + visibleLength(run), 0);
-  if (visible < Math.min(visibleLength(sent), MIN_MATCH_CHARS)) return false;
-
-  // Runs are whitespace-free by construction, so the joined pattern can never nest quantifiers.
-  const escape = (s: string) => s.replace(REGEXP_META, "\\$&").replaceAll(REDACT_MASK, REDACT_SLOT);
-  let pattern = escape(runs[0]!);
-  for (let i = 1; i < runs.length; i++) {
-    const gap = gaps[i - 1]!;
-    pattern += (gap === FOLD_SEAM ? "\\s*" : escape(gap)) + escape(runs[i]!);
-  }
-
-  // Every occurrence gets its own boundary check, not just the first: an earlier hit that happens to
-  // stop mid-character must not mask a later, properly aligned one. Rewinding to one past the hit's
-  // start (rather than to its end) keeps overlapping occurrences reachable.
-  const scan = new RegExp(pattern, "g");
-  const bounds = characterBoundaries(sent);
-  for (let hit = scan.exec(sent); hit !== null; hit = scan.exec(sent)) {
-    if (bounds.has(hit.index) && bounds.has(hit.index + hit[0].length)) return true;
-    scan.lastIndex = hit.index + 1;
-  }
-  return false;
-}
-
-export interface GuardedReplyArgs {
-  paneId: string;
-  text: string;
-  /** The pane's agent — picks the adapter whose `extractInputDraft` can read the input box. */
-  agent: string | undefined | null;
-  /** Which machine + which named session the pane lives in — scopes every call. */
-  scope?: Scope;
-  /** Lines to request per verification read (undefined = the bridge's default tail, which is where
-   *  the input box always is). */
-  requestedLines?: number;
-  /** Test seam for the poll pacing. */
-  sleep?: Sleep;
-  /** Test seam for the submit-settle clock. Defaults to wall time; tests pin it. */
-  now?: () => number;
-  /**
-   * Override the PRE-FLIGHT'S REFUSAL and type anyway — the user's deliberate second tap after a
-   * `blocked` outcome (a mis-detected screen, an adapter that can't see a box it really has). The
-   * live read still happens; `force` only stops a definite `false` from refusing the send. The
-   * type-then-verify guard below still runs, so the submit key is never fired blind either way, and
-   * `onComposerSeen` still does not run — a screen that just answered "no composer" is the last
-   * place destructive keys may go.
-   */
-  force?: boolean;
-  /**
-   * Work the caller needs done once a live read has POSITIVELY SEEN the composer, and before the
-   * first byte of the reply is typed. Exists for exactly one caller and one reason: composer.tsx's
-   * pre-clear sweep (`ctrl+k` + a run of Backspaces that wipes a stranded draft off the input line so
-   * `pane.send_text` doesn't append to it) is DESTRUCTIVE, and it used to run in the composer before
-   * `sendGuardedReply` was called at all — i.e. before anything had looked at the live pane.
-   *
-   * That ordering is the whole bug. The composer decides to sweep from `display`, which is a
-   * SNAPSHOT: a poll behind while the mirror follows the tail, and frozen outright while the user has
-   * scrolled back or opened find. So its own fail-fast (`dialogPresent`) can read false against a pane
-   * that has since put a dialog up, and the sweep then fires into that dialog — the exact
-   * keystrokes-into-a-modal failure #34 is about, just upstream of where #34 was fixed.
-   *
-   * For an adapter that lifts NO interactive kind that fail-fast is not merely stale, it is inert:
-   * `dialogPresent` is `buildBlocks(...).some(b => b.kind !== "raw")`, so an adapter whose
-   * `buildBlocks` returns one `raw` block by construction can never make it true. Verified live
-   * against an omp pane with a full-screen picker up: `dialogPresent === false`. There is no window
-   * to widen or narrow there — `composerReady` is the ONLY gate on such a pane, which is why this
-   * hook keys on it rather than on the caller having already checked something.
-   *
-   * The name is the contract: this runs ONLY on the branch where `composerReady` answered true about
-   * a pane read moments ago. `force`, a read that threw, an adapter with no `composerReady`, no
-   * adapter at all — none of them reaches it, and neither will whatever path is added next, because
-   * `preflight` hands the runner back only on that one branch (see `Preflight`). Every other path
-   * types without sweeping and leans on type-then-verify, which still withholds the submit key.
-   *
-   * Resolving `{ ok: false }` aborts the send with that error and nothing typed. `keysSent` says
-   * whether anything actually reached the pane: when it did, the pre-flight's evidence is stale and
-   * the guard re-confirms before typing.
-   *
-   * The argument carries the evidence FORWARD, not just the permission. `promptRegion` is the prompt
-   * tail the adapter saw on the pane the pre-flight just read, and a caller that sends destructive
-   * keys must pass it to `api.sendKeys` as `expected_prompt`: an ordering guarantee alone cannot
-   * bound the gap between the read and the keys, because that gap is a network round-trip and the
-   * only limit on it is GET_TIMEOUT_MS. Binding hands the last word to the bridge, which re-reads
-   * immediately before `send_keys` and 409s the write if the row has gone — the same mitigation
-   * every dialog tap already gets through lib/dialog-guard.ts.
-   */
-  onComposerSeen?: (seen: ComposerSeen) => Promise<ComposerPrepResult>;
-}
-
-/** What the pre-flight's live read saw, handed to the caller's pre-type work. */
-export interface ComposerSeen {
-  /**
-   * The composer's own prompt/draft tail, verbatim on screen, for binding a destructive write to it
-   * (`api.sendKeys(..., expectedPrompt)`). `null` when the adapter has no `composerPrompt` — then the
-   * write goes out unbound, which is the pre-existing behaviour and the reason the hook is optional.
-   */
-  promptRegion: string | null;
-}
-
-export type ComposerPrepResult =
-  /** Done. `keysSent` = did anything actually go out on the wire? A caller with nothing to do says
-   *  `false` and saves the guard a re-confirming read. */
-  | { ok: true; keysSent: boolean }
-  /** Abort the send with this error, nothing typed. */
-  | { ok: false; error: string };
-
-// A cumulative prefix alone can match a stale screen after a later paste was
-// dropped. Multipart sends must also show the end that was just delivered.
-// A `•` in the draft may stand for one printable ASCII character of the send (REDACT_MASK).
-function carriesReplyTail(sent: string, draft: string | null): boolean {
-  const tail = Array.from(sent.replace(/\s/g, "")).slice(-32);
-  if (tail.length === 0 || draft === null) return false;
-  const seen = Array.from(draft.replace(/\s/g, "")).slice(-tail.length);
-  return (
-    seen.length === tail.length &&
-    seen.every((ch, i) => ch === tail[i] || (ch === REDACT_MASK && PRINTABLE_ASCII.test(tail[i]!)))
-  );
-}
-
-export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOutcome> {
-  // M46 spec 11: the backstop behind every disabled Send. A UI that slipped through (a stale render,
-  // a handler held across an outage) still cannot reach the bridge from a pane it has not just read.
+/** One Send Protocol request for a text, and what its answer means. Never throws. */
+export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
+  // The backstop behind every disabled Send: a UI that slipped through (a stale render, a handler held
+  // across an outage) still cannot reach the bridge from a pane it has not just read.
   if (!isLive(args.paneId, args.scope)) {
     return { status: "refused", reason: "offline", error: t("composer.send.reconnect") };
   }
-  const adapter = adapterFor(args.agent ?? undefined);
-  // No grammar for this harness → the input box is unreadable, so there is nothing to verify
-  // against and the guard cannot run. Keep the legacy one-shot send rather than guess: a heuristic
-  // over the raw mirror has a false-negative that is worse than the bug — a no-echo input (a shell's
-  // sudo prompt) would never show the text, so the submit key would be withheld forever. Non-Claude
-  // harnesses gain this safety exactly when they gain an adapter.
-  if (!adapter) return oneShot(args);
-
-  // PRE-FLIGHT. The verify-after guard below is enough to keep Enter from answering a dialog, but it
-  // is not enough to keep the MESSAGE out of one: it types first and checks second, so a modal that
-  // owns the keyboard (Claude's `/model` picker — no input box at the tail at all) receives the
-  // user's text before anything notices. One read up front is the difference between "nothing
-  // happened" and "your reply is now sitting in a picker".
-  const { refuse, runPreType, box } = await preflight(adapter, args);
-  if (refuse !== null) return refuse;
-
-  // The ONE call site of the caller's destructive pre-type work — and it is not guarded by a
-  // condition, it is guarded by whether the runner exists at all. `preflight` returns one only from
-  // the branch where a live read just saw the composer, so every other path (force, a read that
-  // threw, an adapter with no `composerReady`, and anything added later) skips this by construction
-  // rather than by remembering to check. `?.()` is the whole enforcement; there is no list to keep
-  // in sync.
-  const aborted = await runPreType?.();
-  if (aborted) return aborted;
-
-  const onWire = (part: string): string => (adapter.bracketedPaste?.(part) ? bracketPaste(part) : part);
-  const chunks = adapter.replyChunks?.(args.text) ?? [args.text];
-  if (chunks.length === 0 || chunks.join("") !== args.text) {
-    return { status: "error", error: t("reply.stalled.generic") };
-  }
-  let delivered = "";
-  let previousDraft: string | null = null;
-  if (chunks.length > 1) {
-    try {
-      const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
-      const lines = splitLines(parseAnsi(fresh.text));
-      // Same box check as the sweep's re-confirm above: a chunked send's reads can land on a
-      // different screen than the probe, and the tail alone cannot tell an overlay from a composer.
-      if (!adapter.composerReady?.(lines) || adapter.overlayHoldsKeyboard?.(lines) === true)
-        return { status: "blocked", error: noBoxMessage() };
-      const split = newlineRefusal(adapter, args.text, lines);
-      if (split !== null) return split;
-      previousDraft = adapter.extractInputDraft(lines);
-      box.draft = previousDraft;
-    } catch (e) {
-      return { status: "error", error: message(e) };
-    }
-  }
-  for (let i = 0; i < chunks.length - 1; i++) {
-    let part;
-    try {
-      part = await sendReply(args.paneId, onWire(chunks[i]!), false, args.scope);
-    } catch (e) {
-      return { status: "error", error: message(e) };
-    }
-    if (!part.ok) return { status: "error", error: describeApiError(part) };
-    delivered += chunks[i]!;
-    let verified = false;
-    for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-      if (attempt > 0) await (args.sleep ?? defaultSleep)(POLL_DELAY_MS);
-      try {
-        const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
-        const lines = splitLines(parseAnsi(fresh.text));
-        // A screen that changed under the send must not unlock a later chunk carrying a `\n` into
-        // an input that submits on it. The earlier chunks are already in the pane, so say so.
-        if (newlineRefusal(adapter, args.text, lines) !== null) {
-          return { status: "error", error: t("reply.refused.multilineMidway"), textDelivered: true };
-        }
-        const draft = adapter.extractInputDraft(lines);
-        if (draft !== previousDraft && adapter.composerReady?.(lines) && draftCarriesSend(delivered, draft) && carriesReplyTail(delivered, draft)) {
-          verified = true;
-          previousDraft = draft;
-          box.draft = draft;
-          break;
-        }
-      } catch {
-        // Retry the read only. Never repeat an acknowledged paste.
-      }
-    }
-    if (!verified) return { status: "stalled", error: t("reply.stalled.generic") };
-  }
-
-  let typed;
+  const mode = args.mode ?? modeFor(args.text);
+  const rowsHash = args.rowsHash ?? null;
+  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${args.text}`, args.mint ?? mintRequestId);
+  const body: SendRequestBody = { id: intent.requestId, pane: args.paneId, text: args.text, mode };
   try {
-    typed = await sendReply(args.paneId, onWire(chunks[chunks.length - 1]!), false, args.scope);
+    const reply = await postSend(rowsHash === null ? body : { ...body, rowsHash }, args.scope);
+    return { status: "answered", reply, reading: readSend(reply) };
   } catch (e) {
-    return { status: "error", error: message(e) };
+    return { status: "noAnswer", error: describeThrownError(e), intent };
   }
-  if (!typed.ok) return { status: "error", error: describeApiError(typed) };
-  // The submit settle is measured from the last type call returning: the verify loop below can
-  // match on its first read, and a harness may swallow an Enter sent that fast
-  // (`submitSettleMs`, e.g. Muse 1.4.4, #395).
-  const typedAt = (args.now ?? Date.now)();
-  const settleMs = adapter.submitSettleMs?.() ?? 0;
-
-  const sleep = args.sleep ?? defaultSleep;
-  // The last screen a verification read actually saw, kept only so the stall below can be named. The
-  // pre-flight catches almost every password prompt before a byte is typed, but not all of them: a
-  // harness with no `composerReady`, and a `force` the operator armed against a mis-detected screen,
-  // both arrive here having typed the secret into a prompt that will never echo it.
-  let lastSeen: string | null = null;
-  // The last successfully parsed screen beside it, so a stalled send can name a dialog, menu or
-  // overlay box that opened mid-send instead of guessing. Only ever read through the adapter's
-  // own positive-evidence predicates — no new shapes.
-  let lastLines: StyledLine[] | null = null;
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-    // Read BEFORE the first sleep: pane.read is an on-demand live read, not a cached poll, so the
-    // text is often already on screen by the time the type call returns. That saves a whole
-    // POLL_DELAY_MS off the common path — the old blind flow always paid a fixed 350ms here. An
-    // adapter whose harness needs a beat before Enter declares it (`submitSettleMs`), and the
-    // submit below pays only the remainder of that floor.
-    if (attempt > 0) await sleep(POLL_DELAY_MS);
-    let draft: string | null = null;
-    let verifiedPrompt: string | undefined;
-    try {
-      const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
-      const lines = splitLines(parseAnsi(fresh.text));
-      lastLines = lines;
-      // Only a screen the adapter does NOT recognise as its composer can be a raw password prompt.
-      // Without that gate a match on the tail is dangerous rather than merely wrong: the notice this
-      // feeds tells the operator to press Enter in Type, so a stall that was really a dialog eating
-      // the text — with an agent that happened to PRINT "Enter passphrase:" as its last line — would
-      // have us advising the exact keystroke #34 exists to prevent. An adapter with no
-      // `composerReady` cannot rule anything out, so it doesn't (`?? false`): that path is the
-      // unguarded one either way, and it is where a bare shell's sudo prompt actually lives.
-      const composerVisible = adapter.composerReady?.(lines) ?? false;
-      lastSeen = composerVisible ? null : detectNoEchoPrompt(lines);
-      draft = adapter.extractInputDraft(lines);
-      // Carry the exact region from the same read that verified the text. The bridge checks it again
-      // before sending submitKeys, so a focus change after verification becomes prompt_changed.
-      verifiedPrompt = adapter.composerPrompt?.(lines) ?? undefined;
-    } catch {
-      continue; // transient read failure — the bounded loop is the timeout
-    }
-    // The tail check applies to single-chunk sends too, not just multi-chunk: the substring
-    // matcher above accepts a prefix of the echo, and binding that partial row makes the bridge's
-    // exact check refuse the submit (promptBinding not_found) while the text sits delivered in the
-    // box — three stalls in the 2026-09-27 audit trail. A complete echo is the final state, so once
-    // the tail is on screen the bound region is stable; token-collapsed sends still route to the
-    // adapter's second look below, which is its purpose.
-    if (draftCarriesSend(args.text, draft) && carriesReplyTail(args.text, draft) && (chunks.length === 1 || draft !== previousDraft)) return submitOnly(args, verifiedPrompt, typedAt, settleMs);
-    // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
-    // paint a token of its own instead (Claude collapses anything past its paste threshold into
-    // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
-    // cannot succeed — the send stalls forever while every retry re-collapses. The adapter is the only
-    // thing that knows its harness's token and whether this one is consistent with THIS send
-    // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
-    // capability is untouched. `box.draft` is what the last read BEFORE the final part saw, so an
-    // adapter whose token says nothing about its content can tell a token that was already there
-    // from the one this send made.
-    if (draft !== null && adapter.draftCarriesSend?.(args.text, draft, box.draft)) {
-      return submitOnly(args, verifiedPrompt, typedAt, settleMs);
-    }
-  }
-
-  // The text never showed up on the input line. The likeliest cause is a dialog holding focus and
-  // eating the keystrokes — and the one thing we must NOT do is send the submit key anyway, because
-  // that is precisely what answers the dialog. Stop dead and let the caller keep the draft.
-  //
-  // If instead this is a false negative (the text IS in the box, the adapter just couldn't see it),
-  // nothing is lost: the next send's pre-clear sweep removes it, and the stranded-draft preview
-  // surfaces it in the meantime.
-  if (lastSeen !== null) {
-    // Typed into a prompt that will never show it. The text IS in the pane — unsubmitted, which for a
-    // password means the operator needs one Enter, not a retry, and a retry would type a second copy.
-    return {
-      status: "stalled",
-      error: t("reply.stalled.noEcho"),
-      noEcho: lastSeen,
-    };
-  }
-  // The verify polls watched the text vanish into a dialog, menu or overlay box that opened
-  // mid-send: name it instead of guessing — unless the send was forced, where the operator typed
-  // knowingly into a refused screen and the "that key likely landed" warning below is the news that
-  // matters. Same positive-evidence predicates as the pre-flight above, no new shapes.
-  if (
-    !args.force &&
-    lastLines !== null &&
-    (adapter.modalOnScreen?.(lastLines) === true ||
-      adapter.overlayHoldsKeyboard?.(lastLines) === true)
-  ) {
-    return { status: "stalled", error: t("reply.stalled.modal") };
-  }
-  return {
-    status: "stalled",
-    error: t("reply.stalled.generic"),
-  };
-}
-
-const PASTE_START = "\x1b[200~";
-const PASTE_END = "\x1b[201~";
-/** Both paste markers in the 7-bit form (`ESC [`) and the 8-bit CSI form (`\x9b`). */
-const PASTE_MARKERS = [PASTE_START, PASTE_END, "\x9b200~", "\x9b201~"] as const;
-
-function withoutPasteMarkers(text: string): string {
-  return PASTE_MARKERS.reduce((out, marker) => out.replaceAll(marker, ""), text);
-}
-
-/**
- * One reply part framed as a single bracketed paste, for a harness whose `bracketedPaste` asks. Any
- * paste marker already inside the text is dropped, and the drop repeats until the text stops
- * changing: one pass can join the pieces on either side of a removed marker into a new one
- * (`ESC[2` + `ESC[201~` + `01~`), so no sequence of removals may leave a marker behind. An end marker
- * left in would close the paste early and the rest, newlines included, would arrive as keystrokes.
- * Every other byte of the reply is kept as it is.
- */
-export function bracketPaste(text: string): string {
-  let body = text;
-  let next = withoutPasteMarkers(body);
-  while (next !== body) {
-    body = next;
-    next = withoutPasteMarkers(body);
-  }
-  return `${PASTE_START}${body}${PASTE_END}`;
-}
-
-function noBoxMessage(): string {
-  return t("reply.blocked.noBox");
-}
-
-/** Said instead of {@link noBoxMessage} when the screen is a password prompt. It names the mechanism
- *  rather than the symptom, because the operator's next move depends on knowing that waiting won't
- *  help. */
-function noEchoMessage(): string {
-  return t("reply.blocked.noEcho");
-}
-
-/**
- * The refusal for a multi-line message on an input that SUBMITS on a raw newline, or null.
- * `pane.send_text` types each `\n` as a keypress, so there the message would be answered at its first
- * line break and the rest typed into whatever comes next. Asked of every read that clears the text to
- * go out — the pre-flight, the re-check after the pre-clear sweep, the read before a chunked send —
- * because each can land on a different input than the read before it. No override fixes this, so it
- * is an `error`, not a `blocked` that would offer "type anyway": the caller keeps the draft.
- */
-function newlineRefusal(adapter: HarnessAdapter, text: string, lines: StyledLine[]): ReplyOutcome | null {
-  if (!/[\r\n]/.test(text) || !adapter.newlineSubmits?.(lines)) return null;
-  return { status: "error", error: t("reply.refused.multiline") };
-}
-
-/**
- * What the pre-flight decided. Two fields, and the second is the safety invariant of this module made
- * structural rather than conditional:
- *
- *   `refuse`     — non-null ⇒ return it; the send is refused with no reply text typed.
- *   `runPreType` — non-null ⇒ a live read POSITIVELY SAW the composer, so the caller's destructive
- *                  pre-type work may run. It is created on exactly one branch below and nowhere else.
- *
- * The point of shipping the permission as a CALLABLE rather than a boolean is that there is nothing
- * for a later edit to re-derive, forget, or get subtly wrong: a new path through `preflight` that does
- * not positively confirm a composer cannot produce a runner, so it cannot fire a keystroke, whatever
- * its author intended. That is what the three holes the previous shape left open all had in common —
- * `force`, a read that threw, and an adapter with no `composerReady` each SKIPPED the read and then
- * ran the sweep anyway, because the sweep was gated on its own separate condition — "did the caller
- * hand me a callback?" — instead of on the evidence.
- */
-interface Preflight {
-  refuse: ReplyOutcome | null;
-  runPreType: (() => Promise<ReplyOutcome | null>) | null;
-  /** The input box as the latest read before typing saw it; `draft` stays unset when nothing read it. */
-  box: { draft?: string | null };
-}
-
-/** A preflight that read nothing: no pre-type sweep may run, and `refuse` says whether to send. */
-const blind = (refuse: ReplyOutcome | null): Preflight => ({ refuse, runPreType: null, box: {} });
-
-/**
- * One live read, and everything the rest of the send is allowed to do with it.
- *
- * Fail-OPEN for the MESSAGE in both weak directions — an adapter without `composerReady` and a read
- * that throws both fall through to the type-then-verify guard rather than blocking a send on a
- * transient network blip — and fail-CLOSED for KEYS in every direction but one. Failing open for the
- * message is defensible: the submit key is still withheld until the text is seen. Extending that to a
- * `ctrl+k` + 40×Backspace burst is not, because those keys are not withheld by anything downstream —
- * once sent they have already landed in whatever owns the keyboard.
- */
-async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promise<Preflight> {
-  // Nothing here can read this harness's input box, so there is no evidence to be had — and no
-  // refusal to make either. Same behaviour as before an adapter grows a `composerReady`, minus the
-  // sweep, which had no business going out unverified.
-  if (!adapter.composerReady) return blind(null);
-
-  const composerReady = adapter.composerReady.bind(adapter);
-  let probe;
-  try {
-    probe = await fetchPane(args.paneId, args.requestedLines, args.scope);
-  } catch {
-    return blind(null); // transient read failure
-  }
-  const seen = splitLines(parseAnsi(probe.text));
-  // A full overlay box (the /models-style overlay, the slash palette) holds the keyboard while
-  // the composer tail stays intact, so `composerReady` still answers true although typing would
-  // land in the overlay's filter, never the input box. Refused on the same terms as a missing
-  // composer: the one screen with positive evidence says "no input box", whatever the tail claims.
-  if (!composerReady(seen) || adapter.overlayHoldsKeyboard?.(seen) === true) {
-    // `force` is the user's deliberate "type anyway", so it overrides the refusal — but this is the
-    // one screen we have POSITIVE evidence about, and what it says is "no composer". Keys stay home.
-    if (args.force) return blind(null);
-    // The refusal is already made; naming the screen only changes what the operator is told. A
-    // password prompt is the one case where the generic "a menu or dialog is probably up" is not just
-    // unhelpful but actively misleading — there is no dialog to answer and no amount of retrying will
-    // ever work, because the evidence this guard needs is exactly what the prompt is refusing to show
-    // (#103). Hand the prompt itself back so the caller can say so and offer "Type".
-    const noEcho = detectNoEchoPrompt(seen);
-    if (noEcho !== null) return blind({ status: "blocked", error: noEchoMessage(), noEcho });
-    return blind({ status: "blocked", error: noBoxMessage() });
-  }
-
-  const split = newlineRefusal(adapter, args.text, seen);
-  if (split !== null) return blind(split);
-
-  // The region the read's `true` was true OF. Computed here, from the same parse `composerReady` just
-  // answered about, so the caller cannot bind its keys to anything but the screen that authorised
-  // them — and cannot forget to, since it arrives as the argument.
-  const promptRegion = adapter.composerPrompt?.(seen) ?? null;
-  const box: Preflight["box"] = { draft: adapter.extractInputDraft(seen) };
-
-  return {
-    refuse: null,
-    box,
-    runPreType: async () => {
-      if (!args.onComposerSeen) return null;
-      let prep;
-      try {
-        prep = await args.onComposerSeen({ promptRegion });
-      } catch (e) {
-        return { status: "error", error: message(e) };
-      }
-      if (!prep.ok) return { status: "error", error: prep.error };
-      if (!prep.keysSent) return null; // the read above is still the freshest thing there is
-
-      // The caller put keys on the wire and waited for the TUI to settle, so the evidence that
-      // authorised them is now an RPC and a settle old. Re-confirm before the MESSAGE goes out —
-      // otherwise this ordering, which exists to stop keys reaching a dialog, would hand the dialog
-      // the reply instead. Still fail-open on a throw: the submit key is guarded downstream.
-      try {
-        const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
-        const lines = splitLines(parseAnsi(fresh.text));
-        // The sweep's keys are on the wire: an overlay box that opened since the probe would eat
-        // the message next, so the re-confirm consults the box predicate too — same screen, no
-        // new read, and a miss still only ever refuses.
-        if (composerReady(lines) && adapter.overlayHoldsKeyboard?.(lines) !== true) {
-          box.draft = adapter.extractInputDraft(lines);
-          return newlineRefusal(adapter, args.text, lines);
-        }
-      } catch {
-        // Keys went out and the box was not read again, so what it holds now is unknown.
-        delete box.draft;
-        return null;
-      }
-      return {
-        status: "blocked",
-        error: t("reply.blocked.composerLeft"),
-      };
-    },
-  };
-}
-
-/** The pre-#34 behaviour: one call that types AND submits. Only for harnesses with no adapter. */
-async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
-  // No `onComposerSeen` here, and none is possible: with no adapter nothing can read the input box,
-  // so no live read can ever confirm a composer, and the invariant says the destructive sweep stays
-  // home. It costs this path nothing — agent-chat derives the stranded draft through
-  // `adapterFor(agent)?.extractInputDraft`, so a pane with no adapter has no draft to sweep and the
-  // composer's callback was already a no-op here.
-  try {
-    const res = await sendReply(args.paneId, args.text, true, args.scope);
-    return res.ok ? { status: "sent" } : { status: "error", error: describeApiError(res) };
-  } catch (e) {
-    return { status: "error", error: message(e) };
-  }
-}
-
-/**
- * Empty text + submit: `sendReplySteps` skips the send_text step entirely and sends ONLY the
- * bridge's configured submit keys (COLLIE_SUBMIT_KEYS). When available, the verified prompt region
- * rides along as `expected_prompt`, so the bridge can refuse a stale submit before those keys land.
- */
-async function submitOnly(
-  args: GuardedReplyArgs,
-  expectedPrompt: string | undefined,
-  typedAt: number,
-  settleMs: number,
-): Promise<ReplyOutcome> {
-  // The echo proved the bytes are ON SCREEN, not that the TUI will act on Enter: hold the
-  // submit until the adapter's settle floor has passed since the type call. Clamped both ways — a
-  // slow verify pays nothing extra, and a backward clock step pays one full floor, never more.
-  // `force` does not reach here: it only overrides the pre-flight refusal, so a forced send that
-  // verifies pays the same floor.
-  if (settleMs > 0) {
-    const elapsed = (args.now ?? Date.now)() - typedAt;
-    const wait = Math.min(settleMs, Math.max(0, settleMs - elapsed));
-    if (wait > 0) await (args.sleep ?? defaultSleep)(wait);
-  }
-  try {
-    const res = await sendReply(args.paneId, "", true, args.scope, expectedPrompt);
-    if (res.ok) return { status: "sent" };
-    // The text is verifiably sitting in the input box and only the submit key failed — same shape as
-    // the bridge's own partial-failure case. Tell the caller not to resend.
-    return {
-      // The bridge's own `reply.not_submitted` case, reached from the client side — so it says it
-      // with the bridge's own catalogued sentence rather than a second copy of the English.
-      status: "error",
-      error:
-        res.code === "prompt_changed"
-          ? t("apiError.prompt_changed")
-          : t("apiError.reply.not_submitted"),
-      textDelivered: true,
-    };
-  } catch (e) {
-    return { status: "error", error: message(e), textDelivered: true };
-  }
-}
-
-function message<TThrown>(e: TThrown): string {
-  // A throw from lib/api.ts carries the bridge's code, so it can be said in the operator's language;
-  // a transport failure still falls through to its own message (lib/api-error-message.ts).
-  return describeThrownError(e);
 }

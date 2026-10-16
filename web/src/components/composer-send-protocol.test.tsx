@@ -11,9 +11,9 @@ import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
-// M56 spec 05 on the composer: on a pane the bridge marks with `sendProtocol`, Send posts ONE request
-// to `POST /api/send` and renders the answer; the phone-side guard and the old reply route stay out of
-// it. A retry after no answer reuses the id; every offer is a new request with a new id.
+// M56 specs 05 and 06 on the composer: Send posts ONE request to `POST /api/send` and renders the
+// answer; there is no phone-side guard and no old reply route any more. A retry after no answer reuses
+// the id; every offer is a new request with a new id.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -28,12 +28,11 @@ afterEach(() => cleanup());
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
-    sendProtocol: true,
     agent: "claude",
     isShell: false,
     gone: false,
     readOnly: false,
-    dialogPresent: false,
+    surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
@@ -90,7 +89,7 @@ function receipt(outcome: string, reason?: string): ReceiptStub {
   return out;
 }
 
-describe("Composer on the Send Protocol (M56 spec 05)", () => {
+describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   it("posts one request, clears the draft on sent, and touches no old pane route", async () => {
     const user = userEvent.setup();
     const { sends, paneCalls } = bridge([{ body: { receipt: receipt("sent"), offers: [] } }]);
@@ -181,17 +180,26 @@ describe("Composer on the Send Protocol (M56 spec 05)", () => {
     expect(sends[1]!.id).toBe(sends[0]!.id);
   });
 
-  it("a slash command keeps the old route, and so does a pane without the mark", async () => {
+  it("a slash command goes as a command, and its commit stays a command (M56 spec 06)", async () => {
     const user = userEvent.setup();
-    const { sends } = bridge([]);
+    const { sends, paneCalls } = bridge([
+      { body: { receipt: receipt("refused", "unconfirmed"), offers: ["commit", "keys"], rowsHash: "0abc12" } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "/compact");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    cleanup();
-    renderComposer({ sendProtocol: false });
-    await user.type(screen.getByPlaceholderText(/type a reply/i), "plain words");
-    await user.click(screen.getByRole("button", { name: "Send" }));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends.map((s) => s.mode)).toEqual(["command", "command"]);
+    expect(paneCalls).toEqual([]);
+  });
+
+  it("a box out of reach sends nothing: the field is locked and says why", async () => {
+    const { sends } = bridge([]);
+    renderComposer({ surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unreachable" }, unreachableNote: "Sending is off on this machine" });
+    expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(sends).toEqual([]);
   });
 });

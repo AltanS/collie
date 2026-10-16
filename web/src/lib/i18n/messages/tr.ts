@@ -252,6 +252,8 @@ export const tr: Dictionary = {
   "composer.placeholder.gone": "Bölme kapandı",
   "composer.placeholder.readOnly": "Yalnızca okunur: yetki yok",
   "composer.placeholder.noMuxSend": "Bu terminale yazılamıyor",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -278,7 +280,6 @@ export const tr: Dictionary = {
   "composer.attach.listAria": "Ekler",
   "composer.attach.removeAria": "{name} öğesini kaldır",
   "composer.attach.inFront": "İşareti metninizde yok, bu nedenle Gönder {name} öğesini başa ekler.",
-  "composer.send.typeAnyway": "Yine de yazılsın mı?",
   "composer.send.reallySend": "Gerçekten gönderilsin mi?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Uçbirime yazmayı durdur",
@@ -287,12 +288,7 @@ export const tr: Dictionary = {
   "composer.draft.tooLong": "Kayıtlı taslak olarak tutulamayacak kadar uzun: Bölmeler arası geçişte korunur ancak uygulama kapatıldığında silinir.",
   "composer.draft.holdsMask": "Bu yanıt maskelenmiş metin (••••) içeriyor. Bölme gizli bilgiyi değil, noktaları alır.",
   "composer.status.dialogWaiting": "Bir iletişim kutusu bekliyor: Önce yanıtlayın, ardından gönderin.",
-  "composer.status.unreadDialog": "Collie bu iletişim kutusunu okuyamıyor. {key} kartta yer alıyor. Yine de yazmak için Gönder'e tekrar dokunun.",
-  "composer.status.paneNotWritable": "Bölme artık yazılabilir değil: Hiçbir şey gönderilmedi",
-  "composer.status.inputChanged": "Temizlenirken giriş kutusu değişti: Hiçbir şey yazılmadı. Bölmeyi kontrol edin.",
-  "composer.status.clearFailed": "Uçbirim girişi temizlenemedi",
   "composer.status.sent": "Gönderildi ✓",
-  "composer.status.tapAgainToType": "{error} Yine de yazmak için Gönder'e tekrar dokunun.",
   "composer.discard.confirmKeys.one": "Kuyruktaki {count} tuşu silmek için tekrar dokunun",
   "composer.discard.confirmKeys.other": "Kuyruktaki {count} tuşu silmek için tekrar dokunun",
   "composer.destructive.confirm": "Yıkıcı: {reason}. Onaylamak için Gönder'e tekrar dokunun",
@@ -315,6 +311,7 @@ export const tr: Dictionary = {
   "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini bilmiyor. Yeniden göndermeden önce bölmeyi kontrol et.",
   "composer.protocol.busy": "Bu bölmeye başka bir gönderim hâlâ sürüyor. Bekle ve yeniden dene.",
   "composer.protocol.notFree": "Giriş kutusu boş değil. Hiçbir şey yazılmadı.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "Yazılan giriş kutusuna ulaşmadı, bu yüzden hiçbir şey yazılmadı. Bölmeyi kontrol et.",
   "composer.protocol.reservedLead": "/ ! veya @ ile başlayan metnin kendi yolu var. Hiçbir şey yazılmadı.",
   "composer.protocol.moved": "Ekran değişti. Bölmeyi kontrol et, sonra yeniden gönder.",
@@ -331,6 +328,18 @@ export const tr: Dictionary = {
   "composer.protocol.commit": "Buraya yaz",
   "composer.protocol.keys": "Tuşlar",
   "composer.protocol.dismissAria": "Gönderim seçeneklerini kapat",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "Taslak bu telefonda kalır ve asla kendiliğinden gönderilmez.",
   "composer.offline.draftNote.dismissAria": "Çevrimdışı taslak notunu kapat",
   "composer.draftPreview.title": "Terminalde taslak",
@@ -1294,14 +1303,6 @@ export const tr: Dictionary = {
   "dialog.preview.removeNoteAria": "Notu kaldır",
   "dialog.preview.noteAria": "Not",
   "dialog.preview.addNote": "Bu cevaba bir not ekleyin",
-  "reply.blocked.noBox": "Ajanın giriş kutusu ekranda değil; muhtemelen bir menü veya iletişim kutusu açık. Hiçbir şey yazılmadı.",
-  "reply.blocked.noEcho": "Bu bir parola istemi; yazarken hiçbir şey göstermez, bu yüzden Gönder metnin ulaştığını doğrulayamaz. Hiçbir şey yazılmadı.",
-  "reply.blocked.composerLeft": "Giriş satırı temizlenirken ajanın giriş kutusu ekrandan kayboldu; muhtemelen bir menü veya iletişim kutusu açık. Mesajınız yazılmadı.",
-  "reply.refused.multiline": "Bu giriş yeni satırda gönderilir, bu yüzden çok satırlı bir mesaj ilk satır sonundan kesilir. Tek bir satıra yazın. Hiçbir şey yazılmadı.",
-  "reply.refused.multilineMidway": "Bu giriş yeni satırda gönderilir, bu yüzden çok satırlı bir mesaj ilk satır sonundan kesildi. Öncesindeki kısım zaten bölmede. Mesajı tek bir satıra yazın.",
-  "reply.stalled.noEcho": "Bu bir parola istemi; yazarken hiçbir şey göstermez, bu yüzden metin doğrulanamaz ve hiçbir şey gönderilmedi. Yazdığınız şey zaten bölmede.",
-  "reply.stalled.generic": "Mesaj giriş kutusuna ulaşmadı; bir iletişim kutusu bekliyor olabilir ve bir tuşla yanıtlıyorsanız o tuş muhtemelen iletildi. Hiçbir şey gönderilmedi.",
-  "reply.stalled.modal": "Mesaj giriş kutusuna ulaşmadı; bir iletişim kutusu, menü veya üst katman klavyeyi tutuyordu ve metin oraya gitti. Hiçbir şey gönderilmedi.",
   "previewAction.note.notOpened": "Not girişi açılmadı, bölmeyi kontrol edin",
   "previewAction.note.clearFailed": "Mevcut not temizlenemedi, bölmeyi kontrol edin",
   "previewAction.note.textFailed": "Not metni ulaşmadı, bölmeyi kontrol edin",

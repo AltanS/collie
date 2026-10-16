@@ -14,7 +14,7 @@ import {
 } from "./connection-health";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
-import { asJsonString, parseJsonObject, type JsonObject } from "./json";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { readSendReply, type SendReply } from "./send-protocol";
 import type { SendRequestBody } from "./surface/send";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -1370,7 +1370,19 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
  */
 export async function postSend(body: SendRequestBody, scope?: Scope): Promise<SendReply> {
   stampSend(body.pane);
-  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  // A pane on a crew member goes through the pane's reply route, which the lead forwards to the
+  // member like any other write; the member runs the same Send Protocol on its own screen and puts
+  // the answer under `send` (M56 spec 06). `/api/send` serves this machine's own panes only.
+  const got = normalizeScope(scope).host
+    ? asJsonObject(
+        (
+          await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {
+            method: "POST",
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash }),
+          })
+        ).send,
+      )
+    : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);

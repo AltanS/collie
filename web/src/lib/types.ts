@@ -199,11 +199,16 @@ export interface AgentView {
   actions?: PaneAction[];
   /**
    * The pane's input surface as the bridge reads it from the screen (M56 spec 04). Mirrors
-   * `PaneWire.surface` in bridge/types.ts. Present only while the bridge runs Surface shadow mode;
-   * absent on an older bridge and with the mode off. Nothing here decides a send by it yet.
+   * `PaneWire.surface` in bridge/types.ts. The composer's Send slot is a function of it (M56 spec 06,
+   * lib/send-slot.ts). Absent on an older bridge and on a pane the bridge has not read yet, which the
+   * composer reads as `unknown(no-match)`.
    */
   surface?: Surface;
-  /** Mirrors `PaneWire.sendProtocol` (M56 spec 05): the composer sends through `POST /api/send`. */
+  /**
+   * Mirrors `PaneWire.sendProtocol` (M56 spec 05): the bridge runs the Send Protocol for this pane, so
+   * the composer sends through it. Absent means sending text is off there (`COLLIE_SEND_PROTOCOL=0`, or
+   * a crew member older than the protocol), and the composer says so (M56 spec 06).
+   */
   sendProtocol?: true;
 }
 

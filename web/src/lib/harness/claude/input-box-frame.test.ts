@@ -6,7 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail, namesAModalKey } from "./chrome";
-import { draftCarriesSend } from "../../reply-action";
+import { draftCarriesSend } from "../../draft-match";
 import { claudeAdapter, claudeBuildBlocks } from "./index";
 import { lineText } from "./markers";
 import { detectMarketplacesRegion } from "./marketplaces";

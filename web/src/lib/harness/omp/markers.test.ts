@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines } from "../../blocks";
-import { draftCarriesSend } from "../../reply-action";
+import { draftCarriesSend } from "../../draft-match";
 import {
   composerBottomText,
   composerContText,

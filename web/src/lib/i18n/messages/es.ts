@@ -307,6 +307,8 @@ export const es: Dictionary = {
   "composer.placeholder.gone": "El panel ya no existe",
   "composer.placeholder.readOnly": "Solo lectura: dispositivo no autorizado",
   "composer.placeholder.noMuxSend": "No es posible escribir en esta terminal",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -333,7 +335,6 @@ export const es: Dictionary = {
   "composer.attach.listAria": "Adjuntos",
   "composer.attach.removeAria": "Quitar {name}",
   "composer.attach.inFront": "Su marcador ya no está en el texto, por lo que Enviar antepone {name}.",
-  "composer.send.typeAnyway": "¿Escribir de todos modos?",
   "composer.send.reallySend": "¿Confirmar envío?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Detener escritura en la terminal",
@@ -343,14 +344,7 @@ export const es: Dictionary = {
     "Texto demasiado largo para persistir como borrador. Se conserva al cambiar de panel, pero no al cerrar la app.",
   "composer.draft.holdsMask": "Esta respuesta contiene texto oculto (••••). El panel recibe los puntos, no el secreto.",
   "composer.status.dialogWaiting": "Hay un diálogo pendiente. Respóndelo antes de enviar.",
-  "composer.status.unreadDialog":
-    "Collie no puede leer este diálogo. {key} está en la tarjeta. Pulsa Enviar de nuevo para escribir igualmente.", // wordsmith
-  "composer.status.paneNotWritable": "El panel ya no admite escritura. No se envió nada.",
-  "composer.status.inputChanged":
-    "La entrada cambió durante la limpieza y no se escribió nada. Revisa el panel.",
-  "composer.status.clearFailed": "No se pudo limpiar la entrada de la terminal",
   "composer.status.sent": "Enviado ✓",
-  "composer.status.tapAgainToType": "{error} Pulsa Enviar de nuevo para forzar la escritura.",
   "composer.discard.confirmKeys.one": "Pulsa de nuevo para descartar {count} tecla en cola",
   "composer.discard.confirmKeys.other": "Pulsa de nuevo para descartar {count} teclas en cola",
   "composer.destructive.confirm": "Acción destructiva: {reason}. Pulsa Enviar de nuevo para confirmar.",
@@ -378,6 +372,7 @@ export const es: Dictionary = {
   "composer.protocol.unknown": "Collie no sabe si se envió. Revisa el panel antes de enviar de nuevo.",
   "composer.protocol.busy": "Otro envío a este panel sigue en curso. Espera e inténtalo de nuevo.",
   "composer.protocol.notFree": "El cuadro de entrada no está libre. No se escribió nada.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "La escritura no llegó al cuadro de entrada, así que no se escribió nada. Revisa el panel.",
   "composer.protocol.reservedLead": "Un texto que empieza por / ! o @ tiene su propia ruta. No se escribió nada.",
   "composer.protocol.moved": "La pantalla cambió. Revisa el panel y envía de nuevo.",
@@ -394,6 +389,18 @@ export const es: Dictionary = {
   "composer.protocol.commit": "Escribir aquí",
   "composer.protocol.keys": "Teclas",
   "composer.protocol.dismissAria": "Cerrar las opciones de envío",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "El borrador se queda en este teléfono y nunca se envía solo.",
   "composer.offline.draftNote.dismissAria": "Cerrar el aviso del borrador sin conexión",
   "composer.draftPreview.title": "Borrador en la terminal",
@@ -1425,24 +1432,6 @@ export const es: Dictionary = {
   "dialog.preview.removeNoteAria": "Eliminar nota",
   "dialog.preview.noteAria": "Nota",
   "dialog.preview.addNote": "Añadir nota a esta respuesta",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox":
-    "El campo de entrada del agente no está en pantalla. Probablemente hay un menú o diálogo abierto. No se introdujo texto.",
-  "reply.blocked.noEcho":
-    "Es una solicitud de contraseña. Al no mostrar caracteres al escribir, Enviar no puede confirmar la recepción del texto. No se introdujo nada.",
-  "reply.blocked.composerLeft":
-    "El campo de entrada del agente desapareció al limpiar la línea. Probablemente hay un menú o diálogo abierto. No se introdujo el mensaje.",
-  "reply.refused.multiline":
-    "Este campo envía al recibir un salto de línea, así que un mensaje de varias líneas se cortaría en el primer salto. Escríbelo en una sola línea. No se introdujo nada.",
-  "reply.refused.multilineMidway":
-    "Este campo envía al recibir un salto de línea, así que un mensaje de varias líneas se cortó en el primer salto. La parte anterior ya está en el panel. Escríbelo en una sola línea.",
-  "reply.stalled.noEcho":
-    "Es una solicitud de contraseña. No muestra salida al escribir, por lo que el texto no se pudo confirmar ni enviar. El contenido introducido permanece en el panel.",
-  "reply.stalled.generic":
-    "El mensaje no llegó al campo de entrada. Puede haber un diálogo activo y, si se pulsó una tecla para responderlo, es probable que se haya registrado. No se envió nada.",
-  "reply.stalled.modal":
-    "El mensaje no llegó al campo de entrada: un diálogo, un menú o una superposición retenía el teclado y el texto llegó allí. No se envió nada.",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "El campo de nota no se abrió. Revisa el panel.",

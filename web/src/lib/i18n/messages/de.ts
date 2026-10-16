@@ -309,6 +309,8 @@ export const de: Dictionary = {
   "composer.placeholder.gone": "Pane existiert nicht mehr",
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",
   "composer.placeholder.noMuxSend": "Eingabe in dieses Terminal nicht möglich",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -335,7 +337,6 @@ export const de: Dictionary = {
   "composer.attach.listAria": "Anhänge",
   "composer.attach.removeAria": "{name} entfernen",
   "composer.attach.inFront": "Seine Markierung fehlt in Ihrem Text, daher setzt Senden {name} voran.",
-  "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",
@@ -345,14 +346,7 @@ export const de: Dictionary = {
     "Zu lang für einen dauerhaften Entwurf. Bleibt beim Pane-Wechsel erhalten, geht aber beim Beenden der App verloren.",
   "composer.draft.holdsMask": "Diese Antwort enthält maskierten Text (••••). Das Pane erhält die Punkte, nicht das Geheimnis.",
   "composer.status.dialogWaiting": "Ein Dialog ist geöffnet. Erst antworten, dann senden.",
-  "composer.status.unreadDialog":
-    "Collie kann diesen Dialog nicht lesen. {key} steht auf der Karte. Zum Tippen erneut auf Senden tippen.", // wordsmith
-  "composer.status.paneNotWritable": "Pane ist nicht mehr beschreibbar. Nichts gesendet.",
-  "composer.status.inputChanged":
-    "Eingabefeld hat sich beim Leeren geändert. Es wurde nichts getippt. Pane prüfen.",
-  "composer.status.clearFailed": "Terminal-Eingabe konnte nicht geleert werden",
   "composer.status.sent": "Gesendet ✓",
-  "composer.status.tapAgainToType": "{error} Erneut tippen, um die Eingabe trotzdem zu senden.",
   "composer.discard.confirmKeys.one": "Erneut tippen, um {count} wartende Taste zu verwerfen",
   "composer.discard.confirmKeys.other": "Erneut tippen, um {count} wartende Tasten zu verwerfen",
   "composer.destructive.confirm": "Destruktiv: {reason}. Erneut tippen zum Bestätigen.",
@@ -380,6 +374,7 @@ export const de: Dictionary = {
   "composer.protocol.unknown": "Collie weiß nicht, ob das gesendet wurde. Prüfe den Bereich, bevor du erneut sendest.",
   "composer.protocol.busy": "Eine andere Sendung an diesen Bereich läuft noch. Warte und versuche es erneut.",
   "composer.protocol.notFree": "Das Eingabefeld ist nicht frei. Es wurde nichts getippt.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "Die Eingabe kam nicht im Eingabefeld an, daher wurde nichts getippt. Prüfe den Bereich.",
   "composer.protocol.reservedLead": "Ein Text, der mit / ! oder @ beginnt, hat einen eigenen Weg. Es wurde nichts getippt.",
   "composer.protocol.moved": "Der Bildschirm hat sich geändert. Prüfe den Bereich und sende erneut.",
@@ -396,6 +391,18 @@ export const de: Dictionary = {
   "composer.protocol.commit": "Hier tippen",
   "composer.protocol.keys": "Tasten",
   "composer.protocol.dismissAria": "Sendeoptionen schließen",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "Der Entwurf bleibt auf diesem Telefon und wird nie von selbst gesendet.",
   "composer.offline.draftNote.dismissAria": "Hinweis zum Offline-Entwurf schließen",
   "composer.draftPreview.title": "Entwurf im Terminal",
@@ -1426,24 +1433,6 @@ export const de: Dictionary = {
   "dialog.preview.removeNoteAria": "Notiz entfernen",
   "dialog.preview.noteAria": "Notiz",
   "dialog.preview.addNote": "Notiz zur Antwort hinzufügen",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox":
-    "Das Eingabefeld des Agenten ist nicht sichtbar. Vermutlich ist ein Menü oder Dialog geöffnet. Es wurde nichts eingegeben.",
-  "reply.blocked.noEcho":
-    "Dies ist eine Passwortabfrage. Da keine Zeichenausgabe erfolgt, kann das Senden den Empfang nicht bestätigen. Es wurde nichts eingegeben.",
-  "reply.blocked.composerLeft":
-    "Das Eingabefeld des Agenten wurde während des Löschens der Zeile geschlossen. Vermutlich ist ein Menü oder Dialog aktiv. Die Nachricht wurde nicht eingegeben.",
-  "reply.refused.multiline":
-    "Dieses Eingabefeld sendet bei einem Zeilenumbruch ab. Eine mehrzeilige Nachricht würde beim ersten Umbruch abgeschnitten. Schreiben Sie sie in eine Zeile. Es wurde nichts eingegeben.",
-  "reply.refused.multilineMidway":
-    "Dieses Eingabefeld sendet bei einem Zeilenumbruch ab, daher wurde eine mehrzeilige Nachricht am ersten Umbruch abgeschnitten. Der Teil davor steht bereits im Terminal. Schreiben Sie die Nachricht in eine Zeile.",
-  "reply.stalled.noEcho":
-    "Dies ist eine Passwortabfrage ohne Zeichenecho. Der Text konnte nicht bestätigt und daher nicht übermittelt werden. Die Eingabe steht bereits im Pane.",
-  "reply.stalled.generic":
-    "Die Nachricht hat das Eingabefeld nicht erreicht. Vermutlich wartet ein Dialog. Einzelne Tastendrücke zur Bestätigung wurden eventuell verarbeitet. Es wurde nichts gesendet.",
-  "reply.stalled.modal":
-    "Die Nachricht hat das Eingabefeld nicht erreicht: Ein Dialog, ein Menü oder ein Overlay hielt die Tastatur fest, der Text landete dort. Es wurde nichts gesendet.",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "Notizfeld konnte nicht geöffnet werden. Pane prüfen.",

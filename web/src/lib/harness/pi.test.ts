@@ -6,7 +6,7 @@ import { splitLines } from "../blocks";
 import { describeAdapterConformance } from "./conformance";
 import { buildBlocks } from "./index";
 import { piAdapter } from "./pi";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 import { adapterFor } from "./registry";
 
 const PANES = join(import.meta.dirname, "../../fixtures/panes");

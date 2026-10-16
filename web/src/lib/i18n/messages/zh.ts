@@ -296,6 +296,8 @@ export const zh: Dictionary = {
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "只读模式，未授权",
   "composer.placeholder.noMuxSend": "无法直接输入至此终端",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -322,7 +324,6 @@ export const zh: Dictionary = {
   "composer.attach.listAria": "附件",
   "composer.attach.removeAria": "移除 {name}",
   "composer.attach.inFront": "其标记已从文本中移除，因此“发送”会将 {name} 置于最前。",
-  "composer.send.typeAnyway": "仍要输入？",
   "composer.send.reallySend": "确认发送？",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "停止向终端输入",
@@ -331,13 +332,7 @@ export const zh: Dictionary = {
   "composer.draft.tooLong": "内容过长无法持久化保存为草稿。切换窗格会保留，但退出应用后将丢失。",
   "composer.draft.holdsMask": "此回复包含被遮蔽的文本（••••）。窗格收到的是圆点，而不是敏感信息。",
   "composer.status.dialogWaiting": "有等待响应的对话框，请先处理后再发送。",
-  "composer.status.unreadDialog":
-    "Collie 无法读取此对话框。卡片上是 {key}。要继续键入，请再次点击“发送”。", // wordsmith
-  "composer.status.paneNotWritable": "窗格已不可写，未发送任何内容",
-  "composer.status.inputChanged": "清空输入框时内容发生变动，未写入任何内容。请检查窗格状态。",
-  "composer.status.clearFailed": "无法清空终端当前输入",
   "composer.status.sent": "已发送 ✓",
-  "composer.status.tapAgainToType": "{error} 再次点击“发送”继续键入。",
   "composer.discard.confirmKeys.one": "再次点击以放弃队列中的 {count} 个按键",
   "composer.discard.confirmKeys.other": "再次点击以放弃队列中的 {count} 个按键",
   "composer.destructive.confirm": "破坏性操作：{reason}。再次点击“发送”以确认",
@@ -363,6 +358,7 @@ export const zh: Dictionary = {
   "composer.protocol.unknown": "无法确定是否已发送。再次发送前请检查窗格。",
   "composer.protocol.busy": "此窗格的另一次发送仍在进行。请稍候再试。",
   "composer.protocol.notFree": "输入框不空闲。未输入任何内容。",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "输入没有进入输入框，因此未输入任何内容。请检查窗格。",
   "composer.protocol.reservedLead": "以 / ! 或 @ 开头的文本有自己的通道。未输入任何内容。",
   "composer.protocol.moved": "屏幕已变化。请检查窗格后再次发送。",
@@ -379,6 +375,18 @@ export const zh: Dictionary = {
   "composer.protocol.commit": "在此输入",
   "composer.protocol.keys": "按键",
   "composer.protocol.dismissAria": "关闭发送选项",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "草稿保留在此手机上，绝不会自行发送。",
   "composer.offline.draftNote.dismissAria": "关闭离线草稿提示",
   "composer.draftPreview.title": "终端中的草稿",
@@ -1406,23 +1414,6 @@ export const zh: Dictionary = {
   "dialog.preview.removeNoteAria": "删除备注",
   "dialog.preview.noteAria": "备注",
   "dialog.preview.addNote": "为此回答添加备注",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox": "未检测到 Agent 输入框，可能正处于弹窗或菜单中。未输入任何内容。",
-  "reply.blocked.noEcho":
-    "当前处于密码提示状态，终端无回显导致无法确认输入是否到达。未输入任何内容。",
-  "reply.blocked.composerLeft":
-    "清空输入行时 Agent 输入框消失，可能触发了弹窗或菜单。消息未写入。",
-  "reply.refused.multiline":
-    "此输入框遇到换行就会提交，多行消息会在第一个换行处被截断。请写成一行。未输入任何内容。",
-  "reply.refused.multilineMidway":
-    "此输入框遇到换行就会提交，多行消息已在第一个换行处被截断。换行之前的部分已经输入到窗格中。请写成一行。",
-  "reply.stalled.noEcho":
-    "当前处于密码提示状态，终端无回显导致无法确认文本且未提交。输入的内容已写入窗格。",
-  "reply.stalled.generic":
-    "消息未送达输入框。可能有对话框正在等待输入；如果是按键响应，该按键可能已生效。未提交任何内容。",
-  "reply.stalled.modal":
-    "消息未送达输入框。对话框、菜单或悬浮层之一占用了键盘，文本被送到了那里。未提交任何内容。",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "备注输入框未能打开，请检查对应窗格",

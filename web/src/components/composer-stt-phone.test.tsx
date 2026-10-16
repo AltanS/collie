@@ -9,7 +9,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { clearStatus } from "@/lib/status";
 import { __resetHandsFree, __resetSttEngine, setHandsFreeEnabled, setSttEnginePreference, sttProbeState } from "@/lib/stt";
 import type { BridgeConfig } from "@/lib/types";
-import { recordReply } from "@/test/handlers";
+import { recordedSends } from "@/test/handlers";
 import { FakeMediaRecorder, installFakeMediaRecorder, uninstallFakeMediaRecorder } from "@/test/media-recorder";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
@@ -71,7 +71,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     isShell: false,
     gone: false,
     readOnly: false,
-    dialogPresent: false,
+    surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
@@ -203,26 +203,16 @@ describe("Composer — a clip on the phone engine", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(t("composer.voice.transcribingPhone")));
   });
 
-  it("sends through the guarded reply path when hands-free is on and the draft is empty", async () => {
+  it("sends through the Send Protocol when hands-free is on and the draft is empty", async () => {
     const user = userEvent.setup();
     setHandsFreeEnabled(true);
-    const bodies: { text: string; submit?: boolean }[] = [];
     phone.transcribeOnPhone.mockResolvedValue({ ok: true, text: "ship it" });
-    server.use(
-      configHandler(HOST_CONFIG),
-      http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const body = await request.json();
-        recordReply(body);
-        bodies.push(body);
-        return HttpResponse.json({ ok: true });
-      }),
-    );
+    server.use(configHandler(HOST_CONFIG));
     renderComposer();
     const recorder = await startRecording(user);
     act(() => recorder.finish());
-    await waitFor(() => expect(bodies.length).toBeGreaterThanOrEqual(2));
-    expect(bodies[0]).toMatchObject({ text: "ship it", submit: false });
-    expect(bodies.at(-1)?.submit).toBe(true);
+    // One Send Protocol request, the same one the Send button makes.
+    await waitFor(() => expect(recordedSends().map(({ text, mode }) => ({ text, mode }))).toEqual([{ text: "ship it", mode: "send" }]));
   });
 
   it("still falls back to inserting when hands-free is on and the draft holds text", async () => {
@@ -232,7 +222,7 @@ describe("Composer — a clip on the phone engine", () => {
     phone.transcribeOnPhone.mockResolvedValue({ ok: true, text: "and this" });
     server.use(
       configHandler(HOST_CONFIG),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, () => (replies += 1, HttpResponse.json({ ok: true }))),
+      http.post("/api/send", () => (replies += 1, HttpResponse.json({ offers: [], receipt: { outcome: "sent" } }))),
     );
     renderComposer();
     const recorder = await startRecording(user);

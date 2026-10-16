@@ -56,7 +56,8 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
-import { blockOwnsKeyboard, dialogNounOf } from "@/lib/harness/dialog-contract";
+import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
+import { paneSurface } from "@/lib/send-slot";
 import { focusDialogCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
@@ -857,16 +858,17 @@ export function AgentChat({
       }),
     [display, mirrorAgent, grammarsOn, mirrorOverride],
   );
+  // Whether a card the mirror drew owns the keyboard. It no longer reaches the composer (M56 spec 06:
+  // the composer reads the Surface only); it still keeps the queued-keys card and the dialog taps
+  // from writing an unbound key into a dialog (below).
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
-  // Which KIND owns it, narrowed to the one the composer treats differently: the card is a guess
-  // about an unknown screen, so its refusal arms the type-anyway override instead of standing flat.
-  const dialogUnread = useMemo(
-    () => blocks.some((b) => b.kind === "unread-dialog"),
-    [blocks],
+  // The composer's Surface (M56 spec 06): the bridge's read, with the facts the phone knows before
+  // any read folded in as `composer: unreachable` (lib/send-slot.ts, `paneSurface`).
+  const { surface: composerSurface, unreachableNote } = useMemo(
+    () => paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
+    [agent?.surface, agent?.sendProtocol, hostBlock],
   );
-  // The noun, for the composer's placeholder ("Menu is waiting"), and the dock's box, for its
-  // "Answer the dialog" word to scroll to and focus.
-  const dialogNoun = useMemo(() => dialogNounOf(blocks), [blocks]);
+  // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
     focusDialogCard(cardDockRef.current);
@@ -2796,8 +2798,10 @@ export function AgentChat({
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
-                  // The bridge's Send Protocol mark (M56 spec 05): absent unless COLLIE_SEND_PROTOCOL=1.
-                  sendProtocol={agent?.sendProtocol === true}
+                  // What owns the agent's keyboard, as the bridge read it (M56 spec 06). See
+                  // `composerSurface` above for the facts folded in before any read.
+                  surface={composerSurface}
+                  unreachableNote={unreachableNote}
                   scope={scope}
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
@@ -2811,13 +2815,6 @@ export function AgentChat({
                   composing={composing}
                   gone={gone}
                   readOnly={readOnly}
-                  // §10.3's pre-flight refusal, as a disabled state AND as the placeholder copy: the
-                  // composer must not invite a reply it already knows the lead will refuse, and "which
-                  // machine am I typing into" has to be answerable without tapping Send to find out.
-                  hostBlock={hostBlock}
-                  dialogPresent={dialogPresent}
-                  dialogUnread={dialogUnread}
-                  dialogNoun={dialogNoun}
                   onAnswerDialog={answerDialog}
                   text={text}
                   terminalDraft={terminalDraft}

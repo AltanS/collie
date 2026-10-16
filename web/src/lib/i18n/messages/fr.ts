@@ -252,6 +252,8 @@ export const fr: Dictionary = {
   "composer.placeholder.gone": "Le volet a disparu",
   "composer.placeholder.readOnly": "Lecture seule : non autorisé",
   "composer.placeholder.noMuxSend": "Impossible d'écrire dans ce terminal",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -278,7 +280,6 @@ export const fr: Dictionary = {
   "composer.attach.listAria": "Pièces jointes",
   "composer.attach.removeAria": "Supprimer {name}",
   "composer.attach.inFront": "Son marqueur n'est plus dans votre texte, Envoyer place donc {name} au début.",
-  "composer.send.typeAnyway": "Saisir quand même ?",
   "composer.send.reallySend": "Envoyer vraiment ?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Arrêter la saisie dans le terminal",
@@ -287,12 +288,7 @@ export const fr: Dictionary = {
   "composer.draft.tooLong": "Trop long pour être conservé comme brouillon : il est maintenu en changeant de volet, mais pas en fermant l'application.",
   "composer.draft.holdsMask": "Cette réponse contient du texte masqué (••••). Le volet reçoit les points, pas le secret.",
   "composer.status.dialogWaiting": "Une boîte de dialogue est en attente : répondez-y d'abord, puis envoyez.",
-  "composer.status.unreadDialog": "Collie ne peut pas lire cette boîte de dialogue. {key} se trouve sur la carte. Appuyez de nouveau sur Envoyer pour saisir quand même.",
-  "composer.status.paneNotWritable": "Le volet n'est plus accessible en écriture : rien n'a été envoyé",
-  "composer.status.inputChanged": "La zone de saisie a changé lors de son effacement : rien n'a été saisi. Vérifiez le volet.",
-  "composer.status.clearFailed": "Impossible d'effacer la saisie du terminal",
   "composer.status.sent": "Envoyé ✓",
-  "composer.status.tapAgainToType": "{error} Appuyez de nouveau sur Envoyer pour saisir quand même.",
   "composer.discard.confirmKeys.one": "Appuyez de nouveau pour ignorer {count} touche en file d'attente",
   "composer.discard.confirmKeys.other": "Appuyez de nouveau pour ignorer {count} touches en file d'attente",
   "composer.destructive.confirm": "Destructeur : {reason}. Appuyez de nouveau sur Envoyer pour confirmer",
@@ -315,6 +311,7 @@ export const fr: Dictionary = {
   "composer.protocol.unknown": "Collie ne sait pas si c'est parti. Vérifiez le volet avant de renvoyer.",
   "composer.protocol.busy": "Un autre envoi vers ce volet est en cours. Attendez, puis réessayez.",
   "composer.protocol.notFree": "Le champ de saisie n'est pas libre. Rien n'a été tapé.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "La saisie n'est pas arrivée dans le champ, donc rien n'a été tapé. Vérifiez le volet.",
   "composer.protocol.reservedLead": "Un texte qui commence par / ! ou @ a sa propre voie. Rien n'a été tapé.",
   "composer.protocol.moved": "L'écran a changé. Vérifiez le volet, puis renvoyez.",
@@ -331,6 +328,18 @@ export const fr: Dictionary = {
   "composer.protocol.commit": "Taper ici",
   "composer.protocol.keys": "Touches",
   "composer.protocol.dismissAria": "Fermer les options d'envoi",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "Le brouillon reste sur ce téléphone et n'est jamais envoyé seul.",
   "composer.offline.draftNote.dismissAria": "Ignorer la note de brouillon hors ligne",
   "composer.draftPreview.title": "Brouillon dans le terminal",
@@ -1294,14 +1303,6 @@ export const fr: Dictionary = {
   "dialog.preview.removeNoteAria": "Supprimer la note",
   "dialog.preview.noteAria": "Note",
   "dialog.preview.addNote": "Ajouter une note à cette réponse",
-  "reply.blocked.noBox": "Le champ de saisie de l'agent n'est pas à l'écran : un menu ou une boîte de dialogue est probablement ouvert. Rien n'a été saisi.",
-  "reply.blocked.noEcho": "Il s'agit d'une invite de mot de passe : rien ne s'affiche lors de la saisie, Envoyer ne peut donc pas confirmer la réception du texte. Rien n'a été saisi.",
-  "reply.blocked.composerLeft": "Le champ de saisie de l'agent a quitté l'écran pendant l'effacement de sa ligne : un menu ou une boîte de dialogue est probablement ouvert. Votre message n'a pas été saisi.",
-  "reply.refused.multiline": "Cette saisie s'envoie au saut de ligne, un message multiligne serait donc coupé dès le premier saut. Écrivez-le sur une seule ligne. Rien n'a été saisi.",
-  "reply.refused.multilineMidway": "Cette saisie s'envoie au saut de ligne, le message multiligne a donc été coupé au premier saut. La partie précédente se trouve déjà dans le volet. Écrivez le message sur une seule ligne.",
-  "reply.stalled.noEcho": "Il s'agit d'une invite de mot de passe : rien ne s'affiche lors de la saisie, le texte ne peut donc pas être confirmé et rien n'a été envoyé. Ce que vous avez saisi se trouve déjà dans le volet.",
-  "reply.stalled.generic": "Le message n'a pas atteint le champ de saisie : une boîte de dialogue est peut-être en attente, et si vous y répondiez par une touche, celle-ci a probablement été transmise. Rien n'a été envoyé.",
-  "reply.stalled.modal": "Le message n'a pas atteint le champ de saisie : un dialogue, un menu ou une superposition gardait le clavier, et le texte y est arrivé. Rien n'a été envoyé.",
   "previewAction.note.notOpened": "La saisie de note ne s'est pas ouverte : vérifiez le volet",
   "previewAction.note.clearFailed": "Impossible d'effacer la note existante : vérifiez le volet",
   "previewAction.note.textFailed": "Le texte de la note n'est pas arrivé : vérifiez le volet",

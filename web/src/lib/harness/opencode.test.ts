@@ -20,7 +20,7 @@ import { detectQuestionDialog } from "./opencode/question";
 import { detectQuestionTabs } from "./opencode/question-tabs";
 import { describeAdapterConformance } from "./conformance";
 import { promptsEqual, promptsSameIdentity, splitWalk } from "./prompt-model";
-import { draftCarriesSend } from "../reply-action";
+import { draftCarriesSend } from "../draft-match";
 
 // The opencode adapter's CI gate. Tier 1 chrome (composer strip, status/draft probes, the composer
 // gate) plus the Tier-2 permission-dialog lift, gated on the captured corpus:

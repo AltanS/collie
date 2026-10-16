@@ -254,6 +254,8 @@ export const ru: Dictionary = {
   "composer.placeholder.gone": "Панель закрыта",
   "composer.placeholder.readOnly": "Только чтение: нет авторизации",
   "composer.placeholder.noMuxSend": "Ввод в этот терминал недоступен",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -280,7 +282,6 @@ export const ru: Dictionary = {
   "composer.attach.listAria": "Вложения",
   "composer.attach.removeAria": "Удалить {name}",
   "composer.attach.inFront": "Его метки больше нет в тексте, поэтому «Отправить» поместит {name} в начало.",
-  "composer.send.typeAnyway": "Ввести все равно?",
   "composer.send.reallySend": "Действительно отправить?",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "Остановить ввод в терминал",
@@ -289,12 +290,7 @@ export const ru: Dictionary = {
   "composer.draft.tooLong": "Слишком длинный текст для черновика: сохраняется при смене панелей, но не при закрытии приложения.",
   "composer.draft.holdsMask": "Этот ответ содержит скрытый текст (••••). Панель получит точки, а не секрет.",
   "composer.status.dialogWaiting": "Ожидается ответ в диалоге: сначала ответьте в нем, затем отправляйте.",
-  "composer.status.unreadDialog": "Collie не может прочитать этот диалог. {key} находится на карточке. Нажмите «Отправить» еще раз, чтобы ввести все равно.",
-  "composer.status.paneNotWritable": "Панель больше недоступна для записи, ничего не отправлено",
-  "composer.status.inputChanged": "Поле ввода изменилось во время очистки, ничего не введено. Проверьте панель.",
-  "composer.status.clearFailed": "Не удалось очистить ввод терминала",
   "composer.status.sent": "Отправлено ✓",
-  "composer.status.tapAgainToType": "{error} Нажмите «Отправить» еще раз, чтобы ввести все равно.",
   "composer.discard.confirmKeys.one": "Нажмите еще раз, чтобы сбросить {count} клавишу в очереди",
   "composer.discard.confirmKeys.other": "Нажмите еще раз, чтобы сбросить клавиши в очереди ({count})",
   "composer.discard.confirmKeys.few": "Нажмите еще раз, чтобы сбросить {count} клавиши в очереди",
@@ -319,6 +315,7 @@ export const ru: Dictionary = {
   "composer.protocol.unknown": "Неизвестно, отправлено ли сообщение. Проверьте панель перед повторной отправкой.",
   "composer.protocol.busy": "Другая отправка в эту панель ещё идёт. Подождите и повторите.",
   "composer.protocol.notFree": "Поле ввода занято. Ничего не введено.",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "Ввод не попал в поле, поэтому ничего не введено. Проверьте панель.",
   "composer.protocol.reservedLead": "У текста, начинающегося с / ! или @, свой путь. Ничего не введено.",
   "composer.protocol.moved": "Экран изменился. Проверьте панель и отправьте снова.",
@@ -335,6 +332,18 @@ export const ru: Dictionary = {
   "composer.protocol.commit": "Ввести здесь",
   "composer.protocol.keys": "Клавиши",
   "composer.protocol.dismissAria": "Закрыть варианты отправки",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "Черновик остается на этом телефоне и сам по себе не отправляется.",
   "composer.offline.draftNote.dismissAria": "Скрыть заметку об офлайн-черновике",
   "composer.draftPreview.title": "Черновик в терминале",
@@ -1364,14 +1373,6 @@ export const ru: Dictionary = {
   "dialog.preview.removeNoteAria": "Удалить заметку",
   "dialog.preview.noteAria": "Заметка",
   "dialog.preview.addNote": "Добавить заметку к ответу",
-  "reply.blocked.noBox": "Поле ввода агента не на экране: возможно, открыто меню или диалог. Ничего не введено.",
-  "reply.blocked.noEcho": "Это запрос пароля: ввод скрыт, поэтому кнопка отправки не может подтвердить доставку текста. Ничего не введено.",
-  "reply.blocked.composerLeft": "Поле ввода агента пропало с экрана при очистке строки ввода: возможно, открыто меню или диалог. Сообщение не введено.",
-  "reply.refused.multiline": "Этот ввод отправляется по новой строке, поэтому многострочный текст обрежется на первом переносе. Введите в одну строку. Ничего не введено.",
-  "reply.refused.multilineMidway": "Этот ввод отправляется по новой строке, поэтому многострочный текст обрезался на первом переносе. Часть до него уже в панели. Введите сообщение в одну строку.",
-  "reply.stalled.noEcho": "Это запрос пароля: ввод скрыт, поэтому текст нельзя подтвердить, и ничего не отправлено. Набранное уже находится в панели.",
-  "reply.stalled.generic": "Сообщение не дошло до поля ввода: возможно, открыт диалог. Если ответ вводился клавишей, она могла сработать. Ничего не отправлено.",
-  "reply.stalled.modal": "Сообщение не дошло до поля ввода: клавиатуру удерживали диалог, меню или оверлей, и текст попал туда. Ничего не отправлено.",
   "previewAction.note.notOpened": "Поле ввода заметки не открылось: проверьте панель",
   "previewAction.note.clearFailed": "Не удалось очистить текущую заметку: проверьте панель",
   "previewAction.note.textFailed": "Текст заметки не дошел: проверьте панель",

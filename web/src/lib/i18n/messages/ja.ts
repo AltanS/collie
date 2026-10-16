@@ -304,6 +304,8 @@ export const ja: Dictionary = {
   "composer.placeholder.gone": "ペインが存在しません",
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",
   "composer.placeholder.noMuxSend": "このターミナルには直接入力できません",
+  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
+  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
   "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
   "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
@@ -330,7 +332,6 @@ export const ja: Dictionary = {
   "composer.attach.listAria": "添付ファイル",
   "composer.attach.removeAria": "{name}を削除",
   "composer.attach.inFront": "テキストからマーカーが消えたため、送信時に先頭へ {name} が付きます。",
-  "composer.send.typeAnyway": "強制的に入力しますか？",
   "composer.send.reallySend": "送信しますか？",
   "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
   "composer.send.stopTypingAria": "ターミナルへの入力を停止",
@@ -340,14 +341,7 @@ export const ja: Dictionary = {
     "下書き保存の上限を超えています。ペイン切り替え時は保持されますが、アプリ終了時に破棄されます。",
   "composer.draft.holdsMask": "この返信にはマスクされたテキスト(••••)が含まれています。ペインに届くのは点であり、シークレットではありません。",
   "composer.status.dialogWaiting": "対話プロンプトの応答待ちです。先に応答してから送信してください。",
-  "composer.status.unreadDialog":
-    "Collie はこの対話を読み取れません。カードに {key} があります。それでも入力するには、もう一度送信をタップしてください。", // wordsmith
-  "composer.status.paneNotWritable": "ペインが書き込み不可になったため、送信を中止しました",
-  "composer.status.inputChanged":
-    "消去中に入力内容が変更されたため、入力を中断しました。ペインを確認してください。",
-  "composer.status.clearFailed": "ターミナル入力を消去できませんでした",
   "composer.status.sent": "送信完了 ✓",
-  "composer.status.tapAgainToType": "{error} もう一度送信をタップすると強制入力します。",
   "composer.discard.confirmKeys.one": "もう一度タップすると待機中の{count}キーを破棄します",
   "composer.discard.confirmKeys.other": "もう一度タップすると待機中の{count}キーを破棄します",
   "composer.destructive.confirm": "破壊的操作: {reason}。確認のため送信を再タップしてください",
@@ -374,6 +368,7 @@ export const ja: Dictionary = {
   "composer.protocol.unknown": "送信されたか分かりません。もう一度送る前にペインを確認してください。",
   "composer.protocol.busy": "このペインへの別の送信がまだ実行中です。待ってから再試行してください。",
   "composer.protocol.notFree": "入力欄が空いていません。何も入力していません。",
+  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
   "composer.protocol.probeFailed": "入力が入力欄に届かなかったため、何も入力していません。ペインを確認してください。",
   "composer.protocol.reservedLead": "/ ! @ で始まるテキストには専用の経路があります。何も入力していません。",
   "composer.protocol.moved": "画面が変わりました。ペインを確認してから再送してください。",
@@ -390,6 +385,18 @@ export const ja: Dictionary = {
   "composer.protocol.commit": "ここに入力",
   "composer.protocol.keys": "キー",
   "composer.protocol.dismissAria": "送信オプションを閉じる",
+  "composer.surface.free": "The input box was free.", // TODO wordsmith
+  "composer.surface.running": "The agent was working.", // TODO wordsmith
+  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
+  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
+  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
+  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
+  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
+  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
+  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
+  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
+  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
+  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
   "composer.offline.draftNote": "下書きはこの端末に残り、自動で送信されることはありません。",
   "composer.offline.draftNote.dismissAria": "オフラインの下書きの案内を閉じる",
   "composer.draftPreview.title": "ターミナル内の下書き",
@@ -1417,24 +1424,6 @@ export const ja: Dictionary = {
   "dialog.preview.removeNoteAria": "メモを削除",
   "dialog.preview.noteAria": "メモ",
   "dialog.preview.addNote": "この回答にメモを追加",
-
-  // --- reply (the free-text reply race guard, lib/reply-action.ts) ---
-  "reply.blocked.noBox":
-    "エージェントの入力欄が表示されていません。メニューまたはダイアログが開いている可能性があります。入力は行われていません。",
-  "reply.blocked.noEcho":
-    "パスワード入力プロンプトです。エコーバックがないため入力到達を確認できません。入力は行われていません。",
-  "reply.blocked.composerLeft":
-    "入力行のクリア中に入力欄が非表示になりました。メニューかダイアログが開いている可能性があります。メッセージは入力されていません。",
-  "reply.refused.multiline":
-    "この入力欄は改行で送信されるため、複数行のメッセージは最初の改行で途切れます。1行にまとめてください。入力は行われていません。",
-  "reply.refused.multilineMidway":
-    "この入力欄は改行で送信されるため、複数行のメッセージは最初の改行で途切れました。それより前の部分はすでにペインに入力されています。1行にまとめてください。",
-  "reply.stalled.noEcho":
-    "パスワード入力プロンプトです。エコーバックがないため到達確認ができず、送信されませんでした。入力内容はペイン側に残っています。",
-  "reply.stalled.generic":
-    "メッセージが入力欄に届きませんでした。ダイアログの応答待ちの可能性があります。キー操作で応答した場合は入力されている可能性があります。送信は実行されていません。",
-  "reply.stalled.modal":
-    "メッセージが入力欄に届きませんでした。ダイアログ、メニュー、オーバーレイのいずれかがキー入力を保持していたため、テキストはそちらに入力されました。送信は実行されていません。",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
   "previewAction.note.notOpened": "ノート入力を開けませんでした。ペインを確認してください。",

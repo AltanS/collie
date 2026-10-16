@@ -8,6 +8,13 @@
 // An adapter is DETECTION only. The Block union + renderers and the keystroke ACTION recipes
 // (prompt/wizard/preview-action) stay in core, dispatched from agent-chat — the adapter just tells
 // core what's on screen.
+//
+// SINCE M56 SPEC 06 THE PHONE SENDS NO TEXT OF ITS OWN. The free-text reply is one Send Protocol
+// request (lib/reply-action.ts), and the bridge reads the box from the harness's profile. So the
+// members below that served the phone's old type-then-verify guard (`replyChunks`, `bracketedPaste`,
+// `submitSettleMs`, `newlineSubmits`, `overlayHoldsKeyboard`, `composerPrompt`) are read by nothing in
+// the app any more; their tests still pin what each harness looks like. The doc comments below that
+// name "the reply path" or its pre-flight describe that removed guard. They go with a later cleanup.
 
 import type { Block, StyledLine } from "../blocks";
 

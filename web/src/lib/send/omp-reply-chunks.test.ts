@@ -1,32 +1,13 @@
-// A REAL SEND, driven over captures — which is why it is not in `src/lib/harness/`.
+// Over captures. These two files used to put a screen through the phone's own guarded send, which
+// fetched, so they live in the `dom` project (see `vitest.config.ts`). That send is gone since M56
+// spec 06 (the bridge runs the Send Protocol), and so are the cases that drove it; what remains reads
+// the captures through the omp adapter for display and its paste chunking.
 //
-// The adapter tests next door are pure: text in, blocks out, no clock and no network. These two put
-// a screen through `sendGuardedReply`, which fetches, so they need an origin and a document and they
-// run in the `dom` project (see `vitest.config.ts`). Leaving them under `src/lib/harness/` meant that
-// folder needed a two-file exception list to run in the fast project, and an exception list is what
-// silently dropped both files from BOTH projects on the first attempt. One path, no exceptions.
-//
-// The captures they read are still the omp adapter's own (`src/fixtures/omp-pi-shape/`).
+// The omp adapter's paste chunking is pure, and stays pinned here beside its captures' sibling.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "@/test/msw";
-import { sendGuardedReply } from "../reply-action";
 import { ompOpaqueDraft, ompReplyChunks } from "../harness/omp/reply-chunks";
 
-// M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
-// These suites drive sends against a mocked network and never poll first, so they pin the pane live;
-// the gating itself is covered by liveness.test.ts and the *-offline suites.
-vi.mock("@/lib/liveness", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/liveness")>()),
-  isLive: () => true,
-  useLive: () => true,
-}));
-
-const idle = readFileSync(join(import.meta.dirname, "../../fixtures/omp-pi-shape/idle.txt"), "utf8");
-const screen = (draft: string) => idle.split("\n").map((row, i) => i === 1 ? ` ${draft.replaceAll("\n", "\n ")}` : row).join("\n");
 const text = Array.from({ length: 30 }, (_, i) => `한글 테스트 ${i} 👨‍💻`).join("\n");
 
 describe("OMP literal paste transport", () => {
@@ -50,34 +31,5 @@ describe("OMP literal paste transport", () => {
     const chunks = ompReplyChunks(value);
     expect(chunks.join("")).toBe(value);
     expect(chunks.slice(1).every((chunk) => !/^[/~.]/.test(chunk))).toBe(true);
-  });
-  it.each(["success", "chip", "dialog", "transport", "dropped-final", "repeated-dropped-final"])("%s: never submits incomplete or opaque input", async (mode) => {
-    const message = mode === "repeated-dropped-final" ? "가".repeat(600) : text;
-    let shown = idle;
-    let accumulated = "";
-    const calls: Array<{ text: string; submit: boolean }> = [];
-    server.use(
-      http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: "test:p1", text: shown })),
-      http.post<never, { text: string; submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
-        const call = await request.json();
-        calls.push(call);
-        if (mode === "transport" && calls.length === 2) return new HttpResponse("failure", { status: 500 });
-        if (mode.endsWith("dropped-final") && calls.length === ompReplyChunks(message).length) return HttpResponse.json({ ok: true });
-        accumulated += call.text;
-        shown = mode === "chip" ? screen("📄 #1") : mode === "dialog" ? "╭── Confirm ──╮\n│ Yes No │\n╰─────────────╯" : screen(accumulated);
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-    const result = await sendGuardedReply({ paneId: "test:p1", agent: "omp", text: message, sleep: async () => {} });
-    if (mode === "success") {
-      expect(result.status).toBe("sent");
-      expect(calls.filter((c) => !c.submit).map((c) => c.text).join("")).toBe(text);
-      expect(calls.at(-1)).toMatchObject({ text: "", submit: true });
-      expect(calls.filter((c) => c.submit)).toHaveLength(1);
-    } else {
-      expect(result.status).not.toBe("sent");
-      expect(calls.every((c) => !c.submit)).toBe(true);
-      expect(calls).toHaveLength(mode === "transport" ? 2 : mode.endsWith("dropped-final") ? ompReplyChunks(message).length : 1);
-    }
   });
 });

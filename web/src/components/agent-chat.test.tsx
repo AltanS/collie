@@ -35,7 +35,8 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
+import type { Surface } from "@/lib/surface/surface";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -124,12 +125,8 @@ describe("AgentChat — reply flow", () => {
     await waitFor(() => expect(box).toHaveValue(""));
   });
 
-  it("keeps the draft and surfaces the error when the bridge rejects the send", async () => {
-    server.use(
-      http.post(/\/api\/pane\/[^/]+\/reply$/, () =>
-        HttpResponse.json({ ok: false, error: "agent busy" }),
-      ),
-    );
+  it("keeps the draft and surfaces the bridge's words when it refuses the send", async () => {
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { detail: "agent busy" })));
     const user = userEvent.setup();
     renderChat();
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -139,6 +136,29 @@ describe("AgentChat — reply flow", () => {
 
     expect(await screen.findByText("agent busy")).toBeInTheDocument();
     expect(box).toHaveValue("retry this"); // not cleared on failure
+  });
+});
+
+// M56 spec 06: the composer reads the pane's Surface, not the mirror. A dialog the mirror draws as a
+// card does not change the Send slot by itself; the bridge's read does.
+describe("AgentChat: the composer reads the pane's Surface", () => {
+  it("an ask on the pane's Surface names the dialog in the placeholder", () => {
+    renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
+    expect(screen.getByPlaceholderText("Permission is waiting")).toBeInTheDocument();
+  });
+
+  it("a marked pane the bridge has not read yet keeps Send open", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "hello");
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("a pane the bridge does not mark for the Send Protocol says sending is off, and locks the field", () => {
+    const { sendProtocol: _off, ...unmarked } = fixtureAgents[0]!;
+    renderChat({ agent: unmarked });
+    expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
   });
 });
 
@@ -811,6 +831,16 @@ const MENU_TEXT = [
   " Esc to cancel · Tab to amend",
 ].join("\n");
 
+// The Surface the bridge folds MENU_TEXT into (M56 spec 06): a modal ask. The composer reads this,
+// not the mirror's blocks, for its Send slot and placeholder.
+const MENU_ASK: Surface = {
+  revision: 2,
+  turn: "idle",
+  modal: { ask: { id: "ask-create", kind: "permission", options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "keys", hash: "0c4e11" } },
+  composer: "unknown",
+};
+const MENU_AGENT: AgentView = { ...fixtureAgents[0]!, surface: MENU_ASK };
+
 // A minimal Claude input-box buffer at the tail: top border, the "❯" prompt, bottom border, then the
 // statusline + a hint. For a Claude pane, chrome-stripping peels the box off the mirror and the
 // statusline is re-surfaced as the app strip; for a non-Claude pane none of that runs (raw mirror).
@@ -1089,7 +1119,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 
   it("does NOT focus the composer when a native prompt option is tapped", async () => {
     const user = userEvent.setup();
-    renderChat({ text: MENU_TEXT });
+    renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
     const box = screen.getByPlaceholderText(/is waiting/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
@@ -1102,7 +1132,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   // button and sends nothing (M51 spec 10).
   it("'Answer the dialog' focuses the card's first button and sends nothing", async () => {
     const user = userEvent.setup();
-    renderChat({ text: MENU_TEXT });
+    renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
     const box = screen.getByPlaceholderText(/is waiting/i);
 
     await user.type(box, "for after the dialog");
