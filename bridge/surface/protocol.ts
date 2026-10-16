@@ -8,7 +8,8 @@
 //   S0      (2, 1200) a fresh read after the request arrived, stable across two mux calls; the
 //           Surface must be free, or unknown(no-match) with the hash of the rows the person saw
 //   probe   (3, 900) on the probed path: write the probe character, require exactly that one new run
-//           and no other change, Backspace through the gate, require the S0 box again
+//           and no other change, Backspace through the gate, require the S0 box again. A probe that
+//           fails with its character standing once in the box gets one Backspace and one more read
 //   write   the whole text in one write per line (a bracketed paste where the multiplexer and the
 //           profile allow it); a line break is the profile's newline key, through the gate
 //   S1      (6, 2500) read until the box holds exactly the predicted text (or the profile's collapse
@@ -20,6 +21,11 @@
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
 // spot (the row and column where the probe character appeared) is what S1 and S2 compare against.
+//
+// A manual send (the screen takes the two-tap Send: no profile, an unreadable overlay, a weak cue)
+// compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
+// of the box may change while the probe and the text go in, as a `command` lets them. The rows
+// above the box must still stand still, and a modal cue that shows still fails.
 //
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
@@ -74,6 +80,13 @@ const GENERIC_SUBMIT = ["Enter"] as const;
 const GENERIC_CLEAR = { key: "Backspace", slack: 16 } as const;
 /** The reserved leads on a pane with no profile: a slash command, a shell line, a file mention. */
 const GENERIC_LEADS = ["/", "!", "@"] as const;
+
+/** The detail after a failed probe whose one Backspace took the character out again. */
+const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
+/** The detail after a failed probe that left its character where Collie cannot take it out. */
+function probeMayRemain(probe: string): string {
+  return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
+}
 
 /** Rows one protocol read asks for. A viewport read never moves the screen. */
 export const SEND_READ_LINES = 120;
@@ -305,6 +318,11 @@ function outsideUnchanged(before: Snap, after: Snap): boolean {
   return aboveUnchanged(before, after);
 }
 
+/** What a manual send asks of a framed pane: no modal cue grew, and the transcript above the box stood still. */
+function manualOutsideUnchanged(before: Snap, after: Snap): boolean {
+  return !cueAppeared(before, after) && aboveUnchanged(before, after);
+}
+
 /** {@link outsideUnchanged} for a `command`: the transcript above the box only; its popup may fill the rows under it. */
 function aboveUnchanged(before: Snap, after: Snap): boolean {
   if (before.frame === null || after.frame === null) return false;
@@ -387,18 +405,48 @@ function afterProbe(landing: Landing): string {
 }
 
 /**
+ * Whether every row under `row` in `before` still reads the same in `after`, or went blank: a hint
+ * that hides once the box holds a character. Rows are matched from the bottom of the read, where a
+ * harness with no frame keeps its footer while the box grows upward. A row that shows other text
+ * fails: a list under a search field that narrows to the typed text is not a hint.
+ */
+function belowHeldOrBlank(before: readonly string[], after: readonly string[], row: number): boolean {
+  for (let i = row + 1; i < before.length; i++) {
+    const now = after[after.length - (before.length - i)] ?? "";
+    if (now.trim().length > 0 && wsFree(now) !== wsFree(before[i] ?? "")) return false;
+  }
+  return true;
+}
+
+/** How many times `needle` stands in the rows. */
+function countIn(rows: readonly string[], needle: string): number {
+  let n = 0;
+  for (const row of rows) n += row.split(needle).length - 1;
+  return n;
+}
+
+/**
  * The probe's landing on a pane with no frame: exactly one row of the read changed, inside the bottom
  * window, and the change is the probe character put in (blanks next to it may appear where a faint
  * placeholder stood). Null on anything else.
+ *
+ * With `freeBelow` (a manual send), the first changed row is the landing row, the rest of that row
+ * after the probe may change, and a row under it may go blank (a hint row that hides once the box
+ * holds a character, live on Codex 0.162.1 and 0.163.0). The rows above it are equal by
+ * construction, and the probe must stand exactly once more in the read than at S0.
  */
-export function probeLanding(before: readonly string[], after: readonly string[], probe: string): Landing | null {
+export function probeLanding(before: readonly string[], after: readonly string[], probe: string, options: { readonly freeBelow?: boolean } = {}): Landing | null {
+  const freeBelow = options.freeBelow === true;
   const endA = contentEnd(before);
   const endB = contentEnd(after);
   const end = Math.max(endA, endB);
   let changed = -1;
   for (let i = 0; i < end; i++) {
     if ((before[i] ?? "") === (after[i] ?? "")) continue;
-    if (changed >= 0) return null;
+    if (changed >= 0) {
+      if (freeBelow) break;
+      return null;
+    }
     changed = i;
   }
   if (changed < 0 || changed < end - CLUSTER_ROWS) return null;
@@ -406,6 +454,13 @@ export function probeLanding(before: readonly string[], after: readonly string[]
   const now = after[changed] ?? "";
   let head = 0;
   while (head < was.length && head < now.length && was[head] === now[head]) head++;
+  if (freeBelow) {
+    const rest = now.slice(head);
+    const blanks = rest.length - rest.trimStart().length;
+    if (!rest.trimStart().startsWith(probe) || countIn(after, probe) !== countIn(before, probe) + 1) return null;
+    if (!belowHeldOrBlank(before, after, changed)) return null;
+    return { row: changed, index: head + blanks, probed: now, width: probe.length };
+  }
   let tail = 0;
   while (tail < was.length - head && tail < now.length - head && was[was.length - 1 - tail] === now[now.length - 1 - tail]) tail++;
   if (was.length - head - tail !== 0) return null;
@@ -414,12 +469,26 @@ export function probeLanding(before: readonly string[], after: readonly string[]
   return { row: changed, index: head + put.indexOf(probe), probed: now, width: probe.length };
 }
 
-/** The whole read as one compare string, white space dropped. */
+/**
+ * Whether a failed probe left its character where one Backspace takes it out: it stands exactly once
+ * in the read, and in the box. With a frame that is the interior; with none it is a row of the bottom
+ * window that reads as it did at S0 once the character is cut, the landing row.
+ */
+export function probeInBox(s0: { readonly plain: readonly string[] }, now: { readonly texts: readonly string[]; readonly plain: readonly string[]; readonly frame: Frame | null }, probe: string): boolean {
+  if (countIn(now.texts, probe) !== 1) return false;
+  const row = now.texts.findIndex((text) => text.includes(probe));
+  if (now.frame !== null) return row >= now.frame.interior.first && row <= now.frame.interior.last;
+  const win = bottomWindow(now.texts);
+  if (row < win.first || row >= win.end) return false;
+  return wsFree((now.plain[row] ?? "").replace(probe, "")) === wsFree(s0.plain[row] ?? "");
+}
+
 /** The index of the last row with any non-blank character, or -1. */
 function lastFilled(rows: readonly string[]): number {
   return rows.findLastIndex((row) => row.trim().length > 0);
 }
 
+/** The whole read as one compare string, white space dropped. */
 function flat(rows: readonly string[]): string {
   return wsFree(rows.join(""));
 }
@@ -429,6 +498,38 @@ function predictedRows(base: readonly string[], landing: Landing, typed: string)
   const rows = [...base];
   rows[landing.row] = landing.probed.slice(0, landing.index) + typed + afterProbe(landing);
   return rows;
+}
+
+/**
+ * S1 of a manual send on a pane with no frame: the rows above the landing row read as at S0 (they
+ * may scroll up by whole rows), then the landing row up to the probe's spot, then the typed text.
+ * What follows the text on that row may differ, and a row under it may go blank (a hint that hides).
+ */
+function typedOnLanding(s0: readonly string[], now: readonly string[], landing: Landing, typed: string): boolean {
+  if (!belowHeldOrBlank(s0, now, landing.row)) return false;
+  const actual = flat(now);
+  const line = landing.probed.slice(0, landing.index) + typed;
+  for (let shift = 0; shift <= landing.row; shift++) {
+    if (actual.startsWith(flat([...s0.slice(shift, landing.row), line]))) return true;
+  }
+  return false;
+}
+
+/**
+ * S2 of a manual send on a pane with no frame: the landing row as S0 read it (the empty box) stands
+ * again in the bottom window, and from that row down nothing holds the typed text. The transcript
+ * above it may now show the text as the person's message. A landing row that read blank at S0 proves
+ * nothing and never passes here.
+ */
+function emptyBoxBack(s0: readonly string[], now: readonly string[], landing: Landing, typed: string): boolean {
+  const empty = wsFree(s0[landing.row] ?? "");
+  if (empty.length === 0) return false;
+  const win = bottomWindow(now);
+  for (let i = win.end - 1; i >= win.first; i--) {
+    if (wsFree(now[i] ?? "") !== empty) continue;
+    return !flat(now.slice(i)).includes(flat([typed]));
+  }
+  return false;
 }
 
 // ── The run ──────────────────────────────────────────────────────────────────────────────────────
@@ -444,6 +545,8 @@ interface RunState {
   readonly gaps: Partial<Record<SendStep, number>>;
   readonly keys: string[];
   probed: boolean;
+  /** The screen at S0 took the manual Send (no profile, an unreadable overlay, a weak cue): the probe and S1 compare less. */
+  manual: boolean;
   stepStart: number;
 }
 
@@ -637,6 +740,7 @@ export class SendProtocol {
       gaps: {},
       keys: [],
       probed: false,
+      manual: false,
       stepStart: at,
     };
   }
@@ -756,6 +860,7 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
+    state.manual = takesManualSend(s0.surface);
     this.checkGeneration(state, "refused");
 
     switch (request.mode) {
@@ -1066,7 +1171,10 @@ export class SendProtocol {
     });
   }
 
-  /** The probe: the character, then Backspace; the box must take exactly it and give it back. */
+  /**
+   * The probe: the character, then Backspace; the box must take exactly it and give it back. A manual
+   * send lets the rows under the box and the rest of the box change (see the header).
+   */
   private async probe(state: RunState, s0: Snap, prefix: string): Promise<Landing | null> {
     const probe = state.match?.profile.probe.char ?? GENERIC_PROBE;
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: s0.frame !== null }));
@@ -1081,13 +1189,16 @@ export class SendProtocol {
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
-        return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outsideUnchanged(s0, snap) ? "pass" : "fail";
+        const outside = state.manual ? manualOutsideUnchanged(s0, snap) : outsideUnchanged(s0, snap);
+        return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe && outside ? "pass" : "fail";
       }
       if (snap.plain.join("\n") === s0.plain.join("\n")) return "wait";
-      landing = probeLanding(s0.plain, snap.plain, probe);
+      landing = probeLanding(s0.plain, snap.plain, probe, { freeBelow: state.manual });
       return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
     });
-    if (typed.verdict !== "pass") throw failed(typed.verdict === "wait" ? "The probe character did not show in the box." : "The probe character changed more than the box.", typed.snap);
+    if (typed.verdict !== "pass") {
+      throw await this.probeCleanup(state, s0, typed.snap, probe, typed.verdict === "wait" ? "The probe character did not show in the box." : "The probe character changed more than the box.");
+    }
 
     try {
       await this.keysThroughGate(state, ["Backspace"], "refused");
@@ -1106,6 +1217,34 @@ export class SendProtocol {
     });
     if (back.verdict !== "pass") throw failed("Backspace did not give the box back as it was.", back.snap);
     return landing;
+  }
+
+  /**
+   * After a failed probe: when the read shows the probe character exactly once and it stands in the
+   * box (the frame's interior, or with no frame a row that reads as at S0 once the character is cut),
+   * one Backspace goes through the gate and one more read says whether the box is clean again. Any
+   * other screen gets no key at all. The reason stays `probe_failed` either way; the detail says
+   * what is true now.
+   */
+  private async probeCleanup(state: RunState, s0: Snap, snap: Snap | null, probe: string, why: string): Promise<Ended> {
+    const failed = (detail: string, look: Snap | null): Ended =>
+      new Ended("refused", "probe_failed", sawNote(look, { detail: `${why} ${detail}`, framed: s0.frame !== null }));
+    if (snap === null || !probeInBox(s0, snap, probe)) return failed(probeMayRemain(probe), snap);
+    try {
+      await this.keysThroughGate(state, ["Backspace"], "refused");
+    } catch (err) {
+      if (err instanceof Ended && err.outcome === "refused") return failed(probeMayRemain(probe), snap);
+      throw err;
+    }
+    await this.sleep(FIRST_GAP_MS);
+    let look: Snap | null = null;
+    try {
+      look = await this.read(state, "probe");
+    } catch (err) {
+      if (!(err instanceof StepLate)) throw err;
+    }
+    if (look !== null && countIn(look.texts, probe) === countIn(s0.texts, probe)) return failed(PROBE_REMOVED, look);
+    return failed(probeMayRemain(probe), look ?? snap);
   }
 
   /** The write: each line in one write, the profile's newline key between lines. */
@@ -1131,11 +1270,13 @@ export class SendProtocol {
   /**
    * S1: the box holds exactly the text, and nothing else moved. A `command` lets the rows under the box
    * move and lets a cue show there (its own popup), and takes the box with the lead read as the
-   * prompt glyph (a shell line's `!`); the transcript above must still stand still.
+   * prompt glyph (a shell line's `!`); the transcript above must still stand still. A manual send
+   * lets the rows under the box and the rest of the box move; a cue that grows still fails it.
    */
   private async awaitTyped(state: RunState, s0: Snap, landing: Landing | null, prefix: string, lines: readonly string[]): Promise<Snap> {
     const collapse = collapseOf(state.match);
     const command = state.request.mode === "command";
+    const { manual } = state;
     let why: SendReason = "mismatch";
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
       if (!command && cueAppeared(s0, snap)) {
@@ -1148,7 +1289,7 @@ export class SendProtocol {
           why = "mismatch";
           return "wait";
         }
-        if (!(command ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
+        if (!(command || manual ? aboveUnchanged(s0, snap) : outsideUnchanged(s0, snap))) {
           why = "changed";
           return "wait";
         }
@@ -1158,6 +1299,11 @@ export class SendProtocol {
       if (command) {
         // No frame: the landing row with the text in it stands in the read; a popup may move the rest.
         if (flat(snap.plain).includes(flat([landing.probed.slice(0, landing.index) + lines.join("") + afterProbe(landing)]))) return "pass";
+        why = "mismatch";
+        return "wait";
+      }
+      if (manual) {
+        if (typedOnLanding(s0.plain, snap.plain, landing, lines.join(""))) return "pass";
         why = "mismatch";
         return "wait";
       }
@@ -1195,6 +1341,7 @@ export class SendProtocol {
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const command = state.request.mode === "command";
+    const { manual } = state;
     const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
       if (s0.frame !== null) {
         if (snap.frame === null) return command ? "pass" : "wait";
@@ -1210,7 +1357,10 @@ export class SendProtocol {
       const typedTail = flat([lines.join(""), afterProbe(landing), ...s0.plain.slice(landing.row + 1)]);
       const row = lastFilled(snap.plain) - (lastFilled(s0.plain) - landing.row);
       const boxBack = row >= 0 && wsFree(snap.plain[row] ?? "") === wsFree(s0.plain[landing.row] ?? "");
-      return !actual.endsWith(typedTail) && boxBack ? "pass" : "wait";
+      if (!actual.endsWith(typedTail) && boxBack) return "pass";
+      // A manual send: the rows under the box may differ from S0's (a hint row that came back, a
+      // running row), so the empty box is looked for by what it read at S0, not by its distance.
+      return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
     });
     state.marks.s2 = result.snap;
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });

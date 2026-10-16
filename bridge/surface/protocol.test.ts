@@ -374,7 +374,7 @@ describe("a harness with no profile", () => {
     expect(pane.calls).toEqual([]);
   });
 
-  test("a search field that echoes the probe and narrows its list fails the probe; no corrective key", async () => {
+  test("a search field that echoes the probe and narrows its list fails the probe; one Backspace takes the probe out of the field, and no text follows", async () => {
     const { pane, send } = rig({ mode: "generic" });
     const first = await send("hello");
     pane.echo = { field: "", changesList: true };
@@ -383,8 +383,12 @@ describe("a harness with no profile", () => {
     // The rows moved (the field drew): the commit is stale first.
     expect(again.receipt?.reason).toBe("stale_surface");
     const answer = await send("hello", { rowsHash: again.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
-    expect(pane.keysSeen).toEqual([]);
+    // The narrowed list is not a hint that hid, so the probe fails. Its character stands once, on the
+    // row it was put into, so one Backspace removes it; nothing of the text is typed.
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`]);
+    expect(pane.echo?.field).toBe("");
   });
 
   test("the honest limit: a field with no cue that only echoes takes the probed text, and nothing proves it was taken", async () => {
@@ -397,6 +401,158 @@ describe("a harness with no profile", () => {
     // confirmed the rows, and since the field never empties S2 has no evidence: unknown, not sent.
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.echo?.field).toBe("hello");
+  });
+});
+
+/**
+ * Codex 0.163.0 as the lab read it (2026-10-16, tmux 3.7c, 100 columns), home path cut: no frame, a
+ * dim placeholder on the `›` row, the status row, and the hint row `← for agents · ? for shortcuts`,
+ * which Codex hides as soon as the box holds one character (also seen on 0.162.1 in the send drill).
+ * `logo` stands for the welcome art a fresh session shows above the box until the box holds a character.
+ */
+class CodexPane extends FakePane {
+  logo: string[] = [];
+  constructor() {
+    super("generic");
+    this.transcript = ["  >_ OpenAI Codex (v0.163.0)", "     ~/project", "", "› reply with one word: ready", "", "• ready", "", "  Worked for 1s • 5:53 AM"];
+  }
+
+  override render(): string {
+    const empty = this.box === "";
+    return [
+      ...this.transcript,
+      ...(empty ? this.logo : this.logo.map(() => "")),
+      "",
+      "",
+      empty ? "\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m" : `\u001b[1m›\u001b[0m ${this.box}`,
+      "",
+      "  GPT-6.1-Sol default · ~/project · Reply ready",
+      empty ? "  \u001b[1m←\u001b[0m for agents · \u001b[1m?\u001b[0m for shortcuts" : "",
+    ].join("\n");
+  }
+}
+
+describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
+  test("Codex hides its hint row once the box holds a character: the manual Send passes the probe and is sent", async () => {
+    const pane = new CodexPane();
+    const { send } = rig({ pane, harness: "codex" });
+    const first = await send("reply with one word: ok");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", profileId: null, keys: [] });
+    const answer = await send("reply with one word: ok", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`, "type:reply with one word: ok"]);
+    expect(pane.transcript.at(-1)).toBe("> reply with one word: ok");
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("with no frame, a row under the box that shows other text still fails the probe", async () => {
+    const pane = new CodexPane();
+    const { send } = rig({ pane, harness: "codex" });
+    const first = await send("hello");
+    // A row under the box that turns into a list entry is not a hint that hid.
+    const render = pane.render.bind(pane);
+    pane.render = () => (pane.box === "" ? render() : render().replace("  GPT-6.1-Sol default · ~/project · Reply ready", "  ❯ hello-world.ts"));
+    const answer = await send("hello", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`]);
+  });
+
+  test("a manual send on a framed screen lets the rows under the box move, but a changed row above it still fails", async () => {
+    const setup = (): Rig => {
+      const r = rig();
+      r.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+      r.pane.over = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss"];
+      return r;
+    };
+    const below = setup();
+    below.pane.afterInput = (p, what) => {
+      if (what.startsWith("type:") || what.startsWith("paste:")) p.status = [];
+      if (what.endsWith("Enter")) p.status = ["  sonnet · project · main"];
+    };
+    const look = await below.send("carry on");
+    expect(look.surface?.modal).toBe("unreadable");
+    expect((await below.send("carry on", { rowsHash: look.rowsHash! })).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+
+    const above = setup();
+    above.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.transcript[3] = "a transcript row that moved";
+    };
+    const again = await above.send("carry on");
+    const answer = await above.send("carry on", { rowsHash: again.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(above.pane.calls).toEqual([`type:${PROBE}`]);
+  });
+
+  test("a profiled pane on a free screen keeps the strict compare: a row above the box or a hint under it that changes fails the probe", async () => {
+    const rowAbove = rig({ version: "2.1.999" });
+    // Rows close over the box are its volatile band; a transcript row above that band must stand still.
+    rowAbove.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    rowAbove.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.transcript[0] = "> a different question";
+    };
+    expect((await rowAbove.send("hello there")).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(rowAbove.pane.calls).toEqual([`type:${PROBE}`]);
+
+    const hintBelow = rig({ version: "2.1.999" });
+    hintBelow.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    expect((await hintBelow.send("hello there")).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(hintBelow.pane.calls).toEqual([`type:${PROBE}`]);
+  });
+});
+
+describe("after a failed probe", () => {
+  test("the probe character standing once in the box gets one Backspace through the gate, and the detail says the box is clean again", async () => {
+    // A fresh Codex 0.163.0 session hides its welcome art once the box holds a character: a change
+    // above the box, so the probe fails, and the character stands in the box.
+    const pane = new CodexPane();
+    pane.logo = ["            ⣀⣤⣤⣤⣀⣀", "         ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤", "        ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿"];
+    const { send, deps } = rig({ pane, harness: "codex" });
+    const first = await send("hello");
+    const answer = await send("hello", { rowsHash: first.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toBe("The probe character changed more than the box. One Backspace removed the probe character, so the box is clean again.");
+    expect(pane.box).toBe("");
+    expect(pane.calls).toEqual([`type:${GENERIC_PROBE}`]);
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+    // The Backspace went through the gate: it is in the receipt on disk too.
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.keys).toEqual(["probe", "Backspace"]);
+    expect(answer.surface?.composer).not.toBe("draft");
+  });
+
+  test("a framed box that took the probe and a hint that hid under it: the strict probe fails, one Backspace cleans the box", async () => {
+    const { pane, send } = rig({ version: "2.1.999" });
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toContain("the box is clean again");
+    expect(pane.box).toBe("");
+  });
+
+  test("a probe character that shows nowhere gets no key, and the detail says one may remain in the box", async () => {
+    const { pane, send } = rig({ version: "2.1.999" });
+    pane.swallow = true;
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(answer.detail).toBe(`The probe character did not show in the box. A probe character (${PROBE}) may remain in the box. Check the pane before you type.`);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a probe character that shows twice (one already on screen) gets no key, and the detail says one may remain in the box", async () => {
+    const { pane, send } = rig({ version: "2.1.999" });
+    pane.transcript.push(`an earlier line that shows ${PROBE}`);
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(answer.detail).toContain("may remain in the box");
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.box).toBe(PROBE);
   });
 });
 
@@ -1023,6 +1179,16 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #2 +11 lines]", "", ["x".repeat(500)], collapse)).toBe(false);
     expect(boxMatches("a [Pasted text #1] b", "", ["a", "y".repeat(300), "b"], collapse)).toBe(true);
     expect(boxMatches("[Pasted text #2]", "", ["short"], null)).toBe(false);
+  });
+
+  test("probeLanding with freeBelow: the rest of the landing row may change and a row under it may go blank, never show other text", () => {
+    const before = ["top", "", "› ", "", "  status", "  ← for agents · ? for shortcuts"];
+    expect(probeLanding(before, ["top", "", `› ${PROBE}`, "", "  status", ""], PROBE)).toBeNull();
+    expect(probeLanding(before, ["top", "", `› ${PROBE}`, "", "  status", ""], PROBE, { freeBelow: true })).toMatchObject({ row: 2, index: 2 });
+    expect(probeLanding(["› Ask anything"], [`› ${PROBE}`], PROBE, { freeBelow: true })).toMatchObject({ row: 0, index: 2 });
+    expect(probeLanding(before, ["top", "", `› ${PROBE}`, "", "  ❯ a list entry", ""], PROBE, { freeBelow: true })).toBeNull();
+    expect(probeLanding(before, ["top!", "", `› ${PROBE}`, "", "  status", ""], PROBE, { freeBelow: true })).toBeNull();
+    expect(probeLanding(before, ["top", "", `› ${PROBE}${PROBE}`, "", "  status", ""], PROBE, { freeBelow: true })).toBeNull();
   });
 
   test("probeLanding wants exactly one changed row and exactly the probe put in", () => {

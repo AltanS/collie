@@ -137,6 +137,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A mixed-version crew no longer types text without a check.** A 1.21 phone's text reply to a member on this build, and this build's text reply to a member that sends no Surface reader version, are each refused at once with a sentence that says which machine to update, and nothing is typed. Keys and unsubmitted text work as before. `collie doctor` and `collie crew status` show each member's reader version, or `none (older build)`.
 - **Five composer tests follow the new sentences.** The locked-field, contested, torn and cap assertions read the wording of this release.
 - **A multi-line text on a pane with no profile is refused as `multiline`.** The receipt used to say `not_free`, though the box was free; the bridge's sentence still says to send one line at a time.
+- **Text reaches Codex again through the two-tap Send.** Codex hides its hint row once the box holds a character, so every probe on Codex failed. A manual send (no profile, an overlay Collie cannot read, a weak cue) now lets a hint under the box go blank and the rest of the box change; the rows above the box must still stand still, and a profiled pane on a free screen keeps the strict compare.
+- **A failed probe takes its character back out when it can.** When the probe character stands exactly once in the box, one Backspace goes through the key gate and one more read checks it; the receipt lists the Backspace and the reason stays `probe_failed`. Anywhere else no key follows, and the bridge's sentence says a probe character may remain in the box.
 
 ### Packaging
 
