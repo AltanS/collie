@@ -135,6 +135,17 @@ describe("phases and receipts", () => {
     expect(new RequestStore(dir).get(ID)).toBeNull();
   });
 
+  test("a program's acknowledged request id survives a restart; one that is not a request id makes the file unreadable (M56 spec 14)", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const receipt: SendReceipt = { ...receiptFor(record), keys: [], acknowledged: ID };
+    first.settle(ID, receipt);
+    expect(new RequestStore(dir).get(ID)?.receipt).toEqual(receipt);
+    const broken = join(dir, `${ID}.json`);
+    writeFileSync(broken, readFileSync(broken, "utf8").replace(`"acknowledged":"${ID}"`, '"acknowledged":"../x"'));
+    expect(new RequestStore(dir).get(ID)).toBeNull();
+  });
+
   test("after a crash, a request that sent its submit key but never settled ends unknown, and so does one that never got that far", () => {
     const store = new RequestStore(dir);
     store.accept(input());
@@ -191,6 +202,18 @@ describe("ask answers in the same store", () => {
     expect(store.settleAsk(ASK, receipt)?.receipt).toEqual(sent);
     expect(store.list()).toEqual([]);
     expect(store.listAsks().map((record) => record.id)).toEqual([ASK]);
+  });
+
+  test("an answer on the program channel keeps its channel across a restart; an unknown channel makes the file unreadable (M56 spec 14)", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 7000);
+    store.acceptAsk(askInput);
+    const { reason: _crash, ...base } = AskAnswerer.crashReceipt(store.getAsk(ASK)!);
+    const sent = { ...base, outcome: "sent" as const, channel: "program" as const };
+    store.settleAsk(ASK, sent);
+    expect(new RequestStore(join(dir, "sends")).getAsk(ASK)?.receipt).toEqual(sent);
+    const file = join(dir, "sends", `ask.${ASK}.json`);
+    writeFileSync(file, readFileSync(file, "utf8").replace('"channel":"program"', '"channel":"carrier-pigeon"'));
+    expect(new RequestStore(join(dir, "sends")).getAsk(ASK)).toBeNull();
   });
 
   test("a send id can never name an ask file", () => {

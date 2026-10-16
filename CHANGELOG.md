@@ -93,6 +93,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Codex approval or trust prompt answers from the phone through Ask.** Collie checks the dialog's hash before any key. It walks with the arrow keys the Codex profile names, reads the pointer back, then confirms.
 - **`collie hooks install codex` sends a hook edge when a Codex turn ends.** It writes one `notify` line into `$CODEX_HOME/config.toml`. A notify command of your own stays, and Collie refuses to replace it. Each edge goes to the Codex TUI in the event's folder, through that TUI's pane markers. Two Codex TUIs in one folder on one CODEX_HOME get no edge. Codex sends no event for an approval dialog, so the screen still shows those.
 - **The `collie` help names `hooks install codex` beside `hooks install claude`.** The same holds for `hooks uninstall`.
+- **A send receipt can name the request id a program took, and an ask can name the program channel.** `acknowledged` holds that request id. `channel: "program"` marks an answer that went to a program, not to a screen. Older receipts read as before.
 
 ### Changed
 

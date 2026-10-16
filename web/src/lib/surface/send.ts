@@ -163,6 +163,12 @@ export interface SendReceipt {
    * profile says Enter queues while running). Absent on every other receipt.
    */
   readonly queued?: true;
+  /**
+   * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
+   * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
+   * every send into a screen.
+   */
+  readonly acknowledged?: string;
 }
 
 /**
