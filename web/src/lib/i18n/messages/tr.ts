@@ -443,6 +443,18 @@ export const tr: Dictionary = {
   "chat.status.askMismatch": "Vurgu seçiminize ulaşmadı, bu nedenle hiçbir şey onaylanmadı",
   "chat.status.askGone": "İletişim kutusu kapandı; Collie ekranı tekrar okudu",
   "chat.status.askUnknown": "Cevabın gittiğine dair kanıt yok; ekran ne olduğunu gösteriyor",
+  "chat.status.askDesk": "The desk answered first. Collie did not use your tap.", // TODO wordsmith
+  "chat.hold.title": "Permission: {tool}", // TODO wordsmith
+  "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.", // TODO wordsmith
+  "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
+  "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
+  "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
+  "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
+  "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith
+  "chat.hold.mismatch": "The request changed. Collie let the hook go.", // TODO wordsmith
+  "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.", // TODO wordsmith
   "chat.status.sendFailed": "Gönderme başarısız",
   "chat.status.wizardChanged": "Sihirbaz değişti, yenileniyor",
   "chat.status.noteSaved": "Not kaydedildi",
@@ -655,7 +667,9 @@ export const tr: Dictionary = {
   "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
   "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
-  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. An agent that started before \"collie hooks install claude\" sends no reports.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. Run \"collie hooks install claude --hold-permissions\" to add them.", // TODO wordsmith
+  "paneSettings.hooks.holds": "Hooks: live, holds permissions", // TODO wordsmith
+  "paneSettings.hooks.holdsHint": "The agent's own hooks report from this pane. A permission waits for your tap here, and Collie sends no key for it.", // TODO wordsmith
   "paneActions.title.fallback": "Bölme",
   "paneActions.settings.label": "Bölme ayarları",
   "paneActions.readOnly": "Salt okunur; bu cihazın bölmeleri yeniden adlandırma veya kapatma yetkisi yok.",

@@ -80,7 +80,8 @@
     "Stop": "edge",
     "SessionEnd": "edge",
     "Notification": "edge",
-    "PermissionRequest": "ask"
+    "PermissionRequest": "ask",
+    "PostToolUse": "edge"
   },
   "edges": {
     "rereadMs": 700,
@@ -92,7 +93,41 @@
       "SessionEnd": "end",
       "Notification:permission_prompt": "dialog",
       "Notification:elicitation_dialog": "dialog",
-      "Notification:idle_prompt": "reread"
+      "Notification:idle_prompt": "reread",
+      "PostToolUse": "tool"
     }
+  },
+  "hold": {
+    "event": "PermissionRequest",
+    "toolEvent": "PostToolUse",
+    "limitMs": 290000,
+    "hookTimeoutS": 300,
+    "minVersion": "2.0.45",
+    "inputShown": ["command", "file_path", "notebook_path", "url", "pattern", "path", "query"],
+    "inputDetails": {
+      "Bash": { "flags": ["dangerouslyDisableSandbox", "run_in_background"] },
+      "Write": { "body": ["content"] },
+      "Edit": { "body": ["new_string"] },
+      "NotebookEdit": { "body": ["new_source"] }
+    },
+    "screenOnly": ["AskUserQuestion", "ExitPlanMode"],
+    "headers": {
+      "Bash": ["Bash command", "Bash"],
+      "Write": ["Create file"],
+      "Edit": ["Edit file"],
+      "WebFetch": ["Fetch"]
+    },
+    "agentMark": "·\\s*from the\\s*(.*?)(?:\\s+agent)?\\s*$",
+    "options": [
+      { "label": "Yes", "decision": "allow" },
+      { "label": "No", "decision": "deny" }
+    ],
+    "decisions": [
+      { "match": "^Yes$", "decision": "allow" },
+      { "match": "^No(?:\\b|$)", "decision": "deny" }
+    ],
+    "decidedLine": "Allowed by PermissionRequest hook",
+    "deniedLine": "(?:Denied by PermissionRequest hook|Interrupted · What should Claude do instead\\?)",
+    "denyMessage": "The person denied this from Collie."
   }
 }

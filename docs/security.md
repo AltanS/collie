@@ -174,6 +174,13 @@ Key security boundaries and risks:
   so another local user who holds no token reads nothing but `/api/health`. The token is the
   boundary: a local user who can read your browser profile can read the token too
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **A held permission waits for a person's tap.** With `collie hooks install claude
+  --hold-permissions`, Claude's permission hook asks the bridge through a socket file. Only your
+  user can open it (mode 0600 in a 0700 folder). The hook checks the socket owner, the folder and
+  the state dir above it before it connects. The bridge answers only for a process it places on a
+  pane. It never answers alone. A tap must carry the hash of what the card showed. A screen card
+  never answers a request whose dialog is not on the screen
+  ([Permissions held for the phone](multiplexers.md#permissions-held-for-the-phone)).
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write

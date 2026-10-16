@@ -156,6 +156,18 @@ export interface PromptModel {
    */
   signature: string;
   /**
+   * The dialog block alone, for the bridge's single-use ask id (M56 spec 08): the rows from the
+   * dialog's own top edge to the footer, joined. That is the header, the subject inside the frame,
+   * the question, the option labels and the key hints. Nothing above the edge: {@link signature}
+   * reaches into the transcript, where a tool row's blinking bullet changes it every second, so an
+   * ask bound to it changed under every tap.
+   *
+   * Set by a grammar whose `signature` reads above the dialog. `null` means that grammar found no
+   * edge: the bridge then refuses a tap, and never binds to the lookback instead. Absent means the
+   * grammar's `signature` already starts at the dialog, so the bridge binds to that.
+   */
+  askRegion?: string | null;
+  /**
    * The canonical styled lines of the SAME rows as {@link signature} (`canonicalStyledLines`,
    * lib/styled-region.ts), as the wire value `encodeStyledRegion` builds: a `v1` format line, then
    * the lines, joined with "\n". Set ONLY by a grammar whose pointer, or any other state

@@ -187,5 +187,18 @@ export function parseEdge(text: string): EdgeRecord | null {
   if (promptHash !== null && !PROMPT_HASH.test(promptHash)) return null;
   if (row.promptHash !== null && row.promptHash !== undefined && promptHash === null) return null;
   if (pid === null || pid === 0 || pidStartTime === null || at === null || markers.length === 0) return null;
-  return { schemaVersion: EDGE_SCHEMA_VERSION, harness, event, detail, pid, pidStartTime, markers, at, promptHash };
+  const base: EdgeRecord = { schemaVersion: EDGE_SCHEMA_VERSION, harness, event, detail, pid, pidStartTime, markers, at, promptHash };
+  // The three fields of M56 spec 12, each optional: a field that is present but malformed drops it.
+  const holds = row.holds === true;
+  const tool = row.tool === undefined ? null : readText(row, "tool");
+  const agent = row.agent === undefined ? null : readText(row, "agent");
+  const shortText = /^[\x20-\x7e]{1,128}$/u;
+  // The three spec 12 fields stay absent when unset, so an older edge file reads as it did.
+  let record: EdgeRecord = base;
+  if (holds) record = { ...record, holds: true };
+  if (tool !== null && shortText.test(tool)) record = { ...record, tool };
+  if (agent !== null && shortText.test(agent)) record = { ...record, agent };
+  const inputHash = row.inputHash === undefined ? null : readText(row, "inputHash");
+  if (inputHash !== null && /^[0-9a-f]{1,64}$/u.test(inputHash)) record = { ...record, inputHash };
+  return record;
 }

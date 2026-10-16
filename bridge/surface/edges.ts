@@ -181,9 +181,14 @@ export class EdgeRouter {
     this.timer = null;
   }
 
-  /** "live" while the pane has a hook source whose pid runs; "none" otherwise. */
-  hooksOf(session: string, paneId: string): "live" | "none" {
-    return this.sources.has(keyOf(session, paneId)) ? "live" : "none";
+  /**
+   * "live" while the pane has a hook source whose pid runs; "holds" when its newest edge also says the
+   * harness's settings hold permissions (M56 spec 12); "none" otherwise.
+   */
+  hooksOf(session: string, paneId: string): "live" | "holds" | "none" {
+    const source = this.sources.get(keyOf(session, paneId));
+    if (source === undefined) return "none";
+    return source.record.holds === true ? "holds" : "live";
   }
 
   /** One take: every edge file in the spool, in name order, then the liveness of the sources. Never throws. */

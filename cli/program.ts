@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
+import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
 import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
 import {
@@ -301,6 +302,20 @@ function beaconDeps(): BeaconEmitDeps {
   };
 }
 
+function holdDeps(): HoldDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    agentPid: process.ppid,
+    uid: process.getuid?.(),
+    connect: netConnect,
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
+  };
+}
+
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
 function lifecycleCommand(
   name: string,
@@ -595,7 +610,7 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit` — an agent hook's payload in, one beacon file out",
+    summary: "internal: `beacon emit` and `beacon hold`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
@@ -603,6 +618,11 @@ export const COMMANDS: readonly Command[] = [
         summary: "internal: write this pane's beacon from the hook payload on stdin",
         // `collie beacon emit codex <payload>` is the Codex notify command (cli/codex-notify.ts).
         run: (args) => (args[0] === CODEX_NOTIFY_HARNESS ? runCodexNotify(beaconDeps, args.slice(1)) : runBeaconEmit(beaconDeps)),
+      },
+      {
+        name: "hold",
+        summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
+        run: () => runBeaconHold(holdDeps),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets

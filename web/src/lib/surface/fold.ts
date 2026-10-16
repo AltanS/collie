@@ -164,6 +164,7 @@ function stepEdge(state: FoldState, input: EdgeInput): FoldState {
     case "end":
       return { ...base, running: null, dialog: null, freeReads: [] };
     case "reread":
+    case "tool":
       return base;
   }
 }

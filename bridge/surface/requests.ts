@@ -246,7 +246,10 @@ function parseAskReceipt(value: JsonValue | undefined): AskReceipt | undefined {
     outcome,
   };
   const withReason = reason === undefined ? receipt : { ...receipt, reason };
-  return channel === undefined ? withReason : { ...withReason, channel };
+  const withChannel = channel === undefined ? withReason : { ...withReason, channel };
+  // A hook-held ask (M56 spec 12) also names the decision it sent.
+  const decision = node.decision === "allow" || node.decision === "deny" ? node.decision : undefined;
+  return channel === "hook" && decision !== undefined ? { ...withChannel, decision } : withChannel;
 }
 
 /** An ask record read back from its file, every field checked; null when it is not one this module wrote. */

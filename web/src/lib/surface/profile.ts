@@ -13,6 +13,7 @@
 import { asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import { compareSemver } from "../semver";
 import { EDGE_KINDS, type EdgeProfile } from "./edges";
+import { HOLD_DECISIONS, HOLD_GRACE_MS, type HoldProfile } from "./hold";
 import { PROFILE_FILES } from "./profiles/index";
 
 export type ProfileStatus = "verified" | "provisional" | "revoked";
@@ -301,6 +302,11 @@ export interface Profile {
    * no event, so every edge only asks for a fresh read, with the default timing.
    */
   readonly edges?: EdgeProfile;
+  /**
+   * How the harness's permission hook holds a request for the phone (M56 spec 12). Optional: a
+   * profile without it holds nothing, and every permission stays a screen ask.
+   */
+  readonly hold?: HoldProfile;
 }
 
 /** A profile that failed its check. `path` names the field, for example `keys.clear.slack`. */
@@ -710,10 +716,67 @@ export function parseProfile(raw: JsonValue): Profile {
 
   const edges = root.edges === undefined ? undefined : parseEdges(root.edges, hooks);
 
+  const hold = root.hold === undefined ? undefined : parseHold(root.hold, hooks);
+
   const parsedProfile: Profile = { id, identity: agentNames === undefined ? identity : { ...identity, agentNames }, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
   const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
   const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
-  return edges === undefined ? withAsk : { ...withAsk, edges };
+  const withEdges = edges === undefined ? withAsk : { ...withAsk, edges };
+  return hold === undefined ? withEdges : { ...withEdges, hold };
+}
+
+/**
+ * The `hold` block. Its event must be a key of `hooks` with kind `ask`, its tool event one with kind
+ * `edge`. The limit plus the hook's own grace must stay below the hook timeout, so the bridge lets go
+ * before the harness kills the hook.
+ */
+function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>): HoldProfile {
+  const node = object(value, "hold");
+  const event = text(field(node, "event", "hold"), "hold.event");
+  if (hooks[event] !== "ask") fail("hold.event", `names ${event}, which hooks does not list as an ask`);
+  const toolEvent = text(field(node, "toolEvent", "hold"), "hold.toolEvent");
+  if (hooks[toolEvent] !== "edge") fail("hold.toolEvent", `names ${toolEvent}, which hooks does not list as an edge`);
+  const limitMs = millis(field(node, "limitMs", "hold"), "hold.limitMs", 5000, 3_600_000);
+  const hookTimeoutS = whole(field(node, "hookTimeoutS", "hold"), "hold.hookTimeoutS", 10);
+  if (limitMs + HOLD_GRACE_MS >= hookTimeoutS * 1000) {
+    fail("hold.limitMs", `plus ${String(HOLD_GRACE_MS)} ms must stay below hold.hookTimeoutS`);
+  }
+  const minVersion = text(field(node, "minVersion", "hold"), "hold.minVersion");
+  if (!/^\d+\.\d+\.\d+$/u.test(minVersion)) fail("hold.minVersion", "must read X.Y.Z");
+  const inputShown = textList(field(node, "inputShown", "hold"), "hold.inputShown", 1);
+  const screenOnly = textList(field(node, "screenOnly", "hold"), "hold.screenOnly", 0);
+  const headersNode = object(field(node, "headers", "hold"), "hold.headers");
+  const headers = Object.fromEntries(Object.keys(headersNode).map((tool) => [tool, textList(headersNode[tool], `hold.headers.${tool}`, 1)]));
+  const agentMark = pattern(field(node, "agentMark", "hold"), "hold.agentMark").source;
+  // The first group names the subagent's type: the bridge compares it with the request's.
+  if ((new RegExp(`${agentMark}|`, "u").exec("")?.length ?? 0) < 2) fail("hold.agentMark", "must hold one group, the subagent's type");
+  const detailsNode = object(field(node, "inputDetails", "hold"), "hold.inputDetails");
+  const inputDetails = Object.fromEntries(
+    Object.keys(detailsNode).map((tool) => {
+      const at = `hold.inputDetails.${tool}`;
+      const detail = object(detailsNode[tool], at);
+      const flags = detail.flags === undefined ? [] : textList(detail.flags, `${at}.flags`, 0);
+      const body = detail.body === undefined ? [] : textList(detail.body, `${at}.body`, 0);
+      return [tool, { flags, body }];
+    }),
+  );
+  const options = list(field(node, "options", "hold"), "hold.options").map((item, i) => {
+    const at = `hold.options[${String(i)}]`;
+    const option = object(item, at);
+    return { label: text(field(option, "label", at), `${at}.label`), decision: oneOf(field(option, "decision", at), `${at}.decision`, HOLD_DECISIONS) };
+  });
+  if (!options.some((o) => o.decision === "allow") || !options.some((o) => o.decision === "deny")) {
+    fail("hold.options", "must offer one allow and one deny");
+  }
+  const decisions = list(field(node, "decisions", "hold"), "hold.decisions").map((item, i) => {
+    const at = `hold.decisions[${String(i)}]`;
+    const rule = object(item, at);
+    return { match: pattern(field(rule, "match", at), `${at}.match`).source, decision: oneOf(field(rule, "decision", at), `${at}.decision`, HOLD_DECISIONS) };
+  });
+  const decidedLine = pattern(field(node, "decidedLine", "hold"), "hold.decidedLine").source;
+  const deniedLine = pattern(field(node, "deniedLine", "hold"), "hold.deniedLine").source;
+  const denyMessage = text(field(node, "denyMessage", "hold"), "hold.denyMessage");
+  return { event, toolEvent, limitMs, hookTimeoutS, minVersion, inputShown, inputDetails, screenOnly, headers, agentMark, options, decisions, decidedLine, deniedLine, denyMessage };
 }
 
 /** A whole number of ms inside a range. */

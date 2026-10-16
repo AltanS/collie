@@ -87,6 +87,12 @@ export interface CounterRow extends CounterKey {
    * `dropped` for an edge no pane could be found for (counted under the edge's harness, version `-`).
    */
   edges: Record<string, number>;
+  /**
+   * Hook-held permissions (M56 spec 12), by outcome: `phone` (the tap reached the hook and took
+   * effect), `desk` (the desk or another hook answered first), `void` (the hook stopped, or another
+   * Collie answered), `timeout` (the hold reached its limit), `mismatch` (an answer with another hash).
+   */
+  holds: Record<string, number>;
 }
 
 /** One day's file. */
@@ -132,7 +138,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {} };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, edges: {}, holds: {} };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -205,6 +211,7 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     typed_not_submitted: count("typed_not_submitted"),
     discarded: count("discarded"),
     edges: parseCountMap(node.edges),
+    holds: parseCountMap(node.holds),
   };
 }
 
@@ -251,6 +258,7 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.typed_not_submitted += from.typed_not_submitted;
   into.discarded += from.discarded;
   for (const [word, n] of Object.entries(from.edges)) bump(into.edges, word, n);
+  for (const [word, n] of Object.entries(from.holds)) bump(into.holds, word, n);
 }
 
 /** The rows of several days added up by key, sorted by harness, then version. */
@@ -496,6 +504,13 @@ export class SurfaceLedger {
   edge(key: CounterKey, word: string): void {
     const row = this.row(key);
     bump(row.edges, word);
+    this.touch();
+  }
+
+  /** One hook-held permission's outcome (M56 spec 12): `phone`, `desk`, `void`, `timeout` or `mismatch`. */
+  hold(key: CounterKey, word: string): void {
+    const row = this.row(key);
+    bump(row.holds, word);
     this.touch();
   }
 

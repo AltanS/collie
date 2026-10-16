@@ -568,6 +568,13 @@ describe("parseProfile names the failing field", () => {
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
     ["a footer row that is no expression", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "[unclosed", "idle.volatile.below.footerRows[0].pattern"],
     ["a footer row that matches a blank row", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "^\\s*$", "idle.volatile.below.footerRows[0].pattern"],
+    ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
+    ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
+    ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],
+    ["a hold with no deny option", ["hold", "options"], [{ label: "Yes", decision: "allow" }], "hold.options"],
+    ["a hold decision that is neither allow nor deny", ["hold", "decisions", 0, "decision"], "ask", "hold.decisions[0].decision"],
+    ["a hold decided line that is no expression", ["hold", "decidedLine"], "[unclosed", "hold.decidedLine"],
+    ["a missing hold denied line", ["hold", "deniedLine"], undefined, "hold.deniedLine"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {

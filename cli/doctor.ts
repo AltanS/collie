@@ -97,6 +97,8 @@ import type { ServeMode } from "./context.ts";
 import type { Exec, Files } from "./sys.ts";
 import { whistleModelFindings, type WhistleSeams } from "./stt-whistle.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
+import { settingsHold } from "./hold-entry.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import {
   HTTPS_DISABLED_HINT,
   tailnetCertDomains,
@@ -2052,10 +2054,14 @@ function beaconHooks(
   // need the hooks to name an agent, so the line says what they still give: the hook edges of the
   // input surface (M56 spec 11).
   const spare = muxReportsAgents ? `; ${name} names agents itself and does not need them for that, so they give hook edges only` : "";
+  // The permission hold (M56 spec 12): which files hold permissions for the phone, if any.
+  const holdEvent = loadProfiles().get("claude")?.hold?.event;
+  const holding = holdEvent === undefined ? 0 : [...perFile.keys()].filter((path) => settingsHold(deps.files.read(path), holdEvent)).length;
+  const holds = holding > 0 ? `; holds permissions in ${String(holding)}` : "";
   return ok(
     check,
     `v${String(HOOK_MARKER_VERSION)} in ${String(perFile.size)} settings file${perFile.size === 1 ? "" : "s"},` +
-      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}`,
+      ` running \`${hookBinaryOf(entries[0]?.command ?? "") ?? would.binary}\`${spare}${holds}`,
   );
 }
 
