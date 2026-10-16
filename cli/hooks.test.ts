@@ -250,6 +250,8 @@ describe("install", () => {
     const hooks = JSON.parse(d.files.entries.get(SETTINGS)!.text).hooks;
     expect(Object.keys(hooks)).toEqual(BEACON_HOOKS.map((r) => r.event));
     expect(d.io.stdout.join("\n")).toContain("UserPromptSubmit");
+    expect(d.io.stdout.join("\n")).toContain("/.local/state/collie/hook-targets");
+    expect(d.io.stdout.join("\n")).not.toMatch(/Restart them/u);
     expect(d.io.stderr).toEqual([]);
   });
 

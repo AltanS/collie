@@ -14,7 +14,7 @@ import type { ForegroundProcess } from "../journal/types.ts";
 import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import type { AgentView } from "../types.ts";
 import { isFree, modalWord } from "../../web/src/lib/surface/surface.ts";
-import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge } from "./edges.ts";
+import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
 import { SurfaceShadow } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -221,6 +221,42 @@ function shadowRig() {
   };
   return { mux, shadow, pending, counted, reread, advance: (ms: number) => (clock += ms) };
 }
+
+describe("the live sources across a restart", () => {
+  class MemoryStore implements SourceStore {
+    saved: readonly SavedSource[] = [];
+    load(): readonly SavedSource[] {
+      return this.saved;
+    }
+    save(sources: readonly SavedSource[]): void {
+      this.saved = sources;
+    }
+  }
+
+  test("a restarted bridge reads a hooked pane as live before its next event, and drops a dead pid", async () => {
+    const store = new MemoryStore();
+    // The first run takes one edge, and saves the pane's source.
+    const firstSpool = new FakeSpool();
+    const running = new EdgeRouter({ spool: firstSpool, store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 1_000_000 });
+    firstSpool.files.push(JSON.stringify(record({ event: "SessionStart" })));
+    await running.tick();
+    expect(store.saved.map((s) => [s.session, s.paneId])).toEqual([["main", "w1:p1"]]);
+    // A restart: the panes are not in a snapshot yet, then they are.
+    let panes: string[] = [];
+    const restarted = new EdgeRouter({ spool: new FakeSpool(), store, liveness: alive, targets: () => [target({ panes })], log: () => undefined, now: () => 1_000_500 });
+    await restarted.tick();
+    expect(restarted.hooksOf("main", "w1:p1")).toBe("none");
+    panes = ["w1:p1", "w1:p2"];
+    await restarted.tick();
+    expect(restarted.hooksOf("main", "w1:p1")).toBe("live");
+    // The same restart with the agent gone: nothing is seeded, and the store forgets it.
+    const dead: BeaconLiveness = { startTimeOf: () => Promise.resolve(null) };
+    const gone = new EdgeRouter({ spool: new FakeSpool(), store, liveness: dead, targets: () => [target()], log: () => undefined, now: () => 1_001_000 });
+    await gone.tick();
+    expect(gone.hooksOf("main", "w1:p1")).toBe("none");
+    expect(store.saved).toEqual([]);
+  });
+});
 
 describe("edges in the shadow", () => {
   test("never free: a Stop edge while the screen still shows the spinner keeps the turn running", async () => {

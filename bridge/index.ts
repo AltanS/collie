@@ -22,7 +22,7 @@ import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
-import { beaconReader, fileEdgeSpool, hooksInstalledProbe, procBeaconLiveness } from "./beacon-io.ts";
+import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -1287,6 +1287,7 @@ const edgeRouter =
     ? null
     : new EdgeRouter({
         spool: fileEdgeSpool(cfg.stateDir),
+        store: fileSourceStore(cfg.stateDir),
         liveness: procBeaconLiveness(),
         targets: () => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
@@ -1516,8 +1517,10 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
-// Take hook edges from here on: every session the registry knows has added its target.
+// Take hook edges from here on: every session the registry knows has added its target. The hook
+// target file tells every emitter on this host to write its edges into this state dir too.
 edgeRouter?.start();
+const unregisterHookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2420,6 +2423,7 @@ const shutdown = async () => {
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
   edgeRouter?.stop();
+  unregisterHookTarget?.();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

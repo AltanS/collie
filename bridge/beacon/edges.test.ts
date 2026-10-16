@@ -2,11 +2,12 @@
 // spool that hands each file over once, and the herdr matcher that places an edge on a herdr pane.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { fileEdgeSpool } from "../beacon-io.ts";
+import { fileEdgeSpool, fileSourceStore, registerHookTarget } from "../beacon-io.ts";
+import { hookTargetFileName, hookTargetsDir, parseHookTarget } from "./hook-targets.ts";
 import { herdrMuxFactory } from "../mux/herdr/adapter.ts";
 import { herdrBeaconMatcher } from "../mux/herdr/markers.ts";
 import { parseEdge } from "./parse.ts";
@@ -65,6 +66,13 @@ describe("the edge spool", () => {
     expect(readdirSync(edgesDir(dir))).toEqual([".1000-1-c.json.tmp"]);
   });
 
+  test("deletes unread an edge file another user owns", async () => {
+    mkdirSync(edgesDir(dir), { recursive: true });
+    writeFileSync(join(edgesDir(dir), "1000-1-a.json"), "foreign");
+    expect(await fileEdgeSpool(dir, 4_000_000).take()).toEqual([]);
+    expect(readdirSync(edgesDir(dir))).toEqual([]);
+  });
+
   test("takes nothing, and throws nothing, when the folder is not there", async () => {
     expect(await fileEdgeSpool(join(dir, "none")).take()).toEqual([]);
   });
@@ -99,5 +107,42 @@ describe("the herdr beacon matcher", () => {
     // The bridge decorates an adapter for identity only when it sees no agent (withBeaconsIfBlind).
     const adapter = herdrMuxFactory.create(target);
     expect(adapter.capabilities.supports.agentDetection).toBe(true);
+  });
+});
+
+describe("the hook target registry on disk", () => {
+  test("a bridge writes its target at boot under XDG_STATE_HOME and removes it on a clean stop", () => {
+    const env = { XDG_STATE_HOME: join(dir, "xdg") };
+    const unregister = registerHookTarget("/srv/lab-state", env, "/nowhere");
+    const path = join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/lab-state"));
+    const record = parseHookTarget(readFileSync(path, "utf8"));
+    expect(record?.stateDir).toBe("/srv/lab-state");
+    expect(record?.pid).toBe(process.pid);
+    unregister();
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test("the stop leaves a newer bridge's file on the same state dir alone", () => {
+    const env = { XDG_STATE_HOME: join(dir, "xdg") };
+    const unregister = registerHookTarget("/srv/lab-state", env, "/nowhere");
+    const path = join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/lab-state"));
+    writeFileSync(path, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/lab-state", pid: process.pid + 1, pidStartTime: null, bootedAt: 1 }));
+    unregister();
+    expect(existsSync(path)).toBe(true);
+  });
+
+  test("without XDG_STATE_HOME the registry sits under ~/.local/state/collie", () => {
+    expect(hookTargetsDir({}, "/home/pat")).toBe("/home/pat/.local/state/collie/hook-targets");
+  });
+});
+
+describe("the live hook sources across a restart", () => {
+  test("saves and loads the sources, and reads a broken file as none", () => {
+    const store = fileSourceStore(dir);
+    expect(store.load()).toEqual([]);
+    store.save([{ session: "main", paneId: "w1:p1", record: RECORD }]);
+    expect(store.load()).toEqual([{ session: "main", paneId: "w1:p1", record: RECORD }]);
+    writeFileSync(join(dir, "surface", "hook-sources.json"), "not json");
+    expect(store.load()).toEqual([]);
   });
 });

@@ -796,7 +796,7 @@ export const en = {
   "paneSettings.hooks.live": "Hooks: live",
   "paneSettings.hooks.none": "Hooks: none",
   "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.",
-  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after \"collie hooks install\".",
+  "paneSettings.hooks.noneHint": "Collie has no hook report from this pane, so it reads the screen alone. An agent that started before \"collie hooks install claude\" sends no reports.",
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",
