@@ -1516,6 +1516,16 @@
    "version": "unversioned",
    "state": "running"
   },
+  "codex--resume-picker-moved.txt": {
+   "harness": "codex",
+   "version": "0.159",
+   "state": "dialog"
+  },
+  "codex--resume-picker.txt": {
+   "harness": "codex",
+   "version": "0.159",
+   "state": "dialog"
+  },
   "codex--submitted-fill-labelled-rule.txt": {
    "harness": "codex",
    "version": "unversioned",
@@ -1771,6 +1781,11 @@
    "version": "unversioned",
    "state": "idle"
   },
+  "grok--model-arg-hint.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "draft"
+  },
   "grok--model-effort-moved.txt": {
    "harness": "grok",
    "version": "unversioned",
@@ -1856,15 +1871,35 @@
    "version": "unversioned",
    "state": "draft"
   },
+  "grok--slash-popup-exact.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "popup"
+  },
+  "grok--slash-popup-partial.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "popup"
+  },
   "grok--startup.txt": {
    "harness": "grok",
    "version": "unversioned",
    "state": "idle"
   },
+  "grok--trust-prompt.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "dialog"
+  },
   "grok--user-bubble.txt": {
    "harness": "grok",
    "version": "unversioned",
    "state": "other"
+  },
+  "grok--welcome-card.txt": {
+   "harness": "grok",
+   "version": "1.0.52",
+   "state": "idle"
   },
   "grok--working.txt": {
    "harness": "grok",
@@ -2021,15 +2056,50 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "muse--palette-hint-moved.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-hint-skills.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-hint.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
   "muse--palette-partial.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "dialog"
   },
+  "muse--palette-skill.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
+  "muse--palette-typed-arg.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "popup"
+  },
   "muse--quoted-dialogs-bare.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "other"
+  },
+  "muse--resume-picker-moved.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "dialog"
+  },
+  "muse--resume-picker.txt": {
+   "harness": "muse",
+   "version": "1.4.8",
+   "state": "dialog"
   },
   "muse--tasks-popup-approval.txt": {
    "harness": "muse",
@@ -2344,6 +2414,11 @@
   "oc--slash-palette.txt": {
    "harness": "opencode",
    "version": "unversioned",
+   "state": "dialog"
+  },
+  "oc--update-available.txt": {
+   "harness": "opencode",
+   "version": "1.18.34",
    "state": "dialog"
   },
   "oc--working.txt": {
@@ -3075,6 +3150,16 @@
    "harness": "pi",
    "version": "unversioned",
    "state": "other"
+  },
+  "pi--trust-prompt-moved.txt": {
+   "harness": "pi",
+   "version": "1.2.0",
+   "state": "dialog"
+  },
+  "pi--trust-prompt.txt": {
+   "harness": "pi",
+   "version": "1.2.0",
+   "state": "dialog"
   },
   "pi--v085-working-editor.txt": {
    "harness": "pi",
