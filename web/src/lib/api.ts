@@ -15,8 +15,8 @@ import {
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
-import { readSendReply, type SendReply } from "./send-protocol";
-import type { SendRequestBody } from "./surface/send";
+import { readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
+import type { SendReceiptRow, SendRequestBody } from "./surface/send";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
@@ -1378,7 +1378,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
         (
           await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
           })
         ).send,
       )
@@ -1387,6 +1387,17 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
   return reply;
+}
+
+/**
+ * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
+ * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
+ * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
+ */
+export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
+  if (normalizeScope(scope).host) return [];
+  const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope));
+  return readSendReceipts(got).receipts.slice();
 }
 
 /**

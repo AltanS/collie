@@ -431,6 +431,20 @@ export const en = {
   "composer.protocol.commit": "Type here",
   "composer.protocol.keys": "Keys",
   "composer.protocol.openKeys": "Open Keys",
+  // The cap (M56 spec 09): after N manual sends on one harness version in a day, one more confirm.
+  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.",
+  "composer.protocol.commitCap": "Confirm and type",
+  // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
+  "sendReceipts.title": "Recent sends",
+  "sendReceipts.empty": "No sends to this pane yet.",
+  "sendReceipts.outcome.sent": "Sent",
+  "sendReceipts.outcome.effective": "Confirmed",
+  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent",
+  "sendReceipts.outcome.refused": "Refused",
+  "sendReceipts.outcome.unknown": "Unknown",
+  "sendReceipts.keys": "Keys: {keys}",
+  "sendReceipts.noKeys": "No keys were sent.",
+  "sendReceipts.gaps": "Waited: {gaps}",
   "composer.protocol.dismissAria": "Dismiss the send offers",
   // What the bridge saw on the screen when a send did not go (M56 spec 06), said after the verdict.
   "composer.surface.free": "The input box was free.",

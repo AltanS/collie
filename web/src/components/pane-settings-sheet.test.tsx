@@ -142,4 +142,30 @@ describe("PaneSettingsSheet — the real hooks, end to end", () => {
     await waitFor(() => expect(body).toEqual({ on: true }));
     await waitFor(() => expect(toggle).toBeChecked());
   });
+
+  test("lists the pane's recent sends under the switch, read when the sheet opens (M56 spec 09)", async () => {
+    server.use(
+      http.get("/api/notifications/cache-watch", () => HttpResponse.json(state())),
+      http.get("/api/send/receipts", () =>
+        HttpResponse.json({ receipts: [{ requestId: "req00001", at: Date.now(), mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "agent", version: "1" }] }),
+      ),
+    );
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" />);
+    expect(await screen.findByText("Recent sends")).toBeInTheDocument();
+    expect(await screen.findByText("Sent")).toBeInTheDocument();
+  });
+
+  test("a closed sheet reads no receipts", async () => {
+    let asked = 0;
+    server.use(
+      http.get("/api/notifications/cache-watch", () => HttpResponse.json(state())),
+      http.get("/api/send/receipts", () => {
+        asked++;
+        return HttpResponse.json({ receipts: [] });
+      }),
+    );
+    render(<PaneSettingsSheet open={false} onClose={vi.fn()} paneId="w1:p1" />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(asked).toBe(0);
+  });
 });

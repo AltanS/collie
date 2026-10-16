@@ -10,7 +10,19 @@
 // own sentence (`detail`) reach the person: a refusal names what the bridge saw on the screen.
 
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
-import { SEND_OUTCOMES, SEND_REASONS, type SendMode, type SendOffer, type SendOutcome, type SendReason } from "./surface/send";
+import {
+  SEND_MODES,
+  SEND_OUTCOMES,
+  SEND_REASONS,
+  type SendCap,
+  type SendMode,
+  type SendOffer,
+  type SendOutcome,
+  type SendReason,
+  type SendReceiptRow,
+  type SendReceiptsAnswer,
+  type SendStep,
+} from "./surface/send";
 import type { Ask, AskOption, Surface, SurfaceComposer, SurfaceModal, SurfaceReason, SurfaceTurn } from "./surface/surface";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
@@ -24,6 +36,8 @@ export interface SendReply {
   readonly surface: Surface | null;
   /** The bridge's own sentence: what moved, which route a lead belongs to, why a step stopped. */
   readonly detail: string | null;
+  /** Set when the cap asks for one more confirm (M56 spec 09): the next commit carries `capAck`. */
+  readonly cap: SendCap | null;
 }
 
 const OFFERS: readonly SendOffer[] = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"];
@@ -95,7 +109,59 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     replayed: asJsonBoolean(node.replayed) === true,
     surface: readSurface(node.surface),
     detail: asJsonString(node.detail) ?? null,
+    cap: readCap(node.cap),
   };
+}
+
+/** The cap's answer on the wire, field by field, or null. */
+function readCap(value: JsonValue | undefined): SendCap | null {
+  const node = asJsonObject(value);
+  if (node === undefined) return null;
+  const count = asJsonNumber(node.count);
+  const limit = asJsonNumber(node.limit);
+  const harness = asJsonString(node.harness);
+  const version = asJsonString(node.version);
+  if (count === undefined || limit === undefined || harness === undefined || version === undefined) return null;
+  if (!Number.isInteger(count) || !Number.isInteger(limit) || count < 0 || limit < 1) return null;
+  return { count, limit, harness, version };
+}
+
+const STEPS: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "commit", "s2"];
+
+/**
+ * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire
+ * carries no text and no screen row, and this reads nothing of either: outcome, reason, time, the
+ * keys by name and the measured gaps.
+ */
+export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswer {
+  const list = asJsonObject(body)?.receipts;
+  if (!Array.isArray(list)) return { receipts: [] };
+  const receipts: SendReceiptRow[] = [];
+  for (const raw of list) {
+    const node = asJsonObject(raw);
+    if (node === undefined) continue;
+    const requestId = asJsonString(node.requestId);
+    const at = asJsonNumber(node.at);
+    const mode = pick(node.mode, SEND_MODES);
+    const outcome = pick(node.outcome, SEND_OUTCOMES);
+    const harness = asJsonString(node.harness);
+    if (requestId === undefined || at === undefined || mode === null || outcome === null || harness === undefined) continue;
+    if (!Array.isArray(node.keys)) continue;
+    const keys = node.keys.flatMap((key) => {
+      const name = asJsonString(key);
+      return name === undefined ? [] : [name];
+    });
+    const gapsMs: Partial<Record<SendStep, number>> = {};
+    const gaps = asJsonObject(node.gapsMs);
+    for (const step of STEPS) {
+      const gap = asJsonNumber(gaps?.[step]);
+      if (gap !== undefined) gapsMs[step] = gap;
+    }
+    const reason = pick(node.reason, SEND_REASONS);
+    const row = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
+    receipts.push(reason === null ? row : { ...row, reason });
+  }
+  return { receipts };
 }
 
 /** The sentence an answer gets: a key under `composer.protocol.*`. */
@@ -105,6 +171,7 @@ export type SendNote =
   | "draft"
   | "typed"
   | "unconfirmed"
+  | "capConfirm"
   | "unknown"
   | "busy"
   | "notFree"
@@ -160,6 +227,8 @@ export interface SendReading {
   readonly detail: string | null;
   /** The screen holds an ask or a screen Collie cannot read: the notice's control goes to the card. */
   readonly toCard: boolean;
+  /** Set when the cap asks for one more confirm; its words name the count and the version. */
+  readonly cap: SendCap | null;
 }
 
 /** The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own. */
@@ -196,6 +265,8 @@ function refusalNote(reason: SendReason | null): SendNote {
 type Verdict = Pick<SendReading, "clear" | "note" | "offers">;
 
 function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict {
+  // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
+  if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   switch (reply.outcome) {
     case "sent":
     case "effective":
@@ -216,7 +287,9 @@ export function readSend(reply: SendReply): SendReading {
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceNote(reply.surface);
   const toCard = surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable";
-  return { ...base, surface, detail: base.clear ? null : reply.detail, toCard };
+  const cap = base.note === "capConfirm" ? reply.cap : null;
+  // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
+  return { ...base, surface, detail: base.clear || cap !== null ? null : reply.detail, toCard, cap };
 }
 
 /** The mode a tap on an offer sends, or null for one that sends nothing (`cancel`, `keys`). A commit keeps a command a command. */

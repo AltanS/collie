@@ -3,6 +3,7 @@ import { Pencil } from "lucide-react";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { Switch } from "@/components/ui/switch";
 import { BottomSheet } from "@/components/ui/sheet";
+import { SendReceipts } from "@/components/send-receipts";
 import { useCacheWatch } from "@/hooks/use-cache-watch";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
@@ -58,6 +59,8 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: Pa
         onToggle={(next) => void toggle(next)}
         onRename={onRename}
       />
+      {/* The last ten sends for this pane, from the bridge's receipts (M56 spec 09). Read when the sheet opens. */}
+      {open && <SendReceipts paneId={paneId} {...(scope === undefined ? {} : { scope })} />}
     </BottomSheet>
   );
 }

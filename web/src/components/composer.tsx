@@ -327,7 +327,11 @@ interface ClearedDraft {
 
 /** The sentence for an answer that did not send: the bridge's verdict, then what it saw on the screen. */
 function answerSentence(reading: SendReading): string {
-  const note = translate(`composer.protocol.${reading.note}`);
+  // The cap's sentence names the count, the harness and its version (M56 spec 09).
+  const note =
+    reading.cap === null
+      ? translate(`composer.protocol.${reading.note}`)
+      : translate("composer.protocol.capConfirm", { count: String(reading.cap.count), harness: reading.cap.harness, version: reading.cap.version });
   // A draft refusal already says what the screen held.
   if (reading.surface === null || reading.note === "draft") return note;
   return `${note} ${translate(`composer.surface.${reading.surface}`)}`;
@@ -347,7 +351,7 @@ interface SendRefusal {
 }
 
 /** The answers whose next move is to read the screen before anything else (the spec's "read the screen, then send again"). */
-const READ_THE_SCREEN: ReadonlySet<SendNote> = new Set<SendNote>(["unknown", "unconfirmed", "moved", "probeFailed"]);
+const READ_THE_SCREEN: ReadonlySet<SendNote> = new Set<SendNote>(["unknown", "unconfirmed", "capConfirm", "moved", "probeFailed"]);
 
 /** A sentence the phone itself raised before the bridge was asked (a link that is down, a dialog that owns the keys). */
 function phoneRefusal(sentence: string, toCard = false): SendRefusal {
@@ -545,7 +549,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [sending, setSending] = useState(false);
   // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
   const protocolIntent = useRef<IntentId | null>(null);
-  const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[] } | null>(null);
+  const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
   // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
@@ -1127,7 +1131,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
   // ends the intent, and every offer it makes is a new one with a new id. Resolves true only on
   // `sent` or `effective`.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null): Promise<boolean> {
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false): Promise<boolean> {
     setSending(true);
     setSendRefusal(null);
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
@@ -1136,7 +1140,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, held: protocolIntent.current });
+      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, held: protocolIntent.current });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;
@@ -1154,7 +1158,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         afterVerifiedSend(t, isDraft);
         return true;
       }
-      setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers });
+      setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
       const sentence = answerSentence(reading);
       setSendRefusal({
         sentence,
@@ -1186,7 +1190,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (mode === null) return;
     // Added to a draft, the text starts after one space, as a person typing on would put it.
     const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
-    void sendThroughProtocol(words, held.isDraft, mode, offer === "commit" ? held.rowsHash : null);
+    // After the cap's notice the commit is the extra confirm: it carries `capAck` (M56 spec 09).
+    void sendThroughProtocol(words, held.isDraft, mode, offer === "commit" ? held.rowsHash : null, offer === "commit" && held.capAck);
   }
 
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the
@@ -1790,7 +1795,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
         <Collapse open={protocolOffer !== null}>
           {protocolOffer !== null && (
-            <SendOfferStrip offers={protocolOffer.offers} disabled={sending || locked} onOffer={onProtocolOffer} onDismiss={() => setProtocolOffer(null)} />
+            <SendOfferStrip offers={protocolOffer.offers} disabled={sending || locked} onOffer={onProtocolOffer} onDismiss={() => setProtocolOffer(null)} capConfirm={protocolOffer.capAck} />
           )}
         </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other

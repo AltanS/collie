@@ -4093,3 +4093,87 @@ describe("keys dock", () => {
     await waitFor(() => expect(keysSent.length).toBeGreaterThan(0));
   });
 });
+
+// ── THE CAP (M56 spec 09) ─────────────────────────────────────────────────────────────────────────
+//
+// After N manual sends on one harness and version inside 24 hours, the manual Send takes one more
+// confirm. The bridge counts and files the frame hash; the phone shows the count and the version, and
+// the next commit carries `capAck`. It only adds a tap: the manual Send and the Keys dock stay.
+describe("the cap (M56 spec 09)", () => {
+  const UNREADABLE: Surface = { revision: 3, turn: "idle", modal: "unreadable", composer: "empty" };
+  const CAP = { count: 5, limit: 5, harness: "agent", version: "2.1.301" };
+
+  /** The fake bridge on a screen it cannot read: unconfirmed first, then the cap's refusal, then sent. */
+  function capBridge(capped: boolean) {
+    return sendHandler((request) => {
+      if (request.rowsHash === undefined) return sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE });
+      if (capped && request.capAck !== true) {
+        return sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE, cap: CAP, detail: "The bridge's own English." });
+      }
+      return sendAnswer(request.id, "sent");
+    });
+  }
+
+  async function typeAndSend(words: string) {
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox"), words);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    return user;
+  }
+
+  it("under the cap the manual Send is two taps, and no commit carries a cap ack", async () => {
+    server.use(...capBridge(false));
+    renderWithContainer({ surface: UNREADABLE });
+    const user = await typeAndSend("carry on please");
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    expect(recordedSends().map(({ rowsHash, capAck }) => ({ rowsHash, capAck }))).toEqual([{ rowsHash: undefined, capAck: undefined }, { rowsHash: "0f00ba", capAck: undefined }]);
+  });
+
+  it("at the cap the commit is refused once more with the count and the version, and the next tap carries the ack", async () => {
+    server.use(...capBridge(true));
+    const { container } = renderWithContainer({ surface: UNREADABLE });
+    const user = await typeAndSend("carry on please");
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/5 times on agent 2\.1\.301 in the last day/i));
+    // The phone's own words stand in the notice, not the bridge's English.
+    expect(container.querySelector('[data-slot="composer-refusal"]')).not.toHaveTextContent(/bridge's own english/i);
+    expect(screen.getByRole("textbox")).toHaveValue("carry on please");
+    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Confirm and type" }));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    expect(recordedSends().map(({ rowsHash, capAck }) => ({ rowsHash, capAck }))).toEqual([
+      { rowsHash: undefined, capAck: undefined },
+      { rowsHash: "0f00ba", capAck: undefined },
+      { rowsHash: "0f00ba", capAck: true },
+    ]);
+  });
+
+  it("the cap never removes the manual Send or the Keys dock", async () => {
+    server.use(...capBridge(true));
+    renderWithContainer({ surface: UNREADABLE });
+    const user = await typeAndSend("carry on please");
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await screen.findByRole("button", { name: "Confirm and type" });
+    // The field, the Send button and the Keys board are all still there, enabled, with the draft kept.
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^keys$/i })).toBeEnabled();
+    expect(screen.getByRole("textbox")).toHaveValue("carry on please");
+  });
+
+  it("dismissing the notice and tapping Send again starts over from the first tap, with no ack held", async () => {
+    server.use(...capBridge(true));
+    renderWithContainer({ surface: UNREADABLE });
+    const user = await typeAndSend("carry on please");
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await screen.findByRole("button", { name: "Confirm and type" });
+    await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(3));
+    expect(recordedSends()[2]!.rowsHash).toBeUndefined();
+    expect(recordedSends()[2]!.capAck).toBeUndefined();
+  });
+});

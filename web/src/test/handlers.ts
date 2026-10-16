@@ -461,6 +461,8 @@ export interface SentRequest {
   text: string;
   mode: string;
   rowsHash?: string;
+  /** The person's extra confirm after the cap's notice (M56 spec 09). */
+  capAck?: boolean;
   host?: string;
 }
 let sends: SentRequest[] = [];
@@ -479,6 +481,8 @@ export interface SendAnswerParts {
   readonly rowsHash?: string;
   readonly surface?: Surface;
   readonly detail?: string;
+  /** The cap's answer (M56 spec 09): the count, the limit, the harness and its version. */
+  readonly cap?: { readonly count: number; readonly limit: number; readonly harness: string; readonly version: string };
 }
 
 /** An answer body the way the bridge writes one: a receipt with the outcome and reason, then the offers. */
@@ -488,6 +492,7 @@ export function sendAnswer(id: string, outcome: string | null, reason?: string, 
   if (parts.rowsHash !== undefined) body.rowsHash = parts.rowsHash;
   if (parts.surface !== undefined) body.surface = parseJsonObject(JSON.stringify(parts.surface)) ?? {};
   if (parts.detail !== undefined) body.detail = parts.detail;
+  if (parts.cap !== undefined) body.cap = { ...parts.cap };
   return body;
 }
 
@@ -500,6 +505,7 @@ function sentRequest(body: JsonObject | undefined, pane: string, host: string | 
     mode: asJsonString(body?.mode) ?? "send",
   };
   if (rowsHash !== undefined) request.rowsHash = rowsHash;
+  if (body?.capAck === true) request.capAck = true;
   if (host !== null) request.host = host;
   return request;
 }
@@ -846,6 +852,8 @@ export function fixtureFileImage(path: string): Uint8Array | null {
 }
 
 export const handlers = [
+  // The session page's recent sends (M56 spec 09): none, unless a test says otherwise.
+  http.get("/api/send/receipts", () => HttpResponse.json({ receipts: [] })),
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),

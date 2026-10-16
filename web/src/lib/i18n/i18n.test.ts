@@ -40,6 +40,9 @@ const WAY_OUT_PENDING_WORDSMITH: ReadonlySet<string> = new Set([
   "composer.protocol.openKeys",
 ]);
 
+/** The keys M56 spec 09 added (the cap's sentences and the receipts list), English until the wordsmith pass. */
+const COUNTERS_PENDING_WORDSMITH = (key: string): boolean => key.startsWith("sendReceipts.") || key === "composer.protocol.capConfirm" || key === "composer.protocol.commitCap";
+
 describe("isLocale", () => {
   it("narrows the twelve we ship and refuses everything else", () => {
     expect(isLocale("de")).toBe(true);
@@ -283,7 +286,7 @@ describe("every translated dictionary", () => {
       //
       // The way-out sentences of M56 spec 07 are left out the same way (`WAY_OUT_PENDING_WORDSMITH`), for
       // the same reason: English on purpose, marked `// TODO wordsmith`, until that pass lands.
-      const sameAsEnglish = englishKeys.filter((key) => !key.startsWith("theme.") && !WAY_OUT_PENDING_WORDSMITH.has(key) && dictionary[key] === en[key]);
+      const sameAsEnglish = englishKeys.filter((key) => !key.startsWith("theme.") && !WAY_OUT_PENDING_WORDSMITH.has(key) && !COUNTERS_PENDING_WORDSMITH(key) && dictionary[key] === en[key]);
       expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
 
       for (const key of englishKeys) {

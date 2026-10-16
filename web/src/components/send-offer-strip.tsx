@@ -14,6 +14,8 @@ interface SendOfferStripProps {
   disabled: boolean;
   onOffer: (offer: SendOffer) => void;
   onDismiss: () => void;
+  /** The cap's extra confirm is the next commit (M56 spec 09): its button says so. */
+  capConfirm?: boolean;
 }
 
 const LABEL_KEYS = {
@@ -26,13 +28,13 @@ const LABEL_KEYS = {
   keys: "composer.protocol.keys",
 } as const satisfies Record<SendOffer, string>;
 
-export function SendOfferStrip({ offers, disabled, onOffer, onDismiss }: SendOfferStripProps) {
+export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false }: SendOfferStripProps) {
   useLocale();
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground" data-testid="send-offers">
       {offers.map((offer) => (
         <Button key={offer} variant="ghost" size="sm" className="h-7 px-2 text-xs font-medium" disabled={disabled} onClick={() => onOffer(offer)}>
-          {t(LABEL_KEYS[offer])}
+          {t(offer === "commit" && capConfirm ? "composer.protocol.commitCap" : LABEL_KEYS[offer])}
         </Button>
       ))}
       <Button

@@ -401,6 +401,18 @@ export const de: Dictionary = {
   "composer.protocol.commit": "Hier tippen",
   "composer.protocol.keys": "Tasten",
   "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
+  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
+  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
+  "sendReceipts.title": "Recent sends", // TODO wordsmith
+  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
+  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
+  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
+  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
+  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
+  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
+  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
+  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
+  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
   "composer.protocol.dismissAria": "Sendeoptionen schließen",
   "composer.surface.free": "The input box was free.", // TODO wordsmith
   "composer.surface.running": "The agent was working.", // TODO wordsmith
