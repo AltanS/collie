@@ -302,6 +302,23 @@ describe("the hold matrix", () => {
     expectNoKey(r);
   });
 
+  test("the tool edge of this call is proof when no new hook line shows (a group of calls draws one line)", async () => {
+    const OLD = `⏺ Bash(touch a)\n  ⎿  Allowed by PermissionRequest hook\n`;
+    const r = rig(`${OLD}${BASH}`);
+    const { conn } = r.open();
+    const ask = r.poll()!;
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0 && pane.screen !== `${OLD}${IDLE}`) {
+        pane.screen = `${OLD}${IDLE}`;
+        r.holds.edge(PANE, "tool", toolEdge(null));
+      }
+    };
+    const reply = await r.answer(ask, "1");
+    expect(reply.receipt).toMatchObject({ outcome: "sent", decision: "allow", keys: [] });
+    expect(r.counted).toEqual(["phone"]);
+    expectNoKey(r);
+  });
+
   test("an older turn's hook line above the dialog is not this answer's evidence", async () => {
     const OLD = `⏺ Bash(touch a)\n  ⎿  Allowed by PermissionRequest hook\n`;
     const r = rig(`${OLD}${BASH}`);
