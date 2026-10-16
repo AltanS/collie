@@ -312,7 +312,7 @@ export const de: Dictionary = {
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",
   "composer.placeholder.noMuxSend": "Eingabe in dieses Terminal nicht möglich",
   "composer.placeholder.unreachable": "Eingabefeld kann nicht erreicht werden",
-  "composer.placeholder.sendOff": "Senden ist auf diesem Rechner deaktiviert",
+  "composer.placeholder.sendOff": "Dieser Rechner kann keinen Text vom Telefon annehmen. Aktualisieren Sie Collie auf diesem Rechner oder prüfen Sie die Einstellung COLLIE_SEND_PROTOCOL. Die Tasten funktionieren weiterhin.",
   "composer.placeholder.dialogWaiting": "Dialog wartet",
   "composer.placeholder.menuWaiting": "Menü wartet",
   "composer.placeholder.permissionWaiting": "Berechtigung wartet",

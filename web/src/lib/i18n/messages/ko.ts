@@ -307,7 +307,7 @@ export const ko: Dictionary = {
   "composer.placeholder.readOnly": "읽기 전용: 권한 없음",
   "composer.placeholder.noMuxSend": "이 터미널에는 입력할 수 없습니다",
   "composer.placeholder.unreachable": "입력란에 연결할 수 없습니다",
-  "composer.placeholder.sendOff": "이 기기에서는 전송이 꺼져 있습니다",
+  "composer.placeholder.sendOff": "이 기기는 휴대폰에서 보낸 텍스트를 받을 수 없습니다. 이 기기의 Collie를 업데이트하거나 COLLIE_SEND_PROTOCOL 설정을 확인하십시오. 키는 계속 작동합니다.",
   "composer.placeholder.dialogWaiting": "대화상자 대기 중",
   "composer.placeholder.menuWaiting": "메뉴 대기 중",
   "composer.placeholder.permissionWaiting": "권한 대기 중",

@@ -299,7 +299,7 @@ export const zh: Dictionary = {
   "composer.placeholder.readOnly": "只读模式，未授权",
   "composer.placeholder.noMuxSend": "无法直接输入至此终端",
   "composer.placeholder.unreachable": "无法访问输入框",
-  "composer.placeholder.sendOff": "此设备上已关闭发送",
+  "composer.placeholder.sendOff": "此设备无法从手机接收文本。请更新其 Collie，或检查其 COLLIE_SEND_PROTOCOL 设置。按键仍可使用。",
   "composer.placeholder.dialogWaiting": "对话框正在等待",
   "composer.placeholder.menuWaiting": "菜单正在等待",
   "composer.placeholder.permissionWaiting": "权限正在等待",

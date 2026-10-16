@@ -255,7 +255,7 @@ export const fr: Dictionary = {
   "composer.placeholder.readOnly": "Lecture seule : non autorisé",
   "composer.placeholder.noMuxSend": "Impossible d'écrire dans ce terminal",
   "composer.placeholder.unreachable": "Impossible d'atteindre le champ de saisie",
-  "composer.placeholder.sendOff": "L'envoi est désactivé sur cette machine",
+  "composer.placeholder.sendOff": "Cette machine ne peut pas recevoir de texte depuis le téléphone. Mettez à jour son Collie ou vérifiez son paramètre COLLIE_SEND_PROTOCOL. Les touches fonctionnent toujours.",
   "composer.placeholder.dialogWaiting": "Boîte de dialogue en attente",
   "composer.placeholder.menuWaiting": "Menu en attente",
   "composer.placeholder.permissionWaiting": "Autorisation en attente",

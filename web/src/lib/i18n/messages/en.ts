@@ -340,7 +340,7 @@ export const en = {
   "composer.placeholder.readOnly": "Read-only — not authorised",
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
   "composer.placeholder.unreachable": "Can't reach the input box",
-  "composer.placeholder.sendOff": "Sending is off on this machine",
+  "composer.placeholder.sendOff": "This machine cannot take text from the phone. Update its Collie, or check its COLLIE_SEND_PROTOCOL setting. The keys still work.",
   "composer.placeholder.dialogWaiting": "Dialog is waiting",
   "composer.placeholder.menuWaiting": "Menu is waiting",
   "composer.placeholder.permissionWaiting": "Permission is waiting",

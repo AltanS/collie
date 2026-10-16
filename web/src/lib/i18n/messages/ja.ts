@@ -307,7 +307,7 @@ export const ja: Dictionary = {
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",
   "composer.placeholder.noMuxSend": "このターミナルには直接入力できません",
   "composer.placeholder.unreachable": "入力ボックスに到達できません",
-  "composer.placeholder.sendOff": "このマシンでは送信が無効です",
+  "composer.placeholder.sendOff": "このマシンはスマートフォンからテキストを受け取れません。そのCollieをアップデートするか、COLLIE_SEND_PROTOCOL設定を確認してください。キーは引き続き使用できます。",
   "composer.placeholder.dialogWaiting": "ダイアログの応答待ちです",
   "composer.placeholder.menuWaiting": "メニューの応答待ちです",
   "composer.placeholder.permissionWaiting": "権限の確認待ちです",

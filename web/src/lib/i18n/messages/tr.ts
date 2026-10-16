@@ -255,7 +255,7 @@ export const tr: Dictionary = {
   "composer.placeholder.readOnly": "Yalnızca okunur: yetki yok",
   "composer.placeholder.noMuxSend": "Bu terminale yazılamıyor",
   "composer.placeholder.unreachable": "Giriş kutusuna ulaşılamıyor",
-  "composer.placeholder.sendOff": "Bu makinede gönderme kapalı",
+  "composer.placeholder.sendOff": "Bu makine telefondan metin alamıyor. Makinenin Collie programını güncelleyin veya COLLIE_SEND_PROTOCOL ayarını kontrol edin. Tuşlar çalışmaya devam eder.",
   "composer.placeholder.dialogWaiting": "Diyalog bekliyor",
   "composer.placeholder.menuWaiting": "Menü bekliyor",
   "composer.placeholder.permissionWaiting": "İzin bekliyor",

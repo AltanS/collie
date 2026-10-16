@@ -298,7 +298,7 @@ export const zhTW: Dictionary = {
   "composer.placeholder.readOnly": "唯讀模式，未授權",
   "composer.placeholder.noMuxSend": "無法直接輸入至此終端機",
   "composer.placeholder.unreachable": "無法連到輸入框",
-  "composer.placeholder.sendOff": "此機器上的傳送功能已關閉",
+  "composer.placeholder.sendOff": "此機器無法接收來自手機的文字。請更新其 Collie，或檢查其 COLLIE_SEND_PROTOCOL 設定。按鍵仍可使用。",
   "composer.placeholder.dialogWaiting": "對話框正在等待",
   "composer.placeholder.menuWaiting": "選單正在等待",
   "composer.placeholder.permissionWaiting": "權限正在等待",

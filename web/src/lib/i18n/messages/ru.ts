@@ -257,7 +257,7 @@ export const ru: Dictionary = {
   "composer.placeholder.readOnly": "Только чтение: нет авторизации",
   "composer.placeholder.noMuxSend": "Ввод в этот терминал недоступен",
   "composer.placeholder.unreachable": "Поле ввода недоступно",
-  "composer.placeholder.sendOff": "Отправка отключена на этой машине",
+  "composer.placeholder.sendOff": "Эта машина не может принимать текст с телефона. Обновите её Collie или проверьте её настройку COLLIE_SEND_PROTOCOL. Клавиши продолжают работать.",
   "composer.placeholder.dialogWaiting": "Ожидание диалога",
   "composer.placeholder.menuWaiting": "Ожидание меню",
   "composer.placeholder.permissionWaiting": "Ожидание разрешения",
