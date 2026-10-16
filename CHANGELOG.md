@@ -124,6 +124,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Codex 0.163 panes with the agents hint on the status row keep their input box.** The status row now ends in ` · ← for agents` when Codex is attached to a local daemon, and Collie refused the whole row, so the pane showed no composer and every send asked "Type anyway?". The hint is read as the row's tail, with the notice after it, and a row that only mentions it in a transcript line or a draft is still refused. Thanks @NyxAetherlink (#454).
 - **Chat on a durable pane shows what is happening.** A sent line appears at once and the field waits for the send, a working row shows while the program thinks, a reply grows on the screen as the program writes it, and Stop cuts the reply you see.
 - **The states playground names its program section for the person, not for a multiplexer.** The section is `#programs`, "Programs home", in `sections/programs.tsx`, and its fixture panes carry the agent `program`, so the mux-name guard passes again with the durable adapter registered. `scripts/docs-screens.sh` opens `#programs`.
 - **The mux-name guard knows the `kind` field of sources.json.** The bridge compares the value of one config field, it does not name a mux.

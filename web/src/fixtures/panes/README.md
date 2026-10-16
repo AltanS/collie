@@ -455,6 +455,20 @@ the status row and the hint row are byte-faithful, with the reporter's theme col
 |---|---|---|
 | `codex--reporter-294-busy-agents-hint.txt` | An echo `› herdr pane read …` band, `• Working (6s • esc to interrupt)`, the empty composer, `  GPT-6-Luna medium · ~/Code/project · Read recent pane output`, and `  ← for agents · ? for shortcuts` as the last row. `composerReady` must be TRUE, the lowest `›` row is the composer, no card | `working` |
 
+## Codex reporter capture (#454, 2026-10-16, Fedora, Codex 0.163.0, Herdr 0.9.5, SCRUBBED)
+
+A sanitized capture from the issue reporter's real Codex 0.163.0 pane under Herdr 0.9.5, an idle
+composer with the status row last (no key-hint row under it). The session title is replaced by
+`Example session`; no chat and no screenshot are in it. The status row carries the daemon hint on the
+row itself, after the title field: `  GPT-6.1-Sol high · ~ · Example session · ← for agents`, the `←`
+key bold and `for agents` in the separator's muted colour, then a right-aligned `⚠ 3 warnings · f2 to
+view`. Collie 1.21.3 refused that row, so the pane had no composer and every send was refused as
+"Type anyway?".
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--v0163-agents-hint-warnings.txt` | The empty composer band on a fill, then the status row as the last row. `composerReady` must be TRUE, the `›` row is the composer, no draft, no card | `idle` |
+
 ## Codex reporter capture (#317, 2026-09-28, macOS, Codex 0.158.0, Herdr 0.9.1, SCRUBBED)
 
 The reporter's `herdr pane read <pane-id> --source recent --lines 200 --format ansi`, taken from
