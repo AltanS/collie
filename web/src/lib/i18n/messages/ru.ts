@@ -348,6 +348,7 @@ export const ru: Dictionary = {
   "composer.protocol.commit": "Ввести здесь",
   "composer.protocol.keys": "Клавиши",
   "composer.protocol.openKeys": "Открыть клавиши",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie не смог прочитать этот экран на {harness} {version}. Случаев сегодня: {count}. Проверьте экран, затем нажмите Подтвердить и напечатать.",
   "composer.protocol.commitCap": "Подтвердить и напечатать",
   "sendReceipts.title": "Недавние отправки",

@@ -56,7 +56,7 @@ describe("sendText", () => {
     expect(modeFor("look at @src/app.ts")).toBe("send");
   });
 
-  it("a refusal keeps the draft and carries the bridge's surface and sentence", async () => {
+  it("a refusal keeps the draft and carries the bridge's surface; the phone's own sentence stands without the bridge's", async () => {
     server.use(
       ...sendHandler((request) =>
         sendAnswer(request.id, "refused", "not_free", {
@@ -69,7 +69,7 @@ describe("sendText", () => {
     const out = await sendText({ paneId: "w1:p1", text: "hello there", held: null, mint });
     expect(out).toMatchObject({
       status: "answered",
-      reading: { clear: false, note: "notFree", surface: "running", detail: "The agent is working.", offers: [] },
+      reading: { clear: false, note: "notFree", surface: "running", detail: null, offers: [] },
     });
   });
 

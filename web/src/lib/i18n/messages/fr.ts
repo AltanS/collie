@@ -344,6 +344,7 @@ export const fr: Dictionary = {
   "composer.protocol.commit": "Taper ici",
   "composer.protocol.keys": "Touches",
   "composer.protocol.openKeys": "Ouvrir les touches",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie n'a pas pu lire cet écran sur {harness} {version} {count} fois aujourd'hui. Vérifiez l'écran, puis touchez Confirmer et saisir.",
   "composer.protocol.commitCap": "Confirmer et saisir",
   "sendReceipts.title": "Envois récents",

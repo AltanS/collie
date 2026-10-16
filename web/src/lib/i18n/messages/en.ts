@@ -437,6 +437,7 @@ export const en = {
   "composer.protocol.commit": "Type here",
   "composer.protocol.keys": "Keys",
   "composer.protocol.openKeys": "Open Keys",
+  "composer.protocol.dismissNotice": "Hide this notice",
   // The cap (M56 spec 09): after N manual sends on one harness version in a day, one more confirm.
   "composer.protocol.capConfirm": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and type.",
   "composer.protocol.commitCap": "Confirm and type",

@@ -126,7 +126,8 @@ describe("AgentChat — reply flow", () => {
   });
 
   it("keeps the draft and surfaces the bridge's words when it refuses the send", async () => {
-    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { detail: "agent busy" })));
+    // A plain refusal names no reason the phone has a sentence for, so the bridge's words stand under it.
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "multiline", { detail: "agent busy" })));
     const user = userEvent.setup();
     renderChat();
     const box = screen.getByPlaceholderText(/type a reply/i);

@@ -3,6 +3,7 @@ import { Check, TriangleAlert } from "lucide-react";
 
 import { Notice } from "@/components/ui/notice";
 import { capSentence, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
+import { shortHash, type Surface } from "@/lib/surface/surface";
 import { t as translate } from "@/lib/i18n";
 
 // WHAT BECAME OF A SEND, AT THE THUMB (M56 specs 06, 07 and 14). The terminal composer and the
@@ -94,22 +95,49 @@ export function programRefusal(reply: SendReply, reading: SendReading): SendRefu
   return { sentence: translate(`durable.protocol.${note}`), detail, toCard: note === "askOpen", screen: false, tone: "caution" };
 }
 
-/** The box at the thumb. `action` is the composer's own buttons, or undefined for none. */
-export function SendRefusalNotice({ refusal, action }: { refusal: SendRefusal; action?: ReactNode }) {
-  return (
-    <Notice
-      tone={refusal.tone}
-      variant="box"
-      className="mb-2"
-      icon={refusal.tone === "caution" ? <TriangleAlert /> : <Check />}
-      action={action}
-    >
+/**
+ * Which notice a person hid: the screen it is about (the Surface's revision and a hash of the whole
+ * Surface) and its words. A hidden notice stays hidden until a refusal carries another key, so the
+ * same words over the same screen never come back after the ✕ (the 2026-10-16 field case had no way
+ * to close the notice at all). `surface` is the Surface the answer carried, else the one on screen.
+ */
+export function refusalKey(refusal: SendRefusal, surface: Surface | null): string {
+  const screen = surface === null ? "-" : `${String(surface.revision)}:${shortHash(JSON.stringify(surface))}`;
+  return `${screen}\n${shortHash(`${refusal.sentence}\n${refusal.detail ?? ""}`)}`;
+}
+
+/** The box at the thumb. `action` is the composer's own buttons, or undefined for none. `onDismiss`
+ *  adds the ✕ that hides the notice. */
+export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: SendRefusal; action?: ReactNode; onDismiss?: () => void }) {
+  const icon = refusal.tone === "caution" ? <TriangleAlert /> : <Check />;
+  const words = (
+    <>
       <span data-slot="composer-refusal">{refusal.sentence}</span>
       {refusal.detail !== null && (
         <span data-slot="composer-refusal-detail" className="block text-muted-foreground">
           {refusal.detail}
         </span>
       )}
+    </>
+  );
+  if (onDismiss === undefined) {
+    return (
+      <Notice tone={refusal.tone} variant="box" className="mb-2" icon={icon} action={action}>
+        {words}
+      </Notice>
+    );
+  }
+  return (
+    <Notice
+      tone={refusal.tone}
+      variant="box"
+      className="mb-2"
+      icon={icon}
+      action={action}
+      onDismiss={onDismiss}
+      dismissLabel={translate("composer.protocol.dismissNotice")}
+    >
+      {words}
     </Notice>
   );
 }

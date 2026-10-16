@@ -48,7 +48,7 @@ import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
-import { CardDock } from "@/components/card-dock";
+import { CardDock, hasDialogCard } from "@/components/card-dock";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
@@ -2851,6 +2851,8 @@ export function AgentChat({
                   gone={gone}
                   readOnly={readOnly}
                   onAnswerDialog={answerDialog}
+                  // The dock draws a dialog card only with a text to draw from (see the CardDock below).
+                  dialogCard={display ? hasDialogCard(blocks) : false}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

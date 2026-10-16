@@ -28,6 +28,33 @@ describe("Notice — the one notice surface", () => {
     expect(strip?.className).not.toMatch(/(?:^|\s)h-\d/);
   });
 
+  // The 2026-10-16 field case: a `shrink-0` action cluster beside the text squeezed the refusal's
+  // sentence into a column a word or two wide on a phone. A box wraps its actions under the text.
+  it("lets a box's actions wrap under the text: the root wraps, the body asks for 12rem, the cluster may shrink", () => {
+    const { container } = render(
+      <Notice tone="caution" variant="box" action={<button type="button">Open Keys</button>} onDismiss={() => {}} dismissLabel="Hide this notice">
+        Collie cannot read this screen.
+      </Notice>,
+    );
+    const box = container.firstElementChild!;
+    expect(box).toHaveClass("flex-wrap");
+    expect(box.querySelector(".flex-\\[1_1_12rem\\]")).not.toBeNull();
+    const cluster = box.querySelector("button[aria-label='Hide this notice']")!.parentElement!;
+    expect(cluster).toHaveClass("flex-wrap", "min-w-0", "ml-auto");
+    expect(cluster).not.toHaveClass("shrink-0");
+  });
+
+  it("keeps a strip's actions on its one line", () => {
+    const { container } = render(
+      <Notice tone="caution" variant="strip" action={<button type="button">Retry</button>}>
+        Offline.
+      </Notice>,
+    );
+    const cluster = container.querySelector("button")!.parentElement!;
+    expect(cluster).toHaveClass("shrink-0");
+    expect(container.firstElementChild).not.toHaveClass("flex-wrap");
+  });
+
   it("states the BOX floor at 42px, and lets a box grow above it", () => {
     // 24px first-line slot + py-2 (2x8px) + the box's own 2x1px border. 24+16+2 = 42. Growth above
     // the floor is correct — a two-line host-stale message needs two lines — but two ONE-LINE

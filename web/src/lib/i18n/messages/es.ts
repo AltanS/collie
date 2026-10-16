@@ -405,6 +405,7 @@ export const es: Dictionary = {
   "composer.protocol.commit": "Escribir aquí",
   "composer.protocol.keys": "Teclas",
   "composer.protocol.openKeys": "Abrir teclas",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie no pudo leer esta pantalla en {harness} {version} {count} veces hoy. Verifique la pantalla y luego toque Confirmar y escribir.",
   "composer.protocol.commitCap": "Confirmar y escribir",
   "sendReceipts.title": "Envíos recientes",

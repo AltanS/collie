@@ -390,6 +390,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.commit": "在此輸入",
   "composer.protocol.keys": "按鍵",
   "composer.protocol.openKeys": "開啟按鍵",
+  "composer.protocol.dismissNotice": "Hide this notice", // TODO wordsmith
   "composer.protocol.capConfirm": "Collie 今天在 {harness} {version} 上無法讀取此螢幕達 {count} 次。請檢查螢幕，然後輕觸「確認並輸入」。",
   "composer.protocol.commitCap": "確認並輸入",
   "sendReceipts.title": "最近傳送",

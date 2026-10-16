@@ -361,8 +361,18 @@ export function readSend(reply: SendReply): SendReading {
   const toCard =
     surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
-  // The cap's sentence says it all in the phone's language; the bridge's English under it would repeat it.
-  return { ...base, surface, detail: base.clear || cap !== null ? null : reply.detail, toCard, cap };
+  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply, base.note) ? null : reply.detail, toCard, cap };
+}
+
+/**
+ * Whether the phone's own sentence already says what the bridge's English detail says. A note with
+ * its own sentence for a reason the phone knows does: the detail under it repeated the headline (the
+ * 2026-10-16 field case, "Collie cannot read this screen" twice). The detail stays for the plain
+ * refusal (`refused`, which names no reason) and for a reason the phone does not know (none on the
+ * wire, or one it could not read). The cap's sentence says it all too, with its numbers.
+ */
+function ownSentence(reply: SendReply, note: SendNote): boolean {
+  return note !== "refused" && reply.reason !== null;
 }
 
 /** The mode a tap on an offer sends, or null for one that sends nothing (`cancel`, `keys`). A commit keeps a command a command. */
