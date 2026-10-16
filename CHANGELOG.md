@@ -96,6 +96,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The `collie` help names `hooks install codex` beside `hooks install claude`.** The same holds for `hooks uninstall`.
 - **A send receipt can name the request id a program took, and an ask can name the program channel.** `acknowledged` holds that request id. `channel: "program"` marks an answer that went to a program, not to a screen. Older receipts read as before.
 - **A program session sends and answers through the same Surface, Send and Ask as a terminal pane.** The bridge reads the turn from the program's state and the question from its oldest open ask. There is no input box, so the box is always empty. `POST /api/send` writes the request to disk, locks the conversation and sends the text once, for the turn it read. The receipt names the request id the program took, and says queued during a turn. `POST /api/ask/<id>` compares the hash and answers by the program's own ask id, with no key. `collie doctor` counts its reads and outcomes in the row `program`.
+- **A program send becomes effective when the program writes it into the conversation.** The program writes a user item with the request id of the send. That item closes the receipt as effective. The counters move it from sent to effective, as a hook edge does.
 
 ### Changed
 

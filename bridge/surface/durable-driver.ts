@@ -12,6 +12,10 @@
 //    The outcome list is the same. `sent` carries `queued` when the turn ran and the program took
 //    the text for after it (WIRE.md 7.4: a send with no steer waits for the next turn). `unknown`
 //    means the program did not acknowledge. The receipt carries the request id the program took.
+//  - Effective. The program writes the person's line into the conversation as a `user` item that
+//    names the request id of the send. That item closes the receipt as `effective`, as a prompt edge
+//    does for a terminal pane (spec 11): at once when the receipt settled, at its settle when the
+//    write still runs. The request id is exact, so no time window and no text hash are needed.
 //  - Ask. The oldest open ask becomes `{ id, kind, options, channel: "program", hash }`. The id is
 //    single use and bound to the program's ask id, its revision and the content hash. The answer
 //    carries the hash, the bridge compares it with the ask the program lists now, and the answer
@@ -73,12 +77,20 @@ export interface ProgramPort {
   controlTurn(paneId: string, request: ControlRequest): Promise<MuxControlOutcome>;
   /** One answer to the ask named, by the program's own ask id and revision. */
   answerAsk(paneId: string, answer: AnswerRequest): Promise<MuxOutcome<MuxAnswerResult>>;
+  /**
+   * Hear of each `user` item the program writes with a request id, by its pane (WIRE.md 7.15). The
+   * item is the program's word that the text reached the conversation. Absent: no send closes as
+   * `effective`, and every receipt keeps the end the write gave it.
+   */
+  onUserItem?(listener: (paneId: string, requestId: string) => void): () => void;
 }
 
 /** What the driver tells the counters. Every call is made after the fact and inside a try. */
 export interface ProgramLedger {
   read(key: CounterKey, surface: Surface, frame: string | null): void;
   send(key: CounterKey, end: { readonly outcome: string; readonly reason?: string | undefined; readonly probed: boolean }): void;
+  /** A settled `sent` or `unknown` the program's own item confirmed: it moves to `effective`. */
+  confirmEffective?(key: CounterKey, from: "sent" | "unknown"): void;
 }
 
 export interface ProgramDriverDeps {
@@ -239,6 +251,12 @@ export class ProgramAskBook {
   }
 }
 
+/** A `sent` or `unknown` end the program's item confirmed: no reason, and no sentence that doubts it. */
+function effectiveEnd(end: SendEnd): SendEnd {
+  const { reason: _reason, detail, ...rest } = end;
+  return end.outcome === "sent" && detail !== undefined ? { ...rest, detail, outcome: "effective" } : { ...rest, outcome: "effective" };
+}
+
 // ── The driver ───────────────────────────────────────────────────────────────────────────────────
 
 /** How a send ends, before the receipt is made. */
@@ -274,10 +292,41 @@ export class ProgramDriver {
   private readonly book: ProgramAskBook;
   private readonly sending = new Map<string, Promise<SendAnswer>>();
   private readonly answering = new Map<string, Promise<AskReply>>();
+  /** Sends still running whose item already came in: they settle as `effective`. */
+  private readonly early = new Set<string>();
 
   constructor(private readonly deps: ProgramDriverDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.book = new ProgramAskBook(deps.salt);
+    deps.port.onUserItem?.((paneId, requestId) => {
+      this.itemTook(paneId, requestId);
+    });
+  }
+
+  /**
+   * The program wrote a `user` item that names `requestId` on `paneId`. A send of this driver on that
+   * pane that ended `sent` or `unknown` closes as `effective`; one still running closes so at its
+   * settle. Returns true when it closed or will close one. Never throws; a write that fails is a warning.
+   */
+  itemTook(paneId: string, requestId: string): boolean {
+    if (this.sending.has(requestId)) {
+      const running = this.deps.store.get(requestId);
+      if (running === null || running.paneId !== paneId) return false;
+      this.early.add(requestId);
+      return true;
+    }
+    const record = this.deps.store.get(requestId);
+    // Only a send this driver ran on this pane. A terminal send never carries the program generation.
+    if (record === null || record.paneId !== paneId || record.paneGeneration !== PROGRAM_GENERATION) return false;
+    try {
+      const from = this.deps.store.markEffective(requestId);
+      if (from === null) return false;
+      this.deps.ledger?.confirmEffective?.(PROGRAM_COUNTER_KEY, from);
+      return true;
+    } catch (err) {
+      console.warn(`[send] could not close ${requestId} as effective: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
   }
 
   private view(paneId: string): ProgramView {
@@ -370,7 +419,8 @@ export class ProgramDriver {
       const run = this.bareRun(request, accepted.record, target);
       return this.settleSend(run, { outcome: "unknown", reason: "crash", detail: CRASHED }, true);
     }
-    const work = this.run(request, accepted.record, target);
+    // Marked as running before the write starts, so an item that comes during the write finds it.
+    const work = Promise.resolve().then(() => this.run(request, accepted.record, target));
     this.sending.set(request.id, work);
     try {
       return await work;
@@ -470,7 +520,10 @@ export class ProgramDriver {
     return receipt;
   }
 
-  private settleSend(run: SendRun, end: SendEnd, replayed = false): SendAnswer {
+  private settleSend(run: SendRun, given: SendEnd, replayed = false): SendAnswer {
+    // The program's item came in while the write ran: a `sent` or `unknown` end is `effective` now.
+    const early = this.early.delete(run.record.id);
+    const end: SendEnd = early && (given.outcome === "sent" || given.outcome === "unknown") ? effectiveEnd(given) : given;
     const receipt = this.sendReceipt(run, end);
     this.deps.store.settle(run.record.id, receipt);
     try {
@@ -483,7 +536,7 @@ export class ProgramDriver {
     if (end.detail !== undefined) answer = { ...answer, detail: end.detail };
     if (replayed) answer = { ...answer, replayed: true };
     const surface = this.surfaceOf(run.target.paneId);
-    return surface === undefined || receipt.outcome === "sent" ? answer : { ...answer, surface };
+    return surface === undefined || receipt.outcome === "sent" || receipt.outcome === "effective" ? answer : { ...answer, surface };
   }
 
   // ── Ask ──

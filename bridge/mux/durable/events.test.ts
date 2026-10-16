@@ -720,3 +720,32 @@ describe("the saved cursor (M53 spec 11, WIRE.md 7.16)", () => {
     }
   });
 });
+
+describe("a user item that names a request id (M56 spec 14)", () => {
+  test("the pane it belongs to is told, after the sink took the events; an item with no id tells nobody", async () => {
+    const { program, adapter, sink, sync } = await rig();
+    const heard: [string, string][] = [];
+    const stop = adapter.onUserItem((paneId, requestId) => void heard.push([paneId, requestId]));
+    program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "hello", requestId: "req-0001" } });
+    program.appendEvent(PANE, { type: "item", item: { id: "u2", kind: "user", text: "typed at the desk" } });
+    program.appendEvent(PANE, item("r1", "a reply"));
+    await sync();
+    expect(sink.types(PANE)).toEqual(["item", "item", "item"]);
+    expect(heard).toEqual([[PANE, "req-0001"]]);
+    stop();
+    program.appendEvent(PANE, { type: "item", item: { id: "u3", kind: "user", text: "again", requestId: "req-0002" } });
+    await sync();
+    expect(heard).toEqual([[PANE, "req-0001"]]);
+  });
+
+  test("a listener that throws never stops the log", async () => {
+    const { program, adapter, sink, sync } = await rig();
+    adapter.onUserItem(() => {
+      throw new Error("boom");
+    });
+    program.appendEvent(PANE, { type: "item", item: { id: "u1", kind: "user", text: "hello", requestId: "req-0003" } });
+    program.appendEvent(PANE, item("r1", "a reply"));
+    await sync();
+    expect(sink.types(PANE)).toEqual(["item", "item"]);
+  });
+});

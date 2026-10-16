@@ -61,6 +61,11 @@ function fakeProgram() {
   };
   const controls: ControlRequest[] = [];
   const answers: AnswerRequest[] = [];
+  const listeners = new Set<(paneId: string, requestId: string) => void>();
+  /** The program writes a `user` item that names a request id, as the pane log hands it on. */
+  const item = (requestId: string, paneId: string = PANE): void => {
+    for (const listener of listeners) listener(paneId, requestId);
+  };
   const port: ProgramPort = {
     phase: () => state.phase,
     paneStatus: (paneId) => (paneId === PANE ? state.status : undefined),
@@ -74,17 +79,24 @@ function fakeProgram() {
       answers.push(answer);
       return state.answer();
     },
+    onUserItem: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
-  return { state, port, controls, answers };
+  return { state, port, controls, answers, item };
 }
 
 function fakeLedger() {
   const reads: { key: CounterKey; free: boolean }[] = [];
   const sends: { key: CounterKey; outcome: string; reason?: string | undefined }[] = [];
+  const confirmed: { key: CounterKey; from: "sent" | "unknown" }[] = [];
   return {
     reads,
     sends,
+    confirmed,
     ledger: {
+      confirmEffective: (key: CounterKey, from: "sent" | "unknown") => void confirmed.push({ key, from }),
       read: (key: CounterKey, surface: Parameters<typeof isFree>[0]) => void reads.push({ key, free: isFree(surface) }),
       send: (key: CounterKey, end: { outcome: string; reason?: string | undefined }) => void sends.push({ key, outcome: end.outcome, reason: end.reason }),
     },
@@ -357,6 +369,94 @@ describe("Send through accept, persist, lock and receipt", () => {
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "crash" });
     expect(answer.replayed).toBe(true);
     expect(controls).toEqual([]);
+  });
+});
+
+describe("Effective from the program's own item", () => {
+  test("the user item that names the request id closes a sent receipt as effective, counted once", async () => {
+    const { port, item } = fakeProgram();
+    const { confirmed, ledger } = fakeLedger();
+    const { driver, store } = driverOf(port, { ledger });
+    const answer = await driver.handle({ id: "drv-eff-0001", text: "hello", mode: "send" }, TARGET);
+    expect(answer.receipt?.outcome).toBe("sent");
+    item("drv-eff-0001");
+    const receipt = store.get("drv-eff-0001")?.receipt;
+    expect(receipt?.outcome).toBe("effective");
+    expect(receipt?.reason).toBeUndefined();
+    expect(receipt?.acknowledged).toBe("drv-eff-0001");
+    expect(confirmed).toEqual([{ key: PROGRAM_COUNTER_KEY, from: "sent" }]);
+    // The same item again (a replay of the log) changes nothing and counts nothing.
+    item("drv-eff-0001");
+    expect(driver.itemTook(PANE, "drv-eff-0001")).toBe(false);
+    expect(confirmed).toHaveLength(1);
+    // The session page lists it as effective.
+    expect(driver.recent(PANE)[0]).toMatchObject({ requestId: "drv-eff-0001", outcome: "effective" });
+  });
+
+  test("a queued send closes when the item comes after the turn, and keeps its queued mark", async () => {
+    const { state, port, item } = fakeProgram();
+    state.status = "working";
+    const { driver, store } = driverOf(port);
+    await driver.handle({ id: "drv-eff-0002", text: "after this turn", mode: "send" }, TARGET);
+    expect(store.get("drv-eff-0002")?.receipt).toMatchObject({ outcome: "sent", queued: true });
+    state.status = "idle";
+    item("drv-eff-0002");
+    expect(store.get("drv-eff-0002")?.receipt).toMatchObject({ outcome: "effective", queued: true });
+    expect(driver.recent(PANE)[0]).toMatchObject({ outcome: "effective", queued: true });
+  });
+
+  test("an item that comes while the write runs closes the receipt at its settle", async () => {
+    const { state, port, item } = fakeProgram();
+    state.control = () => {
+      item("drv-eff-0003");
+      return Promise.resolve({ kind: "ok", replayed: false });
+    };
+    const { sends, ledger } = fakeLedger();
+    const { driver, store } = driverOf(port, { ledger });
+    const answer = await driver.handle({ id: "drv-eff-0003", text: "fast program", mode: "send" }, TARGET);
+    expect(answer.receipt?.outcome).toBe("effective");
+    expect(store.get("drv-eff-0003")?.receipt?.outcome).toBe("effective");
+    expect(sends).toEqual([{ key: PROGRAM_COUNTER_KEY, outcome: "effective", reason: undefined }]);
+  });
+
+  test("an unknown end the item confirms is effective, and its doubting sentence goes", async () => {
+    const { state, port, item } = fakeProgram();
+    state.control = () => {
+      item("drv-eff-0004");
+      return Promise.resolve({ kind: "unknown", detail: "no answer within 3000ms" });
+    };
+    const { driver } = driverOf(port);
+    const answer = await driver.handle({ id: "drv-eff-0004", text: "slow answer", mode: "send" }, TARGET);
+    expect(answer.receipt?.outcome).toBe("effective");
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.detail).toBeUndefined();
+
+    state.control = () => Promise.resolve({ kind: "unknown", detail: "no answer within 3000ms" });
+    const { confirmed, ledger } = fakeLedger();
+    const later = driverOf(port, { ledger, store: new RequestStore(join(dir, "later")) });
+    const late = await later.driver.handle({ id: "drv-eff-0005", text: "slow answer", mode: "send" }, TARGET);
+    expect(late.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(later.driver.itemTook(PANE, "drv-eff-0005")).toBe(true);
+    expect(later.store.get("drv-eff-0005")?.receipt?.outcome).toBe("effective");
+    expect(confirmed).toEqual([{ key: PROGRAM_COUNTER_KEY, from: "unknown" }]);
+  });
+
+  test("an item on another pane, for a refused send, or for a send the driver never ran closes nothing", async () => {
+    const { state, port, item } = fakeProgram();
+    const { confirmed, ledger } = fakeLedger();
+    const { driver, store } = driverOf(port, { ledger });
+    await driver.handle({ id: "drv-eff-0006", text: "one", mode: "send" }, TARGET);
+    item("drv-eff-0006", "conv-2");
+    expect(store.get("drv-eff-0006")?.receipt?.outcome).toBe("sent");
+    state.asks = [permission()];
+    await driver.handle({ id: "drv-eff-0007", text: "two", mode: "send" }, TARGET);
+    item("drv-eff-0007");
+    expect(store.get("drv-eff-0007")?.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    expect(driver.itemTook(PANE, "never-sent-0001")).toBe(false);
+    // A terminal send in the same store never carries the program generation.
+    store.accept({ id: "term-send-0001", session: "desk", paneId: PANE, paneGeneration: "%3", surfaceRevision: 0, mode: "send", text: "x" });
+    expect(driver.itemTook(PANE, "term-send-0001")).toBe(false);
+    expect(confirmed).toEqual([]);
   });
 });
 
