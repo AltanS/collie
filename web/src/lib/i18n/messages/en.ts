@@ -353,10 +353,10 @@ export const en = {
   "composer.placeholder.draft": "A draft is in the box",
   "composer.placeholder.unreadable": "Cannot read what is open",
   "composer.placeholder.noMatch": "Input box not found",
-  "composer.placeholder.contested": "Two reads disagree",
+  "composer.placeholder.contested": "Reads disagree. Tap Screen to check.",
   "composer.placeholder.stale": "Last read {age} ago",
   "composer.placeholder.staleNoAge": "The last read is old",
-  "composer.placeholder.torn": "The screen was moving",
+  "composer.placeholder.torn": "The screen changed. Send again.",
   "composer.placeholder.shell": "Type a shell command…",
   "composer.placeholder.reply": "Type a reply…",
   "composer.mic.unavailable": "Voice input is unavailable",
@@ -432,7 +432,7 @@ export const en = {
   "composer.protocol.keys": "Keys",
   "composer.protocol.openKeys": "Open Keys",
   // The cap (M56 spec 09): after N manual sends on one harness version in a day, one more confirm.
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.",
+  "composer.protocol.capConfirm": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and type.",
   "composer.protocol.commitCap": "Confirm and type",
   // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
   "sendReceipts.title": "Recent sends",

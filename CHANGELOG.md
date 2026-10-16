@@ -114,6 +114,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **What became of a send is told at the Send slot, never in the header.** A refusal, a text left in the box, an unknown outcome, no answer, a held destructive line and a link that is down each get a notice under the field with a button to the card, the screen or the Keys dock. The header keeps only "Sent". An unknown outcome now says to read the screen, then send again, and keeps the draft.
 - **Thirteen theme and typeface lines read better in it, ja, ko, ru, zh and zh-TW.** The theming review's corrections after the translation pass.
 - **A pane on a machine that takes no text says so plainly.** The locked field names the two causes, an older Collie or the COLLIE_SEND_PROTOCOL setting, and says the keys still work.
+- **Three composer sentences say what to do.** A contested read points at the Screen pill, a torn read says send again, and the cap sentence names the harness and the Confirm button without blaming the typist.
 
 ### Fixed
 
