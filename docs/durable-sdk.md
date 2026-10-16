@@ -26,9 +26,9 @@ bun add @colliepwa/durable-sdk@experimental
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a program that brings its own transport. No runtime import, so it runs wherever a web `Request` does |
 | `@colliepwa/durable-sdk/pi` | The glue for a Pi Durable program ([The Pi helpers](#the-pi-helpers)) |
 
-The package needs Node 22.18 or later, or Bun 1.4 or later, and has no runtime dependency. `./pi`
+The package needs Node 22.19 or later, or Bun 1.4 or later, and has no runtime dependency. `./pi`
 needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later
-and below 2. They are optional peer dependencies: a program that never imports `./pi` installs none.
+and below 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: a program that never imports `./pi` installs none.
 
 The runtime decides whether the program can tell who answers. The descendant check refuses an act
 from the program itself or from a process it started, with 403 `caller-refused`. It covers answer,
