@@ -338,6 +338,33 @@ A question card names the program and shows the time left when the program set o
 decided in the program, or timed out, leaves a line in the chat.
 [Programs on the phone](durable-programs-on-the-phone.md) shows each of these with a figure.
 
+## Send and Ask through the bridge
+
+A program has no screen, so Collie reads no screen for it. The bridge reads the program's own state
+instead. A program gets the same Send and Ask as a terminal pane.
+
+- **The state.** The turn comes from the program's pane state. A question comes from its oldest open
+  ask. The input box is always empty, because a program has no box. The phone gets this state with
+  each pane, in the same shape as for a terminal pane.
+- **A send.** `POST /api/send` takes a request id from the phone. The bridge writes the request to
+  disk and locks the conversation. Then it sends the text to the program once, for the turn it read.
+  The program's answer is the proof, and the receipt names the request id the program took. During a
+  turn the program keeps the text for after that turn, and the receipt says `queued`.
+- **The outcomes.** A send ends `sent`, `refused` with a reason, or `unknown`. `unknown` means the
+  program did not say it took the text. Read the chat before you send it again. An open question
+  refuses a send until you answer it. A turn that started after you looked refuses the send, and
+  nothing reaches the program.
+- **A question.** `POST /api/ask/<id>` answers it. The ask id is for one use only. The answer carries
+  the hash of the question you saw. The bridge compares it with the question the program lists now. When the two differ, nothing reaches the program, and the reply shows the question as it is
+  now. The answer goes to the program by the program's own ask id. No key is ever sent. The receipt
+  says `channel: program` and keeps the hash.
+- **What stays on the card.** A line of text, a form and a choice of several are answered on the
+  program's own card. Always allow is too, because it needs a second tap there.
+- **The counters.** `collie doctor` counts these reads and outcomes in one row, `program`.
+
+The chat on the phone still sends through the conversation's own send route, which also carries
+Steer and Stop. Both routes check the turn before the text reaches the program.
+
 ## Versions
 
 Collie and a program agree on a wire version in the hello, and today there is one: version 1.
