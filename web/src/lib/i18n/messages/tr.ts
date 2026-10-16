@@ -246,6 +246,8 @@ export const tr: Dictionary = {
   "composer.controls.agent": "Ajan",
   "composer.controls.displayAria": "Ekran ayarları",
   "composer.controls.display": "Ekran",
+  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
+  "composer.controls.screen": "Screen", // TODO wordsmith
   "composer.controls.clear": "Mesajı temizle",
   "composer.controls.undoClear": "Temizlemeyi geri al",
   "composer.sentPreview.label": "Gönderdiğiniz:",
@@ -259,6 +261,14 @@ export const tr: Dictionary = {
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
   "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Terminale yazın…",
+  "composer.placeholder.running": "The agent is working. Keys can stop it.", // TODO wordsmith
+  "composer.placeholder.draft": "A draft is in the box. Send offers Add or Replace.", // TODO wordsmith
+  "composer.placeholder.unreadable": "Collie cannot read what is open. Use Screen or Keys.", // TODO wordsmith
+  "composer.placeholder.noMatch": "Collie cannot find the input box. Send takes two taps.", // TODO wordsmith
+  "composer.placeholder.contested": "Two reads disagree. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.stale": "Last read {age} ago. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.staleNoAge": "The last read is old. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.torn": "The screen was moving. Send reads it again.", // TODO wordsmith
   "composer.placeholder.shell": "Bir kabuk komutu yazın…",
   "composer.placeholder.reply": "Bir yanıt yazın…",
   "composer.mic.unavailable": "Ses girişi kullanılamıyor",
@@ -327,6 +337,7 @@ export const tr: Dictionary = {
   "composer.protocol.discard": "At",
   "composer.protocol.commit": "Buraya yaz",
   "composer.protocol.keys": "Tuşlar",
+  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
   "composer.protocol.dismissAria": "Gönderim seçeneklerini kapat",
   "composer.surface.free": "The input box was free.", // TODO wordsmith
   "composer.surface.running": "The agent was working.", // TODO wordsmith

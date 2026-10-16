@@ -246,6 +246,8 @@ export const it: Dictionary = {
   "composer.controls.agent": "Agent",
   "composer.controls.displayAria": "Impostazioni display",
   "composer.controls.display": "Schermo",
+  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
+  "composer.controls.screen": "Screen", // TODO wordsmith
   "composer.controls.clear": "Cancella messaggio",
   "composer.controls.undoClear": "Annulla cancellazione",
   "composer.sentPreview.label": "Hai inviato:",
@@ -259,6 +261,14 @@ export const it: Dictionary = {
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
   "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "Scrivi nel terminale…",
+  "composer.placeholder.running": "The agent is working. Keys can stop it.", // TODO wordsmith
+  "composer.placeholder.draft": "A draft is in the box. Send offers Add or Replace.", // TODO wordsmith
+  "composer.placeholder.unreadable": "Collie cannot read what is open. Use Screen or Keys.", // TODO wordsmith
+  "composer.placeholder.noMatch": "Collie cannot find the input box. Send takes two taps.", // TODO wordsmith
+  "composer.placeholder.contested": "Two reads disagree. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.stale": "Last read {age} ago. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.staleNoAge": "The last read is old. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.torn": "The screen was moving. Send reads it again.", // TODO wordsmith
   "composer.placeholder.shell": "Scrivi un comando di shell…",
   "composer.placeholder.reply": "Scrivi una risposta…",
   "composer.mic.unavailable": "Input vocale non disponibile",
@@ -327,6 +337,7 @@ export const it: Dictionary = {
   "composer.protocol.discard": "Scarta",
   "composer.protocol.commit": "Scrivi qui",
   "composer.protocol.keys": "Tasti",
+  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
   "composer.protocol.dismissAria": "Chiudi le opzioni di invio",
   "composer.surface.free": "The input box was free.", // TODO wordsmith
   "composer.surface.running": "The agent was working.", // TODO wordsmith

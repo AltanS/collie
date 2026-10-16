@@ -25,6 +25,21 @@ beforeEach(() => {
   __resetLocale();
 });
 
+/** The keys M56 spec 07 added, English in every locale until the wordsmith pass translates them. */
+const WAY_OUT_PENDING_WORDSMITH: ReadonlySet<string> = new Set([
+  "composer.placeholder.running",
+  "composer.placeholder.draft",
+  "composer.placeholder.unreadable",
+  "composer.placeholder.noMatch",
+  "composer.placeholder.contested",
+  "composer.placeholder.stale",
+  "composer.placeholder.staleNoAge",
+  "composer.placeholder.torn",
+  "composer.controls.screenAria",
+  "composer.controls.screen",
+  "composer.protocol.openKeys",
+]);
+
 describe("isLocale", () => {
   it("narrows the twelve we ship and refuses everything else", () => {
     expect(isLocale("de")).toBe(true);
@@ -265,7 +280,10 @@ describe("every translated dictionary", () => {
       // (M57 spec 05, 2026-10-15): they carry the English text on purpose, with a `// TODO wordsmith`
       // on the line, and thirty-four of them tipped de, es, fr and it past the tenth. Drop the
       // exemption, and this comment, when that pass lands.
-      const sameAsEnglish = englishKeys.filter((key) => !key.startsWith("theme.") && dictionary[key] === en[key]);
+      //
+      // The way-out sentences of M56 spec 07 are left out the same way (`WAY_OUT_PENDING_WORDSMITH`), for
+      // the same reason: English on purpose, marked `// TODO wordsmith`, until that pass lands.
+      const sameAsEnglish = englishKeys.filter((key) => !key.startsWith("theme.") && !WAY_OUT_PENDING_WORDSMITH.has(key) && dictionary[key] === en[key]);
       expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
 
       for (const key of englishKeys) {

@@ -298,6 +298,8 @@ export const ko: Dictionary = {
   "composer.controls.agent": "에이전트",
   "composer.controls.displayAria": "표시 설정",
   "composer.controls.display": "표시",
+  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
+  "composer.controls.screen": "Screen", // TODO wordsmith
   "composer.controls.clear": "메시지 지우기",
   "composer.controls.undoClear": "지우기 취소",
   "composer.sentPreview.label": "보낸 내용:",
@@ -311,6 +313,14 @@ export const ko: Dictionary = {
   "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
   "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
   "composer.placeholder.direct": "터미널에 입력…",
+  "composer.placeholder.running": "The agent is working. Keys can stop it.", // TODO wordsmith
+  "composer.placeholder.draft": "A draft is in the box. Send offers Add or Replace.", // TODO wordsmith
+  "composer.placeholder.unreadable": "Collie cannot read what is open. Use Screen or Keys.", // TODO wordsmith
+  "composer.placeholder.noMatch": "Collie cannot find the input box. Send takes two taps.", // TODO wordsmith
+  "composer.placeholder.contested": "Two reads disagree. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.stale": "Last read {age} ago. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.staleNoAge": "The last read is old. Send reads the screen again.", // TODO wordsmith
+  "composer.placeholder.torn": "The screen was moving. Send reads it again.", // TODO wordsmith
   "composer.placeholder.shell": "셸 명령 입력…",
   "composer.placeholder.reply": "응답 입력…",
   "composer.mic.unavailable": "음성 입력을 사용할 수 없습니다",
@@ -383,6 +393,7 @@ export const ko: Dictionary = {
   "composer.protocol.discard": "버리기",
   "composer.protocol.commit": "여기에 입력",
   "composer.protocol.keys": "키",
+  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
   "composer.protocol.dismissAria": "보내기 옵션 닫기",
   "composer.surface.free": "The input box was free.", // TODO wordsmith
   "composer.surface.running": "The agent was working.", // TODO wordsmith

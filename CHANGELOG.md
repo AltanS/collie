@@ -57,6 +57,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On a marked pane the composer sends through the Send Protocol.** Send posts one request and keeps its id for a retry after no answer, so a lost answer never sends twice. A draft in the box offers Add to it, Replace and Cancel; text typed but not submitted offers Submit and Discard; a screen Collie cannot read takes a second tap, Type here, that carries the hash of the rows you saw. A text that starts with `/`, `!` or `@` and a pane on another machine keep the old route. New strings in all twelve languages.
 - **A send to a harness with no profile ends `sent` when only a status row under the box changed.** The check after Enter finds the input row by its distance from the last row with text and compares that row alone, so a token counter that moves on submit (seen live on pi 0.87.1) no longer turns a taken send into `unknown`.
 - **Add to it starts the added text after one space.** On a draft the person typed, the composer's Add to it no longer runs the two texts together.
+- **One rule decides the way out in each of thirteen composer states.** `web/src/lib/way-out.ts` names the state of a pane's input surface and of the phone's three facts (gone, read-only, offline), says whether the Keys dock opens and can send keys, and writes the placeholder that names the state, with the age of a stale read.
 
 ### Changed
 
