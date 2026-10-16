@@ -711,6 +711,10 @@ export const ko: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "먼저 설정에서 이 기기의 알림을 켜십시오.",
   "paneSettings.cacheWatch.globalOn": "설정에서 모든 창에 대해 경고하므로 이 창도 포함됩니다.",
   "paneSettings.cacheWatch.noSession": "이 창의 에이전트가 세션을 지정하지 않으므로 주시할 대상이 없습니다.",
+  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
+  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "창",

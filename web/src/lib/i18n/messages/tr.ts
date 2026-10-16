@@ -640,6 +640,10 @@ export const tr: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "Önce Ayarlar bölümünden bu cihaz için bildirimleri açın.",
   "paneSettings.cacheWatch.globalOn": "Ayarlar her bölme için uyarı verir, bu nedenle bu bölme kapsam dahilindedir.",
   "paneSettings.cacheWatch.noSession": "Bu bölmenin aracısı hiçbir oturum belirtmiyor, bu nedenle izlenecek bir şey yok.",
+  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
+  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
   "paneActions.title.fallback": "Bölme",
   "paneActions.settings.label": "Bölme ayarları",
   "paneActions.readOnly": "Salt okunur; bu cihazın bölmeleri yeniden adlandırma veya kapatma yetkisi yok.",

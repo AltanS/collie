@@ -640,6 +640,10 @@ export const pt: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "Primeiro ative as notificações para este dispositivo em Configurações.",
   "paneSettings.cacheWatch.globalOn": "As Configurações avisam sobre todos os painéis, então este já está coberto.",
   "paneSettings.cacheWatch.noSession": "O agente deste painel não especifica uma sessão, então não há nada para monitorar.",
+  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
+  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
   "paneActions.title.fallback": "Painel",
   "paneActions.settings.label": "Configurações do painel",
   "paneActions.readOnly": "Somente leitura. Este dispositivo não tem autorização para renomear ou fechar painéis.",

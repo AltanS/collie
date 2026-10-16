@@ -792,6 +792,11 @@ export const en = {
   "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
   "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
   "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+  // The pane's hook edges (M56 spec 11): a fact about the pane, shown under the switch.
+  "paneSettings.hooks.live": "Hooks: live",
+  "paneSettings.hooks.none": "Hooks: none",
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.",
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.",
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",

@@ -169,3 +169,21 @@ describe("PaneSettingsSheet — the real hooks, end to end", () => {
     expect(asked).toBe(0);
   });
 });
+
+describe("PaneSettingsView — the pane's hook edges (M56 spec 11)", () => {
+  test("says hooks: live when the agent's own hooks report from the pane", () => {
+    render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} hooks="live" />);
+    expect(screen.getByText("Hooks: live")).toBeInTheDocument();
+  });
+
+  test("says hooks: none for a pane that started before the install, and names the install", () => {
+    render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} hooks="none" />);
+    expect(screen.getByText("Hooks: none")).toBeInTheDocument();
+    expect(screen.getByText(/collie hooks install/)).toBeInTheDocument();
+  });
+
+  test("shows no hooks row at all on an older bridge", () => {
+    render(<PaneSettingsView state={state()} busy={false} pushOff={false} onToggle={vi.fn()} />);
+    expect(screen.queryByText(/^Hooks:/)).toBeNull();
+  });
+});

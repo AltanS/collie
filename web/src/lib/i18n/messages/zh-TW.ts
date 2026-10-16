@@ -701,6 +701,10 @@ export const zhTW: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "請先在「設定」中開啟此裝置的通知。",
   "paneSettings.cacheWatch.globalOn": "「設定」會針對每個窗格發出警告，因此這個窗格也包含在內。",
   "paneSettings.cacheWatch.noSession": "此窗格的 agent 未指定工作階段名稱，因此沒有可監看的內容。",
+  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
+  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
 
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "窗格",

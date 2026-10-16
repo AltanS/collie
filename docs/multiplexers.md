@@ -69,7 +69,7 @@ Then restart, install the beacon hooks, and start an agent where the phone can s
 
 ```bash
 collie restart                 # after every .env edit
-collie hooks install claude    # once per host, tmux, zellij and tern only
+collie hooks install claude    # once per host; tmux, zellij and tern need it, Herdr gets hook edges
 
 # open a window or a tab for the agent
 tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
@@ -235,7 +235,7 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 
 Because tmux, zellij and tern expose panes as generic shells, agents must announce themselves. This
 requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into Claude Code's
-configuration.
+configuration. On Herdr, the same hooks give [hook edges](#hook-edges) only.
 
 The output references the `bin/collie` path from this repository. Package installs use the installed
 binary path (`~/.local/bin/collie` or `~/.local/share/collie/current/bin/collie`) rather than
@@ -367,6 +367,34 @@ it under `beacons` as *expired*, and the next hook invocation overwrites it.
 This allows the dashboard to label panes by agent name rather than `bash`. It lets **"needs you"
 sort panes by blocked status**, and provides the state required for alerts. Pane history also relies
 on the beacon to supply the session key used by the journal.
+
+### Hook edges
+
+The same hooks also write a **hook edge** for each event. A hook edge is a short note that an event
+happened in one pane, for example "a prompt went in", "the turn stopped" or "a permission dialog is
+up". Collie uses hook edges on every multiplexer, Herdr too. Herdr names its agents on its own, so on
+Herdr the hooks give hook edges only.
+
+A hook edge never decides on its own that a pane is free. When an edge comes in, Collie reads the
+screen again about 0.7 seconds later. Only the screen can say that the input box is empty and that no
+dialog is up. An edge can say that a turn runs or that a dialog is up. Collie then holds the pane as
+busy until the closing edge comes, or until the screen shows a free box on three reads over ten
+seconds. When a prompt edge carries the same text as a send
+from the phone, that send shows as **Confirmed**. The edge carries a salted hash of the prompt, never
+the text itself.
+
+Collie places each edge on one pane. The edge names the agent's process and the pane it runs in
+(`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). An edge that names no pane, or a process that is
+gone, is dropped, and the bridge log shows one `surface.edge.dropped` line for it.
+
+The pane info on the phone shows whether a pane sends hook edges:
+
+- **Hooks: live** means the agent in that pane sends hook edges.
+- **Hooks: none** means it does not. The hooks are not installed, or the agent started before
+  `collie hooks install claude`. Restart the agent to start its hook edges.
+
+An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
+status` shows it as partial. Run `collie hooks install claude` again to update it in place.
 
 > **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
 > *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access

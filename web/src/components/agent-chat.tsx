@@ -3071,6 +3071,7 @@ export function AgentChat({
           onClose={closeDrawer}
           paneId={paneId}
           scope={scope}
+          hooks={agent?.hooks}
           // The header's name tap lands here, so the row that edits the name is here too. It hands
           // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
           // read-only device, an unreachable machine, a multiplexer with no rename.

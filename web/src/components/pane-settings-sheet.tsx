@@ -36,9 +36,11 @@ interface PaneSettingsSheetProps {
   /** Open the rename flow. Absent hides the row: the pane cannot be renamed here (read-only device,
    *  an unreachable machine, a multiplexer with no rename), and the ⋮ sheet hides its own the same way. */
   onRename?: () => void;
+  /** The pane's hook source (M56 spec 11), from the snapshot. Absent hides the row: an older bridge. */
+  hooks?: "live" | "none";
 }
 
-export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: PaneSettingsSheetProps) {
+export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
   const { state, busy, toggle } = useCacheWatch(paneId, open, scope);
@@ -58,6 +60,7 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename }: Pa
         pushKnown={push !== null}
         onToggle={(next) => void toggle(next)}
         onRename={onRename}
+        hooks={hooks}
       />
       {/* The last ten sends for this pane, from the bridge's receipts (M56 spec 09). Read when the sheet opens. */}
       {open && <SendReceipts paneId={paneId} {...(scope === undefined ? {} : { scope })} />}
@@ -79,6 +82,7 @@ export function PaneSettingsView({
   pushKnown = true,
   onToggle,
   onRename,
+  hooks,
 }: {
   /** Null until the bridge answers. The switch is disabled and the hint is the ordinary one. */
   state: CacheWatchState | null;
@@ -90,6 +94,8 @@ export function PaneSettingsView({
   onToggle: (next: boolean) => void;
   /** The Rename row, above the switch. Absent hides it. */
   onRename?: () => void;
+  /** The pane's hook source (M56 spec 11). Absent hides the row. */
+  hooks?: "live" | "none" | undefined;
 }) {
   useLocale();
   const globalOn = state?.global === true;
@@ -122,6 +128,16 @@ export function PaneSettingsView({
           aria-label={t("paneSettings.cacheWatch.label")}
         />
       </div>
+      {/* The hook edges (M56 spec 11): live when the agent's own hooks report from this pane, none
+          when they are not installed or the pane started before the install. A fact, not a switch. */}
+      {hooks !== undefined && (
+        <div className="px-4">
+          <div className="text-sm font-medium">{t(hooks === "live" ? "paneSettings.hooks.live" : "paneSettings.hooks.none")}</div>
+          <p className="text-xs leading-snug text-muted-foreground">
+            {t(hooks === "live" ? "paneSettings.hooks.liveHint" : "paneSettings.hooks.noneHint")}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

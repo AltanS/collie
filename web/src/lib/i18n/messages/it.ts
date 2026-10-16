@@ -640,6 +640,10 @@ export const it: Dictionary = {
   "paneSettings.cacheWatch.pushOff": "Attiva prima le notifiche per questo dispositivo nelle Impostazioni.",
   "paneSettings.cacheWatch.globalOn": "Le Impostazioni avvisano per ogni riquadro, quindi questo è coperto.",
   "paneSettings.cacheWatch.noSession": "L'agente di questo riquadro non indica sessioni, nulla da monitorare.",
+  "paneSettings.hooks.live": "Hooks: live", // TODO wordsmith
+  "paneSettings.hooks.none": "Hooks: none", // TODO wordsmith
+  "paneSettings.hooks.liveHint": "The agent's own hooks report from this pane. Collie reads the screen again after each report.", // TODO wordsmith
+  "paneSettings.hooks.noneHint": "No hook reports from this pane, so Collie reads the screen alone. Hooks reach only agents that start after `collie hooks install`.", // TODO wordsmith
   "paneActions.title.fallback": "Riquadro",
   "paneActions.settings.label": "Impostazioni riquadro",
   "paneActions.readOnly": "Sola lettura: dispositivo non autorizzato a rinominare o chiudere riquadri.",
