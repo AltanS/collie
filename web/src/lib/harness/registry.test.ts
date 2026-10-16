@@ -15,6 +15,7 @@ describe("hasBlockGrammar", () => {
     expect(hasBlockGrammar("claude")).toBe(true);
     expect(hasBlockGrammar("codex")).toBe(true);
     expect(hasBlockGrammar("grok")).toBe(true);
+    expect(hasBlockGrammar("hermes")).toBe(true);
     expect(hasBlockGrammar("omp")).toBe(true);
     expect(hasBlockGrammar("agy")).toBe(true);
     expect(hasBlockGrammar("antigravity")).toBe(true);
