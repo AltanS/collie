@@ -46,7 +46,7 @@ export const de: Dictionary = {
   "theme.import": "Importieren",
   "theme.export": "Exportieren",
   "theme.remove": "Entfernen",
-  "theme.import.promise": "Ein Design ändert nur Farben und Schriftart. Es kann keinen Code ausführen, keine Dateien laden und keinen Server erreichen.", // TODO wordsmith
+  "theme.import.promise": "Ein Design ändert, wie die App aussieht, und sonst nichts. Es kann keinen Code ausführen, keine Dateien laden und keinen Server erreichen.",
   "theme.preview.title": "Dieses Design importieren?",
   "theme.preview.by": "Von {author}",
   "theme.preview.halves.both": "Hell und dunkel",
@@ -55,9 +55,9 @@ export const de: Dictionary = {
   "theme.preview.fills": "Es füllt seine fehlende Seite ({half}) aus dem Standarddesign auf.",
   "theme.preview.apply": "Anwenden",
   "theme.preview.cancel": "Abbrechen",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Form",
+  "theme.preview.shape.sample": "Beispiel",
+  "theme.preview.ansi": "Terminalfarben",
   "theme.preview.contrast.pass": "Jede Kontrastprüfung ist bestanden.",
   "theme.preview.contrast.fail": "{half}: {check} misst {ratio}. Der Mindestwert ist {floor}.",
   "theme.preview.contrast.more": "und {count} weitere Prüfungen schlagen fehl",
@@ -77,8 +77,8 @@ export const de: Dictionary = {
   "theme.refusal.value": "Ein Farbwert ist ungültig.",
   "theme.refusal.font": "Die Schriftauswahl ist ungültig.",
   "theme.refusal.no-half": "Die Datei legt keine Farben fest.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Ein Formwort ist ungültig.",
+  "theme.refusal.ansi": "Eine Terminalfarbe ist ungültig oder erreicht nicht den Mindestkontrast.",
   "theme.refusal.reserved-id": "Diese ID gehört zu einem mitgelieferten Design. Ändere \"id\" in der Datei, um deine Kopie zu importieren.",
 
   // --- settings.haptics ---

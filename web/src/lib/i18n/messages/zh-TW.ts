@@ -46,7 +46,7 @@ export const zhTW: Dictionary = {
   "theme.import": "匯入",
   "theme.export": "匯出",
   "theme.remove": "移除",
-  "theme.import.promise": "主題僅會變更顏色與字型。它無法執行程式碼、載入檔案或連線至伺服器。", // TODO wordsmith
+  "theme.import.promise": "主題僅會變更應用程式的外觀，不會變更其他任何內容。它無法執行程式碼、載入檔案或連線至伺服器。",
   "theme.preview.title": "要匯入此主題嗎？",
   "theme.preview.by": "作者：{author}",
   "theme.preview.halves.both": "淺色與深色",
@@ -55,9 +55,9 @@ export const zhTW: Dictionary = {
   "theme.preview.fills": "其缺少的一半（{half}）會以預設主題填補。",
   "theme.preview.apply": "套用",
   "theme.preview.cancel": "取消",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "形狀",
+  "theme.preview.shape.sample": "範例",
+  "theme.preview.ansi": "終端機顏色",
   "theme.preview.contrast.pass": "所有對比度檢查皆已通過。",
   "theme.preview.contrast.fail": "{half}：{check} 量測值為 {ratio}。最低門檻為 {floor}。",
   "theme.preview.contrast.more": "還有另外 {count} 項檢查失敗",
@@ -77,8 +77,8 @@ export const zhTW: Dictionary = {
   "theme.refusal.value": "顏色值無效。",
   "theme.refusal.font": "字型選擇無效。",
   "theme.refusal.no-half": "此檔案未設定任何顏色。",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "形狀字詞無效。",
+  "theme.refusal.ansi": "終端機顏色無效，或未達到最低對比度。",
   "theme.refusal.reserved-id": "此識別碼屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
 
   // --- settings.haptics ---

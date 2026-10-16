@@ -41,7 +41,7 @@ export const it: Dictionary = {
   "theme.import": "Importa",
   "theme.export": "Esporta",
   "theme.remove": "Rimuovi",
-  "theme.import.promise": "Un tema modifica soltanto i colori e il carattere tipografico. Non può eseguire codice, caricare file o contattare un server.", // TODO wordsmith
+  "theme.import.promise": "Un tema modifica l'aspetto dell'app e nient'altro. Non può eseguire codice, caricare file o connettersi a un server.",
   "theme.preview.title": "Importare questo tema?",
   "theme.preview.by": "Di {author}",
   "theme.preview.halves.both": "Chiaro e scuro",
@@ -50,9 +50,9 @@ export const it: Dictionary = {
   "theme.preview.fills": "Completa la metà mancante ({half}) usando il tema predefinito.",
   "theme.preview.apply": "Applica",
   "theme.preview.cancel": "Annulla",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Forma",
+  "theme.preview.shape.sample": "Esempio",
+  "theme.preview.ansi": "Colori del terminale",
   "theme.preview.contrast.pass": "Tutti i controlli di contrasto sono superati.",
   "theme.preview.contrast.fail": "{half}: {check} misura {ratio}. Il valore minimo è {floor}.",
   "theme.preview.contrast.more": "e altri {count} controlli non sono superati",
@@ -72,8 +72,8 @@ export const it: Dictionary = {
   "theme.refusal.value": "Un valore di colore non è valido.",
   "theme.refusal.font": "La scelta del carattere non è valida.",
   "theme.refusal.no-half": "Il file non imposta alcun colore.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Una parola per la forma non è valida.",
+  "theme.refusal.ansi": "Un colore del terminale non è valido oppure non rispetta il rapporto di contrasto minimo.",
   "theme.refusal.reserved-id": "Questo ID appartiene a un tema incluso. Modifichi \"id\" nel file per importare la Sua copia.",
   "settings.haptics.title": "Feedback aptico",
   "settings.haptics.description": "Una breve vibrazione quando premi un tasto o una risposta rapida.",

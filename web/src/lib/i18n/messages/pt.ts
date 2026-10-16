@@ -41,7 +41,7 @@ export const pt: Dictionary = {
   "theme.import": "Importar",
   "theme.export": "Exportar",
   "theme.remove": "Remover",
-  "theme.import.promise": "Um tema altera apenas as cores e a tipografia. Ele não pode executar código, carregar arquivos nem acessar um servidor.", // TODO wordsmith
+  "theme.import.promise": "Um tema altera a aparência do app e nada mais. Ele não pode executar código, carregar arquivos ou acessar um servidor.",
   "theme.preview.title": "Importar este tema?",
   "theme.preview.by": "Por {author}",
   "theme.preview.halves.both": "Claro e escuro",
@@ -50,9 +50,9 @@ export const pt: Dictionary = {
   "theme.preview.fills": "Ele preenche o lado ausente ({half}) a partir do tema padrão.",
   "theme.preview.apply": "Aplicar",
   "theme.preview.cancel": "Cancelar",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Forma",
+  "theme.preview.shape.sample": "Amostra",
+  "theme.preview.ansi": "Cores do terminal",
   "theme.preview.contrast.pass": "Todas as verificações de contraste passaram.",
   "theme.preview.contrast.fail": "{half}: {check} mede {ratio}. O mínimo é {floor}.",
   "theme.preview.contrast.more": "e mais {count} verificações falharam",
@@ -72,8 +72,8 @@ export const pt: Dictionary = {
   "theme.refusal.value": "Um valor de cor não é válido.",
   "theme.refusal.font": "A escolha da fonte não é válida.",
   "theme.refusal.no-half": "O arquivo não define cores.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Uma palavra de forma não é válida.",
+  "theme.refusal.ansi": "Uma cor do terminal não é válida ou não atinge o contraste mínimo.",
   "theme.refusal.reserved-id": "Este ID pertence a um tema incluído. Altere \"id\" no arquivo para importar sua cópia.",
   "settings.haptics.title": "Vibração",
   "settings.haptics.description": "Uma vibração curta ao pressionar uma tecla ou uma resposta rápida.",

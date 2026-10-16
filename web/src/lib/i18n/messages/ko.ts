@@ -46,7 +46,7 @@ export const ko: Dictionary = {
   "theme.import": "가져오기",
   "theme.export": "내보내기",
   "theme.remove": "제거",
-  "theme.import.promise": "테마는 색상과 글꼴만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.", // TODO wordsmith
+  "theme.import.promise": "테마는 앱의 외관만 변경하며 그 외에는 아무것도 바꾸지 않습니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.",
   "theme.preview.title": "이 테마를 가져오시겠습니까?",
   "theme.preview.by": "작성자: {author}",
   "theme.preview.halves.both": "라이트 및 다크",
@@ -55,9 +55,9 @@ export const ko: Dictionary = {
   "theme.preview.fills": "누락된 부분({half})은 기본 테마에서 채웁니다.",
   "theme.preview.apply": "적용",
   "theme.preview.cancel": "취소",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "모양",
+  "theme.preview.shape.sample": "샘플",
+  "theme.preview.ansi": "터미널 색상",
   "theme.preview.contrast.pass": "모든 대비 검사를 통과했습니다.",
   "theme.preview.contrast.fail": "{half}: {check} 측정값은 {ratio}입니다. 최솟값은 {floor}입니다.",
   "theme.preview.contrast.more": "외 {count}개의 검사 실패",
@@ -77,8 +77,8 @@ export const ko: Dictionary = {
   "theme.refusal.value": "색상 값이 올바르지 않습니다.",
   "theme.refusal.font": "글꼴 선택이 올바르지 않습니다.",
   "theme.refusal.no-half": "파일에 지정된 색상이 없습니다.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "모양을 나타내는 단어가 올바르지 않습니다.",
+  "theme.refusal.ansi": "터미널 색상이 올바르지 않거나 최소 대비율을 충족하지 못합니다.",
   "theme.refusal.reserved-id": "이 ID는 기본 제공 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
 
   // --- settings.haptics ---

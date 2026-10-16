@@ -45,7 +45,7 @@ export const ja: Dictionary = {
   "theme.import": "インポート",
   "theme.export": "エクスポート",
   "theme.remove": "削除",
-  "theme.import.promise": "テーマで変更されるのは色とフォントのみです。コードの実行、ファイルの読み込み、サーバーへの接続は行えません。", // TODO wordsmith
+  "theme.import.promise": "テーマはアプリの外観のみを変更します。コードの実行、ファイルの読み込み、サーバーへのアクセスは行えません。",
   "theme.preview.title": "このテーマをインポートしますか?",
   "theme.preview.by": "作成者: {author}",
   "theme.preview.halves.both": "ライトとダーク",
@@ -54,9 +54,9 @@ export const ja: Dictionary = {
   "theme.preview.fills": "不足している側 ({half}) はデフォルトテーマで補完されます。",
   "theme.preview.apply": "適用",
   "theme.preview.cancel": "キャンセル",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "形状",
+  "theme.preview.shape.sample": "サンプル",
+  "theme.preview.ansi": "ターミナルカラー",
   "theme.preview.contrast.pass": "すべてのコントラストチェックに合格しました。",
   "theme.preview.contrast.fail": "{half}: {check} の測定値は {ratio} です。最小値は {floor} です。",
   "theme.preview.contrast.more": "ほか {count} 件のチェックに失敗しました",
@@ -76,8 +76,8 @@ export const ja: Dictionary = {
   "theme.refusal.value": "色の値が無効です。",
   "theme.refusal.font": "フォントの選択が無効です。",
   "theme.refusal.no-half": "ファイルで色が設定されていません。",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "形状を表す語が無効です。",
+  "theme.refusal.ansi": "ターミナルカラーが無効であるか、最小コントラスト比を満たしていません。",
   "theme.refusal.reserved-id": "このIDは同梱のテーマのものです。ファイルをインポートするには、ファイル内の\"id\"を変更してください。",
 
   // --- settings.haptics ---

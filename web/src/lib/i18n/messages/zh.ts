@@ -46,7 +46,7 @@ export const zh: Dictionary = {
   "theme.import": "导入",
   "theme.export": "导出",
   "theme.remove": "移除",
-  "theme.import.promise": "主题仅更改颜色和字体。它无法运行代码、加载文件或访问服务器。", // TODO wordsmith
+  "theme.import.promise": "主题仅改变应用的外观，不会改变其他任何内容。它无法运行代码、加载文件或访问服务器。",
   "theme.preview.title": "导入此主题？",
   "theme.preview.by": "作者：{author}",
   "theme.preview.halves.both": "浅色与深色",
@@ -55,9 +55,9 @@ export const zh: Dictionary = {
   "theme.preview.fills": "它会从默认主题填补缺失的一侧（{half}）。",
   "theme.preview.apply": "应用",
   "theme.preview.cancel": "取消",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "形状",
+  "theme.preview.shape.sample": "示例",
+  "theme.preview.ansi": "终端颜色",
   "theme.preview.contrast.pass": "所有对比度检查均已通过。",
   "theme.preview.contrast.fail": "{half}：{check} 测得 {ratio}。最低要求为 {floor}。",
   "theme.preview.contrast.more": "还有另外 {count} 项检查失败",
@@ -77,8 +77,8 @@ export const zh: Dictionary = {
   "theme.refusal.value": "颜色值无效。",
   "theme.refusal.font": "字体选择无效。",
   "theme.refusal.no-half": "文件未设置任何颜色。",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "形状词无效。",
+  "theme.refusal.ansi": "终端颜色无效，或未达到最低对比度要求。",
   "theme.refusal.reserved-id": "此 ID 属于随附主题。修改文件中的 \"id\" 以导入你的副本。",
 
   // --- settings.haptics ---

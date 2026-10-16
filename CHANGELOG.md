@@ -132,6 +132,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Theme chips show each theme's shape.** In Settings, Appearance, every chip wears its own theme's corners and weight, so the strip shows the shape before a tap. The Collie chip looks as it did, and the strip wraps on a narrow phone so every chip stays inside the card.
 - **A marked row follows the theme's corners.** The selected or blocked row in the spaces list, the program list and the session and machine switchers wears a 2px bar on its left edge under square corners, as before. Under soft or round corners a marked row wears a ring on all four sides instead of a left bar. The Collie theme keeps its left bar.
 - **A marked row under rounded corners also lifts.** With its ring on all four sides, a selected or blocked row under soft or round corners takes a soft shadow, and an unmarked row takes none. Under Collie's square corners nothing changes.
+- **The theme import preview and its refusals speak all eleven languages.** The shape and terminal palette labels and the two new refusal sentences were translated; the import promise now says a theme changes how the app looks and nothing else.
 
 ### Fixed
 

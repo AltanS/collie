@@ -41,7 +41,7 @@ export const fr: Dictionary = {
   "theme.import": "Importer",
   "theme.export": "Exporter",
   "theme.remove": "Supprimer",
-  "theme.import.promise": "Un thème modifie uniquement les couleurs et la police de caractères. Il ne peut pas exécuter de code, charger de fichiers ou joindre un serveur.", // TODO wordsmith
+  "theme.import.promise": "Un thème modifie uniquement l'apparence de l'application. Il ne peut pas exécuter de code, charger des fichiers ou contacter un serveur.",
   "theme.preview.title": "Importer ce thème ?",
   "theme.preview.by": "Par {author}",
   "theme.preview.halves.both": "Clair et sombre",
@@ -50,9 +50,9 @@ export const fr: Dictionary = {
   "theme.preview.fills": "Il complète son côté manquant ({half}) à partir du thème par défaut.",
   "theme.preview.apply": "Appliquer",
   "theme.preview.cancel": "Annuler",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Forme",
+  "theme.preview.shape.sample": "Exemple",
+  "theme.preview.ansi": "Couleurs du terminal",
   "theme.preview.contrast.pass": "Chaque test de contraste réussit.",
   "theme.preview.contrast.fail": "{half} : {check} mesure {ratio}. Le seuil minimum est {floor}.",
   "theme.preview.contrast.more": "et {count} autres tests échouent",
@@ -72,8 +72,8 @@ export const fr: Dictionary = {
   "theme.refusal.value": "Une valeur de couleur n'est pas valide.",
   "theme.refusal.font": "Le choix de police n'est pas valide.",
   "theme.refusal.no-half": "Le fichier ne définit aucune couleur.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Un mot désignant une forme n'est pas valide.",
+  "theme.refusal.ansi": "Une couleur du terminal n'est pas valide, ou elle ne respecte pas le seuil minimal de contraste.",
   "theme.refusal.reserved-id": "Cet identifiant appartient à un thème inclus. Modifiez \"id\" dans le fichier pour importer votre copie.",
   "settings.haptics.title": "Retour haptique",
   "settings.haptics.description": "Une courte vibration lorsque vous appuyez sur une touche ou une réponse rapide.",

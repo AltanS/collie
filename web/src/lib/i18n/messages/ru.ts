@@ -43,7 +43,7 @@ export const ru: Dictionary = {
   "theme.import": "Импорт",
   "theme.export": "Экспорт",
   "theme.remove": "Удалить",
-  "theme.import.promise": "Тема меняет только цвета и шрифт. Она не может выполнять код, загружать файлы или обращаться к серверу.", // TODO wordsmith
+  "theme.import.promise": "Тема меняет только внешний вид приложения. Она не может выполнять код, загружать файлы или обращаться к серверу.",
   "theme.preview.title": "Импортировать эту тему?",
   "theme.preview.by": "Автор: {author}",
   "theme.preview.halves.both": "Светлая и темная",
@@ -52,9 +52,9 @@ export const ru: Dictionary = {
   "theme.preview.fills": "Недостающая сторона ({half}) берется из темы по умолчанию.",
   "theme.preview.apply": "Применить",
   "theme.preview.cancel": "Отмена",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Форма",
+  "theme.preview.shape.sample": "Образец",
+  "theme.preview.ansi": "Цвета терминала",
   "theme.preview.contrast.pass": "Все проверки контрастности пройдены.",
   "theme.preview.contrast.fail": "{half}: {check} дает значение {ratio}. Нижний порог: {floor}.",
   "theme.preview.contrast.more": "Еще не пройдено проверок: {count}",
@@ -74,8 +74,8 @@ export const ru: Dictionary = {
   "theme.refusal.value": "Недопустимое значение цвета.",
   "theme.refusal.font": "Недопустимый выбор шрифта.",
   "theme.refusal.no-half": "Файл не задает цвета.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Недопустимое слово формы.",
+  "theme.refusal.ansi": "Цвет терминала недействителен или не достигает минимального порога контрастности.",
   "theme.refusal.reserved-id": "Этот ID принадлежит встроенной теме. Измените \"id\" в файле, чтобы импортировать свою копию.",
   "settings.haptics.title": "Тактильный отклик",
   "settings.haptics.description": "Короткая вибрация при нажатии клавиши или быстрого ответа.",

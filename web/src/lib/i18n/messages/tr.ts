@@ -41,7 +41,7 @@ export const tr: Dictionary = {
   "theme.import": "İçe aktar",
   "theme.export": "Dışa aktar",
   "theme.remove": "Kaldır",
-  "theme.import.promise": "Bir tema yalnızca renkleri ve yazı tipini değiştirir. Kod çalıştıramaz, dosya yükleyemez veya bir sunucuya erişemez.", // TODO wordsmith
+  "theme.import.promise": "Bir tema yalnızca uygulamanın nasıl göründüğünü değiştirir, başka hiçbir şeyi etkilemez. Kod çalıştıramaz, dosya yükleyemez veya bir sunucuya erişemez.",
   "theme.preview.title": "Bu tema içe aktarılsın mı?",
   "theme.preview.by": "{author} tarafından",
   "theme.preview.halves.both": "Açık ve koyu",
@@ -50,9 +50,9 @@ export const tr: Dictionary = {
   "theme.preview.fills": "Eksik tarafını ({half}) varsayılan temadan doldurur.",
   "theme.preview.apply": "Uygula",
   "theme.preview.cancel": "İptal",
-  "theme.preview.shape": "Shape", // TODO wordsmith
-  "theme.preview.shape.sample": "Sample", // TODO wordsmith
-  "theme.preview.ansi": "Terminal colours", // TODO wordsmith
+  "theme.preview.shape": "Şekil",
+  "theme.preview.shape.sample": "Örnek",
+  "theme.preview.ansi": "Terminal renkleri",
   "theme.preview.contrast.pass": "Tüm kontrast kontrolleri başarılı.",
   "theme.preview.contrast.fail": "{half}: {check} {ratio} ölçüyor. Alt sınır {floor}.",
   "theme.preview.contrast.more": "ve {count} kontrol daha başarısız",
@@ -72,8 +72,8 @@ export const tr: Dictionary = {
   "theme.refusal.value": "Bir renk değeri geçerli değil.",
   "theme.refusal.font": "Yazı tipi seçimi geçerli değil.",
   "theme.refusal.no-half": "Dosya hiçbir renk ayarlamıyor.",
-  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
-  "theme.refusal.ansi": "A terminal colour is not valid, or it fails its contrast floor.", // TODO wordsmith
+  "theme.refusal.surface": "Bir şekil sözcüğü geçerli değil.",
+  "theme.refusal.ansi": "Bir terminal rengi geçerli değil veya en düşük kontrast oranını karşılamıyor.",
   "theme.refusal.reserved-id": "Bu kimlik, birlikte gelen bir temaya ait. Kendi kopyanızı içe aktarmak için dosyadaki \"id\" değerini değiştirin.",
   "settings.haptics.title": "Dokunsal geri bildirim",
   "settings.haptics.description": "Bir tuşa veya hızlı yanıta bastığınızda kısa bir titreşim.",
