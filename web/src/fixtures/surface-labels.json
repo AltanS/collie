@@ -849,7 +849,7 @@
   "claude--v2301-lab-agents-panel-draft.txt": {
    "harness": "claude",
    "version": "2.1.301",
-   "state": "idle"
+   "state": "draft"
   },
   "claude--v2301-lab-agents-panel-empty.txt": {
    "harness": "claude",

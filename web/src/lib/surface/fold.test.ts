@@ -674,11 +674,11 @@ describe("the agents panel under the box (incident 2026-10-16)", () => {
   // The scratch-bridge lab on 2026-10-16 (Claude Code 2.1.301, a background agent running): the panel
   // stays under the box while the box holds a draft; only the mode row drops its two hints.
   it("the lab screens read free with an empty box and with a draft", () => {
-    for (const [name, composer] of [
-      ["claude--v2301-lab-agents-panel-empty.txt", "empty"],
-      ["claude--v2301-lab-agents-panel-draft.txt", "draft"],
+    for (const [name, composer, state] of [
+      ["claude--v2301-lab-agents-panel-empty.txt", "empty", "idle"],
+      ["claude--v2301-lab-agents-panel-draft.txt", "draft", "draft"],
     ] as const) {
-      expect(LABELS.fixtures[name]?.state).toBe("idle");
+      expect(LABELS.fixtures[name]?.state).toBe(state);
       const read = readScreen(fixtureRows(name), "claude", CLAUDE);
       expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer });
       expect(read.frame?.volatile.named.map((hit) => hit.name)).toEqual(["agents-panel-main", "agents-panel-agent"]);

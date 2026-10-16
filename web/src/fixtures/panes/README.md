@@ -2218,7 +2218,7 @@ files are labelled `idle` and read free.
 | `claude--v2301-synth-agents-panel.txt` | Hand-built from the incident screen | The incident shape: three statusline rows, a blank row, then `● main` and two `◯` agent rows |
 | `claude--v2301-synth-agents-panel-walk-fails.txt` | Hand-built from the incident screen | The same panel with `· ↓ to view` on the mode row and `↓ to manage` under the panel. Before the fix the walk failed here and the screen read `unreadable` |
 | `claude--v2301-lab-agents-panel-empty.txt` | Captured in the scratch-bridge lab, `tmux capture-pane -e` | A background agent runs. The box is empty, with a grey suggestion. The mode row ends `← for agents · ↓ to manage`, then a blank row, `● main` and one `◯` row. A plain send went in on this screen |
-| `claude--v2301-lab-agents-panel-draft.txt` | Same lab, one paste later | The same panel under a typed draft. The mode row drops its two hints, and the panel stays. It reads `composer: draft` |
+| `claude--v2301-lab-agents-panel-draft.txt` | Same lab, one paste later | The same panel under a typed draft. The mode row drops its two hints, and the panel stays. Labelled `draft`, it reads `composer: draft` |
 
 The two hand-built files carry a real reply from the transcript above the box. The folder in their
 statusline became `~/projects/sample-workspace`, the same length.
