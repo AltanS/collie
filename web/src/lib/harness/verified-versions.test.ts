@@ -18,8 +18,8 @@ const REGISTERED_AGENTS = registeredAgents();
 // drift apart because a vendor can change what it paints without changing what it writes.
 const JOURNAL_AGENTS = [...JOURNAL_AGENT_NAMES];
 
-// Hermes and OpenClaw have no block grammar, but their journal readers still need a ledger entry.
-const UNADAPTED_AGENTS = ["hermes", "openclaw"];
+// OpenClaw has no block grammar, but its journal reader still needs a ledger entry.
+const UNADAPTED_AGENTS = ["openclaw"];
 
 const ALLOWED_HOW = new Set(["canary", "live sweep", "capture", "unverified"]);
 
@@ -41,7 +41,7 @@ interface Ledger {
 }
 
 // SAFETY: `verified-versions.json` is a checked-in, hand-authored file; this test IS the shape
-// check (every registered adapter plus pi and hermes, a `journal` block for every journal adapter,
+// check (every registered adapter plus openclaw, a `journal` block for every journal adapter,
 // `how` in the allowed set, plain `x.y.z` versions, ISO dates) — asserting the type here, once, is
 // what the rest of the file verifies.
 const ledger = ledgerJson as Ledger;

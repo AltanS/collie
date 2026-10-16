@@ -21,7 +21,7 @@ const fixtureLines = (name: string): StyledLine[] =>
   linesOf(readFileSync(join(PANES_DIR, name), "utf8"));
 
 /** Every registered agent string. agy and antigravity are two registrations of one adapter. */
-const AGENTS = ["claude", "codex", "grok", "omp", "agy", "antigravity", "muse", "opencode"] as const;
+const AGENTS = ["claude", "codex", "grok", "omp", "agy", "antigravity", "muse", "opencode", "hermes"] as const;
 
 /** What the post-pass answers for `agent` on `lines` — the exact composition the three call sites
  *  use (harness/index.ts buildBlocks, agent-chat's dialogPresent, dialog-guard's dialogDetector). */
@@ -44,6 +44,9 @@ describe("the cancel key each adapter declares", () => {
     ["opencode", "Escape"],
     ["omp", "Escape"],
     ["grok", "ctrl+c"],
+    // Hermes's classic CLI binds no Escape on its panels; Ctrl+C was probed as the way out of each
+    // (hermes/CLARIFY_NOTES.md, hermes/APPROVAL_NOTES.md).
+    ["hermes", "ctrl+c"],
   ])("%s declares %s", (agent, key) => {
     expect(adapterFor(agent)!.cancelKey).toBe(key);
   });
@@ -75,6 +78,10 @@ describe("a real unread modal gets the card", () => {
     // The compact model picker in a state its grammar declines (.adr/0079): task mode, whose footer
     // ends one segment past the way out.
     ["omp", "omp--v18-4-switch-task.txt", "Escape"],
+    // The two pickers. Under a clarify or approval panel the card's own rows tick every second, so
+    // Hermes claims no modal there (hermes/index.ts `hermesModalOnScreen`).
+    ["hermes", "hermes--model-picker.txt", "ctrl+c"],
+    ["hermes", "hermes--palette.txt", "ctrl+c"],
   ])("%s gets the card on %s", (agent, fixture, key) => {
     const lines = fixtureLines(fixture);
     const blocks = pass(agent, lines);
@@ -319,6 +326,14 @@ const CARD_FIXTURES = {
     ],
     notModals: [],
   },
+  // The model picker and the command palette, which keep the input looking idle while they hold the
+  // keyboard. A multi-select clarify stays raw with NO card: under any Hermes panel the rows the card
+  // signs tick every second, so a tap could never land (hermes/index.ts `hermesModalOnScreen`). The
+  // typed-answer screens are an input, not a modal, so none of those is here.
+  hermes: {
+    modals: ["hermes--model-picker.txt", "hermes--palette.txt"],
+    notModals: [],
+  },
 } satisfies Record<string, { modals: string[]; notModals: string[] }>;
 
 /** This adapter's own captures, by file prefix. `claude-lab--` is Claude's capture lab, and
@@ -380,7 +395,7 @@ describe("the declaration tracks the harness", () => {
 });
 
 describe("the card is built outside the adapter", () => {
-  // Eight adapters over the whole corpus: the slowest assertion in the file, and the one that has to
+  // Nine adapters over the whole corpus: the slowest assertion in the file, and the one that has to
   // stay exhaustive, so it gets its own budget rather than a sample.
   it("no adapter's own buildBlocks emits the kind, on any fixture", { timeout: 30_000 }, () => {
     for (const agent of AGENTS) {
@@ -469,6 +484,8 @@ describe("the card stays off the shell an agent exits to, and off its first fram
     ["grok", screen("Finishing session…", "Resume this session with:", "  grok --resume 0000-session", SHELL)],
     ["muse", screen("  Muse Code 1.4.6", "❯ Reply with only OK.", "◆ OK", "To continue this session, run muse resume 0000-session", SHELL)],
     ["muse", screen("  Muse Code 1.4.6")],
+    // hermes--exited, with the session id and the shell prompt replaced.
+    ["hermes", screen("Resume this session with:", "  hermes --resume 0000-session", "", "Session:        0000-session", SHELL)],
   ])("%s: no card on %#", (agent, lines) => {
     expect(adapterFor(agent)!.composerReady!(lines)).toBe(false);
     expect(adapterFor(agent)!.modalOnScreen!(lines)).toBe(false);

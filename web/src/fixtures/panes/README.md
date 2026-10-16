@@ -2502,3 +2502,53 @@ Nerd Font glyph, so the box's top edge (`╭── ⠋ 13s …`, `1m` past a min
 | `omp--v18-11-nerd-running-tool-minute--w130.txt`, `--w80.txt` | The same turn past a minute: the top edge reads `⠋ 1m`. Labelled `running` |
 | `omp--v18-11-nerd-ghost-word--w130.txt`, `--w80.txt` | The box holds `please push` with the ghost `ed` after it. Labelled `draft` |
 | `omp--v18-11-ghost-word--w130.txt` | The same with the `unicode` preset. Labelled `draft` |
+
+## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
+
+`hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a
+scratch `HERMES_HOME` and a local zero-inference model endpoint that answers a keyword with a
+scripted tool call (`clarify`, or a `terminal` call that Hermes flags as dangerous). The panels are
+Hermes's own rendering of those calls; no provider was called. Read through a second Collie bridge
+on loopback (`GET /api/pane/:id?lines=40`, `scripts/capture-fixture.sh`), so the bytes are what the
+phone reads: SGR kept, CRLF as Herdr returns it. Herdr named the pane `agent: hermes`. The pane was
+120 columns; the `-w60` files ran under `stty cols 60`, below the 64-column line where Hermes drops
+the spinner row and the rule under the input. Six files began inside Hermes's startup banner, whose
+last rows name the scratch path and session id; those rows were cut off the top, which is what a
+smaller `lines=` read returns. Nothing else was changed. The Ink TUI (`hermes --tui`) is not in
+this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARIFY_NOTES.md) and
+[`hermes/APPROVAL_NOTES.md`](../../lib/harness/hermes/APPROVAL_NOTES.md).
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `hermes--idle` | Idle input, italic placeholder, status bar above the rules | composer, no draft |
+| `hermes--idle-w60` | The same at 60 columns: no rule under the input | composer, no draft |
+| `hermes--draft` | `CLARIFY-OPEN` typed, not sent | composer, draft read back |
+| `hermes--draft-w60` | `CLARIFY-ONE` typed at 60 columns | composer, draft read back |
+| `hermes--draft-wrapped` | One long line wrapped onto a second row | composer, rows joined |
+| `hermes--draft-multiline` | Three lines typed with raw newlines, none submitted | composer, newlines kept |
+| `hermes--draft-six-lines` | Six lines typed in one write: no paste placeholder | composer, all six read back |
+| `hermes--running` | A turn streaming, `☤ ❯` and the busy placeholder | composer (a send interrupts the turn) |
+| `hermes--done` | The turn finished after a clarify answer | composer |
+| `hermes--slash-popup` | `/mo` typed, grey auto-suggestion `a`, completion menu under the input | composer, draft `/mo` |
+| `hermes--model-picker` | `/model`, the model list; status slot blank, input still idle | picker, Ctrl+C card |
+| `hermes--palette` | Ctrl+P palette; status slot blank, input still idle | picker, Ctrl+C card |
+| `hermes--exited` | The shell after `/exit` | no input, no card |
+| `hermes--clarify-choices` | One question, three choices and Other, `❯` on 1, countdown `(3547s)` | digits 1 to 4 |
+| `hermes--clarify-choices-moved` | The same after Down, `❯` on 2 | digits 1 to 4 |
+| `hermes--clarify-choices-w60` | The same at 60 columns, prompt `?` | digits 1 to 4 |
+| `hermes--clarify-four` | Four choices and Other | digits 1 to 5 |
+| `hermes--clarify-long` | A question and a choice that wrap inside the panel | digits 1 to 3 |
+| `hermes--clarify-two` | Two questions, the first active, the second pending | digits for the first |
+| `hermes--clarify-two-second` | The first locked as `Green`, the second active | digits for the second |
+| `hermes--clarify-multi` | A multi-select question, nothing toggled | raw, Keys pad, no card |
+| `hermes--clarify-multi-toggled` | The same after `2` toggled `Tests` | raw, Keys pad, no card |
+| `hermes--clarify-other` | After `4`: `Other (type below)`, prompt `✎ ❯` | composer, bound to the `✎` row |
+| `hermes--clarify-other-draft` | `CockroachDB 23.2` typed as the answer, not sent | composer, draft read back |
+| `hermes--clarify-other-w60` | The typed-answer screen at 60 columns, prompt `✎` | composer |
+| `hermes--clarify-other-draft-w60` | `Firebird` typed at 60 columns | composer, draft read back |
+| `hermes--clarify-open` | A question with no choices: typed answer from the start | composer |
+| `hermes--approval` | `rm -rf` on a scratch path, four choices, `❯` on Allow once | Allow once, Deny |
+| `hermes--approval-moved` | The same after Down, `❯` on Allow for this session | Allow once, Deny |
+| `hermes--approval-w60` | The same at 60 columns, prompt `⚠` | Allow once, Deny |
+| `hermes--approval-long` | A 120-character command, `5. Show full command` | Allow once, Show full command, Deny |
+| `hermes--approval-long-full` | After `5`: row 5 gone, `❯` on Deny | Allow once, Deny |
