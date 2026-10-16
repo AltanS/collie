@@ -424,8 +424,8 @@ const MODAL_FOOTER_WINDOW = 3;
  * unread-dialog card (.adr/0053, addendum 2026-09-26). `composerReady` answering false says only
  * that no composer is there, which is also what the shell looks like while opencode starts and
  * after it exits; the card must not offer Escape there. Four shapes count: a picker
- * (`pickerOverlayUp`), a confirm dialog (`confirmDialogUp`), a permission dialog painted in the bar run, whose footer — a bar row
- * carrying `⇆ select` and `enter confirm` — sits at the tail (1.18.32), and a question dialog,
+ * (`pickerOverlayUp`), a confirm dialog (`confirmDialogUp`), a permission dialog painted in the bar run, whose footer, a bar row
+ * carrying `⇆ select` and `enter confirm`, sits at the tail (1.18.32), and a question dialog,
  * whose footer is a bar row carrying `esc dismiss` after `enter submit|toggle|confirm` (1.18.33).
  * The question footer counts on EVERY question screen, the ones the grammar refuses included (a tab
  * bar, a long list): the card and the composer lock must work on exactly those.
