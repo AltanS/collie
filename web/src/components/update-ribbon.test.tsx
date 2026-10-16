@@ -403,9 +403,9 @@ describe("pwa path unchanged", () => {
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false }));
     expect(
-      screen.getByRole("button", { name: "New version — tap to update" }),
+      screen.getByRole("button", { name: "New version, tap to update" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "New version — tap to update" }));
+    await user.click(screen.getByRole("button", { name: "New version, tap to update" }));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -418,7 +418,7 @@ describe("pwa path unchanged", () => {
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false }));
     expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
-    expect(screen.queryByText("New version — tap to update")).not.toBeInTheDocument();
+    expect(screen.queryByText("New version, tap to update")).not.toBeInTheDocument();
   });
 
   it("the download row carries a named close, and the close puts it down", async () => {
@@ -477,7 +477,7 @@ describe("auto-reload unless held", () => {
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false, run: run("done") }));
     expect(reload).not.toHaveBeenCalled();
-    expect(screen.getByText("New version — tap to update")).toBeInTheDocument();
+    expect(screen.getByText("New version, tap to update")).toBeInTheDocument();
   });
 
   it("the reload row's tap takes the same path the footer button does", async () => {
@@ -489,7 +489,7 @@ describe("auto-reload unless held", () => {
     // wrapper around the copy (see ui/notice.tsx), so a real tap lands on the overlay because it
     // paints on top, but a synthetic click dispatched straight at the text node has no DOM ancestor
     // to bubble to it through. Addressing the button by its name is what the click actually is.
-    await user.click(screen.getByRole("button", { name: "New version — tap to update" }));
+    await user.click(screen.getByRole("button", { name: "New version, tap to update" }));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
   });
 });

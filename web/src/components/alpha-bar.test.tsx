@@ -39,7 +39,7 @@ describe("AlphaBar — the prerelease marker", () => {
     // Text is split across spans (the version is font-mono), so match the container's flat text.
     const bar = screen.getByText(/ALPHA/).closest("div");
     expect(bar?.textContent?.replace(/\s+/g, " ")).toContain("ALPHA · 1.0.0-alpha.3");
-    expect(bar).toHaveAttribute("title", "Pre-release build — 1.0.0-alpha.3");
+    expect(bar).toHaveAttribute("title", "Pre-release build 1.0.0-alpha.3");
   });
 
   it("renders NOTHING on a stable build — solo stable never wears a banner", () => {

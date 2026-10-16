@@ -1269,7 +1269,7 @@ describe("Composer — destructive-input confirm", () => {
     await user.type(screen.getByPlaceholderText(/type a reply/i), "sudo reboot");
     await user.click(screen.getByRole("button", { name: "Send" }));
     // The reason stands at the Send slot beside "Really send?", not in the header (M56 spec 07).
-    expect(screen.getByText("Destructive: sudo (runs as root) \u2014 tap Send again to confirm")).toBeInTheDocument();
+    expect(screen.getByText("Destructive: sudo (runs as root), tap Send again to confirm")).toBeInTheDocument();
     expect(screen.getByTestId("status").textContent).toBe("");
     cleanup();
 
@@ -1278,7 +1278,7 @@ describe("Composer — destructive-input confirm", () => {
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     await user.type(screen.getByPlaceholderText(/type a reply/i), "sudo reboot");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    expect(screen.getByText("Destructive: sudo (runs as root) on workshop \u2014 tap Send again to confirm")).toBeInTheDocument();
+    expect(screen.getByText("Destructive: sudo (runs as root) on workshop, tap Send again to confirm")).toBeInTheDocument();
   });
 
   it("does not arm the confirm for innocent input", async () => {

@@ -44,7 +44,7 @@ describe("MenuBlock", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move up" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move down" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /right — adjust/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /right, adjust/i })).toBeInTheDocument();
   });
 
   // The arrows are unreadable on their own — the cluster has to say WHAT it adjusts, both visibly and
@@ -52,10 +52,10 @@ describe("MenuBlock", () => {
   it("labels the ←/→ cluster with the value it adjusts", () => {
     renderMenu();
     expect(
-      screen.getByRole("button", { name: "Left — adjust (◐ Medium effort)" }),
+      screen.getByRole("button", { name: "Left, adjust (◐ Medium effort)" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Right — adjust (◐ Medium effort)" }),
+      screen.getByRole("button", { name: "Right, adjust (◐ Medium effort)" }),
     ).toBeInTheDocument();
     // …and visibly, between them.
     expect(screen.getAllByText("◐ Medium effort").length).toBeGreaterThan(0);
@@ -124,8 +124,8 @@ describe("MenuBlock — a printed scale", () => {
       expect(screen.getByRole("button", { name: `adjust to ${level}` })).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "medium, current" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^left — adjust/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^right — adjust/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^left, adjust/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^right, adjust/i })).not.toBeInTheDocument();
   });
 
   it("marks the current level and refuses a tap on it", () => {
@@ -161,8 +161,8 @@ describe("MenuBlock — a printed scale", () => {
   // The `/model` picker prints the current value alone, so nothing changes there.
   it("keeps the plain arrows when the screen printed no scale", () => {
     renderMenu();
-    expect(screen.getByRole("button", { name: /^left — adjust/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^right — adjust/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^left, adjust/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^right, adjust/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /, current$/ })).not.toBeInTheDocument();
   });
 });

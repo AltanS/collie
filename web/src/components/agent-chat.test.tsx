@@ -437,7 +437,7 @@ describe("AgentChat — the pane header's identity block", () => {
     // string, because where the punctuation goes is a translator's decision.
     const { container } = renderChat(); // fixtureAgents[0] is blocked → "needs you"
     expect(identity(container)?.getAttribute("aria-label")).toBe(
-      "Open webapp overview — needs you",
+      "Open webapp overview, needs you",
     );
   });
 
@@ -586,7 +586,7 @@ describe("AgentChat — read-only device", () => {
     // the placeholder — which is the stronger of the two places.
     expect(screen.getByText(/read-only/i)).toBeInTheDocument();
     expect(screen.queryByText(/spare-phone/)).toBeNull();
-    const box = screen.getByPlaceholderText(/read-only — not authorised/i);
+    const box = screen.getByPlaceholderText(/read-only, not authorised/i);
     expect(box).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     // The terminal mirror still renders — reading is always allowed.

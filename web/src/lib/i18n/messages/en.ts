@@ -24,8 +24,8 @@ export const en = {
   "pane.agentStart.handed": "Handed to {agent}",
   // The stand-in for the steps a turn took, when tool calls are off (Settings → Appearance). Per
   // TURN, not per call: one line where forty cards were.
-  "transcript.tools.hidden.one": "{count} step hidden — tap to show",
-  "transcript.tools.hidden.other": "{count} steps hidden — tap to show",
+  "transcript.tools.hidden.one": "{count} step hidden, tap to show",
+  "transcript.tools.hidden.other": "{count} steps hidden, tap to show",
   "settings.tools.title": "Tool calls",
   "settings.tools.description": "Draw the reads, searches, commands and edits an agent ran. Off keeps the thread to what it said.",
   "settings.compactions.title": "Compaction summaries",
@@ -105,7 +105,7 @@ export const en = {
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
   "settings.install.title": "Install the app",
-  "settings.install.description": "Add Collie to your home screen — full screen, its own icon.",
+  "settings.install.description": "Add Collie to your home screen. It opens full screen with its own icon.",
   "settings.install.button": "Install",
   "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
   "settings.harnessBar.title": "Harness shortcuts",
@@ -136,13 +136,13 @@ export const en = {
   "settings.push.reason.insecure": "Push needs an HTTPS connection.",
   "settings.push.reason.serverOff": "Push isn't configured on the bridge (no VAPID keys).",
   "settings.push.reason.denied":
-    "Notifications are blocked — enable them in your browser settings.",
+    "Notifications are blocked. Enable them in your browser settings.",
   "settings.push.reason.unsupported": "This browser doesn't support push notifications.",
   "settings.push.reason.default": "Couldn't enable push notifications.",
   "settings.push.reason.timeout": "Notification setup timed out. Check that this device can reach its push service, then try again.",
   "settings.push.availability.unavailable": "Could not check notification setup. Check your connection or sign in again, then retry.",
   "settings.push.availability.insecure":
-    "Unavailable over plain HTTP — serve Collie over HTTPS to enable push.",
+    "Unavailable over plain HTTP. Serve Collie over HTTPS to enable push.",
   "settings.push.availability.serverOff":
     "The bridge has no VAPID keys configured, so push is disabled server-side.",
   "settings.push.availability.denied":
@@ -166,14 +166,14 @@ export const en = {
   "settings.notify.cache.hint":
     "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
   "settings.notify.watched.title": "Watched panes",
-  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.empty": "None yet. Open a pane's settings to watch it.",
   "settings.notify.watched.remove": "Remove",
   "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "Do not disturb",
   "settings.snooze.description.idle": "Pause all push notifications for a while.",
-  "settings.snooze.description.active": "Snoozed until {time} — no pushes until then.",
+  "settings.snooze.description.active": "Snoozed until {time}. No pushes until then.",
   "settings.snooze.resume": "Resume now",
   "settings.snooze.preset.min30": "30m",
   "settings.snooze.preset.hour1": "1h",
@@ -219,9 +219,9 @@ export const en = {
   "settings.devices.pair.failure.exhausted":
     "Too many wrong codes, so that pairing was destroyed. Run `bin/collie pair` on the host to mint a new one.",
   "settings.devices.pair.failure.badCode":
-    "That code doesn’t match. Check it and try again — a few more wrong tries and it’s destroyed.",
+    "That code doesn’t match. Check it and try again. A few more wrong tries and it’s destroyed.",
   "settings.devices.pair.failure.duplicateLabel":
-    "A device is already using that name. Pick a different one — the code is still good.",
+    "A device is already using that name. Pick a different one. The code is still good.",
   "settings.devices.pair.failure.badRequest":
     "The code or the name wasn’t usable. A name is 1–48 characters.",
 
@@ -261,7 +261,7 @@ export const en = {
   "settings.updateBanner.restart": "Bridge restart needed",
   "settings.updateBanner.restartNeeded": "Collie was replaced on disk. Restart it.",
   "settings.updateBanner.releaseAvailable": "Collie {version} available",
-  "settings.updateBanner.majorAvailable": "Collie {version} — a new major",
+  "settings.updateBanner.majorAvailable": "Collie {version}, a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",
 
   // --- settings.typeface (the APP's own face — a per-device preference since ADR 0033) ---
@@ -291,7 +291,7 @@ export const en = {
   "settings.fonts.size": "Mirror text",
   "settings.fonts.draftSize": "Draft text",
   "settings.fonts.draftSize.hint":
-    "iOS keeps this at 16 — Safari zooms the page into any smaller field you type in, and never zooms back out.",
+    "iOS keeps this at 16. Safari zooms the page into any smaller field you type in, and never zooms back out.",
   "settings.fonts.draftSize.decrease": "Decrease draft text size",
   "settings.fonts.draftSize.increase": "Increase draft text size",
   "settings.fonts.system": "System default",
@@ -299,16 +299,16 @@ export const en = {
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Wrap lines",
   "settings.display.wrap.hint":
-    "Off pans the whole pane, column-faithful. You no longer need it for a table — a table pans by itself while Wrap is on.",
+    "Off pans the whole pane, column-faithful. You no longer need it for a table. A table pans by itself while Wrap is on.",
   "settings.display.tapToType.label": "Tap to type",
   "settings.display.tapToType.hint":
-    "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard.",
+    "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document. Taps land on the text and only the composer opens the keyboard.",
   "settings.display.fullReply.label": "Full latest reply",
   "settings.display.fullReply.hint":
     "An agent's terminal keeps no scrollback, so a long answer loses its start. On, that reply is shown in full from the agent's own log, in place of the rows it covers.",
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
-    "Shows the plain mirror — no tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
+    "Shows the plain mirror. No tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
   "settings.display.noInvert.label": "Render this pane natively",
   "settings.display.noInvert.hint":
     "Skips the light-theme inversion for this pane only. Turn it on when an agent is on a LIGHT theme and the mirror renders it dark; leave it off when the pane looks right.",
@@ -317,7 +317,7 @@ export const en = {
   "settings.display.textSize.increase": "Increase font size",
 
   // --- settings.buildStamp ---
-  "settings.buildStamp.tapToUpdate": "new build — tap to update",
+  "settings.buildStamp.tapToUpdate": "new build, tap to update",
   "settings.buildStamp.updating": "updating…",
 
   // --- composer (the reply box + its Keys/Quick/Display docks) ---
@@ -336,7 +336,7 @@ export const en = {
   "composer.controls.undoClear": "Undo clear",
   "composer.sentPreview.label": "You sent:",
   "composer.placeholder.gone": "Pane is gone",
-  "composer.placeholder.readOnly": "Read-only — not authorised",
+  "composer.placeholder.readOnly": "Read-only, not authorised",
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
   "composer.placeholder.unreachable": "Can't reach the input box",
   "composer.placeholder.sendOff": "This machine cannot take text from the phone. Update its Collie, or check its COLLIE_SEND_PROTOCOL setting. The keys still work.",
@@ -383,24 +383,24 @@ export const en = {
   "composer.send.sendAria": "Send",
   "composer.send.reconnect": "Reconnect to send",
   "composer.draft.tooLong":
-    "Too long to keep as a saved draft — it survives switching panes, but not closing the app.",
+    "Too long to keep as a saved draft. It survives switching panes, but not closing the app.",
   "composer.draft.holdsMask": "This reply holds masked text (••••). The pane gets the dots, not the secret.",
-  "composer.status.dialogWaiting": "A dialog is waiting — answer it first, then send.",
+  "composer.status.dialogWaiting": "A dialog is waiting. Answer it first, then send.",
   "composer.status.sent": "Sent ✓",
   "composer.discard.confirmKeys.one": "Tap again to discard {count} queued key",
   "composer.discard.confirmKeys.other": "Tap again to discard {count} queued keys",
-  "composer.destructive.confirm": "Destructive: {reason} — tap Send again to confirm",
-  "composer.destructive.confirmOnHost": "Destructive: {reason} on {host} — tap Send again to confirm",
+  "composer.destructive.confirm": "Destructive: {reason}, tap Send again to confirm",
+  "composer.destructive.confirmOnHost": "Destructive: {reason} on {host}, tap Send again to confirm",
   "composer.upload.success": "File attached",
   "composer.upload.tooLarge": "That file is bigger than {max} MB, the limit on this collie.",
   "composer.upload.badType": "Collie can't attach {name}.",
-  "composer.noEcho.title": "Password prompt — nothing echoes",
+  "composer.noEcho.title": "Password prompt, nothing echoes",
   "composer.noEcho.noLiveTyped":
-    "What you typed is already in the pane, unsubmitted — but this view isn't live, so nothing can be sent from here. Answer it at the terminal.",
+    "What you typed is already in the pane but unsubmitted. This view isn't live, so nothing can be sent from here. Answer it at the terminal.",
   "composer.noEcho.noLiveUntyped":
     "Nothing was typed. This view isn't live, so the keys that would work can't be sent from here.",
   "composer.noEcho.liveTyped":
-    "What you typed is already in the pane — it just can't be confirmed, so it wasn't submitted. Press Enter in Type, and don't send it again.",
+    "What you typed is already in the pane. It just can't be confirmed, so it wasn't submitted. Press Enter in Type, and don't send it again.",
   "composer.noEcho.liveUntyped":
     "Send confirms what it typed, and this prompt shows nothing to confirm. Type sends your keys straight through, Enter included.",
   "composer.noEcho.useType": "Use Type",
@@ -502,7 +502,7 @@ export const en = {
   "chat.header.step": "Step {n} of {m}: {label}",
   "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "Pane settings for {name}",
-  "chat.header.statusAria": " — {label}",
+  "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(agent gone)",
   "chat.scrollback.showHistory": "Show entire history",
   "chat.scrollback.loadOlder": "Load older",
@@ -545,19 +545,19 @@ export const en = {
     "Activity puts the pane where something last happened at the top of the dashboard and the switcher. Cache puts the one whose prompt cache dies soonest there. Place keeps the order your terminal has.",
   "chat.status.feedbackSent": "Feedback sent",
   "chat.status.sent": "Sent",
-  "chat.status.menuChanged": "Menu changed — refreshing",
+  "chat.status.menuChanged": "Menu changed, refreshing",
   "chat.status.askChanged": "The dialog changed; the card shows the new one",
   "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed",
   "chat.status.askGone": "The dialog is gone; Collie read the screen again",
   "chat.status.askUnknown": "No proof the answer went; the screen shows what happened",
   "chat.status.sendFailed": "Send failed",
-  "chat.status.wizardChanged": "Wizard changed — refreshing",
+  "chat.status.wizardChanged": "Wizard changed, refreshing",
   "chat.status.noteSaved": "Note saved",
   "chat.status.noteRemoved": "Note removed",
-  "chat.status.dialogChanged": "Dialog changed — refreshing",
-  "chat.status.selectionChanged": "Selection changed — refreshing",
-  "chat.status.screenChanged": "The screen changed — refreshing",
-  "chat.status.readOnly": "Read-only — device not authorised",
+  "chat.status.dialogChanged": "Dialog changed, refreshing",
+  "chat.status.selectionChanged": "Selection changed, refreshing",
+  "chat.status.screenChanged": "The screen changed, refreshing",
+  "chat.status.readOnly": "Read-only, device not authorised",
 
   // --- chat.mode (the pane menu's body switch, ADR 0071's shape) ---
   // The row names WHERE IT TAKES YOU, the way "Find in output" and "Conversation history" beside it
@@ -766,14 +766,14 @@ export const en = {
   "prompt.feedback.planChange.textAria": "Feedback text",
   "prompt.feedback.planChange.placeholder": "Say what to do differently…",
   "prompt.feedback.planChange.help":
-    "Sends the plan back with your notes — Claude keeps planning instead of starting work.",
+    "Sends the plan back with your notes. Claude keeps planning instead of starting work.",
   "prompt.feedback.planChange.send": "Send feedback",
   "prompt.feedback.planChange.sending": "Sending feedback…",
   "prompt.feedback.planChange.focused":
-    "The feedback box has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
+    "The feedback box has the keyboard in the terminal. These buttons would type into it instead of answering. They resume when it closes.",
   "prompt.feedback.planChange.typedPrefix": "Feedback is being written in the terminal: ",
   "prompt.feedback.freeText.focused":
-    "The free-text row has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
+    "The free-text row has the keyboard in the terminal. These buttons would type into it instead of answering. They resume when it closes.",
   "prompt.feedback.freeText.typedPrefix": "A custom answer is being written in the terminal: ",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
@@ -788,8 +788,8 @@ export const en = {
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",
   "paneActions.settings.label": "Pane settings",
-  "paneActions.readOnly": "Read-only — this device isn't authorised to rename or close panes.",
-  "paneActions.hostBlockSuffix": "{hostBlock} — rename and close are unavailable until it answers.",
+  "paneActions.readOnly": "Read-only. This device isn't authorised to rename or close panes.",
+  "paneActions.hostBlockSuffix": "{hostBlock}. Rename and close are unavailable until it answers.",
   "paneActions.rename.label": "Rename",
   "paneActions.rename.placeholder": "name this pane",
   "paneActions.close.label": "Close pane",
@@ -922,15 +922,15 @@ export const en = {
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Settings",
   "nav.home.aria.default": "Collie home",
-  "nav.home.aria.lost": "Collie home — not connected",
+  "nav.home.aria.lost": "Collie home, not connected",
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
-  "nav.home.aria.reconnecting": "Collie home — reconnecting",
+  "nav.home.aria.reconnecting": "Collie home, reconnecting",
   "nav.mux.onPrefix": "on",
-  "nav.prereleaseTitle": "Pre-release build — {version}",
+  "nav.prereleaseTitle": "Pre-release build {version}",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Disconnected",
-  "home.empty.disconnectedAt": "Disconnected — last seen {time}",
+  "home.empty.disconnectedAt": "Disconnected, last seen {time}",
   "home.empty.noAgents": "No agents running.",
   "home.empty.waiting": "Waiting for Herdr…",
   "home.empty.panesHint": "Your panes are under Spaces.",
@@ -1126,8 +1126,8 @@ export const en = {
   "space.new.dir.placeholder": "~ (home dir)",
   "space.tab.titleFallback": "Tab",
   "space.tab.titleWithLabel": "Tab {label}",
-  "space.tab.readOnly": "Read-only — this device isn't authorised to rename or close tabs.",
-  "space.tab.hostBlockSuffix": "{hostBlock} — rename and close are unavailable until it answers.",
+  "space.tab.readOnly": "Read-only. This device isn't authorised to rename or close tabs.",
+  "space.tab.hostBlockSuffix": "{hostBlock}. Rename and close are unavailable until it answers.",
   "space.tab.rename": "Rename",
   "space.tab.close": "Close tab",
   "space.tab.closing": "Closing…",
@@ -1146,11 +1146,11 @@ export const en = {
   "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
   "space.space.empty.fallback": "This program offers no actions for a space.",
   "space.space.placeholder": "name this space",
-  "space.readOnly.notPaired": "Not paired — pair this device in Settings",
+  "space.readOnly.notPaired": "Not paired. Pair this device in Settings",
   "space.readOnly.expired": "Pairing expired. Pair again in Settings",
-  "space.readOnly.deviceUnauthorised": "Read-only — device not authorised",
+  "space.readOnly.deviceUnauthorised": "Read-only, device not authorised",
   "space.readOnly.savedCopy": "Saved copy. Reconnect to make changes.",
-  "space.create.ready": "New {what} ready — launch your agent",
+  "space.create.ready": "New {what} ready, launch your agent",
   "space.noun.tab": "tab",
   "space.noun.space": "space",
 
@@ -1202,14 +1202,14 @@ export const en = {
   "connection.reconnecting": "Reconnecting…",
   "connection.herdrDown": "Herdr is down on the host",
   "connection.tokenRefused": "The program refused the token. Check COLLIE_DURABLE_TOKEN on this peer.",
-  "connection.offlineCantReach": "Offline — can't reach Collie",
+  "connection.offlineCantReach": "Offline, can't reach Collie",
   "connection.cantReach": "Can't reach Collie",
-  "connection.withLastSeen": "{cause} — last seen {time}",
+  "connection.withLastSeen": "{cause}. Last seen {time}",
   "connection.saved.offline": "You are offline. Showing what was saved at {time}.",
   "connection.saved.noBridge": "No connection to the bridge. Showing what was saved at {time}.",
   "connection.saved.hint": "Check your connection or Tailscale.",
-  "connection.readOnly.notPaired": "Not paired — pair this device in Settings to type into agents.",
-  "connection.readOnly.device": "Read-only — this device isn’t authorised to type into agents{deviceSuffix}.",
+  "connection.readOnly.notPaired": "Not paired. Pair this device in Settings to type into agents.",
+  "connection.readOnly.device": "Read-only. This device isn’t authorised to type into agents{deviceSuffix}.",
   "connection.host.lastSeen": "last seen {time}",
   "connection.host.neverSeen": "never seen",
   "connection.host.unreachablePlain": "unreachable",
@@ -1239,8 +1239,8 @@ export const en = {
   "connection.stale.unreachable": "{name} is unreachable · {label}",
   "connection.stale.nothingCached": "Nothing cached for this machine yet.",
   "connection.stale.showingLastKnown":
-    "Showing the last known screen — replies and keys are refused until it answers.",
-  "connection.stale.waitingFirst": "Nothing from {name} yet — waiting for its first answer.",
+    "Showing the last known screen. Replies and keys are refused until it answers.",
+  "connection.stale.waitingFirst": "Nothing from {name} yet. Waiting for its first answer.",
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Sessions",
   "connection.session.aria": "Session: {name}. Switch session",
@@ -1371,7 +1371,7 @@ export const en = {
   // --- error (boot splash, route-level error recovery) ---
   "error.boot.connecting": "Connecting to the herd…",
   "error.boot.title": "Not connected",
-  "error.boot.body": "Can’t reach Collie — check your connection to the host, then try again.",
+  "error.boot.body": "Can’t reach Collie. Check your connection to the host, then try again.",
   "error.boot.retry": "Retry",
   "error.root.title": "Something went wrong",
   "error.root.unknown": "Unknown error",
@@ -1383,11 +1383,11 @@ export const en = {
   "idle.catchingUp.body": "Fetching the herd's current state.",
   "idle.paused.title": "Paused",
   "idle.paused.body":
-    "Live updates stopped while this screen sat idle — what's behind this is frozen. Resuming picks up right where you left off.",
+    "Live updates stopped while this screen sat idle. What's behind this is frozen. Resuming picks up right where you left off.",
   "idle.resume": "Tap to resume",
 
   // --- pwa (self-update banner) ---
-  "pwa.updateAvailable": "New version — tap to update",
+  "pwa.updateAvailable": "New version, tap to update",
   // The band while a new bundle is downloading into the precache (2026-09-12). The other six
   // dictionaries carry this English sentence until it is translated.
   "pwa.updateInstalling": "Downloading the new version…",
@@ -1455,12 +1455,12 @@ export const en = {
   "dialog.submitAnswers": "Submit answers",
   "dialog.cancel": "Cancel",
   "dialog.backToOptions": "Back to the options",
-  "dialog.endsQuestionsSuffix": "— ends the questions",
+  "dialog.endsQuestionsSuffix": "(ends the questions)",
   "dialog.autocomplete.title": "Slash commands",
   "dialog.menu.moveUp": "Move up",
   "dialog.menu.moveDown": "Move down",
-  "dialog.menu.leftAria": "Left — {verb} ({label})",
-  "dialog.menu.rightAria": "Right — {verb} ({label})",
+  "dialog.menu.leftAria": "Left, {verb} ({label})",
+  "dialog.menu.rightAria": "Right, {verb} ({label})",
   // The printed scale's chips (.adr/0054): one per value the screen listed. The chip's own text is
   // the level, so the aria name adds what a tap DOES to it.
   "dialog.menu.levelAria": "{verb} to {label}",
@@ -1472,7 +1472,7 @@ export const en = {
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",
-  "dialog.preview.editingBanner": "Note is being edited in the terminal — controls resume when it closes.",
+  "dialog.preview.editingBanner": "Note is being edited in the terminal. Controls resume when it closes.",
   "dialog.preview.noteForQuestion": "Note for this question",
   "dialog.preview.noteTextAria": "Note text",
   "dialog.preview.notePlaceholder": "Add context for your answer…",
@@ -1483,17 +1483,17 @@ export const en = {
   "dialog.preview.addNote": "Add a note to this answer",
 
   // --- previewAction (the preview-select dialog's note flow, lib/preview-action.ts) ---
-  "previewAction.note.notOpened": "Note input didn't open — check the pane",
-  "previewAction.note.clearFailed": "Couldn't clear the existing note — check the pane",
-  "previewAction.note.textFailed": "Note text didn't arrive — check the pane",
-  "previewAction.note.closeFailed": "Note input didn't close — check the pane",
+  "previewAction.note.notOpened": "Note input didn't open. Check the pane",
+  "previewAction.note.clearFailed": "Couldn't clear the existing note. Check the pane",
+  "previewAction.note.textFailed": "Note text didn't arrive. Check the pane",
+  "previewAction.note.closeFailed": "Note input didn't close. Check the pane",
 
   // --- promptAction (the plan-feedback flow, lib/prompt-action.ts) ---
   "promptAction.feedback.freeTextUnsupported":
     "This dialog's free-text row is not typed from the phone",
   "promptAction.feedback.empty": "Nothing to send",
-  "promptAction.feedback.boxNotOpened": "The feedback box didn't open — check the pane",
-  "promptAction.feedback.notArrived": "The feedback didn't arrive — nothing was submitted",
+  "promptAction.feedback.boxNotOpened": "The feedback box didn't open. Check the pane",
+  "promptAction.feedback.notArrived": "The feedback didn't arrive. Nothing was submitted",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Busy: another recording is still transcribing. Try again in a moment.",
@@ -1520,14 +1520,14 @@ export const en = {
 
   // --- directTyping (the composer's "Type into terminal" mode, hooks/use-direct-typing.ts) ---
   "directTyping.status.draftPending": "Send or clear the draft before typing into the terminal.",
-  "directTyping.status.armed": "Typing into the terminal — keys send as you type.",
+  "directTyping.status.armed": "Typing into the terminal. Keys send as you type.",
   "directTyping.status.disarmed": "Back to sending replies",
-  "directTyping.status.agentChanged": "Type mode off — the pane's agent changed.",
-  "directTyping.status.idleTimeout": "Type mode off — no key for 60 seconds.",
+  "directTyping.status.agentChanged": "Type mode off. The pane's agent changed.",
+  "directTyping.status.idleTimeout": "Type mode off. No key for 60 seconds.",
   "directTyping.status.interrupted":
-    "Stopped typing into the terminal — the pane view was interrupted.",
+    "Stopped typing into the terminal. The pane view was interrupted.",
   "directTyping.status.backgrounded":
-    "Stopped typing into the terminal — the app was backgrounded.",
+    "Stopped typing into the terminal. The app was backgrounded.",
 
   // --- apiError (the bridge's refusals, keyed by the code on the wire) ---
   //
@@ -1541,11 +1541,11 @@ export const en = {
   // translate the frame, leave the slot where the sentence reads naturally in your language.
   "apiError.unknown": "Something went wrong. Try again.",
   "apiError.reply.not_submitted":
-    "Your message was typed into the pane but not sent — check the pane before sending it again.",
+    "Your message was typed into the pane but not sent. Check the pane before sending it again.",
   "apiError.reply.send_failed": "The message couldn't be sent: {reason}",
   "apiError.keys.send_failed": "Those keys couldn't be sent: {reason}",
-  "apiError.prompt_changed": "The screen changed before that could be sent — check the pane.",
-  "apiError.prompt.read_failed": "The pane couldn't be read before sending — {mux} said: {detail}",
+  "apiError.prompt_changed": "The screen changed before that could be sent. Check the pane.",
+  "apiError.prompt.read_failed": "The pane couldn't be read before sending. {mux} said: {detail}",
   "apiError.pane.close_failed": "The pane couldn't be closed: {reason}",
   "apiError.pane.rename_failed": "The pane couldn't be renamed: {reason}",
   "apiError.pane.focus_failed": "The pane couldn't be shown in the terminal: {reason}",
@@ -1587,7 +1587,7 @@ export const en = {
   "apiError.stt.unconfigured": "Speech-to-text isn't set up on this collie.",
   "apiError.stt.too_large": "That recording is too long. Record a shorter one.",
   "apiError.stt.bad_format": "This browser recorded a format Collie can't send on.",
-  "apiError.stt.busy": "Two recordings are already being transcribed — try again in a moment.",
+  "apiError.stt.busy": "Two recordings are already being transcribed. Try again in a moment.",
   "apiError.stt.unreadable": "That recording couldn't be read.",
   "apiError.stt.empty": "That recording is empty.",
   "apiError.stt.provider_failed": "The transcription failed: {reason}",
@@ -1608,7 +1608,7 @@ export const en = {
   "apiError.pairing.bad_request": "The code or the name wasn't usable. A name is 1–48 characters.",
   "apiError.pairing.no_pending": "No pairing code is waiting on the host.",
   "apiError.pairing.expired": "That pairing code has expired.",
-  "apiError.pairing.exhausted": "Too many wrong codes — that pairing was destroyed.",
+  "apiError.pairing.exhausted": "Too many wrong codes. That pairing was destroyed.",
   "apiError.pairing.bad_code": "That code doesn't match.",
   "apiError.pairing.duplicate_label": "A device is already using that name.",
   "apiError.device.unknown": "No paired device has that name.",
@@ -1621,7 +1621,7 @@ export const en = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "The worktree couldn't be created: {reason}",
   "apiError.worktree.created_not_opened": "The branch was created, but nothing could be opened on it: {reason}",
-  "apiError.worktree.busy": "Another worktree operation is still running — try again in a moment.",
+  "apiError.worktree.busy": "Another worktree operation is still running. Try again in a moment.",
   "apiError.worktree.ambiguous_branch": "That branch name matches more than one thing: {reason}",
   "apiError.worktree.branch_required": "Type a branch name first.",
   "apiError.worktree.not_a_repo": "This space isn't in a Git repository.",

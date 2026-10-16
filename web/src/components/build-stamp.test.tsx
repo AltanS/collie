@@ -26,7 +26,7 @@ describe("BuildStamp — live staleness from the server-build store", () => {
     expect(screen.queryByText(/tap to update/i)).not.toBeInTheDocument();
 
     act(() => observeServerBuild("0.99.0+new.1")); // differs from BUILD.id → stale
-    expect(screen.getByText(/new build — tap to update/i)).toBeInTheDocument();
+    expect(screen.getByText(/new build, tap to update/i)).toBeInTheDocument();
 
     act(() => observeServerBuild("test")); // back in sync (e.g. this bundle was reloaded)
     expect(screen.queryByText(/tap to update/i)).not.toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("BuildStamp — the mount-time config fetch", () => {
 
     render(<BuildStamp />);
 
-    await waitFor(() => expect(screen.getByText(/new build — tap to update/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/new build, tap to update/i)).toBeInTheDocument());
     expect(reads).toBe(1);
   });
 
