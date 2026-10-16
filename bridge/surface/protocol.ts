@@ -89,6 +89,9 @@ function probeMayRemain(probe: string): string {
   return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
 }
 
+/** The detail after a Submit that went out on a box holding another text than the request named. */
+const HELD_OTHER = "The box held a different text than the request when Enter went out.";
+
 /** Rows one protocol read asks for. A viewport read never moves the screen. */
 export const SEND_READ_LINES = 120;
 /** The bottom window the probe must land in and the rows hash covers. */
@@ -609,25 +612,51 @@ function emptiedTo(emptyRow: string, now: readonly string[], typed: string): boo
 interface Located {
   readonly row: number;
   readonly head: string;
-  /** The text as it was found: as written, or with a command's lead cut. */
+  /** The text as it was found: as written, with a command's lead cut, or only its first characters when the box holds a different text. */
   readonly text: string;
+  /** True when only the start of the text stands there: the box holds a different text than the one asked for. */
+  readonly partial: boolean;
+}
+
+/** The shortest start of `text` that is `length` characters long with white space dropped. */
+function startOf(text: string, length: number): string {
+  let out = "";
+  for (const ch of text) {
+    if (flat([out]).length >= length) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** How many leading characters `a` and `b` share. */
+function sharedStart(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
 }
 
 /**
  * The lowest spot of the bottom window where the read goes on with `text` (wrapped or not, white space
  * ignored): on a pane with no frame, the box that holds a text typed earlier. Null when it stands
- * nowhere there.
+ * nowhere there. With `partial`, a spot that goes on with the start of the text counts too, when that
+ * start is at least two characters and at most two short of the whole text: the box a person's own
+ * Backspace shortened. A row that shares less (a footer that starts alike) is not the box.
+ * The lowest row wins, so an echo of the same text higher up (the harness's history) never beats the box.
  */
-export function locateText(plain: readonly string[], text: string): Located | null {
+export function locateText(plain: readonly string[], text: string, partial = false): Located | null {
   const want = flat([text]);
   if (want.length === 0) return null;
   const first = [...want][0]!;
+  const least = partial ? Math.min(want.length, Math.max(2, want.length - 2)) : want.length;
   const win = bottomWindow(plain);
   for (let row = win.end - 1; row >= win.first; row--) {
     const line = plain[row] ?? "";
+    let best: { index: number; shared: number } | null = null;
     for (let i = line.indexOf(first); i >= 0; i = line.indexOf(first, i + 1)) {
-      if (flat([line.slice(i), ...plain.slice(row + 1, win.end)]).startsWith(want)) return { row, head: line.slice(0, i), text };
+      const shared = sharedStart(flat([line.slice(i), ...plain.slice(row + 1, win.end)]), want);
+      if (shared >= least && (best === null || shared > best.shared)) best = { index: i, shared };
     }
+    if (best !== null) return { row, head: line.slice(0, best.index), text: best.shared === want.length ? text : startOf(text, best.shared), partial: best.shared < want.length };
   }
   return null;
 }
@@ -649,6 +678,8 @@ interface RunState {
   manual: boolean;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
+  /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
+  heldOther: boolean;
   stepStart: number;
 }
 
@@ -846,6 +877,7 @@ export class SendProtocol {
       probed: false,
       manual: false,
       command: request.mode === "command",
+      heldOther: false,
       stepStart: at,
     };
   }
@@ -894,7 +926,9 @@ export class SendProtocol {
     }
     try {
       await this.steps(state);
-      return this.settle(state, new Ended("sent", record.mode === "discard" ? "discarded" : undefined, { framed: true }));
+      const note: EndNote = { framed: true };
+      if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
+      return this.settle(state, new Ended("sent", record.mode === "discard" ? "discarded" : undefined, note));
     } catch (err) {
       if (err instanceof Ended) return this.settle(state, err);
       throw err;
@@ -1100,7 +1134,10 @@ export class SendProtocol {
    */
   private typedBox(state: RunState, s0: Snap, holds: (box: string) => boolean, lines: readonly string[]): Located | null {
     const { surface, frame } = s0;
-    if (frame !== null && holds(boxText(this.draftFrame(s0)))) return null;
+    if (frame !== null) {
+      if (holds(boxText(this.draftFrame(s0)))) return null;
+      state.heldOther = true;
+    }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
     if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: "The box no longer holds this text." });
@@ -1108,7 +1145,9 @@ export class SendProtocol {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }
     if (frame !== null) return null;
-    return locateText(s0.plain, lines.join("")) ?? (state.command ? locateText(s0.plain, withoutLead(lines).join("")) : null);
+    const found = locateText(s0.plain, lines.join(""), true) ?? (state.command ? locateText(s0.plain, withoutLead(lines).join(""), true) : null);
+    if (found?.partial === true) state.heldOther = true;
+    return found;
   }
 
   /** The frame of a box that may hold a draft (append, replace, submit, discard), or a refusal. */

@@ -12,7 +12,7 @@ import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, t
 import { profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 
@@ -1115,6 +1115,38 @@ describe("the offers as new requests", () => {
     neverEscape(pane);
   });
 
+  /** The box holds "hello ther" (one character short) after the text went in, with the earlier message of the same text standing in the history. */
+  const shortBox = async () => {
+    const { r, pane } = stuckCodex();
+    pane.sent = ["hello there"];
+    pane.dropLastChar = true;
+    const typed = await typedNotSubmitted(r, "hello there");
+    pane.dropLastChar = false;
+    expect(typed.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.box).toBe("hello ther");
+    return { r, pane, typed };
+  };
+
+  test("submit with no frame when the box holds a different text (send drill 3, 7b): Enter went, so it is sent, and the detail says the text differed", async () => {
+    const { r, pane, typed } = await shortBox();
+    const answer = await r.send("hello there", { mode: "submit", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(answer.detail).toBe("The box held a different text than the request when Enter went out.");
+    expect(pane.transcript.at(-1)).toBe("> hello ther");
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("discard with no frame when the box holds a different text (send drill 3, 7d): judged by the box being empty after the Backspaces", async () => {
+    const { r, pane, typed } = await shortBox();
+    pane.keysSeen = [];
+    const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(pane.box).toBe("");
+    expect(pane.keysSeen).toEqual(Array.from({ length: "hello ther".length + 16 }, () => "Backspace"));
+    neverEscape(pane);
+  });
+
   test("submit and discard with no frame need the rows hash, and a screen that moved since is refused with both offers again", async () => {
     const { r, pane } = stuckCodex();
     const typed = await typedNotSubmitted(r, "hello there");
@@ -1142,6 +1174,7 @@ describe("the offers as new requests", () => {
     const answer = await send("hello world", { mode: "submit", rowsHash: typed.rowsHash! });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(pane.transcript.at(-1)).toBe("> hello worl");
+    expect(answer.detail).toBe("The box held a different text than the request when Enter went out.");
   });
 
   test("discard: the box is emptied with Backspace, and the outcome says discarded", async () => {
@@ -1399,6 +1432,17 @@ describe("pure helpers", () => {
   test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {
     for (const box of ["!echo ok", "! echo ok", "echo ok", "$ echo ok", "[!] echo ok", "! echo ok"]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(true);
     for (const box of ["echo okay", "x echo ok", "!echo", ""]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(false);
+  });
+
+  test("locateText takes the lowest row, and with partial the box a Backspace shortened, never the history echo above it", () => {
+    const rows = ["› say ok", "• ok", "  Worked for 1s", "› say o", "  GPT-6-Luna medium · ~/repo"];
+    // An exact look finds the echo in the history: that is why Submit and Discard ask for the partial one.
+    expect(locateText(rows, "say ok")).toMatchObject({ row: 0, head: "› ", partial: false });
+    expect(locateText(rows, "say ok", true)).toMatchObject({ row: 3, head: "› ", text: "say o", partial: true });
+    expect(locateText(rows.slice(0, 3).concat(["› say ok"]), "say ok", true)).toMatchObject({ row: 3, text: "say ok", partial: false });
+    // A footer that only starts alike is not the box: it shares less than all but two characters.
+    expect(locateText(["› hello there", "  hello-world.ts"], "hello there", true)).toMatchObject({ row: 0, partial: false });
+    expect(locateText(["› zz", "  sa"], "say ok", true)).toBeNull();
   });
 
   test("probeLanding with freeBelow: the rest of the landing row may change and a row under it may go blank, never show other text", () => {
