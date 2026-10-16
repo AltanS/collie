@@ -162,6 +162,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The box's placeholder no longer flashes "A draft is in the box" during your own send.** While a send is in flight the pane's read shows the probe character as a draft, and the placeholder named it for a third of a second on Claude. The placeholder now keeps the free line until the answer is in, and a running turn keeps its own word.
 - **The bridge's sentence for an unreadable screen matches the phone's line above it.** It now ends "Check the pane, then tap Type here.", as the catalog line does, so the notice no longer says "rows" under a line that says "pane".
 - **No em dash is left in the app's sentences.** Status lines, hints and button names that carried a dash now read with a comma or a full stop, in English; the other languages had none.
+- **The spaces filter keeps a rounded list's corners.** Under a theme with soft or round corners, the sticky Filter spaces row no longer paints over the top corners of the spaces list. At Collie's 2px nothing changes.
 
 ### Packaging
 

@@ -151,9 +151,11 @@ export function SpaceOverview({
               "wrong part of the list" into scroll-up, type, scroll-down. */}
           {/* A ROW of the group, not a card inside it — a bordered box inside a bordered group is
               a box in a box. Opaque background, not transparent, so the rows scroll UNDER it while
-              it is stuck. */}
+              it is stuck. Its top corners follow the group's, two pixels inside: under a soft or
+              round theme a square opaque row would paint over the group's rounded corner, and at
+              Collie's 2px the radius is 0, so nothing changes there. */}
           {workspaces.length > 1 && (
-            <label className="sticky top-0 z-10 flex items-center gap-2 bg-background px-3.5 py-2">
+            <label className="sticky top-0 z-10 flex items-center gap-2 rounded-t-[max(0px,calc(var(--radius-sm)_-_2px))] bg-background px-3.5 py-2">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
               <input
                 type="search"
