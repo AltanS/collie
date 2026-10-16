@@ -487,7 +487,11 @@ export function ThemePickerControl() {
         </div>
       </div>
 
-      <LabelledStrip label={t("theme.title")} className="border-t border-border">
+      {/* The theme strip WRAPS rather than scrolls: four to twelve chips fit no phone row, and a
+          chip half under the card's edge reads as cut, worse under a roomy theme. gap-y-3 is 12px,
+          twice the 6px each chip's tap box reaches past its edge (STRIP_TAP_TARGET), so the hit
+          boxes of two rows touch and never overlap. */}
+      <LabelledStrip label={t("theme.title")} className="border-t border-border" scrollerClassName="flex-wrap gap-y-3">
         {/* `contents`: the group has no box of its own, so the pills stay direct flex items of the
             scroller and the strip lays out exactly as the space strip does. */}
         <div role="radiogroup" aria-label={t("theme.title")} className="contents">

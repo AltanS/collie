@@ -164,6 +164,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The bridge's sentence for an unreadable screen matches the phone's line above it.** It now ends "Check the pane, then tap Type here.", as the catalog line does, so the notice no longer says "rows" under a line that says "pane".
 - **No em dash is left in the app's sentences.** Status lines, hints and button names that carried a dash now read with a comma or a full stop, in English; the other languages had none.
 - **The spaces filter keeps a rounded list's corners.** Under a theme with soft or round corners, the sticky Filter spaces row no longer paints over the top corners of the spaces list. At Collie's 2px nothing changes.
+- **Every theme chip stays inside the Theme card.** On a narrow phone the theme strip wraps to a second row instead of hiding the last chip past the card's edge, under every theme.
 
 ### Packaging
 
