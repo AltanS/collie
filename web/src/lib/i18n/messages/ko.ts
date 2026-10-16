@@ -46,7 +46,7 @@ export const ko: Dictionary = {
   "theme.import": "가져오기",
   "theme.export": "내보내기",
   "theme.remove": "제거",
-  "theme.import.promise": "테마는 색상과 서체만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.",
+  "theme.import.promise": "테마는 색상과 글꼴만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.",
   "theme.preview.title": "이 테마를 가져오시겠습니까?",
   "theme.preview.by": "작성자: {author}",
   "theme.preview.halves.both": "라이트 및 다크",
@@ -74,8 +74,8 @@ export const ko: Dictionary = {
   "theme.refusal.value": "색상 값이 올바르지 않습니다.",
   "theme.refusal.font": "글꼴 선택이 올바르지 않습니다.",
   "theme.refusal.no-half": "파일에 지정된 색상이 없습니다.",
-  "theme.refusal.reserved-id": "이 ID는 포함된 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
-  "theme.refusal.mark": "헤더 마크가 포함된 마크 중 하나가 아닙니다.",
+  "theme.refusal.reserved-id": "이 ID는 기본 제공 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
+  "theme.refusal.mark": "헤더 마크가 기본 제공 마크 중 하나가 아닙니다.",
 
   // --- settings.haptics ---
   "settings.haptics.title": "햅틱 피드백",

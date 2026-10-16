@@ -45,7 +45,7 @@ export const ja: Dictionary = {
   "theme.import": "インポート",
   "theme.export": "エクスポート",
   "theme.remove": "削除",
-  "theme.import.promise": "テーマで変更されるのは色とタイプフェイスのみです。コードの実行、ファイルの読み込み、サーバーへの接続は行えません。",
+  "theme.import.promise": "テーマで変更されるのは色とフォントのみです。コードの実行、ファイルの読み込み、サーバーへの接続は行えません。",
   "theme.preview.title": "このテーマをインポートしますか?",
   "theme.preview.by": "作成者: {author}",
   "theme.preview.halves.both": "ライトとダーク",

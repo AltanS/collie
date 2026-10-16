@@ -46,7 +46,7 @@ export const zh: Dictionary = {
   "theme.import": "导入",
   "theme.export": "导出",
   "theme.remove": "移除",
-  "theme.import.promise": "主题仅更改颜色和字形。它无法运行代码、加载文件或访问服务器。",
+  "theme.import.promise": "主题仅更改颜色和字体。它无法运行代码、加载文件或访问服务器。",
   "theme.preview.title": "导入此主题？",
   "theme.preview.by": "作者：{author}",
   "theme.preview.halves.both": "浅色与深色",
@@ -74,7 +74,7 @@ export const zh: Dictionary = {
   "theme.refusal.value": "颜色值无效。",
   "theme.refusal.font": "字体选择无效。",
   "theme.refusal.no-half": "文件未设置任何颜色。",
-  "theme.refusal.reserved-id": "此 ID 属于随附主题。修改文件中的 \"id\" 以导入您的副本。",
+  "theme.refusal.reserved-id": "此 ID 属于随附主题。修改文件中的 \"id\" 以导入你的副本。",
   "theme.refusal.mark": "标头标记不是随附的标记之一。",
 
   // --- settings.haptics ---

@@ -66,7 +66,7 @@ export const zhTW: Dictionary = {
   "theme.export.title": "複製此主題",
   "theme.refusal.size": "此檔案過大，無法作為主題。",
   "theme.refusal.json": "此檔案不是 JSON 物件。",
-  "theme.refusal.version": "此檔案使用的主題版本此 Collie 無法讀取。",
+  "theme.refusal.version": "此檔案使用的主題版本，此 Collie 無法讀取。",
   "theme.refusal.id": "此識別碼無效。",
   "theme.refusal.name": "此名稱無效。",
   "theme.refusal.author": "此作者無效。",
@@ -74,7 +74,7 @@ export const zhTW: Dictionary = {
   "theme.refusal.value": "顏色值無效。",
   "theme.refusal.font": "字型選擇無效。",
   "theme.refusal.no-half": "此檔案未設定任何顏色。",
-  "theme.refusal.reserved-id": "此 ID 屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
+  "theme.refusal.reserved-id": "此識別碼屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
   "theme.refusal.mark": "標頭標記不是隨附的標記之一。",
 
   // --- settings.haptics ---
