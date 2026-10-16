@@ -35,47 +35,47 @@ export const zhTW: Dictionary = {
   "settings.nav.back": "返回",
 
   // --- settings.theme ---
-  "settings.theme.title": "主題",
+  "settings.theme.title": "外觀",
   "settings.theme.description": "跟隨系統或指定固定外觀。",
   "settings.theme.option.system": "跟隨系統",
   "settings.theme.option.light": "淺色",
   "settings.theme.option.dark": "深色",
 
-  "theme.title": "Theme", // TODO wordsmith
-  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
-  "theme.import": "Import", // TODO wordsmith
-  "theme.export": "Export", // TODO wordsmith
-  "theme.remove": "Remove", // TODO wordsmith
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
-  "theme.preview.title": "Import this theme?", // TODO wordsmith
-  "theme.preview.by": "By {author}", // TODO wordsmith
-  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
-  "theme.preview.halves.light": "Light only", // TODO wordsmith
-  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
-  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
-  "theme.preview.apply": "Apply", // TODO wordsmith
-  "theme.preview.cancel": "Cancel", // TODO wordsmith
-  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
-  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
-  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
-  "theme.refused.title": "This file was not imported", // TODO wordsmith
-  "theme.refused.close": "Close", // TODO wordsmith
-  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
-  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
-  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
-  "theme.export.title": "Copy this theme", // TODO wordsmith
-  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
-  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
-  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
-  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
-  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
-  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
-  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
-  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
-  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
-  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
-  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+  "theme.title": "主題",
+  "theme.description": "選擇外觀，或從檔案匯入。",
+  "theme.import": "匯入",
+  "theme.export": "匯出",
+  "theme.remove": "移除",
+  "theme.import.promise": "主題僅會變更顏色與字型。它無法執行程式碼、載入檔案或連線至伺服器。",
+  "theme.preview.title": "要匯入此主題嗎？",
+  "theme.preview.by": "作者：{author}",
+  "theme.preview.halves.both": "淺色與深色",
+  "theme.preview.halves.light": "僅淺色",
+  "theme.preview.halves.dark": "僅深色",
+  "theme.preview.fills": "其缺少的一半（{half}）會以預設主題填補。",
+  "theme.preview.apply": "套用",
+  "theme.preview.cancel": "取消",
+  "theme.preview.contrast.pass": "所有對比度檢查皆已通過。",
+  "theme.preview.contrast.fail": "{half}：{check} 量測值為 {ratio}。最低門檻為 {floor}。",
+  "theme.preview.contrast.more": "還有另外 {count} 項檢查失敗",
+  "theme.refused.title": "未匯入此檔案",
+  "theme.refused.close": "關閉",
+  "theme.library.full": "您已保留 {count} 個已匯入的主題。請先移除一個，然後再次匯入。",
+  "theme.library.duplicate": "已匯入具備此識別碼的主題。請先將其移除，或修改檔案中的 \"id\"。",
+  "theme.library.invalid": "此主題未通過檢查。請重新選取檔案。",
+  "theme.export.title": "複製此主題",
+  "theme.refusal.size": "此檔案過大，無法作為主題。",
+  "theme.refusal.json": "此檔案不是 JSON 物件。",
+  "theme.refusal.version": "此檔案使用的主題版本此 Collie 無法讀取。",
+  "theme.refusal.id": "此識別碼無效。",
+  "theme.refusal.name": "此名稱無效。",
+  "theme.refusal.author": "此作者無效。",
+  "theme.refusal.unknown-key": "此檔案包含不屬於主題的鍵。",
+  "theme.refusal.value": "顏色值無效。",
+  "theme.refusal.font": "字型選擇無效。",
+  "theme.refusal.no-half": "此檔案未設定任何顏色。",
+  "theme.refusal.reserved-id": "此 ID 屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
+  "theme.refusal.mark": "標頭標記不是隨附的標記之一。",
 
   // --- settings.haptics ---
   "settings.haptics.title": "觸覺回饋",
@@ -238,9 +238,9 @@ export const zhTW: Dictionary = {
   "settings.typeface.note.system": "使用系統內建字型，不需額外下載資源。",
   "settings.typeface.note.grotesk": "Collie 自訂無襯線字型，符合產品識別風格。",
   "settings.typeface.note.aldrich": "僅提供一種字重，粗體文字顯示效果與一般文字相同。",
-  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
-  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
-  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "沉穩且具人文風格，具備真正的粗體與等寬數字。",
+  "settings.typeface.note.geist": "樸素且具幾何風格，具備真正的粗體。",
+  "settings.typeface.note.atkinson": "專為弱視設計，具備清晰的字母與真正的粗體。",
   "settings.typeface.note.operator": "由目前執行個體的管理員設定加入。",
 
   // --- settings.fonts ---
@@ -289,29 +289,29 @@ export const zhTW: Dictionary = {
   "composer.controls.agent": "Agent",
   "composer.controls.displayAria": "顯示設定",
   "composer.controls.display": "顯示",
-  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
-  "composer.controls.screen": "Screen", // TODO wordsmith
+  "composer.controls.screenAria": "顯示螢幕列，不含卡片",
+  "composer.controls.screen": "螢幕",
   "composer.controls.clear": "清除訊息",
   "composer.controls.undoClear": "復原清除",
   "composer.sentPreview.label": "已傳送：",
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "唯讀模式，未授權",
   "composer.placeholder.noMuxSend": "無法直接輸入至此終端機",
-  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
-  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
-  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
-  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
-  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
-  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
+  "composer.placeholder.unreachable": "無法連到輸入框",
+  "composer.placeholder.sendOff": "此機器上的傳送功能已關閉",
+  "composer.placeholder.dialogWaiting": "對話框正在等待",
+  "composer.placeholder.menuWaiting": "選單正在等待",
+  "composer.placeholder.permissionWaiting": "權限正在等待",
+  "composer.placeholder.questionWaiting": "問題正在等待",
   "composer.placeholder.direct": "輸入終端機指令…",
-  "composer.placeholder.running": "The agent is working", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
-  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
-  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
+  "composer.placeholder.running": "Agent 正在處理",
+  "composer.placeholder.draft": "輸入框內有草稿",
+  "composer.placeholder.unreadable": "無法讀取目前開啟的內容",
+  "composer.placeholder.noMatch": "找不到輸入框",
+  "composer.placeholder.contested": "兩次讀取結果不一致",
+  "composer.placeholder.stale": "上次讀取於 {age} 前",
+  "composer.placeholder.staleNoAge": "上次讀取的內容已過期",
+  "composer.placeholder.torn": "螢幕剛才在變動",
   "composer.placeholder.shell": "輸入 Shell 指令…",
   "composer.placeholder.reply": "輸入回覆內容…",
   "composer.mic.unavailable": "語音輸入不可用",
@@ -334,7 +334,7 @@ export const zhTW: Dictionary = {
   "composer.attach.removeAria": "移除 {name}",
   "composer.attach.inFront": "您的文字中已缺少其標記，因此「傳送」會將 {name} 置於最前。",
   "composer.send.reallySend": "確認傳送？",
-  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
+  "composer.send.dialogFirst": "回應對話框",
   "composer.send.stopTypingAria": "停止向終端機輸入",
   "composer.send.sendAria": "傳送",
   "composer.send.reconnect": "請重新連線後再傳送",
@@ -364,10 +364,10 @@ export const zhTW: Dictionary = {
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
   "composer.protocol.unconfirmed": "Collie 無法讀取此畫面。請檢查窗格，然後點按「在此輸入」。",
-  "composer.protocol.unknown": "無法確定是否已傳送。再次傳送前請檢查窗格。",
+  "composer.protocol.unknown": "Collie 無法判定是否已傳送。請查看螢幕，若未送出請重新傳送。系統會保留您的草稿。",
   "composer.protocol.busy": "此窗格的另一次傳送仍在進行。請稍候再試。",
   "composer.protocol.notFree": "輸入框不空閒。未輸入任何內容。",
-  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
+  "composer.protocol.bound": "螢幕靜止的時間不足以進行讀取。未輸入任何內容。請重試。",
   "composer.protocol.probeFailed": "輸入沒有進入輸入框，因此未輸入任何內容。請檢查窗格。",
   "composer.protocol.reservedLead": "以 / ! 或 @ 開頭的文字有自己的通道。未輸入任何內容。",
   "composer.protocol.moved": "畫面已變更。請檢查窗格後再次傳送。",
@@ -383,32 +383,32 @@ export const zhTW: Dictionary = {
   "composer.protocol.discard": "捨棄",
   "composer.protocol.commit": "在此輸入",
   "composer.protocol.keys": "按鍵",
-  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
-  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
-  "sendReceipts.title": "Recent sends", // TODO wordsmith
-  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
-  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
-  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
-  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
-  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
-  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
-  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
-  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
-  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
+  "composer.protocol.openKeys": "開啟按鍵",
+  "composer.protocol.capConfirm": "過去一天內，您在 {harness} {version} 上越過 Collie 無法讀取的螢幕進行輸入達 {count} 次。請檢查螢幕，然後再次確認以進行輸入。",
+  "composer.protocol.commitCap": "確認並輸入",
+  "sendReceipts.title": "最近傳送",
+  "sendReceipts.empty": "尚未傳送至此窗格。",
+  "sendReceipts.outcome.sent": "已傳送",
+  "sendReceipts.outcome.effective": "已確認",
+  "sendReceipts.outcome.typed_not_submitted": "已輸入，未傳送",
+  "sendReceipts.outcome.refused": "已拒絕",
+  "sendReceipts.outcome.unknown": "未知",
+  "sendReceipts.keys": "按鍵：{keys}",
+  "sendReceipts.noKeys": "未傳送任何按鍵。",
+  "sendReceipts.gaps": "已等待：{gaps}",
   "composer.protocol.dismissAria": "關閉傳送選項",
-  "composer.surface.free": "The input box was free.", // TODO wordsmith
-  "composer.surface.running": "The agent was working.", // TODO wordsmith
-  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
-  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
-  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
-  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
-  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
-  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
-  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
-  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
-  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
-  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
+  "composer.surface.free": "輸入框為空閒狀態。",
+  "composer.surface.running": "代理正在運作。",
+  "composer.surface.askMenu": "選單已開啟。",
+  "composer.surface.askPermission": "權限詢問已開啟。",
+  "composer.surface.askQuestion": "詢問已開啟。",
+  "composer.surface.unreadable": "輸入框上方開啟了 Collie 無法讀取的內容。",
+  "composer.surface.draft": "輸入框內有草稿。",
+  "composer.surface.unreachable": "無法連線至輸入框。",
+  "composer.surface.unknown": "Collie 找不到輸入框。",
+  "composer.surface.stale": "上次讀取的螢幕內容太舊。",
+  "composer.surface.torn": "Collie 讀取時螢幕內容發生變更。",
+  "composer.surface.contested": "兩次讀取的螢幕內容不一致。",
   "composer.offline.draftNote": "草稿會保留在此手機上，絕不會自行傳送。",
   "composer.offline.draftNote.dismissAria": "關閉離線草稿提示",
   "composer.draftPreview.title": "終端機中的草稿",
@@ -442,13 +442,10 @@ export const zhTW: Dictionary = {
   "chat.copyOutput.failed": "無法複製輸出",
   "chat.paneMenu.aria": "窗格選單",
   "chat.header.openOverviewAria": "開啟 {workspace} 總覽{status}",
-  // TODO wordsmith
-  "chat.progress.aria": "Progress",
+  "chat.progress.aria": "進度",
   "chat.progress.percent": "{value}%",
-  // TODO wordsmith
-  "chat.header.step": "Step {n} of {m}: {label}",
-  // TODO wordsmith
-  "chat.header.percent": "{value}%: {label}",
+  "chat.header.step": "步驟 {n} / {m}：{label}",
+  "chat.header.percent": "{value}%：{label}",
   "chat.header.openPaneSettingsAria": "{name} 的窗格設定",
   "chat.header.statusAria": "（{label}）",
   "chat.header.agentGone": "（Agent 已離線）",
@@ -488,10 +485,10 @@ export const zhTW: Dictionary = {
   "chat.status.feedbackSent": "回饋已傳送",
   "chat.status.sent": "已傳送",
   "chat.status.menuChanged": "選單已變動，正在重新整理",
-  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
-  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
-  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
-  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
+  "chat.status.askChanged": "對話方塊已變更；卡片顯示新內容",
+  "chat.status.askMismatch": "高亮未移至您的選擇，因此未確認任何內容",
+  "chat.status.askGone": "對話方塊已消失；Collie 已重新讀取螢幕",
+  "chat.status.askUnknown": "無法證明答案已送出；螢幕顯示了發生情況",
   "chat.status.sendFailed": "傳送失敗",
   "chat.status.wizardChanged": "精靈已變動，正在重新整理",
   "chat.status.noteSaved": "備註已儲存",
@@ -508,8 +505,7 @@ export const zhTW: Dictionary = {
   "chat.mode.noChat": "{reason} 這裡維持終端機檢視。",
   "chat.stream.empty": "傳送一則訊息即可開始。",
   "chat.stream.working": "仍在處理…",
-  // TODO wordsmith
-  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
+  "chat.stream.questionPending": "終端機中有一個等待回答的問題。你的下一則訊息將作為回答。",
   "chat.stream.queued": "等待傳送",
   "chat.pin.label": "你的提問",
   "chat.pin.earlier": "提問在更早的紀錄裡 · 載入較早記錄",
@@ -577,19 +573,14 @@ export const zhTW: Dictionary = {
   "prompt.sendingAria": "正在傳送",
   "prompt.reconnectNote": "請重新連線後再回答。",
   "ask.caption": "Needs your answer",
-  // TODO wordsmith
-  "ask.captionNamed": "Needs your answer · {name}",
+  "ask.captionNamed": "需要你的回答 · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "未被接受。該問題可能稍後會再次出現。",
-  // TODO wordsmith
-  "ask.decidedInProgram": "Decided in the program.",
-  // TODO wordsmith
-  "ask.timedOut": "Timed out before an answer.",
-  // TODO wordsmith
-  "ask.expiresIn": "Expires in {time}",
-  // TODO wordsmith
-  "ask.expired": "Expired",
+  "ask.decidedInProgram": "已在程式中決定。",
+  "ask.timedOut": "回答前已逾時。",
+  "ask.expiresIn": "{time} 後過期",
+  "ask.expired": "已過期",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -604,8 +595,7 @@ export const zhTW: Dictionary = {
   "ask.maybe": "May already be applied. Check the chat.",
   "ask.showMore": "Show {count} more",
   "ask.showFewer": "Show fewer",
-  // TODO wordsmith
-  "ask.send": "Send",
+  "ask.send": "傳送",
   "ask.required": "Required",
   "ask.choose": "Choose",
   "ask.pickMany": "Pick any number",
@@ -628,105 +618,58 @@ export const zhTW: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
-  // TODO wordsmith
-  "durable.composer.sending": "Sending…",
+  "durable.composer.sending": "正在傳送…",
   "durable.pending.sending": "Sending",
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
-  // TODO wordsmith
-  "durable.action.done": "Done",
-  // TODO wordsmith
-  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
-  // TODO wordsmith
-  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
-  // TODO wordsmith
-  "durable.action.refused": "The action was refused.",
-  // TODO wordsmith
-  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
-  // TODO wordsmith
-  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
-  // TODO wordsmith
-  "conversations.title": "Conversations",
-  // TODO wordsmith
-  "conversations.fallbackTitle": "Conversation",
-  // TODO wordsmith
-  "conversations.back": "Back",
-  // TODO wordsmith
-  "conversations.state.open": "Open",
-  // TODO wordsmith
-  "conversations.state.closed": "Closed",
-  // TODO wordsmith
-  "conversations.items.one": "{count} item",
-  // TODO wordsmith
-  "conversations.items.other": "{count} items",
-  // TODO wordsmith
-  "conversations.untitled": "Untitled conversation",
-  // TODO wordsmith
-  "conversations.range": "{start} to {end}",
-  // TODO wordsmith
-  "conversations.here": "Shown in this pane",
-  // TODO wordsmith
-  "conversations.loadMore": "Load more",
-  // TODO wordsmith
-  "conversations.loading": "Loading…",
-  // TODO wordsmith
-  "conversations.empty": "This program has no conversations yet.",
-  // TODO wordsmith
-  "session.experimental": "Experimental",
-  // TODO wordsmith
-  "space.program.line": "{mux}, {where}",
-  // TODO wordsmith
-  "space.program.where.local": "local",
-  // TODO wordsmith
-  "space.program.where.remote": "remote",
-  // TODO wordsmith
-  "space.program.state.ready": "Ready",
-  // TODO wordsmith
-  "space.program.state.starting": "Starting",
-  // TODO wordsmith
-  "space.program.state.unreachable": "Unreachable",
-  // TODO wordsmith
-  "space.program.state.versionMismatch": "Version mismatch",
-  // TODO wordsmith
-  "space.program.member": "{line}, {member}",
-  // TODO wordsmith
-  "space.program.open.one": "{count} open conversation",
-  // TODO wordsmith
-  "space.program.open.other": "{count} open conversations",
-  // TODO wordsmith
-  "space.program.waiting.one": "{count} conversation waits on you",
-  // TODO wordsmith
-  "space.program.waiting.other": "{count} conversations wait on you",
-  // TODO wordsmith
-  "home.programs.title": "Programs",
-  // TODO wordsmith
-  "conversations.unsupported": "This program does not keep a list of its conversations.",
-  // TODO wordsmith
-  "conversations.unreachable": "The program did not answer. Try again in a moment.",
-  // TODO wordsmith
-  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
-  // TODO wordsmith
-  "conversations.gone": "This conversation no longer exists.",
-  // TODO wordsmith
-  "conversations.noItems": "This conversation has no items yet.",
-  // TODO wordsmith
-  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
-  // TODO wordsmith
-  "conversations.reopen": "Reopen",
-  // TODO wordsmith
-  "conversations.reopening": "Reopening…",
-  // TODO wordsmith
-  "conversations.reopenFailed": "Couldn't reopen the conversation",
-  // TODO wordsmith
-  "home.conversations.asks.one": "{count} open question",
-  // TODO wordsmith
-  "home.conversations.asks.other": "{count} open questions",
+  "durable.action.done": "完成",
+  "durable.action.moved": "對話已繼續進行，因此未執行此操作。請檢查對話，若仍需要請再次點選按鈕。",
+  "durable.action.older": "這部電腦執行的 Collie 版本較舊，無法在此執行操作。請更新它。",
+  "durable.action.refused": "操作已被拒絕。",
+  "durable.action.unknown": "無法確認操作是否已送達。請再次點選按鈕重試一次。",
+  "durable.action.maybe": "操作可能已經執行。再次點選前請先檢查聊天內容。",
+  "conversations.title": "對話",
+  "conversations.fallbackTitle": "對話",
+  "conversations.back": "返回",
+  "conversations.state.open": "開啟",
+  "conversations.state.closed": "已關閉",
+  "conversations.items.one": "{count} 個項目",
+  "conversations.items.other": "{count} 個項目",
+  "conversations.untitled": "未命名對話",
+  "conversations.range": "{start} 至 {end}",
+  "conversations.here": "顯示於此窗格",
+  "conversations.loadMore": "載入更多",
+  "conversations.loading": "載入中…",
+  "conversations.empty": "此程式目前沒有對話。",
+  "session.experimental": "實驗性功能",
+  "space.program.line": "{mux}，{where}",
+  "space.program.where.local": "本機",
+  "space.program.where.remote": "遠端",
+  "space.program.state.ready": "就緒",
+  "space.program.state.starting": "正在啟動",
+  "space.program.state.unreachable": "無法連線",
+  "space.program.state.versionMismatch": "版本不符",
+  "space.program.member": "{line}，{member}",
+  "space.program.open.one": "{count} 個開啟的對話",
+  "space.program.open.other": "{count} 個開啟的對話",
+  "space.program.waiting.one": "{count} 個對話正在等候您",
+  "space.program.waiting.other": "{count} 個對話正在等候您",
+  "home.programs.title": "程式",
+  "conversations.unsupported": "此程式不會保留其對話清單。",
+  "conversations.unreachable": "程式未回應。請稍後再試。",
+  "conversations.loadFailed": "無法載入對話。請再試一次。",
+  "conversations.gone": "此對話已不存在。",
+  "conversations.noItems": "此對話尚無任何項目。",
+  "conversations.loadMoreFailed": "無法載入更多內容。請再試一次。",
+  "conversations.reopen": "重新開啟",
+  "conversations.reopening": "正在重新開啟…",
+  "conversations.reopenFailed": "無法重新開啟對話",
+  "home.conversations.asks.one": "{count} 個待解決問題",
+  "home.conversations.asks.other": "{count} 個待解決問題",
   "newPage.starters.none": "This machine's program offers no starters yet.",
-  // TODO wordsmith
-  "newPage.starters.label": "Starters",
-  // TODO wordsmith
-  "newPage.starters.title": "New conversation",
+  "newPage.starters.label": "初學者入門",
+  "newPage.starters.title": "新對話",
   "prompt.feedback.cancel": "取消",
   "prompt.feedback.typedAria": "終端機中的回饋內容",
   "prompt.feedback.planChange.offer": "向 Claude 提供修改意見",
@@ -760,8 +703,7 @@ export const zhTW: Dictionary = {
   "paneActions.rename.label": "重新命名",
   "paneActions.rename.placeholder": "窗格名稱",
   "paneActions.close.label": "關閉窗格",
-  // TODO wordsmith
-  "paneActions.close.conversation": "Close conversation",
+  "paneActions.close.conversation": "關閉對話",
   "paneActions.close.confirm": "再次點擊以確認關閉",
   "paneActions.close.closing": "正在關閉…",
   "paneActions.focus.labelWithMux": "在 {mux} 中顯示",
@@ -1108,18 +1050,12 @@ export const zhTW: Dictionary = {
   "space.tab.renameFailed": "重新命名失敗",
   "space.tab.closeFailed": "關閉失敗",
   "space.tab.closed": "分頁已關閉",
-  // TODO wordsmith
-  "space.space.titleFallback": "Space",
-  // TODO wordsmith
-  "space.space.titleWithLabel": "Space {label}",
-  // TODO wordsmith
-  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
-  // TODO wordsmith
-  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
-  // TODO wordsmith
-  "space.space.empty.fallback": "This program offers no actions for a space.",
-  // TODO wordsmith
-  "space.space.placeholder": "name this space",
+  "space.space.titleFallback": "工作區",
+  "space.space.titleWithLabel": "工作區 {label}",
+  "space.space.readOnly": "唯讀。此裝置未獲授權重新命名工作區。",
+  "space.space.hostBlockSuffix": "{hostBlock}。在收到回應之前，無法進行重新命名。",
+  "space.space.empty.fallback": "此程式未提供適用於工作區的動作。",
+  "space.space.placeholder": "命名此工作區",
   "space.readOnly.notPaired": "尚未配對，請在設定中配對目前裝置",
   "space.readOnly.expired": "配對已到期，請在設定中重新配對",
   "space.readOnly.deviceUnauthorised": "唯讀模式，裝置未授權",
@@ -1495,10 +1431,8 @@ export const zhTW: Dictionary = {
   "apiError.tab.create_failed": "建立分頁失敗：{reason}",
   "apiError.tab.rename_failed": "重新命名分頁失敗：{reason}",
   "apiError.tab.close_failed": "關閉分頁失敗：{reason}",
-  // TODO wordsmith
-  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
-  // TODO wordsmith
-  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
+  "apiError.space.rename_failed": "無法重新命名工作區：{reason}",
+  "apiError.durable.reopen_failed": "無法重新開啟對話：{reason}",
   "apiError.tab.workspace_required": "未指定新分頁的工作區。",
   "apiError.launch.not_allowlisted": "此指令不在你的啟動器清單中",
   "apiError.launch.unknown_harness": "這台機器不啟動 {harness}。",

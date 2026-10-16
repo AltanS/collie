@@ -35,47 +35,47 @@ export const ko: Dictionary = {
   "settings.nav.back": "뒤로",
 
   // --- settings.theme ---
-  "settings.theme.title": "테마",
+  "settings.theme.title": "외관",
   "settings.theme.description": "시스템 설정을 따르거나 특정 테마로 고정합니다.",
   "settings.theme.option.system": "시스템 기본값",
   "settings.theme.option.light": "라이트",
   "settings.theme.option.dark": "다크",
 
-  "theme.title": "Theme", // TODO wordsmith
-  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
-  "theme.import": "Import", // TODO wordsmith
-  "theme.export": "Export", // TODO wordsmith
-  "theme.remove": "Remove", // TODO wordsmith
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
-  "theme.preview.title": "Import this theme?", // TODO wordsmith
-  "theme.preview.by": "By {author}", // TODO wordsmith
-  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
-  "theme.preview.halves.light": "Light only", // TODO wordsmith
-  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
-  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
-  "theme.preview.apply": "Apply", // TODO wordsmith
-  "theme.preview.cancel": "Cancel", // TODO wordsmith
-  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
-  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
-  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
-  "theme.refused.title": "This file was not imported", // TODO wordsmith
-  "theme.refused.close": "Close", // TODO wordsmith
-  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
-  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
-  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
-  "theme.export.title": "Copy this theme", // TODO wordsmith
-  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
-  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
-  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
-  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
-  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
-  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
-  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
-  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
-  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
-  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
-  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+  "theme.title": "테마",
+  "theme.description": "모양을 선택하거나 파일에서 가져옵니다.",
+  "theme.import": "가져오기",
+  "theme.export": "내보내기",
+  "theme.remove": "제거",
+  "theme.import.promise": "테마는 색상과 서체만 변경합니다. 코드를 실행하거나 파일을 로드하거나 서버에 연결할 수 없습니다.",
+  "theme.preview.title": "이 테마를 가져오시겠습니까?",
+  "theme.preview.by": "작성자: {author}",
+  "theme.preview.halves.both": "라이트 및 다크",
+  "theme.preview.halves.light": "라이트 전용",
+  "theme.preview.halves.dark": "다크 전용",
+  "theme.preview.fills": "누락된 부분({half})은 기본 테마에서 채웁니다.",
+  "theme.preview.apply": "적용",
+  "theme.preview.cancel": "취소",
+  "theme.preview.contrast.pass": "모든 대비 검사를 통과했습니다.",
+  "theme.preview.contrast.fail": "{half}: {check} 측정값은 {ratio}입니다. 최솟값은 {floor}입니다.",
+  "theme.preview.contrast.more": "외 {count}개의 검사 실패",
+  "theme.refused.title": "이 파일을 가져오지 않았습니다",
+  "theme.refused.close": "닫기",
+  "theme.library.full": "이미 가져온 테마가 {count}개 있습니다. 하나를 제거한 후 다시 가져오십시오.",
+  "theme.library.duplicate": "이 ID를 가진 테마를 이미 가져왔습니다. 먼저 해당 테마를 제거하거나 파일의 \"id\"를 변경하십시오.",
+  "theme.library.invalid": "이 테마가 검사를 통과하지 못했습니다. 파일을 다시 선택하십시오.",
+  "theme.export.title": "이 테마 복사",
+  "theme.refusal.size": "테마로 사용하기에 파일 크기가 너무 큽니다.",
+  "theme.refusal.json": "이 파일은 JSON 객체가 아닙니다.",
+  "theme.refusal.version": "이 파일은 이 Collie에서 읽을 수 없는 테마 버전을 사용합니다.",
+  "theme.refusal.id": "ID가 올바르지 않습니다.",
+  "theme.refusal.name": "이름이 올바르지 않습니다.",
+  "theme.refusal.author": "작성자가 올바르지 않습니다.",
+  "theme.refusal.unknown-key": "파일에 테마의 일부가 아닌 키가 포함되어 있습니다.",
+  "theme.refusal.value": "색상 값이 올바르지 않습니다.",
+  "theme.refusal.font": "글꼴 선택이 올바르지 않습니다.",
+  "theme.refusal.no-half": "파일에 지정된 색상이 없습니다.",
+  "theme.refusal.reserved-id": "이 ID는 포함된 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
+  "theme.refusal.mark": "헤더 마크가 포함된 마크 중 하나가 아닙니다.",
 
   // --- settings.haptics ---
   "settings.haptics.title": "햅틱 피드백",
@@ -247,9 +247,9 @@ export const ko: Dictionary = {
   "settings.typeface.note.system": "디바이스 기본 글꼴을 사용합니다. 추가 다운로드는 없습니다.",
   "settings.typeface.note.grotesk": "Collie 로고 디자인에 맞춰 구성된 전용 글꼴입니다.",
   "settings.typeface.note.aldrich": "두께가 한 종류뿐이어서 굵은 글씨도 일반 텍스트와 동일하게 표시됩니다.",
-  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
-  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
-  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "차분하고 인문주의적이며, 실제 굵은 글꼴과 균일한 너비의 숫자를 제공합니다.",
+  "settings.typeface.note.geist": "간결하고 기하학적이며, 실제 굵은 글꼴을 제공합니다.",
+  "settings.typeface.note.atkinson": "저시력자를 위해 제작되었으며, 명확한 글자와 실제 굵은 글꼴을 제공합니다.",
   "settings.typeface.note.operator": "서버 관리자가 직접 추가한 글꼴입니다.",
 
   // --- settings.fonts ---
@@ -298,29 +298,29 @@ export const ko: Dictionary = {
   "composer.controls.agent": "에이전트",
   "composer.controls.displayAria": "표시 설정",
   "composer.controls.display": "표시",
-  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
-  "composer.controls.screen": "Screen", // TODO wordsmith
+  "composer.controls.screenAria": "카드 없이 화면 행 표시",
+  "composer.controls.screen": "화면",
   "composer.controls.clear": "메시지 지우기",
   "composer.controls.undoClear": "지우기 취소",
   "composer.sentPreview.label": "보낸 내용:",
   "composer.placeholder.gone": "창이 닫혔습니다",
   "composer.placeholder.readOnly": "읽기 전용: 권한 없음",
   "composer.placeholder.noMuxSend": "이 터미널에는 입력할 수 없습니다",
-  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
-  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
-  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
-  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
-  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
-  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
+  "composer.placeholder.unreachable": "입력란에 연결할 수 없습니다",
+  "composer.placeholder.sendOff": "이 기기에서는 전송이 꺼져 있습니다",
+  "composer.placeholder.dialogWaiting": "대화상자 대기 중",
+  "composer.placeholder.menuWaiting": "메뉴 대기 중",
+  "composer.placeholder.permissionWaiting": "권한 대기 중",
+  "composer.placeholder.questionWaiting": "질문 대기 중",
   "composer.placeholder.direct": "터미널에 입력…",
-  "composer.placeholder.running": "The agent is working", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
-  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
-  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
+  "composer.placeholder.running": "에이전트 작업 중",
+  "composer.placeholder.draft": "상자에 초안이 있습니다",
+  "composer.placeholder.unreadable": "열려 있는 항목을 읽을 수 없습니다",
+  "composer.placeholder.noMatch": "입력란을 찾을 수 없음",
+  "composer.placeholder.contested": "두 읽기 결과가 일치하지 않음",
+  "composer.placeholder.stale": "마지막으로 읽은 시간: {age} 전",
+  "composer.placeholder.staleNoAge": "마지막으로 읽은 정보가 오래되었습니다",
+  "composer.placeholder.torn": "화면이 움직이고 있었습니다",
   "composer.placeholder.shell": "셸 명령 입력…",
   "composer.placeholder.reply": "응답 입력…",
   "composer.mic.unavailable": "음성 입력을 사용할 수 없습니다",
@@ -343,7 +343,7 @@ export const ko: Dictionary = {
   "composer.attach.removeAria": "{name} 제거",
   "composer.attach.inFront": "텍스트에서 해당 표시가 사라졌으므로 전송 시 {name}을(를) 앞에 둡니다.",
   "composer.send.reallySend": "전송할까요?",
-  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
+  "composer.send.dialogFirst": "대화상자에 응답하십시오",
   "composer.send.stopTypingAria": "터미널 입력 중단",
   "composer.send.sendAria": "전송",
   "composer.send.reconnect": "다시 연결한 뒤 전송하세요",
@@ -374,10 +374,10 @@ export const ko: Dictionary = {
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
   "composer.protocol.unconfirmed": "Collie가 이 화면을 읽을 수 없습니다. 창을 확인한 뒤 여기에 입력을 누르세요.",
-  "composer.protocol.unknown": "보냈는지 알 수 없습니다. 다시 보내기 전에 창을 확인하세요.",
+  "composer.protocol.unknown": "Collie가 전송 여부를 확인할 수 없습니다. 화면을 읽은 후 전송되지 않았다면 다시 전송하십시오. 작성 중인 초안은 유지됩니다.",
   "composer.protocol.busy": "이 창으로 보내는 다른 작업이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
   "composer.protocol.notFree": "입력란이 비어 있지 않습니다. 아무것도 입력하지 않았습니다.",
-  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
+  "composer.protocol.bound": "화면이 읽을 수 있을 만큼 오래 정지해 있지 않았습니다. 아무것도 입력되지 않았습니다. 다시 시도하십시오.",
   "composer.protocol.probeFailed": "입력이 입력란에 닿지 않아 아무것도 입력하지 않았습니다. 창을 확인하세요.",
   "composer.protocol.reservedLead": "/ ! @ 로 시작하는 텍스트는 따로 처리됩니다. 아무것도 입력하지 않았습니다.",
   "composer.protocol.moved": "화면이 바뀌었습니다. 창을 확인한 뒤 다시 보내세요.",
@@ -393,32 +393,32 @@ export const ko: Dictionary = {
   "composer.protocol.discard": "버리기",
   "composer.protocol.commit": "여기에 입력",
   "composer.protocol.keys": "키",
-  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
-  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
-  "sendReceipts.title": "Recent sends", // TODO wordsmith
-  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
-  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
-  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
-  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
-  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
-  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
-  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
-  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
-  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
+  "composer.protocol.openKeys": "키 열기",
+  "composer.protocol.capConfirm": "최근 하루 동안 {harness} {version}에서 Collie가 읽을 수 없는 화면을 무시하고 {count}회 입력했습니다. 화면을 확인한 후 다시 한 번 확인하여 입력하십시오.",
+  "composer.protocol.commitCap": "확인 후 입력",
+  "sendReceipts.title": "최근 전송",
+  "sendReceipts.empty": "이 창으로 전송된 내역이 아직 없습니다.",
+  "sendReceipts.outcome.sent": "전송됨",
+  "sendReceipts.outcome.effective": "확인됨",
+  "sendReceipts.outcome.typed_not_submitted": "입력됨, 전송되지 않음",
+  "sendReceipts.outcome.refused": "거부됨",
+  "sendReceipts.outcome.unknown": "알 수 없음",
+  "sendReceipts.keys": "키: {keys}",
+  "sendReceipts.noKeys": "전송된 키가 없습니다.",
+  "sendReceipts.gaps": "대기 시간: {gaps}",
   "composer.protocol.dismissAria": "보내기 옵션 닫기",
-  "composer.surface.free": "The input box was free.", // TODO wordsmith
-  "composer.surface.running": "The agent was working.", // TODO wordsmith
-  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
-  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
-  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
-  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
-  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
-  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
-  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
-  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
-  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
-  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
+  "composer.surface.free": "입력 상자가 비어 있었습니다.",
+  "composer.surface.running": "에이전트가 작업 중이었습니다.",
+  "composer.surface.askMenu": "메뉴가 열려 있었습니다.",
+  "composer.surface.askPermission": "권한 확인 질문이 열려 있었습니다.",
+  "composer.surface.askQuestion": "질문이 열려 있었습니다.",
+  "composer.surface.unreadable": "Collie가 읽을 수 없는 항목이 상자 위에 열려 있었습니다.",
+  "composer.surface.draft": "상자에 임시 저장 내용이 있었습니다.",
+  "composer.surface.unreachable": "입력 상자에 접근할 수 없었습니다.",
+  "composer.surface.unknown": "Collie가 입력 상자를 찾을 수 없었습니다.",
+  "composer.surface.stale": "마지막 화면 읽기 결과가 너무 오래되었습니다.",
+  "composer.surface.torn": "Collie가 화면을 읽는 동안 화면이 변경되었습니다.",
+  "composer.surface.contested": "화면을 두 번 읽은 결과가 일치하지 않았습니다.",
   "composer.offline.draftNote": "초안은 이 휴대폰에 남아 있으며 저절로 전송되지 않습니다.",
   "composer.offline.draftNote.dismissAria": "오프라인 초안 안내 닫기",
   "composer.draftPreview.title": "터미널 임시 저장본",
@@ -452,12 +452,9 @@ export const ko: Dictionary = {
   "chat.copyOutput.failed": "출력을 복사할 수 없음",
   "chat.paneMenu.aria": "창 작업",
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
-  // TODO wordsmith
-  "chat.progress.aria": "Progress",
+  "chat.progress.aria": "진행 상황",
   "chat.progress.percent": "{value}%",
-  // TODO wordsmith
-  "chat.header.step": "Step {n} of {m}: {label}",
-  // TODO wordsmith
+  "chat.header.step": "{m}단계 중 {n}단계: {label}",
   "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "{name} 창 설정",
   "chat.header.statusAria": ", {label}",
@@ -498,10 +495,10 @@ export const ko: Dictionary = {
   "chat.status.feedbackSent": "피드백 전송 완료",
   "chat.status.sent": "전송 완료",
   "chat.status.menuChanged": "메뉴 변경 감지, 새로고침 중",
-  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
-  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
-  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
-  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
+  "chat.status.askChanged": "대화 상자가 변경되었습니다. 카드가 새 대화 상자를 표시합니다.",
+  "chat.status.askMismatch": "강조 표시가 선택 항목에 도달하지 않아 아무것도 확인되지 않았습니다.",
+  "chat.status.askGone": "대화 상자가 사라졌습니다. Collie가 화면을 다시 읽었습니다.",
+  "chat.status.askUnknown": "답변이 전달되었다는 증거가 없습니다. 화면에 발생한 결과가 표시됩니다.",
   "chat.status.sendFailed": "전송 실패",
   "chat.status.wizardChanged": "위저드 상태 변경 감지, 새로고침 중",
   "chat.status.noteSaved": "메모 저장 완료",
@@ -518,8 +515,7 @@ export const ko: Dictionary = {
   "chat.mode.noChat": "{reason} 여기서는 터미널이 유지됩니다.",
   "chat.stream.empty": "메시지를 보내 시작하세요.",
   "chat.stream.working": "계속 작업 중…",
-  // TODO wordsmith
-  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
+  "chat.stream.questionPending": "터미널에서 질문이 대기 중입니다. 다음 메시지가 질문에 답변합니다.",
   "chat.stream.queued": "전송 대기 중",
   "chat.pin.label": "내 프롬프트",
   "chat.pin.earlier": "프롬프트는 더 이전에 있습니다 · 이전 로그 불러오기",
@@ -587,19 +583,14 @@ export const ko: Dictionary = {
   "prompt.sendingAria": "전송 중",
   "prompt.reconnectNote": "다시 연결한 뒤 답하세요.",
   "ask.caption": "Needs your answer",
-  // TODO wordsmith
-  "ask.captionNamed": "Needs your answer · {name}",
+  "ask.captionNamed": "답변 필요 · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "접수되지 않았습니다. 잠시 후 질문이 다시 표시될 수 있습니다.",
-  // TODO wordsmith
-  "ask.decidedInProgram": "Decided in the program.",
-  // TODO wordsmith
-  "ask.timedOut": "Timed out before an answer.",
-  // TODO wordsmith
-  "ask.expiresIn": "Expires in {time}",
-  // TODO wordsmith
-  "ask.expired": "Expired",
+  "ask.decidedInProgram": "프로그램에서 결정되었습니다.",
+  "ask.timedOut": "답변하기 전에 시간이 초과되었습니다.",
+  "ask.expiresIn": "{time} 후 만료",
+  "ask.expired": "만료됨",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -614,8 +605,7 @@ export const ko: Dictionary = {
   "ask.maybe": "May already be applied. Check the chat.",
   "ask.showMore": "Show {count} more",
   "ask.showFewer": "Show fewer",
-  // TODO wordsmith
-  "ask.send": "Send",
+  "ask.send": "보내기",
   "ask.required": "Required",
   "ask.choose": "Choose",
   "ask.pickMany": "Pick any number",
@@ -638,105 +628,58 @@ export const ko: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
-  // TODO wordsmith
-  "durable.composer.sending": "Sending…",
+  "durable.composer.sending": "전송 중…",
   "durable.pending.sending": "Sending",
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
-  // TODO wordsmith
-  "durable.action.done": "Done",
-  // TODO wordsmith
-  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
-  // TODO wordsmith
-  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
-  // TODO wordsmith
-  "durable.action.refused": "The action was refused.",
-  // TODO wordsmith
-  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
-  // TODO wordsmith
-  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
-  // TODO wordsmith
-  "conversations.title": "Conversations",
-  // TODO wordsmith
-  "conversations.fallbackTitle": "Conversation",
-  // TODO wordsmith
-  "conversations.back": "Back",
-  // TODO wordsmith
-  "conversations.state.open": "Open",
-  // TODO wordsmith
-  "conversations.state.closed": "Closed",
-  // TODO wordsmith
-  "conversations.items.one": "{count} item",
-  // TODO wordsmith
-  "conversations.items.other": "{count} items",
-  // TODO wordsmith
-  "conversations.untitled": "Untitled conversation",
-  // TODO wordsmith
-  "conversations.range": "{start} to {end}",
-  // TODO wordsmith
-  "conversations.here": "Shown in this pane",
-  // TODO wordsmith
-  "conversations.loadMore": "Load more",
-  // TODO wordsmith
-  "conversations.loading": "Loading…",
-  // TODO wordsmith
-  "conversations.empty": "This program has no conversations yet.",
-  // TODO wordsmith
-  "session.experimental": "Experimental",
-  // TODO wordsmith
+  "durable.action.done": "완료",
+  "durable.action.moved": "대화가 진행되어 작업이 실행되지 않았습니다. 확인한 후 여전히 원하시면 버튼을 다시 탭하십시오.",
+  "durable.action.older": "이 컴퓨터는 이전 버전의 Collie를 실행 중이므로 여기에서 작업을 실행할 수 없습니다. 업데이트하십시오.",
+  "durable.action.refused": "작업이 거부되었습니다.",
+  "durable.action.unknown": "작업이 도달했는지 확실하지 않습니다. 한 번 더 재시도하려면 버튼을 다시 탭하십시오.",
+  "durable.action.maybe": "작업이 이미 실행되었을 수 있습니다. 버튼을 다시 탭하기 전에 채팅을 확인하십시오.",
+  "conversations.title": "대화",
+  "conversations.fallbackTitle": "대화",
+  "conversations.back": "뒤로",
+  "conversations.state.open": "열림",
+  "conversations.state.closed": "닫힘",
+  "conversations.items.one": "항목 {count}개",
+  "conversations.items.other": "항목 {count}개",
+  "conversations.untitled": "제목 없는 대화",
+  "conversations.range": "{start} ~ {end}",
+  "conversations.here": "이 창에 표시됨",
+  "conversations.loadMore": "더 불러오기",
+  "conversations.loading": "불러오는 중…",
+  "conversations.empty": "이 프로그램에는 아직 대화가 없습니다.",
+  "session.experimental": "실험적 기능",
   "space.program.line": "{mux}, {where}",
-  // TODO wordsmith
-  "space.program.where.local": "local",
-  // TODO wordsmith
-  "space.program.where.remote": "remote",
-  // TODO wordsmith
-  "space.program.state.ready": "Ready",
-  // TODO wordsmith
-  "space.program.state.starting": "Starting",
-  // TODO wordsmith
-  "space.program.state.unreachable": "Unreachable",
-  // TODO wordsmith
-  "space.program.state.versionMismatch": "Version mismatch",
-  // TODO wordsmith
+  "space.program.where.local": "로컬",
+  "space.program.where.remote": "원격",
+  "space.program.state.ready": "준비됨",
+  "space.program.state.starting": "시작 중",
+  "space.program.state.unreachable": "연결할 수 없음",
+  "space.program.state.versionMismatch": "버전 불일치",
   "space.program.member": "{line}, {member}",
-  // TODO wordsmith
-  "space.program.open.one": "{count} open conversation",
-  // TODO wordsmith
-  "space.program.open.other": "{count} open conversations",
-  // TODO wordsmith
-  "space.program.waiting.one": "{count} conversation waits on you",
-  // TODO wordsmith
-  "space.program.waiting.other": "{count} conversations wait on you",
-  // TODO wordsmith
-  "home.programs.title": "Programs",
-  // TODO wordsmith
-  "conversations.unsupported": "This program does not keep a list of its conversations.",
-  // TODO wordsmith
-  "conversations.unreachable": "The program did not answer. Try again in a moment.",
-  // TODO wordsmith
-  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
-  // TODO wordsmith
-  "conversations.gone": "This conversation no longer exists.",
-  // TODO wordsmith
-  "conversations.noItems": "This conversation has no items yet.",
-  // TODO wordsmith
-  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
-  // TODO wordsmith
-  "conversations.reopen": "Reopen",
-  // TODO wordsmith
-  "conversations.reopening": "Reopening…",
-  // TODO wordsmith
-  "conversations.reopenFailed": "Couldn't reopen the conversation",
-  // TODO wordsmith
-  "home.conversations.asks.one": "{count} open question",
-  // TODO wordsmith
-  "home.conversations.asks.other": "{count} open questions",
+  "space.program.open.one": "열린 대화 {count}개",
+  "space.program.open.other": "열린 대화 {count}개",
+  "space.program.waiting.one": "대기 중인 대화 {count}개",
+  "space.program.waiting.other": "대기 중인 대화 {count}개",
+  "home.programs.title": "프로그램",
+  "conversations.unsupported": "이 프로그램은 대화 목록을 유지하지 않습니다.",
+  "conversations.unreachable": "프로그램이 응답하지 않았습니다. 잠시 후 다시 시도하십시오.",
+  "conversations.loadFailed": "대화를 불러올 수 없습니다. 다시 시도하십시오.",
+  "conversations.gone": "이 대화는 더 이상 존재하지 않습니다.",
+  "conversations.noItems": "이 대화에는 아직 항목이 없습니다.",
+  "conversations.loadMoreFailed": "더 불러올 수 없습니다. 다시 시도하십시오.",
+  "conversations.reopen": "다시 열기",
+  "conversations.reopening": "다시 여는 중…",
+  "conversations.reopenFailed": "대화를 다시 열 수 없습니다",
+  "home.conversations.asks.one": "열린 질문 {count}개",
+  "home.conversations.asks.other": "열린 질문 {count}개",
   "newPage.starters.none": "This machine's program offers no starters yet.",
-  // TODO wordsmith
-  "newPage.starters.label": "Starters",
-  // TODO wordsmith
-  "newPage.starters.title": "New conversation",
+  "newPage.starters.label": "시작 항목",
+  "newPage.starters.title": "새 대화",
   "prompt.feedback.cancel": "취소",
   "prompt.feedback.typedAria": "터미널 내 피드백",
   "prompt.feedback.planChange.offer": "Claude 변경 요청",
@@ -770,8 +713,7 @@ export const ko: Dictionary = {
   "paneActions.rename.label": "이름 변경",
   "paneActions.rename.placeholder": "창 이름 입력",
   "paneActions.close.label": "창 닫기",
-  // TODO wordsmith
-  "paneActions.close.conversation": "Close conversation",
+  "paneActions.close.conversation": "대화 닫기",
   "paneActions.close.confirm": "한 번 더 누르면 닫힙니다",
   "paneActions.close.closing": "닫는 중…",
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
@@ -1121,18 +1063,12 @@ export const ko: Dictionary = {
   "space.tab.renameFailed": "이름 변경 실패",
   "space.tab.closeFailed": "닫기 실패",
   "space.tab.closed": "탭을 닫았습니다.",
-  // TODO wordsmith
-  "space.space.titleFallback": "Space",
-  // TODO wordsmith
-  "space.space.titleWithLabel": "Space {label}",
-  // TODO wordsmith
-  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
-  // TODO wordsmith
-  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
-  // TODO wordsmith
-  "space.space.empty.fallback": "This program offers no actions for a space.",
-  // TODO wordsmith
-  "space.space.placeholder": "name this space",
+  "space.space.titleFallback": "스페이스",
+  "space.space.titleWithLabel": "스페이스 {label}",
+  "space.space.readOnly": "읽기 전용. 이 기기는 스페이스의 이름을 변경할 권한이 없습니다.",
+  "space.space.hostBlockSuffix": "{hostBlock}. 응답할 때까지 이름 변경을 사용할 수 없습니다.",
+  "space.space.empty.fallback": "이 프로그램은 스페이스에 대한 동작을 제공하지 않습니다.",
+  "space.space.placeholder": "이 스페이스 이름 지정",
   "space.readOnly.notPaired": "미연결 상태입니다. 설정에서 기기를 연결하십시오.",
   "space.readOnly.expired": "페어링이 만료되었습니다. 설정에서 다시 연결하십시오.",
   "space.readOnly.deviceUnauthorised": "읽기 전용. 승인되지 않은 기기입니다.",
@@ -1510,10 +1446,8 @@ export const ko: Dictionary = {
   "apiError.tab.create_failed": "탭을 생성하지 못했습니다: {reason}",
   "apiError.tab.rename_failed": "탭 이름을 바꾸지 못했습니다: {reason}",
   "apiError.tab.close_failed": "탭을 닫지 못했습니다: {reason}",
-  // TODO wordsmith
-  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
-  // TODO wordsmith
-  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
+  "apiError.space.rename_failed": "스페이스의 이름을 변경할 수 없습니다: {reason}",
+  "apiError.durable.reopen_failed": "대화를 다시 열 수 없습니다: {reason}",
   "apiError.tab.workspace_required": "새 탭을 생성할 작업 공간이 지정되지 않았습니다.",
   "apiError.launch.not_allowlisted": "해당 명령은 등록된 실행 항목이 아닙니다",
   "apiError.launch.unknown_harness": "이 머신은 {harness}을(를) 시작하지 않습니다.",

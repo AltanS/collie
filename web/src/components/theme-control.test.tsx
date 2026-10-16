@@ -37,7 +37,7 @@ describe("ThemeControl", () => {
       await whenLocaleReady("de");
     });
 
-    const group = screen.getByRole("radiogroup", { name: "Design" });
+    const group = screen.getByRole("radiogroup", { name: "Darstellung" });
     const options = within(group).getAllByRole("radio");
     expect(options.map((o) => o.textContent)).toEqual(["System", "Hell", "Dunkel"]);
   });

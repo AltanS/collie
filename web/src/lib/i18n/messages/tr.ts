@@ -30,47 +30,47 @@ export const tr: Dictionary = {
   "settings.section.machines.title": "Makineler",
   "settings.section.machines.blurb": "İşlemci, bellek, disk, ağ, uyarı kuralları",
   "settings.nav.back": "Geri",
-  "settings.theme.title": "Tema",
+  "settings.theme.title": "Görünüm",
   "settings.theme.description": "Telefonunuzu izleyin ya da birini sabitleyin.",
   "settings.theme.option.system": "Sistem",
   "settings.theme.option.light": "Açık",
   "settings.theme.option.dark": "Koyu",
 
-  "theme.title": "Theme", // TODO wordsmith
-  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
-  "theme.import": "Import", // TODO wordsmith
-  "theme.export": "Export", // TODO wordsmith
-  "theme.remove": "Remove", // TODO wordsmith
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
-  "theme.preview.title": "Import this theme?", // TODO wordsmith
-  "theme.preview.by": "By {author}", // TODO wordsmith
-  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
-  "theme.preview.halves.light": "Light only", // TODO wordsmith
-  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
-  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
-  "theme.preview.apply": "Apply", // TODO wordsmith
-  "theme.preview.cancel": "Cancel", // TODO wordsmith
-  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
-  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
-  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
-  "theme.refused.title": "This file was not imported", // TODO wordsmith
-  "theme.refused.close": "Close", // TODO wordsmith
-  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
-  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
-  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
-  "theme.export.title": "Copy this theme", // TODO wordsmith
-  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
-  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
-  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
-  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
-  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
-  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
-  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
-  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
-  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
-  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
-  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+  "theme.title": "Tema",
+  "theme.description": "Bir görünüm seçin veya dosyadan içe aktarın.",
+  "theme.import": "İçe aktar",
+  "theme.export": "Dışa aktar",
+  "theme.remove": "Kaldır",
+  "theme.import.promise": "Bir tema yalnızca renkleri ve yazı tipini değiştirir. Kod çalıştıramaz, dosya yükleyemez veya bir sunucuya erişemez.",
+  "theme.preview.title": "Bu tema içe aktarılsın mı?",
+  "theme.preview.by": "{author} tarafından",
+  "theme.preview.halves.both": "Açık ve koyu",
+  "theme.preview.halves.light": "Yalnızca açık",
+  "theme.preview.halves.dark": "Yalnızca koyu",
+  "theme.preview.fills": "Eksik tarafını ({half}) varsayılan temadan doldurur.",
+  "theme.preview.apply": "Uygula",
+  "theme.preview.cancel": "İptal",
+  "theme.preview.contrast.pass": "Tüm kontrast kontrolleri başarılı.",
+  "theme.preview.contrast.fail": "{half}: {check} {ratio} ölçüyor. Alt sınır {floor}.",
+  "theme.preview.contrast.more": "ve {count} kontrol daha başarısız",
+  "theme.refused.title": "Bu dosya içe aktarılmadı",
+  "theme.refused.close": "Kapat",
+  "theme.library.full": "Zaten içe aktarılmış {count} temanız var. Birini kaldırın, ardından tekrar içe aktarın.",
+  "theme.library.duplicate": "Bu kimliğe sahip bir tema zaten içe aktarılmış. Önce onu kaldırın veya dosyadaki \"id\" değerini değiştirin.",
+  "theme.library.invalid": "Bu tema kontrolü geçemedi. Dosyayı tekrar seçin.",
+  "theme.export.title": "Bu temayı kopyala",
+  "theme.refusal.size": "Bu dosya bir tema için fazla büyük.",
+  "theme.refusal.json": "Bu dosya bir JSON nesnesi değil.",
+  "theme.refusal.version": "Bu dosya, bu Collie sürümünün okumadığı bir tema sürümünü kullanıyor.",
+  "theme.refusal.id": "Kimlik geçerli değil.",
+  "theme.refusal.name": "Ad geçerli değil.",
+  "theme.refusal.author": "Yazar geçerli değil.",
+  "theme.refusal.unknown-key": "Dosya, bir temanın parçası olmayan bir anahtar içeriyor.",
+  "theme.refusal.value": "Bir renk değeri geçerli değil.",
+  "theme.refusal.font": "Yazı tipi seçimi geçerli değil.",
+  "theme.refusal.no-half": "Dosya hiçbir renk ayarlamıyor.",
+  "theme.refusal.reserved-id": "Bu kimlik, birlikte gelen bir temaya ait. Kendi kopyanızı içe aktarmak için dosyadaki \"id\" değerini değiştirin.",
+  "theme.refusal.mark": "Başlık işareti, birlikte gelen işaretlerden biri değil.",
   "settings.haptics.title": "Dokunsal geri bildirim",
   "settings.haptics.description": "Bir tuşa veya hızlı yanıta bastığınızda kısa bir titreşim.",
   "settings.install.title": "Uygulamayı yükle",
@@ -209,9 +209,9 @@ export const tr: Dictionary = {
   "settings.typeface.note.system": "Telefonunuzun kendi yazı tipi. Hiçbir şey indirmez.",
   "settings.typeface.note.grotesk": "Collie'nin kendi sesi, işaretle eşleşecek şekilde çizildi.",
   "settings.typeface.note.aldrich": "Tek ağırlık, bu yüzden kalın metin normal metinle aynı görünür.",
-  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
-  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
-  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "Sakin ve hümanist, gerçek kalın yazı tipi ve eşit genişlikte rakamlar.",
+  "settings.typeface.note.geist": "Sade ve geometrik, gerçek kalın yazı tipi.",
+  "settings.typeface.note.atkinson": "Düşük görme yetisi için yapılmış, net harfler ve gerçek kalın yazı tipi.",
   "settings.typeface.note.operator": "Bu collie'nin operatörü tarafından eklendi.",
   "settings.fonts.title": "Terminal yazı tipi",
   "settings.fonts.description": "Bu cihazdaki terminal yansıması ve taslak alanı.",
@@ -246,29 +246,29 @@ export const tr: Dictionary = {
   "composer.controls.agent": "Ajan",
   "composer.controls.displayAria": "Ekran ayarları",
   "composer.controls.display": "Ekran",
-  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
-  "composer.controls.screen": "Screen", // TODO wordsmith
+  "composer.controls.screenAria": "Kartlar olmadan ekran satırlarını göster",
+  "composer.controls.screen": "Ekran",
   "composer.controls.clear": "Mesajı temizle",
   "composer.controls.undoClear": "Temizlemeyi geri al",
   "composer.sentPreview.label": "Gönderdiğiniz:",
   "composer.placeholder.gone": "Bölme kapandı",
   "composer.placeholder.readOnly": "Yalnızca okunur: yetki yok",
   "composer.placeholder.noMuxSend": "Bu terminale yazılamıyor",
-  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
-  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
-  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
-  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
-  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
-  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
+  "composer.placeholder.unreachable": "Giriş kutusuna ulaşılamıyor",
+  "composer.placeholder.sendOff": "Bu makinede gönderme kapalı",
+  "composer.placeholder.dialogWaiting": "Diyalog bekliyor",
+  "composer.placeholder.menuWaiting": "Menü bekliyor",
+  "composer.placeholder.permissionWaiting": "İzin bekliyor",
+  "composer.placeholder.questionWaiting": "Soru bekliyor",
   "composer.placeholder.direct": "Terminale yazın…",
-  "composer.placeholder.running": "The agent is working", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
-  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
-  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
+  "composer.placeholder.running": "Ajan çalışıyor",
+  "composer.placeholder.draft": "Kutuda bir taslak var",
+  "composer.placeholder.unreadable": "Açık olan okunamıyor",
+  "composer.placeholder.noMatch": "Giriş kutusu bulunamadı",
+  "composer.placeholder.contested": "İki okuma uyuşmuyor",
+  "composer.placeholder.stale": "Son okuma {age} önce",
+  "composer.placeholder.staleNoAge": "Son okuma eski",
+  "composer.placeholder.torn": "Ekran hareket ediyordu",
   "composer.placeholder.shell": "Bir kabuk komutu yazın…",
   "composer.placeholder.reply": "Bir yanıt yazın…",
   "composer.mic.unavailable": "Ses girişi kullanılamıyor",
@@ -291,7 +291,7 @@ export const tr: Dictionary = {
   "composer.attach.removeAria": "{name} öğesini kaldır",
   "composer.attach.inFront": "İşareti metninizde yok, bu nedenle Gönder {name} öğesini başa ekler.",
   "composer.send.reallySend": "Gerçekten gönderilsin mi?",
-  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
+  "composer.send.dialogFirst": "Diyaloğu yanıtlayın",
   "composer.send.stopTypingAria": "Uçbirime yazmayı durdur",
   "composer.send.sendAria": "Gönder",
   "composer.send.reconnect": "Göndermek için yeniden bağlanın",
@@ -318,10 +318,10 @@ export const tr: Dictionary = {
   "composer.protocol.draft": "Kutuda zaten bir taslak var. Ekle, değiştir veya iptal et.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
   "composer.protocol.unconfirmed": "Collie bu ekranı okuyamıyor. Bölmeyi kontrol et, sonra Buraya yaz'a dokun.",
-  "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini bilmiyor. Yeniden göndermeden önce bölmeyi kontrol et.",
+  "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini belirleyemiyor. Ekranı okuyun, gitmediyse tekrar gönderin. Taslağınız saklanır.",
   "composer.protocol.busy": "Bu bölmeye başka bir gönderim hâlâ sürüyor. Bekle ve yeniden dene.",
   "composer.protocol.notFree": "Giriş kutusu boş değil. Hiçbir şey yazılmadı.",
-  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
+  "composer.protocol.bound": "Ekran okunacak kadar uzun süre sabit durmadı. Hiçbir şey yazılmadı. Tekrar deneyin.",
   "composer.protocol.probeFailed": "Yazılan giriş kutusuna ulaşmadı, bu yüzden hiçbir şey yazılmadı. Bölmeyi kontrol et.",
   "composer.protocol.reservedLead": "/ ! veya @ ile başlayan metnin kendi yolu var. Hiçbir şey yazılmadı.",
   "composer.protocol.moved": "Ekran değişti. Bölmeyi kontrol et, sonra yeniden gönder.",
@@ -337,32 +337,32 @@ export const tr: Dictionary = {
   "composer.protocol.discard": "At",
   "composer.protocol.commit": "Buraya yaz",
   "composer.protocol.keys": "Tuşlar",
-  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
-  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
-  "sendReceipts.title": "Recent sends", // TODO wordsmith
-  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
-  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
-  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
-  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
-  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
-  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
-  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
-  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
-  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
+  "composer.protocol.openKeys": "Tuşları Aç",
+  "composer.protocol.capConfirm": "Son bir gün içinde {harness} {version} üzerinde Collie tarafından okunamayan bir ekranı geçerek {count} kez yazdınız. Ekranı kontrol edin, ardından yazmak için bir kez daha onaylayın.",
+  "composer.protocol.commitCap": "Onayla ve yaz",
+  "sendReceipts.title": "Son gönderilenler",
+  "sendReceipts.empty": "Bu bölmeye henüz bir şey gönderilmedi.",
+  "sendReceipts.outcome.sent": "Gönderildi",
+  "sendReceipts.outcome.effective": "Onaylandı",
+  "sendReceipts.outcome.typed_not_submitted": "Yazıldı, gönderilmedi",
+  "sendReceipts.outcome.refused": "Reddedildi",
+  "sendReceipts.outcome.unknown": "Bilinmiyor",
+  "sendReceipts.keys": "Tuşlar: {keys}",
+  "sendReceipts.noKeys": "Hiçbir tuş gönderilmedi.",
+  "sendReceipts.gaps": "Beklendi: {gaps}",
   "composer.protocol.dismissAria": "Gönderim seçeneklerini kapat",
-  "composer.surface.free": "The input box was free.", // TODO wordsmith
-  "composer.surface.running": "The agent was working.", // TODO wordsmith
-  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
-  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
-  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
-  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
-  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
-  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
-  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
-  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
-  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
-  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
+  "composer.surface.free": "Girdi kutusu boştu.",
+  "composer.surface.running": "Ajan çalışıyordu.",
+  "composer.surface.askMenu": "Bir menü açıktı.",
+  "composer.surface.askPermission": "Bir izin sorusu açıktı.",
+  "composer.surface.askQuestion": "Bir soru açıktı.",
+  "composer.surface.unreadable": "Kutunun üzerinde Collie tarafından okunamayan bir şey açıktı.",
+  "composer.surface.draft": "Kutuda bir taslak vardı.",
+  "composer.surface.unreachable": "Girdi kutusuna ulaşılamadı.",
+  "composer.surface.unknown": "Collie girdi kutusunu bulamadı.",
+  "composer.surface.stale": "Ekranın son okuması çok eskiydi.",
+  "composer.surface.torn": "Collie ekranı okurken ekran değişti.",
+  "composer.surface.contested": "Ekranın iki okuması birbiriyle uyuşmadı.",
   "composer.offline.draftNote": "Taslak bu telefonda kalır ve asla kendiliğinden gönderilmez.",
   "composer.offline.draftNote.dismissAria": "Çevrimdışı taslak notunu kapat",
   "composer.draftPreview.title": "Terminalde taslak",
@@ -391,13 +391,10 @@ export const tr: Dictionary = {
   "chat.copyOutput.failed": "Çıktı kopyalanamadı",
   "chat.paneMenu.aria": "Bölme eylemleri",
   "chat.header.openOverviewAria": "{workspace} genel bakışını aç{status}",
-  // TODO wordsmith
-  "chat.progress.aria": "Progress",
+  "chat.progress.aria": "İlerleme",
   "chat.progress.percent": "{value}%",
-  // TODO wordsmith
-  "chat.header.step": "Step {n} of {m}: {label}",
-  // TODO wordsmith
-  "chat.header.percent": "{value}%: {label}",
+  "chat.header.step": "Adım {n} / {m}: {label}",
+  "chat.header.percent": "%{value}: {label}",
   "chat.header.openPaneSettingsAria": "{name} için bölme ayarları",
   "chat.header.statusAria": ", {label}",
   "chat.header.agentGone": "(aracı gitti)",
@@ -434,10 +431,10 @@ export const tr: Dictionary = {
   "chat.status.feedbackSent": "Geri bildirim gönderildi",
   "chat.status.sent": "Gönderildi",
   "chat.status.menuChanged": "Menü değişti, yenileniyor",
-  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
-  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
-  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
-  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
+  "chat.status.askChanged": "İletişim kutusu değişti; kart yeni olanı gösteriyor",
+  "chat.status.askMismatch": "Vurgu seçiminize ulaşmadı, bu nedenle hiçbir şey onaylanmadı",
+  "chat.status.askGone": "İletişim kutusu kapandı; Collie ekranı tekrar okudu",
+  "chat.status.askUnknown": "Cevabın gittiğine dair kanıt yok; ekran ne olduğunu gösteriyor",
   "chat.status.sendFailed": "Gönderme başarısız",
   "chat.status.wizardChanged": "Sihirbaz değişti, yenileniyor",
   "chat.status.noteSaved": "Not kaydedildi",
@@ -454,8 +451,7 @@ export const tr: Dictionary = {
   "chat.mode.noChat": "{reason} Terminal burada kalır.",
   "chat.stream.empty": "Başlamak için bir mesaj gönderin.",
   "chat.stream.working": "Hâlâ çalışıyor…",
-  // TODO wordsmith
-  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
+  "chat.stream.questionPending": "Uçbirimde bir soru bekliyor. Bir sonraki iletiniz bu soruyu yanıtlar.",
   "chat.stream.queued": "Göndermek için bekleniyor",
   "chat.pin.label": "İsteminiz",
   "chat.pin.earlier": "Soru daha geride · Daha eskileri yükle",
@@ -521,19 +517,14 @@ export const tr: Dictionary = {
   "prompt.sendingAria": "Gönderiliyor",
   "prompt.reconnectNote": "Yanıtlamak için yeniden bağlanın.",
   "ask.caption": "Needs your answer",
-  // TODO wordsmith
-  "ask.captionNamed": "Needs your answer · {name}",
+  "ask.captionNamed": "Yanıtınız gerekiyor · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Kabul edilmedi. Soru birazdan tekrar gösterilebilir.",
-  // TODO wordsmith
-  "ask.decidedInProgram": "Decided in the program.",
-  // TODO wordsmith
-  "ask.timedOut": "Timed out before an answer.",
-  // TODO wordsmith
-  "ask.expiresIn": "Expires in {time}",
-  // TODO wordsmith
-  "ask.expired": "Expired",
+  "ask.decidedInProgram": "Programda kararlaştırıldı.",
+  "ask.timedOut": "Bir yanıt verilmeden önce zaman aşımına uğradı.",
+  "ask.expiresIn": "{time} içinde süresi doluyor",
+  "ask.expired": "Süresi doldu",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -548,8 +539,7 @@ export const tr: Dictionary = {
   "ask.maybe": "May already be applied. Check the chat.",
   "ask.showMore": "Show {count} more",
   "ask.showFewer": "Show fewer",
-  // TODO wordsmith
-  "ask.send": "Send",
+  "ask.send": "Gönder",
   "ask.required": "Required",
   "ask.choose": "Choose",
   "ask.pickMany": "Pick any number",
@@ -572,105 +562,58 @@ export const tr: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
-  // TODO wordsmith
-  "durable.composer.sending": "Sending…",
+  "durable.composer.sending": "Gönderiliyor…",
   "durable.pending.sending": "Sending",
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
-  // TODO wordsmith
-  "durable.action.done": "Done",
-  // TODO wordsmith
-  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
-  // TODO wordsmith
-  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
-  // TODO wordsmith
-  "durable.action.refused": "The action was refused.",
-  // TODO wordsmith
-  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
-  // TODO wordsmith
-  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
-  // TODO wordsmith
-  "conversations.title": "Conversations",
-  // TODO wordsmith
-  "conversations.fallbackTitle": "Conversation",
-  // TODO wordsmith
-  "conversations.back": "Back",
-  // TODO wordsmith
-  "conversations.state.open": "Open",
-  // TODO wordsmith
-  "conversations.state.closed": "Closed",
-  // TODO wordsmith
-  "conversations.items.one": "{count} item",
-  // TODO wordsmith
-  "conversations.items.other": "{count} items",
-  // TODO wordsmith
-  "conversations.untitled": "Untitled conversation",
-  // TODO wordsmith
-  "conversations.range": "{start} to {end}",
-  // TODO wordsmith
-  "conversations.here": "Shown in this pane",
-  // TODO wordsmith
-  "conversations.loadMore": "Load more",
-  // TODO wordsmith
-  "conversations.loading": "Loading…",
-  // TODO wordsmith
-  "conversations.empty": "This program has no conversations yet.",
-  // TODO wordsmith
-  "session.experimental": "Experimental",
-  // TODO wordsmith
+  "durable.action.done": "Bitti",
+  "durable.action.moved": "Konuşma ilerledi, bu nedenle eylem çalıştırılmadı. Kontrol edin, ardından hâlâ istiyorsanız düğmeye tekrar dokunun.",
+  "durable.action.older": "Bu makine eski bir Collie sürümü çalıştırıyor ve buradaki eylemleri çalıştıramaz. Makineyi güncelleyin.",
+  "durable.action.refused": "Eylem reddedildi.",
+  "durable.action.unknown": "Eylemin ulaştığından emin olunamadı. Bir kez yeniden denemek için düğmeye tekrar dokunun.",
+  "durable.action.maybe": "Eylem zaten çalıştırılmış olabilir. Düğmeye tekrar dokunmadan önce sohbeti kontrol edin.",
+  "conversations.title": "Konuşmalar",
+  "conversations.fallbackTitle": "Konuşma",
+  "conversations.back": "Geri",
+  "conversations.state.open": "Açık",
+  "conversations.state.closed": "Kapalı",
+  "conversations.items.one": "{count} öge",
+  "conversations.items.other": "{count} öge",
+  "conversations.untitled": "Başlıksız konuşma",
+  "conversations.range": "{start} - {end}",
+  "conversations.here": "Bu bölmede gösteriliyor",
+  "conversations.loadMore": "Daha fazla yükle",
+  "conversations.loading": "Yükleniyor…",
+  "conversations.empty": "Bu programda henüz konuşma yok.",
+  "session.experimental": "Deneysel",
   "space.program.line": "{mux}, {where}",
-  // TODO wordsmith
-  "space.program.where.local": "local",
-  // TODO wordsmith
-  "space.program.where.remote": "remote",
-  // TODO wordsmith
-  "space.program.state.ready": "Ready",
-  // TODO wordsmith
-  "space.program.state.starting": "Starting",
-  // TODO wordsmith
-  "space.program.state.unreachable": "Unreachable",
-  // TODO wordsmith
-  "space.program.state.versionMismatch": "Version mismatch",
-  // TODO wordsmith
+  "space.program.where.local": "yerel",
+  "space.program.where.remote": "uzak",
+  "space.program.state.ready": "Hazır",
+  "space.program.state.starting": "Başlatılıyor",
+  "space.program.state.unreachable": "Erişilemiyor",
+  "space.program.state.versionMismatch": "Sürüm uyuşmazlığı",
   "space.program.member": "{line}, {member}",
-  // TODO wordsmith
-  "space.program.open.one": "{count} open conversation",
-  // TODO wordsmith
-  "space.program.open.other": "{count} open conversations",
-  // TODO wordsmith
-  "space.program.waiting.one": "{count} conversation waits on you",
-  // TODO wordsmith
-  "space.program.waiting.other": "{count} conversations wait on you",
-  // TODO wordsmith
-  "home.programs.title": "Programs",
-  // TODO wordsmith
-  "conversations.unsupported": "This program does not keep a list of its conversations.",
-  // TODO wordsmith
-  "conversations.unreachable": "The program did not answer. Try again in a moment.",
-  // TODO wordsmith
-  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
-  // TODO wordsmith
-  "conversations.gone": "This conversation no longer exists.",
-  // TODO wordsmith
-  "conversations.noItems": "This conversation has no items yet.",
-  // TODO wordsmith
-  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
-  // TODO wordsmith
-  "conversations.reopen": "Reopen",
-  // TODO wordsmith
-  "conversations.reopening": "Reopening…",
-  // TODO wordsmith
-  "conversations.reopenFailed": "Couldn't reopen the conversation",
-  // TODO wordsmith
-  "home.conversations.asks.one": "{count} open question",
-  // TODO wordsmith
-  "home.conversations.asks.other": "{count} open questions",
+  "space.program.open.one": "{count} açık konuşma",
+  "space.program.open.other": "{count} açık konuşma",
+  "space.program.waiting.one": "{count} konuşma sizi bekliyor",
+  "space.program.waiting.other": "{count} konuşma sizi bekliyor",
+  "home.programs.title": "Programlar",
+  "conversations.unsupported": "Bu program konuşmalarının listesini tutmuyor.",
+  "conversations.unreachable": "Program yanıt vermedi. Birazdan tekrar deneyin.",
+  "conversations.loadFailed": "Konuşmalar yüklenemedi. Tekrar deneyin.",
+  "conversations.gone": "Bu konuşma artık mevcut değil.",
+  "conversations.noItems": "Bu konuşmada henüz öge yok.",
+  "conversations.loadMoreFailed": "Daha fazlası yüklenemedi. Tekrar deneyin.",
+  "conversations.reopen": "Yeniden aç",
+  "conversations.reopening": "Yeniden açılıyor…",
+  "conversations.reopenFailed": "Konuşma yeniden açılamadı",
+  "home.conversations.asks.one": "{count} açık soru",
+  "home.conversations.asks.other": "{count} açık soru",
   "newPage.starters.none": "This machine's program offers no starters yet.",
-  // TODO wordsmith
-  "newPage.starters.label": "Starters",
-  // TODO wordsmith
-  "newPage.starters.title": "New conversation",
+  "newPage.starters.label": "Başlatıcılar",
+  "newPage.starters.title": "Yeni konuşma",
   "prompt.feedback.cancel": "İptal",
   "prompt.feedback.typedAria": "Uçbirimde geri bildirim",
   "prompt.feedback.planChange.offer": "Claude'a neyi değiştireceğini söyleyin",
@@ -697,8 +640,7 @@ export const tr: Dictionary = {
   "paneActions.rename.label": "Yeniden adlandır",
   "paneActions.rename.placeholder": "bu bölmeyi adlandırın",
   "paneActions.close.label": "Bölmeyi kapat",
-  // TODO wordsmith
-  "paneActions.close.conversation": "Close conversation",
+  "paneActions.close.conversation": "Konuşmayı kapat",
   "paneActions.close.confirm": "Kapatmak için tekrar dokunun",
   "paneActions.close.closing": "Kapatılıyor…",
   "paneActions.focus.labelWithMux": "{mux} içinde odaklan",
@@ -1035,18 +977,12 @@ export const tr: Dictionary = {
   "space.tab.renameFailed": "Yeniden adlandırılamadı",
   "space.tab.closeFailed": "Kapatılamadı",
   "space.tab.closed": "Sekme kapatıldı",
-  // TODO wordsmith
-  "space.space.titleFallback": "Space",
-  // TODO wordsmith
-  "space.space.titleWithLabel": "Space {label}",
-  // TODO wordsmith
-  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
-  // TODO wordsmith
-  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
-  // TODO wordsmith
-  "space.space.empty.fallback": "This program offers no actions for a space.",
-  // TODO wordsmith
-  "space.space.placeholder": "name this space",
+  "space.space.titleFallback": "Alan",
+  "space.space.titleWithLabel": "{label} alanı",
+  "space.space.readOnly": "Salt okunur. Bu cihazın alanları yeniden adlandırma yetkisi yok.",
+  "space.space.hostBlockSuffix": "{hostBlock}. Yanıt verene kadar yeniden adlandırma kullanılamaz.",
+  "space.space.empty.fallback": "Bu program bir alan için hiçbir eylem sunmuyor.",
+  "space.space.placeholder": "bu alanı adlandırın",
   "space.readOnly.notPaired": "Eşleşmedi, bu cihazı Ayarlar'da eşleyin",
   "space.readOnly.expired": "Eşleme süresi doldu. Ayarlar'da tekrar eşleyin",
   "space.readOnly.deviceUnauthorised": "Salt okunur, cihaza yetki verilmedi",
@@ -1378,10 +1314,8 @@ export const tr: Dictionary = {
   "apiError.tab.create_failed": "Sekme oluşturulamadı: {reason}",
   "apiError.tab.rename_failed": "Sekme yeniden adlandırılamadı: {reason}",
   "apiError.tab.close_failed": "Sekme kapatılamadı: {reason}",
-  // TODO wordsmith
-  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
-  // TODO wordsmith
-  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
+  "apiError.space.rename_failed": "Alan yeniden adlandırılamadı: {reason}",
+  "apiError.durable.reopen_failed": "Konuşma yeniden açılamadı: {reason}",
   "apiError.tab.workspace_required": "Yeni sekme için alan adı belirtilmedi.",
   "apiError.launch.not_allowlisted": "Bu komut başlatıcılarınızdan biri değil",
   "apiError.launch.unknown_harness": "Bu makine {harness} başlatmıyor.",

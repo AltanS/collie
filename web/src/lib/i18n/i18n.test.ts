@@ -25,29 +25,6 @@ beforeEach(() => {
   __resetLocale();
 });
 
-/** The keys M56 spec 07 added, English in every locale until the wordsmith pass translates them. */
-const WAY_OUT_PENDING_WORDSMITH: ReadonlySet<string> = new Set([
-  "composer.placeholder.running",
-  "composer.placeholder.draft",
-  "composer.placeholder.unreadable",
-  "composer.placeholder.noMatch",
-  "composer.placeholder.contested",
-  "composer.placeholder.stale",
-  "composer.placeholder.staleNoAge",
-  "composer.placeholder.torn",
-  "composer.controls.screenAria",
-  "composer.controls.screen",
-  "composer.protocol.openKeys",
-  // M56 spec 08: the ask answer's status lines, English until the same wordsmith pass.
-  "chat.status.askChanged",
-  "chat.status.askMismatch",
-  "chat.status.askGone",
-  "chat.status.askUnknown",
-]);
-
-/** The keys M56 spec 09 added (the cap's sentences and the receipts list), English until the wordsmith pass. */
-const COUNTERS_PENDING_WORDSMITH = (key: string): boolean => key.startsWith("sendReceipts.") || key === "composer.protocol.capConfirm" || key === "composer.protocol.commitCap";
-
 describe("isLocale", () => {
   it("narrows the twelve we ship and refuses everything else", () => {
     expect(isLocale("de")).toBe(true);
@@ -283,15 +260,7 @@ describe("every translated dictionary", () => {
 
       // A bundle that is English in disguise would pass every check below. A few strings are
       // legitimately identical (a unit, a name, a placeholder); a copied bundle makes nearly all so.
-      //
-      // The `theme.*` keys are left out of the count until the wordsmith pass has translated them
-      // (M57 spec 05, 2026-10-15): they carry the English text on purpose, with a `// TODO wordsmith`
-      // on the line, and thirty-four of them tipped de, es, fr and it past the tenth. Drop the
-      // exemption, and this comment, when that pass lands.
-      //
-      // The way-out sentences of M56 spec 07 are left out the same way (`WAY_OUT_PENDING_WORDSMITH`), for
-      // the same reason: English on purpose, marked `// TODO wordsmith`, until that pass lands.
-      const sameAsEnglish = englishKeys.filter((key) => !key.startsWith("theme.") && !WAY_OUT_PENDING_WORDSMITH.has(key) && !COUNTERS_PENDING_WORDSMITH(key) && dictionary[key] === en[key]);
+      const sameAsEnglish = englishKeys.filter((key) => dictionary[key] === en[key]);
       expect(sameAsEnglish.length, `${code} looks like English`).toBeLessThan(englishKeys.length / 10);
 
       for (const key of englishKeys) {

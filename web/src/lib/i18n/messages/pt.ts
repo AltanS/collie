@@ -30,47 +30,47 @@ export const pt: Dictionary = {
   "settings.section.machines.title": "Máquinas",
   "settings.section.machines.blurb": "CPU, memória, disco, rede, regras de alerta",
   "settings.nav.back": "Voltar",
-  "settings.theme.title": "Tema",
+  "settings.theme.title": "Aparência",
   "settings.theme.description": "Siga o seu celular ou fixe um.",
   "settings.theme.option.system": "Sistema",
   "settings.theme.option.light": "Claro",
   "settings.theme.option.dark": "Escuro",
 
-  "theme.title": "Theme", // TODO wordsmith
-  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
-  "theme.import": "Import", // TODO wordsmith
-  "theme.export": "Export", // TODO wordsmith
-  "theme.remove": "Remove", // TODO wordsmith
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
-  "theme.preview.title": "Import this theme?", // TODO wordsmith
-  "theme.preview.by": "By {author}", // TODO wordsmith
-  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
-  "theme.preview.halves.light": "Light only", // TODO wordsmith
-  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
-  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
-  "theme.preview.apply": "Apply", // TODO wordsmith
-  "theme.preview.cancel": "Cancel", // TODO wordsmith
-  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
-  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
-  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
-  "theme.refused.title": "This file was not imported", // TODO wordsmith
-  "theme.refused.close": "Close", // TODO wordsmith
-  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
-  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
-  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
-  "theme.export.title": "Copy this theme", // TODO wordsmith
-  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
-  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
-  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
-  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
-  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
-  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
-  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
-  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
-  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
-  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
-  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+  "theme.title": "Tema",
+  "theme.description": "Escolha um visual ou importe um de um arquivo.",
+  "theme.import": "Importar",
+  "theme.export": "Exportar",
+  "theme.remove": "Remover",
+  "theme.import.promise": "Um tema altera apenas as cores e a tipografia. Ele não pode executar código, carregar arquivos nem acessar um servidor.",
+  "theme.preview.title": "Importar este tema?",
+  "theme.preview.by": "Por {author}",
+  "theme.preview.halves.both": "Claro e escuro",
+  "theme.preview.halves.light": "Apenas claro",
+  "theme.preview.halves.dark": "Apenas escuro",
+  "theme.preview.fills": "Ele preenche o lado ausente ({half}) a partir do tema padrão.",
+  "theme.preview.apply": "Aplicar",
+  "theme.preview.cancel": "Cancelar",
+  "theme.preview.contrast.pass": "Todas as verificações de contraste passaram.",
+  "theme.preview.contrast.fail": "{half}: {check} mede {ratio}. O mínimo é {floor}.",
+  "theme.preview.contrast.more": "e mais {count} verificações falharam",
+  "theme.refused.title": "Este arquivo não foi importado",
+  "theme.refused.close": "Fechar",
+  "theme.library.full": "Você já possui {count} temas importados. Remova um e importe novamente.",
+  "theme.library.duplicate": "Um tema com este ID já foi importado. Remova-o primeiro ou altere \"id\" no arquivo.",
+  "theme.library.invalid": "Este tema não passou na verificação. Escolha o arquivo novamente.",
+  "theme.export.title": "Copiar este tema",
+  "theme.refusal.size": "Este arquivo é grande demais para um tema.",
+  "theme.refusal.json": "Este arquivo não é um objeto JSON.",
+  "theme.refusal.version": "Este arquivo usa uma versão de tema que este Collie não lê.",
+  "theme.refusal.id": "O ID não é válido.",
+  "theme.refusal.name": "O nome não é válido.",
+  "theme.refusal.author": "O autor não é válido.",
+  "theme.refusal.unknown-key": "O arquivo contém uma chave que não faz parte de um tema.",
+  "theme.refusal.value": "Um valor de cor não é válido.",
+  "theme.refusal.font": "A escolha da fonte não é válida.",
+  "theme.refusal.no-half": "O arquivo não define cores.",
+  "theme.refusal.reserved-id": "Este ID pertence a um tema incluído. Altere \"id\" no arquivo para importar sua cópia.",
+  "theme.refusal.mark": "A marca do cabeçalho não é uma das marcas incluídas.",
   "settings.haptics.title": "Vibração",
   "settings.haptics.description": "Uma vibração curta ao pressionar uma tecla ou uma resposta rápida.",
   "settings.install.title": "Instalar o app",
@@ -209,9 +209,9 @@ export const pt: Dictionary = {
   "settings.typeface.note.system": "A fonte do seu telefone. Não baixa nada.",
   "settings.typeface.note.grotesk": "A voz do próprio Collie, desenhada para combinar com a marca.",
   "settings.typeface.note.aldrich": "Um peso só, então o texto em negrito fica igual ao normal.",
-  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
-  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
-  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "Calmo e humanista, com negrito real e algarismos de largura uniforme.",
+  "settings.typeface.note.geist": "Simples e geométrico, com negrito real.",
+  "settings.typeface.note.atkinson": "Feito para baixa visão, com letras claras e negrito real.",
   "settings.typeface.note.operator": "Adicionada pelo operador deste collie.",
   "settings.fonts.title": "Fonte do terminal",
   "settings.fonts.description": "O espelho do terminal e o campo de rascunho, neste dispositivo.",
@@ -246,29 +246,29 @@ export const pt: Dictionary = {
   "composer.controls.agent": "Agent",
   "composer.controls.displayAria": "Configurações de exibição",
   "composer.controls.display": "Tela",
-  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
-  "composer.controls.screen": "Screen", // TODO wordsmith
+  "composer.controls.screenAria": "Mostrar as linhas da tela, sem cartões",
+  "composer.controls.screen": "Tela",
   "composer.controls.clear": "Limpar mensagem",
   "composer.controls.undoClear": "Desfazer limpeza",
   "composer.sentPreview.label": "Você enviou:",
   "composer.placeholder.gone": "O painel sumiu",
   "composer.placeholder.readOnly": "Somente leitura: não autorizado",
   "composer.placeholder.noMuxSend": "Não é possível digitar neste terminal",
-  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
-  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
-  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
-  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
-  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
-  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
+  "composer.placeholder.unreachable": "Não é possível alcançar a caixa de entrada",
+  "composer.placeholder.sendOff": "O envio está desativado nesta máquina",
+  "composer.placeholder.dialogWaiting": "Aguardando diálogo",
+  "composer.placeholder.menuWaiting": "Aguardando menu",
+  "composer.placeholder.permissionWaiting": "Aguardando permissão",
+  "composer.placeholder.questionWaiting": "Aguardando pergunta",
   "composer.placeholder.direct": "Digite no terminal…",
-  "composer.placeholder.running": "The agent is working", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
-  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
-  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
+  "composer.placeholder.running": "O agente está trabalhando",
+  "composer.placeholder.draft": "Há um rascunho na caixa",
+  "composer.placeholder.unreadable": "Não foi possível ler o que está aberto",
+  "composer.placeholder.noMatch": "Caixa de entrada não encontrada",
+  "composer.placeholder.contested": "Duas leituras discordam",
+  "composer.placeholder.stale": "Última leitura há {age}",
+  "composer.placeholder.staleNoAge": "A última leitura é antiga",
+  "composer.placeholder.torn": "A tela estava em movimento",
   "composer.placeholder.shell": "Digite um comando shell…",
   "composer.placeholder.reply": "Digite uma resposta…",
   "composer.mic.unavailable": "Entrada de voz indisponível",
@@ -291,7 +291,7 @@ export const pt: Dictionary = {
   "composer.attach.removeAria": "Remover {name}",
   "composer.attach.inFront": "O marcador sumiu do texto, então Enviar coloca {name} na frente.",
   "composer.send.reallySend": "Enviar mesmo?",
-  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
+  "composer.send.dialogFirst": "Responda ao diálogo",
   "composer.send.stopTypingAria": "Parar de digitar no terminal",
   "composer.send.sendAria": "Enviar",
   "composer.send.reconnect": "Reconecte para enviar",
@@ -318,10 +318,10 @@ export const pt: Dictionary = {
   "composer.protocol.draft": "A caixa já tem um rascunho. Acrescente, substitua ou cancele.",
   "composer.protocol.typed": "Seu texto está na caixa, mas o Enter não foi pressionado. Envie ou descarte.",
   "composer.protocol.unconfirmed": "O Collie não consegue ler esta tela. Confira o painel e toque em Digitar aqui.",
-  "composer.protocol.unknown": "O Collie não sabe se foi enviado. Confira o painel antes de enviar de novo.",
+  "composer.protocol.unknown": "O Collie não consegue identificar se isso foi enviado. Leia a tela e tente enviar novamente se o envio não tiver ocorrido. Seu rascunho foi mantido.",
   "composer.protocol.busy": "Outro envio para este painel ainda está em andamento. Aguarde e tente de novo.",
   "composer.protocol.notFree": "A caixa de entrada não está livre. Nada foi digitado.",
-  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
+  "composer.protocol.bound": "A tela não ficou estável tempo suficiente para ser lida. Nada foi digitado. Tente novamente.",
   "composer.protocol.probeFailed": "A digitação não chegou à caixa de entrada, então nada foi digitado. Confira o painel.",
   "composer.protocol.reservedLead": "Um texto que começa com / ! ou @ tem seu próprio caminho. Nada foi digitado.",
   "composer.protocol.moved": "A tela mudou. Confira o painel e envie de novo.",
@@ -337,32 +337,32 @@ export const pt: Dictionary = {
   "composer.protocol.discard": "Descartar",
   "composer.protocol.commit": "Digitar aqui",
   "composer.protocol.keys": "Teclas",
-  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
-  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
-  "sendReceipts.title": "Recent sends", // TODO wordsmith
-  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
-  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
-  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
-  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
-  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
-  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
-  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
-  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
-  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
+  "composer.protocol.openKeys": "Abrir teclas",
+  "composer.protocol.capConfirm": "Você digitou através de uma tela que o Collie não consegue ler {count} vezes no {harness} {version} no último dia. Verifique a tela e confirme mais uma vez para digitar.",
+  "composer.protocol.commitCap": "Confirmar e digitar",
+  "sendReceipts.title": "Envios recentes",
+  "sendReceipts.empty": "Nenhum envio para este painel ainda.",
+  "sendReceipts.outcome.sent": "Enviado",
+  "sendReceipts.outcome.effective": "Confirmado",
+  "sendReceipts.outcome.typed_not_submitted": "Digitado, não enviado",
+  "sendReceipts.outcome.refused": "Recusado",
+  "sendReceipts.outcome.unknown": "Desconhecido",
+  "sendReceipts.keys": "Teclas: {keys}",
+  "sendReceipts.noKeys": "Nenhuma tecla foi enviada.",
+  "sendReceipts.gaps": "Aguardou: {gaps}",
   "composer.protocol.dismissAria": "Fechar as opções de envio",
-  "composer.surface.free": "The input box was free.", // TODO wordsmith
-  "composer.surface.running": "The agent was working.", // TODO wordsmith
-  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
-  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
-  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
-  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
-  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
-  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
-  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
-  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
-  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
-  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
+  "composer.surface.free": "A caixa de entrada estava livre.",
+  "composer.surface.running": "O agente estava trabalhando.",
+  "composer.surface.askMenu": "Um menu estava aberto.",
+  "composer.surface.askPermission": "Uma pergunta de permissão estava aberta.",
+  "composer.surface.askQuestion": "Uma pergunta estava aberta.",
+  "composer.surface.unreadable": "Algo que o Collie não consegue ler estava aberto sobre a caixa.",
+  "composer.surface.draft": "A caixa continha um rascunho.",
+  "composer.surface.unreachable": "A caixa de entrada não pôde ser alcançada.",
+  "composer.surface.unknown": "O Collie não conseguiu encontrar a caixa de entrada.",
+  "composer.surface.stale": "A última leitura da tela era muito antiga.",
+  "composer.surface.torn": "A tela mudou enquanto o Collie a lia.",
+  "composer.surface.contested": "Duas leituras da tela não coincidiram.",
   "composer.offline.draftNote": "O rascunho fica neste telefone e nunca é enviado sozinho.",
   "composer.offline.draftNote.dismissAria": "Dispensar a nota de rascunho offline",
   "composer.draftPreview.title": "Rascunho no terminal",
@@ -391,12 +391,9 @@ export const pt: Dictionary = {
   "chat.copyOutput.failed": "Não foi possível copiar a saída",
   "chat.paneMenu.aria": "Ações do painel",
   "chat.header.openOverviewAria": "Abrir visão geral de {workspace}{status}",
-  // TODO wordsmith
-  "chat.progress.aria": "Progress",
+  "chat.progress.aria": "Progresso",
   "chat.progress.percent": "{value}%",
-  // TODO wordsmith
-  "chat.header.step": "Step {n} of {m}: {label}",
-  // TODO wordsmith
+  "chat.header.step": "Etapa {n} de {m}: {label}",
   "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "Configurações do painel de {name}",
   "chat.header.statusAria": ", {label}",
@@ -434,10 +431,10 @@ export const pt: Dictionary = {
   "chat.status.feedbackSent": "Feedback enviado",
   "chat.status.sent": "Enviado",
   "chat.status.menuChanged": "Menu alterado, atualizando",
-  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
-  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
-  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
-  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
+  "chat.status.askChanged": "A caixa de diálogo mudou; o cartão mostra a nova",
+  "chat.status.askMismatch": "O destaque não alcançou a sua escolha, então nada foi confirmado",
+  "chat.status.askGone": "A caixa de diálogo desapareceu; o Collie leu a tela novamente",
+  "chat.status.askUnknown": "Sem comprovação de que a resposta foi enviada; a tela mostra o que aconteceu",
   "chat.status.sendFailed": "Falha no envio",
   "chat.status.wizardChanged": "Assistente alterado, atualizando",
   "chat.status.noteSaved": "Nota salva",
@@ -454,8 +451,7 @@ export const pt: Dictionary = {
   "chat.mode.noChat": "{reason} O terminal permanece aqui.",
   "chat.stream.empty": "Envie uma mensagem para começar.",
   "chat.stream.working": "Ainda trabalhando…",
-  // TODO wordsmith
-  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
+  "chat.stream.questionPending": "Uma pergunta está aguardando no terminal. Sua próxima mensagem a responde.",
   "chat.stream.queued": "Aguardando para enviar",
   "chat.pin.label": "Sua mensagem",
   "chat.pin.earlier": "A pergunta está mais atrás · Carregar anteriores",
@@ -521,19 +517,14 @@ export const pt: Dictionary = {
   "prompt.sendingAria": "Enviando",
   "prompt.reconnectNote": "Reconecte para responder.",
   "ask.caption": "Needs your answer",
-  // TODO wordsmith
-  "ask.captionNamed": "Needs your answer · {name}",
+  "ask.captionNamed": "Precisa da sua resposta · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "Não aceita. A pergunta pode aparecer novamente em instantes.",
-  // TODO wordsmith
-  "ask.decidedInProgram": "Decided in the program.",
-  // TODO wordsmith
-  "ask.timedOut": "Timed out before an answer.",
-  // TODO wordsmith
-  "ask.expiresIn": "Expires in {time}",
-  // TODO wordsmith
-  "ask.expired": "Expired",
+  "ask.decidedInProgram": "Decidido no programa.",
+  "ask.timedOut": "Tempo esgotado antes de uma resposta.",
+  "ask.expiresIn": "Expira em {time}",
+  "ask.expired": "Expirado",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -548,8 +539,7 @@ export const pt: Dictionary = {
   "ask.maybe": "May already be applied. Check the chat.",
   "ask.showMore": "Show {count} more",
   "ask.showFewer": "Show fewer",
-  // TODO wordsmith
-  "ask.send": "Send",
+  "ask.send": "Enviar",
   "ask.required": "Required",
   "ask.choose": "Choose",
   "ask.pickMany": "Pick any number",
@@ -572,105 +562,58 @@ export const pt: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
-  // TODO wordsmith
-  "durable.composer.sending": "Sending…",
+  "durable.composer.sending": "Enviando…",
   "durable.pending.sending": "Sending",
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
-  // TODO wordsmith
-  "durable.action.done": "Done",
-  // TODO wordsmith
-  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
-  // TODO wordsmith
-  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
-  // TODO wordsmith
-  "durable.action.refused": "The action was refused.",
-  // TODO wordsmith
-  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
-  // TODO wordsmith
-  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
-  // TODO wordsmith
-  "conversations.title": "Conversations",
-  // TODO wordsmith
-  "conversations.fallbackTitle": "Conversation",
-  // TODO wordsmith
-  "conversations.back": "Back",
-  // TODO wordsmith
-  "conversations.state.open": "Open",
-  // TODO wordsmith
-  "conversations.state.closed": "Closed",
-  // TODO wordsmith
+  "durable.action.done": "Concluído",
+  "durable.action.moved": "A conversa avançou, então a ação não foi executada. Verifique-a e toque no botão novamente se ainda a quiser.",
+  "durable.action.older": "Esta máquina executa uma versão mais antiga do Collie e não pode executar ações aqui. Atualize-a.",
+  "durable.action.refused": "A ação foi recusada.",
+  "durable.action.unknown": "Não há certeza se a ação chegou. Toque no botão novamente para tentar mais uma vez.",
+  "durable.action.maybe": "A ação já pode ter sido executada. Verifique o chat antes de tocar novamente.",
+  "conversations.title": "Conversas",
+  "conversations.fallbackTitle": "Conversa",
+  "conversations.back": "Voltar",
+  "conversations.state.open": "Aberto",
+  "conversations.state.closed": "Fechado",
   "conversations.items.one": "{count} item",
-  // TODO wordsmith
-  "conversations.items.other": "{count} items",
-  // TODO wordsmith
-  "conversations.untitled": "Untitled conversation",
-  // TODO wordsmith
-  "conversations.range": "{start} to {end}",
-  // TODO wordsmith
-  "conversations.here": "Shown in this pane",
-  // TODO wordsmith
-  "conversations.loadMore": "Load more",
-  // TODO wordsmith
-  "conversations.loading": "Loading…",
-  // TODO wordsmith
-  "conversations.empty": "This program has no conversations yet.",
-  // TODO wordsmith
+  "conversations.items.other": "{count} itens",
+  "conversations.untitled": "Conversa sem título",
+  "conversations.range": "{start} a {end}",
+  "conversations.here": "Exibido neste painel",
+  "conversations.loadMore": "Carregar mais",
+  "conversations.loading": "Carregando…",
+  "conversations.empty": "Este programa ainda não tem conversas.",
   "session.experimental": "Experimental",
-  // TODO wordsmith
   "space.program.line": "{mux}, {where}",
-  // TODO wordsmith
   "space.program.where.local": "local",
-  // TODO wordsmith
-  "space.program.where.remote": "remote",
-  // TODO wordsmith
-  "space.program.state.ready": "Ready",
-  // TODO wordsmith
-  "space.program.state.starting": "Starting",
-  // TODO wordsmith
-  "space.program.state.unreachable": "Unreachable",
-  // TODO wordsmith
-  "space.program.state.versionMismatch": "Version mismatch",
-  // TODO wordsmith
+  "space.program.where.remote": "remoto",
+  "space.program.state.ready": "Pronto",
+  "space.program.state.starting": "Iniciando",
+  "space.program.state.unreachable": "Inacessível",
+  "space.program.state.versionMismatch": "Incompatibilidade de versão",
   "space.program.member": "{line}, {member}",
-  // TODO wordsmith
-  "space.program.open.one": "{count} open conversation",
-  // TODO wordsmith
-  "space.program.open.other": "{count} open conversations",
-  // TODO wordsmith
-  "space.program.waiting.one": "{count} conversation waits on you",
-  // TODO wordsmith
-  "space.program.waiting.other": "{count} conversations wait on you",
-  // TODO wordsmith
-  "home.programs.title": "Programs",
-  // TODO wordsmith
-  "conversations.unsupported": "This program does not keep a list of its conversations.",
-  // TODO wordsmith
-  "conversations.unreachable": "The program did not answer. Try again in a moment.",
-  // TODO wordsmith
-  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
-  // TODO wordsmith
-  "conversations.gone": "This conversation no longer exists.",
-  // TODO wordsmith
-  "conversations.noItems": "This conversation has no items yet.",
-  // TODO wordsmith
-  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
-  // TODO wordsmith
-  "conversations.reopen": "Reopen",
-  // TODO wordsmith
-  "conversations.reopening": "Reopening…",
-  // TODO wordsmith
-  "conversations.reopenFailed": "Couldn't reopen the conversation",
-  // TODO wordsmith
-  "home.conversations.asks.one": "{count} open question",
-  // TODO wordsmith
-  "home.conversations.asks.other": "{count} open questions",
+  "space.program.open.one": "{count} conversa aberta",
+  "space.program.open.other": "{count} conversas abertas",
+  "space.program.waiting.one": "{count} conversa aguarda você",
+  "space.program.waiting.other": "{count} conversas aguardam você",
+  "home.programs.title": "Programas",
+  "conversations.unsupported": "Este programa não mantém uma lista de suas conversas.",
+  "conversations.unreachable": "O programa não respondeu. Tente novamente em um instante.",
+  "conversations.loadFailed": "Não foi possível carregar as conversas. Tente novamente.",
+  "conversations.gone": "Esta conversa não existe mais.",
+  "conversations.noItems": "Esta conversa ainda não tem itens.",
+  "conversations.loadMoreFailed": "Não foi possível carregar mais. Tente novamente.",
+  "conversations.reopen": "Reabrir",
+  "conversations.reopening": "Reabrindo…",
+  "conversations.reopenFailed": "Não foi possível reabrir a conversa",
+  "home.conversations.asks.one": "{count} pergunta aberta",
+  "home.conversations.asks.other": "{count} perguntas abertas",
   "newPage.starters.none": "This machine's program offers no starters yet.",
-  // TODO wordsmith
-  "newPage.starters.label": "Starters",
-  // TODO wordsmith
-  "newPage.starters.title": "New conversation",
+  "newPage.starters.label": "Iniciais",
+  "newPage.starters.title": "Nova conversa",
   "prompt.feedback.cancel": "Cancelar",
   "prompt.feedback.typedAria": "Feedback no terminal",
   "prompt.feedback.planChange.offer": "Diga ao Claude o que mudar",
@@ -697,8 +640,7 @@ export const pt: Dictionary = {
   "paneActions.rename.label": "Renomear",
   "paneActions.rename.placeholder": "nomear este painel",
   "paneActions.close.label": "Fechar painel",
-  // TODO wordsmith
-  "paneActions.close.conversation": "Close conversation",
+  "paneActions.close.conversation": "Fechar conversa",
   "paneActions.close.confirm": "Toque novamente para fechar",
   "paneActions.close.closing": "Fechando…",
   "paneActions.focus.labelWithMux": "Focar no {mux}",
@@ -1035,18 +977,12 @@ export const pt: Dictionary = {
   "space.tab.renameFailed": "Falha ao renomear",
   "space.tab.closeFailed": "Falha ao fechar",
   "space.tab.closed": "Aba fechada",
-  // TODO wordsmith
-  "space.space.titleFallback": "Space",
-  // TODO wordsmith
-  "space.space.titleWithLabel": "Space {label}",
-  // TODO wordsmith
-  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
-  // TODO wordsmith
-  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
-  // TODO wordsmith
-  "space.space.empty.fallback": "This program offers no actions for a space.",
-  // TODO wordsmith
-  "space.space.placeholder": "name this space",
+  "space.space.titleFallback": "Espaço",
+  "space.space.titleWithLabel": "Espaço {label}",
+  "space.space.readOnly": "Somente leitura. Este dispositivo não está autorizado a renomear espaços.",
+  "space.space.hostBlockSuffix": "{hostBlock}. Renomear fica indisponível até que ele responda.",
+  "space.space.empty.fallback": "Este programa não oferece ações para um espaço.",
+  "space.space.placeholder": "nomear este espaço",
   "space.readOnly.notPaired": "Não pareado: pareie este dispositivo nas Configurações",
   "space.readOnly.expired": "Pareamento expirado. Pareie novamente nas Configurações",
   "space.readOnly.deviceUnauthorised": "Somente leitura: dispositivo não autorizado",
@@ -1378,10 +1314,8 @@ export const pt: Dictionary = {
   "apiError.tab.create_failed": "Não foi possível criar a aba: {reason}",
   "apiError.tab.rename_failed": "Não foi possível renomear a aba: {reason}",
   "apiError.tab.close_failed": "Não foi possível fechar a aba: {reason}",
-  // TODO wordsmith
-  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
-  // TODO wordsmith
-  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
+  "apiError.space.rename_failed": "Não foi possível renomear o espaço: {reason}",
+  "apiError.durable.reopen_failed": "Não foi possível reabrir a conversa: {reason}",
   "apiError.tab.workspace_required": "Nenhum espaço foi indicado para a nova aba.",
   "apiError.launch.not_allowlisted": "Esse comando não é um dos seus inicializadores",
   "apiError.launch.unknown_harness": "Esta máquina não inicia {harness}.",

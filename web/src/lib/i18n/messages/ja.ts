@@ -34,47 +34,47 @@ export const ja: Dictionary = {
   "settings.nav.back": "戻る",
 
   // --- settings.theme ---
-  "settings.theme.title": "テーマ",
+  "settings.theme.title": "外観",
   "settings.theme.description": "システム設定に同期するか、明示的に指定します。",
   "settings.theme.option.system": "システム",
   "settings.theme.option.light": "ライト",
   "settings.theme.option.dark": "ダーク",
 
-  "theme.title": "Theme", // TODO wordsmith
-  "theme.description": "Pick a look, or import one from a file.", // TODO wordsmith
-  "theme.import": "Import", // TODO wordsmith
-  "theme.export": "Export", // TODO wordsmith
-  "theme.remove": "Remove", // TODO wordsmith
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.", // TODO wordsmith
-  "theme.preview.title": "Import this theme?", // TODO wordsmith
-  "theme.preview.by": "By {author}", // TODO wordsmith
-  "theme.preview.halves.both": "Light and dark", // TODO wordsmith
-  "theme.preview.halves.light": "Light only", // TODO wordsmith
-  "theme.preview.halves.dark": "Dark only", // TODO wordsmith
-  "theme.preview.fills": "It fills its {half} half from the default theme.", // TODO wordsmith
-  "theme.preview.apply": "Apply", // TODO wordsmith
-  "theme.preview.cancel": "Cancel", // TODO wordsmith
-  "theme.preview.contrast.pass": "Every contrast check passes.", // TODO wordsmith
-  "theme.preview.contrast.fail": "{half}: {check} measures {ratio}. The floor is {floor}.", // TODO wordsmith
-  "theme.preview.contrast.more": "and {count} more checks fail", // TODO wordsmith
-  "theme.refused.title": "This file was not imported", // TODO wordsmith
-  "theme.refused.close": "Close", // TODO wordsmith
-  "theme.library.full": "You already hold {count} imported themes. Remove one, then import again.", // TODO wordsmith
-  "theme.library.duplicate": "A theme with this id is already imported. Remove it first, or change \"id\" in the file.", // TODO wordsmith
-  "theme.library.invalid": "This theme did not pass the check. Pick the file again.", // TODO wordsmith
-  "theme.export.title": "Copy this theme", // TODO wordsmith
-  "theme.refusal.size": "This file is too big for a theme.", // TODO wordsmith
-  "theme.refusal.json": "This file is not a JSON object.", // TODO wordsmith
-  "theme.refusal.version": "This file uses a theme version this Collie does not read.", // TODO wordsmith
-  "theme.refusal.id": "The id is not valid.", // TODO wordsmith
-  "theme.refusal.name": "The name is not valid.", // TODO wordsmith
-  "theme.refusal.author": "The author is not valid.", // TODO wordsmith
-  "theme.refusal.unknown-key": "The file holds a key that is not part of a theme.", // TODO wordsmith
-  "theme.refusal.value": "A colour value is not valid.", // TODO wordsmith
-  "theme.refusal.font": "The font choice is not valid.", // TODO wordsmith
-  "theme.refusal.no-half": "The file sets no colours.", // TODO wordsmith
-  "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.", // TODO wordsmith
-  "theme.refusal.mark": "The header mark is not one of the shipped marks.", // TODO wordsmith
+  "theme.title": "テーマ",
+  "theme.description": "外観を選択するか、ファイルからインポートします。",
+  "theme.import": "インポート",
+  "theme.export": "エクスポート",
+  "theme.remove": "削除",
+  "theme.import.promise": "テーマで変更されるのは色とタイプフェイスのみです。コードの実行、ファイルの読み込み、サーバーへの接続は行えません。",
+  "theme.preview.title": "このテーマをインポートしますか?",
+  "theme.preview.by": "作成者: {author}",
+  "theme.preview.halves.both": "ライトとダーク",
+  "theme.preview.halves.light": "ライトのみ",
+  "theme.preview.halves.dark": "ダークのみ",
+  "theme.preview.fills": "不足している側 ({half}) はデフォルトテーマで補完されます。",
+  "theme.preview.apply": "適用",
+  "theme.preview.cancel": "キャンセル",
+  "theme.preview.contrast.pass": "すべてのコントラストチェックに合格しました。",
+  "theme.preview.contrast.fail": "{half}: {check} の測定値は {ratio} です。最小値は {floor} です。",
+  "theme.preview.contrast.more": "ほか {count} 件のチェックに失敗しました",
+  "theme.refused.title": "このファイルはインポートされませんでした",
+  "theme.refused.close": "閉じる",
+  "theme.library.full": "インポートされたテーマがすでに {count} 個あります。いずれかを削除してから、再度インポートしてください。",
+  "theme.library.duplicate": "このIDのテーマはすでにインポートされています。先にそれを削除するか、ファイル内の \"id\" を変更してください。",
+  "theme.library.invalid": "このテーマはチェックに合格しませんでした。ファイルを再度選択してください。",
+  "theme.export.title": "このテーマをコピー",
+  "theme.refusal.size": "このファイルはテーマとしては大きすぎます。",
+  "theme.refusal.json": "このファイルは JSON オブジェクトではありません。",
+  "theme.refusal.version": "このファイルは、この Collie では読み取れないテーマバージョンを使用しています。",
+  "theme.refusal.id": "IDが無効です。",
+  "theme.refusal.name": "名前が無効です。",
+  "theme.refusal.author": "作成者が無効です。",
+  "theme.refusal.unknown-key": "ファイルにテーマの一部ではないキーが含まれています。",
+  "theme.refusal.value": "色の値が無効です。",
+  "theme.refusal.font": "フォントの選択が無効です。",
+  "theme.refusal.no-half": "ファイルで色が設定されていません。",
+  "theme.refusal.reserved-id": "このIDは同梱のテーマのものです。ファイルをインポートするには、ファイル内の\"id\"を変更してください。",
+  "theme.refusal.mark": "ヘッダーマークが同梱のマークのいずれでもありません。",
 
   // --- settings.haptics ---
   "settings.haptics.title": "ハプティクス",
@@ -247,9 +247,9 @@ export const ja: Dictionary = {
   "settings.typeface.note.system": "OS標準のフォントを使用します。追加の通信は発生しません。",
   "settings.typeface.note.grotesk": "Collieのロゴに合わせて設計されたフォントです。",
   "settings.typeface.note.aldrich": "ウェイトが1種類のみのため、太字も標準テキストと同じ太さで表示されます。",
-  "settings.typeface.note.plex": "Calm and humanist, with a real bold and even-width figures.", // TODO wordsmith
-  "settings.typeface.note.geist": "Plain and geometric, with a real bold.", // TODO wordsmith
-  "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.", // TODO wordsmith
+  "settings.typeface.note.plex": "落ち着いたヒューマニスト体。本物の太字と等幅の数字を備えています。",
+  "settings.typeface.note.geist": "無駄のない幾何学的デザイン。本物の太字を備えています。",
+  "settings.typeface.note.atkinson": "ロービジョン向けに作られた、明瞭な文字と本物の太字。",
   "settings.typeface.note.operator": "ホストの管理者が設定したフォントです。",
 
   // --- settings.fonts ---
@@ -298,29 +298,29 @@ export const ja: Dictionary = {
   "composer.controls.agent": "エージェント",
   "composer.controls.displayAria": "表示設定",
   "composer.controls.display": "表示",
-  "composer.controls.screenAria": "Show the screen rows, without cards", // TODO wordsmith
-  "composer.controls.screen": "Screen", // TODO wordsmith
+  "composer.controls.screenAria": "カードなしで画面の行を表示",
+  "composer.controls.screen": "画面",
   "composer.controls.clear": "メッセージを消去",
   "composer.controls.undoClear": "消去を元に戻す",
   "composer.sentPreview.label": "送信済み:",
   "composer.placeholder.gone": "ペインが存在しません",
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",
   "composer.placeholder.noMuxSend": "このターミナルには直接入力できません",
-  "composer.placeholder.unreachable": "Can't reach the input box", // TODO wordsmith
-  "composer.placeholder.sendOff": "Sending is off on this machine", // TODO wordsmith
-  "composer.placeholder.dialogWaiting": "Dialog is waiting", // TODO wordsmith
-  "composer.placeholder.menuWaiting": "Menu is waiting", // TODO wordsmith
-  "composer.placeholder.permissionWaiting": "Permission is waiting", // TODO wordsmith
-  "composer.placeholder.questionWaiting": "Question is waiting", // TODO wordsmith
+  "composer.placeholder.unreachable": "入力ボックスに到達できません",
+  "composer.placeholder.sendOff": "このマシンでは送信が無効です",
+  "composer.placeholder.dialogWaiting": "ダイアログの応答待ちです",
+  "composer.placeholder.menuWaiting": "メニューの応答待ちです",
+  "composer.placeholder.permissionWaiting": "権限の確認待ちです",
+  "composer.placeholder.questionWaiting": "質問の回答待ちです",
   "composer.placeholder.direct": "ターミナルへ入力…",
-  "composer.placeholder.running": "The agent is working", // TODO wordsmith
-  "composer.placeholder.draft": "A draft is in the box", // TODO wordsmith
-  "composer.placeholder.unreadable": "Cannot read what is open", // TODO wordsmith
-  "composer.placeholder.noMatch": "Input box not found", // TODO wordsmith
-  "composer.placeholder.contested": "Two reads disagree", // TODO wordsmith
-  "composer.placeholder.stale": "Last read {age} ago", // TODO wordsmith
-  "composer.placeholder.staleNoAge": "The last read is old", // TODO wordsmith
-  "composer.placeholder.torn": "The screen was moving", // TODO wordsmith
+  "composer.placeholder.running": "エージェントが処理中です",
+  "composer.placeholder.draft": "ボックスに下書きがあります",
+  "composer.placeholder.unreadable": "開いている内容を読み取れません",
+  "composer.placeholder.noMatch": "入力ボックスが見つかりません",
+  "composer.placeholder.contested": "2回の読み取り結果が一致しません",
+  "composer.placeholder.stale": "最終読み取り: {age}前",
+  "composer.placeholder.staleNoAge": "最終読み取りが古くなっています",
+  "composer.placeholder.torn": "画面が動いていました",
   "composer.placeholder.shell": "シェルコマンドを入力…",
   "composer.placeholder.reply": "返信を入力…",
   "composer.mic.unavailable": "音声入力は利用できません",
@@ -343,7 +343,7 @@ export const ja: Dictionary = {
   "composer.attach.removeAria": "{name}を削除",
   "composer.attach.inFront": "テキストからマーカーが消えたため、送信時に先頭へ {name} が付きます。",
   "composer.send.reallySend": "送信しますか？",
-  "composer.send.dialogFirst": "Answer the dialog", // TODO wordsmith
+  "composer.send.dialogFirst": "ダイアログに応答してください",
   "composer.send.stopTypingAria": "ターミナルへの入力を停止",
   "composer.send.sendAria": "送信",
   "composer.send.reconnect": "再接続してから送信してください",
@@ -375,10 +375,10 @@ export const ja: Dictionary = {
   "composer.protocol.draft": "入力欄にはすでに下書きがあります。追加、置換、またはキャンセルしてください。",
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
   "composer.protocol.unconfirmed": "Collie はこの画面を読めません。ペインを確認してから「ここに入力」をタップしてください。",
-  "composer.protocol.unknown": "送信されたか分かりません。もう一度送る前にペインを確認してください。",
+  "composer.protocol.unknown": "Collieはこれが送信されたかどうかを判断できません。画面を確認し、送信されていなければもう一度送信してください。下書きは保持されています。",
   "composer.protocol.busy": "このペインへの別の送信がまだ実行中です。待ってから再試行してください。",
   "composer.protocol.notFree": "入力欄が空いていません。何も入力していません。",
-  "composer.protocol.bound": "The screen did not hold still long enough to read. Nothing was typed. Try again.", // TODO wordsmith
+  "composer.protocol.bound": "読み取りに必要な時間、画面が静止しませんでした。何も入力されませんでした。やり直してください。",
   "composer.protocol.probeFailed": "入力が入力欄に届かなかったため、何も入力していません。ペインを確認してください。",
   "composer.protocol.reservedLead": "/ ! @ で始まるテキストには専用の経路があります。何も入力していません。",
   "composer.protocol.moved": "画面が変わりました。ペインを確認してから再送してください。",
@@ -394,32 +394,32 @@ export const ja: Dictionary = {
   "composer.protocol.discard": "破棄",
   "composer.protocol.commit": "ここに入力",
   "composer.protocol.keys": "キー",
-  "composer.protocol.openKeys": "Open Keys", // TODO wordsmith
-  "composer.protocol.capConfirm": "You typed past a screen Collie cannot read {count} times on {harness} {version} in the last day. Check the screen, then confirm once more to type.", // TODO wordsmith
-  "composer.protocol.commitCap": "Confirm and type", // TODO wordsmith
-  "sendReceipts.title": "Recent sends", // TODO wordsmith
-  "sendReceipts.empty": "No sends to this pane yet.", // TODO wordsmith
-  "sendReceipts.outcome.sent": "Sent", // TODO wordsmith
-  "sendReceipts.outcome.effective": "Confirmed", // TODO wordsmith
-  "sendReceipts.outcome.typed_not_submitted": "Typed, not sent", // TODO wordsmith
-  "sendReceipts.outcome.refused": "Refused", // TODO wordsmith
-  "sendReceipts.outcome.unknown": "Unknown", // TODO wordsmith
-  "sendReceipts.keys": "Keys: {keys}", // TODO wordsmith
-  "sendReceipts.noKeys": "No keys were sent.", // TODO wordsmith
-  "sendReceipts.gaps": "Waited: {gaps}", // TODO wordsmith
+  "composer.protocol.openKeys": "キーを開く",
+  "composer.protocol.capConfirm": "過去1日に{harness} {version}で、Collieが読み取れない画面を無視して入力した回数は{count}回です。画面を確認し、もう一度確定して入力してください。",
+  "composer.protocol.commitCap": "確認して入力",
+  "sendReceipts.title": "最近の送信",
+  "sendReceipts.empty": "このペインへの送信はまだありません。",
+  "sendReceipts.outcome.sent": "送信済み",
+  "sendReceipts.outcome.effective": "確認済み",
+  "sendReceipts.outcome.typed_not_submitted": "入力済み、未送信",
+  "sendReceipts.outcome.refused": "拒絶",
+  "sendReceipts.outcome.unknown": "不明",
+  "sendReceipts.keys": "キー: {keys}",
+  "sendReceipts.noKeys": "キーは送信されませんでした。",
+  "sendReceipts.gaps": "待機時間: {gaps}",
   "composer.protocol.dismissAria": "送信オプションを閉じる",
-  "composer.surface.free": "The input box was free.", // TODO wordsmith
-  "composer.surface.running": "The agent was working.", // TODO wordsmith
-  "composer.surface.askMenu": "A menu was open.", // TODO wordsmith
-  "composer.surface.askPermission": "A permission question was open.", // TODO wordsmith
-  "composer.surface.askQuestion": "A question was open.", // TODO wordsmith
-  "composer.surface.unreadable": "Something Collie cannot read was open over the box.", // TODO wordsmith
-  "composer.surface.draft": "The box held a draft.", // TODO wordsmith
-  "composer.surface.unreachable": "The input box could not be reached.", // TODO wordsmith
-  "composer.surface.unknown": "Collie could not find the input box.", // TODO wordsmith
-  "composer.surface.stale": "The last read of the screen was too old.", // TODO wordsmith
-  "composer.surface.torn": "The screen changed while Collie read it.", // TODO wordsmith
-  "composer.surface.contested": "Two readings of the screen did not agree.", // TODO wordsmith
+  "composer.surface.free": "入力ボックスは空いていました。",
+  "composer.surface.running": "エージェントは動作中でした。",
+  "composer.surface.askMenu": "メニューが開いていました。",
+  "composer.surface.askPermission": "権限の確認が開いていました。",
+  "composer.surface.askQuestion": "質問が開いていました。",
+  "composer.surface.unreadable": "Collieが読み取れないものがボックスの上に開いていました。",
+  "composer.surface.draft": "ボックスには下書きが入っていました。",
+  "composer.surface.unreachable": "入力ボックスに到達できませんでした。",
+  "composer.surface.unknown": "Collieは入力ボックスを見つけられませんでした。",
+  "composer.surface.stale": "画面の前回読み取りが古すぎました。",
+  "composer.surface.torn": "Collieが読み取る間に画面が変化しました。",
+  "composer.surface.contested": "画面の2回の読み取り結果が一致しませんでした。",
   "composer.offline.draftNote": "下書きはこの端末に残り、自動で送信されることはありません。",
   "composer.offline.draftNote.dismissAria": "オフラインの下書きの案内を閉じる",
   "composer.draftPreview.title": "ターミナル内の下書き",
@@ -453,12 +453,9 @@ export const ja: Dictionary = {
   "chat.copyOutput.failed": "出力をコピーできませんでした",
   "chat.paneMenu.aria": "ペイン操作",
   "chat.header.openOverviewAria": "{workspace} の概要を開く{status}",
-  // TODO wordsmith
-  "chat.progress.aria": "Progress",
+  "chat.progress.aria": "進捗",
   "chat.progress.percent": "{value}%",
-  // TODO wordsmith
-  "chat.header.step": "Step {n} of {m}: {label}",
-  // TODO wordsmith
+  "chat.header.step": "ステップ {n} / {m}: {label}",
   "chat.header.percent": "{value}%: {label}",
   "chat.header.openPaneSettingsAria": "{name} のペイン設定",
   "chat.header.statusAria": "（{label}）",
@@ -499,10 +496,10 @@ export const ja: Dictionary = {
   "chat.status.feedbackSent": "フィードバックを送信しました",
   "chat.status.sent": "送信完了",
   "chat.status.menuChanged": "メニューが変更されました。更新中",
-  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
-  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
-  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
-  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
+  "chat.status.askChanged": "ダイアログが変更されました。カードには新しいものが表示されます",
+  "chat.status.askMismatch": "ハイライトが選択項目に達しなかったため、何も確認されませんでした",
+  "chat.status.askGone": "ダイアログが消えました。Collieが画面を再度読み取りました",
+  "chat.status.askUnknown": "回答が送信された証拠はありません。画面に結果が表示されています",
   "chat.status.sendFailed": "送信失敗",
   "chat.status.wizardChanged": "ウィザードが変更されました。更新中",
   "chat.status.noteSaved": "メモを保存しました",
@@ -519,8 +516,7 @@ export const ja: Dictionary = {
   "chat.mode.noChat": "{reason} ここではターミナルのままです。",
   "chat.stream.empty": "メッセージを送信して始めましょう。",
   "chat.stream.working": "処理中…",
-  // TODO wordsmith
-  "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
+  "chat.stream.questionPending": "ターミナルで質問への回答を待機しています。次のメッセージが回答になります。",
   "chat.stream.queued": "送信待ち",
   "chat.pin.label": "あなたのプロンプト",
   "chat.pin.earlier": "プロンプトはさらに前です · 過去のログを読み込む",
@@ -588,19 +584,14 @@ export const ja: Dictionary = {
   "prompt.sendingAria": "送信中",
   "prompt.reconnectNote": "再接続してから回答してください。",
   "ask.caption": "Needs your answer",
-  // TODO wordsmith
-  "ask.captionNamed": "Needs your answer · {name}",
+  "ask.captionNamed": "回答が必要です · {name}",
   "ask.notAnswerable": "This ask cannot be answered from the phone.",
   "ask.late": "Already answered. This card goes away on the next update.",
   "ask.notTaken": "受け付けられませんでした。しばらくすると質問が再度表示される場合があります。",
-  // TODO wordsmith
-  "ask.decidedInProgram": "Decided in the program.",
-  // TODO wordsmith
-  "ask.timedOut": "Timed out before an answer.",
-  // TODO wordsmith
-  "ask.expiresIn": "Expires in {time}",
-  // TODO wordsmith
-  "ask.expired": "Expired",
+  "ask.decidedInProgram": "プログラム内で決定されました。",
+  "ask.timedOut": "回答前にタイムアウトしました。",
+  "ask.expiresIn": "{time}で期限切れになります",
+  "ask.expired": "期限切れ",
   "ask.stale": "This ask changed. Read it again, then tap an answer.",
   "ask.stale.older": "This machine runs an older Collie and cannot take answers here. Update it, or answer in the program.",
   "ask.unknown": "Not sure the answer arrived. Try again sends it once more.",
@@ -615,8 +606,7 @@ export const ja: Dictionary = {
   "ask.maybe": "May already be applied. Check the chat.",
   "ask.showMore": "Show {count} more",
   "ask.showFewer": "Show fewer",
-  // TODO wordsmith
-  "ask.send": "Send",
+  "ask.send": "送信",
   "ask.required": "Required",
   "ask.choose": "Choose",
   "ask.pickMany": "Pick any number",
@@ -639,105 +629,58 @@ export const ja: Dictionary = {
   "durable.composer.maybe": "May already be sent. Check the chat before you send again.",
   "durable.composer.stopMaybe": "The stop may already be applied. Check the chat.",
   "durable.composer.stopRefused": "The stop was refused.",
-  // TODO wordsmith
-  "durable.composer.sending": "Sending…",
+  "durable.composer.sending": "送信中…",
   "durable.pending.sending": "Sending",
   "durable.pending.unconfirmed": "Sending, not confirmed",
   "durable.pending.notSent": "Not sent",
   "durable.thread.working": "Working",
-  // TODO wordsmith
-  "durable.action.done": "Done",
-  // TODO wordsmith
-  "durable.action.moved": "The conversation moved on, so the action did not run. Check it, then tap the button again if you still want it.",
-  // TODO wordsmith
-  "durable.action.older": "This machine runs an older Collie and cannot run actions here. Update it.",
-  // TODO wordsmith
-  "durable.action.refused": "The action was refused.",
-  // TODO wordsmith
-  "durable.action.unknown": "Not sure the action arrived. Tap the button again to retry it once.",
-  // TODO wordsmith
-  "durable.action.maybe": "The action may already have run. Check the chat before you tap it again.",
-  // TODO wordsmith
-  "conversations.title": "Conversations",
-  // TODO wordsmith
-  "conversations.fallbackTitle": "Conversation",
-  // TODO wordsmith
-  "conversations.back": "Back",
-  // TODO wordsmith
-  "conversations.state.open": "Open",
-  // TODO wordsmith
-  "conversations.state.closed": "Closed",
-  // TODO wordsmith
-  "conversations.items.one": "{count} item",
-  // TODO wordsmith
-  "conversations.items.other": "{count} items",
-  // TODO wordsmith
-  "conversations.untitled": "Untitled conversation",
-  // TODO wordsmith
-  "conversations.range": "{start} to {end}",
-  // TODO wordsmith
-  "conversations.here": "Shown in this pane",
-  // TODO wordsmith
-  "conversations.loadMore": "Load more",
-  // TODO wordsmith
-  "conversations.loading": "Loading…",
-  // TODO wordsmith
-  "conversations.empty": "This program has no conversations yet.",
-  // TODO wordsmith
-  "session.experimental": "Experimental",
-  // TODO wordsmith
-  "space.program.line": "{mux}, {where}",
-  // TODO wordsmith
-  "space.program.where.local": "local",
-  // TODO wordsmith
-  "space.program.where.remote": "remote",
-  // TODO wordsmith
-  "space.program.state.ready": "Ready",
-  // TODO wordsmith
-  "space.program.state.starting": "Starting",
-  // TODO wordsmith
-  "space.program.state.unreachable": "Unreachable",
-  // TODO wordsmith
-  "space.program.state.versionMismatch": "Version mismatch",
-  // TODO wordsmith
-  "space.program.member": "{line}, {member}",
-  // TODO wordsmith
-  "space.program.open.one": "{count} open conversation",
-  // TODO wordsmith
-  "space.program.open.other": "{count} open conversations",
-  // TODO wordsmith
-  "space.program.waiting.one": "{count} conversation waits on you",
-  // TODO wordsmith
-  "space.program.waiting.other": "{count} conversations wait on you",
-  // TODO wordsmith
-  "home.programs.title": "Programs",
-  // TODO wordsmith
-  "conversations.unsupported": "This program does not keep a list of its conversations.",
-  // TODO wordsmith
-  "conversations.unreachable": "The program did not answer. Try again in a moment.",
-  // TODO wordsmith
-  "conversations.loadFailed": "Couldn't load the conversations. Try again.",
-  // TODO wordsmith
-  "conversations.gone": "This conversation no longer exists.",
-  // TODO wordsmith
-  "conversations.noItems": "This conversation has no items yet.",
-  // TODO wordsmith
-  "conversations.loadMoreFailed": "Couldn't load more. Try again.",
-  // TODO wordsmith
-  "conversations.reopen": "Reopen",
-  // TODO wordsmith
-  "conversations.reopening": "Reopening…",
-  // TODO wordsmith
-  "conversations.reopenFailed": "Couldn't reopen the conversation",
-  // TODO wordsmith
-  "home.conversations.asks.one": "{count} open question",
-  // TODO wordsmith
-  "home.conversations.asks.other": "{count} open questions",
+  "durable.action.done": "完了",
+  "durable.action.moved": "会話が進んだため、アクションは実行されませんでした。確認の上、引き続き実行する場合はボタンをもう一度タップしてください。",
+  "durable.action.older": "このマシンは古いバージョンのCollieを実行しているため、ここでアクションを実行できません。更新してください。",
+  "durable.action.refused": "アクションは拒絶されました。",
+  "durable.action.unknown": "アクションが届いたか不明です。ボタンをもう一度タップして再試行してください。",
+  "durable.action.maybe": "アクションはすでに実行された可能性があります。もう一度タップする前にチャットを確認してください。",
+  "conversations.title": "会話",
+  "conversations.fallbackTitle": "会話",
+  "conversations.back": "戻る",
+  "conversations.state.open": "開く",
+  "conversations.state.closed": "閉じる",
+  "conversations.items.one": "{count}件のアイテム",
+  "conversations.items.other": "{count}件のアイテム",
+  "conversations.untitled": "無題の会話",
+  "conversations.range": "{start}から{end}",
+  "conversations.here": "このペインに表示中",
+  "conversations.loadMore": "さらに読み込む",
+  "conversations.loading": "読み込み中…",
+  "conversations.empty": "このプログラムにはまだ会話がありません。",
+  "session.experimental": "試験的機能",
+  "space.program.line": "{mux}、{where}",
+  "space.program.where.local": "ローカル",
+  "space.program.where.remote": "リモート",
+  "space.program.state.ready": "準備完了",
+  "space.program.state.starting": "起動中",
+  "space.program.state.unreachable": "到達不能",
+  "space.program.state.versionMismatch": "バージョンの不一致",
+  "space.program.member": "{line}、{member}",
+  "space.program.open.one": "{count} 件のオープンな会話",
+  "space.program.open.other": "{count} 件のオープンな会話",
+  "space.program.waiting.one": "{count} 件の会話が返答待ちです",
+  "space.program.waiting.other": "{count} 件の会話が返答待ちです",
+  "home.programs.title": "プログラム",
+  "conversations.unsupported": "このプログラムは会話のリストを保持しません。",
+  "conversations.unreachable": "プログラムが応答しませんでした。少し待ってから再試行してください。",
+  "conversations.loadFailed": "会話を読み込めませんでした。再試行してください。",
+  "conversations.gone": "この会話はもう存在しません。",
+  "conversations.noItems": "この会話にはまだ項目がありません。",
+  "conversations.loadMoreFailed": "これ以上読み込めませんでした。再試行してください。",
+  "conversations.reopen": "再度開く",
+  "conversations.reopening": "再度開いています…",
+  "conversations.reopenFailed": "会話を再度開けませんでした",
+  "home.conversations.asks.one": "{count} 件の未解決の質問",
+  "home.conversations.asks.other": "{count} 件の未解決の質問",
   "newPage.starters.none": "This machine's program offers no starters yet.",
-  // TODO wordsmith
-  "newPage.starters.label": "Starters",
-  // TODO wordsmith
-  "newPage.starters.title": "New conversation",
+  "newPage.starters.label": "スターター",
+  "newPage.starters.title": "新しい会話",
   "prompt.feedback.cancel": "キャンセル",
   "prompt.feedback.typedAria": "ターミナル内のフィードバック",
   "prompt.feedback.planChange.offer": "変更内容をClaudeに送信",
@@ -771,8 +714,7 @@ export const ja: Dictionary = {
   "paneActions.rename.label": "名前変更",
   "paneActions.rename.placeholder": "ペイン名",
   "paneActions.close.label": "ペインを閉じる",
-  // TODO wordsmith
-  "paneActions.close.conversation": "Close conversation",
+  "paneActions.close.conversation": "会話を閉じる",
   "paneActions.close.confirm": "再度タップして閉じる",
   "paneActions.close.closing": "終了処理中…",
   // TODO(translation): English changed from "Show in terminal" to "Focus in {mux}" — needs a
@@ -1122,18 +1064,12 @@ export const ja: Dictionary = {
   "space.tab.renameFailed": "名前の変更に失敗しました",
   "space.tab.closeFailed": "終了処理に失敗しました",
   "space.tab.closed": "タブを終了しました",
-  // TODO wordsmith
-  "space.space.titleFallback": "Space",
-  // TODO wordsmith
-  "space.space.titleWithLabel": "Space {label}",
-  // TODO wordsmith
-  "space.space.readOnly": "Read-only. This device is not authorised to rename spaces.",
-  // TODO wordsmith
-  "space.space.hostBlockSuffix": "{hostBlock}. Rename is unavailable until it answers.",
-  // TODO wordsmith
-  "space.space.empty.fallback": "This program offers no actions for a space.",
-  // TODO wordsmith
-  "space.space.placeholder": "name this space",
+  "space.space.titleFallback": "スペース",
+  "space.space.titleWithLabel": "スペース {label}",
+  "space.space.readOnly": "読み取り専用。このデバイスにはスペースの名前を変更する権限がありません。",
+  "space.space.hostBlockSuffix": "{hostBlock}。応答があるまで名前の変更は利用できません。",
+  "space.space.empty.fallback": "このプログラムにはスペース用のアクションがありません。",
+  "space.space.placeholder": "このスペースに名前を付ける",
   "space.readOnly.notPaired": "未ペアリングです。設定からこの端末をペアリングしてください。",
   "space.readOnly.expired": "ペアリングの期限が切れました。設定から再ペアリングしてください。",
   "space.readOnly.deviceUnauthorised": "読み取り専用です。この端末は許可されていません。",
@@ -1515,10 +1451,8 @@ export const ja: Dictionary = {
   "apiError.tab.create_failed": "タブの作成に失敗しました: {reason}",
   "apiError.tab.rename_failed": "タブのリネームに失敗しました: {reason}",
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",
-  // TODO wordsmith
-  "apiError.space.rename_failed": "The space couldn't be renamed: {reason}",
-  // TODO wordsmith
-  "apiError.durable.reopen_failed": "The conversation couldn't be reopened: {reason}",
+  "apiError.space.rename_failed": "スペース名を変更できませんでした: {reason}",
+  "apiError.durable.reopen_failed": "会話を再度開けませんでした: {reason}",
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
   "apiError.launch.unknown_harness": "このマシンは {harness} を起動しません。",
