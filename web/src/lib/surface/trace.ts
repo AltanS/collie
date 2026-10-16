@@ -17,6 +17,7 @@
 //   { "at": 900, "edge": { "event": "UserPromptSubmit", "prompt": "<the prompt text>" } }
 //   { "at": 5000, "tick": true }
 //   { "at": 100, "send": { "id": "r1", "text": "<the text a send typed>" } }
+//   { "at": 100, "send": { "id": "r2", "text": "<...>", "queued": true } }  (a send queued behind a turn)
 // `expect` names only the claims it checks:
 //   { "free": false, "turn": "running", "modal": "none" | "ask" | "unreadable" | "unknown",
 //     "composer": "empty", "reason": "contested" | null, "lostStops": 1, "receipts": { "r1": "effective" } }
@@ -81,7 +82,7 @@ export type TraceInput =
     }
   | { readonly edge: { readonly event: string; readonly detail?: string; readonly prompt?: string; readonly pid?: number } }
   | { readonly tick: true }
-  | { readonly send: { readonly id: string; readonly text: string } };
+  | { readonly send: { readonly id: string; readonly text: string; readonly queued?: boolean } };
 
 export type TraceStep = TraceInput & { readonly at: number; readonly expect?: TraceExpect };
 
@@ -185,7 +186,7 @@ function parseInput(name: string, line: number, node: JsonObject): TraceInput {
     const id = asJsonString(send.id);
     const text = asJsonString(send.text);
     if (id === undefined || text === undefined) throw new TraceError(name, line, "a send needs an id and a text");
-    return { send: { id, text } };
+    return asJsonBoolean(send.queued) === true ? { send: { id, text, queued: true } } : { send: { id, text } };
   }
   if (node.tick !== true) throw new TraceError(name, line, "a tick is `true`");
   return { tick: true };
@@ -301,7 +302,8 @@ export function replayTrace(trace: Trace, options: ReplayOptions): TraceStepResu
     } else if ("tick" in step) {
       feed({ seq: ++seq, source: "tick", at: step.at });
     } else {
-      open.push({ id: step.send.id, paneId: TRACE_PANE, promptHash: tracePromptHash(step.send.text), at: step.at });
+      const receipt: OpenReceipt = { id: step.send.id, paneId: TRACE_PANE, promptHash: tracePromptHash(step.send.text), at: step.at };
+      open.push(step.send.queued === true ? { ...receipt, queued: true } : receipt);
       receipts[step.send.id] = "open";
     }
     const surface = readFold(state, context).surface;

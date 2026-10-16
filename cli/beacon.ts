@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 
-import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
+import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
+import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import {
   BEACON_SCHEMA_VERSION,
@@ -60,6 +61,9 @@ import type { Files } from "./sys.ts";
 // so `process.ppid` is the agent, and the agent is what the reader's liveness check needs. The hook's
 // own pid is dead microseconds later and would make every beacon read expired.
 
+/** The marker namespace of a Herdr pane, which is the Herdr adapter's registry key. */
+const HERDR_NAMESPACE = "herdr";
+
 /**
  * Where a multiplexer's pane identity lives in the environment of a process running inside it.
  *
@@ -111,7 +115,7 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     // Herdr exports its own wire id (`w54:pW`) and the socket of the server that owns the pane
     // (M56 spec 11). Herdr names its agents itself, so a Herdr marker never names a pane's agent: it
     // places the hook edges on a Herdr pane, and nothing else.
-    namespace: "herdr",
+    namespace: HERDR_NAMESPACE,
     paneVar: "HERDR_PANE_ID",
     scopeVar: "HERDR_SOCKET_PATH",
     scopeOf: (raw) => raw,
@@ -247,6 +251,8 @@ export interface BeaconEmitDeps {
   readonly agentPid: number;
   /** Injected so a test can pin the heartbeat; production leaves it. */
   readonly now?: () => number;
+  /** This process's uid: a spool or registry folder another user owns is not written into. Absent off POSIX. */
+  readonly uid?: number | undefined;
 }
 
 /**
@@ -288,14 +294,32 @@ function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
 const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 
 /**
- * Write one edge file into the spool (M56 spec 11): a temp name, then a rename, so the bridge never
- * reads half of one. Nothing is written past {@link EDGE_SPOOL_MAX} files: no bridge is taking them,
- * and a full spool must not grow without end.
+ * Whether a folder the emitter is about to write into is this user's own and private: a real folder,
+ * not a link, owned by this uid, and writable by nobody else. A folder that fails is skipped.
  */
-function writeEdge(deps: BeaconEmitDeps, record: EdgeRecord): void {
-  const dir = edgesDir(deps.ctx.stateDir);
-  deps.files.mkdirp(dir, BEACON_DIR_MODE);
-  if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) return;
+function privateDir(deps: BeaconEmitDeps, dir: string): boolean {
+  if (deps.files.entryType(dir) !== "directory") return false;
+  const mode = deps.files.mode(dir);
+  if (mode !== null && (mode & 0o022) !== 0) return false;
+  return deps.uid === undefined || deps.files.ownerUid(dir) === deps.uid;
+}
+
+/**
+ * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
+ * bridge never reads half of one. A spool at {@link EDGE_SPOOL_MAX} files first loses its edges older
+ * than {@link EDGE_MAX_AGE_MS}, which no bridge would take anyway; still full, it takes nothing more,
+ * because no bridge is taking them and a spool must not grow without end.
+ */
+function writeEdge(deps: BeaconEmitDeps, stateDir: string, record: EdgeRecord): void {
+  const dir = edgesDir(stateDir);
+  if (deps.files.entryType(dir) === null) deps.files.mkdirp(dir, BEACON_DIR_MODE);
+  if (!privateDir(deps, dir)) return;
+  if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) {
+    for (const name of deps.files.list(dir)) {
+      if (EDGE_FILE.test(name) && record.at - Number(name.split("-")[0]) > EDGE_MAX_AGE_MS) deps.files.remove(join(dir, name));
+    }
+    if (deps.files.list(dir).length >= EDGE_SPOOL_MAX) return;
+  }
   const name = `${String(record.at)}-${String(record.pid)}-${randomBytes(4).toString("hex")}.json`;
   const temp = join(dir, `.${name}.tmp`);
   try {
@@ -322,12 +346,43 @@ export function unwrapPrompt(prompt: string): string {
  * worth nothing to a reader without it. No salt (the Send Protocol never ran) means no hash. The
  * prompt text itself is never written anywhere.
  */
-export function promptHashOf(deps: BeaconEmitDeps, payload: JsonObject): string | null {
+export function promptHashOf(deps: BeaconEmitDeps, stateDir: string, payload: JsonObject): string | null {
   const prompt = asJsonString(payload.prompt);
   if (prompt === undefined || prompt.length === 0) return null;
-  const salt = deps.files.read(join(deps.ctx.stateDir, "sends", ".salt"))?.trim();
+  const salt = deps.files.read(join(stateDir, "sends", ".salt"))?.trim();
   if (salt === undefined || salt.length === 0) return null;
   return createHash("sha256").update(salt).update("\u0000").update(normalizePrompt(unwrapPrompt(prompt))).digest("hex");
+}
+
+/**
+ * The state dirs an edge goes to (M56 spec 11, bridge/beacon/hook-targets.ts): every bridge in the
+ * hook target registry whose pid still runs as the same process. A dead target's file is deleted. An
+ * explicit `COLLIE_STATE_DIR` in the agent's environment is always one of them. With no live target
+ * the edge goes to this emitter's own state dir, as it did before the registry.
+ */
+export function edgeStateDirs(deps: BeaconEmitDeps): string[] {
+  const dirs: string[] = [];
+  const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
+  if (privateDir(deps, registry)) {
+    for (const name of deps.files.list(registry).filter((entry) => HOOK_TARGET_FILE.test(entry)).slice(0, HOOK_TARGETS_MAX)) {
+      const path = join(registry, name);
+      const target = parseHookTarget(deps.files.read(path) ?? "");
+      if (target === null) continue;
+      const start = readPidStartTime(deps.files, target.pid);
+      if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
+        deps.files.remove(path);
+        continue;
+      }
+      dirs.push(target.stateDir);
+    }
+  }
+  if ((deps.ctx.env.COLLIE_STATE_DIR ?? "").trim() !== "" || dirs.length === 0) dirs.push(deps.ctx.stateDir);
+  return [...new Set(dirs.map((dir) => deps.files.realpath(dir) ?? dir))];
+}
+
+/** True when every marker is a Herdr one: Herdr names its agents itself, so no beacon is written. */
+function herdrOnly(markers: readonly BeaconMarker[]): boolean {
+  return markers.every((marker) => marker.namespace === HERDR_NAMESPACE);
 }
 
 /**
@@ -363,25 +418,28 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     if (pidStartTime === null) return EXIT.OK;
     const now = (deps.now ?? Date.now)();
 
-    // The edge first, in its own guard: a beacon that cannot be written must not cost the edge, and
-    // the other way round.
-    try {
-      writeEdge(deps, {
-        schemaVersion: EDGE_SCHEMA_VERSION,
-        harness: BEACON_HARNESS,
-        event: registration.event,
-        detail,
-        pid: deps.agentPid,
-        pidStartTime,
-        markers,
-        at: now,
-        promptHash: promptHashOf(deps, payload),
-      });
-    } catch {
-      // No edge for this event. The screen still reads the pane on its own poll.
+    // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
+    // one target that cannot be written must not cost the others, and the other way round.
+    for (const stateDir of edgeStateDirs(deps)) {
+      try {
+        writeEdge(deps, stateDir, {
+          schemaVersion: EDGE_SCHEMA_VERSION,
+          harness: BEACON_HARNESS,
+          event: registration.event,
+          detail,
+          pid: deps.agentPid,
+          pidStartTime,
+          markers,
+          at: now,
+          promptHash: promptHashOf(deps, stateDir, payload),
+        });
+      } catch {
+        // No edge for this target. The screen still reads the pane on its own poll.
+      }
     }
 
-    if (status === null) return EXIT.OK;
+    // A Herdr pane gets edges only: Herdr names the agent and its session on its own wire.
+    if (status === null || herdrOnly(markers)) return EXIT.OK;
     const session = readField(payload, "session_id", SESSION_ID);
     if (session === null) return EXIT.OK;
 

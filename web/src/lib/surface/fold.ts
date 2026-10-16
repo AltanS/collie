@@ -127,8 +127,13 @@ export function hasBlock(state: FoldState): boolean {
   return state.running !== null || state.dialog !== null;
 }
 
-/** A screen read: the newest read, and the block rules that only a read can apply. */
+/**
+ * A screen read: the newest read, and the block rules that only a read can apply. A read taken
+ * before the one the state holds changes nothing: it can land late (a poll read behind a fresh read an
+ * edge asked for), and an older idle read must never replace a newer dialog read.
+ */
 function stepScreen(state: FoldState, input: ScreenInput, context: FoldContext): FoldState {
+  if (state.screen !== null && input.at < state.screen.at) return { ...state, now: Math.max(state.now, input.at) };
   const screenRead = surfaceOfScreen(input, context.idle);
   let next: FoldState = { ...state, screen: input, screenRead, now: Math.max(state.now, input.at) };
   // The screen lifted the ask: it carries the modal itself now, so the modal block is done.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows, idleFor } from "../../test/surface-corpus";
-import { closingReceipt, edgeKindOf, EDGE_KINDS, invertEdge, LOST_STOP_SPAN_MS, normalizePrompt, SETTLE_MS, type EdgeKind } from "./edges";
+import { closingReceipt, edgeKindOf, EDGE_KINDS, invertEdge, LOST_STOP_SPAN_MS, normalizePrompt, RECEIPT_EDGE_SHORT_MS, RECEIPT_EDGE_WINDOW_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { emptyFoldState, foldSurface, readFold, stepFold, type FoldContext, type SurfaceInput } from "./fold";
 import { liftAsk, readerBlocks } from "./lift";
 import { requireProfile } from "./profile";
@@ -113,6 +113,14 @@ describe("the fold with edges", () => {
     expect(readFold(state, CONTEXT).surface.turn).toBe("running");
   });
 
+  it("a read taken before the newest one changes nothing: an older idle read never replaces a dialog", () => {
+    let state = emptyFoldState();
+    for (const input of [edge("stop", 0), read(DIALOG, 700), read(IDLE, 500)]) state = stepFold(state, input, CONTEXT);
+    const surface = readFold(state, CONTEXT).surface;
+    expect(modalWord(surface.modal)).toBe("ask");
+    expect(isFree(surface)).toBe(false);
+  });
+
   it("no clock ends a block: ticks alone never make a free", () => {
     const log = [edge("prompt", 0), read(IDLE, 2000), tick(60_000)];
     expect(isFree(foldSurface(log, CONTEXT).surface)).toBe(false);
@@ -149,5 +157,20 @@ describe("receipts", () => {
     expect(closingReceipt(open, "p", "h2", 2100)).toBeNull();
     expect(closingReceipt(open, "r", "h1", 2100)).toBeNull();
     expect(closingReceipt(open, "p", "h1", 2000 + 11 * 60_000)).toBeNull();
+  });
+
+  it("a desk-typed prompt with the same text 31 s later closes no free-box receipt", () => {
+    expect(closingReceipt(open, "p", "h1", 2000 + RECEIPT_EDGE_SHORT_MS)?.id).toBe("b");
+    expect(closingReceipt(open, "p", "h1", 2000 + RECEIPT_EDGE_SHORT_MS + 1_000)).toBeNull();
+  });
+
+  it("a queued receipt stays open for ten minutes: the harness takes it when the turn ends", () => {
+    const queued = [{ id: "q", paneId: "p", promptHash: "h1", at: 1000, queued: true }];
+    expect(closingReceipt(queued, "p", "h1", 1000 + 9 * 60_000)?.id).toBe("q");
+    expect(closingReceipt(queued, "p", "h1", 1000 + RECEIPT_EDGE_WINDOW_MS + 1)).toBeNull();
+  });
+
+  it("an edge written before the submit key went out closes nothing", () => {
+    expect(closingReceipt([{ id: "a", paneId: "p", promptHash: "h1", at: 1000, queued: true }], "p", "h1", 999)).toBeNull();
   });
 });
