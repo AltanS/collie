@@ -158,6 +158,12 @@ export interface DialogComparators<M> {
    * Absent on the kinds that never carry one, and `undefined` for a model that does not: whole rows.
    */
   columns?(m: M): ColumnRange | undefined;
+  /**
+   * The tail window the region may end in (`expected_tail_lines`, lib/tail-lines.ts), for a model
+   * whose harness paints live chrome of its own under the dialog. Absent on the kinds that never carry
+   * one, and `undefined` for a model that does not: the bridge's default window.
+   */
+  tail?(m: M): number | undefined;
 }
 
 /** The shape of the contract table: one row of comparators per interactive block kind. */
@@ -175,6 +181,7 @@ export const DIALOG_CONTRACT: DialogContract = {
     region: (m) => m.signature,
     styled: (m) => m.styledSignature,
     columns: (m) => m.bindColumns,
+    tail: (m) => m.bindTail,
   },
   wizard: {
     // Every wizard key commits too — a digit selects AND advances; Left/Right change the step.

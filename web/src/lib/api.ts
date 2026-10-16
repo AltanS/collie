@@ -1222,6 +1222,7 @@ export function sendKeys(
   expectedPrompt?: string,
   expectedStyled?: string,
   expectedColumns?: ColumnRange,
+  expectedTailLines?: number,
 ): Promise<ActionResponse> {
   stampSend(paneId);
   // Snapshot what the client has seen NOW, before the key can change anything: `settleAfterSend`
@@ -1237,14 +1238,16 @@ export function sendKeys(
       {
         method: "POST",
         // As in `sendReply`: an `undefined` property is omitted by `JSON.stringify`. The bridge honours
-        // `expected_styled` (ADR 0080 point 7) and `expected_columns` (lib/column-range.ts) only beside
-        // `expected_prompt`. An older bridge ignores both: without the columns it compares whole rows,
-        // which refuses a column-bound tap rather than passing it.
+        // `expected_styled` (ADR 0080 point 7), `expected_columns` (lib/column-range.ts) and
+        // `expected_tail_lines` (lib/tail-lines.ts) only beside `expected_prompt`. An older bridge
+        // ignores all three: without the columns it compares whole rows, and without the tail it keeps
+        // its default window, so a tap that needed either is refused rather than passed.
         body: JSON.stringify({
           keys,
           expected_prompt: expectedPrompt,
           expected_styled: expectedStyled,
           expected_columns: expectedColumns,
+          expected_tail_lines: expectedTailLines,
         }),
       },
       recoverPromptChanged,
