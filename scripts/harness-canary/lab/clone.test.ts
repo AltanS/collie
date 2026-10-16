@@ -49,7 +49,8 @@ describe("the lab clone", () => {
     const labRoot = join(root, "lab");
     const dir = ensureClone(checkout, labRoot, "/nowhere");
     expect(dir).toBe(cloneDirOf(labRoot));
-    expect(readFileSync(join(dir, "file.txt"), "utf8")).toBe("one\n");
+    // The fixture is written through git, which may check it out with CRLF on Windows.
+    expect(readFileSync(join(dir, "file.txt"), "utf8").replaceAll("\r\n", "\n")).toBe("one\n");
   });
 
   test("each use resets the clone to origin/main, and the given repo is never touched", () => {
@@ -64,7 +65,8 @@ describe("the lab clone", () => {
     git(checkout, "push", "--quiet", "origin", "main");
     const before = git(checkout, "status", "--porcelain") + git(checkout, "branch", "--list") + git(checkout, "worktree", "list");
     ensureClone(checkout, labRoot, "/nowhere");
-    expect(readFileSync(join(dir, "file.txt"), "utf8")).toBe("two\n");
+    // The fixture is written through git, which may check it out with CRLF on Windows.
+    expect(readFileSync(join(dir, "file.txt"), "utf8").replaceAll("\r\n", "\n")).toBe("two\n");
     expect(existsSync(join(dir, "stray.txt"))).toBe(false);
     expect(git(checkout, "status", "--porcelain") + git(checkout, "branch", "--list") + git(checkout, "worktree", "list")).toBe(before);
   });
@@ -105,7 +107,7 @@ describe("the lab clone", () => {
   });
 
   test("the default lab root is under ~/.cache/collie-lab, and the variable moves it", () => {
-    expect(defaultLabRoot({}, "/home/u")).toBe("/home/u/.cache/collie-lab/harness-lab");
+    expect(defaultLabRoot({}, "/home/u")).toBe(join("/home/u", ".cache", "collie-lab", "harness-lab"));
     expect(defaultLabRoot({ COLLIE_HARNESS_LAB_DIR: "/x/lab" }, "/home/u")).toBe("/x/lab");
   });
 });

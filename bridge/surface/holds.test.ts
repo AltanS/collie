@@ -21,8 +21,11 @@ describe("HoldStore", () => {
     const entry = store.add(input("req-000001"));
     expect(entry).toMatchObject({ state: "held", heldAt: 5_000, expiresAt: 5_000 + HOLD_MS, tries: 0, text: "text of req-000001" });
     expect(readdirSync(dir)).toEqual(["req-000001.json"]);
-    expect(statSync(dir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(dir, "req-000001.json")).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX mode bits, so only the mode expectations wait for another platform.
+    if (process.platform !== "win32") {
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(join(dir, "req-000001.json")).mode & 0o777).toBe(0o600);
+    }
   });
 
   test("a pane's queue is in hold order, across a restart, and a new hold after the restart goes last", () => {

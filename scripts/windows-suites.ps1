@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 113 in all, each one named, with its reason:
-#              bridge 71. 5 are the POSIX-only and engine cases below, 30 are the durable example apps, and
-#                36 are the durable socket tests (see "Durable, bridge" below).
+#              Today, 117 in all, each one named, with its reason:
+#              bridge 75. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 30 are the
+#                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
 #                - "commandFileProblem: regular executable passes, symlinks are followed" (the
@@ -31,6 +31,14 @@
 #                to end > a 13 s WAV becomes text through a real child of this Collie". It runs only
 #                where COLLIE_TEST_WHISTLE_DIR holds the measured model, which is never committed, so
 #                no CI job or VM has it (Linux CI skips it too).
+#              The hold socket, bridge (4). Windows builds no hold socket yet, so every permission there stays a
+#                screen ask (CHANGELOG, M56 spec 12). The four tests of the "the hold socket" block in
+#                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
+#                Each name sits on one line, so the pin test can find it:
+#                - "owner-only: the folder is 0700, the socket 0600; a second bridge on the same path does not take it" (a POSIX socket file with an owner-only mode)
+#                - "a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision" (it dials that socket)
+#                - "a placed request reaches the session; the decision travels back as one line" (the same)
+#                - "an unparsed line is dropped" (the same)
 #              Durable, bridge (30 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
 #                that is about the Unix socket itself cannot run there. The tests about the wire (controls,
 #                asks, answers, receipts, events, Chat, starters, the conformance suite) run on Windows
@@ -67,7 +75,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 71,
+  [int]$MaxSkipsBridge = 75,
   [int]$MaxSkipsCli = 17,
   [int]$MaxSkipsScripts = 25
 )

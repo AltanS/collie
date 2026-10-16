@@ -550,6 +550,8 @@ These limits also hold:
 - Collie does not rotate `collie.log` ([Logs](#logs)).
 - `herdr plugin install` is not a Windows install path. Use `install.ps1`, then `collie start`.
 - Herdr's action buttons do not exist on Windows, because they need `bash`.
+- A permission that a hook holds is not on Windows yet. Collie builds no hold socket there, so every permission stays a screen ask.
+- The nightly harness lab runs on Linux only. It is not on Windows.
 - Herdr's Windows build is made by the Herdr project. Collie depends on it and does not control it.
 
 ### Crews

@@ -3089,7 +3089,8 @@ describe("the held send (M56 spec 15)", () => {
     expect(r.deps.store.get("held-000001")?.phase).toBe("held");
     const file = join(dir, "held", "held-000001.json");
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ id: "held-000001", text: "then give it a title", state: "held", paneId: "%1" });
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(r.protocol.heldOf("main", "%1")).toEqual([
       { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held" },
     ]);
