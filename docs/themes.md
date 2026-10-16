@@ -95,6 +95,7 @@ A file has these keys, and no others. An unknown key anywhere is refused with it
 ```
 
 - `version` is the number 1. Any other number is refused.
+- A version 2 file does not import into a Collie older than 1.22.0.
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you

@@ -258,7 +258,7 @@ panel), and §11 grants the other, `Collapse`. Add a third only by adding it to 
 
 ## 3. Shape
 
-`--radius: 2px`, and it does not ramp.
+`--radius: 2px`, and it does not ramp in the Collie theme.
 
 The radius descends from the mark, which holds a disc and a traced line and no
 soft-cornered box anywhere. 2px is the smallest radius that still reads as intentional
@@ -896,8 +896,10 @@ come from `light-dark()`.
 
 `popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
 
-**What a theme never reaches.** `--radius`, spacing, tap sizes, row heights, motion, and the
-meaning of a status: its icon and its word stay as the status components draw them. The
+**What a theme never reaches.** A free value for spacing, tap sizes, row heights, motion, and the
+meaning of a status: its icon and its word stay as the status components draw them. Radius, shadow,
+density, weight and border are closed words from the schema (version 2, the `surface` block in
+`web/src/lib/theme/surface.ts`), never free values. The
 terminal mirror keeps its own dark space and its ANSI palette (§8, ADR 0002); a theme does not
 tint it in schema version 1.
 
