@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
 import { capture, context, fakeFiles, fakeLinkFs, HOME, posixKey, ROOT, STATE } from "./fakes.ts";
@@ -663,6 +663,11 @@ function holdDeps(over: {
     connects,
     timers,
   };
+  // Each socket a test names is a real socket in a private folder, as the bridge makes it.
+  for (const path of Object.keys(sockets)) {
+    built.files.entryTypes.set(posixKey(dirname(path)), "directory");
+    built.files.entryTypes.set(posixKey(path), "other");
+  }
   // The registry walk runs when no fixed list is given, as in production.
   return over.registry === true ? built : { ...built, sockets: () => Object.keys(sockets) };
 }
@@ -767,6 +772,34 @@ describe("hold: the hook script is inert on every error", () => {
     });
     expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
     expect(d.printed).toEqual([]);
+  });
+});
+
+describe("hold: the socket is checked before the connect", () => {
+  const SOCK = "/state/hold/sock";
+  const cases: [string, (d: ReturnType<typeof holdDeps>) => void][] = [
+    ["a folder others can write", (d) => d.files.modes.set("/state/hold", 0o777)],
+    ["a folder another user owns", (d) => d.files.rootOwned.add("/state/hold")],
+    ["a socket another user owns", (d) => d.files.rootOwned.add(SOCK)],
+    ["a link in the socket's place", (d) => d.files.entryTypes.set(SOCK, "symlink")],
+    ["a plain file in the socket's place", (d) => d.files.entryTypes.delete(SOCK)],
+  ];
+  for (const [name, spoil] of cases) {
+    test(`${name}: no connect, nothing printed`, async () => {
+      const d = { ...holdDeps({ sockets: { [SOCK]: new FakeHoldSocket() } }), uid: 1000 };
+      if (name.startsWith("a plain file")) d.files.write(SOCK, "");
+      spoil(d);
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(d.connects).toEqual([]);
+      expect(d.printed).toEqual([]);
+    });
+  }
+
+  test("this user's socket in a private folder: the hook connects", async () => {
+    const socket = new FakeHoldSocket();
+    const d = { ...holdDeps({ sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.drop()) }), uid: 1000 };
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.connects.map((c) => c.path)).toEqual([SOCK]);
   });
 });
 

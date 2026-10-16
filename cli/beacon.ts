@@ -315,7 +315,7 @@ export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
  * Whether a folder the emitter is about to write into is this user's own and private: a real folder,
  * not a link, owned by this uid, and writable by nobody else. A folder that fails is skipped.
  */
-function privateDir(deps: EdgeTargetDeps, dir: string): boolean {
+export function privateDir(deps: EdgeTargetDeps, dir: string): boolean {
   if (deps.files.entryType(dir) !== "directory") return false;
   const mode = deps.files.mode(dir);
   if (mode !== null && (mode & 0o022) !== 0) return false;

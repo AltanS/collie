@@ -100,6 +100,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The bridge keeps one hold per pane and agent.** Two subagents can wait on one pane at once. Each tool edge ends only its own agent's hold. A new request of the same agent ends the old hold as void, not as answered at the desk. The phone shows one hold card at a time.
 - **The hold card shows more of what a tool will do.** A Bash request shows `dangerouslyDisableSandbox` and `run_in_background` when they are set. A Write, Edit or NotebookEdit request shows the size and the start of the text it writes. Collie drops zero-width and direction characters before it shows or hashes the input. An input longer than 1000 characters ends in a cut mark, and the screen answers it, not the hook.
 - **A tool edge ends only the hold of its own call.** The edge carries a hash of the input shown, never the input. The bridge ends a hold on it only when the tool, the agent and the input hash match. The edge must also come at or after the request.
+- **The permission hook checks each socket before it connects.** The socket's folder must be your own, and nobody else may write to it. The socket must be a socket that you own, not a link or a file. The hook skips any other path.
 
 ### Changed
 

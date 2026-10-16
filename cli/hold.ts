@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { createConnection } from "node:net";
+import { dirname } from "node:path";
 import { holdSocketPath } from "../bridge/beacon/paths.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -16,7 +17,7 @@ import {
   type HoldRequest,
 } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { BEACON_HARNESS, edgeStateDirs, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
+import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -48,6 +49,18 @@ export { holdSocketPath };
  */
 export function holdSocketPaths(deps: EdgeTargetDeps): string[] {
   return edgeStateDirs(deps).map((dir) => holdSocketPath(dir));
+}
+
+/**
+ * Whether a socket path is safe to post a request to, checked before the connect. Its folder is this
+ * user's own and private (a real folder, owned by this uid, writable by nobody else), and the socket
+ * is a socket of this uid, never a link or a plain file. Another user who could plant a socket
+ * there would read the request and could answer it.
+ */
+export function holdSocketSafe(deps: EdgeTargetDeps, path: string): boolean {
+  if (!privateDir(deps, dirname(path))) return false;
+  if (deps.files.entryType(path) !== "other") return false;
+  return deps.uid === undefined || deps.files.ownerUid(path) === deps.uid;
 }
 
 /** One open connection to a bridge, line based. */
@@ -158,7 +171,7 @@ export async function cmdBeaconHold(deps: HoldDeps): Promise<number> {
     if (payload === undefined) return EXIT.OK;
     const request = holdRequestOf(deps, payload, hold);
     if (request === null) return EXIT.OK;
-    const paths = [...new Set(deps.sockets?.() ?? holdSocketPaths(deps))];
+    const paths = [...new Set(deps.sockets?.() ?? holdSocketPaths(deps))].filter((path) => holdSocketSafe(deps, path));
     if (paths.length === 0) return EXIT.OK;
     sockets = await connectAll(deps, paths);
     if (sockets.length === 0) return EXIT.OK;
