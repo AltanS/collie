@@ -40,6 +40,7 @@ import {
   PANEL_BOTTOM,
   rowTexts,
   rstrip,
+  STATUS_BAR,
   WIDE_COLUMNS,
 } from "./markers";
 
@@ -48,7 +49,8 @@ export type PromptState = "idle" | "running" | "freetext" | "clarify" | "approva
 
 /** The input frame located at the tail. Every index is into the ORIGINAL `lines` array. */
 export interface InputFrame {
-  /** The status bar, directly above the top rule; null when that slot is blank or absent. */
+  /** The status bar, directly above the top rule; null when that slot is blank, or the operator
+   *  turned the bar off and another row sits there. */
   statusRow: number | null;
   /** Whether the slot above the top rule is a blank row: the status bar rendering nothing. */
   statusSlotBlank: boolean;
@@ -159,13 +161,12 @@ export function locateInput(lines: StyledLine[]): InputFrame | null {
   // input, anything printed below it means the frame is not at the tail.
   if (!takesText(prompt.state) && lastInputRow !== promptRow) return null;
 
-  // (c) The status slot directly above the top rule.
+  // (c) The status slot directly above the top rule: the bar itself, recognised by its own marker,
+  // so a bar the operator turned off is not mistaken for the row that then sits there (a key hint,
+  // a reply's box).
   const above = topRule - 1;
   const statusSlotBlank = above >= 0 && isBlank(texts[above]!);
-  const statusRow =
-    above >= 0 && !statusSlotBlank && !isRule(texts[above]!) && !isPanelRow(texts[above]!) && !PANEL_BOTTOM.test(texts[above]!)
-      ? above
-      : null;
+  const statusRow = above >= 0 && STATUS_BAR.test(texts[above]!) ? above : null;
 
   return {
     statusRow,
@@ -184,19 +185,24 @@ export function locateInput(lines: StyledLine[]): InputFrame | null {
 const PICKER_REACH = 8;
 
 /**
- * The model picker or the command palette is open: the status slot renders blank, and the nearest
- * printed row above it is a panel box's side or bottom (fixtures hermes--model-picker,
- * hermes--palette). A status bar turned off removes the slot instead, so an idle screen without
- * one is not read as this.
+ * The model picker or the command palette is open. Both draw a box straight above the input, with
+ * nothing of their own between (no hint row, no spinner), and the status bar renders EMPTY while
+ * either is up (fixtures hermes--model-picker, hermes--palette). So the evidence is: no status bar,
+ * and the nearest printed row above the input is that box, a side `│ … │`, or a bottom `╰─╯`
+ * narrower than the input's rule. A reply's own box is closed by a bottom as wide as the rule, which
+ * is what sits there on an idle screen when the operator has turned the bar off. A picker as wide as
+ * a narrow pane is not told apart from that, and reads as no picker.
  */
 export function pickerOpen(lines: StyledLine[], frame: InputFrame | null = locateInput(lines)): boolean {
-  if (frame === null || !frame.statusSlotBlank) return false;
+  if (frame === null || frame.statusRow !== null) return false;
   const texts = rowTexts(lines);
+  const ruleWidth = displayWidth(texts[frame.topRule]!);
   const floor = Math.max(0, frame.topRule - 1 - PICKER_REACH);
-  for (let i = frame.topRule - 2; i >= floor; i--) {
+  for (let i = frame.topRule - 1; i >= floor; i--) {
     const t = texts[i]!;
     if (isBlank(t)) continue;
-    return isPanelRow(t) || PANEL_BOTTOM.test(t);
+    if (isPanelRow(t)) return true;
+    return PANEL_BOTTOM.test(t) && displayWidth(t) < ruleWidth;
   }
   return false;
 }

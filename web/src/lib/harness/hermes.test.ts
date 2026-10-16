@@ -201,9 +201,22 @@ describe("the clarify panel", () => {
     expect(detectClarifyRegion(clipped)).toBeNull();
   });
 
-  it("refuses a panel with an extra row between it and the key hint it does not know", () => {
-    const extra = edited("hermes--clarify-choices.txt", /↑\/↓ to select, Enter to lock/, (row) => row.replace("↑/↓ to select", "↑/↓ to choose"));
-    expect(detectClarifyRegion(extra)).toBeNull();
+  it("refuses a panel whose key hint is not the one it knows", () => {
+    const reworded = edited("hermes--clarify-choices.txt", /↑\/↓ to select, Enter to lock/, (row) => row.replace("↑/↓ to select", "↑/↓ to choose"));
+    expect(detectClarifyRegion(reworded)).toBeNull();
+  });
+
+  // The declared tail vouches for every row under the panel (ADR 0104), so a row there that is not
+  // Hermes's own spinner refuses the panel rather than being counted.
+  it("refuses a panel with a row it does not know between the panel and the hint", () => {
+    const inserted = edited("hermes--clarify-choices.txt", /^ {2}❓ Which database/, (row) => `${row}\nunrelated output row`);
+    expect(detectClarifyRegion(inserted)).toBeNull();
+    const replaced = edited("hermes--clarify-choices.txt", /^ {2}❓ Which database/, () => "  some other output");
+    expect(detectClarifyRegion(replaced)).toBeNull();
+    const below = edited("hermes--approval.txt", /^ {2}💻 rm -rf/, (row) => `stray line\n${row}`);
+    expect(detectApprovalRegion(below)).toBeNull();
+    // The spinner that wraps onto a second row is still the spinner.
+    expect(detectClarifyRegion(load("hermes--clarify-long.txt"))).not.toBeNull();
   });
 });
 
@@ -232,6 +245,42 @@ describe("the dangerous-command approval", () => {
     expect(detectApprovalRegion(forGood)).toBeNull();
     const unknown = edited("hermes--approval.txt", /3\. Add to permanent/, (row) => row.replace("Add to permanent allowlist", "Allow everything forever  "));
     expect(detectApprovalRegion(unknown)).toBeNull();
+  });
+});
+
+// The operator can turn the status bar off (`/statusbar`, `display` config); Hermes then removes the
+// row rather than leaving it blank. Each screen below is a capture with that one row taken out.
+describe("with the status bar turned off", () => {
+  const withoutStatus = (name: string, also?: (text: string) => boolean) =>
+    load(name).filter((l) => {
+      const text = lineText(l);
+      return !text.startsWith(" ☤ lab-model") && !(also?.(text) ?? false);
+    });
+
+  it("still lifts the clarify and the approval, with the hint straight above the input", () => {
+    const clarify = detectClarifyRegion(withoutStatus("hermes--clarify-choices.txt"));
+    expect(clarify?.model.question).toBe("Which database should the lab use?");
+    expect(detectApprovalRegion(withoutStatus("hermes--approval.txt"))?.model.question).toBe("Dangerous Command");
+  });
+
+  it("keeps an idle input ready under a reply's box", () => {
+    const idle = withoutStatus("hermes--idle.txt");
+    expect(hermesAdapter.composerReady!(idle)).toBe(true);
+    expect(hermesAdapter.extractStatusLines(idle)).toEqual([]);
+  });
+
+  it("still refuses the input while a picker holds the keyboard", () => {
+    // Under a picker the bar renders blank, so turning it off removes that blank row.
+    const lastBlankAboveRule = (name: string) => {
+      const lines = load(name);
+      const rule = lines.findIndex((l, i) => i > 0 && /^─{8,}$/.test(lineText(l)) && lineText(lines[i + 1]!).startsWith("❯"));
+      return lines.filter((_, i) => i !== rule - 1);
+    };
+    for (const name of ["hermes--palette.txt", "hermes--model-picker.txt"]) {
+      const screen = lastBlankAboveRule(name);
+      expect(pickerOpen(screen), name).toBe(true);
+      expect(hermesAdapter.composerReady!(screen), name).toBe(false);
+    }
   });
 });
 

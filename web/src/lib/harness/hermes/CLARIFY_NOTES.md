@@ -55,7 +55,9 @@ What the adapter emits (`clarify.ts`):
 
 - A `prompt-select` for a panel waiting for a choice: the prompt is `?`, the hint row is
   `↑/↓ to select, Enter to lock, Tab next question`, and every row from the panel down to the input
-  is accounted for (blanks, at most four spinner rows, the hint, the status bar if shown).
+  is accounted for: blank rows, the spinner (at most four rows, opening two spaces in and ending in
+  its `( 52.6s · ↓ 40 tok)` timer group), the hint, and the status bar, recognised by its `☤`
+  marker, when the operator has not turned it off. Any other row there refuses the panel.
 - One button per choice of the active question, sending its digit alone, Other included: Other
   only opens the typed answer.
 - Nothing for the `✎` screen. There the input is the answer, so the phone's composer is ready and
