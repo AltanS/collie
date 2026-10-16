@@ -863,6 +863,20 @@ describe("hold: only PermissionRequest is held", () => {
     expect(JSON.parse(socket.sent[0]!).input).toBe("rm -rf build\n[dangerouslyDisableSandbox: true]");
   });
 
+  test("a hold: a subagent's request carries its type, and the main session's never does", async () => {
+    const cases: [Record<string, JsonValue>, string | undefined][] = [
+      [{ agent_id: "a1", agent_type: "general-purpose" }, "general-purpose"],
+      [{ agent_type: "general-purpose" }, undefined],
+      [{ agent_id: "a1" }, undefined],
+    ];
+    for (const [over, sent] of cases) {
+      const socket = new FakeHoldSocket();
+      const d = holdDeps({ stdin: permissionPayload(over), sockets: { [SOCK]: socket }, onSent: (_p, s) => queueMicrotask(() => s.drop()) });
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(JSON.parse(socket.sent[0]!).agentType).toBe(sent);
+    }
+  });
+
   test("a hold: the request carries the agent's folder, so the bridge can match a path the dialog prints below it", async () => {
     for (const [cwd, sent] of [["/var/home/me/proj", "/var/home/me/proj"], ["relative", undefined], ["/a\u202eb", undefined]] as const) {
       const socket = new FakeHoldSocket();

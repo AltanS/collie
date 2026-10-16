@@ -107,7 +107,7 @@
       "Edit": ["Edit file"],
       "WebFetch": ["Fetch"]
     },
-    "agentMark": "·\\s*from the\\b",
+    "agentMark": "·\\s*from the\\s*(.*?)(?:\\s+agent)?\\s*$",
     "options": [
       { "label": "Yes", "decision": "allow" },
       { "label": "No", "decision": "deny" }

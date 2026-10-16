@@ -22,7 +22,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { isFree, type Ask } from "../../web/src/lib/surface/surface.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
-import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
+import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, counterWordOf, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
 import { KeyGate, type GateResult, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -718,7 +718,7 @@ describe("a hold owns only the dialog it adopted", () => {
 
   test("a foreground subagent's dialog is adopted: a No on the screen card denies through the hook", async () => {
     const r = rig(SUB_DIALOG);
-    const { conn } = r.open({ agent: "agent-3", input: SUB_COMMAND });
+    const { conn } = r.open({ agent: "agent-3", agentType: "general-purpose", input: SUB_COMMAND });
     const ask = r.poll()!;
     expect(ask.channel).toBe("hook");
     expect(ask.options.map((o) => o.label)).toEqual(["Yes", "No"]);
@@ -733,7 +733,7 @@ describe("a hold owns only the dialog it adopted", () => {
 
   test("a foreground subagent's dialog answered at the desk reads as desk", () => {
     const r = rig(SUB_DIALOG);
-    const { conn } = r.open({ agent: "agent-3", input: SUB_COMMAND });
+    const { conn } = r.open({ agent: "agent-3", agentType: "general-purpose", input: SUB_COMMAND });
     r.poll();
     r.pane.screen = DESK_DONE;
     r.poll();
@@ -766,11 +766,71 @@ describe("adoption needs the tool, the agent mark and the whole input line", () 
     expectNoKey(r);
   });
 
+  test("two subagents with the same command but another type: only the type the mark names adopts", () => {
+    const r = rig(SUB_DIALOG);
+    r.open({ agent: "agent-3", agentType: "Explore", input: SUB_COMMAND, at: 1 });
+    r.open({ agent: "agent-4", agentType: "general-purpose", input: SUB_COMMAND, at: 2 });
+    r.poll();
+    expect(r.holds.holdsOn(PANE).map((held) => [held.request.agentType, held.dialog !== null])).toEqual([
+      ["Explore", false],
+      ["general-purpose", true],
+    ]);
+  });
+
+  test("a two-line command whose dialog shows only the first line is not adopted", () => {
+    const r = rig(BASH);
+    r.open({ input: "mkfifo fixture-fifo\nrm -rf ~" });
+    r.poll();
+    expect(r.holds.holdsOn(PANE)[0]?.dialog).toBeNull();
+  });
+
+  test("a keys answer that ends the hook of a hold that did not adopt the dialog: the note says the keys answered", async () => {
+    const r = rig(BASH);
+    // Another request's hold, from a subagent: the main dialog stays a keys ask.
+    const { close } = r.open({ agent: "agent-9", agentType: "general-purpose", tool: "Write", input: "/tmp/project/other.txt", cwd: "/tmp/project" });
+    const keys = r.poll()!;
+    expect(keys.channel).toBe("keys");
+    r.pane.beforeRead = (pane) => {
+      if (r.gate.commits.length > 0 && pane.screen !== IDLE) {
+        pane.screen = IDLE;
+        close("closed");
+      }
+    };
+    expect((await r.answer(keys, "1")).receipt?.outcome).toBe("sent");
+    expect(r.holds.note(PANE)?.state).toBe("keys");
+    expect(r.counted).toEqual(["keys"]);
+    // The counters file has no word of its own for it: the screen answered.
+    expect(counterWordOf("keys")).toBe("desk");
+  });
+
+  test("a keys answer, then the request's own tool edge before the hook ends: the note says the keys answered", async () => {
+    const r = rig(BASH);
+    r.open({ tool: "WebFetch", input: "https://example.com/" });
+    const keys = r.poll()!;
+    expect(keys.channel).toBe("keys");
+    r.pane.beforeRead = (pane) => {
+      if (r.gate.commits.length > 0 && pane.screen !== IDLE) {
+        pane.screen = IDLE;
+        r.holds.edge(PANE, "tool", { tool: "WebFetch", agent: null, at: 2, inputHash: holdInputHash("WebFetch", "https://example.com/") });
+      }
+    };
+    expect((await r.answer(keys, "1")).receipt?.outcome).toBe("sent");
+    expect(r.holds.note(PANE)?.state).toBe("keys");
+  });
+
+  test("a hook that ends with no keys answer: the note says the hook stopped", () => {
+    const r = rig(BASH);
+    const { close } = r.open({ agent: "agent-9", agentType: "general-purpose", tool: "Write", input: "/tmp/project/other.txt", cwd: "/tmp/project" });
+    r.poll();
+    close("closed");
+    expect(r.holds.note(PANE)?.state).toBe("void");
+  });
+
   test("two holds that both fit the dialog: none adopts it, the dialog stays a keys ask", () => {
     const r = rig(SUB_DIALOG);
     // Two subagents ask for the same command: no hold can tell which request the dialog shows.
-    r.open({ agent: "agent-3", input: SUB_COMMAND, at: 1 });
-    r.open({ agent: "agent-4", input: SUB_COMMAND, at: 2 });
+    r.open({ agent: "agent-3", agentType: "general-purpose", input: SUB_COMMAND, at: 1 });
+    r.open({ agent: "agent-4", agentType: "general-purpose", input: SUB_COMMAND, at: 2 });
     const ask = r.poll()!;
     expect(r.holds.holdsOn(PANE).map((held) => held.dialog)).toEqual([null, null]);
     // The screen's own dialog keeps its keys ask; each hold waits on its hold card.

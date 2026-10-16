@@ -61,6 +61,8 @@ export interface HoldRequest {
   readonly cut?: boolean;
   /** The subagent id the request came from, or null for the main session. */
   readonly agent: string | null;
+  /** The subagent's type, as the dialog's mark names it. Absent for the main session, or from an older hook. */
+  readonly agentType?: string;
   /** The agent's working folder. A dialog names a file in it by the path below it. */
   readonly cwd?: string;
   readonly hold: boolean;
@@ -125,7 +127,10 @@ export interface HoldProfile {
    * when the header names its own tool. A tool with no entry never adopts: its hold card answers it.
    */
   readonly headers: Readonly<Record<string, readonly string[]>>;
-  /** A regular expression source for the header's subagent mark. It shows exactly on a subagent's dialog. */
+  /**
+   * A regular expression source for the header's subagent mark. It shows exactly on a subagent's
+   * dialog, and its first group is the subagent's type, which must equal the request's.
+   */
   readonly agentMark: string;
   /** The options when no dialog is on the screen. */
   readonly options: readonly HoldOption[];
@@ -242,18 +247,34 @@ const MATCH_KEY_MIN = 3;
 const RULE_ROW = /^[\s─━═╌┄┈╭╮╰╯┌┐└┘]*$/u;
 
 /** What {@link dialogShowsRequest} compares of a request. */
-export type DialogMatchRequest = Pick<HoldRequest, "tool" | "input" | "agent" | "cwd">;
+export type DialogMatchRequest = Pick<HoldRequest, "tool" | "input" | "agent" | "agentType" | "cwd">;
+
+/**
+ * The lines of the input shown that come from the tool input itself: every line before the first
+ * line the tool's details add (a `[flag: …]` or `[body: …]` line of the profile).
+ */
+export function inputLinesOf(input: string, detail: HoldInputDetail | undefined): string[] {
+  const lines = input.split("\n");
+  const names = detail === undefined ? [] : [...detail.flags, ...detail.body];
+  const end = lines.findIndex((line, i) => i > 0 && names.some((name) => line.startsWith(`[${name}: `)));
+  return end === -1 ? lines : lines.slice(0, end);
+}
 
 /**
  * Whether a permission dialog shows this very request, so the hold may take the dialog as its own.
- * Three things must agree. The header names the request's tool (profile `headers`). The header has
- * the subagent mark exactly when the request comes from a subagent. And the whole first line of the
- * input shown fills one or more whole rows of the dialog: white space and the `│` gutter are dropped,
- * because the dialog wraps a long command. A path below the agent's folder also matches as the path
- * the dialog prints, relative to that folder. An input too short to tell, or a dialog with no text,
- * never matches: the dialog then stays the screen's own keys ask.
+ * Four things must agree. The header names the request's tool (profile `headers`). The header has the
+ * subagent mark exactly when the request comes from a subagent. The mark names the request's subagent
+ * type; a name on one side only is no match. And every line of the input, in order, fills whole rows
+ * of the dialog, each line right after the one before. White space and the `│` gutter are dropped,
+ * because the dialog wraps a long line. A path below the agent's folder also matches as the path the
+ * dialog prints, relative to that folder. An input too short to tell, or a dialog with no text, never
+ * matches: the dialog then stays the screen's own keys ask.
  */
-export function dialogShowsRequest(dialogText: string | null, request: DialogMatchRequest, hold: Pick<HoldProfile, "headers" | "agentMark">): boolean {
+export function dialogShowsRequest(
+  dialogText: string | null,
+  request: DialogMatchRequest,
+  hold: Pick<HoldProfile, "headers" | "agentMark" | "inputDetails">,
+): boolean {
   if (dialogText === null) return false;
   const rows = dialogText.split("\n").filter((row) => !RULE_ROW.test(row));
   const header = (rows[0] ?? "").trim();
@@ -261,24 +282,40 @@ export function dialogShowsRequest(dialogText: string | null, request: DialogMat
   const named = (mark === null ? header : header.slice(0, mark.index)).trim();
   if (!(hold.headers[request.tool] ?? []).includes(named)) return false;
   if ((mark !== null) !== (request.agent !== null)) return false;
-  const first = (request.input.split("\n").find((line) => line.trim().length > 0) ?? "").trim();
-  const keys = [first];
+  if (mark !== null && (mark[1] ?? "").trim() !== (request.agentType ?? "")) return false;
+  const lines = inputLinesOf(request.input, hold.inputDetails[request.tool])
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const [first, ...rest] = lines;
+  if (first === undefined) return false;
+  const firsts = [first];
   const cwd = request.cwd === undefined ? "" : request.cwd.replace(/\/+$/u, "");
-  if (cwd !== "" && first.startsWith(`${cwd}/`)) keys.push(first.slice(cwd.length + 1));
+  if (cwd !== "" && first.startsWith(`${cwd}/`)) firsts.push(first.slice(cwd.length + 1));
   const body = rows.slice(1).map((row) => squash(row.replace(/│/gu, "")));
-  return keys.map(squash).some((key) => key.length >= MATCH_KEY_MIN && fillsRows(body, key));
+  return firsts.some((line) => squash(line).length >= MATCH_KEY_MIN && fillsInOrder(body, [line, ...rest].map(squash)));
 }
 
-/** Whether some run of whole rows, joined, reads exactly `key`. */
-function fillsRows(rows: readonly string[], key: string): boolean {
+/** Whether the keys fill whole rows in order, each key starting on the row after the one before. */
+function fillsInOrder(rows: readonly string[], keys: readonly string[]): boolean {
   for (let start = 0; start < rows.length; start += 1) {
-    let joined = "";
-    for (let end = start; end < rows.length && joined.length < key.length; end += 1) {
-      joined += rows[end];
-      if (joined === key) return true;
+    let at = start;
+    for (const key of keys) {
+      at = rowsAfter(rows, at, key);
+      if (at === -1) break;
     }
+    if (at !== -1) return true;
   }
   return false;
+}
+
+/** The row after a run from `start` whose rows, joined, read exactly `key`, or -1. */
+function rowsAfter(rows: readonly string[], start: number, key: string): number {
+  let joined = "";
+  for (let end = start; end < rows.length && joined.length < key.length; end += 1) {
+    joined += rows[end];
+    if (joined === key) return end + 1;
+  }
+  return -1;
 }
 
 /** The decision an option label stands for under the profile, or null when no rule names it. */
@@ -352,9 +389,12 @@ export function parseHoldRequest(line: string): HoldRequest | null {
   if (node.cut !== undefined && asJsonBoolean(node.cut) === undefined) return null;
   const cwd = node.cwd === undefined ? undefined : asJsonString(node.cwd);
   if (node.cwd !== undefined && (cwd === undefined || !isCwd(cwd))) return null;
+  const agentType = node.agentType === undefined ? undefined : asJsonString(node.agentType);
+  if (node.agentType !== undefined && (agentType === undefined || !TEXT_FIELD.test(agentType) || agent === null)) return null;
   // The hook cleaned the input already; an older hook did not drop the hiding characters.
   const base: HoldRequest = { v: HOLD_WIRE_VERSION, harness, pid, pidStartTime, markers, tool, input: cleanShown(input), agent, hold, at };
-  const withCwd = cwd === undefined ? base : { ...base, cwd };
+  const withType = agentType === undefined ? base : { ...base, agentType };
+  const withCwd = cwd === undefined ? withType : { ...withType, cwd };
   return node.cut === true ? { ...withCwd, cut: true } : withCwd;
 }
 
@@ -379,7 +419,7 @@ export function isElsewhereLine(line: string): boolean {
  *  - `timeout`: the hold reached its limit. The dialog on the screen is a new card.
  *  - `mismatch`: an answer came with another hash. Collie let the hook go.
  */
-export const HOLD_STATES = ["held", "sent", "desk", "elsewhere", "void", "timeout", "mismatch"] as const;
+export const HOLD_STATES = ["held", "sent", "desk", "keys", "elsewhere", "void", "timeout", "mismatch"] as const;
 export type HoldState = (typeof HOLD_STATES)[number];
 
 /** A pane's hold note on the snapshot (`PaneWire.hold`). */

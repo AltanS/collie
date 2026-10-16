@@ -106,6 +106,8 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   if (pidStartTime === null) return null;
   const agentRaw = asJsonString(payload.agent_id);
   const agent = agentRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(agentRaw) ? agentRaw : null;
+  const typeRaw = asJsonString(payload.agent_type);
+  const agentType = agent !== null && typeRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(typeRaw) ? typeRaw : undefined;
   const shown = shownInputOf(payload.tool_input, hold.inputShown, hold.inputDetails[tool]);
   const cwd = asJsonString(payload.cwd);
   const request: HoldRequest = {
@@ -122,7 +124,9 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
     at: (deps.now ?? Date.now)(),
   };
   // The folder lets the bridge match a dialog that names a file by its path below the folder.
-  const withCwd = cwd !== undefined && isCwd(cwd) ? { ...request, cwd } : request;
+  // The subagent's type lets the bridge tell two subagents' dialogs apart by the dialog's mark.
+  const withType = agentType === undefined ? request : { ...request, agentType };
+  const withCwd = cwd !== undefined && isCwd(cwd) ? { ...withType, cwd } : withType;
   return shown.cut ? { ...withCwd, cut: true } : withCwd;
 }
 

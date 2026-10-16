@@ -764,6 +764,8 @@ export class AskAnswerer {
       state.marks.readBack = check;
     }
 
+    // A hold that did not adopt this dialog loses its hook to this commit: its note then says so.
+    this.deps.book.holds?.keysCommitting(state.target.paneId);
     await this.keys(state, plan.commit, bound, "commit");
 
     const after = await this.poll(state, "after", ASK_BOUNDS.after, (snap) => (snap.dialog === null || snap.dialog.hash !== bound.dialog!.hash ? "pass" : "wait"));

@@ -513,6 +513,7 @@ export const ja: Dictionary = {
   "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.", // TODO wordsmith
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.", // TODO wordsmith
   "chat.hold.desk": "The desk answered first.", // TODO wordsmith
+  "chat.hold.keys": "The keys on the screen card answered this dialog.", // TODO wordsmith
   "chat.hold.elsewhere": "Another Collie answered.", // TODO wordsmith
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.", // TODO wordsmith
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.", // TODO wordsmith

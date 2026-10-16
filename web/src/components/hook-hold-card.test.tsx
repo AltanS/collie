@@ -66,6 +66,7 @@ describe("HookHoldCard", () => {
     const cases: [HoldNote["state"], string][] = [
       ["sent", "Sent. The agent goes on when the tool runs."],
       ["desk", "The desk answered first."],
+      ["keys", "The keys on the screen card answered this dialog."],
       ["elsewhere", "Another Collie answered."],
       ["void", "The hook stopped. Answer the dialog on the screen."],
       ["timeout", "The hold timed out. Answer the dialog on the screen."],

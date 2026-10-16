@@ -79,13 +79,20 @@ const BOOK_SIZE = 256;
 /** The journal tag of a hold line. */
 export const HOLD_TAG = "surface.hold";
 
-/** What ended a hold, for the counters and the receipt. `elsewhere` counts as `void`. */
-export type HoldOutcome = "phone" | "desk" | "elsewhere" | "void" | "timeout" | "mismatch";
+/**
+ * What ended a hold, for the counters and the receipt. `elsewhere` counts as `void`. `keys` is a keys
+ * answer to the dialog on the screen that ended the hook first, and counts as `desk`: the screen answered.
+ */
+export type HoldOutcome = "phone" | "desk" | "keys" | "elsewhere" | "void" | "timeout" | "mismatch";
 
 /** The counter word of an outcome (spec 09's counters file): desk, phone, void, timeout, mismatch. */
 export function counterWordOf(outcome: HoldOutcome): "phone" | "desk" | "void" | "timeout" | "mismatch" {
-  return outcome === "elsewhere" ? "void" : outcome;
+  if (outcome === "elsewhere") return "void";
+  return outcome === "keys" ? "desk" : outcome;
 }
+
+/** The ms after a keys answer's commit in which a hook that ends was ended by that answer. */
+export const KEYS_CLOSE_MS = 5000;
 
 /** The connection back to the hook. */
 export interface HoldConn {
@@ -179,6 +186,22 @@ export class HoldBook {
   private readonly log: (line: string) => void;
   /** Set by the ask book that attaches this one: void the pane's live keys ask. */
   voidKeysAsk: (paneId: string) => void = () => {};
+  /** When a keys answer last sent its commit on each pane. */
+  private readonly keysAt = new Map<string, number>();
+
+  /** A keys answer on the pane sends its commit now. A hook that ends soon after was ended by it. */
+  keysCommitting(paneId: string): void {
+    this.keysAt.set(paneId, this.now());
+  }
+
+  /**
+   * Who answered a hold that ends while it waits: `keys` when it did not adopt the dialog and a keys
+   * answer on its pane just sent its commit (the phone's keys card answered the dialog), else `desk`.
+   */
+  private screenAnswer(held: Held): "keys" | "desk" {
+    const keysAt = this.keysAt.get(held.paneId);
+    return held.dialog === null && keysAt !== undefined && this.now() - keysAt < KEYS_CLOSE_MS ? "keys" : "desk";
+  }
 
   constructor(private readonly options: HoldBookOptions = {}) {
     this.now = options.now ?? (() => Date.now());
@@ -406,6 +429,8 @@ export class HoldBook {
     // A close at the limit is the hook's own timer: the same outcome as the bridge's.
     const late = this.now() - held.openedAt >= held.profile.limitMs - 2000;
     if (late) return this.end(held, "timeout");
+    // A keys answer to the dialog on the screen ends the hook of a hold that did not adopt it.
+    if (held.state === "held" && this.screenAnswer(held) === "keys") return this.end(held, "keys");
     // A hold with no adopted dialog has nothing for the screen to judge: the hook stopped.
     if (held.dialog === null || held.state === "answering") return this.end(held, "void");
     held.hookGone = true;
@@ -431,7 +456,7 @@ export class HoldBook {
       case "tool":
         // Only this very call: the same agent and tool, not older than the request, and the same input.
         if (!toolEdgeEnds(held, info)) return;
-        if (held.state === "held") return this.end(held, "desk");
+        if (held.state === "held") return this.end(held, this.screenAnswer(held));
         if (held.state === "sent" && held.decision === "deny") {
           // The phone sent a deny, yet the tool ran: the desk's yes landed first.
           return this.settle(held, "desk");
@@ -450,7 +475,7 @@ export class HoldBook {
       case "prompt":
       case "stop":
         if (held.request.agent !== null) return;
-        if (held.state === "held") this.end(held, "desk");
+        if (held.state === "held") this.end(held, this.screenAnswer(held));
         if (held.note?.state === "sent") held.note = null;
         return;
       case "dialog":

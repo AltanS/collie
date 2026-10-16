@@ -129,6 +129,8 @@ describe("the wire", () => {
     expect(parseHoldRequest(JSON.stringify(REQUEST))).toEqual(REQUEST);
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "/proj" }))).toEqual({ ...REQUEST, cwd: "/proj" });
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "proj" }))).toBeNull();
+    expect(parseHoldRequest(JSON.stringify({ ...REQUEST, agent: "a1", agentType: "Explore" }))).toEqual({ ...REQUEST, agent: "a1", agentType: "Explore" });
+    expect(parseHoldRequest(JSON.stringify({ ...REQUEST, agentType: "Explore" }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, cwd: "/a\u202eb" }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, v: 2 }))).toBeNull();
     expect(parseHoldRequest(JSON.stringify({ ...REQUEST, pid: 1 }))).toBeNull();
@@ -164,7 +166,7 @@ describe("which dialog a hold may adopt", () => {
     const edge = rows.findLastIndex((row) => /^─{20,}/u.test(row));
     return rows.slice(edge).join("\n");
   };
-  const req = (over: Partial<{ tool: string; input: string; agent: string | null; cwd: string }>) => ({ tool: "Bash", input: "", agent: null, ...over });
+  const req = (over: Partial<{ tool: string; input: string; agent: string | null; agentType: string; cwd: string }>) => ({ tool: "Bash", input: "", agent: null, ...over });
 
   it("needs the tool's header, the subagent mark exactly on a subagent's request, and the whole first line", () => {
     const bash = dialogOf("claude--permission-bash.txt");
@@ -178,8 +180,28 @@ describe("which dialog a hold may adopt", () => {
     expect(dialogShowsRequest(bash, req({ input: "mkfifo" }), HOLD)).toBe(false);
     const sub = dialogOf("claude--v2291-permission-bash-subagent.txt");
     const command = "set -e; R=/var/home/devel/apps/sample-forge; T=/tmp/forge-home-build; cd $T/web-forge/src/routes/pane && rm -rf ./* && cd $R && for f in $(git ls-tree -r --name-only HEAD web-forge/src/routes/pane); do mkdir -p $T/$(dirname $f); git show HEAD:$f > $T/$f; done; cd $T/web-forge && bunx vite build --outDir /tmp/sample-forge-home --emptyOutDir 2>&1 | grep -E \"MISSING|rror|built in\" | head -5";
-    expect(dialogShowsRequest(sub, req({ input: command, agent: "a1" }), HOLD)).toBe(true);
+    expect(dialogShowsRequest(sub, req({ input: command, agent: "a1", agentType: "general-purpose" }), HOLD)).toBe(true);
     expect(dialogShowsRequest(sub, req({ input: command }), HOLD)).toBe(false);
+  });
+
+  it("needs every line of the input, in order: a screen with the first line only is not this request", () => {
+    const bash = dialogOf("claude--permission-bash.txt");
+    expect(dialogShowsRequest(bash, req({ input: "mkfifo fixture-fifo\nrm -rf ~" }), HOLD)).toBe(false);
+    const two = "Bash command\n\n   mkfifo fixture-fifo\n   rm -rf build\n   Make a pipe\n\n Do you want to proceed?";
+    expect(dialogShowsRequest(two, req({ input: "mkfifo fixture-fifo\nrm -rf build" }), HOLD)).toBe(true);
+    expect(dialogShowsRequest(two, req({ input: "rm -rf build\nmkfifo fixture-fifo" }), HOLD)).toBe(false);
+    // The lines the profile adds (a risky flag) are not on the dialog, and need not be.
+    expect(dialogShowsRequest(bash, req({ input: "mkfifo fixture-fifo\n[run_in_background: true]" }), HOLD)).toBe(true);
+  });
+
+  it("needs the mark's subagent type to equal the request's, and no type on one side only", () => {
+    const sub = dialogOf("claude-lab--permission-bash-subagent--w82.txt");
+    const input = "touch /tmp/claude-lab/project/sub-one.txt";
+    const fits = (agentType: string | undefined) =>
+      dialogShowsRequest(sub, req(agentType === undefined ? { input, agent: "a1" } : { input, agent: "a1", agentType }), HOLD);
+    expect(fits("general-purpose")).toBe(true);
+    expect(fits("Explore")).toBe(false);
+    expect(fits(undefined)).toBe(false);
   });
 
   it("matches a file by the path the dialog prints below the agent's folder, never by its name alone", () => {

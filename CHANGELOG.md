@@ -159,6 +159,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A hold takes a dialog only when every line of its input shows there, in order.** A two-line command whose dialog shows one line stays a keys ask. A subagent's request also needs the subagent type that the dialog's mark names.
+- **When a keys answer ends the hook first, the hold card says that the keys answered the dialog.** Before, it said that the hook stopped.
 - **A held Write, Edit or NotebookEdit request shows the whole text it writes.** The whole text counts against the 1000-character limit. A longer request stays a dialog on the screen. The card says when the input has more lines than its box shows.
 - **The input shown drops more characters that hide text.** These are the C1 controls, the soft hyphen, joiners, variation selectors, the byte order mark and the tag characters.
 - **The hold card ignores a tap in the first 400 ms after a new request shows.** So a tap meant for the card before does not answer the new request.

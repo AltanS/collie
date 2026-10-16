@@ -405,6 +405,8 @@ function parseHold(value: JsonValue, hooks: Readonly<Record<string, HookKind>>):
   const headersNode = object(field(node, "headers", "hold"), "hold.headers");
   const headers = Object.fromEntries(Object.keys(headersNode).map((tool) => [tool, textList(headersNode[tool], `hold.headers.${tool}`, 1)]));
   const agentMark = pattern(field(node, "agentMark", "hold"), "hold.agentMark").source;
+  // The first group names the subagent's type: the bridge compares it with the request's.
+  if ((new RegExp(`${agentMark}|`, "u").exec("")?.length ?? 0) < 2) fail("hold.agentMark", "must hold one group, the subagent's type");
   const detailsNode = object(field(node, "inputDetails", "hold"), "hold.inputDetails");
   const inputDetails = Object.fromEntries(
     Object.keys(detailsNode).map((tool) => {

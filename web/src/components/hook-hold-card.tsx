@@ -18,6 +18,7 @@ import type { HoldNote, HoldState } from "@/lib/surface/hold";
 const NOTE_TEXT = {
   sent: "chat.hold.sent",
   desk: "chat.hold.desk",
+  keys: "chat.hold.keys",
   elsewhere: "chat.hold.elsewhere",
   void: "chat.hold.void",
   timeout: "chat.hold.timeout",
@@ -27,6 +28,7 @@ const NOTE_TEXT = {
 const NOTE_TONE = {
   sent: "info",
   desk: "neutral",
+  keys: "neutral",
   elsewhere: "neutral",
   void: "caution",
   timeout: "caution",

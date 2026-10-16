@@ -564,6 +564,7 @@ export const en = {
   "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.",
   "chat.hold.sent": "Sent. The agent goes on when the tool runs.",
   "chat.hold.desk": "The desk answered first.",
+  "chat.hold.keys": "The keys on the screen card answered this dialog.",
   "chat.hold.elsewhere": "Another Collie answered.",
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.",
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.",
