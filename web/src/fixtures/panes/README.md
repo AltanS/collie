@@ -483,7 +483,7 @@ view`. Collie 1.21.3 refused that row, so the pane had no composer and every sen
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
-| `codex--v0163-agents-hint-warnings.txt` | The empty composer band on a fill, then the status row as the last row. `composerReady` must be TRUE, the `›` row is the composer, no draft, no card | `idle` |
+| `codex--v0163-agents-hint-warnings.txt` | Codex 0.163.0, the reporter's pasted frame from issue 454 (not a `herdr pane read` of ours; session title replaced by `Example session`; the `idle` state is inferred from the empty composer). The empty composer band on a fill, then the status row as the last row. `composerReady` must be TRUE, the `›` row is the composer, no draft, no card | `idle` |
 
 ## Codex reporter capture (#317, 2026-09-28, macOS, Codex 0.158.0, Herdr 0.9.1, SCRUBBED)
 
