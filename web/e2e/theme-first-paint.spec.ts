@@ -129,3 +129,26 @@ test("the running app keeps the theme and moves the browser-chrome colour with i
   const inline = await page.evaluate(() => document.documentElement.style.length);
   expect(inline).toBe(43);
 });
+
+// UNDER A MOUNT (ADR 0052). theme-init.js holds no path, so it should not care, but the shell has to
+// name it `/collie/theme-init.js` for it to load at all, and that rewrite is the bridge's. 4175 is
+// the bundle served by the bridge's own `serveStatic` under `/collie/` (`e2e/serve-mount.ts`).
+test.describe("under /collie/", () => {
+  test.use({ baseURL: "http://127.0.0.1:4175" });
+
+  test("theme-init.js loads from the mount and paints the theme before the bundle runs", async ({ page }) => {
+    await seed(page);
+    await page.route("**/assets/*.js", (route) => route.abort());
+    const loaded = page.waitForResponse((r) => new URL(r.url()).pathname === "/collie/theme-init.js");
+    await page.goto("/collie/");
+    expect((await loaded).status()).toBe(200);
+    const seen = await page.evaluate(() => ({
+      background: getComputedStyle(document.documentElement).getPropertyValue("--background"),
+      inline: document.documentElement.style.length,
+      script: document.querySelector("script[src$='theme-init.js']")?.getAttribute("src"),
+    }));
+    expect(seen.script).toBe("/collie/theme-init.js");
+    expect(seen.background).toContain("#123456");
+    expect(seen.inline).toBe(43);
+  });
+});
