@@ -52,7 +52,9 @@ export function classifyFooter(text: string): PromptFamily | null {
   if (/\b(?:tab\s+amend|tab\s+to\s+amend)\b/.test(t)) return "permission";
   if (/\bctrl\+r\s+review\b/.test(t) && !/\btab\s+amend\b/.test(t)) return "plan";
   if (/ctrl\+g\s+to\s+edit\b/.test(t) || /\.antigravity\/plans\//.test(t) || /\.agy\/plans\//.test(t)) return "plan";
-  if (/\b(?:enter\s+select|enter\s+to\s+select)\b/.test(t)) return "select";
+  // `enter Submit All` is the last question of a several-question call (1.3.5, live 2026-10-15): the
+  // same widget as `enter Select`, its digit answering and submitting the set.
+  if (/\b(?:enter\s+select|enter\s+to\s+select|enter\s+submit\s+all)\b/.test(t)) return "select";
   return null;
 }
 

@@ -59,8 +59,8 @@ describe("the cancel key each adapter declares", () => {
 
 describe("a real unread modal gets the card", () => {
   // One capture per DECLARING adapter whose own grammars all decline it while `composerReady`
-  // answers a definite false. agy/antigravity have no such capture in the corpus — every AGY dialog
-  // fixture is one its prompt-select grammar reads — so they are covered by a hand-built screen.
+  // answers a definite false. agy/antigravity are covered by a hand-built screen here; their one real
+  // capture of that kind is in CARD_FIXTURES below.
   it.each([
     ["claude", "claude-lab--menu-status-screen--w82.txt", "Escape"],
     ["codex", "codex--ask-notes-focused.txt", "Escape"],
@@ -264,10 +264,11 @@ const CARD_FIXTURES = {
     ],
     notModals: [],
   },
-  // No AGY capture in the corpus lands raw-only with no input box: every AGY dialog fixture is one
-  // its own prompt-select grammar reads. An entry appearing here is news either way.
-  agy: { modals: [], notModals: [] },
-  antigravity: { modals: [], notModals: [] },
+  // README: the `/resume` Conversations picker after a search that matched nothing — a real dialog
+  // with no row to select, so the menu grammar declines it and Escape is the way out — and a checkbox
+  // question, which no recipe here ticks. Every other AGY dialog fixture is one its grammars read.
+  agy: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
+  antigravity: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
   // Every opencode picker: composerReady refuses it (the picker shape) and no grammar reads it, so
   // Escape, which closes a picker (probed on 1.18.32), is its way out. The permission steps and every
   // question dialog the grammars lift (single select, multi select, a many-question call, the Confirm
