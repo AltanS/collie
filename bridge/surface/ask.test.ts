@@ -17,7 +17,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { askOf, type Ask } from "../../web/src/lib/surface/surface.ts";
 import type { AgentView } from "../types.ts";
-import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, planFor } from "./ask.ts";
+import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor } from "./ask.ts";
 import { KeyGate, type TokenOrigin, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -33,6 +33,7 @@ const BASH = fx("claude--permission-bash.txt");
 const EDIT = fx("claude--permission-edit.txt");
 const IDLE = fx("claude--v2301-idle.txt");
 const UNREAD = fx("claude-lab--tasks-panel--w40.txt");
+const W82 = fx("claude-lab--permission-bash-v2291--w82.txt");
 
 const HARNESS = "claude";
 const PANE = "%1";
@@ -192,6 +193,79 @@ describe("the ask book", () => {
     const ask = book.currentAsk(PANE)!;
     const reply = await answerer.handle({ askId: ask.id, hash: ask.hash, optionId: idOf(ask, "Yes"), origin: "person_tap" }, { session: "main", paneId: PANE, harness: HARNESS });
     expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+  });
+});
+
+// The bullet of the tool row above the dialog blinks on a live Claude: "●" and " " take turns about
+// once a second. It sits outside the dialog block, so it must never change the ask.
+function blink(screen: string): string {
+  const rows = screen.split("\n");
+  const at = rows.findIndex((row) => row.includes("●") && row.includes("Bash"));
+  if (at < 0) throw new Error("no tool row with a bullet");
+  rows[at] = rows[at]!.replace("●", " ");
+  return rows.join("\n");
+}
+
+function liftOf(screen: string) {
+  return liftDialog(readerBlocks(splitLines(parseAnsi(screen)), HARNESS))!;
+}
+
+describe("the ask binding covers the dialog block only", () => {
+  test("a blink of the tool row's bullet above the dialog leaves the binding and the hash unchanged", () => {
+    const before = liftOf(W82);
+    const after = liftOf(blink(W82));
+    expect(blink(W82)).not.toBe(W82);
+    expect(after.region).not.toBeNull();
+    expect(after.hash).toBe(before.hash);
+    expect(askBinding(GEN, after)).toBe(askBinding(GEN, before));
+    // The block runs from the dialog's top edge to the footer: the header, the subject, the question, the labels, the hints.
+    expect(before.region!.split("\n")[0]).toMatch(/^─+$/u);
+    expect(before.region).toContain("Bash command");
+    expect(before.region).toContain("touch /tmp/claude-lab/project/scratch-one.txt");
+    expect(before.region).toContain("Do you want to proceed?");
+    expect(before.region!.trimEnd().split("\n").at(-1)).toContain("Esc to cancel");
+    expect(before.region).not.toContain("Waiting");
+  });
+
+  test("a changed option label changes the binding", () => {
+    const before = liftOf(W82);
+    const after = liftOf(W82.replace("Yes, and switch to auto mode", "Yes, and switch to plan mode"));
+    expect(askBinding(GEN, after)).not.toBe(askBinding(GEN, before));
+    expect(after.hash).not.toBe(before.hash);
+  });
+
+  test("the ask keeps its id across blinks, and a tap after a blink is sent", async () => {
+    const { pane, poll, answer } = rig(W82);
+    const ask = poll()!;
+    pane.screen = blink(W82);
+    expect(poll()!.id).toBe(ask.id);
+    pane.screen = W82;
+    expect(poll()!.id).toBe(ask.id);
+    // The check read sees the other phase of the blink.
+    pane.beforeRead = (p) => {
+      p.screen = blink(W82);
+    };
+    pane.onKeys = (_keys, p) => {
+      p.beforeRead = null;
+      p.screen = IDLE;
+    };
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+  });
+
+  test("with no top edge found, a tap is refused and no key is sent: never a bind to the rows above", async () => {
+    const rows = W82.split("\n");
+    const edge = rows.findIndex((row) => row.includes("─".repeat(20)));
+    expect(edge).toBeGreaterThan(0);
+    const edgeless = [...rows.slice(0, edge), ...rows.slice(edge + 1)].join("\n");
+    const dialog = liftOf(edgeless);
+    expect(dialog.region).toBeNull();
+    const { pane, poll, answer } = rig(edgeless);
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "no_plan", keys: [] });
+    expect(reply.detail).toBe(NO_EDGE_DETAIL);
+    expect(pane.keysSeen).toEqual([]);
   });
 });
 

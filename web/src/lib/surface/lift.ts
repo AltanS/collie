@@ -36,10 +36,14 @@ export interface LiftedDialog {
   readonly labels: readonly string[];
   /** The contract's freshness signature of the block. */
   readonly signature: string;
-  /** The literal text of the block's region on screen (the contract's `region`). */
-  readonly region: string;
-  /** The hash an `Ask` carries: the kind, the option labels in order and the signature (which holds
-   *  the subject or tool and the input shown). */
+  /**
+   * The literal text of the dialog block on screen, from its own top edge to the footer: what the
+   * ask id is bound to. Never rows above the dialog (a blinking transcript bullet there changed the
+   * binding every second). Null when the grammar found no edge: the bridge refuses a tap then.
+   */
+  readonly region: string | null;
+  /** The hash an `Ask` carries: the kind, the option labels in order and the block's text (which
+   *  holds the subject or tool and the input shown). */
   readonly hash: string;
   /** The block itself, so the bridge can plan the keys of an option and read the pointer back. */
   readonly block: Block;
@@ -50,7 +54,10 @@ interface Lifted {
   readonly blockKind: DialogKind;
   readonly labels: readonly string[];
   readonly signature: string;
-  readonly region: string;
+  readonly region: string | null;
+  /** What the hash covers besides the labels: the contract's signature, or the dialog block alone
+   *  where the signature reads above the dialog. With no edge the signature stands in; no tap is taken. */
+  readonly hashText: string;
 }
 
 function lifted(block: Block): Lifted | null {
@@ -63,28 +70,30 @@ function lifted(block: Block): Lifted | null {
         blockKind: "prompt-select",
         labels: m.options.map((o) => o.label),
         signature: c.signature(m),
-        region: c.region(m),
+        // The dialog block alone, where the grammar's region reads above it (PromptModel.askRegion).
+        region: m.askRegion === undefined ? c.region(m) : m.askRegion,
+        hashText: m.askRegion ?? c.signature(m),
       };
     }
     case "wizard": {
       const m = dialogModelOf(block, "wizard")!;
       const labels = m.phase === "question" ? m.options.map((o) => o.label) : m.answers.map((a) => a.answer);
-      return { kind: "question", blockKind: "wizard", labels, signature: DIALOG_CONTRACT.wizard.signature(m), region: DIALOG_CONTRACT.wizard.region(m) };
+      return { kind: "question", blockKind: "wizard", labels, signature: DIALOG_CONTRACT.wizard.signature(m), region: DIALOG_CONTRACT.wizard.region(m), hashText: DIALOG_CONTRACT.wizard.signature(m) };
     }
     case "preview-select": {
       const m = dialogModelOf(block, "preview-select")!;
       const c = DIALOG_CONTRACT["preview-select"];
-      return { kind: "question", blockKind: "preview-select", labels: m.options.map((o) => o.label), signature: c.signature(m), region: c.region(m) };
+      return { kind: "question", blockKind: "preview-select", labels: m.options.map((o) => o.label), signature: c.signature(m), region: c.region(m), hashText: c.signature(m) };
     }
     case "multi-select": {
       const m = dialogModelOf(block, "multi-select")!;
       const c = DIALOG_CONTRACT["multi-select"];
       const labels = m.phase === "checkbox" ? m.options.map((o) => o.label) : [];
-      return { kind: "question", blockKind: "multi-select", labels, signature: c.signature(m), region: c.region(m) };
+      return { kind: "question", blockKind: "multi-select", labels, signature: c.signature(m), region: c.region(m), hashText: c.signature(m) };
     }
     case "menu": {
       const m = dialogModelOf(block, "menu")!;
-      return { kind: "menu", blockKind: "menu", labels: m.actions.map((a) => a.label), signature: DIALOG_CONTRACT.menu.signature(m), region: DIALOG_CONTRACT.menu.region(m) };
+      return { kind: "menu", blockKind: "menu", labels: m.actions.map((a) => a.label), signature: DIALOG_CONTRACT.menu.signature(m), region: DIALOG_CONTRACT.menu.region(m), hashText: DIALOG_CONTRACT.menu.signature(m) };
     }
     default:
       return null;
@@ -97,7 +106,7 @@ export function liftDialog(blocks: readonly Block[]): LiftedDialog | null {
     if (!blockOwnsKeyboard(block)) continue;
     const found = lifted(block);
     if (found === null) continue;
-    const hash = shortHash([found.kind, ...found.labels, found.signature].join("\n"));
+    const hash = shortHash([found.kind, ...found.labels, found.hashText].join("\n"));
     return { ...found, hash, block };
   }
   return null;

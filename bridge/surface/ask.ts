@@ -56,10 +56,17 @@ const FIRST_GAP_MS = 80;
 /** How many ids the book remembers, newest kept. An id it forgot answers `ask_unknown`. */
 const BOOK_SIZE = 512;
 
-/** The binding an ask id is minted for: the pane generation, the content hash and the block's literal text. */
+/**
+ * The binding an ask id is minted for: the pane generation, the content hash and the dialog block's
+ * literal text, from its top edge to the footer. Never the rows above the dialog. A dialog with no
+ * edge binds to its hash alone, and the answer refuses every tap on it (see `steps`).
+ */
 export function askBinding(generation: string, dialog: LiftedDialog): string {
-  return shortHash(`${generation}\n${dialog.hash}\n${dialog.region}`);
+  return shortHash(`${generation}\n${dialog.hash}\n${dialog.region ?? ""}`);
 }
+
+/** The detail of a refused tap on a dialog whose top edge Collie did not find. */
+export const NO_EDGE_DETAIL = "Collie did not find the top edge of this dialog, so it does not answer it from here. Use the screen and the keys.";
 
 /** The lifetime an ask on this harness gets: its profile's, else the default. */
 export function askLifetimeOf(match: ProfileMatch | null): number {
@@ -714,6 +721,8 @@ export class AskAnswerer {
       this.deps.book.void(answer.askId);
       throw new AskEnded("refused", "ask_gone");
     }
+    // No edge, no binding: a tap is refused, never bound to the rows above the dialog instead.
+    if (check.dialog.region === null) throw new AskEnded("refused", "no_plan", { detail: NO_EDGE_DETAIL });
     if (askBinding(this.generationOf(state), check.dialog) !== entry.binding) {
       throw new AskEnded("refused", "ask_changed", { ask: askOf(check.surface.modal) });
     }
