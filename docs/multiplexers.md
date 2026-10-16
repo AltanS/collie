@@ -394,8 +394,9 @@ not an edge, is counted but never logged.
 
 Each bridge that takes hook edges lists itself in `~/.local/state/collie/hook-targets/` at boot.
 With `XDG_STATE_HOME` set, the folder is `$XDG_STATE_HOME/collie/hook-targets/`. A bridge removes its
-file when it stops cleanly. The hook writes each edge into every listed bridge whose process still
-runs. It deletes the file of a bridge that is gone. With no bridge listed, the hook writes into the
+file when it stops cleanly. A running bridge writes its file again within two seconds when it goes
+missing. The hook writes each edge into every listed bridge whose process still runs. It deletes the
+file of a bridge that is gone. With no bridge listed, the hook writes into the
 default state dir. A `COLLIE_STATE_DIR` in the agent's own environment always gets the edges too.
 
 #### The pane info

@@ -1394,6 +1394,17 @@ describe("a send into a running turn", () => {
     expect(late.readsAfterEnter()).toBe(1);
   });
 
+  test("the late witness: a prompt edge 60 s later still closes the queued send as effective", async () => {
+    const { pane, send, protocol, deps, clock } = rig({ version: "2.1.301" });
+    streamAnswer(pane, typing);
+    queuedRowLate(pane, 2, "then give it a title");
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    clock.now += 60_000;
+    expect(protocol.promptEdge("%1", deps.store.hashText("then give it a title"), clock.now)).not.toBeNull();
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("effective");
+  });
+
   test("the late witness that never shows: sent, and the receipt does not say queued", async () => {
     const { pane, send } = rig({ version: "2.1.301" });
     streamAnswer(pane, typing);

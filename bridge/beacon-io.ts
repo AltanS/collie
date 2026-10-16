@@ -221,13 +221,24 @@ export function fileEdgeSpool(stateDir: string, uid: number | undefined = proces
 
 // ── The hook target registry (M56 spec 11, bridge/beacon/hook-targets.ts) ─────
 
+/** This bridge's entry in the hook target registry. */
+export interface HookTargetRegistration {
+  /**
+   * Writes the file again when it is missing or names another pid. An emitter can delete it between
+   * reading a dead pid and this bridge's restart on the same state dir; the liveness tick heals that.
+   */
+  keep(): void;
+  /** For a clean stop: deletes the file only while it still names this process. */
+  remove(): void;
+}
+
 /**
  * Writes this bridge's hook target file, so every emitter on the host also writes its edges here.
- * Returns the removal for a clean stop: it deletes the file only while it still names this process,
- * so a newer bridge on the same state dir keeps its own. Every failure is one warning and no target:
- * the emitter then falls back to the default state dir, as before the registry.
+ * A newer bridge on the same state dir keeps its own file on this one's stop. A write that fails is
+ * one warning until a later write works: the emitter then falls back to the default state dir, as
+ * before the registry.
  */
-export function registerHookTarget(stateDir: string, env: HookTargetEnv = process.env, home: string = homedir()): () => void {
+export function registerHookTarget(stateDir: string, env: HookTargetEnv = process.env, home: string = homedir()): HookTargetRegistration {
   const dir = hookTargetsDir(env, home);
   const path = join(dir, hookTargetFileName(stateDir));
   let pidStartTime: number | null = null;
@@ -238,21 +249,34 @@ export function registerHookTarget(stateDir: string, env: HookTargetEnv = proces
   }
   const record: HookTargetRecord = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now() };
   const temp = join(dir, `.${String(process.pid)}.tmp`);
-  try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
-    renameSync(temp, path);
-  } catch (err) {
-    rmSync(temp, { force: true });
-    console.warn(`[surface] could not register as a hook target in ${dir}: ${err instanceof Error ? err.message : String(err)}`);
-    return () => undefined;
-  }
-  return () => {
+  let warned = false;
+  const write = (): void => {
     try {
-      if (parseHookTarget(readFileSync(path, "utf8"))?.pid === process.pid) rmSync(path, { force: true });
-    } catch {
-      // Gone already.
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+      renameSync(temp, path);
+      warned = false;
+    } catch (err) {
+      rmSync(temp, { force: true });
+      if (!warned) console.warn(`[surface] could not register as a hook target in ${dir}: ${err instanceof Error ? err.message : String(err)}`);
+      warned = true;
     }
+  };
+  const ownPid = (): boolean => {
+    try {
+      return parseHookTarget(readFileSync(path, "utf8"))?.pid === process.pid;
+    } catch {
+      return false;
+    }
+  };
+  write();
+  return {
+    keep: () => {
+      if (!ownPid()) write();
+    },
+    remove: () => {
+      if (ownPid()) rmSync(path, { force: true });
+    },
   };
 }
 

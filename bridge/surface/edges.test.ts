@@ -223,6 +223,20 @@ function shadowRig(version = "2.1.296") {
   return { mux, shadow, pending, counted, reread, advance: (ms: number) => (clock += ms) };
 }
 
+describe("the hook target on the liveness tick", () => {
+  test("a take calls keep once per liveness period, with no hooked pane too", async () => {
+    let clock = 1_000_000;
+    let kept = 0;
+    const keeper = new EdgeRouter({ spool: new FakeSpool(), liveness: alive, targets: () => [target()], keep: () => void kept++, log: () => undefined, now: () => clock });
+    await keeper.tick();
+    await keeper.tick();
+    expect(kept).toBe(1);
+    clock += HOOK_LIVENESS_MS;
+    await keeper.tick();
+    expect(kept).toBe(2);
+  });
+});
+
 describe("the live sources across a restart", () => {
   class MemoryStore implements SourceStore {
     saved: readonly SavedSource[] = [];
