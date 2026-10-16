@@ -177,6 +177,17 @@ describe("no harness names in the surface code", () => {
     expect(namesIn('const x = "clauded";', ids)).toEqual([]);
   });
 
+  it("codex: the second profile joins the ban by directory, and no surface file names it (M56 spec 13)", () => {
+    expect(profileIds()).toContain("codex");
+    expect(namesIn('const queueKey = codexProfile.keys["Tab"];', ["codex"])).toHaveLength(1);
+    expect(namesIn("// a Codex screen steers on Enter\nconst x = 1;", ["codex"])).toEqual([]);
+    const hits: string[] = [];
+    for (const dir of SURFACE_DIRS) {
+      for (const file of sourceFiles(dir)) for (const hit of namesIn(readFileSync(file, "utf8"), ["codex"])) hits.push(`${file}: ${hit}`);
+    }
+    expect(hits).toEqual([]);
+  });
+
   it("holds in web/src/lib/surface/*.ts and bridge/surface/*.ts", () => {
     const ids = profileIds();
     const hits: string[] = [];

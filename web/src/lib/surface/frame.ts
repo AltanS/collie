@@ -345,9 +345,11 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
 /**
  * The input frame on a screen read, or null.
  *
- * The bottom edge is the lowest row that matches the bottom anchor at column 0, at most
+ * The bottom edge is the lowest row that matches the bottom anchor at its column, at most
  * `maxTailRows` rows above the last non-blank row. Only that row is tried: when its frame does not
- * close, there is no frame. A box higher up is an echo in the transcript, not the live one.
+ * close, there is no frame. A box higher up is an echo in the transcript, not the live one. A box
+ * with blank edges (no edge glyphs) is read strictly: every interior row is blank or indented, the
+ * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);

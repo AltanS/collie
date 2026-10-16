@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The pane settings sheet says whether the pane sends hook edges.** It reads "Hooks: live" when the agent's own hooks report from the pane, and "Hooks: none" when they are not installed or the agent started before `collie hooks install claude`. `docs/multiplexers.md` explains hook edges and the row.
 - **`collie hooks install claude` says what the hooks do on Herdr and for agents that already run.** In Herdr the hooks write hook edges only, and an agent that runs keeps its old hooks until it restarts.
 - **Codex has an input box profile, and a send during a Codex turn goes in queued.** `web/src/lib/surface/profiles/codex.json` describes the Codex box from 0.150.0 to 0.159.2. The Codex box has no edge glyphs, so a frame edge may now be a blank row. Codex's Enter steers a running turn, so Collie presses Tab there instead. Tab queues the message for after the turn, and the receipt says queued. Collie never presses Enter into a running Codex turn. Without a version from the binary, Collie refuses the send during a turn.
+- **`bun scripts/surface-corpus.ts --harness codex` checks the Codex fixtures.** It shows the Codex rows only. The 95% idle rule then applies to Codex instead of Claude.
 
 ### Changed
 
