@@ -604,12 +604,6 @@ fails loudly.
   page. It is not "off-white for taste"; moving it re-opens that seam.
 - **`components/collie-mark.tsx` is GENERATED** from the sibling `collie-brand` repo. Never
   hand-edit it. Change the brand repo and regenerate.
-- **App code mounts `<ThemeMark/>`, not `<CollieMark/>`.** A theme names its header mark
-  (`mark`, a closed list in `lib/shipped-marks.ts`), and `ThemeMark` draws it from the static
-  registry in `components/marks/`. Every mark takes the contract in `components/marks/contract.ts`:
-  one inline `<svg>`, three states (`idle`, `loading`, `lost`) that mean the same in every theme,
-  CSS motion only. The call site keeps the box and the 44px tap target. Only the playground's brand
-  gallery and the typeface card mount the dog directly, because they show the dog on purpose.
 
 ---
 
