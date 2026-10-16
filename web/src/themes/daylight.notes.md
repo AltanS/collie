@@ -1,7 +1,7 @@
 # Daylight: the palette and why
 
-Daylight is for direct sun and for low vision. It keeps Collie's layout, radius and status meaning
-and changes only colour and the face. Every value is oklch. The numbers below are measured with
+Daylight is for direct sun and for low vision. It keeps Collie's layout and status meaning and
+changes the colour, the face and the shape (see Shape at the end). Every value is oklch. The numbers below are measured with
 `contrastReport` from `lib/theme/schema.ts` (plain sRGB alpha, the pessimistic side of the browser's
 oklab mix) and a scratch script that uses the same arithmetic for the pairs the report does not
 cover. Rerun both after any change; never estimate.
@@ -106,3 +106,11 @@ Outside the report, same arithmetic: border on background 1.46 light and 1.73 da
 1.26); rule 1.99 and 2.98 (collie 1.34 and 2.06); destructive as text on the page 6.36 and 7.56;
 syntax inks on page, card, added row and deleted row 5.46 or better in light (entity on the added
 row is the tightest) and 7.99 or better in dark; host glyphs 6.5 or better on their tag.
+
+## Shape (schema version 2)
+
+`radius: round`, `shadow: lifted`, `density: roomy`, `weight: default`, `border: default`: open, airy
+and a little playful. The roomy step gives every row and control more air and a larger target in
+sun, and the lifted shadow sets a card or a floating button off a page that is nearly white. The
+weight and the border stay at the default because the colour already holds body text at 7:1 and
+the lines a clear step above Collie's.

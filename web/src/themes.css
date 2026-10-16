@@ -44,6 +44,23 @@
   --host-7: light-dark(oklch(0.44 0.2 325), oklch(0.78 0.2 325));
   --host-8: light-dark(oklch(0.44 0.1 118), oklch(0.78 0.18 118));
   --host-9: light-dark(oklch(0.44 0.084 172), oklch(0.78 0.15 172));
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --edge-accent: inset 0 0 0 2px;
+  --edge-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  --surface-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --surface-shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-sm: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --surface-shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --surface-shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --surface-shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --surface-shadow-2xl: 0 32px 64px -12px rgb(0 0 0 / 0.3);
+  --spacing: 0.28rem;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --surface-border-width: 1px;
 }
 
 :root[data-theme="harbour"] {
@@ -90,6 +107,23 @@
   --host-7: light-dark(oklch(0.43 0.17 326), oklch(0.69 0.16 326));
   --host-8: light-dark(oklch(0.51 0.09 240), oklch(0.86 0.07 240));
   --host-9: light-dark(oklch(0.43 0.16 278), oklch(0.66 0.15 278));
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --edge-accent: inset 0 0 0 2px;
+  --edge-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  --surface-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --surface-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --surface-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --surface-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --surface-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --spacing: 0.25rem;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --surface-border-width: 1px;
 }
 
 :root[data-theme="nightwatch"] {
@@ -136,4 +170,21 @@
   --host-7: light-dark(oklch(0.45 0.16 325), oklch(0.74 0.16 325));
   --host-8: light-dark(oklch(0.45 0.09 241), oklch(0.75 0.11 241));
   --host-9: light-dark(oklch(0.45 0.16 280), oklch(0.7 0.13 280));
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --edge-accent: inset 2px 0 0 0;
+  --edge-shadow: 0 0 #0000;
+  --surface-shadow: 0 0 #0000;
+  --surface-shadow-xs: 0 0 #0000;
+  --surface-shadow-sm: 0 0 #0000;
+  --surface-shadow-md: 0 0 #0000;
+  --surface-shadow-lg: 0 0 #0000;
+  --surface-shadow-xl: 0 0 #0000;
+  --surface-shadow-2xl: 0 0 #0000;
+  --spacing: 0.25rem;
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --surface-border-width: 2px;
 }

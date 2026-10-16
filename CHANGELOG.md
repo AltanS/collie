@@ -121,6 +121,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A pane on a machine that takes no text says so plainly.** The locked field names the two causes, an older Collie or the COLLIE_SEND_PROTOCOL setting, and says the keys still work.
 - **Three composer sentences say what to do.** A contested read points at the Screen pill, a torn read says send again, and the cap sentence names the harness and the Confirm button without blaming the typist.
 - **The header keeps the Collie dog under every theme.** A theme changes the colours, one typeface and the shape of controls; the dog in the header, the home-screen icon and the splash look the same under all four themes and under an imported one.
+- **The three new themes each take a shape.** The dim-amber theme for the night is sharp and flat, with bold text and 2px borders, like an instrument panel. Daylight has round corners, a lifted shadow and roomier rows. Harbour has soft corners and keeps the rest of Collie's shape. Their colours and every contrast check are unchanged, and the Collie theme keeps its look.
+- **The Theme chips show each theme's shape.** In Settings, Appearance, every chip wears its own theme's corners and weight, so the strip shows the shape before a tap. The Collie chip looks as it did, and the strip wraps on a narrow phone so every chip stays inside the card.
+- **A marked row follows the theme's corners.** The selected or blocked row in the spaces list, the program list and the session and machine switchers wears a 2px bar on its left edge under square corners, as before. Under soft or round corners a marked row wears a ring on all four sides instead of a left bar. The Collie theme keeps its left bar.
+- **A marked row under rounded corners also lifts.** With its ring on all four sides, a selected or blocked row under soft or round corners takes a soft shadow, and an unmarked row takes none. Under Collie's square corners nothing changes.
 
 ### Fixed
 
@@ -168,7 +172,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The box's placeholder no longer flashes "A draft is in the box" during your own send.** While a send is in flight the pane's read shows the probe character as a draft, and the placeholder named it for a third of a second on Claude. The placeholder now keeps the free line until the answer is in, and a running turn keeps its own word.
 - **The bridge's sentence for an unreadable screen matches the phone's line above it.** It now ends "Check the pane, then tap Type here.", as the catalog line does, so the notice no longer says "rows" under a line that says "pane".
 - **No em dash is left in the app's sentences.** Status lines, hints and button names that carried a dash now read with a comma or a full stop, in English; the other languages had none.
+- **The spaces filter keeps a rounded list's corners.** Under a theme with soft or round corners, the sticky Filter spaces row no longer paints over the top corners of the spaces list. At Collie's 2px nothing changes.
+- **Every theme chip stays inside the Theme card.** On a narrow phone the theme strip wraps to a second row instead of hiding the last chip past the card's edge, under every theme.
+- **Rounded lists and cards keep their corners.** Under a theme with soft or round corners, a tinted or hovered first or last row of a list and the terminal font preview at the foot of its card no longer paint over the rounded corner. At Collie's 2px nothing changes.
 - **German speaks du throughout.** Ninety lines that said Sie now use the same du the rest of the app uses, so one screen no longer mixes both.
+- **The tab and pane rows above a pane no longer fold on their own when the keyboard opens.** They stay as the last tap left them, shown or folded, keyboard up or not, and a tap taken with the keyboard up is remembered like any other. The band folding by itself moved the screen under the reader's eyes and undid a choice just made.
 
 ### Packaging
 
