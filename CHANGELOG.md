@@ -191,6 +191,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **`collie hooks install --help` names `--hold-permissions`.** The flag is for Claude only and the one-line help said nothing about it.
 - **Send from the phone no longer stalls after typing when the Claude statusline is taller than 8 rows.** The reply path now reads the input box by its frame, not through the chrome reader's ceiling (#457).
 - **A hold takes a dialog only when every line of its input shows there, in order.** A two-line command whose dialog shows one line stays a keys ask. A subagent's request also needs the subagent type that the dialog's mark names.
 - **When a keys answer ends the hook first, the hold card says that the keys answered the dialog.** Before, it said that the hook stopped.
