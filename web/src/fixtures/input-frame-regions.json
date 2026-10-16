@@ -850,6 +850,41 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2301-hold-subagent.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "verify the file was created",
+   "placeholder": true,
+   "status": {
+    "first": 19,
+    "last": 19
+   },
+   "footer": {
+    "first": 21,
+    "last": 22
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2301-idle.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "Try \"fix typecheck errors\"",
+   "placeholder": true,
+   "status": {
+    "first": 8,
+    "last": 8
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },
