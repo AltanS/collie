@@ -50,8 +50,9 @@ const DENY = "Deny";
 const VIEW = "Show full command";
 const KNOWN = new Set([ONCE, SESSION, ALWAYS, DENY, VIEW]);
 
-// `approval_choose_full` with the view label, and `approval_command_truncated`.
-const CUT_VIEWABLE = `… (choose ${VIEW})`;
+// `approval_choose_full` with the view label, and `approval_command_truncated`, each matched on its
+// first row: a panel narrower than the notice (inner width 24 to 27) wraps it onto two.
+const CUT_VIEWABLE = /^… \(choose /;
 const CUT_FOR_GOOD = /^… \(command truncated\b/;
 
 /** The approval panel at the tail as a `prompt-select`, or null. */
@@ -92,7 +93,7 @@ export function detectApprovalRegion(lines: StyledLine[]): HermesDialogRegion | 
   // description: every row after them.
   const command = body.slice(1, first).filter((row) => row !== "");
   if (command.length === 0 || command.some((row) => CUT_FOR_GOOD.test(row))) return null;
-  const cut = command.includes(CUT_VIEWABLE);
+  const cut = command.some((row) => CUT_VIEWABLE.test(row));
   const view = choices.find((c) => c.label === VIEW);
   if (cut && view === undefined) return null;
 

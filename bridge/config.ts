@@ -1,6 +1,6 @@
 import { chmodSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import {
   configFilePaths,
@@ -12,7 +12,7 @@ import {
   type FilePerms,
   type PrivateFileVerdict,
 } from "./config-source.ts";
-import { HOST, type Host } from "./host.ts";
+import { HOST, type Host, isInside } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
 import { secretFileVerdict } from "./owner-only.ts";
 import type { AuditContent } from "./audit.ts";
@@ -87,6 +87,21 @@ function normaliseUploadTypes(raw: string[]): string[] {
  * things on the two platforms this bridge supports. One path stays one path, so an existing value
  * parses to exactly what it always meant.
  */
+/**
+ * The Hermes home a `HERMES_HOME` belongs to, the way Hermes itself reads it
+ * (`get_default_hermes_root`, hermes_constants.py): anything inside `~/.hermes`, a named profile
+ * included, belongs to `~/.hermes`; `<root>/profiles/<name>` elsewhere belongs to `<root>`; any other
+ * value is a home of its own. The journal then searches that home and every profile under it, so a
+ * bridge started inside one profile's environment still finds the default profile and the others.
+ */
+export function hermesHome(value: string | undefined, home: string, host: Host = HOST): string {
+  const native = join(home, ".hermes");
+  if (value === undefined || value.trim() === "") return native;
+  const path = resolve(value.trim());
+  if (isInside(host, path, native)) return native;
+  return basename(dirname(path)) === "profiles" ? dirname(dirname(path)) : path;
+}
+
 function envRoots(
   name: string,
   fallback: string | string[],
@@ -570,9 +585,10 @@ export function resolveJournalRoots(
       join(env.GROK_HOME ?? join(home, ".grok"), "sessions"),
       env,
     ),
-    // Hermes's own home var first, as for the others. A root's named profiles are found under it
-    // (bridge/journal/hermes.ts), so one root serves the default profile and every named one.
-    hermes: envRoots("COLLIE_HERMES_ROOT", env.HERMES_HOME ?? join(home, ".hermes"), env),
+    // Hermes's own home var first, as for the others, read as Hermes reads it (`hermesHome`). A
+    // root's named profiles are found under it (bridge/journal/hermes.ts), so one root serves the
+    // default profile and every named one.
+    hermes: envRoots("COLLIE_HERMES_ROOT", hermesHome(env.HERMES_HOME, home), env),
     // Muse keeps date-partitioned session logs under the XDG data dir, one session.jsonl per
     // session uuid. Muse publishes no home var of its own, so the Collie override is the only
     // relocation.

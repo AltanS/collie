@@ -113,8 +113,12 @@ export function panelAboveInput(
   }
   if (top < 0) return null;
 
+  // Nothing may sit under the input frame either (a completion menu, stray output): the declared
+  // tail would count it.
+  const frameEnd = frame.bottomRule ?? frame.lastInputRow;
+  for (let i = frameEnd + 1; i < texts.length; i++) if (!isBlank(texts[i]!)) return null;
   let rowsBelow = 0;
-  for (let i = bottom + 1; i < texts.length; i++) if (!isBlank(texts[i]!)) rowsBelow++;
+  for (let i = bottom + 1; i <= frameEnd; i++) if (!isBlank(texts[i]!)) rowsBelow++;
   return { top, bottom, rowsBelow };
 }
 
@@ -130,10 +134,11 @@ const CHOICE = /^ {2}([❯ ]) (\[[x ]\] )?(\d)\. (\S[\s\S]*)$/;
 const QUESTION_MORE = /^ {2}\S/;
 const ANSWER = /^ {4}\S/;
 const CHOICE_MORE = /^ {6}\S/;
-// The Other row's three faces (`clarify_other_*` in locales/en.yaml). `Other (type below)` is the
-// typed-answer screen, which is not lifted.
-const OTHER = /^Other (?:\(type your answer\)|: [\s\S]+)$/;
-const OTHER_TYPING = "Other (type below)";
+// The Other row's three faces (`clarify_other_*` in locales/en.yaml). Only the first is lifted.
+// `Other (type below)` is the typed-answer screen. `Other: <earlier answer>` is a question revisited
+// after an Other answer: its digit opens an EMPTY editor (the prefill comes only with Enter,
+// `_clarify_batch_enter`), so a button labelled with the earlier answer would promise a resend.
+const OTHER = "Other (type your answer)";
 // What a question with no choices prints under itself while its typed answer is awaited
 // (`clarify_guidance`, two spaces in).
 const GUIDANCE = "  Type your answer in the prompt below, then press Enter.";
@@ -246,7 +251,7 @@ export function detectClarifyRegion(lines: StyledLine[]): HermesDialogRegion | n
   if (choices.some((c, i) => c.digit !== String(i + 1) || c.checkbox)) return null;
   if (choices.filter((c) => c.pointed).length !== 1) return null;
   const other = choices.at(-1)!;
-  if (other.label === OTHER_TYPING || !OTHER.test(other.label)) return null;
+  if (other.label !== OTHER) return null;
   if (choices.slice(0, -1).some((c) => c.label.startsWith("Other "))) return null;
 
   const tail = tailLinesFor(span.rowsBelow);
