@@ -412,6 +412,45 @@ A bridge keeps the live panes across its own restart. The row stays "live" after
 An installation from an earlier Collie sends no edge for a permission dialog. `collie hooks
 status` shows it as partial. Run `collie hooks install claude` again to update it in place.
 
+#### Codex
+
+Codex has one outside hook, its `notify` command. Collie can use it for a hook edge when a Codex turn
+ends:
+
+```console
+$ collie hooks install codex
+$ collie hooks status
+/home/you/.codex/config.toml: installed
+```
+
+The install writes one line into `$CODEX_HOME/config.toml` (`~/.codex/config.toml` when `CODEX_HOME`
+is not set):
+
+```toml
+notify = ["/home/you/.local/bin/collie", "beacon", "emit", "codex"]
+```
+
+Codex runs one notify command only. If your config already names one, Collie leaves it in place and
+the install stops with a message. Collie keeps a copy of the file before its first change.
+`collie hooks uninstall codex` puts back the bytes from before the install. A Codex that is already
+open may not see the new line until it starts again.
+
+Codex sends one event, `agent-turn-complete`, at the end of each turn. Collie writes it as a stop
+edge, and the screen read after it decides whether the pane is free. The limits:
+
+- Codex sends no event for an approval dialog or for a new prompt. The screen alone shows a dialog,
+  and a send from the phone never shows as Confirmed on a Codex pane.
+- Codex 0.163.0 runs the notify command from a background helper (`codex app-server`). Collie finds
+  the Codex window in `/proc` with the same `CODEX_HOME` and the folder of the event. This is Linux
+  only.
+- Two Codex windows in one folder on one `CODEX_HOME` get no edge. Collie cannot tell them apart.
+  Their panes still update from the screen, as without the hook.
+- Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
+  the pane gets one more screen read.
+
+A send from the phone into a running Codex turn presses Tab, not Enter. In Codex, Enter steers the
+running turn, and Tab queues the message for after the turn. The receipt then says queued.
+
 > **Note.** Beacons provide no control channel. A beacon only determines what Collie *displays* and
 > *queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access
 > controls. The threat model and omitted fields are documented in
