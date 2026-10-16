@@ -880,12 +880,13 @@ describe("a send into a running turn", () => {
     expect(pane.transcript).toContain("> then give it a title");
   });
 
-  test("S2 needs the box empty: the running sign alone is no evidence the text was taken", async () => {
+  test("S2 needs the box empty: the running sign alone is no evidence, and the text still in the box points at a dialog", async () => {
     const { pane, send } = rig();
     pane.over = [LIVE_ROW];
     pane.enterSubmits = false;
     const answer = await send("then give it a title");
-    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+    expect(answer.detail).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
     expect(answer.receipt?.queued).toBeUndefined();
   });
 
@@ -1201,15 +1202,29 @@ describe("a send into a running turn", () => {
   };
 
   test("the late witness: the queued row shows only on the read after S2, and the receipt says queued", async () => {
-    for (const streaming of [false, true]) {
+    // The answer streaming, and the first second of a turn (a spinner with no timer, which reads idle).
+    for (const turn of ["streaming", "spinner"] as const) {
       const { pane, send } = rig({ version: "2.1.301" });
-      if (streaming) streamAnswer(pane, typing);
-      else pane.height = 16;
+      if (turn === "streaming") streamAnswer(pane, typing);
+      else {
+        pane.height = 16;
+        pane.over = ["✶ Wibbling…"];
+      }
       const late = queuedRowLate(pane, 2, "then give it a title");
       const answer = await send("then give it a title");
-      expect(answer.receipt, String(streaming)).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
-      expect(late.readsAfterEnter(), String(streaming)).toBe(2);
+      expect(answer.receipt, turn).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+      expect(late.readsAfterEnter(), turn).toBe(2);
     }
+  });
+
+  test("no late read on a screen that shows no turn: sent, no label", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.height = 16;
+    const late = queuedRowLate(pane, 2, "then give it a title");
+    const answer = await send("then give it a title");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(late.readsAfterEnter()).toBe(1);
   });
 
   test("the late witness that never shows: sent, and the receipt does not say queued", async () => {
@@ -1225,6 +1240,7 @@ describe("a send into a running turn", () => {
   test("a dialog on the late read changes nothing: sent, not queued", async () => {
     const { pane, send } = rig({ version: "2.1.301" });
     pane.height = 16;
+    pane.over = ["✶ Wibbling…"];
     let after = 0;
     pane.beforeRead = (p) => {
       if (!p.keysSeen.includes("Enter")) return;
@@ -1256,6 +1272,55 @@ describe("a send into a running turn", () => {
     const b = queuedRowLate(seen.pane, 1, "then give it a title");
     expect((await seen.send("then give it a title")).receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(b.readsAfterEnter()).toBe(1);
+  });
+
+  test("a screen that replaces the conversation as the text goes in (claude-lab--agents-screen--w82): no Enter", async () => {
+    const agents = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--agents-screen--w82.txt"), "utf8");
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.height = 16;
+      pane.transcript = [...ANSWER];
+      // The agents screen has a prompt-shaped box of its own: the typed text lands there.
+      pane.beforeWrite = (p, what) => {
+        if (what.startsWith("paste:") || what === "type:then give it a title") {
+          const text = what.slice(what.indexOf(":") + 1);
+          p.fixed = agents.replace("❯ describe a task for a new session", `❯ ${text}`);
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
+      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+    }
+  });
+
+  test("a dialog that draws just before Enter takes it and closes: unknown(dialog_after_enter), pointing at the transcript", async () => {
+    for (const turn of ["streaming", "running"] as const) {
+      const { pane, send } = rig({ version: "2.1.301" });
+      if (turn === "streaming") streamAnswer(pane, typing);
+      else pane.over = [LIVE_ROW];
+      // The dialog draws in the gap before Enter; Enter answers it, and it closes with the text still in the box.
+      pane.beforeWrite = (p, what) => {
+        if (what === "keys:Enter") {
+          p.enterSubmits = false;
+          p.dialog = null;
+        }
+      };
+      const answer = await send("then give it a title");
+      expect(answer.receipt, turn).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+      expect(answer.detail, turn).toBe("Enter did not reach the box. A dialog may have taken it. Check the transcript.");
+    }
+  });
+
+  test("the answer streaming above the box and a pointer list that takes the place of two status rows: no Enter", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.status = ["  sonnet · project · main", "  ⏸ manual mode on"];
+    streamAnswer(pane, typing);
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("type:then") || what.startsWith("paste:")) p.status = ["  ❯ 1. Yes", "    2. No"];
+    };
+    const answer = await send("then give it a title");
+    expect(pane.keysSeen.includes("Enter")).toBe(false);
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
   });
 
   test("steadyRow masks a running row's spinner glyph and its bracketed digits, and nothing else", () => {

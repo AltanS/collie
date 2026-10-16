@@ -32,8 +32,12 @@
 // A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
 // S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
 // box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
-// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). From there it takes the
-// queued path; the receipt says `queued` only on S0's running read or the S2 witness.
+// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). The rows above may only
+// scroll and grow: each read shares two rows in order with the read before it (aboveScrolled), so a
+// screen that replaced the conversation fails. From there it takes the queued path; the receipt says
+// `queued` only on S0's running read or a witness (in S2, or one late read where a turn may run). An
+// S2 that ends with the text still in the box ends `unknown(dialog_after_enter)`: a dialog that drew
+// before Enter took it and closed.
 //
 // A pane whose harness has a profile is read through its input frame. A pane with no profile has no
 // frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
@@ -266,6 +270,9 @@ interface Snap {
   /** The generic cues of the bottom cluster read as if no frame were found: a popup under the box
    *  that walks like a status row escapes the framed read, never this one. Compared with S0's. */
   readonly bareCues: "none" | "weak" | "strong";
+  /** The generic cues of the rows under the frame's bottom edge, read as if no frame were found: a
+   *  pointer list that takes the place of status rows there. "none" with no frame. */
+  readonly belowCues: "none" | "weak" | "strong";
   /** A short hash of the whole read. */
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
@@ -347,14 +354,15 @@ function cueAppeared(before: Snap, after: Snap): boolean {
 }
 
 /**
- * The cue check of a send into a running turn: only the cue read with the frame found may grow. The
- * frameless read is left out, because a turn draws what it reads as a cue around the box: Claude
- * Code's queued row (a pointer row with the text, over a "ctrl+enter to send now" hint) and a
- * numbered list streamed above the box. A real dialog takes the box away or makes the Surface claim
- * a modal, and those end the send on their own.
+ * The cue check of a send into a running turn: the cue read with the frame found, and the frameless
+ * cue read of the rows UNDER the frame, may not grow. The frameless read of the rows above is left
+ * out, because a turn draws what it reads as a cue there: Claude Code's queued row (a pointer row
+ * with the text, over a "ctrl+enter to send now" hint) and a numbered list streamed above the box.
+ * Nothing of a turn draws under the box, so a pointer list that takes the place of status rows there
+ * still counts. A real dialog over the box takes the box away or makes the Surface claim a modal.
  */
 function framedCueGrew(before: Snap, after: Snap): boolean {
-  return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength];
+  return CUE_RANK[after.cueStrength] > CUE_RANK[before.cueStrength] || CUE_RANK[after.belowCues] > CUE_RANK[before.belowCues];
 }
 
 /**
@@ -467,6 +475,39 @@ function turnOutsideUnchanged(before: Snap, after: Snap): boolean {
   return rowsBelow(before, before.frame) === rowsBelow(after, after.frame);
 }
 
+/** The non-blank rows above a frame's top edge, as the compares see them (a spinner row steadied). */
+function bandAbove(snap: Snap, frame: Frame): string[] {
+  return snap.plain.slice(0, frame.top).filter((row) => row.trim().length > 0);
+}
+
+/**
+ * Whether the rows above the box only scrolled and grew from one read to the next: the first two
+ * non-blank rows of `after` stand, in order and next to each other, among the rows of `before`, the
+ * last row of `before` left out (it grows while an answer streams). A screen that replaced the
+ * conversation (Claude Code's background agents screen, which has a prompt-shaped box of its own)
+ * shares no such pair and fails.
+ */
+function aboveScrolled(before: Snap, after: Snap): boolean {
+  if (before.frame === null || after.frame === null) return false;
+  const was = bandAbove(before, before.frame).slice(0, -1);
+  const now = bandAbove(after, after.frame);
+  if (now.length < 2) return false;
+  for (let k = 0; k + 1 < was.length; k++) if (was[k] === now[0] && was[k + 1] === now[1]) return true;
+  return false;
+}
+
+/** A row above the box that shows a spinner by its words, with or without its timer. */
+function spinnerAbove(snap: Snap | null): boolean {
+  if (snap === null || snap.frame === null) return false;
+  return snap.texts.slice(0, snap.frame.top).some((row) => SPINNER_VERB_ROW.test(row) || isRunningRow(row));
+}
+
+/** The rows under the box with their digits masked: a statusline that ticks a clock is not a change. */
+function belowMasked(snap: Snap | null): string | null {
+  if (snap === null || snap.frame === null) return null;
+  return snap.plain.slice(snap.frame.bottom + 1).map((row) => row.replace(/\d+/gu, "0")).join("\n");
+}
+
 /**
  * Whether the harness takes a message typed and entered while its turn runs: its profile says Enter
  * queues, for a version the binary reported, on a range that is not revoked. A provisional version
@@ -499,6 +540,9 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame): Ended | null {
   }
   return null;
 }
+
+/** The detail of a send in a turn whose Enter left the text in the box: a dialog may have taken it. */
+const ENTER_MISSED_BOX = "Enter did not reach the box. A dialog may have taken it. Check the transcript.";
 
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
@@ -861,6 +905,10 @@ interface RunState {
    * says `queued` only on S0's running read or the S2 witness.
    */
   streamed: boolean;
+  /** The read before the latest one, for the compares that ask how the screen moved from read to read. */
+  previousRead: Snap | null;
+  /** The latest read. */
+  lastRead: Snap | null;
   stepStart: number;
 }
 
@@ -1070,6 +1118,8 @@ export class SendProtocol {
       heldOther: false,
       queued: false,
       streamed: false,
+      previousRead: null,
+      lastRead: null,
       stepStart: at,
     };
   }
@@ -1384,6 +1434,17 @@ export class SendProtocol {
     state.queued = true;
   }
 
+  /** Whether the rows above the box only scrolled and grew since the read before this one ({@link aboveScrolled}). */
+  private bandScrolled(state: RunState, snap: Snap): boolean {
+    const before = state.lastRead === snap ? state.previousRead : state.lastRead;
+    return before !== null && aboveScrolled(before, snap);
+  }
+
+  /** The outside compare of a read in a turn: {@link turnOutsideUnchanged}, and the rows above only scrolled. */
+  private turnOutside(state: RunState, s0: Snap, snap: Snap): boolean {
+    return turnOutsideUnchanged(s0, snap) && this.bandScrolled(state, snap);
+  }
+
   /**
    * The amended rule of S1 (ARCHITECTURE.md, Send Protocol, 2026-10-16): on a harness whose Enter
    * queues, a send that is not a command may see the rows ABOVE the box move while Collie types. All
@@ -1394,11 +1455,13 @@ export class SendProtocol {
    * refuses or ends as before.
    */
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
+    // (The rows above may only scroll and grow from read to read: bandScrolled.)
     if (state.queued || state.manual || state.command) return false;
     const { mode } = state.request;
     if (mode !== "send" && mode !== "append" && mode !== "replace") return false;
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
-    if (snap.cueStrength !== s0.cueStrength || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
+    if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
+    if (!this.bandScrolled(state, snap)) return false;
     if (turnRefusal(state, s0, s0.frame) !== null) return false;
     state.streamed = true;
     return true;
@@ -1477,7 +1540,7 @@ export class SendProtocol {
     const plain = plainRaw.map(steadyRow);
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
-    return {
+    const snap: Snap = {
       revision: grid.value.revision,
       gateRevision,
       rows,
@@ -1489,10 +1552,14 @@ export class SendProtocol {
       cueStrength: readCues(rows, frame).strength,
       // The box's own rows are cut out first: they hold the person's text, which may look like a list.
       bareCues: readCues(frame === null ? rows : [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)], null).strength,
+      belowCues: frame === null ? "none" : readCues(rows.slice(frame.bottom + 1), null).strength,
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
     };
+    state.previousRead = state.lastRead;
+    state.lastRead = snap;
+    return snap;
   }
 
   /**
@@ -1618,7 +1685,7 @@ export class SendProtocol {
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
         const outside = inTurn
-          ? turnOutsideUnchanged(s0, snap)
+          ? this.turnOutside(state, s0, snap)
           : state.manual
             ? manualOutsideUnchanged(s0, snap)
             : outsideUnchanged(s0, snap) || this.aboveMovedInTurn(state, s0, snap);
@@ -1726,7 +1793,7 @@ export class SendProtocol {
         }
         const inTurn = state.queued || state.streamed;
         const outside = inTurn
-          ? turnOutsideUnchanged(s0, snap)
+          ? this.turnOutside(state, s0, snap)
           : manual
             ? aboveLostOnly(s0, snap)
             : command
@@ -1831,6 +1898,12 @@ export class SendProtocol {
     state.marks.s2 = result.snap;
     if (witnessed && result.verdict === "pass") state.queued = true;
     if (dialog) throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: DIALOG_AFTER_ENTER }));
+    // In a turn: a dialog that drew in the gap before Enter takes the Enter (its first option) and
+    // closes, so S2 sees the box again, still holding the text. That is no missing evidence.
+    const lastFrame = result.snap?.frame ?? null;
+    if (result.verdict !== "pass" && queued && lastFrame !== null && wsFree(boxText(lastFrame)) === wsFree(sentText) && wsFree(sentText).length > 0) {
+      throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: ENTER_MISSED_BOX }));
+    }
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
   }
 
@@ -1845,12 +1918,17 @@ export class SendProtocol {
     const queuedRow = state.match?.profile.keys.queuedRow;
     if (queuedRow === undefined || !queuesInTurn(state.match) || state.queued || state.command) return;
     if ((state.marks.s2?.frame ?? null) === null) return;
+    // Only where a turn may run: the rows above moved while Collie typed, a spinner showed before
+    // Enter, or the rows under the box changed between S0 and S1. A truly idle send skips the read.
+    const { s0, s1 } = state.marks;
+    const maybeTurn = state.streamed || spinnerAbove(s0) || spinnerAbove(s1) || belowMasked(s0) !== belowMasked(s1);
+    if (!maybeTurn) return;
     const s1Frame = state.marks.s1?.frame ?? null;
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
     if (state.deadline - this.now() <= LATE_WITNESS_MS * 2) return;
     try {
       await this.sleep(LATE_WITNESS_MS);
-      const snap = await this.readNow(state, "witness");
+      const snap = await this.readNow(state, "witness", Math.min(state.deadline, this.now() + LATE_WITNESS_MS * 2));
       if (snap !== null && showsQueued(snap, queuedRow, sentText)) state.queued = true;
     } catch {
       // A late read that fails is only a missing witness: the send already went in.
