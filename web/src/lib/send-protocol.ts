@@ -39,7 +39,7 @@ function pick<const T extends string>(value: JsonValue | undefined, allowed: rea
 }
 
 /** An ask on the wire, field by field, or null. */
-function readAsk(value: JsonValue | undefined): Ask | null {
+export function readAsk(value: JsonValue | undefined): Ask | null {
   const node = asJsonObject(value);
   if (node === undefined || !Array.isArray(node.options)) return null;
   const id = asJsonString(node.id);

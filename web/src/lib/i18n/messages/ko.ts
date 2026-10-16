@@ -486,6 +486,10 @@ export const ko: Dictionary = {
   "chat.status.feedbackSent": "피드백 전송 완료",
   "chat.status.sent": "전송 완료",
   "chat.status.menuChanged": "메뉴 변경 감지, 새로고침 중",
+  "chat.status.askChanged": "The dialog changed; the card shows the new one", // TODO wordsmith
+  "chat.status.askMismatch": "The highlight did not reach your choice, so nothing was confirmed", // TODO wordsmith
+  "chat.status.askGone": "The dialog is gone; Collie read the screen again", // TODO wordsmith
+  "chat.status.askUnknown": "No proof the answer went; the screen shows what happened", // TODO wordsmith
   "chat.status.sendFailed": "전송 실패",
   "chat.status.wizardChanged": "위저드 상태 변경 감지, 새로고침 중",
   "chat.status.noteSaved": "메모 저장 완료",

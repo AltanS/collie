@@ -17,6 +17,8 @@ import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { readSendReply, type SendReply } from "./send-protocol";
 import type { SendRequestBody } from "./surface/send";
+import type { AnswerBody } from "./surface/ask";
+import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { fileVersionOf } from "./file-image-cache";
@@ -1386,6 +1388,20 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  return reply;
+}
+
+/**
+ * POST /api/ask/<id>: a tap on a dialog card as one Answer to the single-use ask the bridge minted
+ * (M56 spec 08). This machine's own panes only; a crew member's pane keeps the guarded key route.
+ * Every outcome is a 200 with the reply; a refusal is a reply, not an error.
+ */
+export async function postAskAnswer(askId: string, body: AnswerBody, scope?: Scope): Promise<AskTapReply> {
+  stampSend(body.pane);
+  const got = await req<JsonObject>(withScope(`/api/ask/${encodeURIComponent(askId)}`, scope), { method: "POST", body: JSON.stringify(body) });
+  const reply = readAskTapReply(got);
+  if (reply === null) throw new ApiError("The ask route sent a body this phone cannot read.", 502);
+  if (reply.outcome === "sent") stampSend(body.pane);
   return reply;
 }
 

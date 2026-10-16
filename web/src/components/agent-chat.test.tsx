@@ -36,7 +36,7 @@ import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
-import type { Surface } from "@/lib/surface/surface";
+import type { Ask, Surface } from "@/lib/surface/surface";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -881,6 +881,115 @@ const WIZARD_TEXT = [
   "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
 ].join("\n");
 
+// M56 spec 08: a tap on a dialog card answers the pane's ask by its single-use id. The card keeps its
+// look; the tap posts one Answer with the ask's hash, and the phone sends no key of its own.
+describe("AgentChat: a dialog tap answers the pane's ask", () => {
+  const ASK_A: Ask = { id: "ask-0a0a0a0a0a0a0a", kind: "permission", options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "keys", hash: "0c4e11" };
+  const ASK_B: Ask = { id: "ask-0b0b0b0b0b0b0b", kind: "permission", options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "keys", hash: "5d6e77" };
+  const withAsk = (ask: Ask): AgentView => ({ ...fixtureAgents[0]!, surface: { revision: 0, turn: "idle", modal: { ask }, composer: "unknown" } });
+  type Posted = { readonly id: string; readonly body: JsonValue };
+
+  function answerWith(reply: (posted: Posted) => JsonValue) {
+    const posted: Posted[] = [];
+    server.use(
+      http.post(/\/api\/ask\/[^/]+$/, async ({ request }) => {
+        const id = decodeURIComponent(new URL(request.url).pathname.split("/").at(-1) ?? "");
+        // SAFETY: the phone's own JSON.stringify body is JSON, a JsonValue.
+        const one = { id, body: (await request.json()) as JsonValue };
+        posted.push(one);
+        return HttpResponse.json(reply(one));
+      }),
+    );
+    return posted;
+  }
+
+  const mockSubmit = vi.mocked(submitPromptOption);
+  beforeEach(() => {
+    mockSubmit.mockReset();
+    mockSubmit.mockResolvedValue({ status: "sent" });
+    render(<AskStatusLine />);
+  });
+
+  it("an ask tap posts the Answer with the hash and the option id, and sends no key of its own", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "sent", keys: ["1"] } }));
+    renderChat({ text: MENU_TEXT, agent: withAsk(ASK_A) });
+    await user.click(await screen.findByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({ id: ASK_A.id, body: { pane: fixtureAgents[0]!.paneId, hash: "0c4e11", optionId: "1", origin: "person_tap" } });
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("a refused ask is drawn as a new card: the next tap answers the new ask's id", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(({ id }) =>
+      id === ASK_A.id
+        ? { receipt: { askId: id, outcome: "refused", reason: "ask_changed", keys: [] }, ask: { id: ASK_B.id, kind: "permission", options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "keys", hash: ASK_B.hash } }
+        : { receipt: { askId: id, outcome: "sent", keys: ["2"] } },
+    );
+    renderChat({ text: MENU_TEXT, agent: withAsk(ASK_A) });
+    await user.click(await screen.findByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(screen.getByTestId("ask-status")).toHaveTextContent("The dialog changed; the card shows the new one"));
+    await user.click(screen.getByRole("button", { name: "No" }));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted.map((p) => p.id)).toEqual([ASK_A.id, ASK_B.id]);
+    expect(posted[1]!.body).toMatchObject({ hash: "5d6e77", optionId: "2" });
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("an ask that is gone says so, reads the screen again and sends nothing more", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "refused", reason: "ask_gone", keys: [] } }));
+    renderChat({ text: MENU_TEXT, agent: withAsk(ASK_A) });
+    await user.click(await screen.findByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(screen.getByTestId("ask-status")).toHaveTextContent("The dialog is gone; Collie read the screen again"));
+    expect(posted).toHaveLength(1);
+  });
+
+  it("an ask whose labels are not the card's posts nothing and reads the screen again", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(() => ({}));
+    const other: Ask = { ...ASK_A, options: [{ id: "1", label: "Allow" }, { id: "2", label: "Deny" }] };
+    renderChat({ text: MENU_TEXT, agent: withAsk(other) });
+    await user.click(await screen.findByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(screen.getByTestId("ask-status")).toHaveTextContent("The dialog changed; the card shows the new one"));
+    expect(posted).toEqual([]);
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("a menu's footer action answers the menu ask by the action's own row", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "sent", keys: ["s"] } }));
+    const picker = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"), "utf8");
+    const menuAsk: Ask = {
+      id: "ask-0c0c0c0c0c0c0c",
+      kind: "menu",
+      options: [{ id: "1", label: "Set as default" }, { id: "2", label: "Use this session only" }, { id: "3", label: "Cancel" }],
+      channel: "keys",
+      hash: "16977bfbfe0c74",
+    };
+    renderChat({ text: picker, agent: withAsk(menuAsk) });
+    await user.click(await screen.findByRole("button", { name: /Use this session only/ }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash: "16977bfbfe0c74", optionId: "2", origin: "person_tap" } });
+  });
+
+  it("a pane whose Surface carries no ask keeps the guarded key route", async () => {
+    const user = userEvent.setup();
+    const posted = answerWith(() => ({}));
+    renderChat({ text: MENU_TEXT });
+    await user.click(await screen.findByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    expect(posted).toEqual([]);
+  });
+});
+
+/** The header status line, mounted beside the pane so a test can read it. */
+function AskStatusLine() {
+  const status = useStatus();
+  return <div data-testid="ask-status">{status?.text ?? ""}</div>;
+}
+
 describe("AgentChat — prompt-select race guard wiring (frozen {text, revision} pair)", () => {
   const mockSubmit = vi.mocked(submitPromptOption);
   beforeEach(() => {
@@ -1132,12 +1241,21 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 
   it("does NOT focus the composer when a native prompt option is tapped", async () => {
     const user = userEvent.setup();
+    // MENU_AGENT's Surface carries an ask, so the tap is one Answer to it (M56 spec 08).
+    let answered = 0;
+    server.use(
+      http.post(/\/api\/ask\/[^/]+$/, () => {
+        answered += 1;
+        return HttpResponse.json({ receipt: { outcome: "sent", keys: ["1"] } });
+      }),
+    );
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
     const box = screen.getByPlaceholderText(/is waiting/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
     await user.click(yes);
-    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(answered).toBe(1));
+    expect(mockSubmit).not.toHaveBeenCalled();
     expect(box).not.toHaveFocus();
   });
 

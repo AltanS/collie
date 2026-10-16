@@ -38,6 +38,11 @@ const WAY_OUT_PENDING_WORDSMITH: ReadonlySet<string> = new Set([
   "composer.controls.screenAria",
   "composer.controls.screen",
   "composer.protocol.openKeys",
+  // M56 spec 08: the ask answer's status lines, English until the same wordsmith pass.
+  "chat.status.askChanged",
+  "chat.status.askMismatch",
+  "chat.status.askGone",
+  "chat.status.askUnknown",
 ]);
 
 describe("isLocale", () => {

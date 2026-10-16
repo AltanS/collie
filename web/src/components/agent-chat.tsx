@@ -58,6 +58,10 @@ import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
+import { answerAsk, type AskTapResult } from "@/lib/dialog-ask";
+import { refreshNow } from "@/lib/api";
+import { sameKeys } from "@/lib/harness/prompt-model";
+import { askOf, type Ask } from "@/lib/surface/surface";
 import { focusDialogCard } from "@/lib/dialog-focus";
 import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
@@ -112,7 +116,7 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
-import { paneScopeKey } from "@/lib/scope";
+import { isLead, paneScopeKey } from "@/lib/scope";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -874,6 +878,16 @@ export function AgentChat({
     () => paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
     [agent?.surface, agent?.sendProtocol, hostBlock],
   );
+  // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
+  // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
+  // next tap uses it while the snapshot still names the id that was refused, and the snapshot's own
+  // ask wins as soon as it names another. A crew member's pane, a pane the bridge does not mark for
+  // the Send Protocol and a pane with no ask on its Surface keep the guarded key route.
+  const [askReplaced, setAskReplaced] = useState<{ readonly pane: string; readonly refused: string; readonly ask: Ask | null } | null>(null);
+  const surfaceAsk = agent?.surface === undefined ? null : askOf(agent.surface.modal);
+  const paneAsk =
+    askReplaced !== null && askReplaced.pane === paneId && (surfaceAsk === null || surfaceAsk.id === askReplaced.refused) ? askReplaced.ask : surfaceAsk;
+  const asksAnswered = agent?.sendProtocol === true && isLead(scope);
   // The dock's box, for the "Answer the dialog" word to scroll to and focus.
   const cardDockRef = useRef<HTMLDivElement>(null);
   const answerDialog = useCallback(() => {
@@ -1270,6 +1284,48 @@ export function AgentChat({
     listRef.current?.scrollToBottom();
   }, [paneId, requestedLines, scope, revalidator]);
 
+  // What an ask answer's reply does on the phone (M56 spec 08). Nothing here is a next step a person
+  // must take in the header: a changed dialog is drawn as its new card, a gone one is read again.
+  const settleAskTap = useCallback(
+    async (refusedId: string, result: AskTapResult): Promise<boolean> => {
+      switch (result.status) {
+        case "sent":
+          setStatus(t("chat.status.sent"), "success");
+          await showAfterSend();
+          return true;
+        case "changed":
+          if (result.why !== "card") console.info("collie: ask refused", result.why);
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: result.ask });
+          setStatus(t("chat.status.askChanged"), "warn");
+          revalidator.revalidate();
+          return false;
+        case "mismatch":
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: result.ask });
+          setStatus(t("chat.status.askMismatch"), "warn");
+          revalidator.revalidate();
+          return false;
+        case "gone":
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
+          setStatus(t("chat.status.askGone"), "warn");
+          await refreshNow(scope);
+          revalidator.revalidate();
+          return false;
+        case "unknown":
+          setStatus(result.detail ?? t("chat.status.askUnknown"), "warn");
+          revalidator.revalidate();
+          return false;
+        case "refused":
+          setStatus(result.detail ?? t("chat.status.sendFailed"), "error");
+          revalidator.revalidate();
+          return false;
+        case "error":
+          setStatus(result.error || t("chat.status.sendFailed"), "error");
+          return false;
+      }
+    },
+    [showAfterSend, revalidator, scope, paneId],
+  );
+
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
   // race guard first (fresh fetch → revision + re-derived-menu equality); only a clean match sends
   // the option's keys. The guard checks against the FROZEN pair's revision — the menu the user
@@ -1283,6 +1339,12 @@ export function AgentChat({
       if (refusal) {
         setStatus(refusal, "error");
         return false;
+      }
+      // An option on a pane whose Surface carries an ask is one Answer to it (M56 spec 08). A focused
+      // feedback field keeps the guarded path, which refuses it.
+      if (action.kind === "option" && asksAnswered && paneAsk !== null && prompt.feedback?.focused !== true) {
+        const index = prompt.options.indexOf(action.option);
+        return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap: { card: "prompt-select", index, label: action.option.label } }));
       }
       const base = {
         paneId,
@@ -1318,7 +1380,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1450,6 +1512,14 @@ export function AgentChat({
         setStatus(refusal, "error");
         return;
       }
+      // A footer action on a pane whose Surface carries an ask is one Answer to it (M56 spec 08). An
+      // arrow only moves the highlight, which the next commit's hash check covers: it keeps its route.
+      if (!action.nav && asksAnswered && paneAsk !== null) {
+        const index = menu.actions.findIndex((a) => sameKeys(a.keys, action.keys));
+        const label = menu.actions[index]?.label ?? "";
+        await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap: { card: "menu", index, label } }));
+        return;
+      }
       const result = await submitMenuKeys({
         paneId,
         scope,
@@ -1470,7 +1540,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
