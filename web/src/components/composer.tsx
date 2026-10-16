@@ -27,7 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { HeldRows } from "@/components/composer-held";
+import { HeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
@@ -1113,8 +1113,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
   // ends the intent, and every offer it makes is a new one with a new id. Resolves true only on
-  // `sent` or `effective`.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false): Promise<boolean> {
+  // `sent`, `effective` or a `discarded` the bridge took.
+  // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
+  // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }): Promise<boolean> {
     setSending(true);
     setSendRefusal(null);
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
@@ -1123,7 +1125,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, held: protocolIntent.current });
+      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, held: protocolIntent.current });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;
@@ -1138,10 +1140,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const { reply, reading } = res;
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(t, isDraft, reading.note === "queued" || reading.note === "held" ? reading.note : "sent");
+        afterVerifiedSend(resend?.shown ?? t, isDraft, reading.note === "queued" || reading.note === "held" ? reading.note : "sent");
         return true;
       }
-      setProtocolOffer(reading.offers.length === 0 ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
+      // A resend makes no offer: an offer would carry the row's text, which may be masked.
+      setProtocolOffer(reading.offers.length === 0 || resend !== undefined ? null : { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null });
       setSendRefusal(readingRefusal(reading));
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
@@ -1150,17 +1153,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (prompt !== null) noticeNoEcho({ prompt, typed: reading.note === "typed" || reading.note === "unknown" });
       // The person's next look is the pane: snap the mirror to the live tail, as a send does.
       onSent();
-      return false;
+      // A discard the bridge took clears nothing of the draft, but the request went through: a held row's Discard dismisses on it.
+      return reading.note === "discarded";
     } finally {
       setSending(false);
     }
   }
 
-  // Resend on an ended held row: its text goes out again as a NEW request (a new id; the old one
-  // closed). Not a draft, so the box keeps whatever the person is typing now. True when the bridge took it.
-  function resendHeld(row: HeldRow): Promise<boolean> {
+  // A tap on an ended held row. Resend: a NEW request (a new id) that names the old one in `resendOf`
+  // with an empty text; the bridge sends the row's stored text and mode and drops the old row itself,
+  // so the phone never sends the row's text back (it may be masked). Submit and Discard on a row that
+  // ended `typed_not_submitted` go the way the offer strip's do (mode `submit` or `discard`, the text
+  // the box holds). Never a draft, so the box keeps whatever the person is typing now. True when the
+  // bridge took it.
+  function resendHeld(row: HeldRow, action: HeldAction): Promise<boolean> {
     if (sending || locked) return Promise.resolve(false);
-    return sendThroughProtocol(row.text, false, row.mode, null);
+    if (action === "resend") return sendThroughProtocol("", false, row.mode, null, false, { oldId: row.requestId, shown: row.text });
+    return sendThroughProtocol(row.text, false, action, null);
   }
 
   // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
@@ -1942,7 +1951,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
         {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
-        <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onResend={resendHeld} onChanged={onSent} />
+        <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onSend={resendHeld} onChanged={onSent} />
         <div
           data-slot="composer-box"
           className={cn(

@@ -1541,6 +1541,16 @@
    "version": "2.1.291",
    "state": "dialog"
   },
+  "claude--v2301-usage-panel-over-box--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "dialog"
+  },
+  "claude--v2301-usage-panel-over-box--w82.txt": {
+   "harness": "claude",
+   "version": "2.1.301",
+   "state": "dialog"
+  },
   "claude-lab--working-popup-open--w82.txt": {
    "harness": "claude",
    "version": "2.1.291",

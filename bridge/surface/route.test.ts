@@ -329,7 +329,7 @@ describe("heldCancelRoute (M56 spec 15)", () => {
     const accepted = store.accept({ id, session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "a private message" });
     const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
     store.hold(id, { ...receipt, outcome: "held" });
-    holds.add({ id, session: "main", paneId: "%1", harness: "claude", mode: "send", text: "a private message", revision: 0 });
+    holds.add({ id, session: "main", paneId: "%1", harness: "claude", mode: "send", text: "a private message", revision: 0, command: false });
   };
 
   test("flag off is a 404; a bad id or pane is a 400; a pane that holds no such request is a 404", async () => {
@@ -381,6 +381,37 @@ describe("heldCancelRoute (M56 spec 15)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
+  test("resendOf sends the stored text of the ended row under the new id, and the old row goes; an unknown row is a 404", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: true, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      const accepted = store.accept({ id: "route-res-0001", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "a name the mask would hide" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-res-0001", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-res-0001", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "a name the mask would hide", revision: 0, command: false });
+      holds.end("route-res-0001", "expired");
+      expect((await sendRoute(rt, { id: "route-res-0002", pane: "%1", text: "", resendOf: "route-res-9999" }, context)).status).toBe(404);
+      const res = await sendRoute(rt, { id: "route-res-0003", pane: "%1", text: "", resendOf: "route-res-0001" }, context);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0003", outcome: "sent", textLength: "a name the mask would hide".length } });
+      expect(holds.get("route-res-0001")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("parseSendRequest takes resendOf with an empty text, and refuses a resendOf that is not a request id or is the new id", () => {
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "route-res-0001" })).toMatchObject({ resendOf: "route-res-0001", text: "" });
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "../x" })).toBeNull();
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "", resendOf: "route-res-0004" })).toBeNull();
+    expect(parseSendRequest({ id: "route-res-0004", pane: "%1", text: "" })).toBeNull();
   });
 });
 

@@ -268,6 +268,15 @@ export interface Profile {
      * Optional: without it a command in a turn is held by Collie and sent once the pane reads free.
      */
     readonly commandWhileRunning?: CommandWhileRunning;
+    /** Where `commandWhileRunning` was measured: the versions and commands the lab ran. Optional, prose only. */
+    readonly commandWhileRunningNote?: string;
+    /**
+     * The commands Collie never queues or holds from the phone while a turn runs (M56 spec 15 review):
+     * each acts on the session as it stands (it ends, clears or swaps it), so a later turn is the wrong
+     * one. Such a command in a turn is refused `turn_running`. A one-character entry (`!`) names every
+     * line that starts with it; a longer one names the command word. Optional.
+     */
+    readonly neverHeld?: readonly string[];
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -647,6 +656,14 @@ export function parseProfile(raw: JsonValue): Profile {
   if (keysNode.commandWhileRunning !== undefined) {
     const commandWhileRunning = oneOf(keysNode.commandWhileRunning, "keys.commandWhileRunning", COMMAND_MODES);
     keys = { ...keys, commandWhileRunning };
+  }
+  if (keysNode.commandWhileRunningNote !== undefined) {
+    keys = { ...keys, commandWhileRunningNote: text(keysNode.commandWhileRunningNote, "keys.commandWhileRunningNote") };
+  }
+  if (keysNode.neverHeld !== undefined) {
+    const neverHeld = textList(keysNode.neverHeld, "keys.neverHeld", 1);
+    if (neverHeld.some((entry) => entry.trim() !== entry || entry.length === 0)) fail("keys.neverHeld", "entries must be trimmed and not empty");
+    keys = { ...keys, neverHeld };
   }
   if (keysNode.commandSubmit !== undefined) {
     const commandSubmit = textList(keysNode.commandSubmit, "keys.commandSubmit", 1);

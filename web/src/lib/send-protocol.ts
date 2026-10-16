@@ -170,6 +170,12 @@ export function readHeldCancelAnswer(body: JsonValue | undefined): HeldCancelAns
   const result = pick(node?.result, HELD_RESULTS);
   if (result === null) return null;
   const reason = pick(node?.reason, SEND_REASONS);
+  // Only a refusal carries a receipt that matters: the request already went out.
+  const stored = asJsonObject(node?.receipt);
+  const outcome = result === "refused" ? pick(stored?.outcome, SEND_OUTCOMES) : null;
+  const storedReason = pick(stored?.reason, SEND_REASONS);
+  const receipt = outcome === null ? null : storedReason === null ? { outcome } : { outcome, reason: storedReason };
+  if (receipt !== null) return reason === null ? { result, receipt } : { result, reason, receipt };
   return reason === null ? { result } : { result, reason };
 }
 

@@ -83,6 +83,8 @@ interface Posted {
   id: string;
   text: string;
   mode: string;
+  resendOf?: string;
+  rowsHash?: string;
 }
 function fakeSend(body: (posted: Posted) => object) {
   const sends: Posted[] = [];
@@ -133,18 +135,29 @@ describe("the held rows above the composer box", () => {
     expect(within(held).queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("an expired one offers Resend and Dismiss; Resend posts a NEW request with its text, then dismisses the old one", async () => {
+  it("an expired one offers Resend and Dismiss; Resend posts a NEW request by the old id with an empty text, and never calls the cancel route", async () => {
     const user = userEvent.setup();
     const calls = fakeDelete({ body: { result: "dismissed" } });
     const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "sent", keys: [] }, offers: [] }));
-    renderComposer({ held: [row("req00001", "ended", { outcome: "expired" })] });
+    const props = renderComposer({ held: [row("req00001", "ended", { outcome: "expired" })] });
     expect(screen.getByText("Not sent. The turn did not end within 30 minutes.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss the message" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Resend the message" }));
     await waitFor(() => expect(sends).toHaveLength(1));
-    expect(sends[0]).toMatchObject({ text: "text of req00001", mode: "send" });
+    expect(sends[0]).toMatchObject({ text: "", mode: "send", resendOf: "req00001" });
     expect(sends[0]!.id).not.toBe("req00001");
-    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+    expect(JSON.stringify(sends[0])).not.toContain("text of req00001");
+    await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    expect(calls).toEqual([]);
+  });
+
+  it("a Resend keeps the old row's mode", async () => {
+    const user = userEvent.setup();
+    const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "sent", keys: [] }, offers: [] }));
+    renderComposer({ held: [row("req00001", "ended", { outcome: "expired", mode: "command", text: "/compact" })] });
+    await user.click(screen.getByRole("button", { name: "Resend the message" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "", mode: "command", resendOf: "req00001" });
   });
 
   it("a Resend the bridge refuses keeps the row: the text is not dismissed", async () => {
@@ -167,6 +180,61 @@ describe("the held rows above the composer box", () => {
     await user.click(screen.getByRole("button", { name: "Dismiss the message" }));
     await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
     expect(sends).toEqual([]);
+  });
+
+  it("a row that ended unknown says the text may have reached the agent, with Dismiss and no Resend", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    renderComposer({ held: [row("req00001", "ended", { outcome: "unknown" })] });
+    expect(screen.getByText("The text may have reached the agent. Read the chat.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Dismiss the message" }));
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+  });
+
+  it("a row that ended typed_not_submitted offers Submit and Discard; Submit posts mode submit with the row's text, then dismisses", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "sent", keys: [] }, offers: [] }));
+    renderComposer({ held: [row("req00001", "ended", { outcome: "typed_not_submitted" })] });
+    expect(screen.getByText("Typed, not sent. The text is still in the box.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dismiss the message" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Submit the text in the box" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "text of req00001", mode: "submit" });
+    expect(sends[0]!.resendOf).toBeUndefined();
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+  });
+
+  it("Discard posts mode discard with the row's text, then dismisses", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "discarded", keys: [] }, offers: [] }));
+    renderComposer({ held: [row("req00001", "ended", { outcome: "typed_not_submitted" })] });
+    await user.click(screen.getByRole("button", { name: "Discard the text in the box" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "text of req00001", mode: "discard" });
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+  });
+
+  it("a Submit the bridge refuses keeps the row", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "refused", reason: "not_free", keys: [] }, offers: [] }));
+    renderComposer({ held: [row("req00001", "ended", { outcome: "typed_not_submitted" })] });
+    await user.click(screen.getByRole("button", { name: "Submit the text in the box" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeEnabled());
+    expect(calls).toEqual([]);
+  });
+
+  it("a Cancel that finds the request already sent says it went out", async () => {
+    const user = userEvent.setup();
+    fakeDelete({ status: 409, body: { result: "refused", reason: "busy", receipt: { requestId: "req00001", outcome: "sent", keys: [] } } });
+    renderComposer({ held: [row("req00001", "held")] });
+    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("It already went out."));
   });
 
   it("a row whose pane closed offers Dismiss only", () => {

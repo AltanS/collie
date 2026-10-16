@@ -1552,6 +1552,11 @@ if (primary && !(await primary.herdr.reachable())) {
 // started/stopped after boot is picked up (or disposed) within SESSION_REFRESH_MS. A no-op when
 // multi-session is off. unref() so the timer never keeps the process alive; cleared on shutdown.
 await registry.refresh();
+// Held sends of a session that no longer exists go, text and all (M56 spec 15 review).
+if (holdStore !== null && sendStore !== null) {
+  const dropped = SendProtocol.dropHoldsOutside(holdStore, sendStore, new Set(registry.all().map((runtime) => runtime.name)));
+  if (dropped > 0) console.log(`[send] dropped ${String(dropped)} held send(s) of sessions that no longer exist`);
+}
 // Take hook edges from here on: every session the registry knows has added its target. The hook
 // target file tells every emitter on this host to write its edges into this state dir too.
 edgeRouter?.start();

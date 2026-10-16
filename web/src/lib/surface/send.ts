@@ -102,6 +102,12 @@ export interface SendRequestBody {
   readonly capAck?: boolean | undefined;
   /** The Surface revision the phone showed. A program pane refuses `stale_surface` when its turn moved since (M56 spec 14). */
   readonly revision?: number | undefined;
+  /**
+   * Resend of an ended held row (M56 spec 15): the old request id. The text goes empty; the bridge takes
+   * the stored text and mode of that row, sends them under this request's `id`, and drops the old row
+   * itself once it took the new request. The phone never sends a row's text back (it may be masked).
+   */
+  readonly resendOf?: string | undefined;
 }
 
 /**
@@ -229,7 +235,14 @@ export interface HeldCancelAnswer {
   readonly result: "cancelled" | "dismissed" | "refused";
   /** On `refused`: `busy`, the request is going out now. */
   readonly reason?: SendReason;
-  readonly receipt?: SendReceipt;
+  /** On `refused`: the request already went out, and this is its stored receipt (outcome and reason only). */
+  readonly receipt?: HeldCancelReceipt;
+}
+
+/** What the phone reads of the stored receipt a refused cancel carries. */
+export interface HeldCancelReceipt {
+  readonly outcome: SendOutcome;
+  readonly reason?: SendReason;
 }
 
 /** What `GET /api/send/receipts` answers: the newest first. */

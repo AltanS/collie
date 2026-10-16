@@ -13,7 +13,7 @@ import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, t
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -64,6 +64,8 @@ class FakePane {
   keysSeen: string[] = [];
   /** A screen this many rows high shows only its last rows, so new rows scroll the rest up; null shows all. */
   height: number | null = null;
+  /** With a height: a row that stays at the top of the screen while the rows under it scroll (Codex 0.163.0 pins the turn's prompt row). */
+  pinned: string | null = null;
   /** A whole screen to answer every read with, as a capture holds it; null draws the fake box. */
   fixed: string | null = null;
   /** Runs after every text write or key, for scripted changes. */
@@ -153,6 +155,7 @@ class FakePane {
       const status = onStatus ? `  tab to queue message${" ".repeat(60)}99% context left` : this.codexStatus;
       const welcome = this.box === "" ? this.codexWelcome : [];
       rows.push(...welcome, ...this.over, ...queued, "", "", ...this.boxRows(), "", status, ...(hint === null ? [] : [hint]));
+      if (this.height !== null && this.pinned !== null) return [this.pinned, ...rows.slice(-(this.height - 1))].join("\n");
       return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
     }
     rows.push(...this.over, RULE, ...this.boxRows(), RULE);
@@ -1085,6 +1088,34 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.queued).toEqual(["please list the files in this folder"]);
   });
 
+  test("an answer that streams under a pinned prompt row: the probe passes and the send goes in with Tab (lab, 0.163.0, 2026-10-16)", async () => {
+    const { pane, send } = codex();
+    pane.height = 26;
+    pane.pinned = "› Write the numbers from one to four hundred as English words";
+    for (let i = 0; i < 20; i++) pane.transcript.push(`  number row ${String(i)}`);
+    streams(pane);
+    const answer = await send("now reply with the single word cherry");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a pinned first row does not excuse rows under it that were replaced, not scrolled: no Enter, no Tab", async () => {
+    const { pane, send } = codex();
+    pane.height = 26;
+    pane.pinned = "› Write the numbers from one to four hundred as English words";
+    for (let i = 0; i < 20; i++) pane.transcript.push(`  number row ${String(i)}`);
+    pane.turn = true;
+    pane.beforeRead = (p, n) => {
+      // Another screen under the same top row: none of the rows before stands in the read after.
+      p.transcript = Array.from({ length: 20 }, (_, i) => `  other screen ${String(n)} row ${String(i)}`);
+    };
+    const answer = await send("now reply with the single word cherry");
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen).not.toContain("Tab");
+  });
+
   test("Submit of a draft while the answer streams with no working row presses Tab, never Enter (K1)", async () => {
     const { pane, send } = codex();
     pane.box = "half a thought";
@@ -1124,9 +1155,10 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Tab");
   });
 
-  test("`!ls` is a shell command on Codex: Enter on an idle box, the queue key in a turn (lab, 0.163.0)", async () => {
+  test("`!ls` is a shell command on Codex: Enter on an idle box; in a turn it is refused, never queued (keys.neverHeld)", async () => {
     // Lab, 2026-10-16: on an idle box Tab does nothing with `!ls` (Shell mode) and Enter runs it; in a
-    // turn Tab queues it, and it runs as a shell command after the turn (M56 spec 15 made that the path).
+    // turn Tab would queue it, but a shell line acts on the machine as it is then, so the profile lists
+    // `!` in keys.neverHeld and Collie neither queues nor holds it (review of spec 15, H6).
     const idle = codex();
     const sent = await idle.send("!ls", { mode: "command" });
     expect(sent.receipt).toMatchObject({ outcome: "sent" });
@@ -1136,10 +1168,12 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     const busy = codex();
     busy.pane.over = [CODEX_RUNNING];
     expect((await busy.send("!ls")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
-    const queued = await busy.send("!ls", { mode: "command" });
-    expect(queued.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
-    expect(busy.pane.queued).toEqual(["!ls"]);
+    const refused = await busy.send("!ls", { mode: "command" });
+    expect(refused.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(refused.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    expect(busy.pane.queued).toEqual([]);
     expect(busy.pane.keysSeen).not.toContain("Enter");
+    expect(busy.pane.keysSeen).not.toContain("Tab");
   });
 
   test("an `@` text is a message on Codex: it goes in with Tab, never Enter (N2)", async () => {
@@ -1338,6 +1372,28 @@ describe("a send into a running turn", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
     expect(pane.over[0]).toBe("❯ /compact");
     neverEscape(pane);
+  });
+
+  test("a command in a turn meets a permission dialog drawn under the box after the write: typed_not_submitted(modal_cue), no Enter (review of spec 15)", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:/") || what.startsWith("type:/")) p.popup = DIALOG;
+    };
+    const answer = await send("/help", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(answer.receipt?.keys).not.toContain("Enter");
+    neverEscape(pane);
+  });
+
+  test("a command on an idle box meets a dialog drawn under the box after the write: typed_not_submitted(modal_cue), no Enter", async () => {
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:/") || what.startsWith("type:/")) p.popup = DIALOG;
+    };
+    const answer = await send("/help", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(answer.receipt?.keys).not.toContain("Enter");
   });
 
   test("a command in a turn on a harness that does not queue commands, with no hold queue: refused turn_running, nothing typed", async () => {
@@ -2910,6 +2966,11 @@ describe("the held send (M56 spec 15)", () => {
     pane.over = [];
   };
   const tick = async (r: Rig, surface: typeof FREE | typeof RUNNING = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+  /** Two free polls in a row: the first only counts, the second releases (review of spec 15, H2). */
+  const freeTwice = async (r: Rig): Promise<(SendAnswer | null)[]> => {
+    expect(await tick(r)).toEqual([]);
+    return tick(r);
+  };
 
   test("a send the harness cannot take during its turn is held: receipt held, nothing typed, the text on disk 0600", async () => {
     const r = untrusted();
@@ -2938,13 +2999,15 @@ describe("the held send (M56 spec 15)", () => {
     expect(r.holds.list()).toHaveLength(1);
   });
 
-  test("nothing is released while the Surface reads the turn; the first free read sends it under the same id, a fresh run of the protocol", async () => {
+  test("nothing is released while the Surface reads the turn; two free polls in a row send it under the same id, a fresh run of the protocol", async () => {
     const ledger = new SurfaceLedger(join(dir, "state"), { now: () => 1_000_000 });
     const r = untrusted({ ledger });
     await r.send("then give it a title", { id: "held-000003" });
     expect(await tick(r, RUNNING)).toEqual([]);
     expect(r.pane.calls).toEqual([]);
     turnEnds(r.pane);
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
     const [released] = await tick(r);
     expect(released?.receipt).toMatchObject({ requestId: "held-000003", outcome: "sent" });
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");
@@ -2958,7 +3021,7 @@ describe("the held send (M56 spec 15)", () => {
     neverEscape(r.pane);
   });
 
-  test("a later send on a pane with held sends joins the end, even on a free pane; the oldest goes first, one per free read", async () => {
+  test("a later send on a pane with held sends joins the end, even on a free pane; the second waits for a running turn, then two free polls", async () => {
     const r = untrusted();
     await r.send("first message", { id: "held-000004" });
     turnEnds(r.pane);
@@ -2967,10 +3030,15 @@ describe("the held send (M56 spec 15)", () => {
     expect(second.detail).toBe("Earlier messages wait for this pane. Collie sends this after them.");
     expect(r.pane.calls).toEqual([]);
     expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-000004", "held-000005"]);
-    const [first] = await tick(r);
+    const [first] = await freeTwice(r);
     expect(first?.receipt).toMatchObject({ requestId: "held-000004", outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> first message");
-    const [next] = await tick(r);
+    // The release started the wait again: free polls alone send nothing until a turn ran.
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r, RUNNING)).toEqual([]);
+    const [next] = await freeTwice(r);
     expect(next?.receipt).toMatchObject({ requestId: "held-000005", outcome: "sent" });
     expect(r.pane.transcript.slice(-2)).toEqual(["> first message", "> second message"]);
   });
@@ -2989,7 +3057,7 @@ describe("the held send (M56 spec 15)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
     expect(answer.detail).toBe("The agent is working. Collie keeps this and sends it when the turn ends.");
     turnEnds(r.pane);
-    const [released] = await tick(r);
+    const [released] = await freeTwice(r);
     expect(released?.receipt).toMatchObject({ requestId: "held-000007", outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> /compact");
   });
@@ -3050,9 +3118,12 @@ describe("the held send (M56 spec 15)", () => {
     r.pane.beforeRead = () => {
       if (seen.length === 0) seen.push(r.protocol.cancelHeld("main", "%1", "held-000011"));
     };
-    const [released] = await tick(r);
+    const [released] = await freeTwice(r);
     expect(seen).toEqual([{ result: "refused", reason: "busy" }]);
     expect(released?.receipt?.outcome).toBe("sent");
+    // Cancel after it went out: refused busy, with the stored receipt (review of spec 15, H8).
+    expect(r.protocol.cancelHeld("main", "%1", "held-000011")).toMatchObject({ result: "refused", reason: "busy", receipt: { requestId: "held-000011", outcome: "sent" } });
+    expect(r.protocol.cancelHeld("main", "%2", "held-000011")).toBeNull();
   });
 
   test("a pane that closes with a held send ends it refused(pane_gone), the text kept", async () => {
@@ -3060,10 +3131,48 @@ describe("the held send (M56 spec 15)", () => {
     const r = untrusted({ generation: () => generation });
     await r.send("then give it a title", { id: "held-000012" });
     generation = null;
+    // Two polls with no pane may be a redraw; the third ends it (review of spec 15, H5).
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    expect(r.holds.get("held-000012")?.state).toBe("held");
     expect(await tick(r)).toEqual([]);
     expect(r.deps.store.get("held-000012")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
     expect(r.protocol.heldOf("main", "%1")).toEqual([expect.objectContaining({ state: "ended", outcome: "refused", reason: "pane_gone", text: "then give it a title" })]);
     expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a pane that comes back within two polls keeps its held send", async () => {
+    let generation: string | null = "claude:-";
+    const r = untrusted({ generation: () => generation });
+    await r.send("then give it a title", { id: "held-000019" });
+    generation = null;
+    await tick(r);
+    await tick(r);
+    generation = "claude:-";
+    turnEnds(r.pane);
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-000019", outcome: "sent" });
+  });
+
+  test("a session id that resolves, or a /clear, keeps the held send: the agent is the same, and the release runs on the pane as it is", async () => {
+    let generation: string | null = "claude:-";
+    const r = untrusted({ generation: () => generation });
+    await r.send("then give it a title", { id: "held-000020" });
+    generation = "claude:session-a";
+    await tick(r, RUNNING);
+    generation = "claude:session-b";
+    turnEnds(r.pane);
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-000020", outcome: "sent", paneGeneration: "claude:session-b" });
+  });
+
+  test("a pane that holds another agent now ends its held sends refused(pane_gone)", async () => {
+    let generation: string | null = "claude:-";
+    const r = untrusted({ generation: () => generation });
+    await r.send("then give it a title", { id: "held-000021" });
+    generation = "codex:-";
+    await tick(r);
+    expect(r.deps.store.get("held-000021")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
   });
 
   test("a pane that holds another program now ends its held sends refused(pane_gone)", async () => {
@@ -3079,13 +3188,13 @@ describe("the held send (M56 spec 15)", () => {
     const r = untrusted();
     await r.send("then give it a title", { id: "held-000014" });
     // The poll read free, the protocol's S0 reads the running row: not yet.
-    const [back] = await tick(r);
+    const [back] = await freeTwice(r);
     expect(back?.receipt).toMatchObject({ outcome: "held", keys: [] });
     expect(r.holds.get("held-000014")).toMatchObject({ state: "held", tries: 1 });
     expect(r.deps.store.get("held-000014")?.phase).toBe("held");
-    for (let i = 0; i < 3; i++) await tick(r);
+    for (let i = 0; i < 3; i++) await freeTwice(r);
     expect(r.holds.get("held-000014")?.tries).toBe(4);
-    const [last] = await tick(r);
+    const [last] = await freeTwice(r);
     expect(last?.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
     expect(r.holds.get("held-000014")).toMatchObject({ state: "ended", outcome: "refused", reason: "turn_running", text: "then give it a title" });
     expect(r.pane.calls).toEqual([]);
@@ -3096,11 +3205,11 @@ describe("the held send (M56 spec 15)", () => {
     await r.send("then give it a title", { id: "held-000015" });
     turnEnds(r.pane);
     r.deps.locks.acquire("main\u0000%1", "someone-else", r.clock.now + 60_000, r.clock.now);
-    const [back] = await tick(r);
+    const [back] = await freeTwice(r);
     expect(back?.receipt?.outcome).toBe("held");
     expect(r.holds.get("held-000015")?.tries).toBe(1);
     r.deps.locks.release("main\u0000%1", "someone-else");
-    const [sent] = await tick(r);
+    const [sent] = await freeTwice(r);
     expect(sent?.receipt?.outcome).toBe("sent");
   });
 
@@ -3115,7 +3224,7 @@ describe("the held send (M56 spec 15)", () => {
     expect(holds.list()).toEqual([expect.objectContaining({ id: "held-000016", state: "held", text: "then give it a title" })]);
     const pane = new FakePane();
     const second = rig({ version: "no version here", pane, holds, storeDir: join(dir, "sends"), clock: { now: 2_000_000 } });
-    const [released] = await tick(second);
+    const [released] = await freeTwice(second);
     expect(released?.receipt).toMatchObject({ requestId: "held-000016", outcome: "sent" });
     expect(pane.transcript.at(-1)).toBe("> then give it a title");
   });
@@ -3152,6 +3261,97 @@ describe("the held send (M56 spec 15)", () => {
     for (let i = 0; i < 32; i++) expect((await r.send(`message ${String(i)}`)).receipt?.outcome).toBe("held");
     expect((await r.send("one too many")).receipt).toMatchObject({ outcome: "refused", reason: "busy" });
     expect(r.holds.list()).toHaveLength(32);
+  });
+
+  test("Add to it in a turn is not held: it names the draft in the box now (review of spec 15, H3)", async () => {
+    const r = untrusted();
+    r.pane.box = "half a thought";
+    expect((await r.send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a command the profile never lets wait is refused in a turn, neither queued by the harness nor held (H6)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ holds });
+    r.pane.over = [LIVE_ROW];
+    for (const text of ["/clear", "/resume", "!git status"]) {
+      const answer = await r.send(text, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    }
+    expect(holds.list()).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    // A longer word is another command: `/clearly` is not `/clear`.
+    const claude = profileFor("claude", "2.1.301", { log: () => undefined });
+    expect(neverHeldEntry("/clearly", claude)).toBeNull();
+    expect(neverHeldEntry("/clear all", claude)).toBe("/clear");
+  });
+
+  test("a never-held command on a profile that does not queue commands is refused, not held, and joins no queue (H6)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ edit: noCommandQueue, holds });
+    r.pane.over = [LIVE_ROW];
+    expect((await r.send("/exit", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await r.send("/compact", { mode: "command" })).receipt?.outcome).toBe("held");
+    expect((await r.send("/clear", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(holds.list().map((entry) => entry.text)).toEqual(["/compact"]);
+  });
+
+  test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ edit: noCommandQueue, holds, clock, version: "no version here" });
+    r.pane.over = [LIVE_ROW];
+    await r.send("/compact", { id: "held-cmd-01", mode: "command" });
+    await r.send("then give it a title", { id: "held-txt-01" });
+    clock.now += 10 * 60 * 1000;
+    await tick(r, RUNNING);
+    expect(holds.get("held-cmd-01")).toMatchObject({ state: "ended", outcome: "expired" });
+    expect(holds.get("held-txt-01")?.state).toBe("held");
+  });
+
+  test("a manual send on a pane with held sends joins the queue too (H9)", async () => {
+    const r = untrusted();
+    await r.send("first message", { id: "held-man-01" });
+    turnEnds(r.pane);
+    const manual = await r.send("second message", { id: "held-man-02", rowsHash: "abc123" });
+    expect(manual.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-man-01", "held-man-02"]);
+  });
+
+  test("the bridge holds at most 256 sends over all panes; the next is refused busy (H9)", async () => {
+    const r = untrusted();
+    for (let i = 0; i < 256; i++) r.holds.add({ id: `seed-${String(i).padStart(6, "0")}`, session: "main", paneId: `%${String(100 + (i % 16))}`, harness: "claude", mode: "send", text: "x", revision: 0, command: false });
+    expect((await r.send("one too many")).receipt).toMatchObject({ outcome: "refused", reason: "busy" });
+  });
+
+  test("Resend takes the stored text of an ended row, never one that may have reached the agent or still stands in the box (H7)", async () => {
+    const clock = { now: 1_000_000 };
+    const r = untrusted({ clock });
+    await r.send("then give it a title", { id: "held-res-01" });
+    expect(r.protocol.resendSource("main", "%1", "held-res-01")).toBeNull();
+    clock.now += 31 * 60 * 1000;
+    await tick(r, RUNNING);
+    expect(r.protocol.resendSource("main", "%1", "held-res-01")).toEqual({ text: "then give it a title", mode: "send" });
+    expect(r.protocol.resendSource("main", "%2", "held-res-01")).toBeNull();
+    r.holds.add({ id: "held-res-02", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "maybe in", revision: 0, command: false });
+    r.holds.end("held-res-02", "unknown", "no_evidence");
+    expect(r.protocol.resendSource("main", "%1", "held-res-02")).toBeNull();
+    r.holds.add({ id: "held-res-03", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "in the box", revision: 0, command: false });
+    r.holds.end("held-res-03", "typed_not_submitted", "changed");
+    expect(r.protocol.resendSource("main", "%1", "held-res-03")).toBeNull();
+    expect(r.protocol.dismissHeld("main", "%1", "held-res-01")).toBe(true);
+    expect(r.protocol.dismissHeld("main", "%1", "held-res-01")).toBe(false);
+  });
+
+  test("on boot, held sends of a session that no longer exists go, and a still-held request settles pane_gone (H9)", async () => {
+    const r = untrusted();
+    await r.send("then give it a title", { id: "held-gone-01" });
+    expect(SendProtocol.dropHoldsOutside(r.holds, r.deps.store, new Set(["main"]))).toBe(0);
+    expect(SendProtocol.dropHoldsOutside(r.holds, r.deps.store, new Set(["other"]))).toBe(1);
+    expect(r.holds.list()).toEqual([]);
+    expect(r.deps.store.get("held-gone-01")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
   });
 
   test("without a hold queue the old refusal stands: turn_running, nothing typed", async () => {

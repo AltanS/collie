@@ -231,8 +231,9 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   else if (frame !== null) modal = "none";
   else modal = "unknown";
 
+  // Under a panel that takes the keys the box is not what a key reaches, so the screen claims nothing of it.
   const composer: SurfaceComposer =
-    frame === null ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
+    frame === null || cues.panelFoot === true ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
 
   let reason: SurfaceReason | undefined;
   if (frame === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";

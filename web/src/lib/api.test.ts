@@ -1262,6 +1262,11 @@ describe("cancelHeldSend (M56 spec 15)", () => {
     expect(await cancelHeldSend("req00001", "w1:p1")).toEqual({ result: "refused", reason: "busy" });
   });
 
+  it("a refused cancel carries the stored receipt when the request already went out", async () => {
+    server.use(http.delete("/api/send/:id", () => HttpResponse.json({ result: "refused", reason: "busy", receipt: { requestId: "req00001", outcome: "sent", keys: [] } }, { status: 409 })));
+    expect(await cancelHeldSend("req00001", "w1:p1")).toEqual({ result: "refused", reason: "busy", receipt: { outcome: "sent" } });
+  });
+
   it("an unknown request (404) and a body that is not an answer both throw", async () => {
     server.use(http.delete("/api/send/:id", () => HttpResponse.json({ error: "no such request" }, { status: 404 })));
     await expect(cancelHeldSend("req00001", "w1:p1")).rejects.toMatchObject({ status: 404 });

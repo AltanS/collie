@@ -181,6 +181,8 @@ describe("a held send (M56 spec 15)", () => {
   it("reads the DELETE answer field by field and refuses a body that is not one", () => {
     expect(readHeldCancelAnswer({ result: "cancelled", receipt: { outcome: "cancelled" } })).toEqual({ result: "cancelled" });
     expect(readHeldCancelAnswer({ result: "dismissed" })).toEqual({ result: "dismissed" });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy", receipt: { outcome: "sent" } })).toEqual({ result: "refused", reason: "busy", receipt: { outcome: "sent" } });
+    expect(readHeldCancelAnswer({ result: "refused", reason: "busy", receipt: { outcome: "nonsense" } })).toEqual({ result: "refused", reason: "busy" });
     expect(readHeldCancelAnswer({ result: "refused", reason: "busy" })).toEqual({ result: "refused", reason: "busy" });
     expect(readHeldCancelAnswer({ result: "refused", reason: "nonsense" })).toEqual({ result: "refused" });
     expect(readHeldCancelAnswer({ result: "maybe" })).toBeNull();

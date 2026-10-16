@@ -61,6 +61,8 @@ export interface CueRead {
   readonly strength: CueStrength;
   /** A short hash of the bottom cluster's text (the generic one, frame or not), for log lines. */
   readonly hash: string;
+  /** A panel's dismiss hint stands alone over the found box ({@link PANEL_FOOT}): the panel takes the keys, not the box. */
+  readonly panelFoot?: true;
 }
 
 /** The most non-blank rows the no-frame cluster reads (a list it would cut is read whole). */
@@ -83,6 +85,12 @@ const RULE = /^\s*[─━═╌┄┈]{2,}(?:\s*[^\s─━═╌┄┈]{1,3}\s*[
 const RULE_MIN_GLYPHS = 8;
 /** A title row that names only its close key, at its right end after a wide gap. */
 const DISMISS_HEADER = /^\s*(\S(?:.*\S)?)\s{3,}(?:esc|escape)\s*$/iu;
+/**
+ * A row that is nothing but the dismiss hint of an open panel ("Esc to cancel"). Alone in the run over a
+ * live box it is the foot of a panel drawn above the box, which takes the keys (Claude Code 2.1.301's
+ * /cost and /usage panel during a turn, fixtures claude--v2301-usage-panel-over-box--w82 and --w40): strong.
+ */
+const PANEL_FOOT = /^\s*(?:esc|escape)\s+to\s+(?:cancel|close|exit|dismiss|go back)\s*$/iu;
 /** A slash command with its description in a second column ("/agents     Switch agent"). */
 const COMMAND_ENTRY = new RegExp(`^(\\s*)(?:[${POINTERS}]\\s*)?/[\\w:.-]+\\s{2,}\\S`, "u");
 /** A prompt that holds only a slash query: "/", "/res", "❯ /usage". */
@@ -440,10 +448,12 @@ export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRea
   const above = aboveRun(texts, frame);
   const under = cuesIn(texts, cluster);
   const over = cuesIn(texts, above);
-  const overStrong = strengthOf(over.cues, over) === "strong";
+  // A panel's dismiss hint, alone over the box: the panel holds the keys, whatever the box looks like.
+  const panelFoot = above.length === 1 && PANEL_FOOT.test(unboxed(texts[above[0]!]!));
+  const overStrong = panelFoot || strengthOf(over.cues, over) === "strong";
   const cues = overStrong ? [...under.cues, ...over.cues] : under.cues;
   const strength = overStrong ? "strong" : strengthOf(under.cues, under);
-  return { cluster, above, cues, strength, hash };
+  return panelFoot ? { cluster, above, cues, strength, hash, panelFoot } : { cluster, above, cues, strength, hash };
 }
 
 /**

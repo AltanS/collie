@@ -1,11 +1,11 @@
 // The hold queue on disk (M56 spec 15): one 0600 file per held request, queue order kept across a
-// restart, the three states, and the keep window of an ended row.
+// restart, the three states, the keep window and caps of an ended row, and the boot cleanup.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HOLD_ENDED_KEEP_MS, HOLD_MS, HoldStore, heldRow, type HoldInput } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_COMMAND_MS, HOLD_ENDED_KEEP_MS, HOLD_ENDED_PANE_MAX, HOLD_MS, HOLD_PANE_MAX, HoldStore, heldRow, type HoldInput } from "./holds.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -13,7 +13,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(join(dir, ".."), { recursive: true, force: true }));
 
-const input = (id: string, paneId = "%1", session = "main"): HoldInput => ({ id, session, paneId, harness: "agent", mode: "send", text: `text of ${id}`, revision: 3 });
+const input = (id: string, paneId = "%1", session = "main"): HoldInput => ({ id, session, paneId, harness: "agent", mode: "send", text: `text of ${id}`, revision: 3, command: false });
 
 describe("HoldStore", () => {
   test("a held request is one 0600 file in a 0700 directory, with its text, ending HOLD_MS later", () => {
@@ -62,13 +62,45 @@ describe("HoldStore", () => {
     expect(store.list().map((entry) => entry.id)).toEqual(["req-000001"]);
   });
 
-  test("a file this module did not write is left out", () => {
+  test("on boot a held file that does not read back and a .tmp leftover are deleted; a foreign name is left alone", () => {
     const store = new HoldStore(dir);
     store.add(input("req-000001"));
     writeFileSync(join(dir, "req-000002.json"), "{\"id\":\"req-000002\"}\n");
     writeFileSync(join(dir, "not a request.json"), "{}\n");
     writeFileSync(join(dir, "req-000003.json"), "not json\n");
+    writeFileSync(join(dir, "req-000004.json.tmp"), "{\"text\":\"half a write\"}\n");
     expect(new HoldStore(dir).list().map((entry) => entry.id)).toEqual(["req-000001"]);
+    expect(readdirSync(dir).toSorted()).toEqual(["not a request.json", "req-000001.json"]);
+  });
+
+  test("a held command ends HOLD_COMMAND_MS after it was held, a text HOLD_MS", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    expect(store.add({ ...input("req-000001"), command: true }).expiresAt).toBe(5_000 + HOLD_COMMAND_MS);
+    expect(store.add(input("req-000002")).expiresAt).toBe(5_000 + HOLD_MS);
+    expect(HOLD_COMMAND_MS).toBe(10 * 60 * 1000);
+  });
+
+  test("a pane keeps at most 50 ended rows for at most an hour; the oldest go first; the bridge counts its waiting rows", () => {
+    let now = 1_000;
+    const store = new HoldStore(dir, () => now);
+    for (let i = 0; i < 52; i++) {
+      const id = `req-${String(i).padStart(6, "0")}`;
+      store.add(input(id));
+      now += 1;
+      store.end(id, "expired");
+    }
+    store.add(input("req-other1", "%2"));
+    store.end("req-other1", "expired");
+    store.add(input("req-wait01"));
+    expect(store.waitingCount()).toBe(1);
+    expect(store.prune()).toBe(2);
+    const ended = store.list("main", "%1").filter((entry) => entry.state === "ended").map((entry) => entry.id);
+    expect(ended).toHaveLength(HOLD_ENDED_PANE_MAX);
+    expect(ended[0]).toBe("req-000002");
+    expect(store.get("req-other1")?.state).toBe("ended");
+    expect(HOLD_ENDED_KEEP_MS).toBe(60 * 60 * 1000);
+    expect(HOLD_PANE_MAX).toBe(32);
+    expect(HOLD_BRIDGE_MAX).toBe(256);
   });
 
   test("the phone's row carries the text, the times and the state, and the outcome once ended", () => {

@@ -949,6 +949,38 @@
   }
  },
  {
+  "fixture": "claude--v2301-usage-panel-over-box--w40.txt",
+  "frame": {
+   "top": 45,
+   "prompt": 46,
+   "bottom": 47,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 48,
+    "last": 48
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2301-usage-panel-over-box--w82.txt",
+  "frame": {
+   "top": 45,
+   "prompt": 46,
+   "bottom": 47,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 48,
+    "last": 48
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2301-working-draft--w100.txt",
   "frame": {
    "top": 34,

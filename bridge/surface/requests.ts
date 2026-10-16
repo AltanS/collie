@@ -385,11 +385,12 @@ export class RequestStore {
   }
 
   /** A held request's release starts: it runs again as accepted, bounded from now. Null when it is not held. */
-  rearm(id: string): SendRecord | null {
+  rearm(id: string, paneGeneration?: string): SendRecord | null {
     const known = this.get(id);
     if (known === null || known.phase !== "held") return null;
     const { receipt: _held, ...rest } = known;
-    const armed: SendRecord = { ...rest, phase: "accepted", runAt: this.now() };
+    // The pane's generation now, when the caller read one: the release runs against the pane as it is.
+    const armed: SendRecord = { ...rest, phase: "accepted", runAt: this.now(), paneGeneration: paneGeneration ?? known.paneGeneration };
     this.write(armed);
     return armed;
   }

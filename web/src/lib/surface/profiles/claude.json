@@ -44,9 +44,11 @@
     },
     "enterWhileRunning": "queues",
     "commandWhileRunning": "queues",
+    "commandWhileRunningNote": "Lab 2026-10-16: measured on Claude Code 2.1.301 with /help only (queued as a row above the box, ran after the turn).",
+    "neverHeld": ["/clear", "/exit", "/quit", "/logout", "/resume", "/branch", "!"],
     "queuedRow": {
       "pattern": "^\\s*❯ (?<text>\\S.*?)\\s*$",
-      "hint": "^\\s*ctrl\\+enter to send now\\s*$",
+      "hint": "^\\s*(?:ctrl\\+enter|ctrl\\+x ctrl\\+s) to send now\\s*$",
       "hintGap": 1
     }
   },

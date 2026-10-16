@@ -11,7 +11,12 @@
 // fresh run of the protocol under the same request id) and `ended` (closed without reaching the agent:
 // expired, the pane gone, or a refusal at release; the text stays for the phone's Resend). A send that
 // went out, and a cancelled one, leave no file. An ended file goes when the person dismisses it, or
-// after {@link HOLD_ENDED_KEEP_MS}.
+// after {@link HOLD_ENDED_KEEP_MS}, and a pane keeps at most {@link HOLD_ENDED_PANE_MAX} of them.
+//
+// The text is kept on disk in plain form (the file is 0600): the bridge must type it later. So the
+// store bounds it: a pane waits on at most {@link HOLD_PANE_MAX} requests and the bridge on
+// {@link HOLD_BRIDGE_MAX}, and on boot a file it cannot read and a `.tmp` leftover of a write cut short
+// are deleted.
 //
 // No harness name lives here (bridge/surface/no-harness-names.test.ts scans this folder).
 
@@ -20,12 +25,18 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type HeldRow, type HeldState, type SendMode, type SendOutcome, type SendReason } from "../../web/src/lib/surface/send.ts";
 
-/** How long a request stays held before it ends `expired` (decision 4). */
+/** How long a text stays held before it ends `expired` (decision 4). */
 export const HOLD_MS = 30 * 60 * 1000;
+/** How long a command stays held before it ends `expired`: a command acts on the session as it is, so it goes stale sooner. */
+export const HOLD_COMMAND_MS = 10 * 60 * 1000;
 /** How long an ended request keeps its text for the phone's Resend, when nobody dismisses it. */
-export const HOLD_ENDED_KEEP_MS = 24 * 60 * 60 * 1000;
+export const HOLD_ENDED_KEEP_MS = 60 * 60 * 1000;
+/** The most ended rows one pane keeps; the oldest go first. */
+export const HOLD_ENDED_PANE_MAX = 50;
 /** The most held requests one pane may queue. A send past it is refused `busy`, never dropped. */
 export const HOLD_PANE_MAX = 32;
+/** The most held requests the whole bridge may queue. A send past it is refused `busy`, never dropped. */
+export const HOLD_BRIDGE_MAX = 256;
 
 const HELD_STATES = ["held", "running", "ended"] as const satisfies readonly HeldState[];
 
@@ -59,6 +70,8 @@ export interface HoldInput {
   readonly mode: SendMode;
   readonly text: string;
   readonly revision: number;
+  /** A command (a command mode, or a text with a reserved lead): it expires after {@link HOLD_COMMAND_MS}. */
+  readonly command: boolean;
 }
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
@@ -112,8 +125,13 @@ export class HoldStore {
   ) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     chmodSync(dir, 0o700);
-    // Replayed on boot: every file this module wrote comes back in its order.
+    // Replayed on boot: every file this module wrote comes back in its order. A `.tmp` leftover of a
+    // write cut short, and a file that does not read back as an entry, are deleted: both hold text.
     for (const name of readdirSync(dir)) {
+      if (name.endsWith(".json.tmp")) {
+        rmSync(join(dir, name), { force: true });
+        continue;
+      }
       if (!name.endsWith(".json")) continue;
       const stem = name.slice(0, -".json".length);
       if (!REQUEST_ID.test(stem)) continue;
@@ -124,7 +142,10 @@ export class HoldStore {
       } catch {
         entry = null;
       }
-      if (entry === null || entry.id !== stem) continue;
+      if (entry === null || entry.id !== stem) {
+        rmSync(join(dir, name), { force: true });
+        continue;
+      }
       this.entries.set(entry.id, entry);
       this.nextSeq = Math.max(this.nextSeq, entry.seq + 1);
     }
@@ -148,7 +169,8 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    return this.write({ ...input, heldAt: at, expiresAt: at + HOLD_MS, seq: this.nextSeq++, state: "held", tries: 0 });
+    const { command, ...rest } = input;
+    return this.write({ ...rest, heldAt: at, expiresAt: at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 });
   }
 
   get(id: string): HeldEntry | null {
@@ -165,6 +187,13 @@ export class HoldStore {
   /** The requests still waiting or going out on a pane: what a new send joins the end of. */
   waiting(session: string, paneId: string): HeldEntry[] {
     return this.list(session, paneId).filter((entry) => entry.state !== "ended");
+  }
+
+  /** How many requests wait or go out over the whole bridge. */
+  waitingCount(): number {
+    let n = 0;
+    for (const entry of this.entries.values()) if (entry.state !== "ended") n++;
+    return n;
   }
 
   /** The release starts: the file says so before the request runs, so a crash in between is seen on boot. */
@@ -197,12 +226,25 @@ export class HoldStore {
     return true;
   }
 
-  /** Ended entries past their keep window go. Returns how many. */
+  /** Ended entries past their keep window go, and past {@link HOLD_ENDED_PANE_MAX} per pane the oldest. Returns how many. */
   prune(keepMs = HOLD_ENDED_KEEP_MS): number {
     const now = this.now();
     let dropped = 0;
-    for (const entry of this.entries.values()) {
-      if (entry.state === "ended" && now - (entry.endedAt ?? entry.heldAt) > keepMs && this.remove(entry.id)) dropped++;
+    const kept = new Map<string, HeldEntry[]>();
+    for (const entry of this.list()) {
+      if (entry.state !== "ended") continue;
+      if (now - (entry.endedAt ?? entry.heldAt) > keepMs) {
+        if (this.remove(entry.id)) dropped++;
+        continue;
+      }
+      const key = `${entry.session}\u0000${entry.paneId}`;
+      const rows = kept.get(key);
+      if (rows === undefined) kept.set(key, [entry]);
+      else rows.push(entry);
+    }
+    for (const rows of kept.values()) {
+      const byEnd = rows.toSorted((a, b) => (a.endedAt ?? a.heldAt) - (b.endedAt ?? b.heldAt));
+      for (const entry of byEnd.slice(0, Math.max(0, byEnd.length - HOLD_ENDED_PANE_MAX))) if (this.remove(entry.id)) dropped++;
     }
     return dropped;
   }

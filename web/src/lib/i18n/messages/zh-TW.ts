@@ -380,6 +380,13 @@ export const zhTW: Dictionary = {
   "composer.held.dismiss": "Dismiss", // TODO wordsmith
   "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
   "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
+  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
+  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
+  "composer.held.submit": "Submit", // TODO wordsmith
+  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
+  "composer.held.discard": "Discard", // TODO wordsmith
+  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
+  "composer.held.wentOut": "It already went out.", // TODO wordsmith
   "composer.protocol.discarded": "文字已從輸入框移除。你的草稿仍在這裡。",
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",

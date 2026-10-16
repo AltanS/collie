@@ -463,6 +463,8 @@ export interface SentRequest {
   rowsHash?: string;
   /** The person's extra confirm after the cap's notice (M56 spec 09). */
   capAck?: boolean;
+  /** A resend of an ended held row (M56 spec 15): the old request id; the text is empty. */
+  resendOf?: string;
   host?: string;
 }
 let sends: SentRequest[] = [];
@@ -512,6 +514,8 @@ function sentRequest(body: JsonObject | undefined, pane: string, host: string | 
   };
   if (rowsHash !== undefined) request.rowsHash = rowsHash;
   if (body?.capAck === true) request.capAck = true;
+  const resendOf = asJsonString(body?.resendOf);
+  if (resendOf !== undefined) request.resendOf = resendOf;
   if (host !== null) request.host = host;
   return request;
 }

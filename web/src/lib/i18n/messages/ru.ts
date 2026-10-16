@@ -338,6 +338,13 @@ export const ru: Dictionary = {
   "composer.held.dismiss": "Dismiss", // TODO wordsmith
   "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
   "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
+  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
+  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
+  "composer.held.submit": "Submit", // TODO wordsmith
+  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
+  "composer.held.discard": "Discard", // TODO wordsmith
+  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
+  "composer.held.wentOut": "It already went out.", // TODO wordsmith
   "composer.protocol.discarded": "Текст удалён из поля. Черновик остался здесь.",
   "composer.protocol.draft": "В поле уже есть черновик. Дополните, замените или отмените.",
   "composer.protocol.typed": "Текст в поле, но Enter не нажат. Отправьте или удалите его.",

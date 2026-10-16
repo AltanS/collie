@@ -119,6 +119,10 @@ const NEUTRAL = new Set([
   "claude--v2301-idle-after-turn--w100.txt",
   "claude--v2301-queued-taken--w100.txt",
   "claude--v2301-spinner-no-timer--w100.txt",
+  // The /cost and /usage panel over a live box: a read-only panel with nothing to answer. The Surface
+  // reads it as a modal (M56 spec 15 review), but the chat view lifts no buttons for it.
+  "claude--v2301-usage-panel-over-box--w40.txt",
+  "claude--v2301-usage-panel-over-box--w82.txt",
   "claude--v2301-working-draft--w100.txt",
   "claude--v2301-working-queued-message--w100.txt",
   "claude--v2301-working-quiet--w100.txt",

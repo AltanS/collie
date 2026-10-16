@@ -6965,17 +6965,21 @@ export const SEND_MAX_TEXT = 64 * 1024;
  * A `/api/send` body, checked field by field, or null (a 400). Pure + exported for its test: the
  * handler lives inside `Bun.serve`. The text may be empty only for `prepare`, which writes nothing.
  */
-export function parseSendRequest(body: JsonValue | undefined): ({ pane: string } & SendRequest) | null {
+export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
+  // A Resend of an ended held row (M56 spec 15 review): the bridge sends the row's stored text, so the
+  // body carries none, and the stored mode stands.
+  if (resendOf !== undefined && (typeof resendOf !== "string" || !REQUEST_ID.test(resendOf) || resendOf === id)) return null;
   const chosen = mode === undefined ? "send" : SEND_MODES.find((m) => m === mode);
   if (chosen === undefined) return null;
-  if (chosen !== "prepare" && words.trim().length === 0) return null;
-  const request: { pane: string } & SendRequest = { id, pane, text: words, mode: chosen };
+  if (resendOf === undefined && chosen !== "prepare" && words.trim().length === 0) return null;
+  const request: { pane: string; resendOf?: string } & SendRequest = { id, pane, text: words, mode: chosen };
+  if (resendOf !== undefined) Object.assign(request, { resendOf });
   if (rowsHash !== undefined) {
     if (typeof rowsHash !== "string" || !/^[0-9a-f]{1,64}$/u.test(rowsHash)) return null;
     Object.assign(request, { rowsHash });
@@ -7025,11 +7029,21 @@ export async function sendRoute(
   // An agent pane's string picks its profile; a bare shell has none and takes the probed path (M56 spec 06).
   const harness = replySendOf(rt).harnessOf(request.pane);
   if (harness === null) return text("no such terminal pane", 404);
-  const { pane: paneId, ...sendRequest } = request;
+  const { pane: paneId, resendOf, ...asked } = request;
+  let sendRequest: SendRequest = asked;
+  if (resendOf !== undefined) {
+    // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
+    const source = rt.send.resendSource(rt.name, paneId, resendOf);
+    if (source === null) return text("no such ended held send on this pane", 404);
+    sendRequest = { ...asked, text: source.text, mode: source.mode };
+  }
   const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   const receipt = answer.receipt;
+  // The old row goes once the new request was taken; a refusal keeps it, text and all.
+  if (resendOf !== undefined && receipt !== undefined && receipt.outcome !== "refused") rt.send.dismissHeld(rt.name, paneId, resendOf);
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
+    if (resendOf !== undefined) detail.resend = true;
     if (receipt.reason !== undefined) detail.reason = receipt.reason;
     context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
     if (receipt.keys.length > 0) {

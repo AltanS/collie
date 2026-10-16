@@ -390,6 +390,13 @@ export const ko: Dictionary = {
   "composer.held.dismiss": "Dismiss", // TODO wordsmith
   "composer.held.dismissAria": "Dismiss the message", // TODO wordsmith
   "composer.held.cancelLate": "It is going out now. Cancel came too late.", // TODO wordsmith
+  "composer.held.unknown": "The text may have reached the agent. Read the chat.", // TODO wordsmith
+  "composer.held.typed": "Typed, not sent. The text is still in the box.", // TODO wordsmith
+  "composer.held.submit": "Submit", // TODO wordsmith
+  "composer.held.submitAria": "Submit the text in the box", // TODO wordsmith
+  "composer.held.discard": "Discard", // TODO wordsmith
+  "composer.held.discardAria": "Discard the text in the box", // TODO wordsmith
+  "composer.held.wentOut": "It already went out.", // TODO wordsmith
   "composer.protocol.discarded": "입력란에서 텍스트를 지웠습니다. 초안은 여기에 남아 있습니다.",
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
