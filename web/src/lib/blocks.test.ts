@@ -169,7 +169,7 @@ describe("splitLines — labelled terminal rules", () => {
   const labelled = (lead: string, label: string, tail: string, outer = "") =>
     `${outer}${lead} ${label} ${tail}${outer}`;
 
-  it("keeps the reconstructed Pi editor byte-faithful and refines only its rule runs under the raw fallback", () => {
+  it("keeps the reconstructed Pi editor byte-faithful and refines only its rule runs", () => {
     const raw = readFileSync(join(PANES_DIR, PI_WORKING_EDITOR), "utf8");
     const lines = fixtureLines(PI_WORKING_EDITOR);
 
@@ -184,11 +184,14 @@ describe("splitLines — labelled terminal rules", () => {
     expect(lines[0]!.segments.map((segment) => segment.muted)).toEqual([true, false, false, true]);
     expect(lines[1]!.segments[0]!.muted).toBe(false); // editor padding remains untouched
 
+    // These three rows are a pi editor with no status row under it. Since PR 450 (issue 445) the
+    // reader finds that editor, so the composer owns the rows and the raw block is empty. Before it,
+    // those rows stayed in the thread as the raw block.
     const blocks = buildBlocks(lines, { agent: "pi" });
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
-    if (blocks[0]!.kind !== "raw") throw new Error("expected raw Pi fallback");
-    expect(blocks[0]!.lines).toBe(lines);
+    if (blocks[0]!.kind !== "raw") throw new Error("expected a raw block");
+    expect(blocks[0]!.lines).toEqual([]);
   });
 
   it("refines live-shaped ANSI boundaries without changing the coloured spinner or label", () => {
