@@ -69,7 +69,16 @@ interface TraceEdgeDraft {
 }
 
 export type TraceInput =
-  | { readonly read: { readonly rows: number; readonly cols: number; readonly text?: string; readonly fixture?: string } }
+  | {
+      readonly read: {
+        readonly rows: number;
+        readonly cols: number;
+        readonly text?: string;
+        readonly fixture?: string;
+        /** Rows already parsed. A loader sets them for a screen no file holds (an incident rebuilt from a base). A trace file never has them. */
+        readonly styled?: readonly StyledLine[];
+      };
+    }
   | { readonly edge: { readonly event: string; readonly detail?: string; readonly prompt?: string; readonly pid?: number } }
   | { readonly tick: true }
   | { readonly send: { readonly id: string; readonly text: string } };
@@ -224,7 +233,8 @@ export interface ReplayOptions {
 
 const TRACE_PANE = "trace";
 
-function rowsOf(read: { readonly text?: string; readonly fixture?: string }, fixture: (name: string) => string): StyledLine[] {
+function rowsOf(read: { readonly text?: string; readonly fixture?: string; readonly styled?: readonly StyledLine[] }, fixture: (name: string) => string): StyledLine[] {
+  if (read.styled !== undefined) return [...read.styled];
   return splitLines(parseAnsi(read.text ?? fixture(read.fixture ?? "")));
 }
 

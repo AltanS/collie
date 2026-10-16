@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
+- **Golden traces mark their set by label, and CI runs the corpus rule.** A dialog or screen fixture and each of the eight incident screens is a negative one-read trace that must never read free. An idle fixture of a harness with a profile is positive and must read free. A named CI step runs the rule and `bun scripts/surface-corpus.ts`.
 - **COLLIE_PROGRAMS=off turns programs off.** The bridge ignores sources.json, logs one line, and the phone shows no Programs section; doctor and durable list say so.
 - **A durable program can take a new name for a workspace or a tab from the phone.** It declares the `rename` cap, Collie draws its usual rename controls, and the program applies the title or refuses it. Panes keep the name the program gives them.
 - **A durable pane shows a subtitle and a badge.** The program sets one line under the title and a count or a short mark next to it, so a list of its conversations reads at a glance.
