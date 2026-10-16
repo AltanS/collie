@@ -19,6 +19,16 @@ export type ProfileStatus = "verified" | "provisional" | "revoked";
 export type HookKind = "edge" | "ask";
 export type EnterWhileRunning = "queues" | "submits" | "ignored";
 
+/** A queued message as the harness draws it (see `keys.queuedRow`). */
+export interface QueuedRow {
+  /** A regular expression source for the row that starts the text, with the named group `text`. */
+  readonly pattern: string;
+  /** A regular expression source for the hint row under the queued texts. */
+  readonly hint: string;
+  /** How many blank rows may stand between the last queued text and the hint. */
+  readonly hintGap: number;
+}
+
 export interface VersionRange {
   /** `X.Y.Z - X.Y.Z`, both ends included. The upper end may be `*`. */
   readonly range: string;
@@ -88,6 +98,12 @@ export interface Profile {
       readonly cancel: string;
     };
     readonly enterWhileRunning: EnterWhileRunning;
+    /**
+     * How the harness draws a message it queued during a turn, when that is known: a row whose
+     * `pattern` holds the text in the named group `text` (later rows of a wrapped text are indented),
+     * and a `hint` row at most `hintGap` blank rows under the last of them. Optional.
+     */
+    readonly queuedRow?: QueuedRow;
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -281,7 +297,7 @@ export function parseProfile(raw: JsonValue): Profile {
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
   const navNode = object(field(keysNode, "navigation", "keys"), "keys.navigation");
-  const keys = {
+  const baseKeys = {
     submit: textList(field(keysNode, "submit", "keys"), "keys.submit", 1),
     newline: textList(field(keysNode, "newline", "keys"), "keys.newline", 1),
     interrupt: textList(field(keysNode, "interrupt", "keys"), "keys.interrupt", 1),
@@ -297,6 +313,18 @@ export function parseProfile(raw: JsonValue): Profile {
     },
     enterWhileRunning: oneOf(field(keysNode, "enterWhileRunning", "keys"), "keys.enterWhileRunning", ENTER_MODES),
   };
+  let keys: Profile["keys"] = baseKeys;
+  if (keysNode.queuedRow !== undefined) {
+    const queuedNode = object(keysNode.queuedRow, "keys.queuedRow");
+    const rowPattern = pattern(field(queuedNode, "pattern", "keys.queuedRow"), "keys.queuedRow.pattern");
+    if (!rowPattern.source.includes("(?<text>")) fail("keys.queuedRow.pattern", "must hold the named group text");
+    const queuedRow: QueuedRow = {
+      pattern: rowPattern.source,
+      hint: pattern(field(queuedNode, "hint", "keys.queuedRow"), "keys.queuedRow.hint").source,
+      hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
+    };
+    keys = { ...baseKeys, queuedRow };
+  }
   // Escape is never cleanup (ARCHITECTURE.md, Send Protocol): a profile cannot name it as the clear key.
   if (/^(?:escape|esc)$/i.test(keys.clear.key)) fail("keys.clear.key", "must not be Escape");
 
