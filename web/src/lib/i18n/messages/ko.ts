@@ -633,6 +633,17 @@ export const ko: Dictionary = {
   "durable.composer.stopMoved": "대화가 계속 진행되어 아무것도 중지되지 않았습니다. 대화를 확인한 후 계속 원하시면 다시 중지하십시오.",
   "durable.composer.stopUnknown": "중지가 전달되었는지 확실하지 않습니다. 한 번 다시 시도하려면 '중지'를 다시 탭하십시오.",
   "durable.composer.maybe": "이미 전송되었을 수 있습니다. 다시 보내기 전에 대화를 확인하십시오.",
+  "durable.protocol.askOpen": "The program waits for an answer to a question. Answer it first, then send.", // TODO wordsmith
+  "durable.protocol.notRead": "Collie cannot read this conversation now. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.notFree": "The program cannot take a message now. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.moved": "The program started another turn after you looked. Read the chat, then send again.", // TODO wordsmith
+  "durable.protocol.busy": "Another send or answer on this conversation is still running. Try again in a moment.", // TODO wordsmith
+  "durable.protocol.paneGone": "This conversation is not in the program's list now.", // TODO wordsmith
+  "durable.protocol.writeFailed": "The program did not take the message.", // TODO wordsmith
+  "durable.protocol.idReused": "This request id was used for another text. Tap Send to send it as a new message.", // TODO wordsmith
+  "durable.protocol.unknown": "The program did not say it took the message. Read the chat before you send it again.", // TODO wordsmith
+  "durable.protocol.refused": "Collie did not send the message.", // TODO wordsmith
+  "durable.protocol.goToQuestion": "Go to the question", // TODO wordsmith
   "durable.composer.stopMaybe": "중지가 이미 적용되었을 수 있습니다. 대화를 확인하십시오.",
   "durable.composer.stopRefused": "중지가 거부되었습니다.",
   "durable.composer.sending": "전송 중…",

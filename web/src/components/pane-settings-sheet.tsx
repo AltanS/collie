@@ -38,12 +38,14 @@ interface PaneSettingsSheetProps {
   onRename?: () => void;
   /** The pane's hook source (M56 spec 11), from the snapshot. Absent hides the row: an older bridge. */
   hooks?: "live" | "none";
+  /** A program's conversation (M56 spec 14): no cache switch, because a program has no prompt cache. The receipts stay. */
+  program?: boolean;
 }
 
-export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks }: PaneSettingsSheetProps) {
+export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks, program = false }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
-  const { state, busy, toggle } = useCacheWatch(paneId, open, scope);
+  const { state, busy, toggle } = useCacheWatch(paneId, open && !program, scope);
 
   // Push first, because it is the only one of the three that is about this DEVICE rather than this pane,
   // and the remedy is on another screen.
@@ -53,15 +55,17 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hook
 
   return (
     <BottomSheet open={open} onClose={onClose} title={t("paneSettings.title")}>
-      <PaneSettingsView
-        state={state}
-        busy={busy}
-        pushOff={pushOff}
-        pushKnown={push !== null}
-        onToggle={(next) => void toggle(next)}
-        onRename={onRename}
-        hooks={hooks}
-      />
+      {!program && (
+        <PaneSettingsView
+          state={state}
+          busy={busy}
+          pushOff={pushOff}
+          pushKnown={push !== null}
+          onToggle={(next) => void toggle(next)}
+          onRename={onRename}
+          hooks={hooks}
+        />
+      )}
       {/* The last ten sends for this pane, from the bridge's receipts (M56 spec 09). Read when the sheet opens. */}
       {open && <SendReceipts paneId={paneId} {...(scope === undefined ? {} : { scope })} />}
     </BottomSheet>

@@ -8,6 +8,8 @@ import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { asJsonObject, type JsonObject } from "@/lib/json";
 import { noteServerDate, resetServerClockForTests } from "@/lib/server-clock";
 import { __resetSessionCards, noteSessionCards } from "@/lib/session-cards";
+import type { ProgramContractAsk } from "@/lib/program-ask";
+import { programContract } from "@/lib/surface/program";
 import type { Ask } from "@/lib/types";
 import { AskCard } from "./ask-card";
 
@@ -719,5 +721,78 @@ describe("the countdown counts on the bridge's clock", () => {
     unmount();
     draw({ ask: { ...ASK, expiresAt: new Date(Date.now() + 60_000).toISOString() } });
     expect(vi.getTimerCount()).toBe(before + 1);
+  });
+});
+
+describe("a program on this machine answers through POST /api/ask (M56 spec 14)", () => {
+  function contractOf(ask: Ask): ProgramContractAsk {
+    const shown = programContract(ask)!;
+    return {
+      oldest: ask.id,
+      ask: { id: "ask-0123456789abcd", kind: shown.kind, options: shown.labels.map((label, i) => ({ id: String(i + 1), label })), channel: "program", hash: shown.hash },
+    };
+  }
+
+  /** Serve the Send Protocol's ask route with `reply`, and record each request. */
+  function stubAsk(reply: () => Response): Sent[] {
+    const seen: Sent[] = [];
+    server.use(
+      http.post<never, JsonObject>(/\/api\/ask\/[^/]+$/, async ({ request }) => {
+        seen.push({ url: request.url, body: asJsonObject(await request.json()) ?? {} });
+        return reply();
+      }),
+    );
+    return seen;
+  }
+
+  it("a tap posts the contract ask's id, hash and numbered option, and the answer route is not asked", async () => {
+    const asked = stubAsk(() => HttpResponse.json({ receipt: { outcome: "sent", channel: "program" } }));
+    const old = stubAnswer(() => HttpResponse.json({ ok: true, outcome: "taken" }));
+    const contract = contractOf(ASK);
+    const { container, onSettled } = draw({ contract });
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Deny") }));
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(new URL(asked[0]!.url).pathname).toBe("/api/ask/ask-0123456789abcd");
+    expect(asked[0]!.body).toEqual({ pane: "w1:p1", hash: contract.ask.hash, optionId: "2", origin: "person_tap" });
+    expect(old).toHaveLength(0);
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it("Always allow stays on the program's answer route, with its two taps", async () => {
+    const asked = stubAsk(() => HttpResponse.json({ receipt: { outcome: "sent" } }));
+    const old = stubAnswer(() => HttpResponse.json({ ok: true, outcome: "taken" }));
+    draw({ contract: contractOf(ASK) });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: wording("Always allow") }));
+    await user.click(await screen.findByRole("button", { name: /Tap again to always allow bash/ }));
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(old[0]!.body).toMatchObject({ optionId: "always", askId: "ask-1" });
+    expect(asked).toHaveLength(0);
+  });
+
+  it("a later ask than the one the contract stands for keeps the answer route", async () => {
+    const asked = stubAsk(() => HttpResponse.json({ receipt: { outcome: "sent" } }));
+    const old = stubAnswer(() => HttpResponse.json({ ok: true, outcome: "taken" }));
+    draw({ contract: { ...contractOf(ASK), oldest: "ask-0" } });
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    await waitFor(() => expect(old).toHaveLength(1));
+    expect(asked).toHaveLength(0);
+  });
+
+  it("a question closed before the answer reads as too late, and the card freezes", async () => {
+    stubAsk(() => HttpResponse.json({ receipt: { outcome: "refused", reason: "ask_gone" }, detail: "The question is closed." }));
+    const { onSettled } = draw({ contract: contractOf(ASK) });
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText("Not taken. The question may show again in a moment.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: wording("Allow") })).toBeDisabled();
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it("another refusal shows the bridge's words", async () => {
+    stubAsk(() => HttpResponse.json({ receipt: { outcome: "refused", reason: "busy" }, detail: "Another send or answer on this conversation is still running." }));
+    draw({ contract: contractOf(ASK) });
+    await userEvent.setup().click(screen.getByRole("button", { name: wording("Allow") }));
+    expect(await screen.findByText("Another send or answer on this conversation is still running.")).toBeInTheDocument();
   });
 });

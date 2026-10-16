@@ -58,6 +58,34 @@ export interface DurableEventSink {
   saveCursor?(key: string, cursor: DurableCursor | null): Promise<void>;
 }
 
+/**
+ * A sink that tells `took` about every `user` item that names a request id, after `sink` recorded the
+ * events (M56 spec 14). The program writes the request id of the send that made the item (WIRE.md
+ * 7.15), so the item is the program's own word that the text reached the conversation. A replay of
+ * events already recorded tells again; the listener must take the same id twice. A listener that
+ * throws never stops the log.
+ */
+export function tapUserItems(sink: DurableEventSink, took: (key: string, requestId: string) => void): DurableEventSink {
+  const tapped: DurableEventSink = {
+    async apply(key, events, trimmed) {
+      const wrote = await sink.apply(key, events, trimmed);
+      for (const event of events) {
+        if (event.type !== "item" || event.item.kind !== "user" || event.item.requestId === undefined) continue;
+        try {
+          took(key, event.item.requestId);
+        } catch (err) {
+          console.warn(`[durable] a user item listener failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return wrote;
+    },
+  };
+  if (sink.pathOf !== undefined) tapped.pathOf = sink.pathOf.bind(sink);
+  if (sink.loadCursor !== undefined) tapped.loadCursor = sink.loadCursor.bind(sink);
+  if (sink.saveCursor !== undefined) tapped.saveCursor = sink.saveCursor.bind(sink);
+  return tapped;
+}
+
 /** Where a pane's events were read up to: the epoch the program was in, and the position in it. */
 export interface DurableCursor {
   readonly epoch: string;

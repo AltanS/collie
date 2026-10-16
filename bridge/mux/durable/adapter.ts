@@ -64,7 +64,7 @@ import {
   type MuxWorktreeScope,
 } from "../types.ts";
 import type { JsonObject } from "../../json.ts";
-import type { AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
+import type { AgentStatus, AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
 import { ANSWER_TEXT_BYTES, byteLength, CAPS, isWireId, RENAME_TITLE_MAX, renameTitleOf, REPLY_CAPS } from "./clean.ts";
 import {
   DURABLE_SOCKET_ENV,
@@ -75,7 +75,7 @@ import {
   type DurableTransport,
   type DurableTransportKind,
 } from "./client.ts";
-import { DurableEventReader, type DurableEventSink, logKeyOf } from "./events.ts";
+import { DurableEventReader, type DurableEventSink, logKeyOf, tapUserItems } from "./events.ts";
 import { DURABLE_LOGO_SVG } from "./logo.ts";
 import {
   askForWire,
@@ -95,6 +95,7 @@ import {
   parseStaleControl,
   parseStarterReply,
   SPEAKS,
+  statusOf,
   toMuxSnapshot,
   versionNotice,
   versionRefusal,
@@ -400,6 +401,8 @@ export class DurableMux implements MuxAdapter {
   private agreedVersion: number | null = null;
   private current: DurableSession | null = null;
   private kept: Held | null = null;
+  /** Who hears of a `user` item that names a request id (M56 spec 14, the structured driver). */
+  private readonly userItemListeners = new Set<(paneId: string, requestId: string) => void>();
   /** True while the last read was a dropped one whose layout is held for this interval (WIRE.md section 8.8). */
   private holding = false;
   private last: Reading | null = null;
@@ -434,7 +437,8 @@ export class DurableMux implements MuxAdapter {
     this.budget = DURABLE_BUDGETS[transport.kind ?? "socket"];
     this.watchDials = transport.kind === "https";
     this.watchCadenceMs = this.budget.idlePollMs;
-    this.events = log === null ? null : new DurableEventReader(transport, log, () => this.program(), this.budget.readTimeoutMs);
+    const tapped = log === null ? null : tapUserItems(log, (key, requestId) => this.tookUserItem(key, requestId));
+    this.events = tapped === null ? null : new DurableEventReader(transport, tapped, () => this.program(), this.budget.readTimeoutMs);
     this.logPath = log?.pathOf?.bind(log) ?? null;
   }
 
@@ -763,6 +767,35 @@ export class DurableMux implements MuxAdapter {
    */
   paneTurn(paneId: string): string | undefined {
     return this.program()?.snapshot.panes.find((pane) => pane.id === paneId)?.turnId;
+  }
+
+  /**
+   * How one pane is doing, from the last layout read (WIRE.md section 5), or `undefined` when the pane
+   * is not in the layout or the program is not reachable. The structured driver reads the turn from it
+   * (bridge/surface/durable-driver.ts, M56 spec 14). Not a port method: only the driver calls it, and it
+   * asks nothing of the program.
+   */
+  paneStatus(paneId: string): AgentStatus | undefined {
+    const pane = this.program()?.snapshot.panes.find((candidate) => candidate.id === paneId);
+    return pane === undefined ? undefined : statusOf(pane);
+  }
+
+  /**
+   * Hear of every `user` item the pane log records with a request id, by the pane it belongs to (M56
+   * spec 14). The item is the program's word that a send reached the conversation. Returns the call
+   * that stops it. Without a pane log nothing is ever heard.
+   */
+  onUserItem(listener: (paneId: string, requestId: string) => void): () => void {
+    this.userItemListeners.add(listener);
+    return () => this.userItemListeners.delete(listener);
+  }
+
+  /** A `user` item with a request id came in under a log key: the pane of that key in the last layout hears it. */
+  private tookUserItem(key: string, requestId: string): void {
+    if (this.userItemListeners.size === 0) return;
+    const pane = this.kept?.snapshot.panes.find((candidate) => logKeyOf(candidate) === key);
+    if (pane === undefined) return;
+    for (const listener of this.userItemListeners) listener(pane.id, requestId);
   }
 
   /**

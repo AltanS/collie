@@ -12,7 +12,7 @@
 
 import { asJsonObject, asJsonString, type JsonValue } from "../json";
 import type { ReadMark } from "./send";
-import type { Ask, AskKind, Surface } from "./surface";
+import type { Ask, AskChannel, AskKind, Surface } from "./surface";
 
 /** What the phone posts to `POST /api/ask/<id>`: the contract's Answer, plus the pane it is for. */
 export interface Answer {
@@ -87,6 +87,8 @@ export interface AskReceipt {
   readonly keys: readonly string[];
   readonly outcome: AskOutcome;
   readonly reason?: AskReason;
+  /** How the answer went out, when it is not the screen's keys: `program` for a program session (M56 spec 14). */
+  readonly channel?: AskChannel;
 }
 
 /** What `POST /api/ask/<id>` answers. */

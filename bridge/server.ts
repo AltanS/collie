@@ -136,6 +136,7 @@ import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
 import { REQUEST_ID, reservedLead, SEND_MODES, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
@@ -1478,11 +1479,14 @@ export function startServer(opts: {
     // with the protocol off the field is absent and the composer offers the keys only.
     // A pane that carries a Surface on a session that takes hook edges (M56 spec 11) also says whether
     // its hook source is live, for the pane info: `hooks: "live"` or `"none"`.
+    // A program session's panes take their Surface from the structured driver (M56 spec 14), the
+    // one driver of that session, and say `sendProtocol` the same way.
     const withSurface = (wire: PaneWire, from: SessionRuntime): PaneWire => {
-      const surface = from.surface?.surfaceOf(wire.paneId);
+      // Picked by the session kind: a program session has the driver and no screen fold (makeSession refuses both).
+      const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
-      return from.send === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
+      return from.send === undefined && from.driver === undefined ? surfaced : { ...surfaced, sendProtocol: true as const };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
@@ -1932,7 +1936,8 @@ export function startServer(opts: {
           body = undefined;
         }
         const answered = await answerPane(paneId, body, {
-          adapter: herdr,
+          // A local program's writes take the structured driver's lock, so they never run beside a send.
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: answerReceipts,
           audit: audit_,
           device,
@@ -1953,7 +1958,7 @@ export function startServer(opts: {
           body = undefined;
         }
         const controlled = await controlPane(action, paneId, body, {
-          adapter: herdr,
+          adapter: rt.driver?.lockedWrites(herdr) ?? herdr,
           receipts: controlReceipts,
           audit: audit_,
           device,
@@ -6978,6 +6983,8 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string }
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface SendRouteRuntime {
   readonly send?: SendProtocol;
+  /** A program session's structured driver (M56 spec 14). It takes the send and the ask in place of the screen's. */
+  readonly driver?: ProgramDriver;
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
@@ -6992,6 +6999,7 @@ export async function sendRoute(
   body: JsonValue | undefined,
   context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
 ): Promise<Response> {
+  if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
   if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
   const request = parseSendRequest(body);
   if (request === null) return text("bad send request", 400);
@@ -7017,14 +7025,45 @@ export async function sendRoute(
 }
 
 /**
+ * `POST /api/send` on a program session (M56 spec 14): the same request body and the same answer,
+ * run by the structured driver. The program's pane must be one the engine lists. One audit line per
+ * request, with the outcome and never the text.
+ */
+async function programSendRoute(
+  rt: SendRouteRuntime,
+  driver: ProgramDriver,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  const request = parseSendRequest(body);
+  if (request === null) return text("bad send request", 400);
+  const harness = replySendOf(rt).harnessOf(request.pane);
+  if (harness === null) return text("no such conversation", 404);
+  const { pane: paneId, ...sendRequest } = request;
+  const answer = await driver.handle(sendRequest, { session: rt.name, paneId, harness });
+  const receipt = answer.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: false };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    if (receipt.acknowledged !== undefined) detail.acknowledged = receipt.acknowledged;
+    context.audit.record({ action: "send", paneId, session: rt.name, device: context.device, detail });
+    // The program took the text: read the layout again soon, so the phone sees the turn move.
+    if (receipt.acknowledged !== undefined && answer.replayed !== true) rt.engine.pokeNow();
+  }
+  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  return json(out, context.acceptEncoding);
+}
+
+/**
  * `GET /api/send/receipts?pane=<id>` once the read gate passed and the session resolved: the last ten
  * settled requests for the pane, newest first. With the protocol off the route is not there; a call
- * with no pane is a 400.
+ * with no pane is a 400. A program session lists its own driver's receipts.
  */
-export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send">, pane: string | null, acceptEncoding: string | null): Response {
-  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {
+  if (rt.send === undefined && rt.driver === undefined) return text(SEND_OFF_TEXT, 404);
   if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);
-  const answer: SendReceiptsAnswer = { receipts: rt.send.recent(pane, 10) };
+  const receipts = rt.driver !== undefined ? rt.driver.recent(pane, 10, rt.name) : (rt.send?.recent(pane, 10) ?? []);
+  const answer: SendReceiptsAnswer = { receipts };
   return json(answer, acceptEncoding);
 }
 
@@ -7056,6 +7095,7 @@ export async function askRoute(
   body: JsonValue | undefined,
   context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
 ): Promise<Response> {
+  if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
   if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
   const parsed = parseAnswerBody(askId, body);
   if (parsed === null) return text("bad ask answer", 400);
@@ -7076,6 +7116,35 @@ export async function askRoute(
       rt.engine.noteInput();
       rt.engine.pokeNow();
     }
+  }
+  return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/ask/<id>` on a program session (M56 spec 14): the same Answer body and the same reply,
+ * run by the structured driver. The answer goes to the program by its own ask id, and no key is sent.
+ * One audit line per answer, with the option id and the outcome, never a label.
+ */
+async function programAskRoute(
+  rt: AskRouteRuntime,
+  driver: ProgramDriver,
+  askId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly redact: boolean; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  const parsed = parseAnswerBody(askId, body);
+  if (parsed === null) return text("bad ask answer", 400);
+  const harness = replySendOf(rt).harnessOf(parsed.pane);
+  if (harness === null) return text("no such conversation", 404);
+  const { pane: paneId, ...answer } = parsed;
+  const reply = await driver.answer(answer, { session: rt.name, paneId, harness });
+  const receipt = reply.receipt;
+  if (receipt !== undefined) {
+    const detail: AuditDetail = { askId, optionId: answer.optionId, outcome: receipt.outcome, keys: [], channel: "program" };
+    if (receipt.reason !== undefined) detail.reason = receipt.reason;
+    if (reply.replayed === true) detail.replayed = true;
+    context.audit.record({ action: "ask", paneId, session: rt.name, device: context.device, detail });
+    if (receipt.outcome === "sent" && reply.replayed !== true) rt.engine.pokeNow();
   }
   return json(context.redact ? maskAskReply(reply) : reply, context.acceptEncoding);
 }
