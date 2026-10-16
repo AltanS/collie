@@ -49,6 +49,7 @@
   --radius-lg: 16px;
   --radius-xl: 24px;
   --edge-accent: inset 0 0 0 2px;
+  --edge-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   --surface-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --surface-shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --surface-shadow-sm: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -111,6 +112,7 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
   --edge-accent: inset 0 0 0 2px;
+  --edge-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   --surface-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --surface-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --surface-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
@@ -173,6 +175,7 @@
   --radius-lg: 2px;
   --radius-xl: 2px;
   --edge-accent: inset 2px 0 0 0;
+  --edge-shadow: 0 0 #0000;
   --surface-shadow: 0 0 #0000;
   --surface-shadow-xs: 0 0 #0000;
   --surface-shadow-sm: 0 0 #0000;

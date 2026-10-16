@@ -108,7 +108,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
                   viewAll
-                    ? "shadow-[var(--edge-accent)_var(--primary)]"
+                    ? "shadow-[var(--edge-accent)_var(--primary),var(--edge-shadow)]"
                     : "hover:bg-accent active:bg-accent",
                 )}
               >
@@ -143,7 +143,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                       // move between states. Same treatment as the alert rows in space-overview and
                       // agent-card.
                       active
-                        ? "shadow-[var(--edge-accent)_var(--primary)]"
+                        ? "shadow-[var(--edge-accent)_var(--primary),var(--edge-shadow)]"
                         : "hover:bg-accent active:bg-accent",
                       !s.reachable && "cursor-not-allowed opacity-50 hover:bg-transparent",
                     )}

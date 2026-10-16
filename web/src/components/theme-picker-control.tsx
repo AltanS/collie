@@ -117,8 +117,9 @@ function ThemeGlyph({ theme }: { theme: Theme }) {
  * words (surface.ts), a word the theme leaves out at its default. The chip's `rounded-md` and
  * `font-medium` read `--radius-md` and `--font-weight-medium` from the nearest box that sets them,
  * so each chip shows its theme's corner and weight whatever theme the page wears. Collie's words
- * are the defaults, so its chip draws what it drew before. Only these two: a chip that took the
- * theme's density or border would change the strip's height, and the strip must not move (§2).
+ * are the defaults, so its chip draws what it drew before. Only these two: the chips of one strip
+ * share the page's density and border, so every chip in a row has the same height, and the shape
+ * that differs from chip to chip is the corner and the weight.
  */
 export function themeChipStyle(theme: Theme): CSSProperties {
   const surface = resolveSurface(theme.surface);

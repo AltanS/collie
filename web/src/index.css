@@ -234,8 +234,10 @@
   /* The offsets of the inset shadow that marks a selected or blocked row, used as
      `shadow-[var(--edge-accent)_<colour>]`. The radius word sets it: under square corners the mark is
      a 2px bar on the left edge, under soft or round corners a 2px ring on all four sides, because a
-     left accent bar is never combined with rounded corners. This is the sharp value. */
+     left accent bar is never combined with rounded corners. This is the sharp value. A marked row's
+     second shadow layer is --edge-shadow: none under sharp, a soft shadow with the ring. */
   --edge-accent: inset 2px 0 0 0;
+  --edge-shadow: 0 0 #0000;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened

@@ -32,16 +32,17 @@ const XXXL = "0 32px 64px -12px rgb(0 0 0 / 0.3)";
 
 const shadow = (values: readonly string[]) =>
   ["", "-xs", "-sm", "-md", "-lg", "-xl", "-2xl"].map((step, i) => [`--surface-shadow${step}`, values[i]]);
-const radius = (values: readonly number[], edge: string) => [
+const radius = (values: readonly number[], edge: string, edgeShadow: string) => [
   ...["sm", "md", "lg", "xl"].map((step, i) => [`--radius-${step}`, `${values[i]}px`]),
   ["--edge-accent", edge],
+  ["--edge-shadow", edgeShadow],
 ];
 
 const DESIGN = {
   radius: {
-    sharp: radius([2, 2, 2, 2], "inset 2px 0 0 0"),
-    soft: radius([4, 6, 8, 12], "inset 0 0 0 2px"),
-    round: radius([8, 12, 16, 24], "inset 0 0 0 2px"),
+    sharp: radius([2, 2, 2, 2], "inset 2px 0 0 0", "0 0 #0000"),
+    soft: radius([4, 6, 8, 12], "inset 0 0 0 2px", "0 1px 3px 0 rgb(0 0 0 / 0.1)"),
+    round: radius([8, 12, 16, 24], "inset 0 0 0 2px", "0 1px 3px 0 rgb(0 0 0 / 0.1)"),
   },
   shadow: {
     default: shadow([SM, XS, SM, MD, LG, XL, XXL]),
@@ -108,6 +109,11 @@ describe("the shape tokens", () => {
     expect(edge("sharp")).toBe("inset 2px 0 0 0");
     expect(edge("soft")).toBe("inset 0 0 0 2px");
     expect(edge("round")).toBe("inset 0 0 0 2px");
+    const soft = (word: "sharp" | "soft" | "round") =>
+      new Map(wordDeclarations("radius", word)).get("--edge-shadow");
+    expect(soft("sharp")).toBe("0 0 #0000");
+    expect(soft("soft")).toBe("0 1px 3px 0 rgb(0 0 0 / 0.1)");
+    expect(soft("round")).toBe("0 1px 3px 0 rgb(0 0 0 / 0.1)");
   });
 
   it("lists every property any word sets, each once", () => {
@@ -117,6 +123,7 @@ describe("the shape tokens", () => {
       "--radius-lg",
       "--radius-xl",
       "--edge-accent",
+      "--edge-shadow",
       "--surface-shadow",
       "--surface-shadow-xs",
       "--surface-shadow-sm",

@@ -19,7 +19,8 @@
 //     are not steps and never move. The radius word also sets `--edge-accent`, the offsets of the
 //     inset shadow that marks a selected or blocked row (`shadow-[var(--edge-accent)_<colour>]`).
 //     Sharp keeps the 2px bar on the left edge; soft and round draw a 2px ring on all four sides,
-//     because a left accent bar belongs only with square corners.
+//     because a left accent bar belongs only with square corners. With the ring goes a soft
+//     shadow, `--edge-shadow`, the second layer of a marked row's shadow; sharp sets none.
 //   * shadow: Tailwind copies a shadow's value into the utility, so index.css points each step the app
 //     uses at a property of its own (`--shadow-md: var(--surface-shadow-md)`), and the word sets those.
 //   * density: `--spacing`, the step every `p-*`, `gap-*`, `h-*` and `size-*` multiplies. Icons and
@@ -74,14 +75,17 @@ function shadows(bare: string, xs: string, sm: string, md: string, lg: string, x
 const EDGE_BAR = "inset 2px 0 0 0";
 /** The ring on all four sides a marked row wears under rounded corners, the same 2px. */
 const EDGE_RING = "inset 0 0 0 2px";
+/** The soft shadow that goes with the ring, Tailwind's `shadow-sm` first layer. */
+const EDGE_SOFT = "0 1px 3px 0 rgb(0 0 0 / 0.1)";
 
-function radii(sm: number, md: number, lg: number, xl: number, edge: string): Declaration[] {
+function radii(sm: number, md: number, lg: number, xl: number, edge: string, edgeShadow: string): Declaration[] {
   return [
     ["--radius-sm", `${sm}px`],
     ["--radius-md", `${md}px`],
     ["--radius-lg", `${lg}px`],
     ["--radius-xl", `${xl}px`],
     ["--edge-accent", edge],
+    ["--edge-shadow", edgeShadow],
   ];
 }
 
@@ -92,9 +96,9 @@ function radii(sm: number, md: number, lg: number, xl: number, edge: string): De
  */
 export const SURFACE = {
   radius: {
-    sharp: radii(2, 2, 2, 2, EDGE_BAR),
-    soft: radii(4, 6, 8, 12, EDGE_RING),
-    round: radii(8, 12, 16, 24, EDGE_RING),
+    sharp: radii(2, 2, 2, 2, EDGE_BAR, NONE),
+    soft: radii(4, 6, 8, 12, EDGE_RING, EDGE_SOFT),
+    round: radii(8, 12, 16, 24, EDGE_RING, EDGE_SOFT),
   },
   shadow: {
     default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),

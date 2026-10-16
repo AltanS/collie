@@ -299,7 +299,7 @@ describe("every default shape word is today's CSS", () => {
 
   it("radius: sharp is the four 2px steps, now in @theme and no longer in @theme inline", () => {
     for (const [property, value] of wordDeclarations("radius", SURFACE_DEFAULTS.radius)) {
-      if (property === "--edge-accent") continue;
+      if (property === "--edge-accent" || property === "--edge-shadow") continue;
       expect(theme.get(property), property).toBe(value);
       expect(value).toBe("2px");
       expect(inline.has(property), property).toBe(false);
@@ -313,6 +313,10 @@ describe("every default shape word is today's CSS", () => {
     expect(edge).toBe("inset 2px 0 0 0");
     expect(root.get("--edge-accent")).toBe(edge);
     expect(theme.has("--edge-accent") || inline.has("--edge-accent")).toBe(false);
+    // Its second shadow layer is none, so a marked row draws what it drew before.
+    const second = new Map(wordDeclarations("radius", SURFACE_DEFAULTS.radius)).get("--edge-shadow");
+    expect(second).toBe("0 0 #0000");
+    expect(root.get("--edge-shadow")).toBe(second);
   });
 
   it("shadow: default is Tailwind's own value for every step the app uses", () => {

@@ -384,8 +384,9 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     const { store } = await boot();
     store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft", density: "roomy" } }));
     store.setActiveTheme("shaped");
-    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--spacing"]);
+    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--edge-shadow", "--spacing"]);
     expect(root().style.getPropertyValue("--edge-accent")).toBe("inset 0 0 0 2px");
+    expect(root().style.getPropertyValue("--edge-shadow")).toBe("0 1px 3px 0 rgb(0 0 0 / 0.1)");
     expect(root().style.getPropertyValue("--radius-md")).toBe("6px");
     expect(root().style.getPropertyValue("--spacing")).toBe("0.28rem");
   });

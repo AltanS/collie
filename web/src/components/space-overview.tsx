@@ -219,12 +219,14 @@ export function SpaceOverview({
                       // and read as a 2px double line under one row. `--edge-accent` is the radius
                       // word's: the left rail under square corners, a 2px ring on all four sides
                       // under soft or round ones (lib/theme/surface.ts), still no layout either way.
+                      // A marked row adds `--edge-shadow` as a second layer: none under sharp, a
+                      // soft shadow with the ring. The resting row keeps one transparent layer.
                       // 14px, matching every other row in the app: inside a 1px-bordered group
                       // that lands the content on the same x as a card row's content.
                       "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[var(--edge-accent)_transparent]",
                       LIST_ROW_CORNERS,
                       blocked &&
-                        "bg-status-blocked/5 shadow-[var(--edge-accent)_var(--color-status-blocked)]",
+                        "bg-status-blocked/5 shadow-[var(--edge-accent)_var(--color-status-blocked),var(--edge-shadow)]",
                     )}
                   >
                     {status ? (
