@@ -78,4 +78,14 @@ describe("HookHoldCard", () => {
       unmount();
     }
   });
+
+  it("draws the desk and another-Collie notes in the info blue, not the caution colour", () => {
+    for (const state of ["desk", "elsewhere"] as const) {
+      const { unmount } = render(<HookHoldCard note={{ ...NOTE, state }} onAnswer={() => undefined} />);
+      const cls = screen.getByRole("status").parentElement?.className ?? "";
+      expect(cls).toContain("bg-status-info/15");
+      expect(cls).not.toContain("status-working");
+      unmount();
+    }
+  });
 });

@@ -30,6 +30,7 @@ import { StatusDetailSheet } from "@/components/status-detail-sheet";
  */
 const TONE = {
   info: "text-muted-foreground",
+  note: "text-status-info",
   success: "text-status-done",
   warn: "text-status-working",
   error: "text-status-blocked",
@@ -37,6 +38,7 @@ const TONE = {
 
 const ICONS = {
   info: Info,
+  note: Info,
   success: CheckCircle2,
   warn: AlertTriangle,
   error: AlertCircle,

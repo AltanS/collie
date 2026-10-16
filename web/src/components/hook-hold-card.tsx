@@ -27,9 +27,9 @@ const NOTE_TEXT = {
 
 const NOTE_TONE = {
   sent: "info",
-  desk: "neutral",
+  desk: "info",
   keys: "neutral",
-  elsewhere: "neutral",
+  elsewhere: "info",
   void: "caution",
   timeout: "caution",
   mismatch: "caution",
