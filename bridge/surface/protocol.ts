@@ -696,6 +696,12 @@ interface EndNote {
   offers?: SendOffer[];
 }
 
+/** A receipt being built, field by field. */
+type ReceiptDraft = { -readonly [K in keyof SendReceipt]: SendReceipt[K] };
+
+/** A row of the list of recent sends being built, field by field. */
+type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
+
 /** An answer being built, field by field. */
 type AnswerDraft = { -readonly [K in keyof SendAnswer]: SendAnswer[K] };
 
@@ -766,8 +772,10 @@ export class SendProtocol {
       if (rows.length >= limit) break;
       const receipt = record.receipt;
       if (record.paneId !== paneId || receipt === undefined) continue;
-      const row = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
-      rows.push(receipt.reason === undefined ? row : { ...row, reason: receipt.reason });
+      const row: RowDraft = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
+      if (receipt.reason !== undefined) row.reason = receipt.reason;
+      if (receipt.cap !== undefined) row.cap = receipt.cap;
+      rows.push(row);
     }
     return rows;
   }
@@ -882,7 +890,7 @@ export class SendProtocol {
     };
   }
 
-  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined): SendReceipt {
+  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined, cap?: SendCap): SendReceipt {
     const { record, target, match } = state;
     const base: SendReceipt = {
       requestId: record.id,
@@ -902,7 +910,10 @@ export class SendProtocol {
       keys: [...state.keys],
       outcome,
     };
-    return reason === undefined ? base : { ...base, reason };
+    const receipt: ReceiptDraft = { ...base };
+    if (reason !== undefined) receipt.reason = reason;
+    if (cap !== undefined) receipt.cap = cap;
+    return receipt;
   }
 
   private async prepare(target: SendTarget): Promise<SendAnswer> {
@@ -928,7 +939,7 @@ export class SendProtocol {
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
-      return this.settle(state, new Ended("sent", record.mode === "discard" ? "discarded" : undefined, note));
+      return this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
     } catch (err) {
       if (err instanceof Ended) return this.settle(state, err);
       throw err;
@@ -938,7 +949,7 @@ export class SendProtocol {
   }
 
   private settle(state: RunState, end: Ended): SendAnswer {
-    const receipt = this.receiptOf(state, end.outcome, end.reason);
+    const receipt = this.receiptOf(state, end.outcome, end.reason, end.extra.cap);
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
@@ -1114,7 +1125,7 @@ export class SendProtocol {
           surface: s0.surface,
           rowsHash: s0.rowsHash,
           cap: { count: cap.count, limit: cap.limit, harness: key.harness, version: key.version },
-          detail: `You typed past a screen Collie cannot read ${String(cap.count)} times on ${key.harness} ${key.version} in the last day. Check the screen, then confirm once more to type.`,
+          detail: `You typed past a screen Collie cannot read ${String(cap.count)} times on ${key.version === "-" ? key.harness : `${key.harness} ${key.version}`} in the last day. Check the screen, then confirm once more to type.`,
         });
       }
       ledger.noteManual(key);

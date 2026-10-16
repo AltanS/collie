@@ -1109,7 +1109,7 @@ describe("the offers as new requests", () => {
     const typed = await typedNotSubmitted(r, "hello there");
     pane.keysSeen = [];
     const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.box).toBe("");
     expect(pane.keysSeen).toEqual(Array.from({ length: "hello there".length + 16 }, () => "Backspace"));
     neverEscape(pane);
@@ -1141,7 +1141,7 @@ describe("the offers as new requests", () => {
     const { r, pane, typed } = await shortBox();
     pane.keysSeen = [];
     const answer = await r.send("hello there", { mode: "discard", rowsHash: typed.rowsHash! });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.box).toBe("");
     expect(pane.keysSeen).toEqual(Array.from({ length: "hello ther".length + 16 }, () => "Backspace"));
     neverEscape(pane);
@@ -1181,7 +1181,7 @@ describe("the offers as new requests", () => {
     const { pane, send } = rig();
     pane.box = "do not send this";
     const answer = await send("do not send this", { mode: "discard" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", reason: "discarded" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
     expect(pane.box).toBe("");
     neverEscape(pane);
   });
@@ -1559,7 +1559,7 @@ describe("counters, the cap and the examples", () => {
 
   test("past the cap the commit is refused once more with the count and the version, files the frame hash, and counts no manual send", async () => {
     const ledger = ledgerFor({ cap: 2 });
-    const { pane, send } = rig({ mode: "generic", ledger });
+    const { pane, send, protocol } = rig({ mode: "generic", ledger });
     for (let n = 0; n < 2; n++) {
       const first = await send(`hello from the phone ${String(n)}`);
       expect((await send(`hello from the phone ${String(n)}`, { rowsHash: first.rowsHash! })).receipt?.outcome).toBe("sent");
@@ -1568,7 +1568,11 @@ describe("counters, the cap and the examples", () => {
     const capped = await send("one more please", { rowsHash: first.rowsHash! });
     expect(capped.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(capped.cap).toEqual({ count: 2, limit: 2, harness: "nothing-known", version: "-" });
-    expect(capped.detail).toContain("2 times on nothing-known");
+    expect(capped.detail).toContain("2 times on nothing-known in the last day");
+    // The receipt carries the numbers, so the session page's list can say the cap's sentence for the row.
+    expect(capped.receipt?.cap).toEqual({ count: 2, limit: 2, harness: "nothing-known", version: "-" });
+    expect(protocol.recent("%1")[0]).toMatchObject({ outcome: "refused", reason: "unconfirmed", cap: { count: 2, limit: 2, harness: "nothing-known", version: "-" } });
+    expect(protocol.recent("%1").filter((row) => row.cap !== undefined)).toHaveLength(1);
     expect(capped.offers).toEqual(["commit", "keys"]);
     expect(capped.rowsHash).toBe(first.rowsHash);
     // Nothing was typed for the refused commit, and no manual send was counted for it.
@@ -1583,6 +1587,26 @@ describe("counters, the cap and the examples", () => {
     const acked = await send("one more please", { rowsHash: first.rowsHash!, capAck: true });
     expect(acked.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(rowOf(ledger, "nothing-known")?.manual).toBe(3);
+  });
+
+  test("a harness with no version is named alone in the cap's detail, not as `codex -`", async () => {
+    const ledger = ledgerFor({ cap: 0 });
+    const noVersion = rig({ mode: "generic", ledger, harness: "codex" });
+    const first = await noVersion.send("hello from the phone");
+    const capped = await noVersion.send("hello from the phone", { rowsHash: first.rowsHash! });
+    expect(capped.detail).toContain("0 times on codex in the last day");
+    expect(capped.detail).not.toContain("codex -");
+  });
+
+  test("a discard is counted as discarded, never as sent", async () => {
+    const ledger = ledgerFor();
+    const { pane, send } = rig({ ledger });
+    pane.box = "do not send this";
+    const answer = await send("do not send this", { mode: "discard" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+    expect(rowOf(ledger, "claude")).toMatchObject({ discarded: 1, sent: 0, effective: 0 });
   });
 
   test("the cap never touches a free send, and never removes the manual one: the ack always goes through", async () => {

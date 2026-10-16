@@ -27,7 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { offerMode, type SendNote, type SendReading } from "@/lib/send-protocol";
+import { capSentence, offerMode, type SendNote, type SendReading } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
@@ -331,7 +331,7 @@ function answerSentence(reading: SendReading): string {
   const note =
     reading.cap === null
       ? translate(`composer.protocol.${reading.note}`)
-      : translate("composer.protocol.capConfirm", { count: String(reading.cap.count), harness: reading.cap.harness, version: reading.cap.version });
+      : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
   // A draft refusal already says what the screen held.
   if (reading.surface === null || reading.note === "draft") return note;
   return `${note} ${translate(`composer.surface.${reading.surface}`)}`;

@@ -79,7 +79,10 @@ function idlePane() {
       return Promise.resolve(muxAck());
     },
     writeKeys: (_paneId: string, keys: readonly string[]): Promise<MuxAck> => {
-      for (const key of keys) if (key === "Enter") box = "";
+      for (const key of keys) {
+        if (key === "Enter") box = "";
+        else if (key === "Backspace") box = [...box].slice(0, -1).join("");
+      }
       revision++;
       return Promise.resolve(muxAck());
     },
@@ -211,6 +214,22 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       const prepared = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "", submit: true, mode: "prepare", id: "phone-req-0002" }, context(audit))).json();
       expect(prepared).toMatchObject({ ok: true, send: { offers: [], surface: { turn: "idle", modal: "none", composer: "empty" } } });
       expect((await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "x", submit: true, mode: "shout" }, context(audit))).status).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a discard that emptied the box is ok true with the outcome discarded, audited as discarded and never as sent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit, lines } = auditLines();
+      await pane.typeText("%1", "kept text");
+      const res = await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "kept text", submit: true, mode: "discard", id: "phone-req-0003" }, context(audit));
+      expect(await res.json()).toMatchObject({ ok: true, send: { receipt: { outcome: "discarded" } } });
+      expect(lines[0]).toContain('"outcome":"discarded"');
+      expect(lines[0]).not.toContain('"outcome":"sent"');
+      expect(lines[0]).not.toContain("kept text");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

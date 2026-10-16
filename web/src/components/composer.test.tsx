@@ -4037,7 +4037,7 @@ describe("outcome at the thumb", () => {
   });
 
   it("a discard says so, in the neutral tone, and keeps the phone's draft", async () => {
-    await send(() => sendAnswer("x", "sent", "discarded"));
+    await send(() => sendAnswer("x", "discarded"));
     await waitFor(() => expect(refusalText()).toMatch(/the text was removed from the box/i));
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
     expect(header()).toBe("");
@@ -4045,13 +4045,11 @@ describe("outcome at the thumb", () => {
 
   it("every closed outcome and reason lands at the thumb, and none of them puts an action in the header", async () => {
     const outcomeOf = (reason: SendReason): string =>
-      reason === "discarded"
-        ? "sent"
-        : ["mismatch", "changed", "modal_cue", "stale_token", "submit_failed"].includes(reason)
-          ? "typed_not_submitted"
-          : ["crash", "lost_lock", "no_evidence"].includes(reason)
-            ? "unknown"
-            : "refused";
+      ["mismatch", "changed", "modal_cue", "stale_token", "submit_failed"].includes(reason)
+        ? "typed_not_submitted"
+        : ["crash", "lost_lock", "no_evidence"].includes(reason)
+          ? "unknown"
+          : "refused";
     for (const reason of SEND_REASONS) {
       server.use(...sendHandler(() => sendAnswer("x", outcomeOf(reason), reason, { offers: ["keys"], surface: SURFACES.noMatch })));
       const user = userEvent.setup();
@@ -4179,6 +4177,21 @@ describe("the cap (M56 spec 09)", () => {
       { rowsHash: "0f00ba", capAck: undefined },
       { rowsHash: "0f00ba", capAck: true },
     ]);
+  });
+
+  it("a harness with no version is named alone in the cap's notice, not as `agent -`", async () => {
+    server.use(
+      ...sendHandler((request) =>
+        request.rowsHash === undefined
+          ? sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE })
+          : sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE, cap: { ...CAP, version: "-" } }),
+      ),
+    );
+    const { container } = renderWithContainer({ surface: UNREADABLE });
+    const user = await typeAndSend("carry on please");
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("on agent 5 times today"));
+    expect(container.querySelector('[data-slot="composer-refusal"]')?.textContent).not.toMatch(/agent -|\s{2}/u);
   });
 
   it("the cap never removes the manual Send or the Keys dock", async () => {

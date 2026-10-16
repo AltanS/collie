@@ -47,6 +47,7 @@ function rowLine(row: CounterRow): string {
     `effective ${String(row.effective)}`,
     `unknown-outcome ${String(row.unknown_outcome)}`,
     `typed-not-submitted ${String(row.typed_not_submitted)}`,
+    `discarded ${String(row.discarded)}`,
   ].join(" · ");
 }
 

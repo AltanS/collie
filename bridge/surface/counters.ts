@@ -74,6 +74,8 @@ export interface CounterRow extends CounterKey {
   unknown_outcome: number;
   /** Sends that ended `typed_not_submitted`: the text went into the box, Enter did not. */
   typed_not_submitted: number;
+  /** Discards that emptied the box. Never counted under `sent`: nothing went to the agent. */
+  discarded: number;
 }
 
 /** One day's file. */
@@ -114,7 +116,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0 };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0 };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -185,6 +187,7 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     effective: count("effective"),
     unknown_outcome: count("unknown_outcome"),
     typed_not_submitted: count("typed_not_submitted"),
+    discarded: count("discarded"),
   };
 }
 
@@ -229,6 +232,7 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.effective += from.effective;
   into.unknown_outcome += from.unknown_outcome;
   into.typed_not_submitted += from.typed_not_submitted;
+  into.discarded += from.discarded;
 }
 
 /** The rows of several days added up by key, sorted by harness, then version. */
@@ -446,6 +450,7 @@ export class SurfaceLedger {
     else if (end.outcome === "effective") row.effective++;
     else if (end.outcome === "unknown") row.unknown_outcome++;
     else if (end.outcome === "typed_not_submitted") row.typed_not_submitted++;
+    else if (end.outcome === "discarded") row.discarded++;
     if (end.probed) row.probed++;
     this.touch();
   }

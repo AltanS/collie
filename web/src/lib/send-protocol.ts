@@ -14,6 +14,7 @@ import {
   SEND_MODES,
   SEND_OUTCOMES,
   SEND_REASONS,
+  readSendCap,
   type SendCap,
   type SendMode,
   type SendOffer,
@@ -109,22 +110,12 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     replayed: asJsonBoolean(node.replayed) === true,
     surface: readSurface(node.surface),
     detail: asJsonString(node.detail) ?? null,
-    cap: readCap(node.cap),
+    cap: readSendCap(node.cap),
   };
 }
 
-/** The cap's answer on the wire, field by field, or null. */
-function readCap(value: JsonValue | undefined): SendCap | null {
-  const node = asJsonObject(value);
-  if (node === undefined) return null;
-  const count = asJsonNumber(node.count);
-  const limit = asJsonNumber(node.limit);
-  const harness = asJsonString(node.harness);
-  const version = asJsonString(node.version);
-  if (count === undefined || limit === undefined || harness === undefined || version === undefined) return null;
-  if (!Number.isInteger(count) || !Number.isInteger(limit) || count < 0 || limit < 1) return null;
-  return { count, limit, harness, version };
-}
+/** A row of the list being built, field by field. */
+type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
 
 const STEPS: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "commit", "s2"];
 
@@ -158,8 +149,11 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
       if (gap !== undefined) gapsMs[step] = gap;
     }
     const reason = pick(node.reason, SEND_REASONS);
-    const row = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
-    receipts.push(reason === null ? row : { ...row, reason });
+    const cap = readSendCap(node.cap);
+    const row: RowDraft = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
+    if (reason !== null) row.reason = reason;
+    if (cap !== null) row.cap = cap;
+    receipts.push(row);
   }
   return { receipts };
 }
@@ -270,7 +264,9 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
   switch (outcome) {
     case "sent":
     case "effective":
-      return reason === "discarded" ? "discarded" : "sent";
+      return "sent";
+    case "discarded":
+      return "discarded";
     case "typed_not_submitted":
       return "typed";
     case "refused":
@@ -281,6 +277,42 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
   }
 }
 
+/** Stands for a version that is not there while the cap's sentence is filled; the sentence is cut around it. */
+const NO_VERSION = "\u0000";
+
+/**
+ * The cap's sentence, from the catalog's words with `{count}`, `{harness}` and `{version}` filled by
+ * `say`. A harness with no version (the bridge writes `-` when it read none) is named alone: the
+ * placeholder and the space in front of it go, so no dash and no double space is left behind.
+ */
+export function capSentence(cap: SendCap, say: (vars: { count: string; harness: string; version: string }) => string): string {
+  const none = cap.version === "" || cap.version === "-";
+  const text = say({ count: String(cap.count), harness: cap.harness, version: none ? NO_VERSION : cap.version });
+  return none ? text.replace(` ${NO_VERSION}`, "").replace(NO_VERSION, "") : text;
+}
+
+/**
+ * The label a row of the session page's list wears for its outcome: a key in the catalog. A discard has
+ * no row label of its own; it wears the Discard button's word, so the list never calls it "Sent".
+ */
+export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discard" | `sendReceipts.outcome.${Exclude<SendOutcome, "discarded">}` {
+  return outcome === "discarded" ? "composer.protocol.discard" : `sendReceipts.outcome.${outcome}`;
+}
+
+/**
+ * The sentence under a row's label, or null when it has none. A reason reads as the composer's sentence
+ * for it; the cap's refusal, which carries its numbers, reads as the cap's sentence with them filled in;
+ * a discard carries no reason and has its own sentence.
+ */
+export function receiptSentence(row: SendReceiptRow, say: (key: `composer.protocol.${SendNote}`, vars?: Record<string, string>) => string): string | null {
+  if (row.outcome === "discarded") return say("composer.protocol.discarded");
+  if (row.reason === undefined) return null;
+  if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
+    return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
+  }
+  return say(`composer.protocol.${sendNote(row.outcome, row.reason)}`);
+}
+
 /** The verdict half of a reading: whether the draft goes, the sentence, the offers. */
 type Verdict = Pick<SendReading, "clear" | "note" | "offers">;
 
@@ -288,7 +320,7 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   const note = sendNote(reply.outcome, reply.reason);
-  // A discard ends `sent` too: the box emptied, but nothing went to the agent, so the phone's draft stays.
+  // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
   if (note === "sent") return { clear: true, note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };
   return { clear: false, note, offers };

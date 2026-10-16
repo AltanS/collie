@@ -5,11 +5,15 @@
 //
 // Pure: no DOM, no Bun API, no harness name.
 
+import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
 import type { ProfileStatus } from "./profile";
 import type { Surface } from "./surface";
 
-/** The closed list of outcomes. `effective` needs a matching UserPromptSubmit edge (spec 11), so v1 closes as `sent`. */
-export const SEND_OUTCOMES = ["effective", "sent", "typed_not_submitted", "refused", "unknown"] as const;
+/**
+ * The closed list of outcomes. `effective` needs a matching UserPromptSubmit edge (spec 11), so v1 closes as `sent`.
+ * `discarded` is a Discard that emptied the box: nothing went to the agent, so it is never a send.
+ */
+export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown"] as const;
 export type SendOutcome = (typeof SEND_OUTCOMES)[number];
 
 /**
@@ -37,8 +41,6 @@ export const SEND_REASONS = [
   "modal_cue",
   "stale_token",
   "submit_failed",
-  // sent: the box emptied after a discard
-  "discarded",
   // unknown: the request ended without evidence either way. `bound` also refuses: an S0 past its own
   // bound (2 reads, 1200 ms) ends `refused(bound)`, since nothing was written yet.
   "bound",
@@ -103,6 +105,19 @@ export interface SendCap {
   readonly version: string;
 }
 
+/** The cap's answer on the wire, field by field, or null. */
+export function readSendCap(value: JsonValue | undefined): SendCap | null {
+  const node = asJsonObject(value);
+  if (node === undefined) return null;
+  const count = asJsonNumber(node.count);
+  const limit = asJsonNumber(node.limit);
+  const harness = asJsonString(node.harness);
+  const version = asJsonString(node.version);
+  if (count === undefined || limit === undefined || harness === undefined || version === undefined) return null;
+  if (!Number.isInteger(count) || !Number.isInteger(limit) || count < 0 || limit < 1) return null;
+  return { count, limit, harness, version };
+}
+
 /** One read the receipt names: the multiplexer's revision and a short hash of the rows. Never the rows. */
 export interface ReadMark {
   readonly revision: number;
@@ -135,6 +150,8 @@ export interface SendReceipt {
   readonly keys: readonly string[];
   readonly outcome: SendOutcome;
   readonly reason?: SendReason;
+  /** Set on the `unconfirmed` refusal the cap adds, so the list can tell it from a plain one: the count, the limit and the harness and version it counted. */
+  readonly cap?: SendCap;
 }
 
 /**
@@ -153,6 +170,8 @@ export interface SendReceiptRow {
   readonly gapsMs: Readonly<Partial<Record<SendStep, number>>>;
   readonly harness: string;
   readonly version: string | null;
+  /** The cap's numbers, on the cap's refusal only (see {@link SendReceipt.cap}). */
+  readonly cap?: SendCap;
 }
 
 /** What `GET /api/send/receipts` answers: the newest first. */

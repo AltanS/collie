@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, sendNote, surfaceNote } from "./send-protocol";
+import { capSentence, isCommand, offerMode, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
+import type { SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
 const RUNNING: Surface = { revision: 3, turn: "running", modal: "none", composer: "empty" };
@@ -84,7 +85,7 @@ describe("readSend", () => {
   });
 
   it("a discard empties the box and keeps the phone's draft", () => {
-    expect(readSend(reply("sent", "discarded"))).toMatchObject({ clear: false, note: "discarded", offers: [] });
+    expect(readSend(reply("discarded", null))).toMatchObject({ clear: false, note: "discarded", offers: [] });
   });
 
   it("each refusal gets its own sentence, bound and not_free included, and the key pad offer is not a strip button", () => {
@@ -115,7 +116,7 @@ describe("readSend", () => {
 
   it("sendNote is the one map from an outcome and its reason to a sentence key", () => {
     expect(sendNote("sent", null)).toBe("sent");
-    expect(sendNote("sent", "discarded")).toBe("discarded");
+    expect(sendNote("discarded", null)).toBe("discarded");
     expect(sendNote("typed_not_submitted", "changed")).toBe("typed");
     expect(sendNote("refused", "not_free")).toBe("notFree");
     expect(sendNote("refused", "probe_failed")).toBe("probeFailed");
@@ -154,6 +155,53 @@ describe("the cap's extra confirm", () => {
 
   it("a cap on any other refusal is ignored", () => {
     expect(readSend(readSendReply(body("not_free", CAP))!)).toMatchObject({ note: "notFree", cap: null });
+  });
+});
+
+describe("capSentence", () => {
+  const say = (vars: { count: string; harness: string; version: string }) => `Collie could not read this screen on ${vars.harness} ${vars.version} ${vars.count} times today.`;
+
+  it("names the harness and its version when the bridge read one", () => {
+    expect(capSentence({ count: 5, limit: 5, harness: "codex", version: "0.163.0" }, say)).toBe("Collie could not read this screen on codex 0.163.0 5 times today.");
+  });
+
+  it("names the harness alone when there is no version: no dash, no double space (send drill 3, `codex -`)", () => {
+    for (const version of ["-", ""]) {
+      const sentence = capSentence({ count: 5, limit: 5, harness: "codex", version }, say);
+      expect(sentence).toBe("Collie could not read this screen on codex 5 times today.");
+      expect(sentence).not.toMatch(/ - | {2}/u);
+    }
+  });
+
+  it("takes the space in front of the placeholder with it, so a word glued to it stays glued", () => {
+    expect(capSentence({ count: 5, limit: 5, harness: "codex", version: "-" }, (v) => `${v.harness} ${v.version}で${v.count}`)).toBe("codexで5");
+  });
+});
+
+describe("the session page's rows (send drill 3)", () => {
+  const base = { requestId: "req00001", at: 1, mode: "send" as const, keys: [], gapsMs: {}, harness: "codex", version: null };
+  const say = (key: string, vars?: Record<string, string>) => (vars === undefined ? key : `${key} ${JSON.stringify(vars)}`);
+
+  it("a discard wears the Discard word and its own sentence, never Sent", () => {
+    const row: SendReceiptRow = { ...base, mode: "discard", outcome: "discarded" };
+    expect(receiptLabelKey(row.outcome)).toBe("composer.protocol.discard");
+    expect(receiptLabelKey("sent")).toBe("sendReceipts.outcome.sent");
+    expect(receiptSentence(row, say)).toBe("composer.protocol.discarded");
+  });
+
+  it("the cap's refusal reads as the cap's sentence with the receipt's numbers; a plain unconfirmed one keeps the generic sentence", () => {
+    const plain: SendReceiptRow = { ...base, outcome: "refused", reason: "unconfirmed" };
+    const capped: SendReceiptRow = { ...plain, cap: { count: 5, limit: 5, harness: "codex", version: "-" } };
+    expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmed");
+    expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirm ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
+    expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
+  });
+
+  it("reads the cap of a row off the wire and drops one that is not whole", () => {
+    const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
+    const rows = readSendReceipts({ receipts: [{ ...row, cap: { count: 5, limit: 5, harness: "codex", version: "-" } }, { ...row, requestId: "r2abcdefgh", cap: { count: "x" } }] });
+    expect(rows.receipts[0]).toMatchObject({ cap: { count: 5, limit: 5, harness: "codex", version: "-" } });
+    expect(rows.receipts[1]!.cap).toBeUndefined();
   });
 });
 
