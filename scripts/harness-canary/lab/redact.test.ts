@@ -33,4 +33,19 @@ describe("redact", () => {
     expect(stripAnsi("\u001b[31mred\u001b[0m")).toBe("red");
     expect(redactRows(["\u001b[1mhi alice\u001b[0m  ", "", ""], ctx)).toEqual(["hi user"]);
   });
+
+  test("a word that only starts like a key is not a key, and a real key shape is", () => {
+    expect(redact("skill skills skilled-worker-with-a-long-hyphenated-name task-manager-with-a-long-name", ctx)).toBe("skill skills skilled-worker-with-a-long-hyphenated-name task-manager-with-a-long-name");
+    expect(redact("sk-abcdefghijklmnopqrstuv ghp_abcdefghijklmnopqrstuvwx AKIAABCDEFGHIJKLMNOP", ctx)).toBe("<key> <key> <key>");
+  });
+
+  test("the user name and the host match in any case", () => {
+    expect(redact("ALICE logged in to BlueFin as Alice", ctx)).toBe("user logged in to host as user");
+  });
+
+  test("the display name and the organization name go, in any case", () => {
+    const named: RedactContext = { ...ctx, names: [{ word: "Ada Lovelace", mask: "<name>" }, { word: "Analytical Engines Ltd", mask: "<org>" }] };
+    expect(redact("Ada Lovelace works at analytical engines ltd", named)).toBe("<name> works at <org>");
+    expect(redact("nothing here", { ...ctx, names: [{ word: "ab", mask: "<x>" }] })).toBe("nothing here");
+  });
 });

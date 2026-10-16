@@ -427,17 +427,14 @@ function verifyBlock(repo: string, tag: string, version: string): string[] {
 }
 
 /**
- * The page lines for agents the release was tagged over, from `claude 2.1.301` style entries.
- * One line each: "claude, 2.1.301, not verified".
+ * The page block for agents the release was tagged over, from `claude 2.1.301` style entries. It has its
+ * own small heading and one sentence, so it is never a bullet at the end of the last group. An empty list
+ * gives no block.
  */
 export function driftLines(entries: readonly string[]): string[] {
-	return entries
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0)
-		.map((entry) => {
-			const [agent, version] = entry.split(/\s+/u);
-			return `- ${agent ?? entry}, ${version ?? "?"}, not verified`;
-		});
+	const named = entries.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+	if (named.length === 0) return [];
+	return ["**Not verified**", "", `Collie's readers were not verified on ${named.join(", ")}: each is newer than its verified version.`];
 }
 
 /**
@@ -486,9 +483,9 @@ export function renderBody(
 	}
 
 	// THE SOFT RELEASE GATE (M44 spec 08). A release tagged over a drift says so: one line per agent,
-	// "agent, version, not verified". Nothing is printed when no drift was named.
-	for (const line of driftLines(notVerified)) lines.push(line);
-	if (notVerified.length > 0) lines.push("");
+	// A small heading and one sentence naming each agent and version. Nothing is printed when no drift was named.
+	const drift = driftLines(notVerified);
+	if (drift.length > 0) lines.push(...drift, "");
 
 	lines.push(
 		`Full detail with commits: [${version} in the changelog](https://github.com/${repo}/blob/${tag}/CHANGELOG.md#${anchor})`,

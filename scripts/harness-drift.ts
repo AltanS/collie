@@ -33,6 +33,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { branchInClone } from "./harness-canary/lab/clone.ts";
 import { findRow, ledgerPath, readLedger } from "./harness-canary/lab/lab-ledger.ts";
 
 type How = "canary" | "live sweep" | "capture" | "unverified";
@@ -74,15 +75,17 @@ export function parsePairs(text: string, what: string): Map<string, string> {
 
 /**
  * What the nightly lab (M56 spec 10) wrote for this pair, as one sentence, or null when it has no row
- * or its ledger cannot be read. A pass means a branch holds the verified row, waiting for a merge.
+ * or its ledger cannot be read. A pass says "merge the branch" only when the branch is in the lab's clone.
  */
-export function labNote(agent: string, version: string, file: string = ledgerPath()): string | null {
+export function labNote(agent: string, version: string, file: string = ledgerPath(), branchExists: (branch: string) => boolean = (branch) => branchInClone(branch)): string | null {
   try {
     const row = findRow(readLedger(file), agent, version);
     if (row === undefined) return null;
-    return row.result === "pass"
-      ? `the lab passed ${agent} ${version} on ${row.date}: merge the branch harness-lab/${agent}-${version} to verify it`
-      : `the lab ran ${agent} ${version} on ${row.date} and the result is ${row.result}: ${row.note ?? "no note"}`;
+    if (row.result !== "pass") return `the lab ran ${agent} ${version} on ${row.date} and the result is ${row.result}: ${row.note ?? "no note"}`;
+    const branch = `harness-lab/${agent}-${version}`;
+    return branchExists(branch)
+      ? `the lab passed ${agent} ${version} on ${row.date}: merge the branch ${branch} to verify it`
+      : `the lab passed ${agent} ${version} on ${row.date}, and the branch ${branch} is not in the lab clone: delete the ledger row to run it again`;
   } catch {
     return null;
   }

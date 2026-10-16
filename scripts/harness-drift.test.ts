@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { compareVersions, driftLine, driftRows, driftState, gateRows, installedVersion, loadLedger, parseArgs, parsePairs } from "./harness-drift.ts";
+import { compareVersions, driftLine, driftRows, driftState, gateRows, installedVersion, labNote, loadLedger, parseArgs, parsePairs } from "./harness-drift.ts";
+import { claim, settle } from "./harness-canary/lab/lab-ledger.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // M37 spec 01, extended by M41 spec 05: one row per READER, not per agent. The screen grammar and
 // the journal grammar are verified apart and drift apart, so a `same` on one says nothing about the
@@ -94,5 +98,22 @@ describe("the soft release gate", () => {
 
   test("the accepted drift reads as one line", () => {
     expect(driftLine("claude", "2.1.301")).toBe("claude 2.1.301 is newer than its verified version: not verified");
+  });
+
+  test("labNote says merge the branch only when the branch exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lab-note-"));
+    try {
+      const file = join(dir, "ledger.json");
+      claim(file, "claude", "2.1.301", "2026-10-16", "/l", 1, 1);
+      settle(file, "claude", "2.1.301", { result: "pass" });
+      const here = labNote("claude", "2.1.301", file, () => true);
+      expect(here).toContain("merge the branch harness-lab/claude-2.1.301");
+      const gone = labNote("claude", "2.1.301", file, () => false);
+      expect(gone).not.toContain("merge the branch");
+      expect(gone).toContain("is not in the lab clone");
+      expect(labNote("claude", "2.1.302", file, () => true)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
