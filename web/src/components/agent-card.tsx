@@ -1,6 +1,7 @@
 import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
@@ -249,6 +250,9 @@ export function AgentCard({
         // from a line that doesn't follow them. Corners belong to where the row sits, never to what
         // it is doing, so a blocked flat row stays square too and takes a left rail instead.
         flat && "transition-colors hover:bg-muted/50",
+        // ...except at the GROUP's corners under a soft or round theme: the first and last row's
+        // fills follow the group's rounded corner there (LIST_ROW_CORNERS, 0 at Collie's 2px).
+        flat && LIST_ROW_CORNERS,
       )}
     >
       <Shell
@@ -259,7 +263,7 @@ export function AgentCard({
           // alignment against a group that had no border to supply the 1px.
           "relative",
           flat
-            ? "flex flex-row items-center gap-3 px-3.5 py-2.5"
+            ? cn("flex flex-row items-center gap-3 px-3.5 py-2.5", LIST_ROW_CORNERS)
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // Every flat row states its own pitch — `py-0` because the height IS the statement, and
           // the flat row's own `py-2.5` around two lines would make it 56px and the number would
