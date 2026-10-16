@@ -479,6 +479,7 @@ types into it with stricter generic rules.
 | OpenCode | Queues the message | `[Pasted ~12 lines]` | 1.18.33 |
 | pi | Steers the turn; Alt+Enter queues | `[paste #2 +12 lines]` | 1.1.0 |
 | OMP | Steers the turn; Ctrl+Q queues | `📄 #3` chip | 18.4.10 |
+| Grok | Not measured | `[Pasted 3003 chars]` | 1.0.41 |
 
 - **OpenCode** draws its box as a column of `┃` rows, closed by a `╹▀▀▀` line. Collie finds the
   box by those rows. A message sent into a running turn waits in the transcript with a `QUEUED`
@@ -497,6 +498,14 @@ types into it with stricter generic rules.
   In a running turn, Enter steers the turn and Ctrl+Q queues the message after it. OMP lists a
   queued message in an `After yield` block above the box. OMP can show a dim completion after your
   text. A send that meets one stops before Enter and leaves the text in the box.
+
+- **Grok** draws a rounded box with a `❯` prompt row, and a footer of key hints under it. The right edge
+  of the box carries a scroll bar once a draft grows tall, and Collie reads past it. A model list that
+  opens above the box counts as part of the box, and the pane never reads free while it stands.
+
+Grok, Antigravity and Muse are not installed on the build host. Their profiles rest on saved screens
+of each agent, so Collie has not yet sent a live message to them with a profile. What an Enter does
+during a running turn is not measured for them, so Collie does not send into a running turn there.
 
 A version above the checked one still works, and the receipt says `provisional`.
 

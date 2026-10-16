@@ -251,6 +251,8 @@ interface Spec14Case {
   /** Rows an anchor must refuse. */
   readonly refuses: readonly { readonly anchor: "top" | "prompt" | "bottom"; readonly row: string }[];
   readonly collapse: { readonly text: string; readonly group: string; readonly value: string };
+  /** True for a harness whose profile names no running row (no capture shows one). */
+  readonly noRunningRow?: boolean;
   readonly enterWhileRunning: "queues" | "steers" | undefined;
   /** The key that queues a message in a turn, where Enter does not queue. */
   readonly queueKey?: string;
@@ -276,6 +278,27 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     ],
     collapse: { text: "[Pasted ~12 lines]", group: "lines", value: "12" },
     enterWhileRunning: "queues",
+  },
+  {
+    id: "grok",
+    binary: "grok",
+    versionOutput: "1.0.46 (2765805b9442) [stable]\n",
+    version: "1.0.46",
+    above: "1.0.52",
+    takes: [
+      { anchor: "top", row: "  ╭──────────────────────────────────╮" },
+      { anchor: "top", row: "╭──────────────────────────────────" },
+      { anchor: "prompt", row: "  │ ❯ testing stuff                  │", draft: "testing stuff" },
+      { anchor: "prompt", row: "  │ ❯                                │" },
+      { anchor: "bottom", row: "  ╰───────────────── Grok 4.6 (high) · auto ─╯" },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  │   continuation row               │" },
+      { anchor: "top", row: "  ┌──────────────────────────────────┐" },
+      { anchor: "bottom", row: "  ╭──────────────────────────────────╮" },
+    ],
+    collapse: { text: "[Pasted 3003 chars]", group: "", value: "" },
+    enterWhileRunning: undefined,
   },
   {
     id: "omp",
@@ -334,7 +357,8 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.identity.versionCommand[0]).toBe(c.binary);
     expect(versionFromOutput(p, c.versionOutput)).toBe(c.version);
     expect(p.idle.frame.prompt.pattern).toContain("(?<draft>");
-    expect(p.idle.runningRows?.length).toBeGreaterThan(0);
+    if (c.noRunningRow === true) expect(p.idle.runningRows).toBeUndefined();
+    else expect(p.idle.runningRows?.length).toBeGreaterThan(0);
     expect(p.keys.submit).toEqual(["Enter"]);
     expect(p.keys.interrupt.length).toBeGreaterThan(0);
     expect(p.keys.enterWhileRunning).toBe(c.enterWhileRunning);

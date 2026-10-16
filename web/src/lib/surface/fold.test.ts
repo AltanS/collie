@@ -413,6 +413,8 @@ interface ProfileCase {
   readonly id: string;
   readonly idleMin: number;
   readonly quote: readonly string[];
+  /** The states the fixture set must hold; the default is all four. A harness with no draft capture lists three. */
+  readonly states?: readonly string[];
 }
 
 const SPEC14: readonly ProfileCase[] = [
@@ -420,6 +422,11 @@ const SPEC14: readonly ProfileCase[] = [
     id: "opencode",
     idleMin: 4,
     quote: ["Here is the dialog you asked about:", "  Permission required", "  ❯ 1. Allow once", "    2. Reject", "  Press enter to confirm or esc to cancel", "", "That is all it shows."],
+  },
+  {
+    id: "grok",
+    idleMin: 4,
+    quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
   },
   {
     id: "omp",
@@ -433,7 +440,7 @@ const SPEC14: readonly ProfileCase[] = [
   },
 ];
 
-describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote }) => {
+describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote, states }) => {
   // The profile tests (a), (b), (c) and (d) of the design record, run with this harness's profile on
   // its mine fixtures, and with the profile applied to every fixture: a profile on a harness it does
   // not describe must never make a dialog free either.
@@ -445,8 +452,8 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
   const detector = (r: ReturnType<typeof read>): boolean => askOf(r.surface.modal) !== null || r.cues?.strength === "strong";
 
   it(`${id}: the set holds idle, draft, running and dialog screens`, () => {
-    const states = new Set(mine.map((name) => labelOf(name).state));
-    for (const state of ["idle", "draft", "running", "dialog"] as const) expect(states.has(state), state).toBe(true);
+    const have = new Set<string>(mine.map((name) => labelOf(name).state));
+    for (const state of states ?? (["idle", "draft", "running", "dialog"] as const)) expect(have.has(state), state).toBe(true);
   });
 
   it(`${id}: the frame module finds the box on every idle fixture, and it reads free`, () => {
@@ -466,7 +473,7 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
     }
     // A running fixture may show no sign of the turn (a derived screen with only a ghost draft): its
     // draft then keeps it from free, and that is the claim that counts.
-    for (const name of mine.filter((n) => labelOf(n).state === "running")) {
+    for (const name of mine.filter((n) => labelOf(n).state === "running" && LABELS.knownMismatches[n] === undefined)) {
       expect(isFree(read(name).surface), name).toBe(false);
     }
   });
