@@ -67,7 +67,7 @@ export const en = {
   "theme.import": "Import",
   "theme.export": "Export",
   "theme.remove": "Remove",
-  "theme.import.promise": "A theme changes colours and the typeface only. It cannot run code, load files or reach a server.",
+  "theme.import.promise": "A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.",
   "theme.preview.title": "Import this theme?",
   "theme.preview.by": "By {author}",
   "theme.preview.halves.both": "Light and dark",
@@ -95,6 +95,7 @@ export const en = {
   "theme.refusal.value": "A colour value is not valid.",
   "theme.refusal.font": "The font choice is not valid.",
   "theme.refusal.no-half": "The file sets no colours.",
+  "theme.refusal.surface": "A shape word is not valid.",
   "theme.refusal.reserved-id": "This id belongs to a shipped theme. Change \"id\" in the file to import your copy.",
 
   // --- settings.haptics ---

@@ -73,6 +73,7 @@ export const ja: Dictionary = {
   "theme.refusal.value": "色の値が無効です。",
   "theme.refusal.font": "フォントの選択が無効です。",
   "theme.refusal.no-half": "ファイルで色が設定されていません。",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "このIDは同梱のテーマのものです。ファイルをインポートするには、ファイル内の\"id\"を変更してください。",
 
   // --- settings.haptics ---

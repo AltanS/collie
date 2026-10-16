@@ -217,6 +217,20 @@
      are hard-set to the same 2px: the stock shadcn calc() ramp subtracts up to 4px, which at this
      base computes negative and is invalid. */
   --radius: 2px;
+  /* THE SHAPE A THEME MAY PICK (schema version 2, lib/theme/surface.ts). Tailwind copies a shadow
+     step's value and the bare border width into every utility at build time, so `@theme inline`
+     below points them here, and a theme's `shadow` and `border` words set these properties. The
+     values are Tailwind 4.3.1's own (theme.css), so the default look is the one the app always had.
+     The radius steps, the spacing step and the two weights need no such door: utilities read them
+     through var() already. src/themes/themes.test.ts holds every default word equal to these. */
+  --surface-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --surface-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --surface-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --surface-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --surface-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --surface-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --surface-border-width: 1px;
   /* Light deviates from stock shadcn in two places, both measured rather than taste:
      --background is a step off white (stock has background == card == popover == pure white, so the
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
@@ -514,15 +528,30 @@
   color-scheme: dark;
 }
 
-@theme inline {
-  /* One radius, four names. There is no ramp to walk: sm/md/lg/xl all resolve to the same 2px, so
-     `rounded-md` and `rounded-xl` are the same corner and no component can drift rounder than its
-     neighbour by picking a bigger step. Written out rather than left as calc(): at --radius: 2px
-     the stock `- 2px` and `- 4px` forms compute 0 and -2px, and a negative radius is invalid. */
+@theme {
+  /* One radius, four names. In the Collie theme there is no ramp to walk: sm/md/lg/xl all resolve
+     to the same 2px, so `rounded-md` and `rounded-xl` are the same corner and no component can drift
+     rounder than its neighbour by picking a bigger step. Written out rather than left as calc(): at
+     --radius: 2px the stock `- 2px` and `- 4px` forms compute 0 and -2px, and a negative radius is
+     invalid. In `@theme` and not `@theme inline` (schema version 2): `rounded-md` then compiles to
+     `var(--radius-md)`, which a theme's `radius` word sets (lib/theme/surface.ts). */
   --radius-sm: 2px;
   --radius-md: 2px;
   --radius-lg: 2px;
   --radius-xl: 2px;
+}
+
+@theme inline {
+  /* The shadow steps the app uses and the bare border width, each pointed at its `--surface-*`
+     property in :root (see there), because Tailwind writes these values into the utility itself. */
+  --shadow: var(--surface-shadow);
+  --shadow-xs: var(--surface-shadow-xs);
+  --shadow-sm: var(--surface-shadow-sm);
+  --shadow-md: var(--surface-shadow-md);
+  --shadow-lg: var(--surface-shadow-lg);
+  --shadow-xl: var(--surface-shadow-xl);
+  --shadow-2xl: var(--surface-shadow-2xl);
+  --default-border-width: var(--surface-border-width);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -1027,6 +1056,15 @@
        counters shut at body sizes; see the @font-face note above. Space Grotesk has a real 400-700
        axis and is untouched by this. */
     font-synthesis-weight: none;
+  }
+  /* WHAT DENSITY NEVER GROWS (schema version 2, lib/theme/surface.ts). A theme's `roomy` word
+     raises `--spacing`, and every `size-*`, `p-*` and `h-*` grows with it. An icon and the header
+     mark box keep the default step here, so a 24px icon stays 24px and the dog sits in its 44px box
+     under every density. The default step in its own unit (0.25rem, 4px at the default root size),
+     so a browser with a larger default font sees exactly what it saw before. */
+  svg,
+  [data-slot="collie-mark"] {
+    --spacing: 0.25rem;
   }
   html {
     /* Respect notches; keep the app glued to the viewport edges on mobile. */

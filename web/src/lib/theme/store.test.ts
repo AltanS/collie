@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseJsonObject } from "@/lib/json";
 
 import { THEME_TOKENS, fillHalves, parseTheme, toSrgbHex, type Theme } from "./schema";
+import { SURFACE_PROPERTIES } from "./surface";
 
 // The store keeps module-scope state (the design store, the library, the metas), so each case
 // imports a fresh graph over a storage it seeded itself.
@@ -245,7 +246,7 @@ describe("the library", () => {
           { ...midnight("urlish"), light: { background: "url(https://x.test/a.png)" } },
           { ...midnight("extra"), surprise: true },
           midnight("nightwatch"),
-          { ...midnight("future"), version: 2 },
+          { ...midnight("future"), version: 3 },
           "not an object",
           midnight("good"),
         ],
@@ -288,7 +289,7 @@ describe("the library", () => {
     store.addImported(midnight());
     const stored = JSON.parse(localStorage.getItem(LIBRARY_KEY) ?? "{}");
     expect(stored.version).toBe(1);
-    expect(stored.themes).toEqual([midnight()]);
+    expect(stored.themes).toEqual([{ ...midnight(), version: 2 }]);
   });
 });
 
@@ -373,5 +374,60 @@ describe("useActiveTheme", () => {
     expect(result.current).toEqual([]);
     act(() => void store.addImported(midnight()));
     expect(result.current.map((t) => t.id)).toEqual(["midnight"]);
+  });
+});
+
+describe("the shape words of an imported theme (schema version 2)", () => {
+  const surfaceSet = () => SURFACE_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "");
+
+  it("sets the declarations of the words the theme names, and only those", async () => {
+    const { store } = await boot();
+    store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft", density: "roomy" } }));
+    store.setActiveTheme("shaped");
+    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--spacing"]);
+    expect(root().style.getPropertyValue("--radius-md")).toBe("6px");
+    expect(root().style.getPropertyValue("--spacing")).toBe("0.28rem");
+  });
+
+  it("sets no shape property for a theme without a surface block", async () => {
+    const { store } = await boot();
+    store.addImported(midnight());
+    store.setActiveTheme("midnight");
+    expect(inline()).toHaveLength(THEME_TOKENS.length);
+    expect(surfaceSet()).toEqual([]);
+  });
+
+  it("takes every shape property off on the way back to collie or to another theme", async () => {
+    const { store } = await boot();
+    const all = { radius: "round", shadow: "flat", density: "roomy", weight: "bold", border: "strong" } as const;
+    store.addImported(midnight("shaped", { version: 2, surface: all }));
+    store.addImported(midnight("plain"));
+    store.setActiveTheme("shaped");
+    expect(surfaceSet()).toEqual([...SURFACE_PROPERTIES]);
+    store.setActiveTheme("plain");
+    expect(surfaceSet()).toEqual([]);
+    store.setActiveTheme("shaped");
+    store.setActiveTheme("collie");
+    expect(root().getAttribute("style") ?? "").toBe("");
+  });
+
+  it("applies nothing for a theme whose surface holds a word outside the table", async () => {
+    const { store } = await boot();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const theme = midnight("odd", { version: 2 });
+    Object.assign(theme, { surface: { radius: "9px" } });
+    store.applyTheme(theme, "imported");
+    expect(root().getAttribute("style") ?? "").toBe("");
+  });
+
+  it("re-reads a stored version 2 theme with its surface at startup", async () => {
+    const stored = midnight("shaped", { version: 2, surface: { weight: "bold" } });
+    const { store } = await boot({
+      design: blob({ font: "aldrich", theme: "shaped" }),
+      library: blob({ version: 1, themes: [stored] }),
+    });
+    store.initTheme();
+    expect(store.library()[0]?.surface).toEqual({ weight: "bold" });
+    expect(root().style.getPropertyValue("--font-weight-semibold")).toBe("700");
   });
 });

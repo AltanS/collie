@@ -4,8 +4,18 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
-import { COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour } from "@/lib/theme/schema";
-import { LIBRARY_STORAGE_KEY } from "@/lib/theme/store";
+import type { JsonObject } from "@/lib/json";
+import { COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
+import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
+import {
+  SURFACE_INIT_LINE,
+  SURFACE_INIT_MARKER,
+  SURFACE_PROPERTIES,
+  SURFACE_TOKENS,
+  surfaceWords,
+  wordDeclarations,
+  withSurfaceInitLine,
+} from "@/lib/theme/surface";
 
 // public/theme-init.js runs before the module graph exists, so it spells the facts the colour theme
 // needs: the shipped ids, the closed token list, the colour pattern and the two storage keys. Only a
@@ -121,6 +131,15 @@ function runInit(store: Record<string, string>) {
   return { classes: [...classes], attributes: [...attributes], properties: [...properties] };
 }
 
+/** The theme the stand-in library holds, as the store's type. */
+const midnightTheme = (): Theme => ({
+  version: 1,
+  id: "midnight",
+  name: "Midnight",
+  light: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#ffffff"])),
+  dark: Object.fromEntries(THEME_TOKENS.map((t) => [t, "#123456"])),
+});
+
 const midnight = (version: number) => ({
   version,
   themes: [
@@ -159,5 +178,91 @@ describe("theme-init.js, run", () => {
     expect(seen.classes).toEqual(["dark"]);
     expect(seen.attributes).toEqual([]);
     expect(seen.properties).toEqual([]);
+  });
+});
+
+// ── The shape words, schema version 2 (M57 spec 14) ───────────────────────────────────────────────
+//
+// theme-init.js carries the word table as one generated line. These cases hold the line equal to what
+// surface.ts writes, and then RUN the script and the store over the same theme for every word of every
+// token: the declarations the first frame gets must be the ones the app sets a moment later.
+
+/** A version 2 library entry: collie-like colours and the given surface block. */
+function libraryWithSurface(surface: JsonObject) {
+  const theme = midnight(1).themes[0];
+  return { version: 1, themes: [{ ...theme, version: 2, surface }] };
+}
+
+function initSurface(surface: JsonObject): Array<[string, string]> {
+  const seen = runInit({
+    "collie:design:v1": JSON.stringify({ theme: "midnight" }),
+    "collie:themes:v1": JSON.stringify(libraryWithSurface(surface)),
+  });
+  return seen.properties.filter(([property]) => SURFACE_PROPERTIES.includes(property));
+}
+
+function storeSurface(theme: Theme): Array<[string, string]> {
+  const root = document.documentElement;
+  root.removeAttribute("style");
+  applyTheme(theme, "imported");
+  const out: Array<[string, string]> = [];
+  for (const property of SURFACE_PROPERTIES) {
+    const value = root.style.getPropertyValue(property);
+    if (value !== "") out.push([property, value]);
+  }
+  root.removeAttribute("style");
+  return out;
+}
+
+describe("theme-init.js and lib/theme/surface.ts agree", () => {
+  it("carries the SURFACE line surface.ts writes, after the marker", () => {
+    expect(init.split("\n")).toContain(SURFACE_INIT_MARKER);
+    expect(init.split("\n")).toContain(SURFACE_INIT_LINE);
+    expect(withSurfaceInitLine(init)).toBe(init);
+  });
+
+  it("takes the property names and values from its table, never from the stored object", () => {
+    expect(init).toContain("root.style.setProperty(decl[x][0], decl[x][1])");
+    expect(init).toContain("if (s[SURFACE[n][0]] !== SURFACE[n][1][w][0]) continue;");
+  });
+
+  it.each(SURFACE_TOKENS.flatMap((token) => surfaceWords(token).map((word) => [token, word] as const)))(
+    "sets the same declarations as the store for %s: %s",
+    (token, word) => {
+      const fromInit = initSurface({ [token]: word });
+      const theme = { ...midnightTheme(), version: 2 as const, surface: { [token]: word } };
+      expect(fromInit).toEqual(storeSurface(theme));
+      expect(fromInit).toEqual(wordDeclarations(token, word).map(([p, v]) => [p, v]));
+    },
+  );
+
+  it("sets the same declarations as the store for a block that names every token", () => {
+    const surface = { radius: "round", shadow: "lifted", density: "roomy", weight: "bold", border: "strong" } as const;
+    expect(initSurface(surface)).toEqual(storeSurface({ ...midnightTheme(), version: 2, surface }));
+    expect(initSurface(surface)).toHaveLength(SURFACE_PROPERTIES.length);
+  });
+
+  it("sets nothing for a word or a block outside the table", () => {
+    for (const surface of [
+      { radius: "constructor" },
+      { radius: "__proto__" },
+      { radius: "toString" },
+      { radius: 8 },
+      { radius: ["soft"] },
+      { radius: "Soft" },
+      { spacing: "roomy" },
+      { "--spacing": "9rem" },
+    ]) {
+      expect(initSurface(surface), JSON.stringify(surface)).toEqual([]);
+    }
+    expect(initSurface({})).toEqual([]);
+  });
+
+  it("sets nothing for a theme with no surface, so a version 1 theme paints as before", () => {
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "midnight" }),
+      "collie:themes:v1": JSON.stringify(midnight(1)),
+    });
+    expect(seen.properties).toHaveLength(THEME_TOKENS.length);
   });
 });

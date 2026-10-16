@@ -69,6 +69,7 @@ export const tr: Dictionary = {
   "theme.refusal.value": "Bir renk değeri geçerli değil.",
   "theme.refusal.font": "Yazı tipi seçimi geçerli değil.",
   "theme.refusal.no-half": "Dosya hiçbir renk ayarlamıyor.",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "Bu kimlik, birlikte gelen bir temaya ait. Kendi kopyanızı içe aktarmak için dosyadaki \"id\" değerini değiştirin.",
   "settings.haptics.title": "Dokunsal geri bildirim",
   "settings.haptics.description": "Bir tuşa veya hızlı yanıta bastığınızda kısa bir titreşim.",

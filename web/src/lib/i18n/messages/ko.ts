@@ -74,6 +74,7 @@ export const ko: Dictionary = {
   "theme.refusal.value": "색상 값이 올바르지 않습니다.",
   "theme.refusal.font": "글꼴 선택이 올바르지 않습니다.",
   "theme.refusal.no-half": "파일에 지정된 색상이 없습니다.",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "이 ID는 기본 제공 테마의 ID입니다. 복사본을 가져오려면 파일의 \"id\"를 변경하십시오.",
 
   // --- settings.haptics ---

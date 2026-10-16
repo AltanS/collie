@@ -13,6 +13,7 @@ import { hasDocument } from "@/lib/env";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   DEFAULT_THEME_ID,
+  THEME_VERSION,
   contrastReport,
   fillHalves,
   parseTheme,
@@ -76,6 +77,7 @@ const REFUSAL_KEYS = {
   font: "theme.refusal.font",
   "no-half": "theme.refusal.no-half",
   "reserved-id": "theme.refusal.reserved-id",
+  surface: "theme.refusal.surface",
 } as const satisfies Record<RefusalCode, MessageKey>;
 
 const HALF_KEYS = {
@@ -150,9 +152,12 @@ function downloadText(name: string, text: string): boolean {
   }
 }
 
-/** The text of an exported file: the theme as the parser kept it, two-space indent. */
+/**
+ * The text of an exported file: the theme as the parser kept it, two-space indent, and always the
+ * version this build writes. A version 1 file comes back out as version 2 with the same content.
+ */
 export function themeFileText(theme: Theme): string {
-  return JSON.stringify(theme, null, 2);
+  return JSON.stringify({ ...theme, version: THEME_VERSION }, null, 2);
 }
 
 // ── The preview sheet ───────────────────────────────────────────────────────────────────────────

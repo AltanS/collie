@@ -1,10 +1,15 @@
-// A theme file, version 1: the schema, the one parser, and the colour arithmetic the contrast
+// A theme file, versions 1 and 2: the schema, the one parser, and the colour arithmetic the contrast
 // report needs (M57, the shared contract in the milestone README).
 //
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
-// dark) and an optional bundled UI face. Nothing else: no radius, no spacing, no raw CSS, no remote
-// font. The token list below is CLOSED, and the parser refuses any key it does not name, so a file
-// can never smuggle a property into the page.
+// dark), an optional bundled UI face, and from version 2 an optional `surface` block of shape words
+// (`surface.ts`). Nothing else: no free radius or spacing value, no raw CSS, no remote font. The
+// token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
+// so a file can never smuggle a property into the page.
+//
+// VERSIONS. The parser reads 1 and 2 and always hands back a version 2 theme, so an export writes 2.
+// A version 1 file has no surface block, which means the default word for every shape token. A
+// `surface` block in a file that says version 1 is refused: the file is older than the block.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
 // about the first problem and hiding the next nine makes them fix a file nine more times. So
@@ -17,9 +22,15 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "../json";
 import { SHIPPED_FONTS } from "../shipped-fonts";
+import { SURFACE_TOKENS, isSurfaceToken, surfaceWordOf, surfaceWords, type Surface, type SurfaceToken } from "./surface";
 
-/** The schema version this build reads. A file with any other `version` is refused. */
-export const THEME_VERSION = 1;
+/** The schema version this build writes. Every parsed theme carries it, so an export says 2. */
+export const THEME_VERSION = 2;
+
+/** The schema versions this build reads. A file with any other `version` is refused. */
+export const THEME_VERSIONS_READ = [1, 2] as const;
+
+export type ThemeVersion = (typeof THEME_VERSIONS_READ)[number];
 
 /**
  * The closed token list, in the order `index.css` declares them. Each name is a CSS custom
@@ -89,13 +100,16 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
 export interface Half extends Partial<Record<ThemeToken, string>> {}
 
 export interface Theme {
-  version: 1;
+  /** What the parser hands back is always `THEME_VERSION`; a literal in a test may still say 1. */
+  version: ThemeVersion;
   id: string;
   name: string;
   author?: string;
   light?: Half;
   dark?: Half;
   fonts?: { ui: string };
+  /** Version 2: the shape words the file names. Absent, or a token left out, is the default word. */
+  surface?: Surface;
 }
 
 export type RefusalCode =
@@ -109,7 +123,8 @@ export type RefusalCode =
   | "value"
   | "font"
   | "no-half"
-  | "reserved-id";
+  | "reserved-id"
+  | "surface";
 
 /**
  * Why a file was refused. `path` is where (`$` for the whole file, `dark.status-blocked`,
@@ -136,7 +151,7 @@ export interface ParseThemeOptions {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const NAME_MAX = 40;
 const AUTHOR_MAX = 60;
-const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts"] as const;
+const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface"] as const;
 const HALVES = ["light", "dark"] as const;
 
 export function isThemeToken(value: string): value is ThemeToken {
@@ -186,17 +201,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
     if (!isTopKey(key)) refusals.push(unknownKey(key));
   }
 
-  const version = asJsonNumber(doc.version);
-  if (version !== THEME_VERSION) {
-    refusals.push({
-      code: "version",
-      path: "version",
-      detail:
-        doc.version === undefined
-          ? `The file has no version. This Collie reads version ${THEME_VERSION}.`
-          : `The file is version ${JSON.stringify(doc.version)}. This Collie reads version ${THEME_VERSION}.`,
-    });
-  }
+  const version = readVersion(doc, refusals);
 
   const id = readId(doc, opts, refusals);
   const name = readName(doc, refusals);
@@ -204,6 +209,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const light = readHalf(doc, "light", refusals);
   const dark = readHalf(doc, "dark", refusals);
   const fonts = readFonts(doc, refusals);
+  const surface = readSurface(doc, version, refusals);
 
   if (countTokens(light) + countTokens(dark) === 0 && !hasHalfRefusal(refusals)) {
     refusals.push({
@@ -222,6 +228,7 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   if (countTokens(light) > 0) theme.light = light;
   if (countTokens(dark) > 0) theme.dark = dark;
   if (fonts !== undefined) theme.fonts = fonts;
+  if (surface !== undefined) theme.surface = surface;
   return { ok: true, theme };
 }
 
@@ -259,6 +266,86 @@ function unknownKey(path: string): Refusal {
     path,
     detail: `"${path}" is not part of a theme file. Remove it.`,
   };
+}
+
+const READ_TEXT = THEME_VERSIONS_READ.join(" and ");
+
+function readVersion(doc: JsonObject, refusals: Refusal[]): ThemeVersion | undefined {
+  const value = asJsonNumber(doc.version);
+  const version = THEME_VERSIONS_READ.find((v) => v === value);
+  if (version !== undefined) return version;
+  refusals.push({
+    code: "version",
+    path: "version",
+    detail:
+      doc.version === undefined
+        ? `The file has no version. This Collie reads version ${READ_TEXT}.`
+        : `The file is version ${JSON.stringify(doc.version)}. This Collie reads version ${READ_TEXT}.`,
+  });
+  return undefined;
+}
+
+/**
+ * The `surface` block: one closed word per shape token. An unknown token is an unknown key, a word
+ * outside the token's list (a number included) names the token and its words, and a block in a
+ * version 1 file is refused, because version 1 has no such block. An empty block carries no key.
+ */
+function readSurface(doc: JsonObject, version: ThemeVersion | undefined, refusals: Refusal[]): Surface | undefined {
+  if (doc.surface === undefined) return undefined;
+  if (version === 1) {
+    refusals.push({
+      code: "version",
+      path: "version",
+      detail: `A file with a "surface" block must say version ${THEME_VERSION}. This one says version 1.`,
+    });
+  }
+  const block = asJsonObject(doc.surface);
+  if (block === undefined) {
+    refusals.push({
+      code: "surface",
+      path: "surface",
+      detail: `"surface" must be an object with a word for any of: ${SURFACE_TOKENS.join(", ")}.`,
+    });
+    return undefined;
+  }
+  const surface: Surface = {};
+  for (const key of Object.keys(block)) {
+    const path = `surface.${key}`;
+    if (!isSurfaceToken(key)) {
+      refusals.push(unknownKey(path));
+      continue;
+    }
+    // A number, a list or an object is no word: `asJsonString` gives `undefined` and the token is refused.
+    if (!setSurfaceWord(surface, key, asJsonString(block[key]))) {
+      refusals.push({
+        code: "surface",
+        path,
+        detail: `"${path}" must be one of: ${surfaceWords(key).join(", ")}.`,
+      });
+    }
+  }
+  return Object.keys(surface).length === 0 ? undefined : surface;
+}
+
+/** Put `value` into `surface` as the word of `token` when it is one. False when it is not. */
+function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | undefined): boolean {
+  switch (token) {
+    case "radius":
+      surface.radius = surfaceWordOf("radius", value);
+      return surface.radius !== undefined;
+    case "shadow":
+      surface.shadow = surfaceWordOf("shadow", value);
+      return surface.shadow !== undefined;
+    case "density":
+      surface.density = surfaceWordOf("density", value);
+      return surface.density !== undefined;
+    case "weight":
+      surface.weight = surfaceWordOf("weight", value);
+      return surface.weight !== undefined;
+    case "border":
+      surface.border = surfaceWordOf("border", value);
+      return surface.border !== undefined;
+  }
 }
 
 function readId(doc: JsonObject, opts: ParseThemeOptions, refusals: Refusal[]): string | undefined {

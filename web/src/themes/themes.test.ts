@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
 import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
+import { SURFACE_DEFAULTS, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -250,5 +251,103 @@ describe("themes.css", () => {
   it("refuses to build without the collie theme", () => {
     const result = buildThemesCss([]);
     expect(result.ok ? [] : result.errors).toEqual(["collie.json: missing or refused; every other theme is filled from it"]);
+  });
+});
+
+// ── The shape tokens, schema version 2 (M57 spec 14) ─────────────────────────────────────────────
+//
+// Every default word must be what the app drew before version 2, or the Collie theme changes the day
+// the table lands. Today's values live in two places: index.css, and Tailwind's own theme.css for
+// what index.css never set. Both are read from disk here.
+
+const tailwindTheme = readFileSync(resolve(web, "node_modules/tailwindcss/theme.css"), "utf8");
+
+/** The declarations of one `@theme` block of index.css (`@theme {` or `@theme inline {`), comments cut. */
+function themeBlock(opener: string): Map<string, string> {
+  const start = css.indexOf(`\n${opener}\n`);
+  expect(start, opener).toBeGreaterThan(-1);
+  const end = css.indexOf("\n}\n", start);
+  return declarations(css.slice(start, end));
+}
+
+function declarations(text: string): Map<string, string> {
+  const body = text.replaceAll(/\/\*[\s\S]*?\*\//g, "");
+  return new Map([...body.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1] ?? "", flat(m[2] ?? "")]));
+}
+
+/** index.css's `:root` token block. */
+function rootDeclarations(): Map<string, string> {
+  const start = css.indexOf("\n:root {\n");
+  return declarations(css.slice(start, css.indexOf("\n}\n", start)));
+}
+
+/** Tailwind's value for a theme variable, from its shipped theme.css. */
+function tailwind(property: string): string | undefined {
+  return declarations(tailwindTheme).get(property);
+}
+
+describe("every default shape word is today's CSS", () => {
+  const root = rootDeclarations();
+  const theme = themeBlock("@theme {");
+  const inline = themeBlock("@theme inline {");
+
+  it("radius: sharp is the four 2px steps, now in @theme and no longer in @theme inline", () => {
+    for (const [property, value] of wordDeclarations("radius", SURFACE_DEFAULTS.radius)) {
+      expect(theme.get(property), property).toBe(value);
+      expect(value).toBe("2px");
+      expect(inline.has(property), property).toBe(false);
+    }
+    // The base radius stays where it was, and bare `rounded` and `rounded-full` are not steps.
+    expect(root.get("--radius")).toBe("2px");
+  });
+
+  it("shadow: default is Tailwind's own value for every step the app uses", () => {
+    for (const [property, value] of wordDeclarations("shadow", SURFACE_DEFAULTS.shadow)) {
+      const step = property.replace("--surface-shadow", "--shadow");
+      expect(root.get(property), property).toBe(value);
+      expect(tailwind(step), step).toBe(value);
+      expect(inline.get(step), step).toBe(`var(${property})`);
+    }
+  });
+
+  it("density: default is Tailwind's spacing step, which index.css does not set on :root", () => {
+    const [[property, value] = ["", ""]] = wordDeclarations("density", SURFACE_DEFAULTS.density);
+    expect(property).toBe("--spacing");
+    expect(tailwind("--spacing")).toBe(value);
+    expect(root.has("--spacing")).toBe(false);
+    expect(theme.has("--spacing") || inline.has("--spacing")).toBe(false);
+  });
+
+  it("weight: default is Tailwind's medium and semibold", () => {
+    for (const [property, value] of wordDeclarations("weight", SURFACE_DEFAULTS.weight)) {
+      expect(tailwind(property), property).toBe(value);
+      expect(root.has(property) || theme.has(property) || inline.has(property), property).toBe(false);
+    }
+  });
+
+  it("border: default is 1px, the width Tailwind falls back to when no theme sets one", () => {
+    const [[property, value] = ["", ""]] = wordDeclarations("border", SURFACE_DEFAULTS.border);
+    expect(root.get(property)).toBe(value);
+    expect(value).toBe("1px");
+    // Tailwind 4.3.1 declares no --default-border-width and falls back to 1px in the utility.
+    expect(tailwind("--default-border-width")).toBeUndefined();
+    expect(inline.get("--default-border-width")).toBe(`var(${property})`);
+  });
+
+  it("pins icons and the header mark box to the default spacing step", () => {
+    const pin = /svg,\s*\[data-slot="collie-mark"\]\s*\{\s*--spacing:\s*([^;]+);/.exec(css.replaceAll(/\/\*[\s\S]*?\*\//g, ""));
+    expect(pin?.[1]).toBe(wordDeclarations("density", "default")[0]?.[1]);
+  });
+
+  it("writes no shape line for a shipped file without a surface block, and the words for one with", () => {
+    const files = ["collie", "nightwatch"].map((id) => ({ name: `${id}.json`, raw: read(`src/themes/${id}.json`) }));
+    const plain = buildThemesCss(files);
+    expect(plain.ok && plain.css).not.toMatch(/--radius-|--spacing|--surface-|--font-weight-/);
+    const raw = JSON.parse(read("src/themes/nightwatch.json"));
+    const withSurface = buildThemesCss([files[0] ?? { name: "", raw: "" }, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 2, surface: { radius: "soft", density: "roomy" } }) }]);
+    if (!withSurface.ok) throw new Error(withSurface.errors.join("\n"));
+    expect(withSurface.css).toContain("  --radius-md: 6px;\n");
+    expect(withSurface.css).toContain("  --spacing: 0.28rem;\n");
+    expect(withSurface.css).not.toContain("--surface-shadow");
   });
 });

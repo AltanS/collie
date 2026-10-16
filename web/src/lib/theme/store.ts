@@ -8,7 +8,8 @@
 //   * A shipped theme (nightwatch, daylight, harbour) is a generated block in `themes.css`. Applying
 //     it sets `data-theme="<id>"` on <html> and nothing else.
 //   * An imported theme lives in the library (localStorage, validated) and is applied as inline
-//     custom properties on <html>, one per token, each a `light-dark()` pair.
+//     custom properties on <html>, one per token, each a `light-dark()` pair, plus the declarations
+//     of the shape words its `surface` block names (surface.ts), and only those.
 //
 // STORAGE IS NOT TRUSTED, TWICE. A library entry goes through `parseTheme` when it is loaded, and
 // the theme goes through it again inside `applyTheme`, because the only way to be sure that nothing
@@ -41,6 +42,7 @@ import {
   toSrgbHex,
   type Theme,
 } from "./schema";
+import { SURFACE_PROPERTIES, surfaceDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
 export const LIBRARY_STORAGE_KEY = "collie:themes:v1";
@@ -252,7 +254,9 @@ export function initTheme(): void {
  *   * `collie`: no attribute and no inline property.
  *   * shipped: `data-theme="<id>"`, the id taken from `SHIPPED_THEME_IDS` and not from the file.
  *   * imported: no attribute, and one inline custom property per token in `THEME_TOKENS`, each
- *     `light-dark(<light>, <dark>)`, a half the theme leaves out filled from `collie`.
+ *     `light-dark(<light>, <dark>)`, a half the theme leaves out filled from `collie`; then the
+ *     declarations of each shape word the theme names. A shape token it leaves out sets nothing, so
+ *     the stylesheet's default holds.
  *
  * The theme is validated here again, whoever calls and wherever it came from. A theme that does not
  * validate is not applied: the device shows `collie`, and the console says why.
@@ -282,6 +286,8 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   delete root.dataset.theme;
   const filled = fillHalves(checked, defaultTheme());
   for (const token of THEME_TOKENS) root.style.setProperty(`--${token}`, lightDark(filled, token));
+  // The property names and values come from the table in surface.ts; the file only picked the words.
+  for (const [property, value] of surfaceDeclarations(checked.surface)) root.style.setProperty(property, value);
   setMetaColours(metaOf(checked));
 }
 
@@ -295,6 +301,7 @@ function reset(): void {
 
 function clearInline(root: HTMLElement): void {
   for (const token of THEME_TOKENS) root.style.removeProperty(`--${token}`);
+  for (const property of SURFACE_PROPERTIES) root.style.removeProperty(property);
 }
 
 /** The browser-chrome colours of a theme: its two `background` values, filled from `collie`, as sRGB hex. */

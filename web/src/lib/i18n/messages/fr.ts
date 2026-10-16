@@ -69,6 +69,7 @@ export const fr: Dictionary = {
   "theme.refusal.value": "Une valeur de couleur n'est pas valide.",
   "theme.refusal.font": "Le choix de police n'est pas valide.",
   "theme.refusal.no-half": "Le fichier ne définit aucune couleur.",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "Cet identifiant appartient à un thème inclus. Modifiez \"id\" dans le fichier pour importer votre copie.",
   "settings.haptics.title": "Retour haptique",
   "settings.haptics.description": "Une courte vibration lorsque vous appuyez sur une touche ou une réponse rapide.",

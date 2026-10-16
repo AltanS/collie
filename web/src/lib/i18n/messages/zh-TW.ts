@@ -74,6 +74,7 @@ export const zhTW: Dictionary = {
   "theme.refusal.value": "顏色值無效。",
   "theme.refusal.font": "字型選擇無效。",
   "theme.refusal.no-half": "此檔案未設定任何顏色。",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "此識別碼屬於隨附的主題。請變更檔案中的 \"id\" 以匯入您的複本。",
 
   // --- settings.haptics ---

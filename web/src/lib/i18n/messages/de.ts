@@ -74,6 +74,7 @@ export const de: Dictionary = {
   "theme.refusal.value": "Ein Farbwert ist ungültig.",
   "theme.refusal.font": "Die Schriftauswahl ist ungültig.",
   "theme.refusal.no-half": "Die Datei legt keine Farben fest.",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "Diese ID gehört zu einem mitgelieferten Design. Ändern Sie \"id\" in der Datei, um Ihre Kopie zu importieren.",
 
   // --- settings.haptics ---

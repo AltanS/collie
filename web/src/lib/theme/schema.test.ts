@@ -6,6 +6,7 @@ import {
   SHIPPED_THEME_IDS,
   THEME_TOKENS,
   THEME_VERSION,
+  THEME_VERSIONS_READ,
   contrast,
   contrastReport,
   fillHalves,
@@ -17,6 +18,7 @@ import {
   type Refusal,
   type Theme,
 } from "./schema";
+import { SURFACE_DEFAULTS, SURFACE_TOKENS, resolveSurface, surfaceWords } from "./surface";
 
 const CAP = { maxBytes: 64 * 1024 };
 
@@ -38,7 +40,7 @@ describe("the token list", () => {
     expect(new Set(THEME_TOKENS).size).toBe(43);
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
-    expect(THEME_VERSION).toBe(1);
+    expect(THEME_VERSION).toBe(2);
     expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
   });
 });
@@ -94,7 +96,7 @@ describe("parseTheme", () => {
     expect(result).toEqual({
       ok: true,
       theme: {
-        version: 1,
+        version: 2,
         id: "mine",
         name: "Mine",
         author: "Me",
@@ -133,9 +135,10 @@ describe("parseTheme", () => {
   });
 
   it("names an unknown version", () => {
-    const r = refusals(parseTheme(file({ version: 2 }), CAP));
+    const r = refusals(parseTheme(file({ version: 3 }), CAP));
     expect(r.map((x) => x.code)).toEqual(["version"]);
-    expect(r[0]?.detail).toContain("version 2");
+    expect(r[0]?.detail).toContain("version 3");
+    expect(r[0]?.detail).toContain("reads version 1 and 2");
     expect(codes(parseTheme(file({ version: "1" }), CAP))).toEqual(["version version"]);
   });
 
@@ -449,5 +452,108 @@ describe("contrastReport", () => {
     // Black ink over a 15 percent black wash on white: the wash is rgb(217), so the ratio is under 21.
     expect(chip?.ratio).toBeLessThan(contrast("#000000", "#ffffff"));
     expect(chip?.ratio).toBeCloseTo(contrast("#000000", "#d9d9d9"), 1);
+  });
+});
+
+// ── Schema version 2: the surface block (M57 spec 14) ─────────────────────────────────────────
+
+function v2(extra: JsonObject): string {
+  return file({ version: 2, ...extra });
+}
+
+describe("versions", () => {
+  it("reads version 1 and version 2, and hands back version 2", () => {
+    expect(THEME_VERSIONS_READ).toEqual([1, 2]);
+    const one = parseTheme(file({}), CAP);
+    const two = parseTheme(v2({}), CAP);
+    expect(one.ok && one.theme.version).toBe(2);
+    expect(two.ok && two.theme.version).toBe(2);
+  });
+
+  it("gives a version 1 file no surface, which is every default word", () => {
+    const result = parseTheme(file({}), CAP);
+    expect(result.ok && result.theme.surface).toBeUndefined();
+    expect(result.ok && resolveSurface(result.theme.surface)).toEqual(SURFACE_DEFAULTS);
+  });
+
+  it("gives a version 2 file without a surface block every default word", () => {
+    const result = parseTheme(v2({}), CAP);
+    expect(result.ok && Object.keys(result.theme)).toEqual(["version", "id", "name", "light"]);
+    expect(result.ok && resolveSurface(result.theme.surface)).toEqual(SURFACE_DEFAULTS);
+  });
+
+  it("refuses a surface block in a file that says version 1, and keeps nothing", () => {
+    const result = parseTheme(file({ surface: { radius: "soft" } }), CAP);
+    expect(codes(result)).toEqual(["version version"]);
+    expect(refusals(result)[0]?.detail).toContain('"surface"');
+    expect(refusals(result)[0]?.detail).toContain("version 2");
+  });
+});
+
+describe("the surface block", () => {
+  it("keeps the words a file names, and carries no key for the ones it leaves out", () => {
+    const result = parseTheme(v2({ surface: { radius: "round", density: "roomy" } }), CAP);
+    expect(result.ok && result.theme.surface).toEqual({ radius: "round", density: "roomy" });
+    expect(result.ok && Object.keys(result.theme)).toEqual(["version", "id", "name", "light", "surface"]);
+  });
+
+  it("drops an empty block, so an export carries no empty key", () => {
+    const result = parseTheme(v2({ surface: {} }), CAP);
+    expect(result.ok && "surface" in result.theme).toBe(false);
+  });
+
+  it.each(SURFACE_TOKENS.flatMap((token) => surfaceWords(token).map((word) => [token, word] as const)))(
+    "accepts %s: %s",
+    (token, word) => {
+      const result = parseTheme(v2({ surface: { [token]: word } }), CAP);
+      expect(result.ok && result.theme.surface).toEqual({ [token]: word });
+    },
+  );
+
+  it.each(SURFACE_TOKENS)("refuses an unknown word for %s, naming the token and its words", (token) => {
+    const result = parseTheme(v2({ surface: { [token]: "bubbly" } }), CAP);
+    expect(codes(result)).toEqual([`surface surface.${token}`]);
+    const detail = refusals(result)[0]?.detail ?? "";
+    expect(detail).toContain(`"surface.${token}"`);
+    for (const word of surfaceWords(token)) expect(detail).toContain(word);
+  });
+
+  it.each(SURFACE_TOKENS)("refuses a number for %s, naming the token", (token) => {
+    const result = parseTheme(v2({ surface: { [token]: 12 } }), CAP);
+    expect(codes(result)).toEqual([`surface surface.${token}`]);
+    expect(refusals(result)[0]?.detail).toContain(`"surface.${token}"`);
+  });
+
+  it.each([["0.28rem"], ["8px"], [true], [null], [["soft"]], [{ value: "soft" }], ["Soft"], [" soft "]])(
+    "refuses %j as a radius word",
+    (value) => {
+      expect(codes(parseTheme(v2({ surface: { radius: value } }), CAP))).toEqual(["surface surface.radius"]);
+    },
+  );
+
+  it("refuses a word that is another token's word", () => {
+    expect(codes(parseTheme(v2({ surface: { radius: "roomy" } }), CAP))).toEqual(["surface surface.radius"]);
+    expect(codes(parseTheme(v2({ surface: { density: "sharp" } }), CAP))).toEqual(["surface surface.density"]);
+  });
+
+  it("refuses an unknown key inside the block, by its path", () => {
+    const result = parseTheme(v2({ surface: { radius: "soft", type: "large", "--spacing": "1rem" } }), CAP);
+    expect(codes(result)).toEqual(["unknown-key surface.type", "unknown-key surface.--spacing"]);
+  });
+
+  it("refuses a block that is not an object", () => {
+    for (const surface of ["soft", 1, null, ["radius"]]) {
+      expect(codes(parseTheme(v2({ surface }), CAP))).toEqual(["surface surface"]);
+    }
+  });
+
+  it("refuses the whole file for one bad word, so nothing of it is applied", () => {
+    const result = parseTheme(v2({ surface: { radius: "soft", shadow: "huge" }, dark: { background: "#000000" } }), CAP);
+    expect(result.ok).toBe(false);
+  });
+
+  it("does not read a word through the prototype", () => {
+    const raw = '{"version":2,"id":"mine","name":"Mine","light":{"background":"#ffffff"},"surface":{"radius":"constructor","__proto__":{"radius":"soft"}}}';
+    expect(codes(parseTheme(raw, CAP))).toEqual(["surface surface.radius", "unknown-key surface.__proto__"]);
   });
 });

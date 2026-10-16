@@ -69,6 +69,7 @@ export const pt: Dictionary = {
   "theme.refusal.value": "Um valor de cor não é válido.",
   "theme.refusal.font": "A escolha da fonte não é válida.",
   "theme.refusal.no-half": "O arquivo não define cores.",
+  "theme.refusal.surface": "A shape word is not valid.", // TODO wordsmith
   "theme.refusal.reserved-id": "Este ID pertence a um tema incluído. Altere \"id\" no arquivo para importar sua cópia.",
   "settings.haptics.title": "Vibração",
   "settings.haptics.description": "Uma vibração curta ao pressionar uma tecla ou uma resposta rápida.",

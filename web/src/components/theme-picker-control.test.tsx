@@ -93,7 +93,9 @@ describe("ThemePickerControl", () => {
     const { ThemePickerControl } = await load();
     render(<ThemePickerControl />);
     expect(
-      screen.getByText("A theme changes colours and the typeface only. It cannot run code, load files or reach a server."),
+      screen.getByText(
+        "A theme changes colours, the typeface and the shape of controls only. It cannot run code, load files or reach a server.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -120,7 +122,7 @@ describe("ThemePickerControl", () => {
     it("lists every refusal of a refused file, names the key, and offers only Close", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
-      const bad = JSON.stringify({ version: 2, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
+      const bad = JSON.stringify({ version: 3, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
       pick(container, fileOf(bad));
       const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
       expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);
@@ -256,6 +258,33 @@ describe("ThemePickerControl", () => {
       const click = vi.spyOn(input, "click").mockImplementation(() => {});
       await userEvent.click(screen.getByRole("button", { name: "Import" }));
       expect(click).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("the shape of a file (schema version 2)", () => {
+    function surfaceFile(surface: Record<string, string>): string {
+      return JSON.stringify({ ...copy("shaped", "Shaped"), version: 2, surface });
+    }
+
+    it("refuses a file with an unknown shape word, names the token, and applies nothing", async () => {
+      const { ThemePickerControl, store } = await load();
+      const { container } = render(<ThemePickerControl />);
+      pick(container, fileOf(surfaceFile({ radius: "pill" })));
+      const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
+      expect(dialog).toHaveTextContent("A shape word is not valid.");
+      expect(dialog).toHaveTextContent("surface.radius");
+      expect(within(dialog).queryByRole("button", { name: "Apply" })).toBeNull();
+      expect(store.library()).toHaveLength(0);
+      expect(document.documentElement.getAttribute("style") ?? "").toBe("");
+    });
+
+    it("exports version 2, also for a theme that was imported as version 1", async () => {
+      const { themeFileText } = await load();
+      const parsed = parseTheme(JSON.stringify(copy("old", "Old")), { maxBytes: 64 * 1024 });
+      if (!parsed.ok) throw new Error("the copy no longer parses");
+      expect(JSON.parse(themeFileText(parsed.theme)).version).toBe(2);
+      expect(JSON.parse(themeFileText({ ...parsed.theme, version: 1 })).version).toBe(2);
+      expect(Object.keys(JSON.parse(themeFileText(parsed.theme)))[0]).toBe("version");
     });
   });
 
