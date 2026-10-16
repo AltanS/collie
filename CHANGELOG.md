@@ -92,6 +92,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **A release tag stops when an installed agent is newer than its verified version.** `scripts/check-tag.sh` runs `harness-drift.ts --strict` before it prints the tag command. `--accept-drift claude=2.1.301` names a drift on purpose, the version must be the installed one, and the tag message and the release page then say "claude, 2.1.301, not verified". The gate is a reminder: it sees only the agents installed on the machine. Carries M44 spec 08 (M56 spec 10).
 - **The eleven languages carry every 1.22.0 string.** The Programs section, the ask receipts, the Theme card, the typeface notes and the composer's Send Protocol sentences are translated; the Appearance card has its own word.
 - **The ask card and the program composer speak the eleven languages.** The caption, the stale and late notes, the retry and the stop sentences had stayed English in every locale.
 - **A program refused for its wire version says "Version mismatch" on its row.** The sentence on its home names who acts: update Collie, or the program's SDK.

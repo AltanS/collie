@@ -34,7 +34,7 @@
 #
 # THE SOFT RELEASE GATE (M44 spec 08, carried by M56 spec 10). When a release is about to be tagged,
 # this script also asks `scripts/harness-drift.ts --strict` whether an installed agent is NEWER than its
-# verified version. A drift stops it, names the agent, and prints no tag command. To tag anyway, name
+# verified version (the rows of web/src/lib/harness/verified-versions.json). A drift stops it, names the agent, and prints no tag command. To tag anyway, name
 # the drift on purpose: `check-tag.sh --accept-drift claude=2.1.301` (or ACCEPT_DRIFT=claude=2.1.301 for
 # the pre-push hook). The version must be the installed one. The tag command it then prints carries a
 # `Not verified: claude 2.1.301` line in the tag message, and release.yml puts that line in the release
