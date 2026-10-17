@@ -72,6 +72,8 @@ import {
   type WorktreeReceipt,
   type WorktreeReceiptSurface,
 } from "./worktree-receipts.ts";
+import { claudeConfigDir, discoverClaudeCommands } from "./claude-commands.ts";
+import { canonicalAgent } from "../web/src/lib/operator-scope.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
@@ -528,6 +530,14 @@ const WORKSPACE_FILES_EXIST_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/exist$/;
  */
 const PANE_FILES_IMAGE_ROUTE = /^\/api\/pane\/([^/]+)\/files\/image$/;
 const WORKSPACE_FILES_IMAGE_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/image$/;
+
+/**
+ * `GET /api/pane/<id>/claude-commands`: the slash commands Claude Code would load in that pane's cwd,
+ * read off this machine's disk. The pane id is only looked up in the snapshot; the cwd the read
+ * starts from is the one the multiplexer reported, never the request's. Not in `FORWARDABLE`: a pane
+ * on a crew member answers the lead's 501, and the phone keeps the palette it already had.
+ */
+const PANE_CLAUDE_COMMANDS_ROUTE = /^\/api\/pane\/([^/]+)\/claude-commands$/;
 
 /**
  * `GET /api/machines/<id>/history` and `POST /api/machines/<id>/alerts` (ADR 0084). The id is a
@@ -1861,6 +1871,32 @@ export function startServer(opts: {
       }
       const subject = paneImageMatch ? ({ kind: "pane", paneId: id } as const) : ({ kind: "workspace", workspaceId: id } as const);
       return filesImage(rt.engine, subject, url, filesPrivateFolders(cfg), homedir());
+    }
+
+    const claudeCommandsMatch = pathname.match(PANE_CLAUDE_COMMANDS_ROUTE);
+    if (claudeCommandsMatch) {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      if (req.method !== "GET") return text("method not allowed", 405);
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      let paneId: string;
+      try {
+        paneId = decodeURIComponent(claudeCommandsMatch[1]!);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      const pane = rt.engine.current().agents.find((p) => p.paneId === paneId);
+      if (pane === undefined || canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude") {
+        return json({ commands: [] }, req.headers.get("accept-encoding"));
+      }
+      const home = homedir();
+      const commands = await discoverClaudeCommands({
+        home,
+        cwd: pane.cwd === "" ? null : pane.cwd,
+        configDir: claudeConfigDir(cfg.journalRoots.claude, home),
+      });
+      return json({ commands }, req.headers.get("accept-encoding"));
     }
 
     // ── Worktrees: a branch from a folder (ADR 0093) ──
