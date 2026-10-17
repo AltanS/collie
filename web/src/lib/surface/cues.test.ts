@@ -358,3 +358,46 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     expect(under([" ❯ 1. Yes", "   2. No"])).toBeNull();
   });
 });
+
+describe("a list that leaves the lead off, under the box only, over the harness's own footer (pi and omp profiles, 1.22.5)", () => {
+  const PI = requireProfile("pi").idle;
+  const LIST = PI.volatile.below.commandList;
+  const texts = (rows: ReturnType<typeof plainRows>): string[] => rows.map(rowText);
+  const FOOTER = ["~/project (main)", "0.0%/200k (auto)                                   model • off"];
+  /** pi's box between two rules holding `box`, the rows `under` it, then pi's folder and stats rows. */
+  const screen = (box: string, under: string[], footer = FOOTER, above: string[] = []) => plainRows(["an earlier answer", ...above, RULE, box, RULE, ...under, ...footer]);
+  const read = (rows: ReturnType<typeof plainRows>) => {
+    const frame = findInputFrame(rows, PI);
+    return { frame, list: frame === null ? null : commandListAt(texts(rows), frame, LIST), own: ownCommandList(texts(rows), frame, PI) !== null };
+  };
+  const MODEL = ["→ model          <provider/model> — Select model", "  scoped-models  Enable/disable models for Ctrl+P cycling"];
+
+  it("the pointer on `model` under a box that holds /model is its own typeahead: the lead goes in front", () => {
+    expect(read(screen("/model", MODEL))).toMatchObject({ list: { pointed: "/model", side: "under", first: 4, last: 5 }, own: true });
+    // The same list under /mod or /models is no typeahead of the box's text. Its unpainted rows are
+    // no footer either, so the plain rows here find no box at all; the painted capture does (fold.test.ts).
+    expect(read(screen("/mod", MODEL))).toMatchObject({ frame: null, own: false });
+    expect(read(screen("/models", MODEL))).toMatchObject({ frame: null, own: false });
+  });
+
+  it("a list taller than the footer bound still finds the box, and only when the list is its own", () => {
+    const tall = [...MODEL, "  modelpreset    Presets", "  switch         Switch", "  (1/9)"];
+    expect(read(screen("/model", tall))).toMatchObject({ frame: { interior: { text: "/model" } }, own: true });
+    // The same list pointed at another command: the row under the box is no footer, so no box.
+    expect(read(screen("/mod", tall)).frame).toBeNull();
+  });
+
+  it("the footer ends the list: one run to the screen's end, at most four rows, no blank row in it", () => {
+    expect(read(screen("/model", MODEL, ["↑0 ↓0 $0.000 from an extension"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five"])).own).toBe(false);
+    expect(read(screen("/model", MODEL, [FOOTER[0]!, "", FOOTER[1]!])).own).toBe(false);
+    // A row that is neither list nor footer between them: no list.
+    expect(read(screen("/model", [...MODEL, " Do you want to proceed?"])).own).toBe(false);
+  });
+
+  it("a list over the box is never read on a profile that names only the side under it", () => {
+    const rows = screen("/model", [], FOOTER, ["→ model          <provider/model> — Select model"]);
+    expect(read(rows)).toMatchObject({ list: null, own: false });
+  });
+});

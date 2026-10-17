@@ -14,6 +14,7 @@
 // from nothing but the rows.
 
 import { displayWidth } from "../text-width";
+import { listedBottom, ownListUnder } from "./command-list";
 import type { FrameAnchor, Profile } from "./profile";
 
 /** The profile block this module reads. */
@@ -503,11 +504,17 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   if (bottomText === undefined) return null;
   const open = c.bottom.open;
   if (!open && anchored(bottomText, c.bottom) === null) return null;
+  // Set when the row under the box is not the harness's own: the box then stands only over the typed
+  // command's own list (`idle.volatile.below.commandList`), checked once the box's text is read.
+  let listed = false;
   if (c.interior.under !== null && !open) {
     // The row the harness always draws under its box: the first row there that is not blank. Where
     // the profile says so (`underPainted`), an extension's own status line passes too (paintedFooter).
     const at = texts.findIndex((text, i) => i > bottom && !isBlank(text));
-    if (at >= 0 && !c.interior.under.test(texts[at]!.trimEnd()) && !(c.interior.underPainted && paintedFooter(rows, texts, bottom, idle))) return null;
+    if (at >= 0 && !c.interior.under.test(texts[at]!.trimEnd()) && !(c.interior.underPainted && paintedFooter(rows, texts, bottom, idle))) {
+      if (idle.volatile.below.commandList === undefined) return null;
+      listed = true;
+    }
   }
   const budget = idle.frame.maxDraftRows;
 
@@ -565,6 +572,8 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     if (piece.length > 0) parts.push(piece);
   }
   const text = parts.join(" ").trim();
+  // A list pushed the harness's own row down: only the typed command's own list may stand there.
+  if (listed && ownListUnder(texts, bottom, text, idle.volatile.below.commandList) === null) return null;
 
   const label = topMatch.groups?.label?.trim() ?? "";
   const anchorsHit: FrameAnchorHit[] = ["top"];
@@ -669,9 +678,31 @@ function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null 
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;
   // An open box has no bottom edge: its last row is the last row of the screen, or a row at most
   // `maxTailRows` above it when rows the box never draws stand under it (an extension's widget, #468).
-  if (c.bottom.open) return openFrame(rows, end, idle);
+  if (c.bottom.open) return openFrame(rows, end, idle) ?? listedLayout(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
     if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
   }
-  return null;
+  return listedLayout(rows, end, idle);
+}
+
+/** How far up from the screen's end a box past its own command list is looked for: a list and its footer are never taller. */
+const LISTED_REACH = 64;
+
+/**
+ * The box over the typed command's own list (`idle.volatile.below.commandList`), when the search at the
+ * screen's end found none: a list taller than `maxTailRows` pushes the box's bottom edge, or an open
+ * box's last row, out of that search's reach. The row right over the list is tried as that edge, and
+ * the box found there is kept only when the list's pointer rests on exactly the box's text. A list that
+ * points at another command, or at none, finds no box here.
+ */
+function listedLayout(rows: readonly FrameRow[], end: number, idle: IdleProfile): Frame | null {
+  const list = idle.volatile.below.commandList;
+  if (list === undefined) return null;
+  const texts = rows.map(rowText);
+  const bottom = listedBottom(texts, end, LISTED_REACH, list);
+  if (bottom === null) return null;
+  const c = compile(idle);
+  const frame = c.bottom.open ? interiorFrameAt(rows, bottom, idle) : anchored(texts[bottom]!, c.bottom) === null ? null : frameAt(rows, bottom, idle);
+  if (frame === null || frame.placeholder) return null;
+  return ownListUnder(texts, bottom, frame.interior.text, list) === null ? null : frame;
 }

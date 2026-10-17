@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Model and other slash commands go out in one tap on pi and omp.** Both draw their own list of matching commands under the input box while you type `/model`. Collie read that list as a dialog, so the phone's Model shortcut left the command typed in the box, and a second tap on Submit did not help. Now a list that points at the typed command counts as that command's own typeahead, on pi 0.87.1 and 1.3.0 and on omp 18.6.1. A list that points at another command, the model picker itself, and the settings screen still stop the send.
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with a footer from an extension refuses every send from the phone, and a Claude picker can need three taps.

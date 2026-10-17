@@ -137,6 +137,22 @@ const LIFTED = new Set([
 // are NOT "neutral output" in the plain sense: many of them are live modals with the keyboard, and
 // the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
 // about a screen where being wrong would type a keystroke. One reason per line.
+const ALL_V18_6 = [
+  "omp--v18-6-model-selector-empty--w120.txt",
+  "omp--v18-6-settings-screen--w120.txt",
+  "omp--v18-6-slash-mod-partial--w120.txt",
+  "omp--v18-6-slash-model-list--w120.txt",
+  "omp--v18-6-slash-model-list--w80.txt",
+  "omp--v18-6-slash-settings-list--w120.txt",
+  "omp--v18-6-slash-settings-list--w80.txt",
+];
+// The three omp 18.6.1 palettes taller than the bridge's tail window: a composer, no region bound.
+const TALL_PALETTE_V18_6 = [
+  "omp--v18-6-slash-mod-partial--w120.txt",
+  "omp--v18-6-slash-model-list--w120.txt",
+  "omp--v18-6-slash-model-list--w80.txt",
+];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -230,6 +246,9 @@ const DECLINED = new Set([
   //   two glyphs. On a 74-column pane omp clips the footer, so the way out is not on screen at all and
   //   even the Escape card stays off (omp/modal.test.ts).
   ...DECLINED_SWITCH,
+  // omp 18.6.1 (lab, 2026-10-17): the slash palette under the box for `/model`, `/settings` and `/mod`,
+  // a composer, and the Models picker and settings screen those commands open, two modals. Nothing to lift.
+  ...ALL_V18_6,
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -250,7 +269,8 @@ describeAdapterConformance(ompAdapter, {
   // the tail than `verifyExpectedPrompt` accepts and 409 every destructive sweep with "The input box
   // changed while clearing it" (pi-shape.ts `piComposerPrompt`). Null means an unbound write, exactly
   // as the boxed shape answers for the same palette sitting under its own composer (chrome.ts).
-  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt"],
+  // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
+  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6],
 });
 
 // The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
@@ -362,6 +382,13 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-wrapped.txt",
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
+    "omp--v18-6-model-selector-empty--w120.txt",
+    "omp--v18-6-settings-screen--w120.txt",
+    "omp--v18-6-slash-mod-partial--w120.txt",
+    "omp--v18-6-slash-model-list--w120.txt",
+    "omp--v18-6-slash-model-list--w80.txt",
+    "omp--v18-6-slash-settings-list--w120.txt",
+    "omp--v18-6-slash-settings-list--w80.txt",
     "omp--v18-8-ask-single-described-moved.txt",
     "omp--v18-8-ask-single-described.txt",
     "omp--v18-8-slash-palette-w48.txt",
@@ -486,6 +513,12 @@ const COMPOSER_FIXTURES = [
   // reason a `/…` send can complete at all on this shape (pi-shape.ts).
   "omp--v18-8-slash-palette.txt",
   "omp--v18-8-slash-palette-w48.txt",
+  // omp 18.6.1's open box with the slash palette under it (lab, 2026-10-17).
+  "omp--v18-6-slash-mod-partial--w120.txt",
+  "omp--v18-6-slash-model-list--w120.txt",
+  "omp--v18-6-slash-model-list--w80.txt",
+  "omp--v18-6-slash-settings-list--w120.txt",
+  "omp--v18-6-slash-settings-list--w80.txt",
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

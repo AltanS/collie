@@ -308,6 +308,9 @@ const CARD_FIXTURES = {
       "omp--v18-4-ask-multi.txt",
       "omp--v18-4-menu-model.txt",
       "omp--v18-4-menu-settings.txt",
+      // omp 18.6.1's Models picker and settings screen (lab, 2026-10-17).
+      "omp--v18-6-model-selector-empty--w120.txt",
+      "omp--v18-6-settings-screen--w120.txt",
       "omp--v18-4-resume-nomatch.txt",
       "omp--v18-4-switch-nerd.txt",
       "omp--v18-4-switch-nomatch.txt",

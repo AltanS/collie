@@ -111,6 +111,10 @@ const RAW_MODALS = new Set([
   // pi 1.2.0's /settings and /scoped-models, told by their hint rows (listDialogHint, footer.ts).
   "pi--v120-settings-padded2.txt",
   "pi--v120-scoped-models-padded2.txt",
+  // The model selector `/model` opens on pi 0.87.1 and 1.3.0, and 1.3.0's settings screen (lab, 2026-10-17).
+  "pi--v0871-model-selector-empty--w120.txt",
+  "pi--v130-model-selector-empty--w120.txt",
+  "pi--v130-settings-screen--w120.txt",
   ...["v0871", "v110"].flatMap((v) => [
     `pi--${v}-question-other-focused.txt`,
     `pi--${v}-question-answer-editor.txt`,

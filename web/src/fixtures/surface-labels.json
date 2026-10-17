@@ -2814,7 +2814,7 @@
   "omp--slash-palette--filtered.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--slash-palette.txt": {
    "harness": "omp",
@@ -3179,12 +3179,12 @@
   "omp--v18-8-slash-palette-w48.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-8-slash-palette.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-pi-effort-hint.txt": {
    "harness": "omp",
@@ -3210,6 +3210,41 @@
    "harness": "omp",
    "version": "unversioned",
    "state": "draft"
+  },
+  "omp--v18-6-slash-model-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-model-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-mod-partial--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-model-selector-empty--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-settings-screen--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
   },
   "omp--working.txt": {
    "harness": "omp",
@@ -3531,6 +3566,31 @@
    "version": "0.87.1",
    "state": "dialog"
   },
+  "pi--v0871-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-model-selector-empty--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
   "pi--v110-core-selector.txt": {
    "harness": "pi",
    "version": "1.1.0",
@@ -3835,6 +3895,41 @@
    "harness": "pi",
    "version": "1.3.0",
    "state": "idle"
+  },
+  "pi--v130-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-mod-partial--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-model-selector-empty--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-settings-screen--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
   },
   "shell--box-table-vs16-emoji.txt": {
    "harness": "shell",

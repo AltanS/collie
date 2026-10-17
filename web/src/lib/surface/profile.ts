@@ -106,7 +106,7 @@ export interface OtherScreenRow {
 
 /**
  * The harness's own completion list for a slash command (`idle.volatile.below.commandList`), drawn
- * in the rows under the box while the box holds the command: one entry per row, the command in the
+ * in the rows at the box while the box holds the command: one entry per row, the command in the
  * left column and its description in a second column, a long description wrapped onto rows indented
  * to that column. A pointer marks the entry Enter picks. Each source is matched on a row with its
  * trailing space cut; `pointer` and `entry` hold the command in the named group `command`.
@@ -116,8 +116,34 @@ export interface CommandListRows {
   readonly pointer: string;
   /** Any other entry: the command, and maybe its description. */
   readonly entry: string;
-  /** A row of a wrapped description, under the entry it belongs to. */
+  /** A row of the list that is no entry, under an entry: a wrapped description, or a count row ("(1/24)"). */
   readonly wrapped: string;
+  /**
+   * The lead the list leaves off its commands: a list that shows `model` for `/model` names `/` here,
+   * and the pointed command reads as the lead and the name. Optional: with none, the group `command`
+   * is the command as typed.
+   */
+  readonly lead?: string;
+  /** The sides of the box the harness draws the list on. Optional: both, under first. */
+  readonly sides?: readonly CommandListSide[];
+  /**
+   * The harness's own rows that stay on screen under a list drawn under the box (a folder row and a
+   * stats row): the first row after the list matches `pattern`, and from it to the screen's last row
+   * the rows are one run with no blank row, at most `maxRows` tall. Optional: with none, the list runs
+   * to the screen's last row.
+   */
+  readonly footer?: CommandListFooter;
+}
+
+/** A side of the box a command list stands on. */
+export type CommandListSide = "under" | "above";
+
+/** The rows that stay under a command list drawn under the box ({@link CommandListRows.footer}). */
+export interface CommandListFooter {
+  /** A regular expression source for the footer's first row, matched with its trailing space cut. */
+  readonly pattern: string;
+  /** The footer's most rows. */
+  readonly maxRows: number;
 }
 
 /**
@@ -254,10 +280,12 @@ export interface Profile {
          */
         readonly otherScreens?: readonly OtherScreenRow[];
         /**
-         * The harness's completion list for a slash command ({@link CommandListRows}). Under a box that
+         * The harness's completion list for a slash command ({@link CommandListRows}). At a box that
          * holds a command, a list whose pointer rests on that same command is the command's own
          * typeahead, not a dialog: Enter there picks the typed command. A list that points at another
-         * command, or at none, reads as before. Never Escape. Optional.
+         * command, or at none, reads as before. Where the list hides the rows the frame walk checks
+         * under the box (a footer row, an open box's tail), a box is still found past the list, but
+         * only when the list is its own. Never Escape. Optional.
          */
         readonly commandList?: CommandListRows;
       };
@@ -582,7 +610,11 @@ function otherScreens(value: JsonValue | undefined): OtherScreenRow[] {
   });
 }
 
-/** `idle.volatile.below.commandList`: three patterns that cannot match a blank row; the pointer and the entry hold the group `command`. */
+/**
+ * `idle.volatile.below.commandList`: three patterns that cannot match a blank row, the pointer and the
+ * entry holding the group `command`; a lead with no space in it, the sides as unique words, and a footer
+ * whose pattern cannot match a blank row, only when the profile names them.
+ */
 function commandList(value: JsonValue | undefined): CommandListRows {
   const path = "idle.volatile.below.commandList";
   const node = object(value, path);
@@ -593,7 +625,33 @@ function commandList(value: JsonValue | undefined): CommandListRows {
     if (key !== "wrapped" && !compiled.source.includes("(?<command>")) fail(at, "must hold the named group command");
     return compiled.source;
   };
-  return { pointer: one("pointer"), entry: one("entry"), wrapped: one("wrapped") };
+  const base: CommandListRows = { pointer: one("pointer"), entry: one("entry"), wrapped: one("wrapped") };
+  const withLead = node.lead === undefined ? base : { ...base, lead: commandListLead(node.lead, `${path}.lead`) };
+  const withSides = node.sides === undefined ? withLead : { ...withLead, sides: commandListSides(node.sides, `${path}.sides`) };
+  return node.footer === undefined ? withSides : { ...withSides, footer: commandListFooter(node.footer, `${path}.footer`) };
+}
+
+function commandListLead(value: JsonValue, path: string): string {
+  const lead = text(value, path);
+  if (/\s/u.test(lead)) fail(path, "must hold no space");
+  return lead;
+}
+
+function commandListSides(value: JsonValue, path: string): CommandListSide[] {
+  const sides = textList(value, path, 1);
+  const known: ReadonlySet<string> = new Set(["under", "above"]);
+  sides.forEach((side, i) => {
+    if (!known.has(side)) fail(`${path}[${String(i)}]`, 'must be "under" or "above"');
+    if (sides.indexOf(side) !== i) fail(`${path}[${String(i)}]`, "is named twice");
+  });
+  return sides.filter((side): side is CommandListSide => side === "under" || side === "above");
+}
+
+function commandListFooter(value: JsonValue, path: string): CommandListFooter {
+  const node = object(value, path);
+  const compiled = pattern(field(node, "pattern", path), `${path}.pattern`);
+  if (compiled.test("")) fail(`${path}.pattern`, "must not match a blank row");
+  return { pattern: compiled.source, maxRows: whole(field(node, "maxRows", path), `${path}.maxRows`, 1) };
 }
 
 /** `idle.volatile.below`: its row counts, and the hint rows, named footer rows, other screens' rows and command list only when the profile names them. */

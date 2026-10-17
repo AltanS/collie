@@ -4716,3 +4716,129 @@ describe("a slash command over Claude Code's command list under the box (field c
     neverEscape(pane);
   });
 });
+
+describe("a slash command over pi's and omp's own command list (field case, 2026-10-17, 1.22.5)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+  const capture = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+  const PI130 = { list: "pi--v130-slash-model-list--w120.txt", opened: "pi--v130-model-selector-empty--w120.txt", version: "1.3.0" };
+  const PI087 = { list: "pi--v0871-slash-model-list--w120.txt", opened: "pi--v0871-model-selector-empty--w120.txt", version: "0.87.1" };
+  const OMP = { list: "omp--v18-6-slash-model-list--w120.txt", opened: "omp--v18-6-model-selector-empty--w120.txt", version: "18.6.1" };
+  const OPENED = "Something opened at the box after the text was typed, so Enter was not pressed.";
+
+  /**
+   * A capture of the typed command's list, split at the box (lab, 2026-10-17): the screen with the fake
+   * box drawn into the box row, the list under it only while the box holds a slash command, and pi's
+   * footer rows under that. Once Enter took the command the screen is `opened`, the capture of the
+   * screen the command opens. `list` rewrites the list rows, read as plain text.
+   */
+  const captured = (pane: FakePane, name: string, opened: string, options: { list?: (rows: string[]) => string[] } = {}): void => {
+    const rows = capture(name);
+    const open = rows.findIndex((row) => plain(row).startsWith("╰─ "));
+    const boxRow = open >= 0 ? open : rows.findIndex((row, i) => i > 0 && /^─{20,}$/u.test(plain(rows[i - 1]!).trimEnd()) && plain(row).startsWith("/"));
+    expect(boxRow).toBeGreaterThan(0);
+    const listFrom = open >= 0 ? boxRow + 1 : boxRow + 2;
+    let footer = listFrom;
+    while (footer < rows.length && !/^[^\s→❯]/u.test(plain(rows[footer]!))) footer++;
+    const list = rows.slice(listFrom, footer);
+    expect(list.length).toBeGreaterThan(1);
+    const under = options.list === undefined ? list : options.list(list.map(plain));
+    const box = (text: string): string => (open >= 0 ? `╰─ ${text}` : `${text}\u001b[7m \u001b[0m`);
+    const after = capture(opened).join("\r\n");
+    pane.beforeRead = (p) => {
+      if (p.box === "" && p.keysSeen.includes("Enter")) {
+        p.fixed = after;
+        return;
+      }
+      const head = rows.slice(0, listFrom);
+      head[boxRow] = box(p.box);
+      p.fixed = [...head, ...(p.box.startsWith("/") ? under : []), ...rows.slice(footer)].join("\r\n");
+    };
+  };
+
+  /** The list with its pointer moved onto the entry named `command`. */
+  const pointAt =
+    (command: string) =>
+    (rows: string[]): string[] =>
+      rows.map((row) => {
+        const glyph = /^(?:→ |❯ )/u.exec(row);
+        if (glyph !== null) return `  ${row.slice(2)}`;
+        return new RegExp(`^ {2}(?:\\S+ {1,2})?${command} `, "u").test(row) ? `${row.startsWith("  ⬢") || row.startsWith("  ⇄") ? "❯" : "→"} ${row.slice(2)}` : row;
+      });
+
+  const journal = (pane: FakePane): string[] => {
+    const seen: string[] = [];
+    pane.afterInput = (_p, what) => seen.push(what);
+    return seen;
+  };
+
+  const harnessOf = (c: typeof PI130): string => (c === OMP ? "omp" : "pi");
+  const paneOf = (c: typeof PI130): FakePane => new FakePane(c === OMP ? "generic" : "claude");
+
+  for (const c of [PI130, PI087, OMP]) {
+    test(`${c.list}: /model as a command is sent with one Enter after the text, and the selector it opens counts as sent`, async () => {
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      const seen = journal(pane);
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+      neverEscape(pane);
+    });
+
+    test(`${c.list}: read with /model in the box, no dialog; Submit then goes out with Enter`, async () => {
+      const looked = rig({ pane: paneOf(c), harness: harnessOf(c), version: c.version });
+      captured(looked.pane, c.list, c.opened);
+      looked.pane.box = "/model";
+      const prepared = await looked.protocol.handle({ id: `own-prep-${c.version.replaceAll(".", "-")}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: harnessOf(c) });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      pane.box = "/model";
+      expect((await send("/model", { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    });
+
+    test(`${c.list}: /model while the selector already stands is refused, nothing typed`, async () => {
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      pane.fixed = capture(c.opened).join("\r\n");
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt?.outcome).toBe("refused");
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    });
+
+    test(`${c.list}: an Enter the harness swallows is never reported sent`, async () => {
+      const pane = paneOf(c);
+      pane.enterSubmits = false;
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(pane.box).toBe("/model");
+    });
+  }
+
+  for (const [c, other] of [
+    [PI130, "scoped-models"],
+    [PI087, "scoped-models"],
+    [OMP, "modelpreset"],
+  ] as const) {
+    test(`${c.list}: /model typed while the list points at ${other} is left typed, no Enter`, async () => {
+      const pane = paneOf(c);
+      const { send, deps } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened, { list: pointAt(other) });
+      const id = `own-elsewhere-${c.version.replaceAll(".", "-")}`;
+      const answer = await send("/model", { id, mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("/model");
+      // These profiles find a box past a list only when the list is the box's own, so a list that points
+      // elsewhere reads as something opened at the box, the detail of any other cue, not the list notice.
+      expect(deps.store.get(id)?.receipt?.detail).toBe(OPENED);
+    });
+  }
+});

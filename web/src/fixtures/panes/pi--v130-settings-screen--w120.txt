@@ -1,0 +1,40 @@
+
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;130;130;130mv1.3.0[0m                                                                                                            
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;130;130;130mescape[0m[38;2;160;160;160m interrupt · [0m[38;2;130;130;130mctrl+c/ctrl+d[0m[38;2;160;160;160m clear/exit · [0m[38;2;130;130;130m/[0m[38;2;160;160;160m commands · [0m[38;2;130;130;130m![0m[38;2;160;160;160m bash · [0m[38;2;130;130;130mctrl+o[0m[38;2;160;160;160m more[0m                                   
+ [0m[38;2;130;130;130mPress ctrl+o to show full startup help and loaded resources.[0m                                                           
+                                                                                                                        
+ [0m[38;2;130;130;130mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                  
+
+[0m[38;2;167;167;0m[Skills][0m                                                                                                                
+[0m[38;2;130;130;130m  agent-browser[0m                                                                                                         
+
+
+ [0m[38;2;167;167;0mWarning: No models available. Use /login to log into a provider via OAuth or API key. See:                             [0m
+ [0m[38;2;167;167;0m  /home/demo/user/.cache/collie-lab/pi130/node_modules/@earendil-works/pi-coding-agent/docs/providers.md               [0m
+ [0m[38;2;167;167;0m  /home/demo/user/.cache/collie-lab/pi130/node_modules/@earendil-works/pi-coding-agent/docs/models.md[0m                  
+
+
+
+
+
+[0m[38;2;99;148;255m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+> [0m[7m [0m                                                                                                                     
+
+[0m[38;2;228;101;225m→ Auto-compact                    [0m  [0m[38;2;228;101;225mtrue[0m
+  Show images                       [0m[38;2;160;160;160mtrue[0m
+  Image width                       [0m[38;2;160;160;160m60[0m
+  Auto-resize images                [0m[38;2;160;160;160mtrue[0m
+  Block images                      [0m[38;2;160;160;160mfalse[0m
+  Skill commands                    [0m[38;2;160;160;160mtrue[0m
+  Show hardware cursor              [0m[38;2;160;160;160mfalse[0m
+  Editor padding                    [0m[38;2;160;160;160m0[0m
+  Output padding                    [0m[38;2;160;160;160m1[0m
+  Autocomplete max items            [0m[38;2;160;160;160m5[0m
+[0m[38;2;130;130;130m  (1/35)[0m
+
+[0m[38;2;130;130;130m  Automatically compact context when it gets too large[0m
+
+[0m[38;2;130;130;130m  Type to search · Enter/Space to change · Esc to cancel[0m
+[0m[38;2;99;148;255m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;130;130;130m/home/demo/user/.cache/collie-lab/fix-slash-pi-omp-state/harness/pi130/project[0m
+[0m[38;2;130;130;130m0.0%/0 (auto)                                                                                                    unknown[0m
