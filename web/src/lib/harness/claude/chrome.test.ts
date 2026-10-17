@@ -758,6 +758,8 @@ describe("dialogs are refused by the border and blank checks — not by the row 
     "claude--wizard-q2.txt",
     "claude--wizard-submit-unanswered.txt",
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
   ];
 
   it.each(DIALOG_FIXTURES)("%s surfaces no box, so no chrome is stripped from it", (name) => {
@@ -1031,6 +1033,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2302-turn-ended-yn--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-turn-ending-stop-hooks--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-wizard-long-question--w54", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-wizard-review-barred--w140", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-wizard-review-long-q--w140", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2302-working-agents-panel--w119", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "v2302-working-list-echo--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },

@@ -116,6 +116,36 @@ describe("detectWizard — review (Submit) phase", () => {
     expect(model!.answers).toEqual([]);
     expect(model!.steps.every((s) => !s.answered)).toBe(true);
   });
+
+  // Claude Code 2.1.302 bars an echoed question with its own `│` (`│ ● …`, `│   …` continuations);
+  // the `→` answer row under it carries no bar.
+  const BARRED_ANSWERS = [
+    {
+      question:
+        "When a user opens the settings page with unsaved changes still pending from an earlier visit, perhaps because they " +
+        "closed the tab mid-edit, lost their network connection, or the session expired while a form was half-filled, how " +
+        "should the page treat those leftover edits so that nothing is silently lost and the user is never surprised by " +
+        "values they did not knowingly choose?",
+      answer: "Restore with banner",
+    },
+    { question: "How should changes be saved?", answer: "Save button" },
+    { question: "Where should the reset-to-defaults control live?", answer: "Page footer" },
+  ];
+
+  it("a barred, wrapped question keeps its answer beside two bare ones", () => {
+    const model = detectWizard(fixtureLines("claude--v2302-wizard-review-long-q--w140.txt"));
+    expect(model).not.toBeNull();
+    if (model!.phase !== "review") throw new Error("expected review phase");
+    expect(model!.incomplete).toBe(false);
+    expect(model!.answers).toEqual(BARRED_ANSWERS);
+  });
+
+  it("every item barred: all three answers are listed", () => {
+    const model = detectWizard(fixtureLines("claude--v2302-wizard-review-barred--w140.txt"));
+    expect(model).not.toBeNull();
+    if (model!.phase !== "review") throw new Error("expected review phase");
+    expect(model!.answers).toEqual(BARRED_ANSWERS);
+  });
 });
 
 describe("detectWizard — ≥10 options bail (L4)", () => {

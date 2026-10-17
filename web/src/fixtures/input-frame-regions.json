@@ -1283,6 +1283,14 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2302-wizard-review-barred--w140.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-wizard-review-long-q--w140.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2302-working-agents-panel--w119.txt",
   "frame": {
    "top": 30,
