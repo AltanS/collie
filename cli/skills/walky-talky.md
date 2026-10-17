@@ -18,7 +18,7 @@ Every message starts with one header line. Read it before you read the body.
 ```
 [walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)
 [walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan)
-[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3 (claude, repo#branch) · reply to wt_8ab2k1m4q7zx
+[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3 (claude, repo#branch) reply to wt_8ab2k1m4q7zx
 ```
 
 - `wt_...` is the message id. Use it to reply.
