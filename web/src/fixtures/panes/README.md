@@ -2309,3 +2309,14 @@ under it: the minibuch field screen above, a shorter pane, had it under the box.
 | Fixture | State / what's in it |
 |---|---|
 | `claude--v2302-slash-model-list-above--w119.txt` | The box holds `/model`. Right over its top rule: `❯ /model  Set the AI model for Claude Code (currently Sonnet 5.5)`, `/auto-mode-setup` and `/typescript:structure-module` with its description wrapped onto a fourth row. Under the box the two statusline rows, `[Sonnet·high] /tmp/collie-queue-test on HEAD` and `⏸ manual mode on`. 1.22.3 and the first round of the fix read the list as a pointed list over the box (strong), the Surface said `unreadable`, and a command's S1 kept Enter back. The profile's command list is now read on both sides of the box. No reader lifts a block here (the autocomplete reader looks under the box only). Labelled `popup` |
+
+## AskUserQuestion pickers with a wrapped rule (captured 2026-10-17, Claude Code 2.1.302, Herdr)
+
+Read through the bridge from two live sessions, byte for byte, CRLF kept; the project words, issue keys, names, paths, task rows and the diff lines above the preview dialog were swapped for plain words of the same display width, every escape sequence, glyph and column left as it was.
+
+Claude Code 2.1.302 paints a coloured background cell in column 0 of every dialog row and still draws the dialog's rule full width from column 2, so each rule wraps: a full `──…` row, then a stub row of one or two `─` glyphs. It does this above the chip row and above `Chat about this`. The grammars read the stub as part of the rule above it (`isRuleRow` in `harness/claude/markers.ts`); the rows themselves are never rewritten, so the bridge's binding match still finds the region.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-wizard-long-question--w54.txt` | A two-question wizard at 54 columns, under a task checklist: the question wraps to nine rows in the `│` gutter, so the stepper `←  ☐ Branch  ☐ Ranger dies  ✔ Submit  →` sits eleven rows above `❯ 1.`. Read by the wizard grammar (`wizard.ts`), whose stepper scan stops at the dialog's rule, not at a row count |
+| `claude--v2302-preview-wrapped-rule--w141.txt` | A single-question preview select at 141 columns: four options whose labels wrap in the left column, the preview pane, `Notes: press n to add notes`, then the wrapped rule's stub between the Notes line and `Chat about this`. Read by the preview grammar (`preview-select.ts`) |

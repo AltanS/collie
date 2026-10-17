@@ -34,7 +34,7 @@
 import { lineText, type StyledLine } from "../../blocks";
 import { readKeyHintFooter } from "../menu-hints";
 import { hasInputBox } from "./chrome";
-import { classifyFooter, isBlank } from "./markers";
+import { classifyFooter, isBlank, isHorizontalRule, isRuleRow } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 
 // A run of rule glyphs and, optionally, ONE label set into it: ` capture lab ─`. The label holds no
@@ -59,15 +59,27 @@ function endsReviewPair(texts: string[], last: number): boolean {
 }
 
 /**
+ * The row of the closing rule that ends `texts`, or -1. A rule Claude Code 2.1.302 wrapped (it draws
+ * a dialog's rule full width from column 2, beside its column-0 gutter cell) ends in a 1-2 glyph stub
+ * row (`isRuleRow`), and the rule is the row above that stub.
+ */
+function closingRuleRow(texts: string[]): number {
+  let last = texts.length - 1;
+  while (last >= 0 && isBlank(texts[last]!)) last--;
+  const stub = last >= 1 && isRuleRow(texts, last) && !isHorizontalRule(texts[last]!);
+  const rule = stub ? last - 1 : last;
+  return rule >= 1 && isClosingRule(texts[rule]!) ? rule : -1;
+}
+
+/**
  * `lines` without the closing rule 2.1.296 draws under a dialog in a named session, or the very same
  * array when the screen does not end that way. Pure; the caller owns pane access.
  */
 export function dropClosingRule(lines: StyledLine[]): StyledLine[] {
   const texts = lines.map(lineText);
 
-  let rule = texts.length - 1;
-  while (rule >= 0 && isBlank(texts[rule]!)) rule--;
-  if (rule < 1 || !isClosingRule(texts[rule]!)) return lines;
+  const rule = closingRuleRow(texts);
+  if (rule < 0) return lines;
 
   // What is left once the rule is gone: the screen a grammar would have read in an unnamed session.
   const head = texts.slice(0, rule);

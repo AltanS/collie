@@ -1,0 +1,45 @@
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m  The new floor map is in. Two of its choices are   [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m  yours.                                            [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m                                                    [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m╰────────────────────────────────────────────────────╯[0m
+
+[0m[38;2;138;123;110m• [0m[38;2;224;164;88m… [0m
+[0m[48;2;217;119;87m  [0m[38;2;153;153;153m────────────────────────────────────────────────────[0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153m──[0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☐ Branch [0m ☐ Ranger dies  ✔ Submit  →
+[0m[48;2;217;119;87m [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255mnew floor (Nerf Goblin Encounter): the explorer [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255msuggests a feature branch [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255m`feat/goblin-two-round-call-out`. Its evidence: [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255mthe change bumps the rules version (32 to 33), [0m
+[0m[48;2;217;119;87m  [0m[2m│ [0m[1m[38;2;255;255;255mtouches the engine and content, and needs tests [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255medited red first. The engine change is small, [0m
+[0m[48;2;217;119;87m  [0m[2m│ [0m[1m[38;2;255;255;255mthough: the call stands until the shot, a fresh [0m
+[0m[48;2;217;119;87m [0m [0m[2m│[0m [0m[1m[38;2;255;255;255mcall is drawn only when none stands, and the [0m
+[0m[48;2;217;119;87m  [0m[2m│ [0m[1m[38;2;255;255;255mRanger goes from 4 to 2. Where should it land?[0m
+[0m[48;2;217;119;87m [0m 
+[0m[48;2;217;119;87m  [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mLand on main (Recommended)[0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153mOne item, one commit on main, in this release [0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153mlike the rest. Worst case: if Mary changes the [0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153mrule again before the cut, a second rules bump [0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153m(to 34) lands on main too.[0m
+[0m[48;2;217;119;87m [0m   [0m[38;2;153;153;153m2.[0m Feature branch
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153mBuild it on feat/goblin-two-round-call-out with[0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153ma draft PR, merged by /ship. Worst case: an [0m
+[0m[48;2;217;119;87m [0m      [0m[38;2;153;153;153mextra merge step, and it's held out of the [0m
+[0m[48;2;217;119;87m       [0m[38;2;153;153;153mrelease until the merge.[0m
+[0m[48;2;217;119;87m  [0m  [0m[38;2;153;153;153m3. Type something.[0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153m────────────────────────────────────────────────────[0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153m──[0m
+[0m[48;2;217;119;87m [0m   4. Chat about this
+[0m[48;2;217;119;87m [0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · Esc [0m
+[0m[48;2;217;119;87m [0m [0m[38;2;153;153;153mto cancel[0m
+
+  [0m[1m[38;2;153;153;153m7[0m[38;2;153;153;153m tasks ([0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m done, [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m in progress, [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m open)[0m
+  [0m[38;2;215;119;87m◼ [0m[1mRewrite the console launcher for tests…[0m
+  [0m[38;2;215;119;87m◼ [0m[1mUpdate the design docs for the new map…[0m
+  ◻ Fix the first round, then a last review
+  ◻ Add a hard throw cheat in its own tree…
+  ◻ Explore and split the combat scene int…
+  [0m[38;2;153;153;153m … +1 pending, 1 completed[0m   

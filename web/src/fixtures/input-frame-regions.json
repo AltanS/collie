@@ -1181,6 +1181,10 @@
   }
  },
  {
+  "fixture": "claude--v2302-preview-wrapped-rule--w141.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2302-slash-model-list--w119.txt",
   "frame": {
    "top": 5,
@@ -1240,6 +1244,10 @@
    },
    "footer": null
   }
+ },
+ {
+  "fixture": "claude--v2302-wizard-long-question--w54.txt",
+  "frame": null
  },
  {
   "fixture": "claude--v2302-working-agents-panel--w119.txt",

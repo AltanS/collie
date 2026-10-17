@@ -16,7 +16,15 @@
 // (web/src/fixtures/panes/claude--select-multiselect-*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, selectFooterStart, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
+import {
+  classifyFooter,
+  selectFooterStart,
+  isBlank,
+  isHorizontalRule,
+  isRuleRow,
+  lineText,
+  questionRowText,
+} from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { WizardStepChip } from "../wizard-model";
@@ -39,13 +47,13 @@ export interface MultiSelectRegion {
   startLine: number;
 }
 
-// Same bounded-window philosophy as the sibling grammars: options sit against the footer; the
-// single-question stepper sits a few lines above the first option.
+// Same bounded-window philosophy as the sibling grammars: options sit against the footer.
 const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
-const STEPPER_SCAN_LIMIT = 10;
-// The review screen lists its prompt + warning between the stepper and the submit rows, so the
-// upward window from the "Ready…" prompt to the stepper is more generous.
+// How far above its anchor the stepper is looked for: above the "Ready…" prompt on the review screen
+// (its prompt + warning sit between), and above the first option on the checkbox screen, whose
+// question wraps to as many rows as it needs at a narrow width. The dialog's top rule, not this
+// count, is what stops either walk.
 const REVIEW_SCAN_WINDOW = 48;
 
 const CHAT_ESCAPE = /^chat about this\b/i;
@@ -99,7 +107,7 @@ function findCheckboxStepper(
   floor: number,
 ): { index: number; steps: WizardStepChip[] | null } | null {
   for (let i = start; i >= 0 && i >= floor; i--) {
-    if (isHorizontalRule(texts[i]!)) return null;
+    if (isRuleRow(texts, i)) return null;
     if (isSingleQuestionStepper(lines[i]!)) return { index: i, steps: null };
     const wizardStepper = parseStepperLine(lines[i]!);
     if (wizardStepper) return { index: i, steps: wizardStepper.chips };
@@ -116,7 +124,7 @@ function findSingleStepper(
   floor: number,
 ): number {
   for (let i = start; i >= 0 && i >= floor; i--) {
-    if (isHorizontalRule(texts[i]!)) return -1;
+    if (isRuleRow(texts, i)) return -1;
     if (isSingleQuestionStepper(lines[i]!)) return i;
   }
   return -1;
@@ -221,11 +229,12 @@ function detectCheckboxPhase(
   // (c) via pointerAt, be reported as the pointer — making the macro press Enter on whatever row the
   // terminal's ❯ is really on, which on "Chat about this" aborts the whole tool call.
   //
-  // No rule below the options means a layout we don't know: bail rather than guess.
+  // No rule below the options means a layout we don't know: bail rather than guess. A rule that
+  // wrapped into a stub row is met at its stub first; the rule itself is the row above it.
   let ruleIdx = -1;
   for (let i = footerAt - 1; i > firstOpt; i--) {
-    if (isHorizontalRule(texts[i]!)) {
-      ruleIdx = i;
+    if (isRuleRow(texts, i)) {
+      ruleIdx = isHorizontalRule(texts[i]!) ? i : i - 1;
       break;
     }
   }
@@ -241,7 +250,7 @@ function detectCheckboxPhase(
   if (!advanceMatch) return null;
   const advanceLabel = advanceMatch[1]!;
 
-  const stepper = findCheckboxStepper(lines, texts, firstOpt - 1, firstOpt - STEPPER_SCAN_LIMIT);
+  const stepper = findCheckboxStepper(lines, texts, firstOpt - 1, firstOpt - REVIEW_SCAN_WINDOW);
   if (!stepper) return null;
   const stepperIdx = stepper.index;
 
@@ -280,7 +289,7 @@ function detectCheckboxPhase(
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
-      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t) || i === advanceIdx) continue;
+      if (isBlank(t) || isRuleRow(texts, i) || parseOptionRow(t) || i === advanceIdx) continue;
       desc.push(t.trim());
     }
     options.push({
