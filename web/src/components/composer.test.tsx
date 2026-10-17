@@ -647,7 +647,8 @@ describe("Composer: a read dialog is refused at the thumb", () => {
 // A shell's password prompt never echoes what is typed (#103), so the bridge cannot see a text land
 // there. When the bridge refuses a tap over such a screen (the stub below answers `unconfirmed`), the
 // composer reads the screen it already shows for the prompt, display only, and says so. A bare shell
-// with no profile no longer gets that refusal: the bridge types its text and presses Enter blind.
+// with no profile gets such a refusal only at a password prompt (the bridge runs the same detector);
+// anywhere else the bridge types its text and presses Enter blind.
 describe("Composer: password prompt", () => {
   const SUDO = "$ sudo systemctl restart collie\n[sudo] password for altan:";
   const SHELL: Surface = { revision: 9, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" };
@@ -669,6 +670,25 @@ describe("Composer: password prompt", () => {
     expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
     // The two-tap Send is untouched: a false positive costs a dismissal, not an action.
     expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("the bridge's own password-prompt stop on a bare shell (not_free, the key pad only) raises the same notice and drops the draft", async () => {
+    const user = userEvent.setup();
+    server.use(
+      ...sendHandler((request) =>
+        sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], surface: SHELL, detail: "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it." }),
+      ),
+    );
+    renderComposerWithStatus({ isShell: true, agent: undefined, surface: SHELL, text: SUDO });
+    const box = screen.getByPlaceholderText(/shell command/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
     expect(recordedSends()).toHaveLength(1);
   });
 

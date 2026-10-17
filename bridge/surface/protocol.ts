@@ -51,8 +51,9 @@
 //
 // A pane whose harness has a profile is read through its input frame. A pane with no profile (a bare
 // shell, a program, an agent Collie has no profile for) has no input box to prove free, so a send or
-// a command on it is typed and Entered blind, as before the protocol: no S0, no probe, no S1, no S2,
-// never held. Its receipt says `sent` once Enter went out, and its `saw` says `no-profile`. A pane that
+// a command on it is typed and Entered blind, as before the protocol: no probe, no S1, no S2, never
+// held. Its one S0 read only looks for a password prompt on the last rows, which refuses the send
+// before any key (#103). Its receipt says `sent` once Enter went out, and its `saw` says `no-profile`. A pane that
 // has a profile but whose frame S0 cannot find reads unknown(no-match): every send on it is probed,
 // and the probe's own landing spot (the row and column where the probe character appeared) is what S1
 // and S2 compare against.
@@ -80,6 +81,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
+import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { commandListAt, isRunningRow, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
@@ -138,6 +140,8 @@ const GENERIC_LEADS = ["/", "!", "@"] as const;
 export const BLIND_SETTLE_MS = 350;
 /** What a blind send's receipt says it saw: nothing was read, because the pane has no profile to read it by. */
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
+/** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
+const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
 
 /** The detail after a failed probe whose one Backspace took the character out again. */
 const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
@@ -2292,15 +2296,31 @@ export class SendProtocol {
    * A send or a command on a pane with no profile (a bare shell, a program, an agent Collie has no
    * profile for): the text, a 350 ms pause, then Enter through the gate, the way the reply route sent
    * before the protocol. No profile means no box to prove free and no submit key to trust but Enter,
-   * so nothing is read and nothing is probed, and the person's first tap is the send. The lock, the
-   * receipt and the request id still hold. `textRefusal` already turned away a text of more than one
-   * line. A failed Enter leaves the text in the pane with only the key pad offered: with no read there
-   * is no rows hash for a Submit to bind to.
+   * so nothing is probed and the person's first tap is the send. One read comes first, for one thing
+   * only: a password prompt on the last rows (#103, ADR 0017, the phone's own detector) refuses the
+   * send before any key, with the key pad offered, so a text is never typed into a prompt that does
+   * not echo it. The phone shows its password-prompt notice beside that refusal. The lock, the receipt
+   * and the request id still hold. `textRefusal` already turned away a text of more than one line. A
+   * failed Enter leaves the text in the pane with only the key pad offered: no rows hash binds a Submit.
    */
   private async blindSend(state: RunState, lines: readonly string[]): Promise<void> {
     state.blind = true;
     this.begin(state);
+    const until = Math.min(this.now() + BOUNDS.s0.ms, state.deadline);
+    let snap: Snap | null;
+    try {
+      snap = await this.read(state, "s0", until);
+    } catch (err) {
+      if (err instanceof StepLate) throw new Ended("refused", "bound", { detail: `The screen did not read inside ${String(BOUNDS.s0.ms)} ms.` });
+      throw err;
+    }
+    if (snap === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+    state.marks.s0 = snap;
     this.checkGeneration(state, "refused");
+    if (noEchoPromptIn(snap.texts) !== null) {
+      throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: NO_ECHO_REFUSAL });
+    }
+    this.lap(state, "s0");
     await this.write(state, lines);
     this.lap(state, "write");
     await this.sleep(BLIND_SETTLE_MS);

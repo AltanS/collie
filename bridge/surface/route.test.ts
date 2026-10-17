@@ -172,7 +172,7 @@ describe("sendRoute", () => {
       const { audit, lines } = auditLines();
       const context = { audit, device: "phone", redact: false, acceptEncoding: null };
       const sent = await (await sendRoute(rt, { id: "route-shell-0001", pane: "%7", text: "claude-danger" }, context)).json();
-      expect(sent.receipt).toMatchObject({ outcome: "sent", harness: "", profileId: null, keys: ["Enter"], s0: null, saw: { reason: "no-profile" } });
+      expect(sent.receipt).toMatchObject({ outcome: "sent", harness: "", profileId: null, keys: ["Enter"], saw: { reason: "no-profile" } });
       expect(sent.offers).toEqual([]);
       const command = await (await sendRoute(rt, { id: "route-shell-0002", pane: "%7", text: "/usr/bin/true", mode: "command" }, context)).json();
       expect(command.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });

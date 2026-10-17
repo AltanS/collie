@@ -470,15 +470,16 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
     pane.fixed = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8");
     const { send, deps } = rig({ pane, harness });
     const answer = await send(text, { mode });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", harness, profileId: null, profileStatus: null, keys: ["Enter"], s0: null, s1: null, s2: null });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", harness, profileId: null, profileStatus: null, keys: ["Enter"], s0: { hash: expect.any(String) }, s1: null, s2: null });
     expect(answer.receipt?.reason).toBeUndefined();
     expect(answer.receipt?.saw).toEqual({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" });
     expect(answer.offers).toEqual([]);
     expect(answer.rowsHash).toBeUndefined();
-    expect(pane.readsSeen).toBe(0);
+    // One read, for the password-prompt stop only: no second S0 read, no probe, no S1, no S2.
+    expect(pane.readsSeen).toBe(1);
     expect(pane.calls).toEqual([`type:${text}`]);
     expect(pane.keysSeen).toEqual(["Enter"]);
-    expect(Object.keys(answer.receipt?.gapsMs ?? {}).toSorted()).toEqual(["commit", "write"]);
+    expect(Object.keys(answer.receipt?.gapsMs ?? {}).toSorted()).toEqual(["commit", "s0", "write"]);
     // The receipt is on disk with its saw, and reads back the same.
     expect(deps.store.get(answer.receipt!.requestId)?.receipt).toEqual(answer.receipt);
     neverEscape(pane);
@@ -493,7 +494,40 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
     const answer = await r.send("hello");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(holds.list()).toEqual([]);
-    expect(r.pane.readsSeen).toBe(0);
+    expect(r.pane.readsSeen).toBe(1);
+  });
+
+  // The password-prompt stop (#103, ADR 0017): a prompt that does not echo would swallow the text and
+  // Enter would submit it as a password. The phone's own detector reads the last rows first.
+  const shellScreen = (lastRow: string): FakePane => {
+    const pane = new FakePane("generic");
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${SHELL_SCREEN}`), "utf8").split("\r\n");
+    rows[rows.length - 1] = lastRow;
+    pane.fixed = rows.join("\r\n");
+    return pane;
+  };
+
+  test("a shell at a sudo password prompt refuses the send before any key, offers the key pad, and is never held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const pane = shellScreen("[sudo] password for altan: ");
+    const { send } = rig({ pane, harness: "", holds });
+    const answer = await send("claude-danger");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", profileId: null, keys: [] });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.detail).toBe("A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.");
+    // The receipt never keeps the prompt's row: it names a user.
+    expect(JSON.stringify(answer.receipt)).not.toContain("altan");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("the same shell at its normal starship prompt is sent", async () => {
+    const pane = shellScreen("❯ ");
+    const { send } = rig({ pane, harness: "" });
+    expect((await send("claude-danger")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual(["type:claude-danger"]);
+    expect(pane.keysSeen).toEqual(["Enter"]);
   });
 
   test("an Enter the multiplexer refuses leaves the text typed, and offers only the key pad: there is no rows hash to bind a Submit to", async () => {
