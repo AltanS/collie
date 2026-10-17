@@ -171,15 +171,22 @@ export function findTool(
   home: string,
   host: Host = HOST,
 ): string | null {
+  const exts = lookupExts(env, host);
   if (host.path.isAbsolute(name)) {
     // Bun writes `collie.exe`; a caller holding the bare absolute path still means that file.
-    const ext = toolExts(env, host).find((e) => isExecutableFile(name + e));
+    const ext = exts.find((e) => isExecutableFile(name + e));
     return ext === undefined ? null : name + ext;
   }
-  return findIn(
-    name,
-    searchDirs(envGet(env, "PATH", host), home, host),
-    isExecutableFile,
-    toolExts(env, host),
-  );
+  return findIn(name, searchDirs(envGet(env, "PATH", host), home, host), isExecutableFile, exts);
+}
+
+/**
+ * The suffixes {@link findTool} tries, in order. Off Windows that is `[""]`. On Windows a `PATHEXT`
+ * suffix comes BEFORE the bare name: npm's global folder holds an extensionless sh shim (`claude`)
+ * beside `claude.cmd`, the shim is an executable file to `isExecutableFile`, and Windows cannot
+ * spawn it. The bare name stays last, for a `name` that already carries its extension.
+ */
+function lookupExts(env: Record<string, string | undefined>, host: Host): string[] {
+  const exts = toolExts(env, host);
+  return host.exeSuffix === "" ? exts : [...exts.filter((e) => e !== ""), ""];
 }

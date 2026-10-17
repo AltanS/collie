@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
-import { basename } from "node:path";
 
-import { HOST, type Host } from "./host.ts";
+import { HOST } from "./host.ts";
+import { createLoginPath, type LoginPathDeps } from "./login-path.ts";
 import { MUX_AGENT_NAMES } from "./mux/agents.ts";
-import { envGet, findTool } from "./tools.ts";
+import { findTool } from "./tools.ts";
 import type { HarnessInfo } from "./types.ts";
 
 // ── The agents the New sheet can start, by id, per machine (ADR 0091) ────────────────────────────
@@ -22,12 +22,10 @@ import type { HarnessInfo } from "./types.ts";
 // what made these the contract's names in the first place.
 //
 // ── FOUND, WITH THE LOGIN SHELL'S PATH ──────────────────────────────────────────────────────────
-// A bridge under systemd or Herdr has a short PATH. The operator's shell, the one the new pane runs,
-// sources a profile, and that is where `~/.opencode/bin` or an nvm folder is added (on bluefin both
-// `opencode` and `pi` live there). So the search runs over the login shell's PATH, asked once per
-// process with argv only and a short cap, and falls back to the bridge's own PATH when the shell
-// cannot be asked. `findTool` then adds its fixed folders (`bridge/tools.ts`). A found result is kept
-// for {@link FOUND_TTL_MS}, so a phone that opens the sheet twice in a row costs one look.
+// A bridge under systemd or Herdr has a short PATH (on bluefin both `opencode` and `pi` live in a
+// folder only the profile adds). So the search runs over the login shell's PATH (`bridge/login-path.ts`),
+// and `findTool` then adds its fixed folders (`bridge/tools.ts`). A found result is kept for
+// {@link FOUND_TTL_MS}, so a phone that opens the sheet twice in a row costs one look.
 
 /** One agent Collie can start. */
 export interface HarnessLaunch {
@@ -74,49 +72,9 @@ export function launchIdsAreContractNames(): boolean {
 
 /** How long a found result is kept. */
 export const FOUND_TTL_MS = 60_000;
-/** The login shell is given this long to print its PATH. */
-export const LOGIN_PATH_TIMEOUT_MS = 3_000;
-/** A PATH past this is not one a shell printed. */
-const LOGIN_PATH_MAX_BYTES = 64 * 1024;
 
-/** Asks a login shell for its PATH. `null` when it cannot be asked or does not answer in time. */
-export type LoginPathAsk = (shell: string) => Promise<string | null>;
-
-/**
- * The real thing: `<shell> -lc 'printf %s "$PATH"'`, argv only, no stdin, killed at the cap. `-l`
- * sources the login profile, which is where a profile adds tool folders. A shell that prints more
- * than one line (a profile that echoes) is read as its LAST line.
- */
-export const askLoginPath: LoginPathAsk = async (shell) => {
-  try {
-    const proc = Bun.spawn([shell, "-lc", 'printf %s "$PATH"'], {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const timer = setTimeout(() => proc.kill(), LOGIN_PATH_TIMEOUT_MS);
-    try {
-      const out = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      if (code !== 0 || out.length > LOGIN_PATH_MAX_BYTES) return null;
-      const last = out.split("\n").at(-1)?.trim() ?? "";
-      return last === "" ? null : last;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return null;
-  }
-};
-
-/** Shells whose `-lc` takes a POSIX-quoted script. Another shell is not asked. */
-const POSIX_LOGIN_SHELLS: ReadonlySet<string> = new Set(["bash", "zsh", "sh", "dash", "ksh", "fish"]);
-
-export interface HarnessProbeDeps {
-  env?: Record<string, string | undefined>;
+export interface HarnessProbeDeps extends LoginPathDeps {
   home?: string;
-  host?: Host;
-  askPath?: LoginPathAsk;
   /** Whether a binary is found on a PATH. Defaults to {@link findTool}. */
   find?: (binary: string, path: string | undefined) => boolean;
   now?: () => number;
@@ -138,24 +96,10 @@ export function createHarnessProbe(deps: HarnessProbeDeps = {}): HarnessProbe {
   const env = deps.env ?? process.env;
   const home = deps.home ?? homedir();
   const host = deps.host ?? HOST;
-  const askPath = deps.askPath ?? askLoginPath;
   const now = deps.now ?? (() => Date.now());
   const find =
     deps.find ?? ((binary: string, path: string | undefined) => findTool(binary, { ...env, PATH: path }, home, host) !== null);
-
-  let loginPath: Promise<string | undefined> | null = null;
-  const pathForSearch = (): Promise<string | undefined> => {
-    if (loginPath !== null) return loginPath;
-    const own = envGet(env, "PATH", host);
-    const shell = envGet(env, "SHELL", host);
-    // Windows has no login shell to ask, and an unknown shell may not read `-lc` as a script.
-    if (host.platform === "win32" || shell === undefined || !POSIX_LOGIN_SHELLS.has(basename(shell))) {
-      loginPath = Promise.resolve(own);
-      return loginPath;
-    }
-    loginPath = askPath(shell).then((asked) => asked ?? own);
-    return loginPath;
-  };
+  const pathForSearch = createLoginPath(deps);
 
   let cached: { at: number; list: HarnessInfo[] } | null = null;
   return {

@@ -170,6 +170,41 @@ describe("findTool on win32, from a host that is not Windows", () => {
 // Issue 344: Windows 11 with PowerShell 7 has a DIRECTORY `C:\Windows\System32\PowerShell`, and
 // System32 precedes `WindowsPowerShell\v1.0` on PATH. A directory is "executable" to `access(X_OK)`
 // (it is searchable), so the bare name resolved to the directory and the spawn then failed.
+describe("findTool on win32 prefers a PATHEXT match over the bare name", () => {
+  // npm's global folder holds an extensionless sh shim (`claude`) beside `claude.cmd`. The shim is an
+  // executable file to `isExecutableFile`, but Windows cannot spawn it, so the `.cmd` must win.
+  const dir = mkdtempSync(join(tmpdir(), "collie-tools-shim-"));
+  const bare = join(dir, "claude");
+  const cmd = join(dir, "claude.cmd");
+  for (const file of [bare, cmd]) {
+    writeFileSync(file, "#!/bin/sh\n");
+    chmodSync(file, 0o755);
+  }
+  const env = { PATH: dir, PATHEXT: ".cmd" };
+
+  test("the `.cmd` is chosen, not the bare shim beside it", () => {
+    expect(findTool("claude", env, HOME, hostFor("win32"))).toBe(cmd);
+  });
+
+  test("a name that already carries its extension still resolves", () => {
+    expect(findTool("claude.cmd", env, HOME, hostFor("win32"))).toBe(cmd);
+  });
+
+  test("a bare file with no PATHEXT sibling is still found", () => {
+    const only = mkdtempSync(join(tmpdir(), "collie-tools-bare-"));
+    const file = join(only, "tool");
+    writeFileSync(file, "x");
+    chmodSync(file, 0o755);
+    expect(findTool("tool", { PATH: only, PATHEXT: ".cmd" }, HOME, hostFor("win32"))).toBe(file);
+  });
+
+  test("off win32 the `.cmd` sibling is never chosen", () => {
+    // A POSIX host reads the directory as a relative path on a real Windows machine and finds
+    // nothing there, and finds the bare file on Linux. Either way the suffix is not tried.
+    expect(findTool("claude", env, HOME, hostFor("linux"))).not.toBe(cmd);
+  });
+});
+
 describe("findTool skips a directory that carries the tool's name", () => {
   function layout(fileName: string) {
     const root = mkdtempSync(join(tmpdir(), "collie-tools-dir-"));
