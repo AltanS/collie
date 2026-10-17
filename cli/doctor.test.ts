@@ -2786,7 +2786,9 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     expect(summary.detail).toContain(join(STATE, "surface", "inbox.jsonl"));
     expect(summary.detail).toContain("3 day files");
     const line = byCheck.get("surface-agent-2.1.301")!;
-    expect(line.status).toBe("ok");
+    // 8 refusals against 18 sends is above the refusal rate, so the line warns (2026-10-17).
+    expect(line.status).toBe("warn");
+    expect(line.remedy).toContain("8 sends refused against 18 that went out on agent 2.1.301, most of them not_free (8)");
     expect(line.detail).toBe(
       "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0 · discarded 2",
     );
@@ -2809,6 +2811,34 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     expect(line.status).toBe("warn");
     expect(line.remedy).toContain(join(STATE, "surface", "inbox.jsonl"));
     expect(code).toBe(0);
+  });
+
+  test("surface: refusals above 0.3 per send that went out, over at least 10 sends, warn and name the top reason", async () => {
+    // 2026-10-17: the field case, seven not_free refusals against a handful of sends.
+    const { byCheck, code } = await run([day(0, [row({ manual: 0, sent: 8, effective: 2, refused: { not_free: 3, draft_present: 1 } })])]);
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("warn");
+    expect(line.remedy).toContain("4 sends refused against 10 that went out on agent 2.1.301, most of them not_free (3)");
+    expect(line.remedy).toContain(join(STATE, "surface", "examples"));
+    expect(code).toBe(0);
+  });
+
+  test("surface: the refusal warning needs both the rate and the ten sends", async () => {
+    const atRate = await run([day(0, [row({ manual: 0, sent: 10, effective: 0, refused: { not_free: 3 } })])]);
+    expect(atRate.byCheck.get("surface-agent-2.1.301")!.status).toBe("ok");
+    const fewSends = await run([day(0, [row({ manual: 0, sent: 5, effective: 4, refused: { not_free: 9 } })])]);
+    expect(fewSends.byCheck.get("surface-agent-2.1.301")!.status).toBe("ok");
+    // Seven days add up: two days of 5 sends and 2 refusals each pass both limits together.
+    const twoDays = await run([day(0, [row({ manual: 0, sent: 5, refused: { bound: 2 } })]), day(2, [row({ manual: 0, sent: 5, refused: { bound: 2 } })])]);
+    expect(twoDays.byCheck.get("surface-agent-2.1.301")!.remedy).toContain("most of them bound (4)");
+  });
+
+  test("surface: a row with both warnings carries both remedies", async () => {
+    const { byCheck } = await run([day(0, [row({ manual: 5, sent: 10, refused: { not_free: 6 } })])]);
+    const line = byCheck.get("surface-agent-2.1.301")!;
+    expect(line.status).toBe("warn");
+    expect(line.remedy).toContain(join(STATE, "surface", "inbox.jsonl"));
+    expect(line.remedy).toContain("most of them not_free (6)");
   });
 
   test("surface: the plain output carries the table and a torn file is skipped", async () => {

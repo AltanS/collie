@@ -15,7 +15,32 @@ import type { Files } from "./sys.ts";
 // A row is `warn` when the person typed past an unreadable screen as often as the cap allows
 // (DEFAULT_CAP in 24 hours is the cap's own number, here read over seven days as a plain signal that a
 // harness version needs a profile): the frames those sends were confirmed on are in `inbox.jsonl`.
+// A row is also `warn` when its sends are refused too often: more than REFUSAL_WARN_RATE refusals per
+// send that went out (`sent` + `effective`), over at least REFUSAL_WARN_MIN_SENDS such sends. The line
+// names the most common refusal reason, since that is the reader rule to look at first (2026-10-17: seven
+// `not_free` refusals in fourteen seconds on Claude Code 2.1.302 showed only as a number in this table).
 // No row is ever `error`: a counter is a number, and `collie doctor` exits 0 on warnings.
+
+/** Refusals per send that went out above which a row warns. */
+export const REFUSAL_WARN_RATE = 0.3;
+/** The fewest sends that went out (`sent` + `effective`) before the refusal rate counts. */
+export const REFUSAL_WARN_MIN_SENDS = 10;
+
+/**
+ * The warning for a row whose sends are refused too often, or null: the counts, the most common reason
+ * (ties go to the reason first in the counters), and where the receipts and examples are.
+ */
+export function refusalWarning(row: CounterRow, dir: string): string | null {
+  const refused = Object.values(row.refused).reduce((sum, n) => sum + n, 0);
+  const went = row.sent + row.effective;
+  if (went < REFUSAL_WARN_MIN_SENDS || refused <= REFUSAL_WARN_RATE * went) return null;
+  const top = Object.entries(row.refused).toSorted(([, a], [, b]) => b - a)[0];
+  const reason = top === undefined ? "" : `, most of them ${top[0]} (${String(top[1])})`;
+  return (
+    `${String(refused)} sends refused against ${String(went)} that went out on ${row.harness} ${row.version}${reason}; ` +
+    `read the recent sends on the pane's session page and the examples in ${join(dir, "examples")}, and report the screen to the lab`
+  );
+}
 
 /** What this section reaches: the context, one directory listing and file reads, and the clock. */
 export interface SurfaceDeps {
@@ -92,9 +117,11 @@ export function surfaceFindings(deps: SurfaceDeps): Finding[] {
   const lines = rows.map((row) => {
     const check = `surface-${row.harness}-${row.version}`;
     const detail = rowLine(row);
-    return row.manual >= DEFAULT_CAP
-      ? warn(check, detail, `a person typed past an unreadable screen ${String(row.manual)} times; send the frames in ${join(dir, "inbox.jsonl")} to the lab and add a profile for ${row.harness} ${row.version}`)
-      : ok(check, detail);
+    const remedies = [
+      ...(row.manual >= DEFAULT_CAP ? [`a person typed past an unreadable screen ${String(row.manual)} times; send the frames in ${join(dir, "inbox.jsonl")} to the lab and add a profile for ${row.harness} ${row.version}`] : []),
+      ...[refusalWarning(row, dir)].filter((line): line is string => line !== null),
+    ];
+    return remedies.length > 0 ? warn(check, detail, remedies.join(". ")) : ok(check, detail);
   });
   return [summary, ...lines];
 }
