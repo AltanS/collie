@@ -4,9 +4,18 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+// The api layer is mocked so a tap can run the real multi-select action against a scripted pane.
+vi.mock("@/lib/api", () => ({
+  fetchPane: vi.fn(),
+  sendKeys: vi.fn(),
+  sendReply: vi.fn(),
+}));
+
+import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type MultiSelectModel } from "@/lib/blocks";
 import { detectMultiSelect } from "@/lib/harness/claude/multi-select";
+import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { MultiSelectBlock } from "./multi-select-block";
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
@@ -16,6 +25,18 @@ function fixtureModel(name: string): MultiSelectModel {
   const model = detectMultiSelect(splitLines(parseAnsi(fixtureText(name))));
   if (!model) throw new Error(`fixture ${name} did not detect a multi-select dialog`);
   return model;
+}
+
+/** The wizmulti-focused-typed capture after one Up: the pointer off the field, on `3. Basil` above it. */
+function pointerOnBasil(text: string): string {
+  const lines = text.split("\n");
+  // The last match: the prompt echoed above the dialog names the same words.
+  const field = lines.findLastIndex((l) => l.includes("❯") && l.includes("Pineapple"));
+  const basil = lines.findLastIndex((l) => l.includes("[ ] Basil"));
+  if (field < 0 || basil < 0 || !lines[basil]!.startsWith("  ")) throw new Error("capture layout moved");
+  lines[field] = lines[field]!.replace("❯", " ");
+  lines[basil] = `❯${lines[basil]!.slice(1)}`;
+  return lines.join("\n");
 }
 
 describe("MultiSelectBlock — checkbox screen", () => {
@@ -228,7 +249,8 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
 
 // The question's own answer field (ADR 0113): a typed answer is one more ticked choice, so the card
 // shows it as a checkbox row; while the field has the keyboard in the terminal a digit is typed into
-// it and `Left` moves its caret, so every toggle, the escape and the step arrows lock.
+// it and `Left` moves its caret, so a toggle, the escape and a step arrow first move the pointer off it
+// (lib/multi-select-action.ts `offField`). Only the field's own row locks: its digit would be typed.
 describe("MultiSelectBlock — the answer field", () => {
   const OFFER = "Type your own answer";
   const capture = (name: string) => fixtureModel(`claude--v2299-ask-field-${name}.txt`);
@@ -258,17 +280,43 @@ describe("MultiSelectBlock — the answer field", () => {
     expect(onAnswer).toHaveBeenCalledWith("Mushroom");
   });
 
-  it("a focused field locks the options, its own row, the escape and the step arrows, not Next", () => {
-    render(<MultiSelectBlock multi={capture("wizmulti-focused-typed")} onAction={vi.fn()} onAnswer={vi.fn()} />);
-    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
-    for (const name of [/Cheese/, /Olives/, /Basil/, /Pineapple/]) {
-      expect(screen.getByRole("checkbox", { name })).toBeDisabled();
+  it("a focused field leaves the options, the escape and Next step live, and a tap leaves the field first", async () => {
+    const focusedText = fixtureText("claude--v2299-ask-field-wizmulti-focused-typed.txt");
+    const offText = pointerOnBasil(focusedText);
+    const multi = fixtureModel("claude--v2299-ask-field-wizmulti-focused-typed.txt");
+    const queue = [focusedText, offText, offText];
+    vi.mocked(fetchPane).mockImplementation(async () => ({
+      paneId: "w1:p1",
+      text: queue.length > 1 ? queue.shift()! : queue[0]!,
+      truncated: false,
+      revision: 5,
+    }));
+    vi.mocked(sendKeys).mockResolvedValue({ ok: true });
+    const onAction = async (intent: MultiSelectIntent) => {
+      await submitMultiSelectIntent({
+        paneId: "w1:p1",
+        requestedLines: 600,
+        detectedRevision: 5,
+        agent: "claude",
+        sleep: async () => {},
+        multi,
+        intent,
+      });
+    };
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={multi} onAction={onAction} onAnswer={vi.fn()} />);
+
+    expect(screen.queryByText(/The answer field has the keyboard in the terminal/)).not.toBeInTheDocument();
+    for (const name of [/Cheese/, /Olives/, /Basil/]) {
+      expect(screen.getByRole("checkbox", { name })).toBeEnabled();
     }
-    for (const name of [/Chat about this/, /Previous step/, /Next step/]) {
-      expect(screen.getByRole("button", { name })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /Pineapple/ })).toBeDisabled();
+    for (const name of [/Chat about this/, /Next step/, /^Next$/, /Change this answer/]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
     }
-    expect(screen.getByRole("button", { name: /^Next$/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Change this answer" })).toBeEnabled();
+
+    await user.click(screen.getByRole("checkbox", { name: /Olives/ }));
+    expect(vi.mocked(sendKeys).mock.calls.map((c) => c[1])).toEqual([["Up"], ["2"]]);
   });
 
   it("keeps the draft on screen when the answer is refused", async () => {

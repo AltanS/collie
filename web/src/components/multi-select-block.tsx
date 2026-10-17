@@ -56,9 +56,10 @@ export interface MultiSelectBlockProps {
 //
 // The question's `Type something` field (ADR 0113): a typed answer is one more ticked choice, drawn as
 // a checkbox row after the options, and the answer editor sits below them. While the field has the
-// keyboard in the terminal a digit is typed into it and `Left` moves its caret, so every checkbox row,
-// the escape and the step arrows lock; the advance button walks off the field, and the answer editor's
-// recipe reaches it itself, so both stay usable.
+// keyboard in the terminal a digit is typed into it and `Left` moves its caret, so an option toggle,
+// the escape and a step arrow first move the pointer off it (lib/multi-select-action.ts `offField`),
+// and the advance macro and the answer recipe walk on their own. Only the field's own row locks then:
+// its action refuses that digit on a focused field.
 export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, paneId, scope, stale }: MultiSelectBlockProps) {
   useLocale();
   // M46 spec 11, as WizardBlock: `useLive` is called unconditionally; no `paneId`, no offline.
@@ -115,6 +116,7 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
         locked={answerLocked}
         busyIcon={<SpinnerSm />}
         showTyped={false}
+        showFocused={false}
       />
     ) : null;
   return (
@@ -204,16 +206,13 @@ function CheckboxPhase({
   onPress: (id: string, action: MultiSelectIntent) => void;
   answerField: ReactNode;
 }) {
-  // A focused field types every digit and moves its caret on Left: the rows, the escape and the step
-  // arrows lock, the advance button does not (its macro walks off the field).
-  const rowsLocked = locked || multi.field?.focused === true;
   const field = multi.field;
   return (
     <PromptPanel ariaLabel={multi.question} raw={lines}>
       {multi.steps && (
         <WizardStepper
           steps={multi.steps}
-          locked={rowsLocked}
+          locked={locked}
           busyBack={sending === "nav-back"}
           busyNext={sending === "nav-next"}
           busyIcon={<SpinnerSm />}
@@ -231,7 +230,7 @@ function CheckboxPhase({
             description={option.description}
             checked={option.checked}
             busy={sending === `opt-${option.n}`}
-            disabled={rowsLocked}
+            disabled={locked}
             typed={false}
             onToggle={() => onPress(`opt-${option.n}`, { kind: "toggle", n: option.n })}
           />
@@ -242,7 +241,7 @@ function CheckboxPhase({
             label={field.text}
             checked={field.checked}
             busy={sending === `opt-${field.n}`}
-            disabled={rowsLocked}
+            disabled={locked || field.focused}
             typed
             onToggle={() => onPress(`opt-${field.n}`, { kind: "toggle", n: field.n })}
           />
@@ -270,7 +269,7 @@ function CheckboxPhase({
       {multi.escape ? (
         <button
           type="button"
-          disabled={rowsLocked}
+          disabled={locked}
           onClick={() => onPress("escape", { kind: "escape" })}
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >

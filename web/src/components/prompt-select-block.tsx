@@ -366,6 +366,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           locked={answerLocked}
           busyIcon={busyIcon}
           showTyped
+          showFocused
         />
       ) : feedback && feedbackCopy && sending === "feedback" ? (
         <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">

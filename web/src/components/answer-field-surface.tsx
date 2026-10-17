@@ -151,17 +151,21 @@ export interface AnswerFieldSurfaceProps {
   /** Show what a filled field holds as a read-only card. False where the card already shows the text
    *  elsewhere (a multi-select question draws it as one of its checkbox rows). */
   showTyped: boolean;
+  /** Show the focused notice while the terminal field has the keyboard: true where the card locks its
+   *  buttons then. False on a multi-select question, whose buttons move the pointer off the field first
+   *  (lib/multi-select-action.ts `offField`), so the notice would be untrue there. */
+  showFocused: boolean;
 }
 
 /**
  * AskUserQuestion's `Type something.` field (ADR 0113), below a card's options: our own send in
  * flight, else the editor, else what the field holds with an offer to change it, else the focused
- * banner with the offer, else the offer alone. Shared by the single-question card, the wizard step and
- * the multi-select question.
+ * banner (where the card shows it) with the offer, else the offer alone. Shared by the
+ * single-question card, the wizard step and the multi-select question.
  */
 export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
   const { field, copy, locked, editor } = props;
-  const focusedBanner = field.focused ? (
+  const focusedBanner = field.focused && props.showFocused ? (
     <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
       {copy.focused}
     </div>

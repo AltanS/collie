@@ -397,8 +397,8 @@ async function tickField(args: GuardArgs, proof: MultiSelectModel, ours: string,
  * above the field with our text still in it and ticked. An `Up` inside a wrapped value moves the caret
  * up a visual line first, so the bound is the field's lines plus slack. A read that drifted or shows
  * the field changed refuses; a park that runs out of steps still reports `sent`: the answer is in and
- * ticked, the card's focused lock covers the rest, and a toggle, escape or step key that still arrives
- * moves the pointer off first (`offField`). Never an `Enter`: on the field it would untick.
+ * ticked, and a toggle, escape or step key tapped next moves the pointer off first (`offField`). Never an
+ * `Enter`: on the field it would untick.
  */
 async function parkAboveField(args: GuardArgs, proof: MultiSelectModel, ours: string, sleep: Sleep): Promise<ActionResult> {
   const bound = (fieldOn(proof)?.lines ?? 1) + 3;

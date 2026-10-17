@@ -132,6 +132,7 @@ export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneI
                 locked={answerLocked}
                 busyIcon={busyIcon}
                 showTyped
+                showFocused
               />
             ) : null
           }
