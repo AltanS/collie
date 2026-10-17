@@ -226,6 +226,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "sendProtocol",
   },
   {
+    key: "walky",
+    env: "COLLIE_WALKY",
+    section: "bridge",
+    kind: "bool",
+    default: true,
+    doc: "Take walky talky messages for this machine's agent panes. Off refuses each one; the CLI here still sends.",
+    configField: "walky",
+  },
+  {
     key: "transcript",
     env: "COLLIE_TRANSCRIPT",
     section: "bridge",

@@ -1,0 +1,163 @@
+// The ONE file under bridge/walky/ that reads an unvalidated value: a request line on the local
+// socket, a phone's POST body, and the log and inbox files on disk. Every reader is total over
+// garbage: there is no input for which one throws, and a field that fails its rule fails the record.
+
+import type { JsonObject, JsonValue } from "../json.ts";
+import { readMarkers } from "../beacon/parse.ts";
+import type { BeaconMarker } from "../beacon/types.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { parseAddress } from "./address.ts";
+import {
+  RECEIPT_STATES,
+  WALKY_ID,
+  type WalkyKind,
+  type WalkyMessage,
+  type WalkyReceipt,
+  type WalkyReceiptState,
+  type WalkySender,
+  type WalkyVerified,
+} from "./types.ts";
+
+/** The longest request line the socket reads. A body of 4,000 characters fits many times over. */
+export const WALKY_LINE_MAX = 64 * 1024;
+
+/** The longest raw body a request may carry before cleaning. Longer is refused, not cut. */
+export const RAW_BODY_MAX = 32 * 1024;
+
+function text(row: JsonObject, key: string): string | null {
+  return asJsonString(row[key]) ?? null;
+}
+
+function textOrNull(row: JsonObject, key: string): string | null | undefined {
+  if (row[key] === null) return null;
+  return asJsonString(row[key]);
+}
+
+export function isWalkyId(value: string | null | undefined): value is string {
+  return value !== null && value !== undefined && WALKY_ID.test(value);
+}
+
+function readSender(value: JsonValue | undefined): WalkySender | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const memberId = textOrNull(row, "memberId");
+  const address = textOrNull(row, "address");
+  const harness = textOrNull(row, "harness");
+  const label = text(row, "label");
+  if (memberId === undefined || address === undefined || harness === undefined || label === null) return null;
+  if (address !== null && parseAddress(address)?.kind !== "pane") return null;
+  if (harness !== null && !/^[a-z0-9][a-z0-9._-]{0,31}$/u.test(harness)) return null;
+  return { memberId, address, harness, label: label.slice(0, 200) };
+}
+
+/** A message as the log stored it, or as a crew hop carries it (spec 03). Null when any field fails. */
+export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
+  const row = asJsonObject(value);
+  if (row === undefined || row.v !== 1) return null;
+  const id = text(row, "id");
+  const kindText = text(row, "kind");
+  const kind: WalkyKind | null = kindText === "agent" || kindText === "operator" ? kindText : null;
+  const from = readSender(row.from);
+  const to = text(row, "to");
+  const replyTo = textOrNull(row, "replyTo");
+  const at = asJsonNumber(row.at);
+  const body = text(row, "body");
+  const signer = textOrNull(row, "signer");
+  const signature = textOrNull(row, "signature");
+  if (!isWalkyId(id) || kind === null || from === null || to === null || parseAddress(to) === null) return null;
+  if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
+  if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
+  return { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
+}
+
+const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
+
+/** A receipt as the log stored it. */
+export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const id = text(row, "id");
+  const target = text(row, "target");
+  const stateText = text(row, "state");
+  const state: WalkyReceiptState | undefined = RECEIPT_STATES.find((candidate) => candidate === stateText);
+  const verifiedText = text(row, "verified");
+  const verified = VERIFIED.find((candidate) => candidate === verifiedText);
+  const at = asJsonNumber(row.at);
+  const by = text(row, "by");
+  if (!isWalkyId(id) || target === null || state === undefined || verified === undefined || at === undefined || by === null) return null;
+  const receipt: WalkyReceipt = { id, target, state, verified, at, by };
+  const reason = text(row, "reason");
+  const sendId = text(row, "sendId");
+  const withReason = reason === null ? receipt : { ...receipt, reason };
+  return sendId === null ? withReason : { ...withReason, sendId };
+}
+
+// ── The local socket's requests ──────────────────────────────────────────────────────────────────
+
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack";
+
+export type WalkyRequest =
+  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string; readonly body: string; readonly replyTo: string | null }
+  | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean }
+  | { readonly op: "who"; readonly markers: readonly BeaconMarker[] }
+  | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
+  | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null };
+
+/** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
+export function parseWalkyRequest(line: string): WalkyRequest | null {
+  if (line.length > WALKY_LINE_MAX) return null;
+  let parsed: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    parsed = JSON.parse(line) as JsonValue;
+  } catch {
+    return null;
+  }
+  const row = asJsonObject(parsed);
+  if (row === undefined || row.v !== 1) return null;
+  const markers = readMarkers(row.markers);
+  const op = text(row, "op");
+  if (op === "who") return { op, markers };
+  if (op === "status") {
+    const id = text(row, "id");
+    return isWalkyId(id) ? { op, markers, id } : null;
+  }
+  if (op === "inbox") return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true };
+  if (op === "ack") {
+    if (row.ids === null || row.ids === undefined) return { op, markers, ids: null };
+    if (!Array.isArray(row.ids) || row.ids.length > 200) return null;
+    const ids = row.ids.map((entry) => asJsonString(entry) ?? null);
+    return ids.every((id) => isWalkyId(id)) ? { op, markers, ids: ids.filter((id): id is string => id !== null) } : null;
+  }
+  if (op !== "send") return null;
+  const id = text(row, "id");
+  const to = text(row, "to");
+  const body = text(row, "body");
+  const replyTo = textOrNull(row, "replyTo") ?? null;
+  if (!isWalkyId(id) || to === null || parseAddress(to) === null || body === null || body.length > RAW_BODY_MAX) return null;
+  if (replyTo !== null && !isWalkyId(replyTo)) return null;
+  return { op, markers, id, to, body, replyTo };
+}
+
+/** What a phone's `POST /api/walky` carries. */
+export interface PhoneSend {
+  readonly id: string;
+  readonly to: string;
+  readonly body: string;
+  readonly replyTo: string | null;
+}
+
+/** The phone's body, or a word for the 400. */
+export function parsePhoneSend(value: JsonValue | undefined): PhoneSend | { readonly error: string } {
+  const row = asJsonObject(value);
+  if (row === undefined) return { error: "bad body" };
+  const id = text(row, "id");
+  const to = text(row, "to");
+  const body = text(row, "body");
+  const replyTo = textOrNull(row, "replyTo") ?? null;
+  if (!isWalkyId(id)) return { error: "bad id" };
+  if (to === null || parseAddress(to) === null) return { error: "bad to" };
+  if (body === null || body.length > RAW_BODY_MAX) return { error: "bad body" };
+  if (replyTo !== null && !isWalkyId(replyTo)) return { error: "bad replyTo" };
+  return { id, to, body, replyTo };
+}

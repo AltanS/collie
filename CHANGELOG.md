@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Agent sessions can message each other, and you can message them.** Walky talky keeps each message in the receiving machine's log and types it into the target pane through the Send Protocol, under a one-line `[walky-talky wt_...]` header that names the sender. A pane that cannot take it now, for example one with a dialog open, keeps it in its inbox. Every message has an id and a receipt, a sender may send 30 messages in 10 minutes, and a shell pane never receives one. The bridge listens on a local socket, `<stateDir>/walky/sock`, and the phone gets `POST /api/walky`, `GET /api/walky/who` and `GET /api/pane/:id/walky`. `COLLIE_WALKY=off` refuses every message for this machine's panes.
+
 ## [1.22.5] - 2026-10-17
 
 ### Added

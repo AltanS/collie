@@ -223,6 +223,11 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { labelOf } from "./walky/address.ts";
+import type { SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
+import { WalkyLog } from "./walky/log.ts";
+import { WalkyService } from "./walky/service.ts";
+import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -1634,6 +1639,66 @@ edgeRouter?.start();
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
 hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
+
+// Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
+// socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
+// Send Protocol; a session with no protocol keeps the inbox only. This machine's member id names its
+// panes on a crew (`local` on a solo install), and its crew key signs each message it builds.
+const walkyHost: WalkyHost = {
+  panes: () =>
+    registry.ordered().flatMap((rt) => {
+      const { agents, shellPanes } = rt.engine.current();
+      const of = (view: AgentView, agent: boolean): WalkyPane => {
+        const head = gitHeads.get(view.cwd);
+        const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
+        return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, terminal: rt.send !== undefined };
+      };
+      const out = agents.map((view) => of(view, true));
+      for (const view of shellPanes) out.push(of(view, false));
+      return out;
+    }),
+  send: async (pane, sendId, text): Promise<SendResult> => {
+    const protocol = registry.get(pane.session)?.send;
+    if (protocol === undefined) return { outcome: "refused", reason: "no terminal" };
+    const answer = await protocol.handle({ id: sendId, text, mode: "send" }, { session: pane.session, paneId: pane.paneId, harness: pane.harness ?? "" });
+    const receipt = answer.receipt;
+    if (receipt === undefined) return { outcome: "unknown" };
+    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+  },
+  sendState: (sendId) => {
+    const record = sendStore?.get(sendId) ?? null;
+    if (record === null) return null;
+    const receipt = record.receipt;
+    // A request with no receipt yet still runs; the start-up recovery ends a crashed one `unknown`.
+    if (receipt === undefined) return { outcome: "held" };
+    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+  },
+  cancelHeld: (session, paneId, sendId) => {
+    registry.get(session)?.send?.cancelHeld(session, paneId, sendId);
+  },
+};
+const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
+const walky = new WalkyService({
+  log: new WalkyLog(join(cfg.stateDir, "walky")),
+  host: walkyHost,
+  memberId: walkyMemberId,
+  enabled: () => cfg.walky,
+  machine: hostname(),
+  keyPem: () => (walkyMemberId === null ? null : (trustStore.current()?.self.keyPem ?? null)),
+  warn: (line) => console.warn(line),
+});
+const walkyRecovered = walky.deliverer.recover();
+if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} message(s) left open by the last run`);
+const walkyServer = new WalkyServer({
+  socketPath: walkySocketPath(cfg.stateDir),
+  host: HOST,
+  service: walky,
+  targets: () => {
+    const live = new Set(registry.ordered().map((runtime) => runtime.name));
+    return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
+  },
+});
+if (await walkyServer.start()) console.log(`[walky] socket at ${walkySocketPath(cfg.stateDir)}`);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -2421,6 +2486,7 @@ const server = startServer({
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
   gitHeads,
+  walky,
   cacheWatch,
   folders,
   worktreeReceipts,
@@ -2538,6 +2604,7 @@ const shutdown = async () => {
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
+  walkyServer.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

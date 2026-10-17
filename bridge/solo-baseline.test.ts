@@ -712,6 +712,9 @@ describe("solo zero-tax — routes", () => {
       // One picture under the Files root, as its bytes (ADR 0090): the Files read's checks and gate,
       // the type read off the bytes, forwarded to the owning member like `files`.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/image$/",
+      // Walky talky's list for one pane (M62): the messages that reached it, newest first. A read, gated
+      // like the pane read, this collie's own panes only until spec 03 makes it forwardable.
+      "/^\\/api\\/pane\\/([^/]+)\\/walky$/",
       // A space's rename (M53 spec 05): a write, forwarded to the owning member, and only an adapter that
       // declares `renameSpace` takes it; every other bridge answers it the refusal.
       "/^\\/api\\/space\\/([^/]+)\\/rename$/",
@@ -852,6 +855,11 @@ describe("solo zero-tax — routes", () => {
       // The digest's "remind me next digest" dismiss — solo, no crew sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",
+      // Walky talky (M62): a message from the phone as an operator (a write under the device gate), and
+      // the list of reachable targets (a read). SOLO routes; an address on another member is the crew
+      // seam's business, never a route here.
+      "/api/walky",
+      "/api/walky/who",
       "/api/workspace",
       // The New sheet's branch from a FOLDER (M48, ADR 0093): the plan it shows before Start, and the
       // create. Two SOLO routes, named here rather than exempted. Session-scoped through the gate and
@@ -925,6 +933,7 @@ const CONFIG_KEYS = {
   multiSession: true,
   surfaceShadow: true,
   sendProtocol: true,
+  walky: true,
   skipServe: true,
   basePath: true,
   uploadExtraTypes: true,
@@ -984,6 +993,8 @@ describe("solo zero-tax — config", () => {
       "vapidPrivate",
       "vapidPublic",
       "vapidSubject",
+      // Walky talky (M62): whether this machine takes messages for its panes. A solo switch, on by default.
+      "walky",
       "zellijBin",
     ]);
     expect(keys.filter((k) => /crew|peer|lead|federat/i.test(k))).toEqual([]);
@@ -1066,6 +1077,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_VAPID_PRIVATE",
       "COLLIE_VAPID_PUBLIC",
       "COLLIE_VAPID_SUBJECT",
+      "COLLIE_WALKY",
       "COLLIE_ZELLIJ_BIN",
     ]);
   });
@@ -1177,6 +1189,10 @@ const STATE_DIR_ENTRIES = [
   // The Whistle model's folder, `whistle/` (ADR 0096): the model, its manifest and a download's
   // part file. Absent until a write device taps "Download to host" or the operator runs
   // `collie stt whistle`; nothing else creates it.
+  // Walky talky (M62): the local socket `walky/sock` (0600, made at start like the hold socket), and
+  // the message log and per-pane inboxes, written by use and by nothing else: absent until the first
+  // message reaches this machine. On Windows the socket is not built.
+  "walky",
   "whistle",
   // The ref each new worktree was cut from (ADR 0089, amended). Written by use and by nothing else:
   // absent until the first create that named a starting point succeeds. Driven in "the worktree
