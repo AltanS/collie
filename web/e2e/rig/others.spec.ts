@@ -1,21 +1,22 @@
 // pi and omp in the browser leg. Scenario 1 needs no model turn and always runs. Scenarios 2 to 5
-// spend turns, so they run only when harnesses.ts says the harness has a working provider
-// (COLLIE_RIG_PI_TURNS=1 / COLLIE_RIG_OMP_TURNS=1); otherwise they report "not reached" with the reason.
+// spend turns, so they run only when harnesses.ts says the harness has a working provider (a key file
+// in COLLIE_RIG_KEY_FILE); otherwise they report "not reached" with the reason.
 //
 // What Collie lifts for these two (web/src/lib/harness/pi/ASK_NOTES.md, omp/ASK_NOTES.md, ADR 0077):
 // a pick-one question and a permission select are cards; a pick-many question and the /model
 // selector are raw, with the "Collie cannot read this dialog" card and the Keys board. So scenario 1
 // drives the selector through the Keys board, and scenario 3 asks a pick-one question.
 //
-// NOT YET RUN AGAINST A LIVE TURN: on 2026-10-17 neither harness had a working provider here, so the
-// bodies of scenarios 2 to 5 below are written from the readers' notes and Claude's run, and their
-// card names and confirmations are the first thing to check on the first run with a provider.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+// History for scenario 5 costs one model turn: a prompt, then 45 shell lines (`!echo`) sent through the
+// bridge's send API. pi and omp record each as a note of its own and run it without the model, so the
+// prompt ends up behind the newest page and the phone shows the reported pin.
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { devices, type Page } from "@playwright/test";
 
-import { asJsonObject } from "../../src/lib/json";
+import { asJsonObject, asJsonString } from "../../src/lib/json";
 import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
 import {
   NotReached,
@@ -38,18 +39,31 @@ import {
   waitIdle,
   type Rig,
   type Session,
+  type TapLog,
   type TapRecorder,
   type Trail,
 } from "./leg";
+import { sleep } from "./rig-lib";
 
 const PHONE = devices[PHONE_DEVICE];
 const REPLY_MS = 120_000;
 
 interface Plan {
-  /** A row the selector prints only while it is open. */
+  /** A row the selector prints only while it is open, at any of its levels. */
   readonly selectorOpen: RegExp;
+  /** The Keys board keys that commit the pointed model, in order, from the selector's first level. */
+  readonly commitKeys: readonly string[];
+  /** The footer once the session runs on the committed model. */
+  readonly footer: RegExp;
   /** The permission request, the folder or file it touches, and how the screen shows the answer. */
-  readonly permission: { readonly prompt: string; readonly option: RegExp; readonly prepare: (project: string) => void; readonly took: (project: string, screen: string) => boolean };
+  readonly permission: {
+    readonly prompt: string;
+    readonly option: RegExp;
+    /** The Keys board keys that give the same answer when the phone shows the dialog raw. */
+    readonly rawKeys: readonly string[];
+    readonly prepare: (project: string) => void;
+    readonly took: (project: string, screen: string) => boolean;
+  };
   /** The pick-one question and the option the phone taps. */
   readonly question: { readonly prompt: string; readonly option: string };
 }
@@ -57,21 +71,36 @@ interface Plan {
 const PLANS = {
   pi: {
     selectorOpen: /Enter to select · Ctrl\+S to set as default/,
-    // permission-gate.ts asks before `rm -rf`. The phone answers No, so the folder stays.
+    commitKeys: ["Enter"],
+    footer: /anthropic\/claude-haiku-4\.5/,
+    // permission-gate.ts asks before `chmod … 777` (and `rm -rf`, which the phone's own destructive
+    // guard would hold for a second tap). The phone answers No, so the mode stays 644.
     permission: {
-      prompt: "Run this exact bash command and nothing else: rm -rf gate-probe",
+      prompt: "Run this exact bash command and nothing else: chmod 777 gate-probe.txt",
       option: /^No$/,
-      prepare: (project) => mkdirSync(join(project, "gate-probe"), { recursive: true }),
-      took: (project, screen) => existsSync(join(project, "gate-probe")) && /Blocked by user/.test(screen),
+      // The pointer starts on Yes.
+      rawKeys: ["Down", "Enter"],
+      prepare: (project) => {
+        writeFileSync(join(project, "gate-probe.txt"), "gate probe\n");
+        chmodSync(join(project, "gate-probe.txt"), 0o644);
+      },
+      took: (project, screen) => (statSync(join(project, "gate-probe.txt")).mode & 0o777) === 0o644 && /Blocked by user/.test(screen),
     },
     question: { prompt: 'Use the question tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do nothing else.', option: "Cherry" },
   },
   omp: {
-    selectorOpen: /⏎\/→ models · ↑\/↓ providers/,
-    // omp's tool approval (approval.ts), when its config asks. The phone allows a harmless touch.
+    // Three levels: providers, the provider's models, the roles of the pointed model. Enter goes one
+    // level down, Enter on the role row assigns `default`, and Esc closes the selector.
+    selectorOpen: /⎋ close|→ \[ ● default/,
+    commitKeys: ["Enter", "Enter", "Enter", "Esc"],
+    footer: /Haiku 4\.5/,
+    // omp's tool approval (approval.ts): the rig's config sets `tools.approvalMode: write`, so a bash
+    // call asks. The phone approves a harmless touch.
     permission: {
       prompt: "Run this exact bash command and nothing else: touch phone-said-yes.txt",
-      option: /^(Allow|Approve|Yes)\b/,
+      option: /^Approve\b/,
+      // The pointer starts on Approve.
+      rawKeys: ["Enter"],
       prepare: () => undefined,
       took: (project) => existsSync(join(project, "phone-said-yes.txt")),
     },
@@ -110,11 +139,25 @@ for (const harness of ["pi", "omp"] as const) {
         try {
           trail.log.push(await sendFromComposer(page, recorder, plan.permission.prompt, "send the request"));
           const option = page.getByRole("button", { name: plan.permission.option });
-          const shown = await option
+          const unread = page.getByRole("group", { name: message("unreadDialog.caption") });
+          await option
+            .first()
+            .or(unread)
             .first()
             .waitFor({ state: "visible", timeout: 60_000 })
-            .then(() => true)
-            .catch(() => false);
+            .catch(() => undefined);
+          const shown = await option.first().isVisible().catch(() => false);
+          if (!shown && (await unread.isVisible().catch(() => false))) {
+            // The dialog is up and the phone cannot read it. A person answers it on the Keys board.
+            trail.notes.push("no card: the phone shows the unread-dialog card for the permission dialog");
+            await tap(recorder, page.getByRole("group", { name: "Controls" }).getByRole("button", { name: message("composer.controls.keys"), exact: true }), "Keys", { expectAnswer: false });
+            for (const key of plan.permission.rawKeys) trail.log.push(await tap(recorder, page.getByRole("button", { name: key, exact: true }).last(), `Keys: ${key}`));
+            await waitIdle(rig, pane, REPLY_MS);
+            const took = plan.permission.took(project, await rig.screen(pane, 120));
+            trail.captures.push(await capture(page, `${harness}-2-permission`), await captureScreen(rig, pane, `${harness}-2-permission`));
+            trail.notes.push(took ? "the Keys answer took effect" : "the Keys answer did not show on screen or disk", ...trail.log.map(tapWords));
+            return { verdict: "fail", taps: trail.log.length, minTaps: 2, note: trail.notes.join("; "), taps_log: trail.log, captures: trail.captures };
+          }
           if (!shown) {
             await waitIdle(rig, pane, REPLY_MS);
             return { verdict: "n/a", taps: null, note: `${harness} ran it without a card to answer (no permission prompt in this config); ${trail.log.map(tapWords).join("; ")}` };
@@ -138,7 +181,8 @@ for (const harness of ["pi", "omp"] as const) {
         const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
         try {
           trail.log.push(await sendFromComposer(page, recorder, plan.question.prompt, "send the request"));
-          const option = page.getByRole("button", { name: plan.question.option, exact: true });
+          // The card's button reads the label, then the option's description when the tool gave one.
+          const option = page.getByRole("button", { name: new RegExp(`^${plan.question.option}\\b`) });
           await expect(option, "no question card on the phone").toBeVisible({ timeout: 60_000 });
           const t = await tap(recorder, option, plan.question.option);
           trail.log.push(t);
@@ -155,10 +199,10 @@ for (const harness of ["pi", "omp"] as const) {
 
     test(`4 send while streaming (${harness})`, async ({ browser, rig }) => {
       await runScenario(harness, "stream-send", session, async (pane, trail) => {
-        spendTurn(harness, "stream: 120 fruits");
+        spendTurn(harness, "stream: 150 fruits");
         const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
         try {
-          trail.log.push(await sendFromComposer(page, recorder, "List 120 different fruits, one per line, numbered 1 to 120. No other text.", "send the long prompt"));
+          trail.log.push(await sendFromComposer(page, recorder, "List 150 different fruits, one per line, numbered 1 to 150, each with one short sentence about its taste. No other text.", "send the long prompt"));
           if ((await rig.screenUntil(pane, /^\s*1[0-9]\.\s+\S/m, 60_000, 120)) === null) throw new NotReached("the long reply never started streaming");
           spendTurn(harness, "stream: the note sent mid-stream");
           const t = await sendFromComposer(page, recorder, "Stream note: reply with only the word PINEAPPLE-OK.", "send while streaming");
@@ -180,19 +224,22 @@ for (const harness of ["pi", "omp"] as const) {
     test(`5 Load older with an empty phone cache (${harness})`, async ({ browser, rig }) => {
       await runScenario(harness, "load-older", session, async (pane, trail) => {
         if (!SETUPS[harness].turns) throw new NotReached(SETUPS[harness].noTurnsReason);
-        const project = harnessDirs(harness).project;
-        for (let i = 1; i <= 48; i++) writeFileSync(join(project, `note-${String(i).padStart(2, "0")}.txt`), `note ${String(i)}\n`);
-        spendTurn(harness, "load-older: 48 reads");
+        spendTurn(harness, "load-older: the prompt before the shell lines");
         const seed = await phoneOn(browser, rig, pane, PHONE);
         try {
-          trail.log.push(await sendFromComposer(seed.page, seed.recorder, "Use the read tool on each of the 48 files note-01.txt to note-48.txt, one read call per file. Then reply with only the word DONE.", "send the history prompt"));
+          trail.log.push(await sendFromComposer(seed.page, seed.recorder, "Reply with only the word READY.", "send the history prompt"));
         } finally {
           await seed.context.close();
         }
-        await rig.screenUntil(pane, /^\s*DONE\s*$/m, 240_000, 200);
+        await rig.screenUntil(pane, /^\s*READY\s*$/m, REPLY_MS, 60);
         await waitIdle(rig, pane, REPLY_MS);
+        const lines = await seedShellLines(rig, pane, 45);
+        trail.notes.push(`history: one prompt, then ${String(lines)} of 45 shell lines sent through the API (no model turn)`);
         const cold = asJsonObject(await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`));
-        if (!coldPageHasOlder(cold)) throw new NotReached("the session holds no more than one page");
+        if (!coldPageHasOlder(cold)) throw new NotReached(`the session holds no more than one page; ${trail.notes.join("; ")}`);
+        const lastPrompt = asJsonObject(cold?.lastPrompt);
+        const inPage = Array.isArray(cold?.upserts) && cold.upserts.some((row) => asJsonObject(row)?.uuid === lastPrompt?.uuid);
+        if (lastPrompt === undefined || inPage) throw new NotReached(`no reported pin: the last prompt is ${lastPrompt === undefined ? "missing" : "inside the cold page"}`);
         const context = await phoneContext(browser, rig, PHONE);
         const page = await context.newPage();
         try {
@@ -212,8 +259,8 @@ for (const harness of ["pi", "omp"] as const) {
             .then(() => true)
             .catch(() => false);
           trail.captures.push(await capture(page, `${harness}-5-load-older`));
-          trail.notes.push(`pin ${pinBox === null ? "not shown" : covered ? "OVER the row" : "clear of the row"}`, grew ? "an older page loaded" : "no older page loaded");
-          return { verdict: !covered && grew ? "pass" : "fail", taps: 1, minTaps: 1, note: trail.notes.join("; "), captures: trail.captures };
+          trail.notes.push(`reported pin ${pinBox === null ? "not shown" : covered ? "OVER the row" : "clear of the row"}`, grew ? "an older page loaded" : "no older page loaded");
+          return { verdict: pinBox !== null && !covered && grew ? "pass" : "fail", taps: 1, minTaps: 1, note: trail.notes.join("; "), captures: trail.captures };
         } finally {
           await context.close();
         }
@@ -273,14 +320,38 @@ async function pickerByKeys(harness: HarnessId, plan: Plan, rig: Rig, page: Page
     log.push(await tap(recorder, page.getByRole("button", { name: "Esc", exact: true }).last(), "Keys: Esc"));
     trail.captures.push(await capture(page, `${harness}-1-picker`), await captureScreen(rig, pane, `${harness}-1-picker`));
     notes.push(`commit not reached: ${SETUPS.omp.noTurnsReason}, the selector offers no usable model`);
-    return { verdict: openTaps === 1 && log.every((l) => l.worked) ? ("not reached" as const) : ("fail" as const), taps: log.length, minTaps: 4, note: notes.join("; "), taps_log: log, captures: trail.captures };
+    return { verdict: openTaps === 1 && log.every((l) => l.worked) ? ("not reached" as const) : ("fail" as const), taps: log.length, minTaps: 3 + plan.commitKeys.length, note: notes.join("; "), taps_log: log, captures: trail.captures };
   }
-  const commit = await tap(recorder, page.getByRole("button", { name: "Enter", exact: true }), "Keys: Enter (commit)");
-  log.push(commit);
+  const commits: TapLog[] = [];
+  for (const key of plan.commitKeys) {
+    const was = await rig.tail(pane, 40);
+    // `.last()`: the unread-dialog card carries an Esc of its own above the Keys board.
+    const t = await tap(recorder, page.getByRole("button", { name: key, exact: true }).last(), `Keys: ${key} (commit)`);
+    log.push(t);
+    commits.push(t);
+    const moved = (await rig.until(() => rig.tail(pane, 40), (text) => text !== was, 4000)) !== null;
+    if (!t.worked || !moved) notes.push(`${key}: ${t.worked ? "accepted" : "refused"}, screen ${moved ? "moved" : "did not move"}`);
+  }
   const closed = (await rig.until(() => rig.tail(pane, 40), (text) => !plan.selectorOpen.test(text), 5000)) !== null;
-  const footer = (await rig.tail(pane, 6)).includes(SETUPS[harness].model.split("/").slice(1).join("/"));
+  const footer = plan.footer.test(await rig.tail(pane, 6));
   trail.captures.push(await capture(page, `${harness}-1-picker`), await captureScreen(rig, pane, `${harness}-1-picker`));
   notes.push(closed ? "the selector closed on the commit" : "the selector stayed open", footer ? "the footer names the model" : "the footer does not name the model");
-  const verdict = openTaps === 1 && closed && commit.worked && log.every((l) => l.worked) ? ("pass" as const) : ("fail" as const);
-  return { verdict, taps: log.length, minTaps: 4, note: notes.join("; "), taps_log: log, captures: trail.captures };
+  const verdict = openTaps === 1 && closed && footer && commits.every((t) => t.worked) && log.every((l) => l.worked) ? ("pass" as const) : ("fail" as const);
+  return { verdict, taps: log.length, minTaps: 3 + plan.commitKeys.length, note: notes.join("; "), taps_log: log, captures: trail.captures };
+}
+
+/**
+ * Seed history without the model: shell lines (`!echo history-NN`) through the bridge's send API. pi
+ * and omp run each one themselves and record it as a note of its own. Returns how many went in.
+ */
+async function seedShellLines(rig: Rig, pane: string, count: number): Promise<number> {
+  let sent = 0;
+  for (let i = 1; i <= count; i++) {
+    const { json } = await rig.post("/api/send", { id: randomUUID(), pane, text: `!echo history-${String(i).padStart(2, "0")}`, mode: "command" });
+    const outcome = asJsonString(asJsonObject(asJsonObject(json)?.receipt)?.outcome);
+    if (outcome === "sent" || outcome === "effective") sent++;
+    await waitIdle(rig, pane, 10_000);
+    await sleep(250);
+  }
+  return sent;
 }

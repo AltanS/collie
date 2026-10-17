@@ -10,14 +10,19 @@
 // a refresh in the leg can never turn the operator's login over. pi: ~/.pi/agent/auth.json. omp:
 // ~/.omp/agent/agent.db (where `omp login` keeps its credentials). No key is ever printed.
 //
-// MODEL TURNS. A harness whose `turns` is false still starts and runs every scenario that needs no
-// model turn (the model picker); the rest report "not reached" with `noTurnsReason`. On 2026-10-17
-// pi's only provider key (OpenRouter) answered 401 and omp had no credential at all, so both are off
-// by default. When a working provider exists, set it here (or with the env names in the README):
+// PROVIDER KEY FOR pi AND omp. Both read OPENROUTER_API_KEY from their environment. Point
+// COLLIE_RIG_KEY_FILE at a dotenv file that holds it, and the start script reads that ONE name from
+// the file when the harness starts, in a subshell, straight into the harness's own environment. The
+// key is never copied into a file, never typed into a pane (the screen is mirrored), and never seen
+// by the leg's own processes. With a key file, pi gets no auth.json, so the key in the environment
+// is the one it uses.
 //
-//   COLLIE_RIG_PI_MODEL=openrouter/anthropic/claude-haiku-5.5 COLLIE_RIG_PI_TURNS=1
-//   COLLIE_RIG_OMP_MODEL=openrouter/anthropic/claude-haiku-5.5 COLLIE_RIG_OMP_TURNS=1
-import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+// MODEL TURNS. A harness whose `turns` is false still starts and runs every scenario that needs no
+// model turn (the model picker); the rest report "not reached" with `noTurnsReason`. pi and omp turn
+// on when COLLIE_RIG_KEY_FILE is set (COLLIE_RIG_PI_TURNS=0 / COLLIE_RIG_OMP_TURNS=0 turn one off).
+// On 2026-10-17 pi's own auth.json key answered 401 and omp had no credential, so without a key
+// file both stay off. The model is set here, or with COLLIE_RIG_PI_MODEL / COLLIE_RIG_OMP_MODEL.
+import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -39,6 +44,8 @@ export interface HarnessSetup {
   readonly turns: boolean;
   /** Why turns are off, for the table. */
   readonly noTurnsReason: string;
+  /** The environment name the harness reads its provider key from, loaded from the key file. */
+  readonly keyEnv: string | null;
 }
 
 const HOME = homedir();
@@ -51,6 +58,12 @@ const BIN = {
 
 const flag = (name: string): boolean => /^(1|true|yes)$/i.test(process.env[name] ?? "");
 
+/** The dotenv file with the provider key (see the header), or null. Must be an absolute path. */
+const KEY_FILE = process.env.COLLIE_RIG_KEY_FILE ?? null;
+if (KEY_FILE !== null && !(KEY_FILE.startsWith("/") && existsSync(KEY_FILE))) throw new Error("COLLIE_RIG_KEY_FILE must be an absolute path to a file that exists");
+/** Turns on with a key file, unless the flag says otherwise. */
+const turnsOn = (name: string): boolean => (process.env[name] === undefined ? KEY_FILE !== null : flag(name));
+
 export const SETUPS = {
   claude: {
     id: "claude",
@@ -59,20 +72,23 @@ export const SETUPS = {
     model: "haiku",
     turns: true,
     noTurnsReason: "",
+    keyEnv: null,
   },
   pi: {
     id: "pi",
     agent: "pi",
-    model: process.env.COLLIE_RIG_PI_MODEL ?? "openrouter/anthropic/claude-haiku-5.5",
-    turns: flag("COLLIE_RIG_PI_TURNS"),
-    noTurnsReason: "pi auth dead (OpenRouter 401)",
+    model: process.env.COLLIE_RIG_PI_MODEL ?? "openrouter/anthropic/claude-haiku-4.5",
+    turns: turnsOn("COLLIE_RIG_PI_TURNS"),
+    noTurnsReason: KEY_FILE === null ? "pi auth dead (401), no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_PI_TURNS)",
+    keyEnv: "OPENROUTER_API_KEY",
   },
   omp: {
     id: "omp",
     agent: "omp",
-    model: process.env.COLLIE_RIG_OMP_MODEL ?? "openrouter/anthropic/claude-haiku-5.5",
-    turns: flag("COLLIE_RIG_OMP_TURNS"),
-    noTurnsReason: "no omp auth on this host",
+    model: process.env.COLLIE_RIG_OMP_MODEL ?? "openrouter/anthropic/claude-haiku-4.5",
+    turns: turnsOn("COLLIE_RIG_OMP_TURNS"),
+    noTurnsReason: KEY_FILE === null ? "no omp auth, no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_OMP_TURNS)",
+    keyEnv: "OPENROUTER_API_KEY",
   },
 } satisfies Readonly<Record<HarnessId, HarnessSetup>>;
 
@@ -153,8 +169,10 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
     const integration = id === "pi" ? "herdr-agent-state.ts" : "herdr-omp-agent-state.ts";
     if (existsSync(join(realAgent, "extensions", integration))) copyFileSync(join(realAgent, "extensions", integration), join(d.agent, "extensions", integration));
     if (id === "pi") {
-      copySecret(join(realAgent, "auth.json"), join(d.agent, "auth.json"));
-      const [provider, ...rest] = SETUPS.pi.model.split("/");
+      // With a key file the key comes from the environment, and an auth.json would win over it.
+      if (KEY_FILE === null) copySecret(join(realAgent, "auth.json"), join(d.agent, "auth.json"));
+      else rmSync(join(d.agent, "auth.json"), { force: true });
+      const [provider = "", ...rest] = SETUPS.pi.model.split("/");
       writeFileSync(
         join(d.agent, "settings.json"),
         `${JSON.stringify({ defaultProvider: provider, defaultModel: rest.join("/"), defaultThinkingLevel: "off", theme: "dark", quietStartup: true }, null, 2)}\n`,
@@ -166,11 +184,12 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
       const examples = join(BIN.pi, "..", "..", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "examples", "extensions");
       const extensions = ["question.ts", "permission-gate.ts"].map((file) => join(examples, file)).filter((path) => existsSync(path));
       // `--approve` trusts the scratch project for this run, so no trust question comes first.
-      argv = [BIN.pi, "--thinking", "off", "--offline", "--approve", ...extensions.flatMap((path) => ["-e", path])];
+      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...extensions.flatMap((path) => ["-e", path])];
     } else {
       copySecret(join(realAgent, "agent.db"), join(d.agent, "agent.db"));
       writeFileSync(join(d.agent, "config.yml"), `setupVersion: 2\nmodelRoles:\n  default: ${SETUPS.omp.model}\n`);
-      argv = [BIN.omp];
+      // `write`: a bash, write or edit call asks first, so the permission scenario has a card to tap.
+      argv = [BIN.omp, "--approval-mode", "write"];
     }
     env.push(
       `HOME=${sq(d.home)}`,
@@ -182,7 +201,11 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
     );
   }
   const unset = UNSET.map((name) => `-u ${name}`).join(" ");
-  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\nexec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
+  // The provider key: ONE name read from the key file in a subshell, exported to the harness only.
+  // The script holds the file's path, never the key, and prints nothing.
+  const keyEnv = SETUPS[id].keyEnv;
+  const key = KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
+  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
   chmodSync(d.start, 0o700);
   return { line: `exec ${sq(d.start)}`, project: d.project };
 }

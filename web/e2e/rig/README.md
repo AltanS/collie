@@ -40,19 +40,22 @@ For development, `COLLIE_RIG_KEEP=1` leaves the rig and the harnesses up after a
 
 ## Provider and model per harness
 
-`harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku. pi and omp default to
-`openrouter/anthropic/claude-haiku-5.5`, and their model turns are off. On 2026-10-17, pi's only key
-(OpenRouter) answered 401, and omp had no credential. Their scenarios that need a turn report "not
-reached" with that reason. When a working provider exists, turn them on:
-
 ```sh
-COLLIE_RIG_PI_TURNS=1 COLLIE_RIG_PI_MODEL=<provider/model> \
-COLLIE_RIG_OMP_TURNS=1 COLLIE_RIG_OMP_MODEL=<provider/model> \
-  bunx playwright test -c e2e/rig/playwright.config.ts
+COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.config.ts
 ```
 
-The pi and omp bodies of scenarios 2 to 5 have not yet run against a live turn. Check their card
-names and confirmations on the first run with a provider.
+`harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku with its own login. pi and
+omp run on `openrouter/anthropic/claude-haiku-4.5` and read `OPENROUTER_API_KEY`.
+`COLLIE_RIG_KEY_FILE` names a dotenv file that holds it. Each start script reads that one name from
+the file in a subshell, straight into the harness's environment. The key never goes into a file, a
+pane's command line or the leg's own processes, and pi gets no `auth.json`, so the key wins.
+
+Without a key file, the pi and omp scenarios that need a turn report "not reached". Other knobs:
+`COLLIE_RIG_PI_MODEL`, `COLLIE_RIG_OMP_MODEL`, and `COLLIE_RIG_PI_TURNS=0` or
+`COLLIE_RIG_OMP_TURNS=0` to keep one harness off.
+
+The teardown scrubs the key from every text file of the run, the rig's logs and Playwright's test
+results, and drops a screenshot whose capture held it. It prints a count, never the key.
 
 ## Cost of one run
 
@@ -60,8 +63,11 @@ names and confirmations on the first run with a provider.
   one message sent while it streams, and one prompt that makes 48 Read calls. The picker needs no
   turn. A run caps each harness at 15 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: no turns while their turns are off; about 6 each when on.
-- Time: about 2 minutes. A case that waits out its reply timeouts adds up to 4 minutes.
+- pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Their "Load older" history is
+  one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
+  omp with `--approval-mode write`, so a bash call asks.
+- Time: about 2 minutes for Claude alone, about 6 with pi and omp. A case that waits out its reply
+  timeouts adds up to 4 minutes.
 
 ## What it never touches
 
@@ -72,6 +78,7 @@ names and confirmations on the first run with a provider.
 - Any `collie` CLI verb. The rig pairs with the bridge's own pairing module.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
-  0600: Claude's OAuth file without its refresh token, pi's `auth.json`, omp's `agent.db`. The
-  bridge reads the journals of these scratch homes, never `~/.claude/projects`.
+  0600: Claude's OAuth file without its refresh token, omp's `agent.db`, and pi's `auth.json` only
+  when no key file is set. The bridge reads the journals of these scratch homes, never
+  `~/.claude/projects`.
 - Processes it did not start. Every kill is by a recorded pid after `/proc/<pid>/cmdline` matched.
