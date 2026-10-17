@@ -23,10 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Fixed
-
-- **A pick-many question keeps its card while the pointer is on "Type something".** In a Claude Code question where you can tick several answers, the pointer stops on the "Type something" row on its way to Submit. Collie then showed the unread-dialog card, because a digit pressed there is typed into that text field. Now the question card stays, and Submit works from there. A tap on an answer first moves the pointer up one row, reads the screen back, and sends the answer's digit only when the pointer has left the field.
-
 ## [1.22.5] - 2026-10-17
 
 ### Added
@@ -41,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Two Claude Code 2.1.302 question screens show as their cards again.** A long question that wraps to nine rows hid the wizard's stepper, and a dialog rule that wraps onto a stub row broke the preview picker, so both fell to the unread-dialog card. Thanks @leftos (#480).
 - **The web build no longer inherits a shell's `NODE_ENV=development`.** Vite then emitted the development bundle, its main chunk was over the precache limit, and `collie update` stopped at the web build. The web build step always runs with production set. Thanks @dor-tzur-lmnd (#482).
 - **On macOS every agent's version reads again.** Under launchd the bridge's PATH held no agent, so every version read as unread, every pane counted as provisional, and a send during a turn was held until the turn ended. Version reads now look on the login shell's PATH first and the bridge's own PATH after it, and on Windows a `.cmd` shim wins over a bare file of the same name. Thanks @dor-tzur-lmnd (#483).
+- **A pick-many question keeps its card while the pointer is on "Type something".** In a Claude Code question where you can tick several answers, the pointer stops on the "Type something" row on its way to Submit. Collie then showed the unread-dialog card, because a digit pressed there is typed into that text field. Now the question card stays, and Submit works from there. A tap on an answer first moves the pointer up one row, reads the screen back, and sends the answer's digit only when the pointer has left the field.
 
 ## [1.22.4] - 2026-10-17
 
