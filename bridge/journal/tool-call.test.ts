@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { classifyToolCall } from "./tool-call.ts";
+import { classifyToolCall, type ToolCall } from "./tool-call.ts";
 
 // The classifier is pure and harness-blind: name plus input in, one branch of the union out. It gets
 // table coverage here, and the per-harness RESULT folding (diff hunks, exit codes) is tested with the
@@ -164,3 +164,109 @@ describe("classifyToolCall: a question is recognised by its input", () => {
   });
 });
 
+
+// Gentle Shell's tools (gentle-pi 4.2.0), read off real pi logs on 2026-10-16 (issue #461).
+describe("classifyToolCall: a task list is a plan", () => {
+  test("a `todo` write carries its tasks, a missing status is pending", () => {
+    const input = { action: "write", tasks: [{ title: "Write the parser", status: "in_progress", note: "RED" }, { title: "Ship it" }] };
+    expect(classifyToolCall("todo", input, "write")).toEqual({
+      kind: "plan",
+      name: "todo",
+      tasks: [
+        { title: "Write the parser", status: "in_progress", note: "RED" },
+        { title: "Ship it", status: "pending" },
+      ],
+    });
+  });
+
+  test("Claude's TodoWrite and Codex's update_plan map their words onto the five statuses", () => {
+    const claude = classifyToolCall("TodoWrite", { todos: [{ content: "A", status: "completed", activeForm: "Doing A" }] }, "");
+    expect(claude).toEqual({ kind: "plan", name: "TodoWrite", tasks: [{ title: "A", status: "done" }] });
+    const codex = classifyToolCall("update_plan", { plan: [{ step: "B", status: "in_progress" }, { step: "C", status: "cancelled" }] }, "");
+    expect(codex).toEqual({
+      kind: "plan",
+      name: "update_plan",
+      tasks: [{ title: "B", status: "in_progress" }, { title: "C", status: "dropped" }],
+    });
+  });
+
+  test("a `todo update` names one task, so the input holds no list", () => {
+    expect(classifyToolCall("todo", { action: "update", id: 3, status: "done" }, "")).toEqual({ kind: "plan", name: "todo", tasks: [] });
+  });
+
+  // Hermes's `todo` with `merge: true` carries only the items it changed, so it is not the list.
+  test("a merge that carries only the changed items is not a plan", () => {
+    expect(classifyToolCall("todo", { todos: [{ content: "A", status: "completed" }], merge: true }, "A").kind).toBe("other");
+  });
+
+  test("an unknown status is pending and an entry with no title is dropped", () => {
+    const call = classifyToolCall("todo", { action: "write", tasks: [{ title: "A", status: "someday" }, { status: "done" }, "x"] }, "");
+    expect(call).toEqual({ kind: "plan", name: "todo", tasks: [{ title: "A", status: "pending" }] });
+  });
+});
+
+describe("classifyToolCall: Gentle Shell's other tools", () => {
+  test("`ask_user_choice` is one question by its shape, options as a list or as a JSON string", () => {
+    const options = [{ label: "Yes", description: "Read only", value: "yes" }, { label: "No", value: "no" }];
+    const expected: ToolCall = {
+      kind: "question",
+      name: "ask_user_choice",
+      summary: "May I read it?",
+      questions: [{ question: "May I read it?", multiple: false, options: [{ label: "Yes", description: "Read only" }, { label: "No" }] }],
+    };
+    expect(classifyToolCall("ask_user_choice", { question: "May I read it?", options }, "")).toEqual(expected);
+    expect(classifyToolCall("ask_user_choice", { question: "May I read it?", options: JSON.stringify(options) }, "")).toEqual(expected);
+  });
+
+  test("a lone question with no options is not a question", () => {
+    expect(classifyToolCall("ask", { question: "Why?" }, "Why?").kind).toBe("other");
+    expect(classifyToolCall("ask", { question: "Why?", options: "not json" }, "Why?").kind).toBe("other");
+  });
+
+  test("`subagent_run` and `subagent_continue` are a task named by their label", () => {
+    expect(classifyToolCall("subagent_run", { agent: "gentle-ai-explore", label: "Map the footer", task: "Long prompt", mode: "background" }, "")).toEqual({
+      kind: "task",
+      agent: "gentle-ai-explore",
+      summary: "Map the footer",
+    });
+    expect(classifyToolCall("subagent_continue", { task_id: "t-1", label: "Fix the test", prompt: "Long prompt" }, "")).toEqual({
+      kind: "task",
+      agent: "agent",
+      summary: "Fix the test",
+    });
+  });
+
+  test("a continue with no label is named by the one-line summary, never the whole prompt", () => {
+    expect(classifyToolCall("subagent_continue", { task_id: "t-1", prompt: "Line one\nLine two" }, "t-1")).toEqual({
+      kind: "task",
+      agent: "agent",
+      summary: "t-1",
+    });
+  });
+
+  test("`bash_background` and `monitor` run a command in the background", () => {
+    expect(classifyToolCall("bash_background", { command: "bun test", label: "suite" }, "")).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+    });
+    expect(classifyToolCall("monitor", { command: "tail -f log", label: "watch", timeout_seconds: 60 }, "")).toMatchObject({
+      kind: "execute",
+      background: true,
+    });
+    expect(classifyToolCall("bash", { command: "ls" }, "ls")).toEqual({ kind: "execute", command: "ls" });
+  });
+
+  test("`fetch_content` fetches, `google_search` and `source_check` search the web", () => {
+    expect(classifyToolCall("fetch_content", { url: "https://a.dev" }, "")).toEqual({ kind: "fetch", url: "https://a.dev" });
+    expect(classifyToolCall("google_search", { query: "bun test" }, "")).toEqual({ kind: "search", query: "bun test", where: "web" });
+    expect(classifyToolCall("source_check", { claim: "Bun is fast" }, "")).toEqual({ kind: "search", query: "Bun is fast", where: "web" });
+  });
+
+  test("bookkeeping tools are `other` drawn quietly, and `codemode` stays plain `other`", () => {
+    for (const name of ["mem_save", "mem_search", "gentle_odd_phase", "job_list"])
+      expect(classifyToolCall(name, {}, "s")).toEqual({ kind: "other", name, summary: "s", quiet: true });
+    expect(classifyToolCall("codemode", { code: "x" }, "x")).toEqual({ kind: "other", name: "codemode", summary: "x" });
+  });
+});
