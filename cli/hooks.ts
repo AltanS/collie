@@ -140,7 +140,7 @@ const SYMLINK_HOPS = 32;
  * same file. A path nobody can resolve comes back as itself — that is what a dangling link is, and
  * the caller wants to compare it, not to fail on it.
  */
-function realpathVia(fs: LinkReader, path: string, hops = { left: SYMLINK_HOPS }): string {
+export function realpathVia(fs: LinkReader, path: string, hops = { left: SYMLINK_HOPS }): string {
   const parent = dirname(path);
   // The root is its own parent — that is the recursion's floor, and it needs no probe.
   const here = parent === path ? path : join(realpathVia(fs, parent, hops), basename(path));

@@ -28,6 +28,7 @@ import {
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { cmdDocs, cmdSkill } from "./docs.ts";
+import { cmdSkillInstall, cmdSkillPrint, cmdSkillStatus, cmdSkillUninstall, cmdSkillVerb, type SkillDeps } from "./skill-install.ts";
 import { asksForHelp, EXIT, type Io, realIo } from "./io.ts";
 import {
   cmdExecBridge,
@@ -235,6 +236,11 @@ function linkDeps(io: Io): LinkDeps {
  * network, and nothing under the state dir.
  */
 function hooksDeps(io: Io): HooksDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
+/** `skill install|uninstall|status|print`: the context, the filesystem and the symlink probe, like `hooks`. */
+function skillDeps(io: Io): SkillDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
@@ -836,8 +842,35 @@ export const COMMANDS: readonly Command[] = [
   // says why). Both verbs are read-only and neither draws a terminal view, so `--plain` is moot.
   {
     name: "skill",
-    summary: "print the agent-facing brief on Collie, for an AI coding agent working in this terminal (also `collie --skill`)",
-    run(_args, s) {
+    summary:
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, status, print",
+    subcommands: [
+      {
+        name: "install",
+        summary: "write the walky talky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
+        run: (args, s) => cmdSkillInstall(skillDeps(s.io), args),
+      },
+      {
+        name: "uninstall",
+        summary: "remove only the file or block Collie wrote: `skill uninstall <harness|all>`",
+        run: (args, s) => cmdSkillUninstall(skillDeps(s.io), args),
+      },
+      {
+        name: "status",
+        summary: "what each target carries now: installed, stale, absent or refused (`--check` answers with the exit code)",
+        run: (args, s) => cmdSkillStatus(skillDeps(s.io), args),
+      },
+      {
+        name: "print",
+        summary: "print the text an install writes: `skill print <harness|all|generic>`",
+        run: (args, s) => cmdSkillPrint(skillDeps(s.io), args),
+      },
+    ],
+    run(args, s) {
+      // A bare `collie skill` (and `collie --skill`) prints the general brief, as it always did. Flags
+      // are ignored as before; a word that is no sub-verb gets the usage block.
+      const word = args.find((a) => !a.startsWith("-"));
+      if (word !== undefined) return cmdSkillVerb(skillDeps(s.io), word, args.slice(args.indexOf(word) + 1));
       const ctx = loadContext(s.io.err);
       return cmdSkill(s.io, collieVersion(ctx.root));
     },

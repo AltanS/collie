@@ -908,6 +908,26 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
 }
 
 /**
+ * The same question for the walky talky skill: is an installed copy older than the text the NEW
+ * binary carries? Asked of the new binary for the reason `nudgeHooks` is — the old build's embedded
+ * text is the stale one. Silent unless the answer is `EXIT.STATE`; a skill nobody installed, a binary
+ * too old to know the verb and a failed spawn all say nothing.
+ */
+function nudgeSkill(deps: UpdateDeps, binary: string): void {
+  let r;
+  try {
+    r = deps.exec.capture(binary, ["skill", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  } catch {
+    return;
+  }
+  if (!r.found || r.code !== EXIT.STATE) return;
+  deps.io.out(
+    "note: this build carries a newer walky talky skill than the one your agents have —" +
+      " run `collie skill install all` to update it.",
+  );
+}
+
+/**
  * The second half of `update`, run FROM THE CODE THAT WAS JUST FETCHED. `build` re-runs the version
  * gate (a half-bumped release can't go live) and recompiles both the binary and `web/dist`;
  * `restart` picks up the new bridge AND the new binary (the swap gave `bin/collie` a fresh inode,
@@ -937,6 +957,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
   deps.io.out("✓ update complete");
   // `build` just wrote this binary from the code we are running, so it is the new list, not ours.
   nudgeHooks(deps, collieBinary(deps.ctx.root, deps.host));
+  nudgeSkill(deps, collieBinary(deps.ctx.root, deps.host));
   return EXIT.OK;
 }
 
@@ -2907,6 +2928,7 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
     }
     deps.io.out(`✓ updated to ${a.version === "" ? a.to : a.version}`);
     nudgeHooks(deps, collieBinary(layout.currentLink, deps.host));
+    nudgeSkill(deps, collieBinary(layout.currentLink, deps.host));
     return EXIT.OK;
   }
   if (run.state === "rolled-back") {

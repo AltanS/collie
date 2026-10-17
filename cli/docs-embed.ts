@@ -39,13 +39,18 @@ import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
+import walkyTalkySkill from "../docs/walky-talky-skill.md" with { type: "text" };
 import windows from "../docs/windows.md" with { type: "text" };
 
 // The agent-facing brief, which is not one of the pages: it is hand-written, it carries two
 // placeholder tokens `cli/docs.ts` fills at print time, and `collie skill` prints it alone.
 import SKILL_TEMPLATE from "./skill.md" with { type: "text" };
 
-export { SKILL_TEMPLATE };
+// The walky talky skill an installer writes into a harness (`cli/skill-install.ts`). Its placeholders
+// are filled when it is rendered for a target, not when it is printed.
+import WALKY_TALKY_SKILL_TEMPLATE from "./skills/walky-talky.md" with { type: "text" };
+
+export { SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
 
 export interface DocPage {
   /** The file stem, which is the name an operator types: `crew` for `docs/crew.md`. */
@@ -145,6 +150,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "multiplexers",
     purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each terminal can answer",
     text: multiplexers,
+  },
+  {
+    name: "walky-talky-skill",
+    purpose: "Teach your agents to message each other: install, check and remove the walky talky skill",
+    text: walkyTalkySkill,
   },
   {
     name: "voice-and-push",

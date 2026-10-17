@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Messages between agent sessions show up as cards on the phone.** A turn that carries a walky talky header draws as "Message from" a sender, with the sender's kind, label, body and what it replies to, and the card appears only when the bridge's own log holds that message, so a header an agent merely prints stays plain text with a quiet "not in the log" mark. The terminal mirror tags the header row the same way, the pane menu lists a pane's messages with Reply, a long press on Send offers "Send as message", and the Crew page can message all agents or one machine, with a receipt per target.
+- **A walky talky skill, installed and kept current.** `collie skill install <claude|codex|opencode|pi|gemini|all>` writes a short skill that teaches an agent the `collie walky` verbs, how to read a message header and when not to send. Claude Code gets its own skill file. The other harnesses get a managed block in their global instruction file, and everything else in that file stays. `collie skill status` reports each target as installed, stale, absent or refused, `collie doctor` warns on a stale copy, and `collie update` prints one note when the new build carries a newer skill. Nothing is written unless you run the install.
 
 ## [1.22.5] - 2026-10-17
 
