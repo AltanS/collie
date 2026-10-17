@@ -18,7 +18,7 @@
 
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { DEVICES_FILENAME, sha256Hex } from "../../../bridge/pairing";
 import { SERVER_ENV_KEYS, type EnvMap } from "./harnesses";
 import { PhoneClient } from "./phone-client";
@@ -57,7 +57,7 @@ export function scratchBridgeEnv(options: ScratchBridgeOptions, port: number): E
   return {
     ...out,
     HOME: home,
-    PATH: `${options.agentBinDir}:${options.env.PATH ?? "/usr/bin:/bin"}`,
+    PATH: [options.agentBinDir, options.env.PATH ?? ["/usr/bin", "/bin"].join(delimiter)].join(delimiter),
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_DATA_HOME: join(home, ".local", "share"),
     XDG_CACHE_HOME: join(home, ".cache"),

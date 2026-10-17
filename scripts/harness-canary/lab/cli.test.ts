@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { parseBridgeUrl, parseCli, PHONE_ONLY_SUFFIX, phoneOnlyRoot, readTokenFile, type CliOptions } from "./cli";
 
-// The phone leg's flags: --leg, --bridge and --token-file.
+// The phone leg's flags: --leg, --bridge and --token-file. Paths are built with the host's own join and
+// resolve, as in watch.test.ts, so the same claims hold on Windows (`D:\home\u\...`).
 
 const argv = (...args: string[]): CliOptions => {
   const parsed = parseCli(args, "/checkout", {}, "/home/u");
@@ -22,10 +23,11 @@ describe("--leg", () => {
     const cli = argv("--leg", "phone", "--version", "claude=2.1.302");
     expect(cli.legs).toBe("phone");
     expect(cli.labRoot).toBe(phoneOnlyRoot(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")), cli.ledger));
-    expect(cli.labRoot).toMatch(/\/leg-phone\/ledger-[0-9a-f]{10}$/u);
+    expect(cli.labRoot).toBe(join(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")), PHONE_ONLY_SUFFIX, basename(cli.labRoot)));
+    expect(basename(cli.labRoot)).toMatch(/^ledger-[0-9a-f]{10}$/u);
     expect(cli.ledger).toBe(join("/home/u", ".local", "state", "collie-harness-lab", `ledger.${PHONE_ONLY_SUFFIX}.json`));
     const other = argv("--leg", "phone", "--version", "claude=2.1.302", "--ledger", "/tmp/l.json");
-    expect(other.ledger).toBe(`/tmp/l.${PHONE_ONLY_SUFFIX}.json`);
+    expect(other.ledger).toBe(resolve(`/tmp/l.${PHONE_ONLY_SUFFIX}.json`));
     // Two ledgers, two folders: one run's start sweep never deletes the other's run folder.
     expect(other.labRoot).not.toBe(cli.labRoot);
   });
@@ -42,7 +44,7 @@ describe("--leg", () => {
 describe("--bridge and --token-file", () => {
   test("they go together, and only with --leg phone", () => {
     const cli = argv("--leg", "phone", "--version", "claude=2.1.302", "--bridge", "http://127.0.0.1:8788", "--token-file", "/tmp/tok");
-    expect(cli.bridge).toEqual({ url: "http://127.0.0.1:8788", tokenFile: "/tmp/tok" });
+    expect(cli.bridge).toEqual({ url: "http://127.0.0.1:8788", tokenFile: resolve("/tmp/tok") });
     expect(() => argv("--leg", "phone", "--version", "claude=2.1.302", "--bridge", "http://127.0.0.1:8788")).toThrow(/go together/);
     expect(() => argv("--bridge", "http://127.0.0.1:8788", "--token-file", "/tmp/tok")).toThrow(/add --leg phone/);
   });
