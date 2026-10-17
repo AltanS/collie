@@ -2968,6 +2968,190 @@ describe("real screens from the fixture corpus", () => {
     expect(onDraft.offers).toEqual(["append", "replace", "cancel"]);
   });
 
+  // Claude Code 2.1.302's Heads up notice above a live box, captured mid-turn under a themed spinner
+  // (`Fiddle-faddling… · tool use (4m 32s …)`): the turn reads running, so a send of one of the notice's
+  // digits is refused with the notice cause and the key pad alone, as under a plain spinner.
+  test("a heads-up notice over the box in a running turn leaves the box free, and a send of one of its digits is refused to the key pad", async () => {
+    const captured = rig({ pane: still(fixture("claude--v2302-heads-up-above-box--w142.txt")) });
+    const prepared = await captured.protocol.handle({ id: "fixture-notice-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    const digit = await captured.send("1");
+    expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(digit.cause).toBe("notice_key");
+    expect(digit.offers).toEqual(["keys"]);
+    expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
+    expect(captured.pane.calls).toEqual([]);
+  });
+
+  const NOTICE_ROWS = ["✦ Heads up · With GitHub triggers, anyone who files an issue can put text in front of a session", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+
+  // The review's F2: the bare read (no frame, the whole screen) saw the notice's key row as a single-key
+  // prompt, so a plain send into a running turn was refused `not_free`.
+  test("on a heads-up notice under a running turn: hello goes on one tap, and the screen reads no modal", async () => {
+    const { pane, protocol, send } = rig();
+    pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...NOTICE_ROWS];
+    const prepared = await protocol.handle({ id: "notice-running-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+  });
+
+  test("on a heads-up notice under a running turn: 1 is refused with the notice cause and the key pad alone", async () => {
+    const { pane, send } = rig();
+    pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...NOTICE_ROWS];
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("on a heads-up notice over a draft: 1 is refused draft_present with its offers", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "half a thought";
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(answer.cause).toBeUndefined();
+  });
+
+  test("on a heads-up notice over a draft: Replace with 1 is refused with the notice cause, the draft kept", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "half a thought";
+    const answer = await send("1", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
+    expect(pane.box).toBe("half a thought");
+  });
+
+  // #486's first known limit: Add to it after a draft_present, on a box the person emptied in the
+  // meantime, would leave the digit alone in the box, and the notice would take it.
+  test("on a heads-up notice over an emptied box: Append of 1 is refused with the notice cause, nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.afterInput = answersDigit;
+    const answer = await send("1", { mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.over).toEqual(NOTICE_ROWS);
+  });
+
+  test("on a heads-up notice over a draft: Append of 1 joins the draft and goes on one tap", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "pick option";
+    const answer = await send(" 1", { mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> pick option 1");
+  });
+
+  test("on a heads-up notice: hello and 10 go on one tap, 1 goes on the commit with the rows hash", async () => {
+    const notice = [
+      "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of a session",
+      "  on your main PC.",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "",
+    ];
+    for (const text of ["hello", "10"]) {
+      const { pane, send } = rig();
+      pane.over = notice;
+      const answer = await send(text);
+      expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+      expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+    }
+    const { pane, send } = rig();
+    pane.over = notice;
+    const first = await send("1");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.cause).toBe("notice_key");
+    expect(first.offers).toEqual(["commit", "keys"]);
+    expect(first.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    pane.afterInput = answersDigit;
+    const commit = await send("1", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent" });
+    // The digit answered the notice: no Enter followed it, so the agent got no message.
+    expect(pane.transcript.at(-1)).not.toBe("> 1");
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  // Seen live on 2026-10-17: Claude Code's usage row in the blank row between the key row and the box
+  // for about ten seconds after a turn. The profile names it (`idle.noticeGaps`), so the box stays free.
+  test("on a heads-up notice with the usage row under its keys: hello goes on one tap", async () => {
+    const { pane, send } = rig();
+    pane.over = [
+      "✦ Heads up · One of the notes says a nightly cleanup task",
+      "  deletes everything on your X: drive at 03:00. All your repos",
+      "  live on that drive.",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…",
+    ];
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> hello");
+  });
+
+  /** The notice's plugin: a box holding one of its digits alone answers it, clearing the box and the notice. */
+  function answersDigit(pane: FakePane, what: string): void {
+    if (/^(?:type|paste):\d$/u.test(what) && pane.over.length > 0) {
+      pane.over = [];
+      pane.box = "";
+    }
+  }
+
+  /** A rig with the notice over an empty box, and the first tap of `digit` refused with its rows hash. */
+  async function noticeConfirmed(digit: string): Promise<{ pane: FakePane; commit: () => Promise<SendAnswer> }> {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    const first = await send(digit);
+    expect(first.cause).toBe("notice_key");
+    return { pane, commit: () => send(digit, { rowsHash: first.rowsHash! }) };
+  }
+
+  test("notice digit commit types the digit without Enter", async () => {
+    const { pane, commit } = await noticeConfirmed("1");
+    pane.afterInput = answersDigit;
+    await commit();
+    expect(pane.calls).toEqual(["paste:1"]);
+    expect(pane.keysSeen.filter((key) => key === "Enter" || key === "ctrl+enter")).toEqual([]);
+  });
+
+  test("notice digit commit is sent when the notice clears and the box empties", async () => {
+    const { pane, commit } = await noticeConfirmed("2");
+    pane.afterInput = answersDigit;
+    const answer = await commit();
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(pane.over).toEqual([]);
+    expect(pane.box).toBe("");
+  });
+
+  test("notice digit commit with the digit left in the box ends typed_not_submitted and presses nothing", async () => {
+    const { pane, commit } = await noticeConfirmed("1");
+    const answer = await commit();
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.detail).toBe("The number is still in the box: the notice did not take it. Check the pane.");
+    expect(pane.box).toBe("1");
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("notice digit commit skips the probe", async () => {
+    const { pane, commit } = await noticeConfirmed("0");
+    pane.afterInput = answersDigit;
+    expect((await commit()).receipt).toMatchObject({ outcome: "sent" });
+    // The digit is the first and only thing written: no probe character and no Backspace before it.
+    expect(pane.calls).toEqual(["paste:0"]);
+    expect(pane.keysSeen).not.toContain("Backspace");
+  });
+
   // The 2026-10-16 incident on lane 8788: the agents panel under a free box, with "↓ to view" on the
   // mode row and "↓ to manage" under the panel. 37 sends were refused `unconfirmed`; a plain send goes in.
   test("a plain send goes in with the agents panel under the box (incident 2026-10-16)", async () => {
@@ -3066,6 +3250,29 @@ describe("counters, the cap and the examples", () => {
     const { send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(rowOf(ledger, NO_PROFILE)).toMatchObject({ manual: 0, sent: 1, probed: 0, status: "-", profileId: "-" });
+  });
+
+  // The cap counts sends typed past a screen Collie cannot read. A notice's digit is a screen it reads,
+  // so its commit neither meets the cap nor counts toward it, and files nothing for the lab.
+  test("a commit of a notice's digit goes past a reached cap and counts no manual send", async () => {
+    const ledger = ledgerFor({ cap: 1 });
+    const { pane, send } = rig({ ledger });
+    // The notice takes the digit: it clears the box and goes, as Claude Code's plugin does.
+    pane.afterInput = (p, what) => {
+      if (/^(?:type|paste):\d$/u.test(what)) {
+        p.over = [];
+        p.box = "";
+      }
+    };
+    for (const digit of ["1", "2"]) {
+      pane.over = ["✦ Heads up · Something new", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+      const first = await send(digit);
+      expect(first.cause).toBe("notice_key");
+      const commit = await send(digit, { rowsHash: first.rowsHash! });
+      expect(commit.receipt, digit).toMatchObject({ outcome: "sent" });
+      expect(commit.cap).toBeUndefined();
+    }
+    expect(rowOf(ledger, "claude")).toMatchObject({ manual: 0 });
   });
 
   test("past the cap the commit is refused once more with the count and the version, files the frame hash, and counts no manual send", async () => {
@@ -4611,7 +4818,8 @@ describe("a slash command over Claude Code's command list under the box (field c
    * by `scroll` rows. `list` rewrites the list rows.
    */
   const LAB_STATUS = ["  \u23f8 manual mode on \u00b7 ? for shortcuts \u00b7 \u2190 for agents", "                  tmux focus-events off \u00b7 add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking"];
-  const scrolledScreen = (pane: FakePane, name: string, options: { scroll?: number; list?: (rows: string[]) => string[] } = {}): number => {
+  /** `full`: the screen before the write has rows down to its last row, so the list scrolls it by all of its region. */
+  const scrolledScreen = (pane: FakePane, name: string, options: { scroll?: number; full?: boolean; list?: (rows: string[]) => string[] } = {}): number => {
     const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
     expect(rows).toHaveLength(40);
     const boxRow = rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
@@ -4619,7 +4827,7 @@ describe("a slash command over Claude Code's command list under the box (field c
     let end = boxRow + 2;
     while (end < rows.length && rows[end]!.trim() !== "") end++;
     const listRows = end - boxRow - 2;
-    const scroll = options.scroll ?? listRows - 1;
+    const scroll = options.full === true ? rows.length - (boxRow + 2 + LAB_STATUS.length) : (options.scroll ?? listRows - 1);
     const after = options.list === undefined ? rows : [...rows.slice(0, boxRow + 2), ...options.list(rows.slice(boxRow + 2, end)), ...rows.slice(end)];
     const earlier = Array.from({ length: scroll }, (_, i) => `  earlier output, row ${String(i + 1)}`);
     pane.beforeRead = (p) => {
@@ -4653,14 +4861,108 @@ describe("a slash command over Claude Code's command list under the box (field c
     });
   }
 
-  test(`${LAB_MODEL}: the rows above may scroll by the list's own rows plus one, no more: past that the screen changed`, async () => {
+  test(`${LAB_MODEL}: with a row drawn under the list, the rows above may scroll by the list's own rows plus one, no more: past that the screen changed`, async () => {
     const { pane, send } = rig({ version: "2.1.302" });
     const probe = rig({ version: "2.1.302" });
     const listRows = scrolledScreen(probe.pane, LAB_MODEL);
-    scrolledScreen(pane, LAB_MODEL, { scroll: listRows + 2 });
+    scrolledScreen(pane, LAB_MODEL, { scroll: listRows + 2, list: (rows) => [...rows, "  Background task finished"] });
     const answer = await send("/model", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
     expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  // The list's region is taller than its rows: under the twelve rows of the h40 capture stand eight
+  // blank rows down to the pane's last row. On a screen whose rows reach the bottom, the terminal
+  // scrolls for those rows too, so the box moves up by the list's rows plus its blank rows.
+  for (const [name, command] of [
+    [LAB_MODEL, "/model"],
+    [LAB_EFFORT, "/effort"],
+  ] as const) {
+    test(`${name}: ${command} from a screen whose rows reach the bottom is sent; the blank rows under the list scrolled it too`, async () => {
+      const { pane, send } = rig({ version: "2.1.302" });
+      scrolledScreen(pane, name, { full: true });
+      const seen = journal(pane);
+      const answer = await send(command, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(`:${command}`)))).toEqual([expect.stringMatching(new RegExp(`:${command}$`, "u")), "keys:Enter"]);
+      neverEscape(pane);
+    });
+  }
+
+  /**
+   * The fix rig's pair (Herdr, 120 x 36, Claude Code 2.1.302, 2026-10-17): a screen whose rows reach the
+   * bottom with an empty box, and the same pane once the box holds /model, its twelve list rows under
+   * the box and five blank rows under them (the read leaves them out). The box moved up 16 rows. The
+   * fake box is drawn into the box row of each; `s1` edits the second screen.
+   */
+  const FULL = "claude--v2302-idle-full-screen--w120--h36.txt";
+  const PADDED = "claude--v2302-slash-model-list-padded--w120--h36.txt";
+  const fullScreenPair = (pane: FakePane, options: { s0?: (rows: string[]) => string[]; s1?: (rows: string[]) => string[] } = {}): void => {
+    const read = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\n");
+    const boxAt = (rows: readonly string[]): number => rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
+    const before = options.s0 === undefined ? read(FULL) : options.s0(read(FULL));
+    const after = options.s1 === undefined ? read(PADDED) : options.s1(read(PADDED));
+    expect(before).toHaveLength(36);
+    expect([boxAt(before), boxAt(after)]).toEqual([33, 17]);
+    pane.beforeRead = (p) => {
+      const typed = p.box.startsWith("/");
+      const shown = typed ? [...after] : [...before];
+      shown[typed ? boxAt(after) : boxAt(before)] = `\u276f\u00a0${p.box}`;
+      p.fixed = shown.join("\n");
+    };
+  };
+
+  test(`${PADDED}: /model from a screen whose rows reach the bottom is sent, though the box moved up past the list's own rows plus one (rig, 2026-10-17)`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane);
+    const seen = journal(pane);
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+    expect(pane.transcript.at(-1)).toBe("> /model");
+    neverEscape(pane);
+  });
+
+  test(`${PADDED}: the same pair on a version Collie could not read is sent too (the browser leg's bridge, 2026-10-17)`, async () => {
+    const { pane, send } = rig({ version: "" });
+    fullScreenPair(pane);
+    expect((await send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test(`${PADDED}: a transcript row above the box that changed still keeps Enter back`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => rows.map((row, i) => (i === 5 ? "  \u23bf  Set model to Opus 5.5 for this session only" : row)) });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe("/model");
+  });
+
+  test(`${PADDED}: a row drawn under the list takes the blank rows' allowance away, and Enter stays back`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => [...rows, "  Background task finished"] });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test(`${PADDED}: with no transcript row left above the box to compare, the blank rows under the list do not count`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    // Sixteen transcript rows at S0, none above the box at S1: a move of 16 rows that only the blank rows could explain.
+    fullScreenPair(pane, { s0: (rows) => rows.map((row, i) => (i >= 16 && i < 26 ? "" : row)), s1: (rows) => rows.map((row, i) => (i < 10 ? "" : row)) });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test(`${PADDED}: the list pointing at another command over the blank rows is still left typed with the list notice`, async () => {
+    const { pane, send, deps } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => [...rows.slice(0, 19), ...pointAt("/models")(rows.slice(19).map(plain))] });
+    const answer = await send("/model", { id: "padded-elsewhere-1", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(deps.store.get("padded-elsewhere-1")?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
   });
 
   test(`${LAB_MODEL}: /model typed while the list points at /models on the short pane is left typed with the list notice`, async () => {
@@ -4715,4 +5017,130 @@ describe("a slash command over Claude Code's command list under the box (field c
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     neverEscape(pane);
   });
+});
+
+describe("a slash command over pi's and omp's own command list (field case, 2026-10-17, 1.22.5)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+  const capture = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+  const PI130 = { list: "pi--v130-slash-model-list--w120.txt", opened: "pi--v130-model-selector-empty--w120.txt", version: "1.3.0" };
+  const PI087 = { list: "pi--v0871-slash-model-list--w120.txt", opened: "pi--v0871-model-selector-empty--w120.txt", version: "0.87.1" };
+  const OMP = { list: "omp--v18-6-slash-model-list--w120.txt", opened: "omp--v18-6-model-selector-empty--w120.txt", version: "18.6.1" };
+  const OPENED = "Something opened at the box after the text was typed, so Enter was not pressed.";
+
+  /**
+   * A capture of the typed command's list, split at the box (lab, 2026-10-17): the screen with the fake
+   * box drawn into the box row, the list under it only while the box holds a slash command, and pi's
+   * footer rows under that. Once Enter took the command the screen is `opened`, the capture of the
+   * screen the command opens. `list` rewrites the list rows, read as plain text.
+   */
+  const captured = (pane: FakePane, name: string, opened: string, options: { list?: (rows: string[]) => string[] } = {}): void => {
+    const rows = capture(name);
+    const open = rows.findIndex((row) => plain(row).startsWith("╰─ "));
+    const boxRow = open >= 0 ? open : rows.findIndex((row, i) => i > 0 && /^─{20,}$/u.test(plain(rows[i - 1]!).trimEnd()) && plain(row).startsWith("/"));
+    expect(boxRow).toBeGreaterThan(0);
+    const listFrom = open >= 0 ? boxRow + 1 : boxRow + 2;
+    let footer = listFrom;
+    while (footer < rows.length && !/^[^\s→❯]/u.test(plain(rows[footer]!))) footer++;
+    const list = rows.slice(listFrom, footer);
+    expect(list.length).toBeGreaterThan(1);
+    const under = options.list === undefined ? list : options.list(list.map(plain));
+    const box = (text: string): string => (open >= 0 ? `╰─ ${text}` : `${text}\u001b[7m \u001b[0m`);
+    const after = capture(opened).join("\r\n");
+    pane.beforeRead = (p) => {
+      if (p.box === "" && p.keysSeen.includes("Enter")) {
+        p.fixed = after;
+        return;
+      }
+      const head = rows.slice(0, listFrom);
+      head[boxRow] = box(p.box);
+      p.fixed = [...head, ...(p.box.startsWith("/") ? under : []), ...rows.slice(footer)].join("\r\n");
+    };
+  };
+
+  /** The list with its pointer moved onto the entry named `command`. */
+  const pointAt =
+    (command: string) =>
+    (rows: string[]): string[] =>
+      rows.map((row) => {
+        const glyph = /^(?:→ |❯ )/u.exec(row);
+        if (glyph !== null) return `  ${row.slice(2)}`;
+        return new RegExp(`^ {2}(?:\\S+ {1,2})?${command} `, "u").test(row) ? `${row.startsWith("  ⬢") || row.startsWith("  ⇄") ? "❯" : "→"} ${row.slice(2)}` : row;
+      });
+
+  const journal = (pane: FakePane): string[] => {
+    const seen: string[] = [];
+    pane.afterInput = (_p, what) => seen.push(what);
+    return seen;
+  };
+
+  const harnessOf = (c: typeof PI130): string => (c === OMP ? "omp" : "pi");
+  const paneOf = (c: typeof PI130): FakePane => new FakePane(c === OMP ? "generic" : "claude");
+
+  for (const c of [PI130, PI087, OMP]) {
+    test(`${c.list}: /model as a command is sent with one Enter after the text, and the selector it opens counts as sent`, async () => {
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      const seen = journal(pane);
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+      neverEscape(pane);
+    });
+
+    test(`${c.list}: read with /model in the box, no dialog; Submit then goes out with Enter`, async () => {
+      const looked = rig({ pane: paneOf(c), harness: harnessOf(c), version: c.version });
+      captured(looked.pane, c.list, c.opened);
+      looked.pane.box = "/model";
+      const prepared = await looked.protocol.handle({ id: `own-prep-${c.version.replaceAll(".", "-")}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: harnessOf(c) });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      pane.box = "/model";
+      expect((await send("/model", { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    });
+
+    test(`${c.list}: /model while the selector already stands is refused, nothing typed`, async () => {
+      const pane = paneOf(c);
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      pane.fixed = capture(c.opened).join("\r\n");
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt?.outcome).toBe("refused");
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    });
+
+    test(`${c.list}: an Enter the harness swallows is never reported sent`, async () => {
+      const pane = paneOf(c);
+      pane.enterSubmits = false;
+      const { send } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened);
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(pane.box).toBe("/model");
+    });
+  }
+
+  for (const [c, other] of [
+    [PI130, "scoped-models"],
+    [PI087, "scoped-models"],
+    [OMP, "modelpreset"],
+  ] as const) {
+    test(`${c.list}: /model typed while the list points at ${other} is left typed, no Enter`, async () => {
+      const pane = paneOf(c);
+      const { send, deps } = rig({ pane, harness: harnessOf(c), version: c.version });
+      captured(pane, c.list, c.opened, { list: pointAt(other) });
+      const id = `own-elsewhere-${c.version.replaceAll(".", "-")}`;
+      const answer = await send("/model", { id, mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("/model");
+      // These profiles find a box past a list only when the list is the box's own, so a list that points
+      // elsewhere reads as something opened at the box, the detail of any other cue, not the list notice.
+      expect(deps.store.get(id)?.receipt?.detail).toBe(OPENED);
+    });
+  }
 });

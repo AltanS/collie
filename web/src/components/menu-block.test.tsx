@@ -3,10 +3,18 @@ import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+vi.mock("@/lib/api", async (original) => ({
+  ...(await original<typeof import("@/lib/api")>()),
+  fetchPane: vi.fn(),
+  sendKeys: vi.fn(),
+}));
+
+import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { claudeBuildBlocks } from "@/lib/harness/claude";
-import { MenuBlock } from "./menu-block";
+import { submitMenuKeys } from "@/lib/menu-action";
+import { MenuBlock, type MenuBlockAction } from "./menu-block";
 
 // The generic menu renderer. Driven off the real `/model` capture through the real pipeline, so what
 // it renders is exactly what the adapter lifts.
@@ -209,5 +217,82 @@ describe("MenuBlock — a card that reads the body drops the mirror", () => {
   it("still renders the mirror for a menu that reads only the footer", () => {
     const container = renderMenuContainer(PICKER);
     expect(container.querySelector("pre")).toBeInTheDocument();
+  });
+});
+
+// Claude Code 2.1.302's Heads up notice above a live box: a card of the digits its key row printed.
+describe("MenuBlock over a notice above the box", () => {
+  const NOTICE = readFileSync(join(PANES, "claude--v2302-heads-up-above-box--w142.txt"), "utf8");
+
+  beforeEach(() => {
+    vi.mocked(fetchPane).mockResolvedValue({ paneId: "w1:p1", text: NOTICE, truncated: false, revision: 0 });
+    vi.mocked(sendKeys).mockResolvedValue({ ok: true });
+  });
+
+  it("a tap sends the printed digit, bound to the notice's rows", async () => {
+    const block = menuBlock(NOTICE);
+    const onAction = vi.fn(async (action: MenuBlockAction): Promise<void> => {
+      await submitMenuKeys({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude", menu: block.menu, keys: action.keys, nav: action.nav });
+    });
+    render(<MenuBlock menu={block.menu} lines={block.lines} onAction={onAction} />);
+    await userEvent.click(screen.getByRole("button", { name: "Learn more" }));
+    expect(onAction).toHaveBeenCalledWith({ keys: ["1"], nav: false });
+    await vi.waitFor(() => expect(sendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, block.menu.signature));
+    expect(block.menu.signature).toContain("1: Learn more");
+  });
+
+  // The card was drawn over an empty box, and a draft appeared before the tap (review F4): the fresh
+  // read's model says the box holds a draft, so the guard refuses and no key is sent.
+  it("sends nothing when a draft appeared in the box after the card was drawn", async () => {
+    const block = menuBlock(NOTICE);
+    vi.mocked(sendKeys).mockClear();
+    vi.mocked(fetchPane).mockResolvedValue({ paneId: "w1:p1", text: NOTICE.replace("❯ ", "❯ half a thought"), truncated: false, revision: 1 });
+    const onAction = vi.fn(async (action: MenuBlockAction): Promise<void> => {
+      await submitMenuKeys({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude", menu: block.menu, keys: action.keys, nav: action.nav });
+    });
+    render(<MenuBlock menu={block.menu} lines={block.lines} onAction={onAction} />);
+    await userEvent.click(screen.getByRole("button", { name: "Learn more" }));
+    await vi.waitFor(() => expect(onAction).toHaveBeenCalled());
+    expect(sendKeys).not.toHaveBeenCalled();
+  });
+
+  it("keeps its keys off while the box holds a draft, and says why", () => {
+    const block = menuBlock(NOTICE);
+    render(<MenuBlock menu={{ ...block.menu, liveBox: { draft: true } }} lines={block.lines} onAction={vi.fn()} />);
+    for (const name of ["Learn more", "Knew this already", "Dismiss"]) expect(screen.getByRole("button", { name })).toBeDisabled();
+    const note = screen.getByText("Empty the box first: a digit would join the text there.");
+    expect(note).not.toHaveClass("invisible");
+    expect(note).toHaveAttribute("aria-hidden", "false");
+  });
+
+  it("leaves its keys on with an empty box, the note's line kept and its text hidden", () => {
+    renderMenu(vi.fn(), NOTICE);
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    const note = screen.getByText("Empty the box first: a digit would join the text there.");
+    expect(note).toHaveClass("invisible");
+    expect(note).toHaveAttribute("aria-hidden", "true");
+  });
+
+  // DESIGN.md §2 (review F8): the buttons sit at the same place whether the box holds a draft or not,
+  // because the note's line is reserved in both states and stands at the same place before the buttons.
+  it("reserves the draft note's line in both states, so a draft never moves the buttons", () => {
+    const block = menuBlock(NOTICE);
+    const layout = (draft: boolean) => {
+      const { container, unmount } = render(<MenuBlock menu={{ ...block.menu, liveBox: { draft } }} lines={block.lines} onAction={vi.fn()} />);
+      const note = screen.getByText("Empty the box first: a digit would join the text there.");
+      const button = screen.getByRole("button", { name: "Learn more" });
+      const order = [...container.querySelectorAll("*")];
+      const places = { notePlace: order.indexOf(note), buttonPlace: order.indexOf(button), count: order.length };
+      unmount();
+      return places;
+    };
+    expect(layout(true)).toEqual(layout(false));
+  });
+
+  it("says the notice's text once: in the title, with no mirror of its rows", () => {
+    const block = menuBlock(NOTICE);
+    const { container } = render(<MenuBlock menu={block.menu} lines={block.lines} onAction={vi.fn()} />);
+    expect(container.querySelector("pre")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/With GitHub triggers/u)).toHaveLength(1);
   });
 });

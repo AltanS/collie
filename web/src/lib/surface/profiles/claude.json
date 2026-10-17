@@ -47,7 +47,11 @@
           "wrapped": "^ {8,}\\S"
         }
       }
-    }
+    },
+    "notices": [
+      { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)" }
+    ],
+    "noticeGaps": ["^ +You've used \\d{1,3}% of your [\\w -]+ limit(?: ·|$)"]
   },
   "keys": {
     "submit": ["Enter"],

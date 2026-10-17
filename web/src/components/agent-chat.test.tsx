@@ -37,6 +37,9 @@ import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
 import type { Ask, Surface } from "@/lib/surface/surface";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { liftDialog, readerBlocks } from "@/lib/surface/lift";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -142,9 +145,9 @@ describe("AgentChat — reply flow", () => {
 // M56 spec 06: the composer reads the pane's Surface, not the mirror. A dialog the mirror draws as a
 // card does not change the Send slot by itself; the bridge's read does.
 describe("AgentChat: the composer reads the pane's Surface", () => {
-  it("an ask on the pane's Surface names the dialog in the placeholder", () => {
+  it("an ask on the pane's Surface leaves the placeholder at the plain reply line", () => {
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    expect(screen.getByPlaceholderText("Permission is waiting")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeInTheDocument();
   });
 
   it("a marked pane the bridge has not read yet keeps Send open", async () => {
@@ -962,17 +965,20 @@ describe("AgentChat: a dialog tap answers the pane's ask", () => {
     const user = userEvent.setup();
     const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "sent", keys: ["s"] } }));
     const picker = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"), "utf8");
+    // The hash the bridge mints for this screen: a menu tap goes out only under an ask of the card's
+    // own dialog (agent-chat-menu-ask.test.tsx has the cases where the two differ).
+    const hash = liftDialog(readerBlocks(splitLines(parseAnsi(picker)), "claude"))!.hash;
     const menuAsk: Ask = {
       id: "ask-0c0c0c0c0c0c0c",
       kind: "menu",
       options: [{ id: "1", label: "Set as default" }, { id: "2", label: "Use this session only" }, { id: "3", label: "Cancel" }],
       channel: "keys",
-      hash: "16977bfbfe0c74",
+      hash,
     };
     renderChat({ text: picker, agent: withAsk(menuAsk) });
     await user.click(await screen.findByRole("button", { name: /Use this session only/ }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash: "16977bfbfe0c74", optionId: "2", origin: "person_tap" } });
+    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash, optionId: "2", origin: "person_tap" } });
   });
 
   it("a pane whose Surface carries no ask keeps the guarded key route", async () => {
@@ -1251,7 +1257,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
       }),
     );
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
     await user.click(yes);
@@ -1265,7 +1271,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   it("'Answer the dialog' focuses the card's first button and sends nothing", async () => {
     const user = userEvent.setup();
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));

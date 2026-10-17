@@ -127,6 +127,11 @@ describe("parity with the old walk on the real corpus", () => {
     // the screen up, and the box stands.
     "claude--v2302-slash-effort-list--w120--h40.txt",
     "claude--v2302-slash-model-list--w120--h40.txt",
+    "claude--v2302-heads-up-above-box--w142.txt",
+    // The fix rig's Herdr pane, 120 x 36 (captured 2026-10-17): a screen whose rows reach the bottom
+    // with an empty box, and the same pane with the list under a box holding `/model`; the box stands.
+    "claude--v2302-idle-full-screen--w120--h36.txt",
+    "claude--v2302-slash-model-list-padded--w120--h36.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
@@ -369,13 +374,14 @@ describe("invariant: rows appended below a box never change the box or its draft
   // and the capture's own test below pins both halves of the bound.
   // The focused agents panel of 2.1.301 ("❯ ● main", lab 2026-10-16) is the same class, and so is
   // 2.1.302's slash list, whose pointer row ("  ❯ /model") stands in the tail under the box (the
-  // reconstructed field screen and the two harness lab captures).
+  // reconstructed field screen, the two harness lab captures and the fix rig's capture).
   const POINTER_TAILS = {
     "claude--footer-pointed-agent.txt": true,
     "claude--v2301-lab-agents-panel-focused.txt": true,
     "claude--v2302-slash-model-list--w119.txt": true,
     "claude--v2302-slash-effort-list--w120--h40.txt": true,
     "claude--v2302-slash-model-list--w120--h40.txt": true,
+    "claude--v2302-slash-model-list-padded--w120--h36.txt": true,
   } satisfies Record<string, true>;
 
   it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {

@@ -128,3 +128,17 @@ under a top rule of the same width and colour. That is byte for byte a dialog qu
 that ends the buffer, which the screen cannot tell apart; a shell prompt or any plain row under it
 still refuses it. A walked tap on such a quoted block sends arrows and never Enter, because the
 pointer never moves and the read-back fails (ADR 0080).
+
+## Amendment, 2026-10-17: a selector title of several rows
+
+Status: **Accepted** (2026-10-17). Amends the unnumbered rows of the 2026-10-16 amendment. Trail:
+`web/src/lib/harness/pi/ask.ts` (`unnumberedStart`), `ASK_NOTES.md` · `pi--v0871-permission-gate*.txt`.
+Tested on live captures of pi 0.87.1's stock `permission-gate` example under Herdr 0.9.4, and with live
+taps through `POST /api/ask/<id>`.
+
+pi's selector draws a title of several rows, and the stock permission gate quotes the command in it
+two columns in, the shape of an unpointed option. The list is now the run of option rows that holds
+the one pointer, read up from it. A header row indented deeper than one space counts only when the
+selector's blank row stands over the list and a row one space in stands between the two. Every other
+header row is still blank or one space in, so an option cut off by a blank row, or a label wrapped
+back to column 1, still declines. The card's question holds the quoted command.

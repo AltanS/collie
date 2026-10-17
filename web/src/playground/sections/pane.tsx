@@ -14,6 +14,8 @@ import {
   homeSolo,
   noEchoPrompt,
   paneBlocked,
+  paneHeadsUp,
+  paneHeadsUpDraft,
   paneModelPicker,
   paneShell,
   paneStack,
@@ -153,17 +155,48 @@ export function PaneSection() {
           label="1: a read dialog owns the keys, the Send word leads to its card"
           reach="open `/model` in Claude, then tap Send with a draft in the box (field case 2026-10-15,
             ADR 0009). The header StatusArea carries the same refusal, but on a phone it is scrolled
-            away or under the keyboard, so the Send slot and the placeholder carry it at the thumb."
+            away or under the keyboard, so the Send slot carries it at the thumb."
           note="Real <Composer/> inside the real pane view, over a byte-faithful capture of Claude Code
             2.1.300's `/model` picker at 119 columns. The picker lifts as a `menu` card with its Esc
             action. With a draft in the box, Send becomes an 'Answer the dialog' word: tapping it
             scrolls to the card and focuses its first button, and sends nothing. The draft is kept.
-            An empty box keeps its microphone and reads 'Menu is waiting'. The unread-dialog card
+            An empty box keeps its microphone and the plain 'Type a reply…' hint. The unread-dialog card
             keeps its two-tap override instead."
           span={2}
         >
           <PhoneFrameCard height={800}>
             <PaneRouter home={homeSolo} fixture={paneModelPicker} draft="use fable for this one" />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-heads-up-notice"
+          label="2: a notice above the box leaves the box free, its card sends a printed digit"
+          reach="Claude Code 2.1.302 draws its Heads up notice over the box while a turn runs or after it
+            (ADR 0109). Its keys act only on a box that holds one digit."
+          note="Real pane view over a capture of the notice at 142 columns. The notice lifts as a card of
+            the digits its key row printed (Learn more, Knew this already, Dismiss); the composer stays
+            free, and a message of any other text goes in as typed. With a draft in the box the card's
+            keys are off and say why."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneHeadsUp} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-heads-up-notice-draft"
+          label="2: a notice above a box that holds a draft keeps its keys off"
+          reach="The same notice with text typed into the box under it (ADR 0109). A digit would join the draft
+            instead of answering the notice."
+          note="Real pane view over the capture with a draft put into its box. The card's keys are off and
+            the line under the title says to empty the box first; that line is kept, empty, when the box
+            is empty, so the buttons never move when a draft comes or goes."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneHeadsUpDraft} />
           </PhoneFrameCard>
         </Card>
       </Group>

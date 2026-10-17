@@ -32,9 +32,14 @@
 //
 // Pure: the same rows always give the same answer.
 
+import { commandListNear, type CommandListRead } from "./command-list";
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { isSingleKeyRow } from "./key-row";
+import { readAboveNotice, type AboveNotice } from "./notice";
 import type { CommandListRows } from "./profile";
 import { shortHash } from "./surface";
+
+export type { CommandListRead } from "./command-list";
 
 export type CueKind =
   | "pointer-row"
@@ -120,16 +125,11 @@ const KEY_HINT_SOURCE = `(?:^|[^\\w+])(?:press\\s+)?${KEY}\\s*(?:to\\s+|:\\s*|=\
 const KEY_HINT = new RegExp(KEY_HINT_SOURCE, "iu");
 const KEY_HINTS = new RegExp(KEY_HINT_SOURCE, "giu");
 
-const YES_NO = /[([]\s*y(?:es)?\s*\/\s*n(?:o)?\s*[)\]]/iu;
-const ANY_KEY = /\bpress any key\b/iu;
-const ITEM_SPLIT = /\s{2,}|\s*[|│·•]\s*/u;
-/** A keyed item: a letter key then a colon or a space, or a digit key then a colon or a parenthesis.
- *  A digit and a space is a count ("6 plugins"), not a key. */
-const SINGLE_KEY_ITEM = /^(?:([A-Za-z])(:\s*|\s+)|(\d)([:)]\s*))[A-Za-z]/u;
-
-/** Running signs, read in a frame's volatile rows only. */
+/** Running signs: an interrupt hint, or a spinner row whose ellipsis is followed by a bracketed timer,
+ *  with at most one ` · <words>` segment between them (`Flowing… · tool use (5m 41s …)`). The fold reads
+ *  them in a frame's volatile rows ({@link runningSign}); the bridge also scans whole screens with them. */
 const INTERRUPT_HINT = /(?:^|[·(•|│,]\s*)(?:esc|escape|ctrl\+c|⌃c)\s+to\s+interrupt\s*(?:$|[·)•|│,])/iu;
-const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
+const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)(?:\s+·\s+\p{L}[\p{L} -]{0,30})?\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
@@ -144,21 +144,6 @@ function numberOf(text: string): number | null {
   const m = NUMBERED_ITEM.exec(text);
   if (m === null) return null;
   return Number(m[1] ?? m[2] ?? m[3] ?? m[4]);
-}
-
-/** Whether a row is a single-key prompt: `(y/n)`, "press any key", or a row of single-key items. */
-export function isSingleKeyRow(text: string): boolean {
-  if (YES_NO.test(text) || ANY_KEY.test(text)) return true;
-  const items = text
-    .trim()
-    .split(ITEM_SPLIT)
-    .filter((item) => item.length > 0);
-  if (items.length < 2) return false;
-  const keyed = items.map((item) => SINGLE_KEY_ITEM.exec(item)).filter((m) => m !== null);
-  if (keyed.length < 2 || keyed.length * 5 < items.length * 3) return false;
-  // Two prose words separated by a wide gap can look like keyed items. A colon or a digit key says
-  // the row names keys; so do three keyed items.
-  return keyed.length >= 3 || keyed.some((m) => m[3] !== undefined || m[2]!.startsWith(":"));
 }
 
 /** Whether a row holds a key-hint phrase such as "Enter to select" or "Esc:cancel". */
@@ -227,7 +212,8 @@ function tailCluster(texts: readonly string[]): number[] {
   return rows.toReversed();
 }
 
-/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. */
+/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. A notice the
+ *  profile names is blank by now ({@link readCues}), so the run is the one above it. */
 function aboveRun(texts: readonly string[], frame: Frame): number[] {
   const band = frame.volatile.above;
   if (band === null) return [];
@@ -249,7 +235,8 @@ function belowRows(texts: readonly string[], frame: Frame): number[] {
 }
 
 /** Which rows of a found frame are volatile: the band above, the status and footer runs, and any
- *  rows under the bottom edge. Running signs are read here and nowhere else. */
+ *  rows under the bottom edge. The fold reads running signs here and nowhere else; the bridge's
+ *  whole-screen scans read them too. */
 export function volatileRows(texts: readonly string[], frame: Frame): number[] {
   const rows: number[] = [];
   const { above } = frame.volatile;
@@ -417,107 +404,12 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
 }
 
 /**
- * The profile's command list, read at a frame: the command its pointer rests on (null with no
- * pointer), the side of the box it stands on, and its first and last row.
- */
-export interface CommandListRead {
-  readonly pointed: string | null;
-  readonly side: "above" | "under";
-  readonly first: number;
-  readonly last: number;
-}
-
-interface CompiledCommandList {
-  readonly pointer: RegExp;
-  readonly entry: RegExp;
-  readonly wrapped: RegExp;
-}
-
-const compiledLists = new WeakMap<CommandListRows, CompiledCommandList>();
-
-function listPatterns(list: CommandListRows): CompiledCommandList {
-  const known = compiledLists.get(list);
-  if (known !== undefined) return known;
-  const compiled = { pointer: new RegExp(list.pointer, "u"), entry: new RegExp(list.entry, "u"), wrapped: new RegExp(list.wrapped, "u") };
-  compiledLists.set(list, compiled);
-  return compiled;
-}
-
-/** One row of a command list: the pointed entry with its command, another entry, a wrapped description row, or none of them. */
-type ListRow = { readonly kind: "pointer"; readonly command: string } | { readonly kind: "entry" } | { readonly kind: "wrapped" } | null;
-
-function listRow(text: string, patterns: CompiledCommandList): ListRow {
-  const head = patterns.pointer.exec(text);
-  if (head !== null) {
-    const command = head.groups?.["command"];
-    return command === undefined ? null : { kind: "pointer", command };
-  }
-  if (patterns.entry.test(text)) return { kind: "entry" };
-  if (patterns.wrapped.test(text)) return { kind: "wrapped" };
-  return null;
-}
-
-/**
- * The list under the bottom edge: the first row there is an entry, every other non-blank row is an
- * entry or a wrapped description row, at most one carries the pointer. Anything else there (a dialog,
- * a status row, a second pointer, a gap right under the edge) is no list.
- */
-function listUnder(texts: readonly string[], frame: Frame, patterns: CompiledCommandList): CommandListRead | null {
-  let pointed: string | null = null;
-  let entries = 0;
-  let last = frame.bottom;
-  for (let i = frame.bottom + 1; i < texts.length; i++) {
-    const text = texts[i]!.trimEnd();
-    if (isBlank(text)) {
-      if (entries === 0) return null;
-      continue;
-    }
-    const row = listRow(text, patterns);
-    if (row === null || (row.kind === "wrapped" && entries === 0)) return null;
-    if (row.kind === "pointer") {
-      if (pointed !== null) return null;
-      pointed = row.command;
-    }
-    if (row.kind !== "wrapped") entries++;
-    last = i;
-  }
-  return entries === 0 ? null : { pointed, side: "under", first: frame.bottom + 1, last };
-}
-
-/**
- * The list over the top edge (a tall pane draws it there): the run of rows right above the edge, up
- * to the first blank row or a row that is no entry, pointer or wrapped row. It opens on an entry; a
- * wrapped row over its first entry belongs to the transcript. At most one entry carries the pointer.
- */
-function listAbove(texts: readonly string[], frame: Frame, patterns: CompiledCommandList): CommandListRead | null {
-  const rows: { at: number; row: Exclude<ListRow, null> }[] = [];
-  for (let i = frame.top - 1; i >= 0; i--) {
-    const text = texts[i]!.trimEnd();
-    if (isBlank(text)) break;
-    const row = listRow(text, patterns);
-    if (row === null) break;
-    rows.unshift({ at: i, row });
-  }
-  while (rows.length > 0 && rows[0]!.row.kind === "wrapped") rows.shift();
-  if (rows.length === 0) return null;
-  const pointers = rows.flatMap(({ row }) => (row.kind === "pointer" ? [row.command] : []));
-  if (pointers.length > 1) return null;
-  return { pointed: pointers[0] ?? null, side: "above", first: rows[0]!.at, last: frame.top - 1 };
-}
-
-/**
- * The profile's completion list for a slash command (`idle.volatile.below.commandList`) at a frame:
- * all that stands under the bottom edge, or the run right over the top edge, where a tall pane draws
- * it. The command in the left column may have its description in a second column on the same row,
- * or wrapped onto rows under it. A list under the box with a pointer wins; else the list over it;
- * else a list under it with no pointer. Null when the profile names no list or neither side holds one.
+ * The profile's completion list for a slash command (`idle.volatile.below.commandList`) at a frame, on
+ * the sides the profile names ({@link commandListNear}). Null when the profile names no list or neither
+ * side holds one.
  */
 export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined): CommandListRead | null {
-  if (list === undefined) return null;
-  const patterns = listPatterns(list);
-  const under = listUnder(texts, frame, patterns);
-  if (under?.pointed !== null && under !== null) return under;
-  return listAbove(texts, frame, patterns) ?? under;
+  return commandListNear(texts, frame.top, frame.bottom, list);
 }
 
 /**
@@ -533,25 +425,40 @@ export function ownCommandList(texts: readonly string[], frame: Frame | null, id
   return list !== null && list.pointed !== null && list.pointed === frame.interior.text.trim() ? list : null;
 }
 
+/** The rows with the rows `first` to `last` read as blank. */
+function withoutSpan(rows: readonly FrameRow[], span: { readonly first: number; readonly last: number } | null): readonly FrameRow[] {
+  if (span === null) return rows;
+  return rows.map((row, i) => (i >= span.first && i <= span.last ? { segments: [] } : row));
+}
+
 /** The rows with a command list's rows read as blank. */
 export function withoutCommandList(rows: readonly FrameRow[], list: CommandListRead | null): readonly FrameRow[] {
-  if (list === null) return rows;
-  return rows.map((row, i) => (i >= list.first && i <= list.last ? { segments: [] } : row));
+  return withoutSpan(rows, list);
+}
+
+/**
+ * The notice the profile names over a found frame's top edge (`idle.notices`, {@link readAboveNotice}),
+ * or null. Every cue read takes it ({@link readCues}) and leaves its rows out: the box keeps its keys.
+ */
+export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
+  if (frame === null || idle === null) return null;
+  return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
 }
 
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
  * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
- * is left out of both.
+ * and a notice over the box ({@link noticeOver}) are left out of both.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
-  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(allRows.map(rowText), frame, idle));
-  const plain = readCues(rows, frame);
+  const texts = allRows.map(rowText);
+  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle));
+  const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   const at = frame.top;
-  const down = readCues(rows.slice(at), null);
+  const down = readCues(rows.slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
@@ -559,9 +466,13 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
 
 /**
  * The modal cues on a screen read. `frame` is the input frame the profile found, or null: a screen
- * with no profile, or one whose frame the profile did not find, gets the no-frame cluster.
+ * with no profile, or one whose frame the profile did not find, gets the no-frame cluster. `notice` is
+ * the notice over the box ({@link noticeOver}), indexed as `rows` are, or null when these rows hold
+ * none: its rows down to the box (`first` to `end`, a gap row included) are read as blank, so its key
+ * row is never a single-key prompt.
  */
-export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRead {
+export function readCues(allRows: readonly FrameRow[], frame: Frame | null, notice: AboveNotice | null): CueRead {
+  const rows = withoutSpan(allRows, notice === null ? null : { first: notice.first, last: notice.end });
   const texts = rows.map(rowText);
   const tail = tailCluster(texts);
   const hash = shortHash(tail.map((i) => texts[i]!.trimEnd()).join("\n"));

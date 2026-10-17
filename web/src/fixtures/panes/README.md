@@ -249,6 +249,44 @@ user, host or path is in either file.
 | `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
 | `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 
+## Stock pi 1.3.0 with an extension's own footer (issue 485, captured 2026-10-17, Herdr 0.9.5)
+
+Stock pi 1.3.0 (`@earendil-works/pi-coding-agent`, no model, a scratch `PI_CODING_AGENT_DIR`) run with
+the example pi ships, `examples/extensions/custom-footer.ts`, turned on with `/footer`. The extension
+replaces pi's footer (`ctx.ui.setFooter`) with one dim row, `↑0 ↓0 $0.000` and the model id, so the row
+under the editor is not pi's cwd row. Collie 1.22.0 to 1.22.4 refused every send to such a pane ("could
+not find the input box"); the profile's `idle.frame.underPainted` takes the painted row, as a footer
+only: straight under the editor and one short run to the screen's end. Read with
+`herdr pane read --source recent --format ansi` and cut to the editor's top rule. CRLF line ends and the
+trailing padding are as read. No user, host or path is in either file.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-custom-footer-idle.txt` | Empty editor, the cursor cell, the extension's footer | composer, empty |
+| `pi--v130-custom-footer-draft.txt` | `hello from the probe` typed, not sent | composer, draft read back |
+
+## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
+
+Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in
+an isolated Herdr session with its own bridge, a scratch `PI_CODING_AGENT_DIR` and a scratch home whose
+`project` folder held one file, `gate-probe.txt`. Model `anthropic/claude-haiku-4.5` on OpenRouter,
+thinking off. A real model turn ran `chmod 777 gate-probe.txt`, and the gate opened pi's own selector
+(`ctx.ui.select`) with a title of five rows: `⚠️ Dangerous command:`, a blank row, the command two
+columns in, a blank row, `Allow?`. Read through the bridge's `GET /api/pane/:id?lines=60`, the way the
+phone reads it. The 120-column files are cut to their last 24 rows, from the prompt box down, whole rows
+only; the 80-column files are the whole read, since pi drew the screen again when the client shrank the
+pane. CRLF line ends and the trailing padding are as read. No key, user, host or home path is in any
+file; the only path is pi's `~/project`. Collie 1.22.0 to 1.22.4 read the command row as the first
+option, found no pointer and showed the unread-dialog card (`modal: unreadable`); 1.21.x read no
+unnumbered pi dialog at all.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v0871-permission-gate.txt` | 120 columns, ` → Yes` pointed | walk: Yes, No, Cancel (Escape) |
+| `pi--v0871-permission-gate-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → No` | walk (the pair in `walk-pairs.ts`) |
+| `pi--v0871-permission-gate-narrow-moved.txt` | The same dialog at 80 columns, ` → No` | walk |
+| `pi--v0871-permission-gate-narrow.txt` | The 80-column dialog after `herdr pane send-keys <pane> Up`, ` → Yes` | walk (the pair in `walk-pairs.ts`) |
+
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
 Agent prose can quote a whole question dialog. These four files are BUILT, not captured: a real
@@ -2285,6 +2323,7 @@ holds a numbered list, a menu and a `(y/n)` line was refused `not_free`, or type
 
 | Fixture | State / what's in it |
 |---|---|
+| `claude--v2302-heads-up-above-box--w142.txt` | Claude Code 2.1.302's `you-should-know` plugin notice above a live box during a turn: `✦ Heads up · ` head, one wrapped row, the key row `1: Learn more   2: Knew this already   0: Dismiss`, a blank row, then the box and two status rows. Its keys act only on a box holding one digit, so the Surface reads `modal: "none"` and the notice lifts as a menu card that leaves the box live (ADR 0109). **Derived** from a bridge read: the transcript and the statusline had every letter replaced by neutral words of the same width, every escape sequence, glyph, space and row kept; the notice, the spinner, the tip and the mode row are as captured. Labelled `running`, and reads it: the running sign allows the spinner's ` · tool use` words before its bracketed timer |
 | `claude--v2302-working-list-echo--w119.txt` | The answer streams: the prompt echo, then a numbered list growing row by row above an empty box, and the last turn's `Confirm (y/n)` at the top. Claude Code 2.1.302 draws no spinner while the answer streams, so the screen alone reads `idle`. Labelled `running` |
 | `claude--v2302-turn-ending-stop-hooks--w119.txt` | The last read of a turn: the whole answer drawn, a numbered list, the menu `41. Apple`, `42. Pear`, `43. Quit` and `Confirm (y/n)` above `✢ Simmering… (running Stop hooks… 0/2 · 5s · ↓ 621 tokens)`. Labelled `running`; the screen alone reads free, since the words before the timer keep the running sign off (listed in `knownMismatches`) |
 | `claude--v2302-turn-ended-yn--w119.txt` | The next read, 112 ms later: the same rows with `✻ Churned for 5s · done 12:17 PM` in the spinner's place. The turn is over and the `(y/n)` line is the agent's text, not a dialog: the box is free. Reads `idle`. The pair is the round-3 field case: a send typed between the two reads must still be sent |
@@ -2316,16 +2355,27 @@ under it: the minibuch field screen above, a shorter pane, had it under the box.
 |---|---|
 | `claude--v2302-slash-model-list-above--w119.txt` | The box holds `/model`. Right over its top rule: `❯ /model  Set the AI model for Claude Code (currently Sonnet 5.5)`, `/auto-mode-setup` and `/typescript:structure-module` with its description wrapped onto a fourth row. Under the box the two statusline rows, `[Sonnet·high] /tmp/collie-queue-test on HEAD` and `⏸ manual mode on`. 1.22.3 and the first round of the fix read the list as a pointed list over the box (strong), the Surface said `unreadable`, and a command's S1 kept Enter back. The profile's command list is now read on both sides of the box. No reader lifts a block here (the autocomplete reader looks under the box only). Labelled `popup` |
 
-## AskUserQuestion pickers with a wrapped rule (captured 2026-10-17, Claude Code 2.1.302, Herdr)
+## AskUserQuestion pickers beside a theme's gutter (captured 2026-10-17, Claude Code 2.1.302, Herdr)
 
 Read through the bridge from two live sessions, byte for byte, CRLF kept; the project words, issue keys, names, paths, task rows and the diff lines above the preview dialog were swapped for plain words of the same display width, every escape sequence, glyph and column left as it was.
 
-Claude Code 2.1.302 paints a coloured background cell in column 0 of every dialog row and still draws the dialog's rule full width from column 2, so each rule wraps: a full `──…` row, then a stub row of one or two `─` glyphs. It does this above the chip row and above `Chat about this`. The grammars read the stub as part of the rule above it (`isRuleRow` in `harness/claude/markers.ts`); the rows themselves are never rewritten, so the bridge's binding match still finds the region.
+Both sessions ran a theme plugin that draws a two-column gutter beside every AskUserQuestion dialog: a background-coloured cell in column 0, then a blank column, then Claude Code's dialog untouched. Vanilla Claude Code draws no gutter. The gutter narrows the dialog by two columns while Claude Code still draws the dialog's rule at the full pane width, so each rule overflows by the gutter's width and wraps: a full `──…` row, then a stub row of the last `─` glyphs, above the chip row and above `Chat about this`.
+
+The grammars read the stub as part of the rule above it (`isRuleRow` and `ruleTop` in `harness/claude/markers.ts`). This is hardening against a user theme, and `harness/claude/dialog-gutter.test.ts` checks it against synthetic gutters of one to four columns beside every vanilla picker fixture. The rows themselves are never rewritten, so the bridge's binding match still finds the region.
 
 | Fixture | State / what's in it |
 |---|---|
-| `claude--v2302-wizard-long-question--w54.txt` | A two-question wizard at 54 columns, under a task checklist: the question wraps to nine rows in the `│` gutter, so the stepper `←  ☐ Branch  ☐ Ranger dies  ✔ Submit  →` sits eleven rows above `❯ 1.`. Read by the wizard grammar (`wizard.ts`), whose stepper scan stops at the dialog's rule, not at a row count |
-| `claude--v2302-preview-wrapped-rule--w141.txt` | A single-question preview select at 141 columns: four options whose labels wrap in the left column, the preview pane, `Notes: press n to add notes`, then the wrapped rule's stub between the Notes line and `Chat about this`. Read by the preview grammar (`preview-select.ts`) |
+| `claude--v2302-wizard-long-question--w54.txt` | A two-question wizard at 54 columns, under a task checklist: the question wraps to nine rows in the `│` gutter, so the stepper `←  ☐ Branch  ☐ Ranger dies  ✔ Submit  →` sits eleven rows above `❯ 1.`. Vanilla behaviour: a long question does this with or without a theme, and the wizard grammar (`wizard.ts`) reaches the stepper because its scan stops at the dialog's rule, not at a row count. Theme hardening: the rules above the stepper and above `4. Chat about this` wrap into a `──` stub |
+| `claude--v2302-preview-wrapped-rule--w141.txt` | A single-question preview select at 141 columns: four options whose labels wrap in the left column, the preview pane, `Notes: press n to add notes`, then `Chat about this`. Theme hardening: the rules above the chip row and between the Notes line and `Chat about this` wrap into a `──` stub, which the preview grammar (`preview-select.ts`) reads as part of the rule. Vanilla behaviour: the question is the whole two-row paragraph under the chip row |
+
+## The wizard's review step with `│ ●` bars (captured 2026-10-17, Claude Code 2.1.302, 140 columns)
+
+On the Submit review step Claude Code 2.1.302 draws its own `│` bar down the left of an echoed question: `│ ● <question>`, then `│   <continuation>` rows, then the unbarred `→ <answer>` row. The review grammar (`wizard.ts`) reads every echoed row without that bar (`questionRowText`, `claude/markers.ts`), the way the question step does. Before it did, a barred item never opened, so its question and answer were dropped from the card.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-wizard-review-long-q--w140.txt` | A three-question review at 140 columns under the theme's two-column gutter (the section above): the long first question wraps to three barred rows, `→ Restore with banner`, then two bare items, `● How should changes be saved?` / `→ Save button` and `● Where should the reset-to-defaults control live?` / `→ Page footer`. The card lists all three. Captured with its escapes, line endings LF; the two transcript replies and the one user message above the dialog were swapped for neutral settings-page text, each row kept at 140 cells: the two bullet rows keep their styled bullet and bold name with the words changed, the inline command `/clear` became `/settings`. The dialog rows and the earlier neutral turns are as read |
+| `claude--v2302-wizard-review-barred--w140.txt` | **Derived**, not captured. The layout is a plain `claude` 2.1.302 review read as text at 140 columns, no theme, where every item is barred, a one-row question included: ` │ ● …` at column 1, `   → …` at column 3, `Ready to submit your answers?`, `❯ 1. Submit answers` / `  2. Cancel`. That read had no stepper and no escapes, and its question text came from the operator's workspace. Spliced in: the stepper row of `claude--v2302-wizard-review-long-q--w140.txt` with its two gutter columns removed (the stepper is the grammar's discriminator and needs its chip background), a 140-glyph `─` rule above it in that capture's rule colour, the same three questions and answers, and that capture's styles on the heading, the dim `│`, the green `→` rows and the Submit pair. Above the dialog, the neutral user prompt from the plain read. Before the fix the card listed none of the three |
 
 ## The slash list on a short pane, 2.1.302 (captured 2026-10-17, harness lab)
 
@@ -2339,3 +2389,69 @@ screen up: the box moved up eleven rows between the read before the write and th
 |---|---|
 | `claude--v2302-slash-model-list--w120--h40.txt` | The box holds `/model`, and under it seven entries, the pointer on `❯ /model  Set the AI model for Claude Code (currently Haiku 5.5)`, five of them with a wrapped description. The shell banner, the welcome rows and the tip row stand over the box, scrolled up. The first round of the fix read the list as the command's own and still kept Enter back: the rows above the box had moved up more rows than the box grew, plus one, so S1 read a changed screen (`typed_not_submitted (changed)`). Labelled `popup` |
 | `claude--v2302-slash-effort-list--w120--h40.txt` | The same pane after `/help`: the box holds `/effort`, and under it two entries, `❯ /effort  Set effort level for model usage` and `/code-review` with its description wrapped. Labelled `popup` |
+
+## The slash list from a full screen, 2.1.302 (captured 2026-10-17, fix rig)
+
+Read with `herdr pane read --source visible --format ansi --raw` from an isolated Herdr session (120
+columns by 36 rows, Claude Code 2.1.302, Haiku 5.5, a scratch config), the escapes kept, LF line ends.
+The project path on the welcome row is replaced by a neutral path of the same length. No user, host,
+key or token remains. Claude Code draws blank rows under its command list, down to a height the pane
+sets: five here, eight under the twelve list rows of the h40 capture above. When the rows before the
+write already reach the bottom of the pane, the terminal scrolls for those blank rows too.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-idle-full-screen--w120--h36.txt` | An empty box under nine `/model` and `Kept model as Haiku 5.5` pairs. The status row is the pane's last row. The read before the write. Labelled `idle` |
+| `claude--v2302-slash-model-list-padded--w120--h36.txt` | The same pane once the box holds `/model`: the list's twelve rows under the box, then five blank rows to the bottom, which the read leaves out (31 rows). The box moved up 16 rows, and the list's rows plus one allowed 13, so S1 read a changed screen and left `/model` typed (`typed_not_submitted (changed)`) until the blank rows counted too. Labelled `popup` |
+
+## A multiSelect step with the pointer on its text field, 2.1.302 (field capture 2026-10-17, sanitised)
+
+Read through lane 8788's `GET /api/pane/:id` from a live Claude Code 2.1.302 session (Herdr, 160 columns
+by 45 rows), the ANSI kept. The words are replaced, the rows, styles and widths are the capture's own:
+the transcript above the dialog, the stepper, the question, four ticked options with a description row
+each, the pointer on the empty field, `Submit`, the rule, `Chat about this` and the footer with its
+`ctrl+g to edit in nano` hint. Until 1.22.5 the multiSelect grammar declined any screen with the pointer
+on the field, so the phone showed the unread-dialog card and the Surface read `modal: unreadable`. The
+grammar now claims it with `pointer: "field"`, and a toggle first moves the pointer off the field.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-multiselect-field-focused--w160.txt` | Stepper `←  ☒ Next step  ✔ Submit  →`, four `[✔]` options, `❯ 5. [ ] Type something`, `Submit`, a rule, `6. Chat about this`, footer `Enter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel`. Lifts `multi-select` with the pointer on the field; the Surface reads `modal: ask`. Labelled `dialog` |
+
+## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
+
+Read through a scratch bridge's `GET /api/pane/:id` (ANSI kept, CRLF rows) from an isolated Herdr
+session with its own config, one pane per harness, no model key. Each harness ran with a scratch
+home, so the welcome rows show no model. The user name in paths is replaced with `/home/demo/user`;
+the omp captures needed no change. The pane was 120 or 80 columns wide (`--w120`, `--w80`, read from
+the rule).
+
+pi draws the list under its bottom rule without the slash (`→ model`, then two-space entries and a
+`(1/N)` count row), and its folder and stats rows under the list. omp draws it under its open box
+(`╰─ /model`) with an icon column (`❯ ⬢  model`), wrapped descriptions at 80 columns and a scrollbar
+column, and nothing after it. Until 1.22.5 neither profile named that list. On pi the pointer row and
+the slash query read as a strong cue; on omp the list pushed the box out of the frame's reach. The
+Surface read `unreadable`, and the phone's Model shortcut stopped at `typed_not_submitted (modal_cue)`.
+Both profiles now name the list (`idle.volatile.below.commandList` with `lead: "/"` and
+`sides: ["under"]`, and pi's `footer`), so a list that points at the typed command is its own typeahead.
+
+The same reading moves three older omp captures, whose list points at the typed command, from
+`dialog` to `popup`: `omp--slash-palette--filtered.txt` (`/new`), `omp--v18-8-slash-palette.txt` and
+`omp--v18-8-slash-palette-w48.txt` (`/resume`). Enter on them runs that command, the send commit 9acc1502 let
+through.
+
+| Fixture | State / what's in it |
+|---|---|
+| `pi--v130-slash-model-list--w120.txt`, `--w80.txt` | pi 1.3.0, the box holds `/model`, under it `→ model` and `scoped-models`, then the folder and stats rows. Labelled `popup` |
+| `pi--v130-slash-settings-list--w120.txt`, `--w80.txt` | The box holds `/settings`, one entry `→ settings`. Labelled `popup` |
+| `pi--v130-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`: the list points at another command. Labelled `dialog` |
+| `pi--v130-model-selector-empty--w120.txt` | The selector `/model` opens, drawn between the box's two rules: `Only showing models from configured providers`, a `>` search row, `No matching models` and the key hints. Labelled `dialog` |
+| `pi--v130-settings-screen--w120.txt` | The settings screen `/settings` opens, in the box's place. Labelled `dialog` |
+| `pi--v0871-slash-model-list--w120.txt`, `--w80.txt` | pi 0.87.1, the same `/model` list on a pane that is not full. Labelled `popup` |
+| `pi--v0871-slash-settings-list--w120.txt`, `--w80.txt` | pi 0.87.1, the `/settings` list. Labelled `popup` |
+| `pi--v0871-model-selector-empty--w120.txt` | pi 0.87.1, the selector `/model` opens. Labelled `dialog` |
+| `omp--v18-6-slash-model-list--w120.txt`, `--w80.txt` | omp 18.6.1, the box holds `/model`, under it ten entries from `❯ ⬢  model` to `↻  loop`, a scrollbar column; at 80 columns the descriptions wrap. Labelled `popup` |
+| `omp--v18-6-slash-settings-list--w120.txt`, `--w80.txt` | The box holds `/settings`, its list pointing at `settings`. Labelled `popup` |
+| `omp--v18-6-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`. Labelled `dialog` |
+| `omp--v18-6-model-selector-empty--w120.txt` | The Models picker `/model` opens, a full-screen box with providers and models. Labelled `dialog` |
+| `omp--v18-6-settings-screen--w120.txt` | The settings screen `/settings` opens. Labelled `dialog` |

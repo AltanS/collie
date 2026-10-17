@@ -59,7 +59,7 @@ import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
-import { answerAsk, type AskTapResult } from "@/lib/dialog-ask";
+import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
 import { refreshNow } from "@/lib/api";
@@ -1517,7 +1517,12 @@ export function AgentChat({
         const index = menu.actions.findIndex((a) => sameKeys(a.keys, action.keys));
         const tap = { card: "menu", index, label: menu.actions[index]?.label ?? "" } as const;
         if (askOptionFor(paneAsk, tap) !== null) {
-          await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+          // A footer key commits the highlighted row, and the labels match on every row. The card is
+          // drawn from the mirror and the ask from the Surface, so after an arrow the card can be
+          // newer (or, under a frozen mirror, older) than the ask: the answer carries the card's own
+          // hash and goes out only under an ask with it (lib/dialog-ask.ts).
+          const seen = cardHashOf(blocks, menu);
+          await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap, seen }));
           return;
         }
         // A hook-held ask never falls back to keys (M56 spec 12), as for a prompt card above.
@@ -1548,7 +1553,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the

@@ -32,6 +32,9 @@ const SWITCH_WITH_A_WAY_OUT = ALL.filter(
 // keycaps of omp 18.4, the text keycaps of omp 17.x to 18.1, and the approval dialog's lower-case
 // `esc cancel`.
 const MODALS_WITH_A_WAY_OUT = [
+  // omp 18.6.1's Models picker and settings screen, the screens `/model` and `/settings` open (lab, 2026-10-17).
+  "omp--v18-6-model-selector-empty--w120.txt",
+  "omp--v18-6-settings-screen--w120.txt",
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",
