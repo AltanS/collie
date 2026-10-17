@@ -21,6 +21,7 @@ import type { AnswerBody } from "./surface/ask";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
+import { mintRequestId } from "./worktree-name";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { textRouteFor } from "./send-path";
@@ -48,6 +49,9 @@ import type {
   LaunchersResponse,
   LaunchCheckResponse,
   RecentRunsResponse,
+  SentAnswer,
+  SentScope,
+  SentWriteResponse,
   NotifyPrefs,
   ChangeCommitDiffResponse,
   ChangeCommitResponse,
@@ -1772,6 +1776,57 @@ export function removeRecentRun(line: string, scope?: Scope): Promise<RecentRuns
 /** POST /api/launch/recent/clear: remove every line from that machine's history. */
 export function clearRecentRuns(scope?: Scope): Promise<RecentRunsResponse> {
   return req<RecentRunsResponse>(withScope("/api/launch/recent/clear", scope), { method: "POST", body: "{}" });
+}
+
+/** What GET /api/sent is asked (M61). Every field but `scope` narrows the answer. */
+export interface SentQuery {
+  scope: SentScope;
+  /** Exact folder match, absolute. Applied before repeats merge. */
+  cwd?: string;
+  /** Every whitespace-separated word must appear in the line, case-insensitive. */
+  q?: string;
+  /** 1 to 200; the bridge defaults to 50. */
+  limit?: number;
+  /** Epoch ms: only records older than this, for the next page. */
+  before?: number;
+}
+
+/**
+ * GET /api/sent: the shell lines sent through Collie, newest first (M61). `scope: "here"` reads the
+ * machine `scope.host` names (the lead when it names none). `scope: "all"` is asked of the lead
+ * alone, which merges its crew, so the pane's host is NOT sent with it. The session is never sent: a record belongs to a machine.
+ * A bridge older than Sent answers 404, which throws as an `ApiError` the sheet reads as "old".
+ */
+export function getSent(query: SentQuery, scope?: Scope, signal?: AbortSignal): Promise<SentAnswer> {
+  const params = new URLSearchParams({ scope: query.scope });
+  if (query.cwd !== undefined) params.set("cwd", query.cwd);
+  if (query.q !== undefined && query.q.trim() !== "") params.set("q", query.q.trim());
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.before !== undefined) params.set("before", String(query.before));
+  const target = query.scope === "all" ? undefined : hostOnly(scope);
+  return req<SentAnswer>(withScope(`/api/sent?${params.toString()}`, target), { signal });
+}
+
+/** POST /api/sent/remove: forget every record of one line on the machine `scope.host` names. */
+export function removeSent(id: string, scope?: Scope): Promise<SentWriteResponse> {
+  return req<SentWriteResponse>(withScope("/api/sent/remove", hostOnly(scope)), {
+    method: "POST",
+    body: JSON.stringify({ id, requestId: mintRequestId() }),
+  });
+}
+
+/** POST /api/sent/clear: empty the record of the machine `scope.host` names. */
+export function clearSent(scope?: Scope): Promise<SentWriteResponse> {
+  return req<SentWriteResponse>(withScope("/api/sent/clear", hostOnly(scope)), {
+    method: "POST",
+    body: JSON.stringify({ requestId: mintRequestId() }),
+  });
+}
+
+/** A record belongs to a machine, not to a Herdr session: the session is never sent with a Sent write. */
+function hostOnly(scope?: Scope): Scope | undefined {
+  const { host } = normalizeScope(scope);
+  return host === undefined ? undefined : { host };
 }
 
 /**
