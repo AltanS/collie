@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **An OMP widget under the input box no longer blocks every send.** OMP extensions can draw rows under the box with `placement: "belowEditor"`. Collie read that idle box as cut off and refused each message with "The screen changed while Collie read it". Up to three rows under the box now count as content under it, and a read that ends inside the box is still refused. Thanks @christensenjames (#468)
+
 ## [1.22.0] - 2026-10-17
 
 ### Added

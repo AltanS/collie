@@ -1236,6 +1236,8 @@ all. It does, and the captures below measure it.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
+| `omp--fresh-idle-widget-below.txt` | `omp--fresh-idle.txt` with one extension widget row added under the `╰─` prompt row, as `setWidget(key, lines, { placement: "belowEditor" })` draws it (issue 468, derived, not a capture). The Surface must read idle, free and not torn: the open box ends on the prompt row, the widget row is content under it | `idle` |
+| `omp--fresh-idle-widget-above.txt` | The same widget row over the `╭──` top edge (`placement: "aboveEditor"`, issue 468, derived). The Surface reads idle and free | `idle` |
 | `omp--fresh-idle.txt` | Fresh session: welcome tips scrollback, `✔ New session started`, an EMPTY composer. omp paints no placeholder in an empty box — there is no `INPUT_PLACEHOLDERS` analogue to write | `idle` |
 | `omp--working.txt` | Mid-turn: `⠸ Working… ⟦esc⟧` braille spinner above an empty composer | `working` |
 | `omp--done.txt` | Completed turn, and the `◀ N` variant: omp splices a transcript-scroll indicator into the SAME border it paints the statusline into. Pinned as a known limitation of `extractStatusLines` (the trim stops at the `1` segment) | `idle` |
