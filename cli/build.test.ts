@@ -341,6 +341,15 @@ describe("build: the ordered steps", () => {
     );
   });
 
+  test("the web UI builds for production whatever NODE_ENV the operator's shell exports", () => {
+    const h = harness({ env: { NODE_ENV: "development" } });
+    expect(cmdBuild(h.deps)).toBe(EXIT.OK);
+    const webBuild = h.exec.overrides.find(
+      (o) => posix(o.call) === posix(`${WEB}$ bun run build -- --outDir dist-staging --emptyOutDir`),
+    );
+    expect(webBuild?.env).toEqual({ NODE_ENV: "production" });
+  });
+
   test("the swaps are LAST, and both are renames", () => {
     const h = harness({ files: { [`${STAGING}/index.html`]: "<!doctype html>NEW" } });
     // The staging dir is cleared before the build writes it, and the two swaps come after every
