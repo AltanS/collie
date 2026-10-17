@@ -756,4 +756,21 @@ describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
     expect(read.frame).not.toBeNull();
     expect(read.surface).toEqual(IDLE_FREE);
   });
+
+  // A `(y/n)` in the agent's last row, flush on OMP's open box, reads as a single-key prompt and hides
+  // the box (`dialogsInBox`). The box is whole, so the read is not torn: the person may check it and
+  // confirm, as on pi and muse. It never reads free.
+  it("omp: a (y/n) question flush on a whole box is not free and not torn", () => {
+    const read = audit("omp--done-yn-question.txt", "omp");
+    expect(findInputFrame(fixtureRows("omp--done-yn-question.txt", SURFACE_FIXTURES_DIR), idleFor("omp")!)).not.toBeNull();
+    expect(read.surface).toEqual({ revision: 1, turn: "unknown", modal: "unreadable", composer: "unknown" });
+    expect(isFree(read.surface)).toBe(false);
+  });
+
+  it("omp: a screen with no whole box under a strong cue still reads torn", () => {
+    // The slash palette stands under the prompt row, so no frame closes and the read ends inside one.
+    const read = own("omp--slash-palette.txt");
+    expect(findInputFrame(fixtureRows("omp--slash-palette.txt"), idleFor("omp")!)).toBeNull();
+    expect(read.surface.reason).toBe("torn");
+  });
 });

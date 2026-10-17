@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **An Antigravity pane with a tall status line takes a send again.** A custom `statusLine` of four to eight rows under the input box hid the box from the send check, so each message needed a second tap, Type here. The check looks up to eight rows under the box again, as 1.21.3 did.
 - **A pi pane on Windows takes a send in a folder outside your home folder.** pi prints the folder in the first row under its box. A folder that starts with a drive letter, such as `C:\work`, did not count as that row, so Collie found no box and each message needed Type here.
+- **An OMP pane whose last line asks "(y/n)" no longer refuses every send.** A `(y/n)` or a key hint in the row right over OMP's input box reads as a possible dialog. Collie called the whole box cut off there and refused each send with "The screen changed while Collie read it". Now the send takes the second tap, Type here, as on pi and Muse.
 
 ## [1.22.0] - 2026-10-17
 
