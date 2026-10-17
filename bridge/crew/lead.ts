@@ -391,6 +391,17 @@ export class CrewLead {
    */
   private readonly muxAsked = new Set<string>();
   /**
+   * The release each member's last sweep answer named, so a change between two sweeps can be seen.
+   *
+   * A member's hello is asked once per link ({@link muxAsked}), and a member that updates restarts so
+   * fast that no sweep may fail in between. Its old hello then stayed the lead's whole answer: on
+   * 2026-10-17 a lead restarted at 1.22.1 while its member still ran 1.21.3, the member followed 28 s
+   * later, and the lead kept "no Surface reader" and refused every text to it until the lead itself
+   * restarted. A changed version forgets the hello, so the same sweep asks once more, and a member
+   * that rolled back is learned the same way.
+   */
+  private readonly sweptVersions = new Map<string, string>();
+  /**
    * The state each member's last journal line named. A line is written when this string changes and
    * never otherwise, so the sweep's 1.5 s cadence cannot turn a down peer into a stream.
    */
@@ -477,6 +488,7 @@ export class CrewLead {
         this.muxBlocks.delete(id);
         this.sessionCards.delete(id);
         this.surfaceVersions.delete(id);
+        this.sweptVersions.delete(id);
         this.muxAsked.delete(id);
         this.loggedState.delete(id);
         this.contactResets.delete(id);
@@ -550,6 +562,10 @@ export class CrewLead {
         // goes through the same seam the verdict probe uses, so it arms no timer (§10.1) and at most
         // one hello per member is ever in flight. Any other outcome forgets the answer instead, so
         // the next return re-asks rather than serving a block from before the link dropped.
+        // A member that now names another release than its last sweep did has restarted on it, and
+        // its hello may say something else (its reader version above all). Forget the old one, so the
+        // line below asks once. The next sweep names the same release and asks nothing.
+        if (seen !== null) this.noteSweptVersion(memberId, seen);
         if (outcome.ok) this.learnCapabilities(link);
         else this.muxAsked.delete(memberId);
         // §18.10: this member follows somebody else. Handed straight over — a lead that has been
@@ -937,6 +953,15 @@ export class CrewLead {
   private learnCapabilities(link: CrewLink): void {
     if (this.muxAsked.has(link.memberId)) return;
     this.probe(link);
+  }
+
+  /** Bank the release one sweep answer named, and forget the member's hello when it changed. See {@link sweptVersions}. */
+  private noteSweptVersion(memberId: string, version: string): void {
+    const before = this.sweptVersions.get(memberId);
+    this.sweptVersions.set(memberId, version);
+    if (before === undefined || before === version) return;
+    this.muxAsked.delete(memberId);
+    this.log(`[crew] ${memberId}: now runs ${version} (was ${before}), asking its hello again`);
   }
 
   /** Record the Surface reader version one hello carried, or drop the entry when it carried none. */

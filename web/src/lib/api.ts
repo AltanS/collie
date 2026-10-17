@@ -1,7 +1,7 @@
 // Thin REST client for the bridge. Everything is same-origin, so credentials/headers are
 // minimal. Each call throws on a non-2xx so callers (route loaders / action handlers) surface errors.
 
-import { parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
+import { apiErrorFieldsOf, parseApiErrorFields, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
 import {
   beginLongUpload,
@@ -1366,6 +1366,48 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
   return result;
 }
 
+/** The longest first line a plain refusal shows: a sentence, never a page. */
+const PLAIN_LINE_MAX = 160;
+
+/**
+ * What a refusal whose body is NOT JSON says: its status and the body's first line, for example
+ * `HTTP 400: bad send request`. Null for a JSON body, which the error catalogue reads instead. Before
+ * 2026-10-17 a Send Protocol route that met such a body said only that it could not read it.
+ */
+export function plainFailureMessage(status: number, detail: string): string | null {
+  if (parseJsonObject(detail) !== undefined) return null;
+  const line = detail.split(/\r?\n/).map((part) => part.trim()).find((part) => part !== "");
+  if (line === undefined) return `HTTP ${status}`;
+  return `HTTP ${status}: ${line.length > PLAIN_LINE_MAX ? `${line.slice(0, PLAIN_LINE_MAX - 1)}…` : line}`;
+}
+
+/**
+ * A Send Protocol route's recover: the caller's own first, then a plain-text refusal turned into
+ * {@link plainFailureMessage}, with its status kept for the callers that branch on it.
+ */
+function sendRecover<T>(recover?: Recover<T>): Recover<T> {
+  return (status, detail) => {
+    const recovered = recover?.(status, detail);
+    if (recovered !== null && recovered !== undefined) return recovered;
+    const plain = plainFailureMessage(status, detail);
+    if (plain !== null) throw new ApiError(plain, status);
+    return null;
+  };
+}
+
+/**
+ * The `send` answer off a crew member's reply route. A reply that came back without one is a refusal
+ * in the reply route's own shape (`{ ok: false, error, code }`), and it is thrown as that refusal, so
+ * the notice says what it says instead of "a body this phone cannot read".
+ */
+function sendOfReply(answer: JsonObject): JsonObject | undefined {
+  const send = asJsonObject(answer.send);
+  if (send !== undefined) return send;
+  const fields = answer.ok === false ? apiErrorFieldsOf(answer) : undefined;
+  if (fields !== undefined) throw new ApiError(fields.error ?? "The reply route refused the send.", 200, fields);
+  return undefined;
+}
+
 /**
  * POST /api/send: one Send Protocol request (M56 spec 05), on a bridge that marks the pane with
  * `sendProtocol`. Every outcome is a 200 with the answer; a refusal is an answer, not an error. The
@@ -1378,15 +1420,17 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
   // the answer under `send` (M56 spec 06). `/api/send` serves this machine's own panes only.
   const route = textRouteFor({ program: false, crew: !isLead(scope), sendProtocol: true });
   const got = route === "pane-reply"
-    ? asJsonObject(
-        (
-          await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope), {
+    ? sendOfReply(
+        await req<JsonObject>(
+          withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
+          {
             method: "POST",
             body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
-          })
-        ).send,
+          },
+          sendRecover(),
+        ),
       )
-    : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+    : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
@@ -1403,7 +1447,7 @@ export async function postProgramSend(body: SendRequestBody, scope?: Scope): Pro
     throw new ApiError("A durable agent on a crew member takes its own send route.", 400);
   }
   stampSend(body.pane);
-  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) });
+  const got = await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
@@ -1417,7 +1461,7 @@ export async function postProgramSend(body: SendRequestBody, scope?: Scope): Pro
  */
 export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
   if (normalizeScope(scope).host) return [];
-  const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope));
+  const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope), undefined, sendRecover());
   return readSendReceipts(got).receipts.slice();
 }
 
@@ -1433,7 +1477,7 @@ export async function cancelHeldSend(requestId: string, paneId: string, scope?: 
     withScope(`/api/send/${encodeURIComponent(requestId)}?pane=${encodeURIComponent(paneId)}`, scope),
     { method: "DELETE" },
     // A 409 is the answer "it is going out now", a value; an unknown id (404) stays an error.
-    (status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null),
+    sendRecover((status, detail) => (status === 409 ? (parseJsonObject(detail) ?? null) : null)),
   );
   const answer = readHeldCancelAnswer(got);
   if (answer === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
@@ -1447,7 +1491,7 @@ export async function cancelHeldSend(requestId: string, paneId: string, scope?: 
  */
 export async function postAskAnswer(askId: string, body: AnswerBody, scope?: Scope): Promise<AskTapReply> {
   stampSend(body.pane);
-  const got = await req<JsonObject>(withScope(`/api/ask/${encodeURIComponent(askId)}`, scope), { method: "POST", body: JSON.stringify(body) });
+  const got = await req<JsonObject>(withScope(`/api/ask/${encodeURIComponent(askId)}`, scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readAskTapReply(got);
   if (reply === null) throw new ApiError("The ask route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent") stampSend(body.pane);

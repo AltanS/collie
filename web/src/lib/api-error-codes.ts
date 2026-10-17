@@ -21,7 +21,7 @@
 // `{name}` convention `t()` uses, so a translated string can consume them directly
 // (e.g. `upload.too_large` + `{ maxBytes: 10485760 }`).
 
-import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "./json";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject, type JsonObject, type JsonValue } from "./json";
 
 /** The values a bridge sentence was built from, for a translated one to reuse. */
 export type ApiErrorDetail = Readonly<Record<string, string | number>>;
@@ -204,7 +204,14 @@ export interface ApiErrorFields {
  */
 export function parseApiErrorFields(body: string): ApiErrorFields | undefined {
   const parsed = parseJsonObject(body);
-  if (parsed === undefined) return undefined;
+  return parsed === undefined ? undefined : apiErrorFieldsOf(parsed);
+}
+
+/**
+ * The same read over a body that already parsed: a 200 that answered `{ ok: false, … }` where the
+ * caller expected another shape (a reply route's refusal with no `send` beside it).
+ */
+export function apiErrorFieldsOf(parsed: JsonObject): ApiErrorFields | undefined {
   const error = asJsonString(parsed.error);
   const code = asJsonString(parsed.code);
   // Neither half present ⇒ not an error body at all. A 200-shaped document that happens to be JSON
