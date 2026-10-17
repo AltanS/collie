@@ -645,8 +645,9 @@ describe("Composer: a read dialog is refused at the thumb", () => {
 });
 
 // A shell's password prompt never echoes what is typed (#103), so the bridge cannot see a text land
-// there: the first tap is refused (no profile for a bare shell, so the two-tap Send). The composer
-// reads the screen it already shows for the prompt, display only, and says so.
+// there. When the bridge refuses a tap over such a screen (the stub below answers `unconfirmed`), the
+// composer reads the screen it already shows for the prompt, display only, and says so. A bare shell
+// with no profile no longer gets that refusal: the bridge types its text and presses Enter blind.
 describe("Composer: password prompt", () => {
   const SUDO = "$ sudo systemctl restart collie\n[sudo] password for altan:";
   const SHELL: Surface = { revision: 9, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" };

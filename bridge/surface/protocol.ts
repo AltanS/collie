@@ -49,11 +49,15 @@
 // S2 that ends with the text still in the box ends `unknown(dialog_after_enter)`: a dialog that drew
 // before Enter took it and closed.
 //
-// A pane whose harness has a profile is read through its input frame. A pane with no profile has no
-// frame: its Surface is unknown(no-match), every send on it is probed, and the probe's own landing
-// spot (the row and column where the probe character appeared) is what S1 and S2 compare against.
+// A pane whose harness has a profile is read through its input frame. A pane with no profile (a bare
+// shell, a program, an agent Collie has no profile for) has no input box to prove free, so a send or
+// a command on it is typed and Entered blind, as before the protocol: no S0, no probe, no S1, no S2,
+// never held. Its receipt says `sent` once Enter went out, and its `saw` says `no-profile`. A pane that
+// has a profile but whose frame S0 cannot find reads unknown(no-match): every send on it is probed,
+// and the probe's own landing spot (the row and column where the probe character appeared) is what S1
+// and S2 compare against.
 //
-// A manual send (the screen takes the two-tap Send: no profile, an unreadable overlay, a weak cue)
+// A manual send (the screen takes the two-tap Send: no frame found, an unreadable overlay, a weak cue)
 // compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
 // of the box may change while the probe and the text go in, as a `command` lets them. The rows
 // above the box may lose text (go blank, or move because rows vanished) but never gain any, and a
@@ -99,6 +103,7 @@ import {
   type SendReceipt,
   type SendReceiptRow,
   type SendStep,
+  type SurfaceWords,
   type HeldCancelAnswer,
   type HeldRow,
 } from "../../web/src/lib/surface/send.ts";
@@ -129,6 +134,10 @@ const GENERIC_SUBMIT = ["Enter"] as const;
 const GENERIC_CLEAR = { key: "Backspace", slack: 16 } as const;
 /** The reserved leads on a pane with no profile: a slash command, a shell line, a file mention. */
 const GENERIC_LEADS = ["/", "!", "@"] as const;
+/** The pause between the text and Enter on a pane with no profile: the 350 ms the reply route waited before the protocol. */
+export const BLIND_SETTLE_MS = 350;
+/** What a blind send's receipt says it saw: nothing was read, because the pane has no profile to read it by. */
+const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 
 /** The detail after a failed probe whose one Backspace took the character out again. */
 const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
@@ -1304,8 +1313,10 @@ interface RunState {
   readonly gaps: Partial<Record<SendStep, number>>;
   readonly keys: string[];
   probed: boolean;
-  /** The screen at S0 took the manual Send (no profile, an unreadable overlay, a weak cue): the probe and S1 compare less. */
+  /** The screen at S0 took the manual Send (no frame found, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
+  /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
+  blind: boolean;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
   /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
@@ -1580,9 +1591,11 @@ export class SendProtocol {
     }
     // A pane with held sends: a new message or command joins the end of its queue, it never jumps. A
     // manual send joins too: the screen the person confirmed is not the one its turn will come on.
+    // A pane with no profile never holds: its send goes in blind (see the header), so it skips this.
     const holds = this.deps.holds;
-    if (holds !== undefined && JOINS.has(request.mode) && holds.waiting(target.session, target.paneId).length > 0) {
-      const match = await this.deps.profile(target.harness);
+    const joins = holds !== undefined && JOINS.has(request.mode) && holds.waiting(target.session, target.paneId).length > 0;
+    const match = joins ? await this.deps.profile(target.harness) : null;
+    if (match !== null) {
       const state = this.bareState(request, accepted.record, target, match);
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
@@ -2001,6 +2014,7 @@ export class SendProtocol {
       keys: [],
       probed: false,
       manual: false,
+      blind: false,
       command: request.mode === "command",
       heldOther: false,
       queued: false,
@@ -2048,6 +2062,7 @@ export class SendProtocol {
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
       if (saw !== undefined) receipt.saw = surfaceWords(saw);
     }
+    if (state.blind) receipt.saw = BLIND_SAW;
     return receipt;
   }
 
@@ -2056,7 +2071,8 @@ export class SendProtocol {
     const state = this.bareState({ id: "prepare", text: "", mode: "prepare" }, prepareRecord(target, this.now()), target, match);
     try {
       const snap = await this.stableRead(state, "prepare");
-      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: prepareOffers(snap) };
+      // A pane with no profile offers nothing: its next tap is a plain send, typed blind.
+      return { surface: snap.surface, rowsHash: snap.rowsHash, offers: match === null ? [] : prepareOffers(snap) };
     } catch (err) {
       if (err instanceof Ended) return answerWith({ offers: ["keys"] }, { ...err.extra, detail: err.extra.detail ?? err.message });
       throw err;
@@ -2183,6 +2199,11 @@ export class SendProtocol {
     if ((request.mode === "submit" || request.mode === "discard") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
     const holds = (box: string): boolean => (state.command ? commandBoxMatches : boxMatches)(box, "", lines, collapseOf(match));
 
+    if (match === null && (request.mode === "send" || request.mode === "command")) {
+      await this.blindSend(state, lines);
+      return;
+    }
+
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
@@ -2265,6 +2286,36 @@ export class SendProtocol {
     await this.awaitSent(state, s0, landing, lines);
     this.lap(state, "s2");
     await this.lateWitness(state, lines);
+  }
+
+  /**
+   * A send or a command on a pane with no profile (a bare shell, a program, an agent Collie has no
+   * profile for): the text, a 350 ms pause, then Enter through the gate, the way the reply route sent
+   * before the protocol. No profile means no box to prove free and no submit key to trust but Enter,
+   * so nothing is read and nothing is probed, and the person's first tap is the send. The lock, the
+   * receipt and the request id still hold. `textRefusal` already turned away a text of more than one
+   * line. A failed Enter leaves the text in the pane with only the key pad offered: with no read there
+   * is no rows hash for a Submit to bind to.
+   */
+  private async blindSend(state: RunState, lines: readonly string[]): Promise<void> {
+    state.blind = true;
+    this.begin(state);
+    this.checkGeneration(state, "refused");
+    await this.write(state, lines);
+    this.lap(state, "write");
+    await this.sleep(BLIND_SETTLE_MS);
+    this.guard(state);
+    const { gate, store } = this.deps;
+    const { paneId } = state.target;
+    const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
+    store.markSubmitSent(state.record.id);
+    const result = await this.within(state, gate.commit(token));
+    if (!result.ok) {
+      const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
+      throw new Ended("typed_not_submitted", reason, { framed: false, offers: ["keys"], detail: result.reason === "mux" ? result.refusal.detail : result.detail });
+    }
+    state.keys.push(...GENERIC_SUBMIT);
+    this.lap(state, "commit");
   }
 
   /**

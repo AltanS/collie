@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A send to a plain shell pane goes through on the first tap again.** Since 1.22.0 a text or a command sent to a pane with no agent, such as a shell with a starship prompt, was refused with "Collie cannot read this screen. Check the pane, then tap Type here." Collie has no profile for a shell, so it found no input box to check and asked for a second tap. Now a pane with no profile, a shell or an agent Collie does not know yet, gets the text and then Enter, as before 1.22.0. Collie does not read the screen first, and never queues such a send. Its receipt says `sent`, and its screen words say `no-profile`. A pane with a profile still has its input box checked before Enter. A text of more than one line is still refused on a pane with no profile.
+
 ## [1.22.4] - 2026-10-17
 
 ### Fixed

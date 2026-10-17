@@ -188,25 +188,35 @@ export interface SendReceipt {
    * Enter back (2026-10-17). Never the person's text and never a screen row.
    */
   readonly detail?: string;
-  /** Set on a refusal or a `typed_not_submitted` when the bridge had a read: the Surface it ended on, as words. No rows. */
+  /**
+   * Set on a refusal or a `typed_not_submitted` when the bridge had a read: the Surface it ended on, as
+   * words. No rows. Set on every receipt of a blind send on a pane with no profile, with the reason
+   * `no-profile`: nothing was read.
+   */
   readonly saw?: SurfaceWords;
 }
 
 /** The longest {@link SendReceipt.detail} a receipt keeps. */
 export const RECEIPT_DETAIL_MAX = 240;
 
+/**
+ * Why a receipt's words say unknown: a Surface's own reason, or `no-profile` on a send that went in
+ * blind on a pane with no profile (a bare shell, a program), where the bridge read nothing.
+ */
+export type SawReason = SurfaceReason | "no-profile";
+
 /** A Surface as four words, for a receipt: what the bridge saw, without an ask's labels. */
 export interface SurfaceWords {
   readonly turn: Surface["turn"];
   readonly modal: "none" | "ask" | "unreadable" | "unknown";
   readonly composer: Surface["composer"];
-  readonly reason?: SurfaceReason;
+  readonly reason?: SawReason;
 }
 
 const WORD_TURNS = ["idle", "running", "unknown"] as const satisfies readonly SurfaceWords["turn"][];
 const WORD_MODALS = ["none", "ask", "unreadable", "unknown"] as const satisfies readonly SurfaceWords["modal"][];
 const WORD_COMPOSERS = ["empty", "draft", "unreachable", "unknown"] as const satisfies readonly SurfaceWords["composer"][];
-const WORD_REASONS = ["no-match", "contested", "stale", "torn"] as const satisfies readonly SurfaceReason[];
+const WORD_REASONS = ["no-match", "contested", "stale", "torn", "no-profile"] as const satisfies readonly SawReason[];
 
 /** {@link SurfaceWords} read back from JSON, every word checked; null when it is not one. */
 export function readSurfaceWords(value: JsonValue | undefined): SurfaceWords | null {
