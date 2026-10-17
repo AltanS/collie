@@ -15,7 +15,7 @@
 // claude--*preview*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
+import { classifyFooter, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { PreviewNote, PreviewOption, PreviewSelectModel } from "../preview-model";
@@ -64,8 +64,10 @@ function indentOf(text: string): number {
 // of the footer (rule + escape row between); options+preview sit within a screenful above it.
 const NOTES_SCAN_LIMIT = 8;
 const OPTION_SCAN_WINDOW = 28;
-const QUESTION_SCAN_LIMIT = 12;
-const STEPPER_SCAN_LIMIT = 6;
+// The question above the options and the stepper above the question: a question wraps to as many
+// rows as it needs at a narrow width, so both walks share this floor, and the dialog's top rule, not
+// this count, is what stops them (the wizard grammar's REVIEW_SCAN_WINDOW, the same 48 rows).
+const DIALOG_SCAN_LIMIT = 48;
 
 // Lines above the first option folded into the core signature — enough to capture the dialog's
 // subject (the prompt/context shown above the question), which is what distinguishes two same-shaped
@@ -98,7 +100,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
       notesIdx = i;
       break;
     }
-    if (isBlank(t) || isHorizontalRule(t) || ESCAPE_ROW.test(trimmed)) continue;
+    if (isBlank(t) || isRuleRow(texts, i) || ESCAPE_ROW.test(trimmed)) continue;
     return null;
   }
   if (notesIdx < 0) return null;
@@ -198,9 +200,9 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   // 5. The question above the options (every dialog's prompt carries a "?"), bounded, stopping at
   //    a rule so the search can't cross out of the dialog.
   let questionIdx = -1;
-  for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < QUESTION_SCAN_LIMIT; i--, seen++) {
+  for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
-    if (isHorizontalRule(t)) break;
+    if (isRuleRow(texts, i)) break;
     if (t.includes("?")) {
       questionIdx = i;
       break;
@@ -208,28 +210,14 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   }
   if (questionIdx < 0) return null;
 
-  // 6. A wizard stepper above the question makes this a wizard step (Left/Right navigation applies
-  //    and the question joins the block region, as in the standard wizard grammar). A lone chip
-  //    line (" ☐ Design") never parses as a stepper, so single-question dialogs get steps: null.
-  let steps: WizardStepChip[] | null = null;
-  let startLine = firstOpt;
-  let question = texts[questionIdx]!.trim();
-  for (let i = questionIdx - 1, seen = 0; i >= 0 && seen < STEPPER_SCAN_LIMIT; i--, seen++) {
-    if (isHorizontalRule(texts[i]!)) break;
-    const stepper = parseStepperLine(lines[i]!);
-    if (stepper) {
-      steps = stepper.chips;
-      startLine = i;
-      // Long questions wrap; in the wizard form every non-blank line between the stepper and the
-      // options is the question (mirrors wizard.ts).
-      const parts: string[] = [];
-      for (let j = i + 1; j < firstOpt; j++) {
-        if (!isBlank(texts[j]!)) parts.push(texts[j]!.trim());
-      }
-      if (parts.length > 0) question = parts.join(" ");
-      break;
-    }
-  }
+  // 6. The question paragraph, and a wizard stepper above it, which makes this a wizard step
+  //    (Left/Right navigation applies and the question joins the block region, as in the standard
+  //    wizard grammar). A lone chip line (" ☐ Design") never parses as a stepper, so single-question
+  //    dialogs get steps: null.
+  const head = readQuestionHead(lines, texts, questionIdx);
+  const { steps } = head;
+  const startLine = head.stepperIdx >= 0 ? head.stepperIdx : firstOpt;
+  const question = joinQuestionRows(texts, head.top + 1, firstOpt);
 
   const options: PreviewOption[] = rows.map((r, k) => ({
     label: labels[k]!.trim(),
@@ -252,6 +240,44 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
     },
     startLine,
   };
+}
+
+// A single-question dialog's chip row (" ☐ Design"): the first row of the dialog under its rule, which
+// tops the question the way a wizard's stepper does.
+const CHIP_ROW = /^[←→\s]*[☐☒☑✔✅]\s/u;
+
+/** What sits above a preview dialog's question paragraph. */
+interface QuestionHead {
+  /** The row that tops the paragraph: the stepper, the chip row or the rule. */
+  top: number;
+  /** The wizard stepper's row, or -1 for a single-question dialog. */
+  stepperIdx: number;
+  steps: WizardStepChip[] | null;
+}
+
+/**
+ * The row that tops the question paragraph whose "?" sits on `questionIdx`, walking up: the wizard
+ * stepper (with its chips), the chip row, or the dialog's rule, whichever comes first. With none in
+ * reach, `top` is the row above the "?" row, so the paragraph starts there.
+ */
+function readQuestionHead(lines: StyledLine[], texts: string[], questionIdx: number): QuestionHead {
+  for (let i = questionIdx - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
+    if (isRuleRow(texts, i)) return { top: i, stepperIdx: -1, steps: null };
+    const stepper = parseStepperLine(lines[i]!);
+    if (stepper) return { top: i, stepperIdx: i, steps: stepper.chips };
+    if (CHIP_ROW.test(texts[i]!)) return { top: i, stepperIdx: -1, steps: null };
+  }
+  return { top: questionIdx - 1, stepperIdx: -1, steps: null };
+}
+
+/** Every non-blank row in [`from` … `to`), without the `│` gutter Claude paints down a question of
+ *  more than one row, joined with one space: a long question wraps (mirrors wizard.ts). */
+function joinQuestionRows(texts: string[], from: number, to: number): string {
+  const parts: string[] = [];
+  for (let i = from; i < to; i++) {
+    if (!isBlank(texts[i]!)) parts.push(questionRowText(texts[i]!));
+  }
+  return parts.join(" ");
 }
 
 /**

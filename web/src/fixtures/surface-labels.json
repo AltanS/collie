@@ -946,6 +946,16 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2302-wizard-long-question--w54.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-preview-wrapped-rule--w141.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

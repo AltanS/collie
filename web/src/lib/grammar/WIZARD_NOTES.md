@@ -119,6 +119,7 @@ Why incremental wins here:
 | `claude--wizard-q1-revisit.txt` | Navigated back to answered Q1: `2. UI ✔` row, pointer on row 1 |
 | `claude--wizard-submit.txt` | Review step, all answered — NO footer, bg chip on `✔ Submit` |
 | `claude--wizard-submit-unanswered.txt` | Review step reached via Right-skips: `⚠ You have not answered all questions` |
+| `claude--v2302-wizard-long-question--w54.txt` | Claude Code 2.1.302 at 54 columns: a nine-row question puts the stepper eleven rows above the first option, so the stepper scan is bounded by the dialog's rule, not a row count; each rule wraps into a 1-2 glyph `─` stub row, read as part of the rule above it (`isRuleRow`) |
 
 Plus T2's `claude--select-multi.txt` (a mid-flight question phase) and `claude--select-menu.txt`
 (single-question — must keep detecting as prompt-select, never as wizard).

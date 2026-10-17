@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
+import { buildBlocks } from "..";
+import { dropTaskChecklist } from "./task-checklist";
 import { detectWizard, detectWizardRegion } from "./wizard";
 import { detectPromptSelect } from "./prompt-select";
 import { lineText } from "./markers";
@@ -216,5 +218,44 @@ describe("detectWizardRegion — render boundary", () => {
     const region = detectWizardRegion(lines);
     expect(region).not.toBeNull();
     expect(lineText(lines[region!.startLine]!)).toContain("Submit");
+  });
+});
+
+// Claude Code 2.1.302 at 54 columns: the question wraps to nine rows, so the stepper sits eleven rows
+// above the first option, and the dialog's rules wrap into a `──` stub beside the column-0 gutter cell.
+describe("detectWizard — a long question at a narrow width (Claude Code 2.1.302)", () => {
+  const FIXTURE = "claude--v2302-wizard-long-question--w54.txt";
+
+  it("reaches the stepper above a nine-row question", () => {
+    const model = detectWizard(dropTaskChecklist(fixtureLines(FIXTURE)));
+    expect(model).not.toBeNull();
+    if (model!.phase !== "question") throw new Error("expected question phase");
+    expect(model!.steps).toEqual([
+      { label: "Branch", answered: false, current: true },
+      { label: "Ranger dies", answered: false, current: false },
+    ]);
+    expect(model!.question).toBe(
+      "new floor (Nerf Goblin Encounter): the explorer suggests a feature branch " +
+        "`feat/goblin-two-round-call-out`. Its evidence: the change bumps the rules version (32 to 33), " +
+        "touches the engine and content, and needs tests edited red first. The engine change is small, " +
+        "though: the call stands until the shot, a fresh call is drawn only when none stands, and the " +
+        "Ranger goes from 4 to 2. Where should it land?",
+    );
+    expect(model!.options.map((o) => o.label)).toEqual(["Land on main (Recommended)", "Feature branch", "Chat about this"]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["4"]]);
+    expect(model!.options.map((o) => o.escape)).toEqual([false, false, true]);
+    expect(model!.options[0]!.description).toBe(
+      "One item, one commit on main, in this release like the rest. Worst case: if Mary changes the " +
+        "rule again before the cut, a second rules bump (to 34) lands on main too.",
+    );
+    expect(model!.options[1]!.description).toBe(
+      "Build it on feat/goblin-two-round-call-out with a draft PR, merged by /ship. Worst case: an " +
+        "extra merge step, and it's held out of the release until the merge.",
+    );
+  });
+
+  it("lifts as a wizard block through the adapter", () => {
+    const kinds = buildBlocks(fixtureLines(FIXTURE), { agent: "claude" }).map((b) => b.kind);
+    expect(kinds).toContain("wizard");
   });
 });
