@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude Code 2.1.302 is verified for the screen reader.** The harness lab walked its slash menu, read the Surface on 22 screens, made one probed send and one ask answer, and passed on 2026-10-17. The browser leg on the 1.22.6 release commit ran on 2.1.302 as well and passed all fifteen cases on the first tap. The journal reader stays verified on 2.1.296.
+
 ## [1.22.6] - 2026-10-18
 
 ### Changed

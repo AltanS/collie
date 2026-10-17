@@ -7,10 +7,10 @@
   },
   "versions": [
     {
-      "range": "2.1.0 - 2.1.296",
+      "range": "2.1.0 - 2.1.302",
       "status": "verified",
-      "verifiedThrough": "2.1.296",
-      "verifiedOn": "2026-10-12"
+      "verifiedThrough": "2.1.302",
+      "verifiedOn": "2026-10-17"
     }
   ],
   "idle": {
