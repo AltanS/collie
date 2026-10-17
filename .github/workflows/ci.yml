@@ -122,17 +122,24 @@ jobs:
       - name: Pack check (the SDK package)
         run: scripts/sdk-pack-check.sh
 
-  # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
-  # report in one run, so this job starts beside `check` rather than behind it. It installs only
-  # `web/`, because Playwright is a devDependency of `web/` and of nothing else — the root tree
-  # never grows a browser.
+  # The browser tier (M26 spec 01), Chromium only. NO `needs`: a lint failure and a browser failure
+  # both have to report in one run, so this job starts beside `check` rather than behind it. It
+  # installs only `web/`, because Playwright is a devDependency of `web/` and of nothing else, so
+  # the root tree never grows a browser.
+  #
+  # WebKit is NOT here. It runs in `webkit.yml`, nightly and at a release tag: the Safari engine
+  # costs a second browser download and a second pass over every spec on every push, and the bugs it
+  # finds are not ones a push introduces by the hour. `E2E_WEBKIT=0` below keeps `app-phone-webkit`
+  # out of the project list even though `CI` is set (`web/playwright.config.ts`).
   #
   # `release.yml` deliberately gains none of this. It carries no lint step for the same class of
   # reason (release.yml:174-176: oxlint's allocator SIGABRTs below roughly 7 GB), and an operator
   # path must never download a browser.
   e2e:
-    name: browser (chromium, webkit)
+    name: browser (chromium)
     runs-on: ubuntu-latest
+    env:
+      E2E_WEBKIT: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -150,25 +157,23 @@ jobs:
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-      # The first cache in this workflow. Chromium plus its headless shell is ~170 MB, WebKit
-      # another ~90 MB, and the download is the slowest thing in this job by an order of magnitude.
-      - name: Cache Chromium and WebKit
+      # Chromium plus its headless shell is ~170 MB, and the download is the slowest thing in this job
+      # by an order of magnitude.
+      - name: Cache Chromium
         id: browser-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-chromium-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: ms-playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
-      # Chromium and WebKit: the Safari engine runs the `app` specs at phone size too
-      # (`web/playwright.config.ts`, `app-phone-webkit`, always on under CI). `--with-deps` pulls the
-      # system libraries the runner image lacks, and it is needed on a cache HIT too: the cache
-      # carries the browsers under $HOME, never the apt packages.
-      - name: Install Chromium and WebKit
+      # `--with-deps` pulls the system libraries the runner image lacks, and it is needed on a cache
+      # HIT too: the cache carries the browsers under $HOME, never the apt packages.
+      - name: Install Chromium
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: cd web && bunx playwright install --with-deps chromium webkit
+        run: cd web && bunx playwright install --with-deps chromium
       - name: Install browser system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
-        run: cd web && bunx playwright install-deps chromium webkit
+        run: cd web && bunx playwright install-deps chromium
 
       # `e2e` runs `vite build` first: the tier serves the SHIPPED bundle off disk, because the
       # service worker exists only in a real build.

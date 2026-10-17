@@ -108,9 +108,8 @@ function Strip({ caption, children }: { caption: string; children: ReactNode }) 
   );
 }
 
-/** `state` is passed as a string literal at each call site, never built from `c.n`: e2e/handles.spec.ts
- *  reads every card's handle out of the source as a quoted `state` prop, so a template literal hides the
- *  card from that roll call. */
+/** `state` is passed as a string literal at each call site, never built from `c.n`, so a card's handle
+ *  can be read straight off the source. */
 function CandidateRow({ state, c }: { state: string; c: Candidate }) {
   return (
     <Card state={state} label={`option ${c.n} · ${c.name}`} reach="not in the app. Pick a number." span={2}>

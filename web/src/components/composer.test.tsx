@@ -110,6 +110,25 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   return props;
 }
 
+function ComposerForReload() {
+  return (
+    <Composer
+      paneId="w1:p1"
+      agent="claude"
+      isShell={false}
+      gone={false}
+      readOnly={false}
+      surface={FREE}
+      text="pane output"
+      terminalDraft={null}
+      rawTerminalDraft={null}
+      prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+      display={{ open: false, onToggle: vi.fn() }}
+      onSent={vi.fn()}
+    />
+  );
+}
+
 function StatusSentinel() {
   const status = useStatus();
   return <div data-testid="status">{status?.text ?? ""}</div>;
@@ -3678,6 +3697,24 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
     expect(field()).toHaveValue("");
     expect(undoButton()).not.toBeInTheDocument();
     expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("clear: a remount (a page reload) finds the box empty, with no Undo window and no X", async () => {
+    const user = userEvent.setup();
+    const first = render(
+      <RouterProvider router={createMemoryRouter([{ path: "/", element: <ComposerForReload /> }])} />,
+    );
+    fireEvent.change(field(), { target: { value: "not this one" } });
+    await user.click(xButton()!);
+    expect(undoButton()).toBeInTheDocument();
+
+    first.unmount();
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <ComposerForReload /> }])} />);
+
+    expect(field()).toHaveValue("");
+    // The Undo window lived in memory only, and a reload ends it.
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(xButton()).not.toBeInTheDocument();
   });
 
   it("clear keeps the field focused, so the phone keyboard stays up", async () => {

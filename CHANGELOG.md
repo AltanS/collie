@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The browser tests run Chromium on every push, and WebKit nightly and at a release tag.** The Playwright suite keeps only the specs that need a real engine, the rest moved to vitest, and WebKit has its own workflow so a release never waits on it.
+
 ## [1.22.4] - 2026-10-17
 
 ### Fixed

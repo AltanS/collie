@@ -1,0 +1,84 @@
+name: WebKit
+
+# The Safari engine over the browser tier, nightly and at a release tag. It left the per-push `e2e`
+# job in `ci.yml` (Chromium only now): WebKit costs a second browser download and a second pass over
+# every spec, and the bugs it finds are engine differences that no single push introduces by the
+# hour. Safari is where a phone actually opens Collie, so it still runs, just not on every push.
+#
+# ITS OWN WORKFLOW, not a job in ci.yml or release.yml, for the reason `windows.yml` gives.
+# `release.yml`'s gate reads only the `ci.yml` run on the tagged commit, so this workflow adds no
+# wait to a release. A red run here shows on its own check and blocks nothing; read it after a tag,
+# and cut a patch if WebKit found a real break. The job is NEVER `continue-on-error`: it must be able
+# to be red.
+#
+# COST of one run: one runner, about the time of the Chromium job (one project, `app-phone-webkit`,
+# instead of three), plus a ~90 MB WebKit download on a cold cache. NOTHING REPEATS: the cron fires
+# once a day, a tag fires once per tag, and `concurrency` below cancels an older run of the same ref.
+# A failed run is not retried by anything but `retries: 1` inside Playwright; re-running by hand is
+# the operator's call.
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC, on the default branch
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: webkit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  webkit:
+    name: browser (webkit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+
+      # The version is READ OUT OF THE LOCKFILE, as in ci.yml: `web/bunfig.toml` holds a 7-day
+      # supply-chain cooldown, so this file cannot know which Playwright resolves.
+      - name: Resolve the Playwright version
+        id: pw
+        run: |
+          version="$(grep -m1 -oE '"@playwright/test@[0-9]+\.[0-9]+\.[0-9]+"' web/bun.lock | tr -d '"' | cut -d@ -f3)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache WebKit
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # `--with-deps` is needed on a cache HIT too: the cache carries the browsers under $HOME, never
+      # the apt packages.
+      - name: Install WebKit
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: cd web && bunx playwright install --with-deps webkit
+      - name: Install browser system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: cd web && bunx playwright install-deps webkit
+
+      # `app-phone-webkit` only: the Chromium projects already ran in ci.yml on this commit. The
+      # config turns the project on under `CI` (the runner sets it) because `E2E_WEBKIT` is not 0.
+      - name: E2E (tier 1, WebKit)
+        run: cd web && bun run e2e --project=app-phone-webkit
+
+      - name: Upload the failure artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-webkit-artefacts
+          path: |
+            web/test-results
+            web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

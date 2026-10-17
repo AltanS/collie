@@ -175,9 +175,8 @@ export function PlaygroundApp({ tab }: { tab?: string } = {}) {
 function ScrollToCard({ handle, section }: { handle: string | null; section: string }) {
   useEffect(() => {
     if (handle === null) return;
-    // Not a template-built CSS selector: the e2e handle roll call (`web/e2e/handles.spec.ts`) and
-    // app.test.tsx's own handle test both grep this tree for a card's `state` prop by pattern, and a
-    // selector string assembled the same way would read back as one more handle no card actually has.
+    // Not a template-built CSS selector: a card's handle is compared as a plain attribute value, so a
+    // handle with an odd character cannot break the lookup.
     const el = [...document.querySelectorAll("[data-state]")].find(
       (node) => node.getAttribute("data-state") === handle,
     );
