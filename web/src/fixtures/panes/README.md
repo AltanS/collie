@@ -1236,6 +1236,8 @@ all. It does, and the captures below measure it.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
+| `omp--fresh-idle-widget-below.txt` | `omp--fresh-idle.txt` with one extension widget row added under the `╰─` prompt row, as `setWidget(key, lines, { placement: "belowEditor" })` draws it (issue 468, derived, not a capture). The Surface must read idle, free and not torn: the open box ends on the prompt row, the widget row is content under it | `idle` |
+| `omp--fresh-idle-widget-above.txt` | The same widget row over the `╭──` top edge (`placement: "aboveEditor"`, issue 468, derived). The Surface reads idle and free | `idle` |
 | `omp--fresh-idle.txt` | Fresh session: welcome tips scrollback, `✔ New session started`, an EMPTY composer. omp paints no placeholder in an empty box — there is no `INPUT_PLACEHOLDERS` analogue to write | `idle` |
 | `omp--working.txt` | Mid-turn: `⠸ Working… ⟦esc⟧` braille spinner above an empty composer | `working` |
 | `omp--done.txt` | Completed turn, and the `◀ N` variant: omp splices a transcript-scroll indicator into the SAME border it paints the statusline into. Pinned as a known limitation of `extractStatusLines` (the trim stops at the `1` segment) | `idle` |
@@ -2254,3 +2256,13 @@ bottom cluster.
 | `claude-transcript-quoted-permission--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the Bash permission dialog: `Do you want to proceed?`, a pointer on `1. Yes`, two more numbered options and `Esc to cancel · Tab to amend`. It replaces the one reply row |
 | `claude-transcript-quoted-picker--w82.txt` | `claude-lab--idle-after-turn--w82.txt` | A reply quoting the `/model` picker: a pointer on `Default (recommended)`, two more rows, `Enter to confirm · Esc to exit` and a closing sentence. It replaces the one reply row |
 | `claude-transcript-quoted-trust--w82.txt` | `claude-lab--interrupted--w82.txt` | The folder trust prompt (`❯ 1. Yes, proceed`, `2. No, exit`, `Enter to confirm · Esc to exit`) added mid-reply, five rows over the interrupted line |
+
+The files below rebuild screens that 1.21.3 sent to and 1.22.0 did not (the 1.22.1 audit).
+Each is a captured pane fixture with named rows changed, not a capture of its own. They sit
+here, not in `panes/`, so the harness readers' corpus lists stay as they are.
+
+| Fixture | Base | What changed |
+|---|---|---|
+| `agy--statusline-four-rows.txt` | `agy--done.txt` | The `? for shortcuts` row became the four rows of a custom `statusLine` command (`host-1 [Flash] user@example.com`, `C 91%`, `~/project`, `main`), the screen of issue 374. 1.22.0 searched three rows under the box for its bottom rule and found no box. Reads idle and free |
+| `pi--v0871-idle-windows-drive.txt` | `pi--v0871-idle.txt` | The folder row became `C:\work\pi-cap-cwd`, as pi prints a folder outside the home folder on Windows. 1.22.0 did not take a row that starts with a drive letter as pi's status row and found no box. Reads idle and free |
+| `omp--done-yn-question.txt` | `omp--done.txt` | The last transcript row became `Shall I push the branch now? (y/n)`, flush on the open box. The `(y/n)` reads as a single-key prompt and hides the box, so the screen is never free. 1.22.0 also called the whole box `torn` and refused every send; it now takes the confirm path, as pi and Muse do |

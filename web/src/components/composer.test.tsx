@@ -160,6 +160,24 @@ function renderWithContainer(overrides: Partial<ComponentProps<typeof Composer>>
   return { props, container: lastContainer! };
 }
 
+describe("Composer: keyboard hints on the field (issue 465)", () => {
+  it("turns correction and spell check off on a shell pane and keeps autoCapitalize none", () => {
+    renderComposer({ isShell: true, agent: undefined });
+    const box = screen.getByPlaceholderText(/shell command/i);
+    expect(box).toHaveAttribute("autocapitalize", "none");
+    expect(box).toHaveAttribute("autocorrect", "off");
+    expect(box).toHaveAttribute("spellcheck", "false");
+  });
+
+  it("leaves correction and spell check at the keyboard default on an agent pane", () => {
+    renderComposer();
+    const box = screen.getByRole("textbox");
+    expect(box).toHaveAttribute("autocapitalize", "none");
+    expect(box).not.toHaveAttribute("autocorrect");
+    expect(box).not.toHaveAttribute("spellcheck");
+  });
+});
+
 describe("Composer — send", () => {
   it("sends non-destructive input on the first tap and clears the draft", async () => {
     const user = userEvent.setup();

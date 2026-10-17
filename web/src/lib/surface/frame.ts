@@ -550,7 +550,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
-  // An open box ends on the screen's last row, so nothing is under it to walk or name.
+  // An open box has no edge to walk a statusline from: rows under it (a widget) stay in the cues' sight.
   const { status, footer, named } = open ? { status: null, footer: null, named: [] } : walkBelowNamed(texts, bottom, end, idle, c.footerRows);
   const aboveRows = Math.min(idle.volatile.above.maxRows, top);
   const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
@@ -618,12 +618,29 @@ function alternatesOf(idle: IdleProfile): readonly IdleProfile[] {
   return list;
 }
 
+/**
+ * The frame of an open box over the last non-blank row `end - 1`. Each row passed over on the way up
+ * is blank or a row the profile's `rows` pattern does not accept: a row the box draws (an edge, a draft
+ * row) is never passed, so a read cut inside the box still finds no frame.
+ */
+function openFrame(rows: readonly FrameRow[], end: number, idle: IdleProfile): Frame | null {
+  const under = compile(idle).interior.rows;
+  for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
+    const frame = interiorFrameAt(rows, b, idle);
+    if (frame !== null) return frame;
+    const text = rowText(rows[b]!);
+    if (under === null || (!isBlank(text) && under.test(text.trimEnd()))) return null;
+  }
+  return null;
+}
+
 function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);
   let end = rows.length;
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;
-  // An open box has no bottom edge: its last row is the last row of the screen.
-  if (c.bottom.open) return end === 0 ? null : interiorFrameAt(rows, end - 1, idle);
+  // An open box has no bottom edge: its last row is the last row of the screen, or a row at most
+  // `maxTailRows` above it when rows the box never draws stand under it (an extension's widget, #468).
+  if (c.bottom.open) return openFrame(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
     if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
   }
