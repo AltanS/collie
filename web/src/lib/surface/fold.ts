@@ -237,7 +237,9 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
     frame === null || cues.panelFoot === true ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
 
   let reason: SurfaceReason | undefined;
-  if (frame === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";
+  // Torn is a read cut inside the box. A whole box the dialog rule hid above is not one: its strong cue
+  // already keeps it from free, and the person may check the screen and confirm.
+  if (found === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";
   else if (frame === null && input.ask === null && cues.strength === "none") reason = "no-match";
 
   const surface: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };

@@ -37,7 +37,7 @@
       },
       "continuationIndent": 2,
       "maxDraftRows": 60,
-      "maxTailRows": 3
+      "maxTailRows": 8
     },
     "placeholders": {
       "texts": [],
