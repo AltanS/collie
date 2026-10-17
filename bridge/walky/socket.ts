@@ -6,8 +6,8 @@
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
 //   send    { id, to, body, replyTo }   → { ok, receipts }
 //   inbox   { all, ack }                → { ok, pane, messages }
-//   who     {}                          → { ok, self, targets }
-//   status  { id }                      → { ok, receipts, message }
+//   who     {}                          → { ok, self, targets, note? }
+//   status  { id }                      → { ok, receipts, message, elsewhere }
 //   ack     { ids | null }              → { ok, acked }
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine. No markers at all means the operator: kind `operator`,
@@ -72,8 +72,8 @@ export interface WalkyServerDeps {
 export type WalkyAnswer =
   | { readonly ok: false; readonly error: string }
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[] }
-  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null }
-  | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[] }
+  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null; readonly elsewhere: readonly string[] }
+  | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number };
 
@@ -89,11 +89,14 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, sender);
       return answer.ok ? { ok: true, receipts: answer.receipts } : answer;
     }
-    case "who":
-      return { ok: true, self: pane === null ? null : service.addressOf(pane.paneId), targets: service.who() };
+    case "who": {
+      const self = pane === null ? null : service.addressOf(pane.paneId);
+      const note = service.whoNote();
+      return note === null ? { ok: true, self, targets: service.who() } : { ok: true, self, targets: service.who(), note };
+    }
     case "status": {
-      const { receipts, message } = service.status(request.id);
-      return { ok: true, receipts, message };
+      const { receipts, message, elsewhere } = service.status(request.id);
+      return { ok: true, receipts, message, elsewhere };
     }
     case "inbox": {
       if (pane === null) {

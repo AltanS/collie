@@ -9,7 +9,7 @@ import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json
 import { parseAddress } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { formatEnvelope, mintWalkyId, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
+import { formatEnvelope, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 
 // `collie walky` (alias `collie wt`): walky talky from a terminal (M62 spec 02). It talks to the
 // running bridge over its local socket, `<stateDir>/walky/sock`, one JSON request per connection.
@@ -97,10 +97,21 @@ function receiptsOf(value: JsonValue | undefined): WalkyReceipt[] {
 }
 
 /** One receipt as one line: state, id, target when asked, and the reason. */
-export function receiptLine(receipt: WalkyReceipt, withTarget: boolean): string {
+export function receiptLine(receipt: WalkyReceipt, withTarget: boolean, elsewhere: ReadonlySet<string> = new Set()): string {
   const target = withTarget ? ` ${receipt.target}` : "";
-  const reason = receipt.reason === undefined ? "" : ` (${receipt.reason})`;
+  // On a crew member a message for another machine ends on the lead, which keeps that outcome.
+  const why = receipt.reason ?? (receipt.state === "accepted" && elsewhere.has(receipt.target) ? OUTCOME_ON_LEAD : undefined);
+  const reason = why === undefined ? "" : ` (${why})`;
   return `${receipt.state} ${receipt.id}${target}${reason}`;
+}
+
+/** The targets a status answer says only the lead learns the outcome of. */
+function elsewhereOf(value: JsonValue | undefined): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  return new Set(value.flatMap((entry) => {
+    const target = asJsonString(entry);
+    return target === undefined ? [] : [target];
+  }));
 }
 
 /** The exit code a set of receipts stands for: a refusal is REFUSED, an unknown or expired is FAIL. */
@@ -128,12 +139,14 @@ export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Pro
     const row = asJsonObject(entry);
     return row === undefined ? [] : [row];
   }) : [];
+  const note = asJsonString(answer.body.note);
   if (json) {
-    deps.io.out(JSON.stringify({ self: answer.body.self ?? null, targets }));
+    deps.io.out(JSON.stringify(note === undefined ? { self: answer.body.self ?? null, targets } : { self: answer.body.self ?? null, targets, note }));
     return EXIT.OK;
   }
   if (targets.length === 0) {
     deps.io.out("no agent panes to message");
+    if (note !== undefined) deps.io.out(note);
     return EXIT.OK;
   }
   const self = asJsonString(answer.body.self);
@@ -143,6 +156,7 @@ export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Pro
   const line = (cells: readonly string[]): string => cells.map((cell, column) => cell.padEnd(widths[column]!)).join("  ").trimEnd();
   deps.io.out(line(head));
   for (const row of rows) deps.io.out(`${line(row)}${row[0] === self ? "  (you)" : ""}`);
+  if (note !== undefined) deps.io.out(note);
   return EXIT.OK;
 }
 
@@ -216,19 +230,22 @@ async function sendAndWait(deps: WalkyDeps, to: string, replyTo: string | null, 
   const answer = await request(deps, { op: "send", id, to, body, replyTo });
   if (!answer.ok) return failure(deps, answer);
   let receipts = receiptsOf(answer.body.receipts);
+  let elsewhere = new Set<string>();
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const until = now() + SEND_WAIT_MS;
-  while (receipts.some((receipt) => receipt.state === "accepted") && now() < until) {
+  // A receipt whose outcome only the lead learns stays `accepted` here: waiting on it would only wait.
+  while (receipts.some((receipt) => receipt.state === "accepted" && !elsewhere.has(receipt.target)) && now() < until) {
     await sleep(SEND_POLL_MS);
     const status = await request(deps, { op: "status", id }, answer.path);
     if (!status.ok) break;
     const fresh = receiptsOf(status.body.receipts);
+    elsewhere = elsewhereOf(status.body.elsewhere);
     if (fresh.length > 0) receipts = fresh;
   }
   if (json) deps.io.out(JSON.stringify({ id, receipts }));
   else if (receipts.length === 0) deps.io.out(`accepted ${id}`);
-  else for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1 || parseAddress(to)?.kind !== "pane"));
+  else for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1 || parseAddress(to)?.kind !== "pane", elsewhere));
   return exitOf(receipts);
 }
 
@@ -301,12 +318,14 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
   if (id === undefined || rest.length > 1 || !WALKY_ID.test(id)) return usage(deps, "status", "name one message id (wt_ and 12 characters)");
   // Every bridge is asked until one holds receipts for the id: the sender's bridge wrote them.
   let receipts: WalkyReceipt[] = [];
+  let elsewhere = new Set<string>();
   let reached = false;
   for (const path of socketPaths(deps)) {
     const answer = await request(deps, { op: "status", id }, path);
     if (!answer.ok) continue;
     reached = true;
     receipts = receiptsOf(answer.body.receipts);
+    elsewhere = elsewhereOf(answer.body.elsewhere);
     if (receipts.length > 0) break;
   }
   if (!reached) return failure(deps, { error: "no running Collie bridge answers on this machine" });
@@ -318,7 +337,7 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
     deps.io.out(`unknown ${id}`);
     return EXIT.STATE;
   }
-  for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1));
+  for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1, elsewhere));
   return exitOf(receipts);
 }
 

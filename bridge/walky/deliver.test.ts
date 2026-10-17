@@ -252,3 +252,73 @@ describe("reasons", () => {
     expect(reasonOf({ outcome: "expired" })).toBe("expired");
   });
 });
+
+describe("a message a crew hop brought (CREW_PROTOCOL §21)", () => {
+  const message = (id: string, to: string, from = "laptop") => ({
+    v: 1 as const,
+    id,
+    kind: "operator" as const,
+    from: { memberId: from, address: null, harness: null, label: "phone" },
+    to,
+    replyTo: null,
+    at: 1_786_000_000_000,
+    body: "hello",
+    signer: from,
+    signature: "c2ln",
+  });
+
+  test("keeps the verification it was received with on every receipt it writes", async () => {
+    const r = rig([pane("w1:p1")], { memberId: "desk" });
+    const first = await r.service.receive(message("wt_aaaaaaaaaaa1", "desk/w1:p1"), "lead", true);
+    expect(first).toMatchObject([{ state: "accepted", verified: "lead", by: "desk" }]);
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered", verified: "lead" }]);
+  });
+
+  test("localOnly refuses an address on another member and never routes `all` on", async () => {
+    const routed: string[] = [];
+    const r = rig([pane("w1:p1")], {
+      memberId: "desk",
+      routeRemote: async (m, members) => {
+        routed.push(`${m.id} ${members}`);
+        return [];
+      },
+    });
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa1", "other/w1:p1"), "lead", true)).toMatchObject([{ state: "refused", reason: "no such pane" }]);
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa2", "all"), "lead", true)).toMatchObject([{ state: "accepted", target: "desk/w1:p1" }]);
+    expect(routed).toEqual([]);
+  });
+
+  test("on a lead `all` reaches its panes and is routed on; a repeat returns the stored receipts", async () => {
+    const routed: string[] = [];
+    const r = rig([pane("w1:p1")], {
+      memberId: "desk",
+      routeRemote: async (m, members) => {
+        routed.push(`${m.id} ${members}`);
+        return [{ id: m.id, target: "other/w9:p9", state: "accepted", verified: "lead", at: 1, by: "other" }];
+      },
+    });
+    const first = await r.service.receive(message("wt_aaaaaaaaaaa1", "all"), "origin", false);
+    expect(first.map((receipt) => receipt.target)).toEqual(["desk/w1:p1", "other/w9:p9"]);
+    expect(routed).toEqual(["wt_aaaaaaaaaaa1 all"]);
+    // The far pane's receipt is a target of its own in the log, so status finds it by id and target.
+    expect(r.log.get("wt_aaaaaaaaaaa1", "other/w9:p9")?.receipt.state).toBe("accepted");
+    const again = await r.service.receive(message("wt_aaaaaaaaaaa1", "all"), "origin", false);
+    expect(again.map((receipt) => receipt.target).toSorted()).toEqual(["all", "desk/w1:p1", "other/w9:p9"]);
+    expect(routed).toEqual(["wt_aaaaaaaaaaa1 all"]);
+    // `status` shows the panes, not the fan-out's own line.
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => receipt.target).toSorted()).toEqual(["desk/w1:p1", "other/w9:p9"]);
+  });
+
+  test("a member names the targets whose outcome only its lead learns", async () => {
+    const r = rig([pane("w1:p1")], {
+      memberId: "laptop",
+      outcomesOnLead: true,
+      routeRemote: async (m) => [{ id: m.id, target: "desk/w2:p2", state: "accepted", verified: "origin", at: 1, by: "desk" }],
+    });
+    await r.service.send(send("wt_aaaaaaaaaaa1", "desk/w2:p2"), operator);
+    expect(r.service.status("wt_aaaaaaaaaaa1").elsewhere).toEqual(["desk/w2:p2"]);
+    expect(r.service.whoNote()).toContain("ask the lead");
+    expect(rig([pane("w1:p1")], { memberId: "desk" }).service.whoNote()).toBeNull();
+  });
+});

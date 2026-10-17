@@ -161,3 +161,45 @@ export function parsePhoneSend(value: JsonValue | undefined): PhoneSend | { read
   if (replyTo !== null && !isWalkyId(replyTo)) return { error: "bad replyTo" };
   return { id, to, body, replyTo };
 }
+
+// ── The crew hops (CREW_PROTOCOL §21) ────────────────────────────────────────────────────────────
+
+/** The most receipts one answer or one snapshot report is read for. More are dropped, not refused. */
+export const CREW_RECEIPTS_MAX = 100;
+
+/** A list of receipts, as a crew answer or a snapshot report carries it. Bad entries are dropped. */
+export function readReceiptList(value: JsonValue | undefined): WalkyReceipt[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, CREW_RECEIPTS_MAX).flatMap((entry) => {
+    const receipt = readReceipt(entry);
+    return receipt === null ? [] : [receipt];
+  });
+}
+
+/** `{ receipts }`, the answer of both crew routes, or an empty list. */
+export function readReceiptsAnswer(value: JsonValue | undefined): WalkyReceipt[] {
+  return readReceiptList(asJsonObject(value)?.receipts);
+}
+
+/** The lead-to-member body, `{ message, attest }`, or null when either is not one. */
+export function readCrewDelivery(value: JsonValue | undefined): { readonly message: WalkyMessage; readonly attest: string } | null {
+  const row = asJsonObject(value);
+  if (row === undefined) return null;
+  const message = readMessage(row.message);
+  const attest = asJsonString(row.attest);
+  if (message === null || attest === undefined || attest === "" || attest.length > 512) return null;
+  return { message, attest };
+}
+
+/**
+ * A member's walky report off its `/crew/v1/snapshot` answer: the `walky` sibling of the body,
+ * `{ receipts }`. Absent or malformed reads as no report (§7.1's absent-means-closed).
+ */
+export function readWalkyReport(answer: JsonValue | undefined, field: string): WalkyReceipt[] {
+  return readReceiptsAnswer(asJsonObject(answer)?.[field]);
+}
+
+/** The English `error` of a refusal body, or null. */
+export function readErrorText(value: JsonValue | undefined): string | null {
+  return asJsonString(asJsonObject(value)?.error) ?? null;
+}

@@ -89,6 +89,7 @@ export class WalkyLog {
   private made = false;
   private lines: LogLine[] = [];
   private readonly records = new Map<string, LogRecord>();
+  private readonly listeners: Array<(record: LogRecord) => void> = [];
 
   constructor(
     dir: string,
@@ -155,8 +156,20 @@ export class WalkyLog {
     appendFileSync(this.path, `${JSON.stringify(line)}\n`, { mode: 0o600 });
     this.lines.push(line);
     this.index(line);
+    if (line.t === "receipt") {
+      const record = this.records.get(keyOf(line.receipt.id, line.receipt.target));
+      if (record !== undefined) for (const listener of this.listeners) listener(record);
+    }
     const oldest = this.lines[0];
     if (this.lines.length > LOG_MAX_LINES || (oldest !== undefined && oldest.at < this.now() - LOG_KEEP_MS)) this.rotate();
+  }
+
+  /**
+   * Call `listener` with the record each time a receipt is written for a message the log holds. The
+   * crew report (crew.ts) listens, so a member can tell its lead how a message from elsewhere ended.
+   */
+  onReceipt(listener: (record: LogRecord) => void): void {
+    this.listeners.push(listener);
   }
 
   /** The record of one message to one target, or null. */

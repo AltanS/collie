@@ -74,6 +74,12 @@ export interface WalkyReceipt {
   readonly sendId?: string;
 }
 
+/**
+ * What `collie walky status` says of a receipt still `accepted` on another machine, on a crew member:
+ * the lead keeps that outcome and has no way to tell the member (CREW_PROTOCOL §21).
+ */
+export const OUTCOME_ON_LEAD = "outcome known on the lead";
+
 /** A message as the log and the phone list it: the message, the pane it went to and its newest receipt. */
 export type WalkyEntry = WalkyMessage & { readonly receipt: WalkyReceipt };
 

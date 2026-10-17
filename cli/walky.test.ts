@@ -47,7 +47,7 @@ interface Bridge {
   answer: SendResult;
 }
 
-async function bridge(): Promise<Bridge> {
+async function bridge(over: Partial<ConstructorParameters<typeof WalkyService>[0]> = {}): Promise<Bridge> {
   const stateDir = mkdtempSync(join(tmpdir(), "walky-cli-"));
   const panes: WalkyPane[] = [
     { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", terminal: true },
@@ -63,7 +63,7 @@ async function bridge(): Promise<Bridge> {
     sendState: () => state.answer,
     cancelHeld: () => undefined,
   };
-  const service = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+  const service = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, ...over });
   const server = new WalkyServer({ socketPath: walkySocketPath(stateDir), service, targets: () => [target], log: () => undefined });
   expect(await server.start()).toBe(true);
   cleanups.push(() => {
@@ -238,5 +238,33 @@ describe("the send arguments", () => {
     expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true });
     expect(parseSendArgs(["--reply-to", "bad"])).toEqual({ error: "`bad` is not a message id" });
     expect(parseSendArgs(["--nope"])).toEqual({ error: "unknown flag `--nope`" });
+  });
+});
+
+describe("on a crew member (CREW_PROTOCOL §21)", () => {
+  const member = () =>
+    bridge({
+      memberId: "laptop",
+      outcomesOnLead: true,
+      routeRemote: async (message) => [{ id: message.id, target: message.to, state: "accepted", verified: "origin", at: 1, by: "desk" }],
+    });
+
+  test("a message for another machine prints `accepted` and says the lead knows the outcome, without waiting", async () => {
+    const b = await member();
+    let polls = 0;
+    const d = deps(b, {}, { sleep: async () => void (polls += 1) });
+    expect(await cmdWalkySend(d, ["desk/w2:p2", "hi"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["accepted wt_aaaaaaaaaaa1 (outcome known on the lead)"]);
+    expect(polls).toBe(1);
+    const status = deps(b);
+    expect(await cmdWalkyStatus(status, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(status.io.stdout).toEqual(["accepted wt_aaaaaaaaaaa1 (outcome known on the lead)"]);
+  });
+
+  test("who lists this machine's panes and says the other machines are the lead's to list", async () => {
+    const b = await member();
+    const d = deps(b);
+    expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout.at(-1)).toBe("other machines: ask the lead (collie walky who there, or the phone)");
   });
 });
