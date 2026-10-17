@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The shell composer no longer capitalizes the first letter on Android.** A shell pane's input field now also turns auto-correction and spell check off, next to `autoCapitalize="none"`, so Gboard, SwiftKey and the Samsung keyboard leave a typed command as it is. Thanks to @viniciosrab for the report and the fix idea. (#465)
+
 ## [1.22.0] - 2026-10-17
 
 ### Added
