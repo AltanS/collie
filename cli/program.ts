@@ -96,6 +96,7 @@ import {
 import { cmdSttWhistle } from "./stt-whistle.ts";
 import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE_SUBCOMMANDS, type DurableAttachDeps } from "./durable-attach.ts";
 import { realExec, realFiles } from "./sys.ts";
+import { HOST } from "../bridge/host.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
@@ -265,7 +266,7 @@ function walkyDeps(io: Io): WalkyDeps {
     files: realFiles,
     uid: process.getuid?.(),
     io,
-    platform: process.platform,
+    platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
     stdinIsTty: process.stdin.isTTY === true,
     ask: (path, line) => askSocket(path, line),
