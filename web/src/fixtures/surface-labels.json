@@ -2121,6 +2121,166 @@
    "version": "unversioned",
    "state": "running"
   },
+  "hermes--approval-long-full.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--approval-long.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--approval-moved.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--approval-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--approval.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-choices-moved.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-choices-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-choices.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-four.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-long.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-multi-toggled.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-multi.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-open.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "other"
+  },
+  "hermes--clarify-other-draft-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--clarify-other-draft.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--clarify-other-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "other"
+  },
+  "hermes--clarify-other.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "other"
+  },
+  "hermes--clarify-two-second.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--clarify-two.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--done.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "idle"
+  },
+  "hermes--draft-multiline.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--draft-six-lines.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--draft-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--draft-wrapped.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--draft.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "draft"
+  },
+  "hermes--exited.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "screen"
+  },
+  "hermes--idle-w60.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "idle"
+  },
+  "hermes--idle.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "idle"
+  },
+  "hermes--model-picker.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--palette.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "dialog"
+  },
+  "hermes--running.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "running"
+  },
+  "hermes--slash-popup.txt": {
+   "harness": "hermes",
+   "version": "0.22.2",
+   "state": "popup"
+  },
   "muse--approval-date-147.txt": {
    "harness": "muse",
    "version": "1.4.7",

@@ -146,8 +146,8 @@ describe("pinned dialog regions", () => {
   }
 });
 
-// Muse, Oh My Pi's Claude theme and pi's OmO extension paint Claude's own input box: a column-0 ❯
-// row between two bare U+2500 rules. The anchors are shape only, so the Claude profile finds a frame
+// Muse, Oh My Pi's Claude theme, pi's OmO extension and Hermes's classic CLI paint Claude's own input
+// box: a column-0 ❯ row between two bare U+2500 rules. The anchors are shape only, so the Claude profile finds a frame
 // there, and that is right: the frame says "a box is drawn", and the profile is picked by the binary
 // (the README contract: version and harness from the binary, never from the screen), so the Claude
 // profile is never applied to those panes. Every other non-Claude fixture yields null.
@@ -155,6 +155,7 @@ const DRAWS_THE_SAME_BOX = (name: string): boolean =>
   name.startsWith("muse--") ||
   name.startsWith("omp--v18-4-claude") ||
   name.startsWith("pi--omo-") ||
+  name.startsWith("hermes--") ||
   name === "pi--prose-quoted-omo-dialog-above-editor.txt";
 
 describe("non-Claude fixtures", () => {
@@ -162,7 +163,7 @@ describe("non-Claude fixtures", () => {
     const found = fixtureNames.filter((name) => !isClaudeFixture(name) && findInputFrame(fixtureRows(name), IDLE) !== null);
     expect(found.filter((name) => !DRAWS_THE_SAME_BOX(name))).toEqual([]);
     // The exception stays honest: each family it names still draws the box.
-    for (const family of ["muse--", "omp--v18-4-claude", "pi--omo-"]) {
+    for (const family of ["muse--", "omp--v18-4-claude", "pi--omo-", "hermes--"]) {
       expect(found.some((name) => name.startsWith(family)), family).toBe(true);
     }
   });
@@ -710,5 +711,31 @@ describe("frame alternates (M56 spec 14)", () => {
 
   it("finds no box in a plain transcript", () => {
     expect(findInputFrame(lines("a", "   indented", "b"), OMP)).toBeNull();
+  });
+
+  // Hermes draws no rule under its input below 64 columns, and its rule spans the pane. Its open box
+  // walks up from the screen's last row over draft rows only: a box edge or a rule of 64 cells or more
+  // ends the walk with no box. A wide pane caught without its bottom rule is no box, and neither is a
+  // picker between a reply's short rule and the prompt.
+  it("walks Hermes's open box over draft rows only", () => {
+    const HERMES = requireProfile("hermes").idle;
+    expect(findInputFrame(lines("reply", "─".repeat(60), "❯ hello", "world"), HERMES)!.interior.text).toBe("hello world");
+    expect(findInputFrame(lines("reply", "─".repeat(63), "❯ hello"), HERMES)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", "─".repeat(64), "❯ hello"), HERMES)).toBeNull();
+    expect(findInputFrame(lines(RULE, "╭─ ⚙ Model Picker ─╮", "╰──────────────────╯", "─".repeat(80), "❯ hello"), HERMES)).toBeNull();
+    expect(findInputFrame(lines("reply", "─".repeat(80), "❯ hello", "─".repeat(80)), HERMES)!.interior.text).toBe("hello");
+  });
+
+  // Hermes's input is at most eight rows (`_estimate_tui_input_height`, max_height=8); a longer
+  // draft scrolls inside them and its prompt row leaves the screen, so no taller box is read. The
+  // edges walk counts the rows under the prompt row (7), the open box's walk all of its rows (8).
+  it("reads Hermes's box up to its eight input rows, wide and narrow", () => {
+    const HERMES = requireProfile("hermes").idle;
+    const draft = (n: number): string[] => ["❯ r1", ...Array.from({ length: n - 1 }, (_, i) => `r${String(i + 2)}`)];
+    const eight = "r1 r2 r3 r4 r5 r6 r7 r8";
+    expect(findInputFrame(lines("reply", "─".repeat(80), ...draft(8), "─".repeat(80)), HERMES)!.interior.text).toBe(eight);
+    expect(findInputFrame(lines("reply", "─".repeat(60), ...draft(8)), HERMES)!.interior.text).toBe(eight);
+    expect(findInputFrame(lines("reply", "─".repeat(80), ...draft(9), "─".repeat(80)), HERMES)).toBeNull();
+    expect(findInputFrame(lines("reply", "─".repeat(60), ...draft(9)), HERMES)).toBeNull();
   });
 });

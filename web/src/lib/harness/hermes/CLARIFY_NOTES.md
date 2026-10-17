@@ -60,9 +60,11 @@ What the adapter emits (`clarify.ts`):
   marker, when the operator has not turned it off. Any other row there refuses the panel.
 - One button per choice of the active question, sending its digit alone, Other included: Other
   only opens the typed answer.
-- Nothing for the `✎` screen. There the input is the answer, so the phone's composer is ready and
-  the guarded send types the text and binds its `Enter` to the `✎ ❯ <text>` row (`chrome.ts`). If
-  the question closed in between, the row reads `❯ ` again and the bridge refuses the `Enter`.
+- Nothing for the `✎` screen. There the input is the answer: the Hermes profile reads `✎` as an
+  input row, so a send from the phone types the answer there and presses Enter (live, 2026-10-17).
+  If the question closes while the text goes in, the panel above the box goes with it, and the Send
+  Protocol's check that nothing outside the box moved stops the send before Enter: the panel's rows
+  sit above the seven rows the profile lets change.
 - Nothing for a question revisited after an Other answer, whose Other row reads
   `Other: <earlier answer>`: its digit opens an empty editor (the earlier text is prefilled only on
   Enter, `_clarify_batch_enter`), so a button with that label would promise a resend it does not do.

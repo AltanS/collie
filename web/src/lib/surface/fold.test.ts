@@ -463,6 +463,21 @@ const SPEC14: readonly ProfileCase[] = [
     idleMin: 14,
     quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
   },
+  {
+    id: "hermes",
+    idleMin: 3,
+    quote: [
+      "Here is the dialog you asked about:",
+      "╭─ Hermes Agent needs your input ────╮",
+      "│ ▸ Pick a color                     │",
+      "│   ❯ 1. Red                         │",
+      "│     2. Blue                        │",
+      "╰────────────────────────────────────╯",
+      "  ↑/↓ to select, Enter to lock, Tab next question",
+      "",
+      "That is all it shows.",
+    ],
+  },
 ];
 
 describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote, states }) => {
@@ -611,6 +626,22 @@ describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", ()
 
   it("the first second of a turn, a spinner with no timer yet, reads idle: a send there goes ahead and is queued all the same", () => {
     expect(read("claude--v2301-spinner-no-timer--w100.txt")).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+  });
+});
+
+// Hermes draws `☤` in front of its input while the agent runs, and nowhere else in that row: the
+// prompt row is the turn's sign. A streaming reply shows no spinner, so nothing else would say it.
+describe("a running turn on Hermes 0.22.2 captures (2026-10-16)", () => {
+  const read = (name: string) => readScreen(fixtureRows(name), agentOf("hermes"), idleFor("hermes")).surface;
+
+  it("the `☤` prompt reads running with the box empty, so a send waits for the turn", () => {
+    expect(read("hermes--running.txt")).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("a clarify's typed answer reads idle and free: the question's ticking panel is no turn", () => {
+    for (const name of ["hermes--clarify-other.txt", "hermes--clarify-other-w60.txt", "hermes--clarify-open.txt"]) {
+      expect(read(name), name).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    }
   });
 });
 
