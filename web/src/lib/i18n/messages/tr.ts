@@ -2261,4 +2261,9 @@ export const tr: Dictionary = {
   "sent.clear": "{machine} üzerindeki Gönderilenler listesini temizle",
   "sent.clear.confirm": "Temizlemek için tekrar dokunun",
   "sent.clear.error": "Gönderilenler temizlenemedi.",
+  "sent.suggest.aria": "Gönderilenler'den öneriler",
+  "sent.suggest.all": "Tümü",
+  "sent.suggest.all.aria": "Gönderilen tüm satırlar",
+  "settings.sentSuggestions.title": "Gönderilenler'den öneriler",
+  "settings.sentSuggestions.description": "Siz yazarken daha önceki kabuk satırlarını metin giriş kutusunun üzerinde gösterir. Dokunulduğunda metin giriş kutusu doldurulur ve hiçbir şey gönderilmez.",
 };

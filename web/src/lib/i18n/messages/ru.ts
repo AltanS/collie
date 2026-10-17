@@ -2370,4 +2370,9 @@ export const ru: Dictionary = {
   "sent.clear.error": "Не удалось очистить Отправленные.",
   "sent.times.few": "{count} раза",
   "sent.times.many": "{count} раз",
+  "sent.suggest.aria": "Подсказки из раздела «Отправленные»",
+  "sent.suggest.all": "Все",
+  "sent.suggest.all.aria": "Все отправленные строки",
+  "settings.sentSuggestions.title": "Подсказки из раздела «Отправленные»",
+  "settings.sentSuggestions.description": "Показывает ранее введенные строки оболочки над полем ввода по мере набора текста. Нажатие заполняет поле ввода и ничего не отправляет.",
 };

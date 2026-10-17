@@ -2445,4 +2445,9 @@ export const es: Dictionary = {
   "sent.clear": "Borrar Enviadas en {machine}",
   "sent.clear.confirm": "Toca de nuevo para borrar",
   "sent.clear.error": "No se pudo borrar Enviadas.",
+  "sent.suggest.aria": "Sugerencias de Enviadas",
+  "sent.suggest.all": "Todas",
+  "sent.suggest.all.aria": "Todas las líneas enviadas",
+  "settings.sentSuggestions.title": "Sugerencias de Enviadas",
+  "settings.sentSuggestions.description": "Muestra líneas de shell anteriores arriba del cuadro a medida que escribes. Un toque llena el cuadro y no envía nada.",
 };

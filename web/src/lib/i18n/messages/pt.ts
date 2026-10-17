@@ -2261,4 +2261,9 @@ export const pt: Dictionary = {
   "sent.clear": "Limpar Enviados em {machine}",
   "sent.clear.confirm": "Toque novamente para limpar",
   "sent.clear.error": "Não foi possível limpar os Enviados.",
+  "sent.suggest.aria": "Sugestões de Enviados",
+  "sent.suggest.all": "Todos",
+  "sent.suggest.all.aria": "Todas as linhas enviadas",
+  "settings.sentSuggestions.title": "Sugestões de Enviados",
+  "settings.sentSuggestions.description": "Mostra linhas de shell anteriores acima da caixa enquanto você digita. Um toque preenche a caixa e não envia nada.",
 };

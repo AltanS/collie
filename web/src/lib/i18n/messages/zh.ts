@@ -2413,4 +2413,9 @@ export const zh: Dictionary = {
   "sent.clear": "清空 {machine} 上的“已发送”",
   "sent.clear.confirm": "再次点击以清空",
   "sent.clear.error": "无法清空“已发送”。",
+  "sent.suggest.aria": "来自“已发送”的建议",
+  "sent.suggest.all": "全部",
+  "sent.suggest.all.aria": "所有已发送行",
+  "settings.sentSuggestions.title": "来自“已发送”的建议",
+  "settings.sentSuggestions.description": "输入时在输入框上方显示之前发送的 shell 命令行。轻点即可填入输入框，不会发送任何内容。",
 };

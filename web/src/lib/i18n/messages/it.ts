@@ -2261,4 +2261,9 @@ export const it: Dictionary = {
   "sent.clear": "Cancella Inviati su {machine}",
   "sent.clear.confirm": "Tocca di nuovo per cancellare",
   "sent.clear.error": "Impossibile cancellare Inviati.",
+  "sent.suggest.aria": "Suggerimenti da Inviati",
+  "sent.suggest.all": "Tutti",
+  "sent.suggest.all.aria": "Tutte le righe inviate",
+  "settings.sentSuggestions.title": "Suggerimenti da Inviati",
+  "settings.sentSuggestions.description": "Mostra le righe di shell precedenti sopra la casella mentre scrivi. Un tocco compila la casella e non invia nulla.",
 };

@@ -2407,4 +2407,9 @@ export const zhTW: Dictionary = {
   "sent.clear": "清除 {machine} 上的「已傳送」",
   "sent.clear.confirm": "再輕點一次以清除",
   "sent.clear.error": "無法清除「已傳送」。",
+  "sent.suggest.aria": "來自「已傳送」的建議",
+  "sent.suggest.all": "全部",
+  "sent.suggest.all.aria": "所有已傳送的指令列",
+  "settings.sentSuggestions.title": "來自「已傳送」的建議",
+  "settings.sentSuggestions.description": "在您輸入時於輸入框上方顯示較早的 shell 指令列。輕觸會填入輸入框，且不會傳送任何內容。",
 };

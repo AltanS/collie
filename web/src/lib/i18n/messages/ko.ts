@@ -2425,4 +2425,9 @@ export const ko: Dictionary = {
   "sent.clear": "{machine}의 보낸 항목 지우기",
   "sent.clear.confirm": "지우려면 다시 누르세요",
   "sent.clear.error": "보낸 항목을 지울 수 없습니다.",
+  "sent.suggest.aria": "보낸 항목의 추천",
+  "sent.suggest.all": "전체",
+  "sent.suggest.all.aria": "보낸 전체 행",
+  "settings.sentSuggestions.title": "보낸 항목의 추천",
+  "settings.sentSuggestions.description": "입력할 때 텍스트 입력창 위에 이전 셸 줄을 표시합니다. 탭하면 텍스트 입력창이 채워지며 아무것도 전송되지 않습니다.",
 };

@@ -2261,4 +2261,9 @@ export const fr: Dictionary = {
   "sent.clear": "Effacer Envoyées sur {machine}",
   "sent.clear.confirm": "Touchez à nouveau pour effacer",
   "sent.clear.error": "Impossible d'effacer Envoyées.",
+  "sent.suggest.aria": "Suggestions issues d'Envoyées",
+  "sent.suggest.all": "Toutes",
+  "sent.suggest.all.aria": "Toutes les lignes envoyées",
+  "settings.sentSuggestions.title": "Suggestions issues d'Envoyées",
+  "settings.sentSuggestions.description": "Affiche les lignes de shell précédentes au-dessus du champ de saisie pendant la frappe. Appuyer dessus remplit le champ de saisie sans rien envoyer.",
 };

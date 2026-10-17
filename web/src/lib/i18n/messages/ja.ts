@@ -2432,4 +2432,9 @@ export const ja: Dictionary = {
   "sent.clear": "{machine} の送信履歴を消去",
   "sent.clear.confirm": "もう一度タップして消去",
   "sent.clear.error": "送信履歴を消去できませんでした。",
+  "sent.suggest.aria": "送信履歴からの候補",
+  "sent.suggest.all": "すべて",
+  "sent.suggest.all.aria": "送信済みの全行",
+  "settings.sentSuggestions.title": "送信履歴からの候補",
+  "settings.sentSuggestions.description": "入力中に入力欄の上に以前のシェル行を表示します。タップすると入力欄に入力され、送信は行われません。",
 };

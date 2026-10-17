@@ -2449,4 +2449,9 @@ export const de: Dictionary = {
   "sent.clear": "„Gesendet“ auf {machine} leeren",
   "sent.clear.confirm": "Zum Leeren erneut tippen",
   "sent.clear.error": "„Gesendet“ konnte nicht geleert werden.",
+  "sent.suggest.aria": "Vorschläge aus Gesendet",
+  "sent.suggest.all": "Alle",
+  "sent.suggest.all.aria": "Alle gesendeten Zeilen",
+  "settings.sentSuggestions.title": "Vorschläge aus Gesendet",
+  "settings.sentSuggestions.description": "Zeigt beim Tippen frühere Shell-Zeilen über dem Feld an. Ein Antippen füllt das Feld aus und sendet nichts.",
 };
