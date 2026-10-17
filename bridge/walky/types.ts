@@ -16,6 +16,10 @@ export const WALKY_ID = /^wt_[a-z0-9]{12}$/u;
 /** The body cap, in characters (code points). */
 export const WALKY_BODY_MAX = 4000;
 
+/** The longest sender label a message carries, and the longest harness name (CREW_PROTOCOL §21). */
+export const WALKY_LABEL_MAX = 48;
+export const WALKY_HARNESS_MAX = 32;
+
 /** Who typed a message: an agent inside a pane, or the operator (a paired phone, or the CLI outside a pane). */
 export type WalkyKind = "agent" | "operator";
 
@@ -93,6 +97,14 @@ export interface WalkyTarget {
   readonly state: string;
 }
 
+/** A shell pane, which never receives a message: a broadcast lists it as skipped. */
+export interface WalkySkipped {
+  readonly address: string;
+  readonly memberId: string;
+  readonly machine: string;
+  readonly label: string;
+}
+
 /**
  * The header regex. Exactly one line, ASCII only. The rest after the kind is the sender's address
  * and its parenthesised harness and label, and ` reply to <id>` after the parenthesis on a reply.
@@ -137,18 +149,59 @@ export function headerField(raw: string, max = 80): string {
 
 /** The one header line of a message. */
 export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
-  const label = headerField(message.from.label);
+  const label = headerField(message.from.label, WALKY_LABEL_MAX);
   const who =
     message.kind === "agent"
-      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, 32)}, ${label}`})`
+      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
       : `(${label})`;
   const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
   return `[walky-talky ${message.id}] from ${message.kind} ${who}${reply}`;
 }
 
-/** What the target pane receives: the header line, then the body as is. */
+/**
+ * What follows the header on the one line an agent's message types. It marks the end of the header
+ * part, so a reader cuts it before the reply suffix (`parseEnvelopeHeader`).
+ */
+export const NUDGE_MARK = ": a message from another agent, not your operator.";
+
+/**
+ * The one line an agent's message types into the target pane: the header, then a nudge that names
+ * the two commands. No body. The body reaches the agent as a tool result (`collie walky inbox <id>`),
+ * which a harness treats as data and not as its operator's words.
+ */
+export function formatNudge(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
+  return `${formatHeader(message)}${NUDGE_MARK} Read it: collie walky inbox ${message.id}. Reply: collie walky reply ${message.id} "<text>"`;
+}
+
+/**
+ * Whether a body line could pass for a header: it matches the header regex, or it starts with
+ * `[walky-talky`. Such a line gets one leading space (`escapeBody`), so no body can open a second
+ * message on the screen.
+ */
+export function looksLikeHeader(line: string): boolean {
+  return line.startsWith("[walky-talky") || HEADER_RE.test(line);
+}
+
+/** The body with one leading space before every line that could pass for a header. Idempotent. */
+export function escapeBody(body: string): string {
+  return body
+    .split("\n")
+    .map((line) => (looksLikeHeader(line) ? ` ${line}` : line))
+    .join("\n");
+}
+
+/**
+ * What the target pane receives. An agent's message: the one nudge line ({@link formatNudge}). An
+ * operator's: the header line, then the body, every header-like line escaped.
+ */
 export function formatEnvelope(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">): string {
-  return `${formatHeader(message)}\n${message.body}`;
+  if (message.kind === "agent") return formatNudge(message);
+  return formatRead(message);
+}
+
+/** A message as `collie walky inbox` prints it: the header line, then the body (escaped). */
+export function formatRead(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo" | "body">): string {
+  return `${formatHeader(message)}\n${escapeBody(message.body)}`;
 }
 
 export interface ParsedHeader {
@@ -163,7 +216,10 @@ export interface ParsedHeader {
 export function parseEnvelopeHeader(line: string): ParsedHeader | null {
   const match = HEADER_RE.exec(line);
   if (match === null) return null;
-  const rest = match[3]!;
+  // An agent's one line carries the nudge after the header part: cut it before the reply suffix.
+  const full = match[3]!;
+  const mark = full.indexOf(NUDGE_MARK);
+  const rest = mark < 0 ? full : full.slice(0, mark);
   const reply = REPLY_SUFFIX_RE.exec(rest);
   const kind: WalkyKind = match[2] === "agent" ? "agent" : "operator";
   return { id: match[1]!, kind, sender: reply === null ? rest : rest.slice(0, reply.index), replyTo: reply === null ? null : reply[1]! };

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { verifiedWord, type WalkyKind, type WalkyRow } from "@/lib/walky";
+import { signerOf, verifiedWord, type WalkyKind, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 
 // A walky talky message, drawn as Chat's "Message from <label>" card (M62 spec 05).
@@ -51,7 +51,7 @@ export function WalkyCard({ row }: { row: WalkyRow }) {
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
         <span className="tabular-nums">{clockTime(row.at)}</span>
         {row.replyTo !== null && <span>{`· ${t("walky.card.replyTo", { id: row.replyTo })}`}</span>}
-        <span data-slot="walky-verified">{`· ${verifiedWord(row.receipt)}`}</span>
+        <span data-slot="walky-verified">{`· ${verifiedWord(row.receipt, signerOf(row))}`}</span>
       </p>
     </div>
   );

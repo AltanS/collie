@@ -1,4 +1,4 @@
-import { createRef, type ComponentProps } from "react";
+import { createRef, useState, type ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -10,7 +10,9 @@ import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
 import { recordedWalkyPosts } from "@/test/handlers";
 import { server } from "@/test/setup";
+import type { WalkyReceipt, WalkyRow } from "@/lib/walky";
 import { Composer, type ComposerHandle } from "./composer";
+import { WalkyLogProvider } from "./walky-log";
 
 // M62 spec 05 on the composer: a long press on Send offers "Send as message", which posts to
 // `POST /api/walky` with this pane's address; and a Reply handed in by the Messages sheet makes the
@@ -68,7 +70,7 @@ describe("Send as message (the Send button's long-press menu)", () => {
     expect(posted?.id).toMatch(/^wt_[a-z0-9]{12}$/);
     expect(posted).not.toHaveProperty("replyTo");
     // The receipt state is told beside the box, and the draft left with the message.
-    expect(await screen.findByText("Message to this pane: Logged, not typed yet")).toBeInTheDocument();
+    expect(await screen.findByText("Message to this pane: queued")).toBeInTheDocument();
     await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
     expect(plain).toEqual([]);
   });
@@ -98,13 +100,73 @@ describe("Send as message (the Send button's long-press menu)", () => {
     await user.type(screen.getByPlaceholderText(/type a reply/i), "again");
     fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Send as message" }));
-    expect(await screen.findByText("Message to this pane: Refused: rate limit")).toBeInTheDocument();
+    expect(await screen.findByText("Message to this pane: not sent: rate limit")).toBeInTheDocument();
     expect(loadDraft(undefined, "w1:p1")).toBe("again");
   });
 
   it("offers no menu on a locked field", async () => {
     renderComposer(createRef<ComposerHandle>(), { readOnly: true });
     expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();
+  });
+});
+
+describe("the strip follows a queued message (M62 hardening I)", () => {
+  /** The pane's walky list as the loader would hand it, one row for the message the test sent. */
+  function rowOf(receipt: WalkyReceipt): WalkyRow {
+    return {
+      v: 1,
+      id: receipt.id,
+      kind: "operator",
+      from: { memberId: null, address: null, harness: null, label: "phone" },
+      to: "local/w1:p1",
+      replyTo: null,
+      at: 1,
+      body: "Stop and report",
+      signer: null,
+      signature: null,
+      receipt,
+    };
+  }
+
+  it("shows the final word once the pane's list reads the receipt out of `accepted`, with no poll of its own", async () => {
+    const user = userEvent.setup();
+    let setRows: (rows: WalkyRow[]) => void = () => {};
+    function Harness(props: ComponentProps<typeof Composer>) {
+      const [rows, set] = useState<WalkyRow[]>([]);
+      setRows = set;
+      return (
+        <WalkyLogProvider rows={rows} reads={1}>
+          <Composer {...props} />
+        </WalkyLogProvider>
+      );
+    }
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
+      text: "pane output",
+      terminalDraft: null,
+      rawTerminalDraft: null,
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      display: { open: false, onToggle: vi.fn() },
+      onSent: vi.fn(),
+    };
+    const router = createMemoryRouter([{ path: "/", element: <Harness {...props} /> }]);
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "Stop and report");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Send as message" }));
+    expect(await screen.findByText("Message to this pane: queued")).toBeInTheDocument();
+    const id = recordedWalkyPosts()[0]?.id ?? "";
+    const base: WalkyReceipt = { id, state: "accepted", verified: "local", at: 1, by: "local", target: "local/w1:p1" };
+    // A revalidation that still reads `accepted` changes nothing.
+    act(() => setRows([rowOf(base)]));
+    expect(screen.getByText("Message to this pane: queued")).toBeInTheDocument();
+    act(() => setRows([rowOf({ ...base, state: "inbox-only", reason: "dialog open" })]));
+    expect(await screen.findByText("Message to this pane: waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });
 });
 

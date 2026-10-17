@@ -164,5 +164,5 @@ export function DetailRoute() {
   );
 
   // The pane's walky talky list, the cross-check behind the Chat card and the mirror's row style (lib/walky.ts).
-  return <WalkyLogProvider rows={pane.walky}>{view}</WalkyLogProvider>;
+  return <WalkyLogProvider rows={pane.walky} reads={pane.walkyReads}>{view}</WalkyLogProvider>;
 }

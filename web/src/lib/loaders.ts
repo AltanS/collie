@@ -226,6 +226,13 @@ export interface PaneData {
    * Optional in the TYPE only, so hand-built fixtures stay valid.
    */
   walky?: WalkyRow[] | null;
+  /**
+   * How many times this pane's walky list has been read from the bridge in this page's life (M62). The
+   * list KEEPS its identity across a quiet poll, so identity cannot say "the list was read again";
+   * this number can. The Chat mark "no log record on this machine" waits for it to advance once
+   * (components/walky-log.tsx). A failed read does not count: it answered the old list again.
+   */
+  walkyReads?: number;
 }
 
 // ── THE COLD OPEN (M46 spec 10) ───────────────────────────────────────────────
@@ -680,6 +687,8 @@ export function prefetchPaneData(paneId: string, scope: Scope | undefined): Prom
 
 /** The last list each pane answered, so one failed poll does not turn every card back into plain text. */
 const lastWalky = new Map<string, WalkyRow[]>();
+/** How many reads of each pane's list the bridge answered, so the screen can tell "read again" from "same list". */
+const walkyReadCounts = new Map<string, number>();
 
 /**
  * The pane's walky talky list, or `null` when it could not be read (M62). Never throws: the list is
@@ -697,6 +706,7 @@ async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | und
     const previous = lastWalky.get(key);
     const rows = previous === undefined ? fresh : shareEqual(previous, fresh);
     lastWalky.set(key, rows);
+    walkyReadCounts.set(key, (walkyReadCounts.get(key) ?? 0) + 1);
     return rows;
   } catch {
     return lastWalky.get(key) ?? null;
@@ -751,6 +761,7 @@ export async function paneLoader({
       authError: false,
       stale: false,
       walky: await readWalky(paneId, scope, request?.signal),
+      walkyReads: walkyReadCounts.get(key) ?? 0,
     };
   }
 
@@ -816,6 +827,7 @@ export async function paneLoader({
       authError: false,
       stale: false,
       walky: await walkyRead,
+      walkyReads: walkyReadCounts.get(key) ?? 0,
     };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it

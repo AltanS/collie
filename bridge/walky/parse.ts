@@ -97,8 +97,8 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack";
 
 export type WalkyRequest =
-  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string; readonly body: string; readonly replyTo: string | null }
-  | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean }
+  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null }
+  | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null };
@@ -122,7 +122,11 @@ export function parseWalkyRequest(line: string): WalkyRequest | null {
     const id = text(row, "id");
     return isWalkyId(id) ? { op, markers, id } : null;
   }
-  if (op === "inbox") return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true };
+  if (op === "inbox") {
+    const id = textOrNull(row, "id") ?? null;
+    if (id !== null && !isWalkyId(id)) return null;
+    return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true, id };
+  }
   if (op === "ack") {
     if (row.ids === null || row.ids === undefined) return { op, markers, ids: null };
     if (!Array.isArray(row.ids) || row.ids.length > 200) return null;
@@ -134,8 +138,10 @@ export function parseWalkyRequest(line: string): WalkyRequest | null {
   const to = text(row, "to");
   const body = text(row, "body");
   const replyTo = textOrNull(row, "replyTo") ?? null;
-  if (!isWalkyId(id) || to === null || parseAddress(to) === null || body === null || body.length > RAW_BODY_MAX) return null;
   if (replyTo !== null && !isWalkyId(replyTo)) return null;
+  // A reply may leave the address out: the bridge sends it to the sender of what it answers.
+  if (to === null ? replyTo === null : parseAddress(to) === null) return null;
+  if (!isWalkyId(id) || body === null || body.length > RAW_BODY_MAX) return null;
   return { op, markers, id, to, body, replyTo };
 }
 

@@ -3313,42 +3313,93 @@ attestation binds the crew and the receiver (§16's rule for a broadened pin), s
 present an attested message at a sibling or in another crew. Both use the primitives §8.6 already has:
 base64 ECDSA-P256-SHA256, with the key behind the signer's pinned certificate.
 
+### The shape check both hops share
+
+Both receiving sides run ONE shape check on the message as it arrived, before the message signature
+(`checkCrewMessage`, `bridge/walky/crew.ts`). Added 2026-10-17 (M62 hardening).
+
+- **Every signed string field** (`id`, `kind`, `from.memberId`, `from.address`, `from.harness`, `to`,
+  `replyTo`, `signer`) holds no line break and no other control byte, and is never the bare `-`. An
+  LF would let one field pose as two in the canonical string, and `-` is how it spells a null.
+- **`from.memberId === signer`**: the machine that signed is the machine that sent. An agent's
+  `from.address` names a pane on the signer's member. An operator names no address and no harness.
+- **`from.label` and `from.harness`** are printable ASCII without `[ ] ( )`, at most 48 and 32
+  characters. Neither is signed; both reach a header line.
+- **The body** is one a second clean leaves unchanged, at most 4,000 characters, and **the address**
+  names its member (`local/…` is a solo word).
+
+A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
+that does not match the signer is the uniform 401.
+
 ### What the lead checks, in order
 
 1. The two factors, with §8.6's request signature over the four-field string. The signature names the
    member. A request without one is the uniform 401.
-2. The body is a well-formed message, with a body that a second clean leaves unchanged and at most
-   4,000 characters, and an address that names its member (`local/…` is a solo word). A 400 that says
-   why, because the caller passed both factors.
-3. `signer` and `from.memberId` are the member the request signature named, and an agent's
-   `from.address` names a pane on that member. Then the message signature verifies against that
-   member's pinned certificate. Any failure here is the uniform 401.
+2. The shared shape check above.
+3. `signer` is the member the request signature named. Then the message signature verifies against
+   that member's pinned certificate. Any failure here is the uniform 401.
 4. The lead delivers to its own panes, with `verified: "origin"`, and routes to the members the
    address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
    own machine for `all`. The sender's machine already delivered to its own panes before it asked.
 
-The lead's sender cap is the local one: 30 messages per sender address in 10 minutes, counted again
-on the lead.
+The lead counts the caps again, as every delivering bridge does (`bridge/walky/rate.ts`): 30 tokens
+per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 6
+messages in 10 minutes between the same two addresses, either direction (`pair limit`); and one outer
+bucket per dialling member, 60 tokens in 10 minutes, all its panes together. An operator's broadcast
+takes one token per pane and per member leg. A refusal is a receipt (`refused`, `rate limit` or
+`pair limit`) in a 200, never a 429.
+
+Every delivering bridge also refuses, before anything is logged: an agent's `all` or `<member>/all`
+(`only the operator may broadcast`), a message to its sender's own pane (`that is your own pane`), and
+a reply chain deeper than 4 in its own log (`thread depth`; a link the log does not hold ends the walk
+and counts 0). The sender's own bridge refuses a reply to a message that did not reach the sender's
+pane (`unknown reply`) and sends a reply to the stored sender of what it answers. A pane id that two
+sessions use is `ambiguous pane`, and a reply whose sender pane is gone or in another session is
+`sender gone`. Added 2026-10-17 (M62 hardening).
 
 ### What a member checks
 
 The dial attestation is checked for every route (§8.6). Then the member checks `attest` against its
-pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. The route's
-`:id` must name the message's own pane, or `all`. A message reaches this machine's agent panes only: a
-member never routes a message on, so a message cannot loop between a member and its lead.
+pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. Then the
+shared shape check above. The route's `:id` must name the message's own pane, or `all`. A message
+reaches this machine's agent panes only: a member never routes a message on, so a message cannot loop
+between a member and its lead.
 
 `verified` in the receipt says how the sender was known. **A member verifies its lead's attestation;
 only the lead verifies the origin.** A member pins no other member, so a message from member A reaches
 member B as `verified: "lead"`. The one exception is a message the lead itself sent: the member pins
-that certificate, verifies the origin signature too, and writes `verified: "origin"`.
+that certificate, verifies the origin signature too, and writes `verified: "origin"`, and only when
+`from.memberId` is the signer as well.
 
-### Dedupe and replay
+### Dedupe, replay and the time window
 
 The message id is the dedupe key on every bridge. The same id again returns the receipts already
-stored and types nothing; the same id with another canonical string is refused `id reused`. A replay
+stored and types nothing; the same id with another canonical string is refused `id reused`. The
+sender's clock is left out of that comparison, so a phone's retry of one attempt is a replay. A replay
 of `/crew/v1/walky` inside §8.6's skew window is therefore harmless, and the route **does not advance
 the monotonic floor** (§8.6): it changes no roster, and two panes on one member may send close
-together. A replay outside the window is refused by the timestamp.
+together.
+
+Dedupe lives in its own file, `<stateDir>/walky/seen.json` (`bridge/walky/seen.ts`): an entry per
+`(id, target)` with its first sight and a hash of the message, kept 24 hours and independent of the
+log's rotation. The entry is written before the log's line and before any key. A repeat returns the
+stored receipts for the targets it has and finishes the targets it lacks, so a fan-out cut short by a
+crash resumes; a seen target whose log record is gone answers `unknown` and is never typed again.
+The crew leg of a fan-out is one target (`all`), not one per member.
+
+On both hops the receiving bridge refuses a message whose `at` is more than **10 minutes** from its
+own clock, either way, as a `refused: stale` receipt in a 200. The local socket and the phone route
+set `at` themselves. Added 2026-10-17 (M62 hardening).
+
+### An older member
+
+Before it dials, the lead compares the member's reported `version` (§19, the field its sweep already
+reads) with a floor: `1.23.0`, or the lead's own version when the lead is a build below `1.23.0` (a
+development build that carries walky talky). A member below the floor gets `refused: older member` at
+once, with no POST, so an older member costs no write budget and no timeout. A member that reported
+no version, or a value that names no release, is dialled as before, and its 404 on
+`POST /crew/v1/pane/:id/walky` stays the backstop with the same reason. Added 2026-10-18 (M62
+hardening I).
 
 ### The outcome report
 

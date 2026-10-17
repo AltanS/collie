@@ -33,7 +33,7 @@ import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
-import { WALKY_BODY_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
 export const CREW_WALKY_ROUTE = "walky";
@@ -61,16 +61,75 @@ function cleanEnough(body: string): boolean {
   return body !== "" && [...body].length <= WALKY_BODY_MAX && cleanBody(body).body === body;
 }
 
-/** The sender's address agrees with its kind: an agent names a pane, an operator names none. */
-function senderFitsKind(message: WalkyMessage): boolean {
-  if (message.kind === "operator") return message.from.address === null && message.from.harness === null;
-  return message.from.address !== null;
-}
-
 /** An address a crew hop may carry: `all`, or one that names its member (`local` is a solo word). */
 function crewAddressable(to: string): boolean {
   const address = parseAddress(to);
   return address !== null && (address.kind === "all" || address.memberId !== LOCAL_MEMBER);
+}
+
+/** Printable ASCII with no bracket or parenthesis: the characters a header field may carry. */
+const DISPLAY_FIELD = /^[\x20-\x7e]*$/u;
+const FRAMES = /[[\]()]/u;
+
+function displayField(value: string, max: number): boolean {
+  return value.length <= max && DISPLAY_FIELD.test(value) && !FRAMES.test(value);
+}
+
+/** Whether a value holds a C0, DEL or C1 control byte: LF and CR among them. */
+function hasControl(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
+
+/** What the shape check found: nothing, a 400 that may say why, or the uniform 401. */
+export type CrewMessageProblem = { readonly status: 400; readonly error: string } | { readonly status: 401 } | null;
+
+/**
+ * THE ONE SHAPE CHECK of a message that crossed a crew hop, shared by both directions (M62 hardening
+ * B). It runs on the message as it arrived, before any signature, and it is the rule for:
+ *
+ *   - every signed string field (`id`, `kind`, `from.memberId`, `from.address`, `from.harness`, `to`,
+ *     `replyTo`, `signer`): no line break or other control byte, and never the bare `-`, which is how
+ *     the canonical string spells a null (an LF would let one field pose as two, a `-` as a null);
+ *   - `from.memberId === signer`: the machine that signed is the machine that sent;
+ *   - an agent's `from.address` names a pane on the signer's member; an operator names no address and
+ *     no harness;
+ *   - `from.label` and `from.harness`: printable ASCII with no `[ ] ( )`, at most 48 and 32 characters;
+ *   - the body as the sender's bridge cleans it, and an address that names its member.
+ *
+ * A malformed field is a 400 that says why (the caller passed both factors, §8.5); a claim that does
+ * not match the signer is the uniform 401 (§8.1).
+ */
+export function checkCrewMessage(message: WalkyMessage): CrewMessageProblem {
+  const signed = [message.id, message.kind, message.from.memberId, message.from.address, message.from.harness, message.to, message.replyTo, message.signer];
+  if (signed.some((value) => value !== null && (hasControl(value) || value === "-"))) {
+    return { status: 400, error: "a signed field holds a line break or a bare `-`" };
+  }
+  if (!displayField(message.from.label, WALKY_LABEL_MAX)) return { status: 400, error: "the sender's label is not a header field of at most 48 characters" };
+  if (message.from.harness !== null && !displayField(message.from.harness, WALKY_HARNESS_MAX)) {
+    return { status: 400, error: "the sender's harness is not a header field of at most 32 characters" };
+  }
+  if (!cleanEnough(message.body)) return { status: 400, error: "a walky message needs a clean body of at most 4000 characters" };
+  if (message.kind === "operator" && (message.from.address !== null || message.from.harness !== null)) {
+    return { status: 400, error: "the sender's address does not fit its kind" };
+  }
+  if (message.kind === "agent" && message.from.address === null) return { status: 400, error: "the sender's address does not fit its kind" };
+  if (!crewAddressable(message.to)) return { status: 400, error: "an address on a crew names its member" };
+  // The machine that signed is the machine that sent, and an agent's pane is on that machine.
+  if (message.signer === null || message.from.memberId !== message.signer) return { status: 401 };
+  if (message.from.address !== null) {
+    const from = parseAddress(message.from.address);
+    if (from === null || from.kind !== "pane" || from.memberId !== message.signer) return { status: 401 };
+  }
+  return null;
+}
+
+/** A shape problem as the route's answer. */
+function answerOf(problem: Exclude<CrewMessageProblem, null>): CrewAnswer {
+  return problem.status === 401 ? UNAUTHORIZED : badRequest(problem.error);
 }
 
 export type Checked<T> = ({ readonly ok: true } & T) | { readonly ok: false; readonly answer: CrewAnswer };
@@ -83,16 +142,12 @@ export type Checked<T> = ({ readonly ok: true } & T) | { readonly ok: false; rea
 export function checkFromMember(body: JsonValue | undefined, signer: TrustedMember): Checked<{ readonly message: WalkyMessage }> {
   const message = readMessage(body);
   if (message === null) return { ok: false, answer: badRequest("a walky message needs a well-formed message") };
-  if (!cleanEnough(message.body)) return { ok: false, answer: badRequest("a walky message needs a clean body of at most 4000 characters") };
-  if (!senderFitsKind(message)) return { ok: false, answer: badRequest("the sender's address does not fit its kind") };
-  if (!crewAddressable(message.to)) return { ok: false, answer: badRequest("an address on a crew names its member") };
-  // The member that dialled is the sender, the signer and the machine of the sender's pane. A member
-  // never speaks for another: the crew secret is crew-wide, the signature is not (§8.6).
-  if (message.signer !== signer.memberId || message.from.memberId !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
-  if (message.from.address !== null) {
-    const from = parseAddress(message.from.address);
-    if (from === null || from.kind !== "pane" || from.memberId !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
-  }
+  const problem = checkCrewMessage(message);
+  if (problem !== null) return { ok: false, answer: answerOf(problem) };
+  // The member that dialled is the signer, so (by the shape check) the sender and the machine of the
+  // sender's pane. A member never speaks for another: the crew secret is crew-wide, the signature is
+  // not (§8.6).
+  if (message.signer !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
   if (!verifyMessage(message, signer.certPem)) return { ok: false, answer: UNAUTHORIZED };
   return { ok: true, message };
 }
@@ -113,8 +168,8 @@ export function checkFromLead(
   if (delivery === null) return { ok: false, answer: badRequest("a walky delivery needs a well-formed `message` and `attest`") };
   const { message, attest } = delivery;
   if (!verifyCanonical(lead.certPem, attest, attestationString(message, crewId, self))) return { ok: false, answer: UNAUTHORIZED };
-  if (!cleanEnough(message.body)) return { ok: false, answer: badRequest("a walky message needs a clean body of at most 4000 characters") };
-  if (!senderFitsKind(message)) return { ok: false, answer: badRequest("the sender's address does not fit its kind") };
+  const problem = checkCrewMessage(message);
+  if (problem !== null) return { ok: false, answer: answerOf(problem) };
   // The route names the pane the message is for: its own pane id, or `all` for a whole machine.
   const to = parseAddress(message.to);
   const fits =
@@ -123,7 +178,10 @@ export function checkFromLead(
       ? segment === WALKY_ALL_SEGMENT
       : to.memberId === self && (to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId));
   if (!fits) return { ok: false, answer: badRequest("the route does not name this message's address on this member") };
-  const verified: WalkyVerified = message.signer === lead.memberId && verifyMessage(message, lead.certPem) ? "origin" : "lead";
+  // `origin` only when the lead itself sent it: the one certificate a member pins, the signer and the
+  // sender the same machine, and the signature good over the message as it stands.
+  const fromLead = message.signer === lead.memberId && message.from.memberId === message.signer;
+  const verified: WalkyVerified = fromLead && verifyMessage(message, lead.certPem) ? "origin" : "lead";
   return { ok: true, message, verified };
 }
 
@@ -140,20 +198,38 @@ export interface WalkyCrewDeps {
   /** The trust store as it stands, read per request: a rotation or a re-join changes it under a running bridge. */
   readonly trust: () => TrustStoreData | null;
   readonly audit?: WalkyAudit;
+  readonly now?: () => number;
+}
+
+/**
+ * How far a message's `at` may sit from this bridge's clock, either way, on a crew hop (M62 hardening
+ * E). Past it the message is refused `stale`: a replay a day later, or a sender whose clock is wrong.
+ */
+export const STALE_MS = 10 * 60 * 1000;
+
+/** Whether a message's clock is inside the window. */
+export function fresh(message: Pick<WalkyMessage, "at">, now: number): boolean {
+  return Math.abs(now - message.at) <= STALE_MS;
 }
 
 /** The two receiving halves, built once in index.ts and handed to the router and the dispatch. */
 export class WalkyCrew {
-  constructor(private readonly deps: WalkyCrewDeps) {}
+  private readonly now: () => number;
+
+  constructor(private readonly deps: WalkyCrewDeps) {
+    this.now = deps.now ?? Date.now;
+  }
 
   /** `POST /crew/v1/walky` on the lead. `member` is the member the request signature named. */
   async fromMember(body: JsonValue | undefined, member: TrustedMember): Promise<CrewAnswer> {
     const checked = checkFromMember(body, member);
     if (!checked.ok) return checked.answer;
     const { message } = checked;
+    if (!fresh(message, this.now())) return { status: 200, body: { receipts: [this.deps.service.deliverer.refusal(message.id, message.to, "stale", "origin")] } };
     this.deps.audit?.({ action: "walky.send", detail: { via: "crew", from: member.memberId, to: message.to, textLength: message.body.length } });
     // Delivered here, and routed on to every other member it names: `localOnly` is false on a lead.
-    return { status: 200, body: { receipts: await this.deps.service.receive(message, "origin", false) } };
+    // `via`: the member's outer bucket, 60 tokens per 10 minutes on this lead.
+    return { status: 200, body: { receipts: await this.deps.service.receive(message, "origin", false, member.memberId) } };
   }
 
   /** `POST /crew/v1/pane/<segment>/walky` on a member, from the dispatch. `from` is the admitted caller. */
@@ -165,6 +241,7 @@ export class WalkyCrew {
     const checked = checkFromLead(body, segment, lead, crewId, data.self.memberId);
     if (!checked.ok) return checked.answer;
     const { message, verified } = checked;
+    if (!fresh(message, this.now())) return { status: 200, body: { receipts: [this.deps.service.deliverer.refusal(message.id, message.to, "stale", verified)] } };
     this.deps.audit?.({ action: "walky.deliver", detail: { via: "crew", from, to: message.to, verified, textLength: message.body.length } });
     // This machine's panes only: a message a crew hop brought is never routed on.
     return { status: 200, body: { receipts: await this.deps.service.receive(message, verified, true) } };
@@ -212,7 +289,29 @@ export interface LeadRouteDeps {
   readonly signing: () => { readonly keyPem: string; readonly crewId: string } | null;
   /** POST one body to `/crew/v1/pane/<segment>/walky` on one member, through the lead's forward. */
   readonly post: (memberId: string, segment: string, payload: string) => Promise<CrewDialAnswer>;
+  /**
+   * Whether a member's reported version predates walky talky (`olderThanWalky`). Such a member is
+   * refused `older member` at once, without a dial; its 404 stays the backstop for one that reported
+   * nothing. Absent: every member is dialled.
+   */
+  readonly older?: (memberId: string) => boolean;
   readonly now?: () => number;
+}
+
+/** The first release that carries walky talky (CREW_PROTOCOL §21). */
+export const WALKY_FIRST_VERSION = "1.23.0";
+
+/**
+ * Whether a member's reported version is too old for walky talky: below 1.23.0, or, on a lead built
+ * before 1.23.0 (a development build that carries the feature), below the lead's own version. A
+ * member that reported no version is never called older: the 404 answers for it. `compare` is
+ * semver's (bridge/update.ts `compareSemver`), passed in so this file holds no release logic.
+ */
+export function olderThanWalky(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
+  // A version that names no release (`unknown`, a hash) is not called older either.
+  if (version === null || !/^\d+\.\d+\.\d+/u.test(version)) return false;
+  const floor = /^\d+\.\d+\.\d+/u.test(own) && compare(own, WALKY_FIRST_VERSION) < 0 ? own : WALKY_FIRST_VERSION;
+  return compare(version, floor) < 0;
 }
 
 /**
@@ -232,6 +331,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
       targets.map(async (memberId): Promise<WalkyReceipt[]> => {
         const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : message.to;
         if (!roster.includes(memberId)) return [ownReceipt(message, target, "refused", deps.self, now(), "no such member")];
+        if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
         const answer = await deps.post(memberId, segment, JSON.stringify({ message, attest }));
@@ -291,6 +391,26 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
         label: labelOf(facts, titles),
         state: member.reachable ? pane.status : "unreachable",
       });
+    }
+  }
+  return out;
+}
+
+/**
+ * The shell panes on every member, which never receive a message: the Crew page lists them as
+ * skipped beside a broadcast's count. From the same bodies, with no dial.
+ */
+export function crewSkipped(members: readonly CrewMemberView[], titles: boolean): WalkySkipped[] {
+  const out: WalkySkipped[] = [];
+  for (const member of members) {
+    const seen = new Set<string>();
+    const shells = [...(member.body?.agents ?? []).filter((pane) => pane.kind === "shell"), ...(member.body?.shellPanes ?? [])];
+    for (const pane of shells) {
+      if (seen.has(pane.paneId)) continue;
+      seen.add(pane.paneId);
+      const branch = pane.gitHead?.kind === "branch" ? pane.gitHead.name : null;
+      const facts = { paneId: pane.paneId, cwd: pane.cwd, branch, paneLabel: pane.paneLabel, terminalTitle: pane.terminalTitle };
+      out.push({ address: `${member.memberId}/${pane.paneId}`, memberId: member.memberId, machine: member.name, label: labelOf(facts, titles) });
     }
   }
   return out;

@@ -4,14 +4,14 @@
 // token: the socket's mode is the credential, as the hold socket's is.
 //
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
-//   send    { id, to, body, replyTo }   → { ok, receipts }
-//   inbox   { all, ack }                → { ok, pane, messages }
+//   send    { id, to, body, replyTo }   → { ok, receipts, target? }
+//   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, targets, note? }
 //   status  { id }                      → { ok, receipts, message, elsewhere }
 //   ack     { ids | null }              → { ok, acked }
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
-// the CLI asks the next bridge on the machine. No markers at all means the operator: kind `operator`,
-// label `cli`.
+// the CLI asks the next bridge on the machine. A send with no markers at all is refused: the operator
+// sends from a paired device, never from this socket.
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { once } from "node:events";
@@ -25,6 +25,9 @@ import type { SenderPane } from "./deliver.ts";
 import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
+
+/** What the socket answers a send that names no pane. */
+export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone";
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -71,7 +74,7 @@ export interface WalkyServerDeps {
 /** What one request is answered with. */
 export type WalkyAnswer =
   | { readonly ok: false; readonly error: string }
-  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[] }
+  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget }
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null; readonly elsewhere: readonly string[] }
   | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
@@ -85,9 +88,15 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   if (placed !== null && pane === null) return { ok: false, error: "not here" };
   switch (request.op) {
     case "send": {
-      const sender = pane === null ? { kind: "operator" as const, label: "cli" } : { kind: "agent" as const, pane };
-      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, sender);
-      return answer.ok ? { ok: true, receipts: answer.receipts } : answer;
+      // The kind fails closed: a send names its pane, or it is not taken. An operator sends from a
+      // paired device (`POST /api/walky`), which this socket cannot prove.
+      if (pane === null) {
+        service.noteRefusal("no pane");
+        return { ok: false, error: SEND_NEEDS_A_PANE };
+      }
+      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, { kind: "agent", pane });
+      if (!answer.ok) return answer;
+      return answer.target === undefined ? { ok: true, receipts: answer.receipts } : { ok: true, receipts: answer.receipts, target: answer.target };
     }
     case "who": {
       const self = pane === null ? null : service.addressOf(pane.paneId);
@@ -99,12 +108,19 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return { ok: true, receipts, message, elsewhere };
     }
     case "inbox": {
+      if (request.id !== null) {
+        // One message by id: the way an agent reads the body its nudge line named.
+        const entry = service.one(request.id, pane);
+        if (entry === null) return { ok: false, error: pane === null ? `no message ${request.id} on this machine` : `no message ${request.id} for this pane` };
+        if (pane !== null && request.ack) service.ack(pane.session, pane.paneId, [entry.id]);
+        return { ok: true, pane: pane === null ? null : service.addressOf(pane.paneId), messages: [entry] };
+      }
       if (pane === null) {
         if (!request.all) return { ok: false, error: "needs a pane" };
         return { ok: true, pane: null, messages: service.newest() };
       }
       const messages = service.inbox(pane.session, pane.paneId, request.all);
-      if (request.ack) service.ack(pane.session, pane.paneId, messages.map((message) => message.id));
+      if (request.ack && !request.all) service.ack(pane.session, pane.paneId, messages.map((message) => message.id));
       return { ok: true, pane: service.addressOf(pane.paneId), messages };
     }
     case "ack":

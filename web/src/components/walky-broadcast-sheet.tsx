@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { fetchWalkyWho } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   stateWord,
@@ -15,6 +15,8 @@ import {
   WALKY_BODY_MAX,
   wasTaken,
   type WalkyReceipt,
+  type WalkyRefusals,
+  type WalkySkipped,
   type WalkyTarget,
 } from "@/lib/walky";
 
@@ -23,6 +25,14 @@ import {
 // button posts `to: "all"` or `<memberId>/all` through `POST /api/walky`, and the bridge answers one
 // receipt per target, which are listed below the field so the person sees where it landed and where
 // it did not.
+//
+// ── THE CONFIRM STEP ──────────────────────────────────────────────────────────
+// One text to every agent is the widest write the phone makes, so "Send message" does not post. It
+// swaps itself for a question that names the count ("Message 3 agents on 2 machines?") with Send and
+// Back; only Send posts. The count is the `who` list's own, for the target chosen, and when `who`
+// could not be read the question says it does not know and still asks. The skipped shell panes and
+// the bridge's refusal counts sit BELOW that control, so a late `who` answer never moves the button
+// a thumb is about to press (DESIGN.md §2).
 //
 // The request id is minted once per attempt and a retry of the same attempt reuses it
 // (hooks/use-walky-send.ts): a lost answer followed by a second tap returns the receipts the bridge
@@ -34,6 +44,55 @@ const ALL = "all";
 function labelOf(reachable: readonly WalkyTarget[] | null, address: string): string {
   const known = reachable?.find((r) => r.address === address);
   return known === undefined ? address : `${known.label} (${address})`;
+}
+
+/** `reason count` pairs joined by ", ": the reasons are the bridge's own words, in its order, never translated. */
+function refusalList(refusals: WalkyRefusals | null): string {
+  if (refusals === null) return "";
+  return Object.entries(refusals.counts)
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${reason} ${count}`)
+    .join(", ");
+}
+
+/**
+ * The question the confirm step asks: how many agents on how many machines the chosen target covers,
+ * or that the count is not known when `who` could not be read. Exported for the states playground.
+ */
+export function confirmQuestion(covered: readonly WalkyTarget[] | null): string {
+  if (covered === null) return t("walky.crew.confirmUnknown");
+  return t("walky.crew.confirm", {
+    agents: tn("walky.crew.confirm.agents", covered.length),
+    machines: tn("walky.crew.confirm.machines", new Set(covered.map((r) => r.memberId)).size),
+  });
+}
+
+/** The question with its two answers. Back is the first button and the one that takes focus (`backRef`). */
+export function WalkyConfirm({
+  question,
+  backRef,
+  onBack,
+  onSend,
+}: {
+  question: string;
+  backRef?: Ref<HTMLButtonElement>;
+  onBack: () => void;
+  onSend: () => void;
+}) {
+  useLocale();
+  return (
+    <div data-slot="walky-confirm" role="group" aria-label={question} className="flex flex-col gap-2">
+      <p className="text-sm font-medium">{question}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button ref={backRef} variant="outline" className="h-11" onClick={onBack}>
+          {t("walky.crew.confirmBack")}
+        </Button>
+        <Button className="h-11" onClick={onSend}>
+          {t("walky.crew.confirmSend")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 interface BroadcastMember {
@@ -58,6 +117,10 @@ export function WalkyBroadcastSheet({
   const [receipts, setReceipts] = useState<WalkyReceipt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reachable, setReachable] = useState<WalkyTarget[] | null>(null);
+  const [skipped, setSkipped] = useState<WalkySkipped[]>([]);
+  const [refusals, setRefusals] = useState<WalkyRefusals | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const backRef = useRef<HTMLButtonElement>(null);
 
   // A fresh look every time the sheet opens, and nothing carried over from the last message.
   useEffect(() => {
@@ -65,19 +128,40 @@ export function WalkyBroadcastSheet({
     setReceipts(null);
     setError(null);
     setReachable(null);
+    setSkipped([]);
+    setRefusals(null);
+    setConfirming(false);
     const abort = new AbortController();
-    fetchWalkyWho(abort.signal).then(setReachable, () => setReachable(null));
+    fetchWalkyWho(abort.signal).then(
+      (who) => {
+        setReachable(who.targets);
+        setSkipped(who.skipped);
+        setRefusals(who.refusals);
+        return who;
+      },
+      () => setReachable(null),
+    );
     return () => abort.abort();
   }, [open]);
 
-  const reach =
-    reachable === null ? null : target === ALL ? reachable.length : reachable.filter((r) => r.memberId === target).length;
+  // The Send button is gone while the question stands, so focus moves to the safe answer.
+  useEffect(() => {
+    if (confirming) backRef.current?.focus();
+  }, [confirming]);
+
+  const covers = (memberId: string) => target === ALL || memberId === target;
+  const covered = reachable === null ? null : reachable.filter((r) => covers(r.memberId));
+  const reach = covered === null ? null : covered.length;
+  const coveredSkipped = skipped.filter((s) => covers(s.memberId));
+  const refused = refusalList(refusals);
+
   const body = text.trim();
   const tooLong = body.length > WALKY_BODY_MAX;
   const to = target === ALL ? ALL : `${target}/${ALL}`;
 
   async function submit() {
     if (body === "" || tooLong || sending) return;
+    setConfirming(false);
     setError(null);
     const result = await send(to, body);
     if (result === null) return;
@@ -97,7 +181,10 @@ export function WalkyBroadcastSheet({
           <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.text")}</span>
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setConfirming(false);
+            }}
             placeholder={t("walky.crew.textPlaceholder")}
             rows={4}
             className="min-h-24 w-full resize-none rounded-lg border border-border bg-background p-3 text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -105,7 +192,13 @@ export function WalkyBroadcastSheet({
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.target")}</span>
-          <Select value={target} onChange={(e) => setTarget(e.target.value)}>
+          <Select
+            value={target}
+            onChange={(e) => {
+              setTarget(e.target.value);
+              setConfirming(false);
+            }}
+          >
             <option value={ALL}>{t("walky.crew.targetAll")}</option>
             {members.map((m) => (
               <option key={m.id} value={m.id}>
@@ -118,10 +211,36 @@ export function WalkyBroadcastSheet({
         <p data-slot="walky-reach" className="min-h-4 text-xs text-muted-foreground">
           {reach === null ? "" : t("walky.crew.reach", { count: reach })}
         </p>
-        <Button className="h-11" onClick={submit} disabled={body === "" || tooLong || sending}>
-          {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {sending ? t("walky.crew.sending") : t("walky.crew.send")}
-        </Button>
+        {confirming ? (
+          <WalkyConfirm
+            question={confirmQuestion(covered)}
+            backRef={backRef}
+            onBack={() => setConfirming(false)}
+            onSend={submit}
+          />
+        ) : (
+          <Button className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
+            {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+            {sending ? t("walky.crew.sending") : t("walky.crew.send")}
+          </Button>
+        )}
+        {coveredSkipped.length > 0 && (
+          <div data-slot="walky-skipped" className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.skippedTitle")}</span>
+            <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+              {coveredSkipped.map((s) => (
+                <li key={s.address} className="min-w-0 truncate">
+                  {t("walky.crew.skippedRow", { label: s.label, address: s.address })}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {refused !== "" && (
+          <p data-slot="walky-refusals" className="text-xs text-muted-foreground">
+            {t("walky.crew.refusals", { list: refused })}
+          </p>
+        )}
         {error !== null && (
           <p role="alert" className="text-sm text-status-blocked">
             {t("walky.crew.failed", { error })}
@@ -138,7 +257,7 @@ export function WalkyBroadcastSheet({
                   <li key={`${r.target}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
                     {/* The target's own label (repo#branch) when the who list knows it, then its address. */}
                     <span className="min-w-0 truncate font-medium">{labelOf(reachable, r.target)}</span>
-                    <span className={cn("text-xs", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
+                    <span className={cn("text-xs first-letter:uppercase", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
                       {`${stateWord(r)} · ${verifiedWord(r)}`}
                     </span>
                   </li>

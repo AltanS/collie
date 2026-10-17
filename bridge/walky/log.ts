@@ -38,6 +38,8 @@ interface MessageLine extends Placement {
   readonly at: number;
   readonly target: string;
   readonly message: WalkyMessage;
+  /** The pane this bridge took the message from, when its sender was one of its own panes. */
+  readonly sender?: Placement;
 }
 
 interface ReceiptLine {
@@ -53,6 +55,11 @@ export interface LogRecord extends Placement {
   readonly target: string;
   readonly message: WalkyMessage;
   readonly receipt: WalkyReceipt;
+  /**
+   * The session and pane this bridge took the message from, when the sender was one of its own panes;
+   * null for a message from a phone or from another machine. A reply goes back to exactly that pane.
+   */
+  readonly sender: Placement | null;
 }
 
 function keyOf(id: string, target: string): string {
@@ -79,7 +86,11 @@ function readLine(raw: string): LogLine | null {
   const session = row.session === null ? null : asJsonString(row.session);
   const paneId = row.paneId === null ? null : asJsonString(row.paneId);
   if (message === null || target === undefined || session === undefined || paneId === undefined) return null;
-  return { t: "message", at, target, session, paneId, message };
+  const from = asJsonObject(row.sender);
+  const senderSession = from === undefined ? undefined : asJsonString(from.session);
+  const senderPane = from === undefined ? undefined : asJsonString(from.paneId);
+  const line: MessageLine = { t: "message", at, target, session, paneId, message };
+  return senderSession === undefined || senderPane === undefined ? line : { ...line, sender: { session: senderSession, paneId: senderPane } };
 }
 
 export class WalkyLog {
@@ -143,7 +154,7 @@ export class WalkyLog {
       // The first message line for a target wins; a receipt may already be waiting for it.
       if (this.records.has(key)) return;
       const accepted: WalkyReceipt = { id: line.message.id, target: line.target, state: "accepted", verified: "none", at: line.at, by: "-" };
-      this.records.set(key, { session: line.session, paneId: line.paneId, target: line.target, message: line.message, receipt: accepted });
+      this.records.set(key, { session: line.session, paneId: line.paneId, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null });
       return;
     }
     const key = keyOf(line.receipt.id, line.receipt.target);
@@ -188,11 +199,18 @@ export class WalkyLog {
   }
 
   /** Log a message to one target with its first receipt. The caller checked {@link get} first. */
-  record(message: WalkyMessage, target: string, placement: Placement, receipt: WalkyReceipt): LogRecord {
+  record(message: WalkyMessage, target: string, placement: Placement, receipt: WalkyReceipt, sender: Placement | null = null): LogRecord {
     const at = this.now();
-    this.append({ t: "message", at, target, session: placement.session, paneId: placement.paneId, message });
+    const line: MessageLine = { t: "message", at, target, session: placement.session, paneId: placement.paneId, message };
+    this.append(sender === null ? line : { ...line, sender });
     this.append({ t: "receipt", at, receipt });
-    return this.get(message.id, target) ?? { ...placement, target, message, receipt };
+    return this.get(message.id, target) ?? { ...placement, target, message, receipt, sender };
+  }
+
+  /** The first record of a message id, or null: what a reply and a thread walk read. */
+  first(id: string): LogRecord | null {
+    for (const record of this.records.values()) if (record.message.id === id) return record;
+    return null;
   }
 
   /** Write a newer receipt. A receipt for a message the log does not hold is still written. */

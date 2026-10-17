@@ -5,16 +5,20 @@ import { join } from "node:path";
 
 import { CREW, leadStore, material, member, peerStore } from "../crew/fixtures.ts";
 import type { PaneWire } from "../types.ts";
+import { compareSemver } from "../update.ts";
 import { signMessage, attestationString } from "./canonical.ts";
 import { verifyCanonical } from "../crew/signing.ts";
 import {
   attestFor,
   checkFromLead,
   checkFromMember,
+  checkCrewMessage,
+  crewSkipped,
   crewTargets,
   leadRouteRemote,
   memberRouteRemote,
   mergeReport,
+  olderThanWalky,
   receiptsOfAnswer,
   WalkyCrew,
   WalkyReport,
@@ -24,7 +28,8 @@ import {
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { readWalkyReport } from "./parse.ts";
-import { WalkyService } from "./service.ts";
+import { RateLimiter } from "./rate.ts";
+import { WalkyService, type WalkyServiceDeps } from "./service.ts";
 import type { JsonValue } from "../json.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
@@ -67,6 +72,11 @@ function signed(id: string, from: string, to: string, over: Partial<WalkyMessage
   return signMessage(unsigned(id, from, to, over), material(from).keyPem, from);
 }
 
+/** The fields of an operator's message from a phone paired to `memberId`. */
+function OPERATOR(memberId: string): Partial<WalkyMessage> {
+  return { kind: "operator", from: { memberId, address: null, harness: null, label: "phone" } };
+}
+
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
   return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", terminal: true, ...over };
 }
@@ -93,7 +103,7 @@ interface Rig {
   readonly log: WalkyLog;
 }
 
-function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof leadRouteRemote>[0]["post"]): Rig {
+function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof leadRouteRemote>[0]["post"], over: Partial<WalkyServiceDeps> = {}): Rig {
   const root = mkdtempSync(join(tmpdir(), "walky-crew-"));
   roots.push(root);
   const log = new WalkyLog(join(root, "walky"), () => AT);
@@ -111,6 +121,7 @@ function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof
     keyPem: () => material(memberId).keyPem,
     now: () => AT,
     routeRemote,
+    ...over,
   });
   return { service: svc, host, log };
 }
@@ -142,6 +153,71 @@ describe("the lead's check of a member's message", () => {
     expect(memberCheck({ nope: true }, laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { body: "a\u0007b" }), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "local/w1:p1"), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
+  });
+});
+
+describe("the one shape check both crew hops share", () => {
+  const good = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
+  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-altan" } });
+
+  /** Every signed string field, set to `value`, one at a time. */
+  function eachField(base: WalkyMessage, value: string): Array<[string, WalkyMessage]> {
+    return [
+      ["id", { ...base, id: value }],
+      // SAFETY: the kind is broken on purpose; `checkCrewMessage` reads every field as a string, as off the wire.
+      ["kind", { ...base, kind: value as WalkyMessage["kind"] }],
+      ["from.memberId", { ...base, from: { ...base.from, memberId: value } }],
+      ["from.address", { ...base, from: { ...base.from, address: value } }],
+      ["from.harness", { ...base, from: { ...base.from, harness: value } }],
+      ["to", { ...base, to: value }],
+      ["replyTo", { ...base, replyTo: value }],
+      ["signer", { ...base, signer: value }],
+    ];
+  }
+
+  test("a well-formed agent's and operator's message pass", () => {
+    expect(checkCrewMessage(good)).toBeNull();
+    expect(checkCrewMessage(operator)).toBeNull();
+  });
+
+  test("an LF, a CR or a bare `-` in any signed field is a 400", () => {
+    for (const value of ["laptop\ndesk", "x\r", "-"]) {
+      for (const [field, message] of eachField(good, value)) {
+        expect([field, checkCrewMessage(message)]).toEqual([field, { status: 400, error: "a signed field holds a line break or a bare `-`" }]);
+      }
+    }
+    // An LF inside a field that would otherwise parse: through the wire, at both hops.
+    const split = { ...good, from: { ...good.from, memberId: "laptop\nlaptop" }, signer: "laptop\nlaptop" };
+    expect(memberCheck(split, member({ memberId: "laptop" }))).toMatchObject({ ok: false, answer: { status: 400 } });
+    const lead = member({ memberId: "desk", role: "lead" });
+    const down = { ...good, to: "laptop/w1:p9", from: { ...good.from, memberId: "-" } };
+    expect(leadCheck({ message: down, attest: attestFor(down, material("desk").keyPem, CREW.crewId, "laptop") }, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({
+      ok: false,
+      answer: { status: 400 },
+    });
+  });
+
+  test("label and harness: printable ASCII, no brackets or parentheses, at most 48 and 32", () => {
+    const label = (text: string) => checkCrewMessage({ ...good, from: { ...good.from, label: text } });
+    expect(label("a".repeat(48))).toBeNull();
+    for (const bad of ["a".repeat(49), "x (y)", "[x]", "line\nbreak", "caf\u00e9"]) expect(label(bad)).toMatchObject({ status: 400 });
+    const harness = (text: string) => checkCrewMessage({ ...good, from: { ...good.from, harness: text } });
+    expect(harness("a".repeat(32))).toBeNull();
+    for (const bad of ["a".repeat(33), "x(y)"]) expect(harness(bad)).toMatchObject({ status: 400 });
+  });
+
+  test("the sender is the signer, and an agent's pane is on the signer's machine: else the uniform 401", () => {
+    expect(checkCrewMessage({ ...good, signer: "other" })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...good, signer: null })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...good, from: { ...good.from, address: "other/w1:p1" } })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...operator, from: { ...operator.from, memberId: "other" } })).toEqual({ status: 401 });
+  });
+
+  test("a message the lead signed but that names another sender never reads as `origin`", () => {
+    const lead = member({ memberId: "desk", role: "lead" });
+    const claimed = signMessage(unsigned("wt_aaaaaaaaaaa5", "other", "laptop/w1:p9"), material("desk").keyPem, "desk");
+    const answer = leadCheck({ message: claimed, attest: attestFor(claimed, material("desk").keyPem, CREW.crewId, "laptop") }, "w1:p9", lead, CREW.crewId, "laptop");
+    expect(answer).toMatchObject({ ok: false, answer: { status: 401 } });
   });
 });
 
@@ -185,7 +261,7 @@ describe("a member's check of its lead's delivery", () => {
 describe("the lead takes a member's message", () => {
   test("delivers to its own pane as `origin`, and a replay returns the stored receipts and types nothing more", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
     const first = await fromMemberOf(crew, message, member({ memberId: "laptop" }));
     expect(first).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "desk/w1:p1", verified: "origin", by: "desk" }] } });
@@ -195,15 +271,74 @@ describe("the lead takes a member's message", () => {
     expect(lead.host.sends).toEqual(["w1:p1"]);
   });
 
-  test("rate-limits per sender address, as the local path does", async () => {
+  test("rate-limits per sender, as the local path does", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
     for (let n = 0; n < 30; n += 1) {
       const id = `wt_${n.toString().padStart(12, "a")}`;
-      expect((await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1"), laptop)).status).toBe(200);
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: `phone-${String(n)}` } }), laptop)).toMatchObject({
+        body: { receipts: [{ state: "accepted" }] },
+      });
     }
-    expect(await fromMemberOf(crew, signed("wt_zzzzzzzzzzzz", "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+    // The label is display data: another label is the same operator on the same machine.
+    const over = signed("wt_zzzzzzzzzzzz", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "other" } });
+    expect(await fromMemberOf(crew, over, laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+  });
+
+  test("two panes may trade 6 messages in 10 minutes, either direction; the 7th is `pair limit`", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const laptop = member({ memberId: "laptop" });
+    for (let n = 0; n < 6; n += 1) {
+      const id = `wt_${n.toString().padStart(12, "p")}`;
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    }
+    expect(await fromMemberOf(crew, signed("wt_pppppppppppz", "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "pair limit" }] } });
+    // Another pane of the same machine is another pair.
+    const other = signed("wt_qqqqqqqqqqq1", "laptop", "desk/w1:p1", { from: { memberId: "laptop", address: "laptop/w2:p2", harness: "agent-x", label: "repo#b" } });
+    expect(await fromMemberOf(crew, other, laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+  });
+
+  test("on a lead, one outer bucket per member: the member's panes together hit it", async () => {
+    const lead = service("desk", [pane("w1:p1")], undefined, { members: new RateLimiter(3) });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const laptop = member({ memberId: "laptop" });
+    const from = (n: number) => ({ memberId: "laptop", address: `laptop/w${String(n)}:p1`, harness: "agent-x", label: "repo#x" });
+    for (let n = 0; n < 3; n += 1) {
+      expect(await fromMemberOf(crew, signed(`wt_${n.toString().padStart(12, "m")}`, "laptop", "desk/w1:p1", { from: from(n) }), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    }
+    expect(await fromMemberOf(crew, signed("wt_mmmmmmmmmmmz", "laptop", "desk/w1:p1", { from: from(9) }), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+  });
+
+  test("a message whose clock is more than 10 minutes off, either way, is `stale` on both hops", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const laptop = member({ memberId: "laptop" });
+    const tenMinutes = 10 * 60 * 1000;
+    expect(await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { at: AT - tenMinutes }), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    for (const [id, at] of [["wt_aaaaaaaaaaa2", AT - tenMinutes - 1], ["wt_aaaaaaaaaaa3", AT + tenMinutes + 1]] as const) {
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1", { at }), laptop)).toMatchObject({
+        status: 200,
+        body: { receipts: [{ state: "refused", reason: "stale" }] },
+      });
+    }
+    const peer = service("laptop", [pane("w1:p9")]);
+    const peerCrew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
+    const old = signed("wt_aaaaaaaaaaa4", "desk", "laptop/w1:p9", { at: AT - tenMinutes - 1 });
+    expect(await fromLeadOf(peerCrew, "w1:p9", { message: old, attest: attestFor(old, material("desk").keyPem, CREW.crewId, "laptop") }, "desk")).toMatchObject({
+      body: { receipts: [{ state: "refused", reason: "stale" }] },
+    });
+    await peer.service.deliverer.settled();
+    expect(peer.host.sends).toEqual([]);
+  });
+
+  test("an agent's broadcast is refused at the lead too", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
+    expect(answer).toMatchObject({ body: { receipts: [{ state: "refused", reason: "only the operator may broadcast" }] } });
+    expect(lead.host.sends).toEqual([]);
   });
 
   test("routes a message for another member on, with this lead's attestation for that member", async () => {
@@ -213,7 +348,7 @@ describe("the lead takes a member's message", () => {
       posts.push({ memberId, segment, body: JSON.parse(payload) as { message: WalkyMessage; attest: string } });
       return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "lead", at: AT, by: memberId }] } };
     });
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "other/w9:p9"), member({ memberId: "laptop" }));
     expect(answer).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "other/w9:p9", by: "other" }] } });
     expect(posts.map((post) => `${post.memberId} ${post.segment}`)).toEqual(["other w9:p9"]);
@@ -228,8 +363,8 @@ describe("the lead takes a member's message", () => {
       posted.push(`${memberId} ${segment}`);
       return { kind: "answer", status: 200, body: { receipts: [] } };
     });
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
-    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all", OPERATOR("laptop")), member({ memberId: "laptop" }));
     expect(posted).toEqual(["other all"]);
     expect(answer.body).toMatchObject({ receipts: [{ target: "desk/w1:p1" }, { target: "other/all", state: "accepted" }] });
   });
@@ -238,8 +373,8 @@ describe("the lead takes a member's message", () => {
 describe("a member takes its lead's delivery", () => {
   test("verifies the attestation, delivers as `lead`, and fans `<member>/all` out to its agent panes", async () => {
     const peer = service("laptop", [pane("w1:p8"), pane("w1:p9"), pane("w1:p7", { agent: false, harness: null })]);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
-    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/all");
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
+    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/all", OPERATOR("other"));
     const body = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") };
     const answer = await fromLeadOf(crew, "all", body, "desk");
     expect(answer).toMatchObject({ status: 200, body: { receipts: [{ target: "laptop/w1:p8", verified: "lead" }, { target: "laptop/w1:p9", verified: "lead" }] } });
@@ -249,7 +384,7 @@ describe("a member takes its lead's delivery", () => {
 
   test("refuses a caller that is not its lead, and a bad attestation, with the uniform 401", async () => {
     const peer = service("laptop", [pane("w1:p9")]);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9");
     const good = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") };
     expect(await fromLeadOf(crew, "w1:p9", good, "other")).toMatchObject({ status: 401 });
@@ -291,7 +426,7 @@ describe("the outcome report", () => {
     const peer = service("laptop", [pane("w1:p9")]);
     const report = new WalkyReport("laptop");
     report.listen(peer.log);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9");
     await fromLeadOf(crew, "w1:p9", { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") }, "desk");
     await peer.service.deliverer.settled();
@@ -303,7 +438,7 @@ describe("the outcome report", () => {
     const small = new WalkyReport("laptop", 3);
     for (let n = 0; n < 5; n += 1) {
       const id = `wt_${String(n).padStart(12, "b")}`;
-      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" } });
+      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" }, sender: null });
     }
     expect(small.drain().map((receipt) => receipt.id)).toEqual(["wt_bbbbbbbbbbb2", "wt_bbbbbbbbbbb3", "wt_bbbbbbbbbbb4"]);
     expect(WALKY_REPORT_MAX).toBe(100);
@@ -352,6 +487,63 @@ describe("`who` on a lead", () => {
     expect(targets).toEqual([
       { address: "laptop/w1:p9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "collie#main", state: "idle" },
       { address: "other/w2:p1", memberId: "other", machine: "other", harness: "agent-x", label: "collie#main", state: "unreachable" },
+    ]);
+  });
+});
+
+describe("an older member (CREW_PROTOCOL §21)", () => {
+  test("below 1.23.0 is older; on a lead built before 1.23.0 the floor is the lead's own version; no version is never older", () => {
+    expect(olderThanWalky("1.22.4", "1.23.0", compareSemver)).toBe(true);
+    expect(olderThanWalky("1.23.0", "1.23.0", compareSemver)).toBe(false);
+    expect(olderThanWalky("1.24.1", "1.23.0", compareSemver)).toBe(false);
+    // A development lead at 1.22.5 carries the feature: members at its version are not older.
+    expect(olderThanWalky("1.22.5", "1.22.5", compareSemver)).toBe(false);
+    expect(olderThanWalky("1.22.4", "1.22.5", compareSemver)).toBe(true);
+    expect(olderThanWalky(null, "1.23.0", compareSemver)).toBe(false);
+    expect(olderThanWalky("unknown", "1.23.0", compareSemver)).toBe(false);
+  });
+
+  test("the lead refuses `older member` at once, dials nothing, and counts the refusal", async () => {
+    const posts: string[] = [];
+    const routeRemote = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop", "other"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      post: async (memberId) => {
+        posts.push(memberId);
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      older: (memberId) => memberId === "laptop",
+      now: () => AT,
+    });
+    const lead = service("desk", [pane("w1:p1")], undefined, { routeRemote });
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(answer).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "older member", target: "laptop/w9:p9" }] });
+    expect(posts).toEqual([]);
+    expect(lead.service.refusals().counts).toEqual({ "older member": 1 });
+  });
+});
+
+describe("the skipped list on a lead", () => {
+  test("lists every member's shell panes once, from the bodies, and never an agent pane", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewSkipped` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: null, kind: "shell", status: "idle", cwd: "/home/a/collie", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
+    const skipped = crewSkipped(
+      [
+        {
+          memberId: "laptop",
+          name: "laptop",
+          reachable: true,
+          body: { sessions: [], agents: [paneOf("w1:p9", { agent: "agent-x", kind: "agent" }), paneOf("w1:p3")], shellPanes: [paneOf("w1:p3"), paneOf("w1:p4")], workspaces: [], tabs: [] },
+        },
+        { memberId: "gone", name: "gone", reachable: false, body: null },
+      ],
+      true,
+    );
+    expect(skipped).toEqual([
+      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main" },
+      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main" },
     ]);
   });
 });

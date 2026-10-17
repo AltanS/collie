@@ -27,21 +27,33 @@ async function open(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole("dialog");
 }
 
+/** Tap "Send message", then the confirm step's "Send": the two taps a message now takes. */
+async function sendAndConfirm(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+  await user.click(await within(dialog).findByRole("button", { name: "Send" }));
+}
+
+const WHO_TARGETS = [
+  { address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "a#b", state: "idle" },
+  { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", harness: "codex", label: "c#d", state: "idle" },
+  { address: "workshop/w2:p1", memberId: "workshop", machine: "workshop", harness: "pi", label: "e#f", state: "idle" },
+];
+
 describe("Message all agents", () => {
   it("posts to all with a minted id and lists one receipt row per target", async () => {
     const user = userEvent.setup();
     renderCrew();
     const dialog = await open(user);
     await user.type(within(dialog).getByRole("textbox"), "Pause and report status");
-    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await sendAndConfirm(user, dialog);
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
     const [posted] = recordedWalkyPosts();
     expect(posted).toMatchObject({ to: "all", body: "Pause and report status" });
     expect(posted?.id).toMatch(/^wt_[a-z0-9]{12}$/);
     const rows = await within(dialog).findAllByRole("listitem");
     expect(rows.map((r) => r.textContent)).toEqual([
-      "bluefin/w1:p1Logged, not typed yet · local",
-      "minibuch/w2:p1Logged, not typed yet · local",
+      "bluefin/w1:p1queued · this machine",
+      "minibuch/w2:p1queued · this machine",
     ]);
     // The text left with the message.
     expect(within(dialog).getByRole("textbox")).toHaveValue("");
@@ -60,7 +72,7 @@ describe("Message all agents", () => {
     const dialog = await open(user);
     await within(dialog).findByText("Agents reached: 1");
     await user.type(within(dialog).getByRole("textbox"), "hi");
-    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await sendAndConfirm(user, dialog);
     expect(await within(dialog).findByText("collie#main (bluefin/w1:p1)")).toBeInTheDocument();
     expect(within(dialog).getByText("minibuch/w2:p1")).toBeInTheDocument();
   });
@@ -71,7 +83,7 @@ describe("Message all agents", () => {
     const dialog = await open(user);
     await user.selectOptions(within(dialog).getByRole("combobox"), "workshop");
     await user.type(within(dialog).getByRole("textbox"), "Hello workshop");
-    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await sendAndConfirm(user, dialog);
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
     expect(recordedWalkyPosts()[0]).toMatchObject({ to: "workshop/all", body: "Hello workshop" });
     expect(await within(dialog).findAllByRole("listitem")).toHaveLength(1);
@@ -97,6 +109,133 @@ describe("Message all agents", () => {
     expect(within(dialog).getByText("Agents reached: 2")).toBeInTheDocument();
   });
 
+  describe("the confirm step", () => {
+    const whoWith = () => server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: WHO_TARGETS })));
+
+    it("asks with the count of agents and machines, and posts nothing until Send", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 3 agents on 2 machines?")).toBeInTheDocument();
+      expect(recordedWalkyPosts()).toHaveLength(0);
+      // The first button of the question is the safe answer, and it holds focus.
+      expect(within(dialog).getByRole("button", { name: "Back" })).toHaveFocus();
+    });
+
+    it("counts only the machine chosen", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.selectOptions(within(dialog).getByRole("combobox"), "workshop");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 2 agents on 1 machine?")).toBeInTheDocument();
+    });
+
+    it("says 1 agent on 1 machine in the singular", async () => {
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: [WHO_TARGETS[0]] })));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 1");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 1 agent on 1 machine?")).toBeInTheDocument();
+    });
+
+    it("Back returns to the form without posting, and keeps the text", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      await user.click(await within(dialog).findByRole("button", { name: "Back" }));
+      expect(within(dialog).getByRole("button", { name: "Send message" })).toBeInTheDocument();
+      expect(within(dialog).queryByText(/^Message \d+ agents?/)).toBeNull();
+      expect(within(dialog).getByRole("textbox")).toHaveValue("Pause");
+      expect(recordedWalkyPosts()).toHaveLength(0);
+    });
+
+    it("posts once on Send", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await sendAndConfirm(user, dialog);
+      await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+      expect(recordedWalkyPosts()[0]).toMatchObject({ to: "all", body: "Pause" });
+      expect(within(dialog).queryByText(/^Message \d+ agents?/)).toBeNull();
+    });
+
+    it("says the count is not known when the who list could not be read, and still asks", async () => {
+      server.use(http.get("/api/walky/who", () => new HttpResponse(null, { status: 500 })));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message every agent? The count is not known.")).toBeInTheDocument();
+      expect(recordedWalkyPosts()).toHaveLength(0);
+    });
+  });
+
+  describe("what the who answer adds", () => {
+    const SKIPPED = [
+      { address: "bluefin/w1:p2", memberId: "bluefin", machine: "bluefin", label: "zsh" },
+      { address: "workshop/w3:p1", memberId: "workshop", machine: "workshop", label: "bash" },
+    ];
+
+    it("lists the skipped shell panes the target covers, under a small heading", async () => {
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: WHO_TARGETS, skipped: SKIPPED })));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      expect(await within(dialog).findByText("Shell panes, skipped")).toBeInTheDocument();
+      expect(within(dialog).getByText("zsh (bluefin/w1:p2): skipped")).toBeInTheDocument();
+      expect(within(dialog).getByText("bash (workshop/w3:p1): skipped")).toBeInTheDocument();
+      await user.selectOptions(within(dialog).getByRole("combobox"), "workshop");
+      expect(within(dialog).queryByText("zsh (bluefin/w1:p2): skipped")).toBeNull();
+      expect(within(dialog).getByText("bash (workshop/w3:p1): skipped")).toBeInTheDocument();
+    });
+
+    it("draws nothing about shell panes when there are none", async () => {
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: WHO_TARGETS })));
+      renderCrew();
+      const dialog = await open(userEvent.setup());
+      await within(dialog).findByText("Agents reached: 3");
+      expect(within(dialog).queryByText("Shell panes, skipped")).toBeNull();
+    });
+
+    it("shows what this bridge refused, as reason and count in the bridge's words", async () => {
+      server.use(
+        http.get("/api/walky/who", () =>
+          HttpResponse.json({ targets: WHO_TARGETS, refusals: { counts: { "rate limit": 3, "pair limit": 1, off: 0 }, since: 1_700_000_000_000 } }),
+        ),
+      );
+      renderCrew();
+      const dialog = await open(userEvent.setup());
+      expect(await within(dialog).findByText("Not sent on this machine: rate limit 3, pair limit 1")).toBeInTheDocument();
+    });
+
+    it("draws no refusals line when the counts are empty or absent", async () => {
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: WHO_TARGETS, refusals: { counts: {}, since: null } })));
+      renderCrew();
+      const dialog = await open(userEvent.setup());
+      await within(dialog).findByText("Agents reached: 3");
+      expect(within(dialog).queryByText(/Not sent on this machine/)).toBeNull();
+    });
+  });
+
   it("keeps the text and reuses the id when the answer is lost, so a retry types nothing twice", async () => {
     const ids: string[] = [];
     server.use(
@@ -109,10 +248,10 @@ describe("Message all agents", () => {
     renderCrew();
     const dialog = await open(user);
     await user.type(within(dialog).getByRole("textbox"), "Once only");
-    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await sendAndConfirm(user, dialog);
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Message not sent:");
     expect(within(dialog).getByRole("textbox")).toHaveValue("Once only");
-    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await sendAndConfirm(user, dialog);
     await waitFor(() => expect(ids).toHaveLength(2));
     expect(ids[1]).toBe(ids[0]);
   });

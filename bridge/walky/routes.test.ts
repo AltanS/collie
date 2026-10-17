@@ -67,6 +67,22 @@ describe("POST /api/walky", () => {
   });
 });
 
+describe("`who` for the Crew page", () => {
+  test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", terminal: true }] };
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
+    const body = await walkyWhoRoute(walky, null).json();
+    expect(body).toMatchObject({
+      skipped: [{ address: "local/w1:p3", memberId: "local", machine: "desk", label: "repo#c" }],
+      refusals: { since: 7, counts: { "no such pane": 1 } },
+    });
+    expect(JSON.stringify(body)).not.toContain("secret words");
+  });
+});
+
 describe("the reads", () => {
   test("`who` lists the targets; a pane's list is newest first with its receipts", async () => {
     const walky = service();

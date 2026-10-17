@@ -36,10 +36,10 @@ describe("WalkySheet", () => {
     const inside = within(agentRow);
     expect(inside.getByText("agent")).toBeInTheDocument();
     expect(inside.getByText("collie-workspace#fix-465")).toBeInTheDocument();
-    expect(inside.getByText("Delivered")).toBeInTheDocument();
-    expect(inside.getByText(/verified by bluefin/)).toBeInTheDocument();
-    // The other row is refused to type and says why.
-    expect(screen.getByText("In the inbox")).toBeInTheDocument();
+    expect(inside.getByText("typed into the pane")).toBeInTheDocument();
+    expect(inside.getByText(/signed by bluefin/)).toBeInTheDocument();
+    // The other row was not typed, and says why.
+    expect(screen.getByText("waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });
 
   it("offers Reply on the agent message only, and hands the row to the caller", async () => {

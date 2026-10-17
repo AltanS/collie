@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useCrew } from "@/components/crew-provider";
+import { useWalkyLog } from "@/components/walky-log";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
@@ -36,6 +37,11 @@ function toneOf(receipt: WalkyReceipt): NoticeTone {
  * The draft goes only when the bridge TOOK the message (any receipt but refused or expired), the way
  * a verified reply clears it. A refusal leaves the text where it was, with the bridge's reason beside
  * the box, so the person can fix the cause and send again.
+ *
+ * A first answer of `accepted` ("queued") is not the end (M62 hardening I): the strip then follows
+ * the receipt in the pane's own walky list (`useWalkyLog`, read on the ordinary revalidation, no poll
+ * of its own) and shows the final word once the receipt leaves `accepted`. A message to another pane
+ * is not in this pane's list, so its strip keeps the first word.
  */
 export function useWalkyComposer({
   paneId,
@@ -51,6 +57,9 @@ export function useWalkyComposer({
   const { send, sending } = useWalkySend();
   const [aim, setAim] = useState<WalkyAim | null>(null);
   const [note, setNote] = useState<WalkyNote | null>(null);
+  // The message the strip still follows: sent, answered `accepted`, and not dismissed.
+  const [followed, setFollowed] = useState<{ id: string; label: string } | null>(null);
+  const log = useWalkyLog();
   const address = paneAddress(paneId, scope, lead);
 
   const sendMessage = useCallback(
@@ -65,6 +74,7 @@ export function useWalkyComposer({
         setNote({ tone: "danger", text: t("walky.composer.failed", { error: t("composer.draft.tooLong") }) });
         return false;
       }
+      setFollowed(null);
       setNote({ tone: "info", text: t("walky.composer.sending") });
       const result = await send(aim?.to ?? address, body, aim?.replyTo);
       // A second tap while one is in flight: the first one's answer is the one that reports.
@@ -79,6 +89,7 @@ export function useWalkyComposer({
         return false;
       }
       setNote({ tone: toneOf(receipt), text: t("walky.composer.outcome", { label, state: stateWord(receipt) }) });
+      if (receipt.state === "accepted") setFollowed({ id: receipt.id, label });
       if (!wasTaken(receipt)) return false;
       setAim(null);
       onTaken();
@@ -87,14 +98,27 @@ export function useWalkyComposer({
     [aim, address, send, onTaken],
   );
 
+  // The receipt the pane's list holds now for the followed message, once it has left `accepted`.
+  const later = followed === null ? undefined : log?.byId.get(followed.id)?.receipt;
+  const shown = useMemo<WalkyNote | null>(
+    () =>
+      followed !== null && later !== undefined && later.state !== "accepted"
+        ? { tone: toneOf(later), text: t("walky.composer.outcome", { label: followed.label, state: stateWord(later) }) }
+        : note,
+    [followed, later, note],
+  );
+
   return {
     aim,
-    note,
+    note: shown,
     sending,
     /** Open the box for a message to `to`: a reply to an agent's message. */
     startMessage: setAim,
     clearAim: useCallback(() => setAim(null), []),
-    dismissNote: useCallback(() => setNote(null), []),
+    dismissNote: useCallback(() => {
+      setNote(null);
+      setFollowed(null);
+    }, []),
     sendMessage,
   };
 }
