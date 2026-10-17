@@ -4,7 +4,7 @@ import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "reac
 import { useRevalidator } from "react-router";
 import { Check, FileText, Image, Keyboard, ListEnd, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
-import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
+import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
@@ -23,7 +23,8 @@ import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
 import { CommandPalette } from "@/components/command-palette";
 import { SentSheet } from "@/components/sent-sheet";
-import { useSentRecall } from "@/hooks/use-sent-recall";
+import { SentSuggestions } from "@/components/sent-suggestions";
+import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -477,16 +478,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * The in-memory draft is untouched: a false positive costs one draft its ability to survive the OS
    * killing the PWA, which is a cheap price for never storing a real one.
    */
-  function updateInput(value: string, persist = true) {
+  function updateInput(value: string) {
     // Anything written INTO the box ends the belt X's Undo window (M40 spec 04): a keystroke, a
     // chip's marker, a transcript, a Take over, a slash command. An Undo after that would overwrite
     // what the operator just put there. The clear itself writes "" and so never ends its own window.
     if (value !== "" || attachmentsRef.current.length > 0) endUndoWindow();
     inputValueRef.current = value;
     setInput(value);
-    // A line recalled from Sent (arrow keys) is shown, not saved: it becomes a draft only when the
-    // person edits it, and that edit comes through here with `persist` on.
-    if (persist) persistDraft();
+    persistDraft();
   }
 
   /** The write-through, text and chips together. The chip writers (addAttachment, removeAttachment,
@@ -1069,27 +1068,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   // SENT (M61): on a shell pane, the lines sent through Collie come back from a sheet (the belt's
-  // Sent, or Ctrl+R) and from the arrow keys. Both only put a line in the box. Sending it is the
-  // person's own tap on Send, which runs the ordinary Send Protocol with a request id of its own.
+  // Sent, or the strip's "All") and as suggestions above the box. Both only put a line in the box.
+  // Sending it is the person's own tap on Send, which runs the ordinary Send Protocol with a request
+  // id of its own.
   const [sentOpen, setSentOpen] = useState(false);
-  const [sentSearch, setSentSearch] = useState(false);
-  const sentRecall = useSentRecall({
-    enabled: isShell && !direct.active && !locked && !sending && !uploading,
-    scope,
-    cwd,
-    read: () => inputValueRef.current,
-    write: (recalled) => {
-      updateInput(recalled, false);
-      focusInputEnd();
-    },
-  });
-  function openSent(withSearch: boolean) {
-    setSentSearch(withSearch);
-    setSentOpen(true);
-  }
+  // Whether the text box has focus: the suggestion strip is there only then, like a keyboard's.
+  const [boxFocused, setBoxFocused] = useState(false);
+  const suggestionsOn = isShell && sentSuggestionsOf(prefs);
+  const suggestions = useSentSuggestions({ enabled: suggestionsOn, scope, cwd });
   function pickSent(line: string) {
     direct.deactivateSilently();
-    sentRecall.stop();
     updateInput(line);
     focusInputEnd();
   }
@@ -1099,6 +1087,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
   function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" = "sent") {
+    // The bridge has a new line now (a shell pane only: the read is off elsewhere).
+    suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
@@ -1793,7 +1783,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       icon: ListEnd,
                       label: translate("sent.button"),
                       disabled: locked,
-                      onSelect: () => openSent(false),
+                      onSelect: () => setSentOpen(true),
                     },
                   ]
                 : []),
@@ -2035,6 +2025,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             above, which is equally at the write surface and costs the draft nothing. */}
         {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
         <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onSend={resendHeld} onChanged={onSent} />
+        {/* SENT SUGGESTIONS (M61): lines sent before, on a shell pane, directly above the box and only
+            while the box has focus. Not with "Type into terminal" armed (the box is not where the
+            words go), a dialog card up, a locked composer or a chip in the box. */}
+        {suggestionsOn && (
+          <SentSuggestions
+            open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
+            lines={suggestions.lines}
+            typed={input}
+            onPick={pickSent}
+            onAll={() => setSentOpen(true)}
+          />
+        )}
         <div
           data-slot="composer-box"
           className={cn(
@@ -2082,13 +2084,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? direct.onChange
                 : (e) => {
                     rememberCaret(e);
-                    sentRecall.stop();
                     updateInput(e.target.value);
                     noteOfflineKeystroke(e.target.value);
                   }
             }
             onSelect={direct.active ? undefined : rememberCaret}
-            onBlur={direct.active ? undefined : rememberCaret}
+            onFocus={() => setBoxFocused(true)}
+            onBlur={(e) => {
+              setBoxFocused(false);
+              if (!direct.active) rememberCaret(e);
+            }}
             onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
             onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
             onKeyDown={
@@ -2098,14 +2103,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
                       onSendClick();
-                    } else if (isShell && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "r") {
-                      // A shell's reverse search, as the keyboard knows it. Plain Ctrl+R only, and
-                      // only here in the box of a shell pane: Cmd+R and Ctrl+Shift+R still reload,
-                      // and "Type into terminal" (the branch above) sends Ctrl+R to the shell itself.
-                      e.preventDefault();
-                      openSent(true);
-                    } else {
-                      sentRecall.onKeyDown(e, input === "" && attachments.length === 0);
                     }
                   }
             }
@@ -2363,7 +2360,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         />
       )}
 
-      {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} focusSearch={sentSearch} onPick={pickSent} />}
+      {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} onPick={pickSent} />}
 
       {/* Slash-command palette */}
       <CommandPalette

@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LIST_ROW_CORNERS_START, ListGroup } from "@/components/ui/list-group";
@@ -14,7 +14,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { timeAgo } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
-import { folderLabel, sentKey } from "@/lib/sent-recall";
+import { folderLabel, sentKey } from "@/lib/sent-rows";
 import type { SentEntry, SentMachine } from "@/lib/types";
 
 // THE SENT SHEET (M61 spec 02): the shell lines a person sent through Collie, to search and to take
@@ -32,40 +32,29 @@ export interface SentSheetProps {
   cwd: string | undefined;
   /** The pane's machine. */
   scope: Scope | undefined;
-  /** Put the cursor in the search field when the sheet opens (the keyboard's way in). */
-  focusSearch: boolean;
   /** A row was tapped: put this line in the composer. The sheet closes itself after. */
   onPick: (line: string) => void;
 }
 
-export function SentSheet({ open, onClose, cwd, scope, focusSearch, onPick }: SentSheetProps) {
+export function SentSheet({ open, onClose, cwd, scope, onPick }: SentSheetProps) {
   useLocale();
   return (
     <BottomSheet open={open} onClose={onClose} title={t("sent.title")} className="max-h-[85dvh]">
-      <SentPanel cwd={cwd} scope={scope} focusSearch={focusSearch} onPick={(line) => { onPick(line); onClose(); }} />
+      <SentPanel cwd={cwd} scope={scope} onPick={(line) => { onPick(line); onClose(); }} />
     </BottomSheet>
   );
 }
 
-function SentPanel({ cwd, scope, focusSearch, onPick }: Pick<SentSheetProps, "cwd" | "scope" | "focusSearch" | "onPick">) {
+function SentPanel({ cwd, scope, onPick }: Pick<SentSheetProps, "cwd" | "scope" | "onPick">) {
   useLocale();
   const { multi, lead } = useCrew();
   const machineLabel = useHostLabel(scope?.host) ?? t("sent.thisMachine");
   const [choice, setChoice] = useState<SentChoice>(cwd === undefined ? "machine" : "folder");
   const [query, setQuery] = useState("");
   const [failed, setFailed] = useState<"forget" | "clear" | null>(null);
-  const search = useRef<HTMLInputElement>(null);
   const confirm = usePendingConfirm();
   const list = useSentList({ choice, cwd, query, scope, lead });
   const { view } = list;
-
-  // The sheet's own focus effect runs after this one and takes the panel, so the field asks a tick
-  // later. A phone's sheet opened from the button leaves the field alone: focus would raise the keyboard.
-  useEffect(() => {
-    if (!focusSearch) return;
-    const timer = setTimeout(() => search.current?.focus({ preventScroll: true }), 0);
-    return () => clearTimeout(timer);
-  }, [focusSearch]);
 
   const options: SegmentedOption<SentChoice>[] = [
     ...(cwd === undefined ? [] : [{ value: "folder" as const, label: t("sent.scope.folder") }]),
@@ -84,7 +73,7 @@ function SentPanel({ cwd, scope, focusSearch, onPick }: Pick<SentSheetProps, "cw
 
   return (
     <div className="flex flex-col gap-3">
-      <SearchField ref={search} value={query} onChange={setQuery} placeholder={t("sent.search.placeholder")} label={t("sent.search.placeholder")} />
+      <SearchField value={query} onChange={setQuery} placeholder={t("sent.search.placeholder")} label={t("sent.search.placeholder")} />
       {options.length > 1 && <Segmented options={options} value={choice} onChange={setChoice} label={t("sent.scope.aria")} />}
 
       {view.phase === "ready" &&

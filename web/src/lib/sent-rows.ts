@@ -1,43 +1,10 @@
 import type { Scope } from "./scope";
 import type { SentEntry } from "./types";
 
-// THE PURE HALF OF SENT (M61 spec 02): how the arrow keys step through lines, how a page is added to
-// a page, and how a row names its folder and its machine. Nothing here touches the network, the
-// document or storage; the sheet (components/sent-sheet.tsx) and the composer hook
-// (hooks/use-sent-recall.ts) call it.
-
-/** The lines an ArrowUp walks, newest first: this folder's, then the rest of this machine's. */
-export function recallLines(folder: readonly SentEntry[], machine: readonly SentEntry[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const entry of [...folder, ...machine]) {
-    if (seen.has(entry.line)) continue;
-    seen.add(entry.line);
-    out.push(entry.line);
-  }
-  return out;
-}
-
-/** Where the walk stands: a position in the lines, or `EMPTY_DRAFT` for the empty box before it began. */
-export const EMPTY_DRAFT = -1;
-
-/** One key. ArrowUp goes to an older line, ArrowDown to a newer one. */
-export type RecallKey = "ArrowUp" | "ArrowDown";
-
-/**
- * The next position. ArrowUp from the empty box lands on the newest line and stops at the oldest;
- * ArrowDown steps back toward the empty box and stops there. No lines: the box stays empty.
- */
-export function stepRecall(position: number, key: RecallKey, count: number): number {
-  if (count <= 0) return EMPTY_DRAFT;
-  if (key === "ArrowUp") return Math.min(position + 1, count - 1);
-  return Math.max(position - 1, EMPTY_DRAFT);
-}
-
-/** What the box shows at a position: the line, or nothing at the empty box. */
-export function recallText(lines: readonly string[], position: number): string {
-  return lines[position] ?? "";
-}
+// THE ROWS OF THE SENT SHEET, as pure functions (M61 spec 02): how a page is added to a page, how a
+// row names its folder, and which machine a write to a row goes to. Nothing here touches the
+// network, the document or storage; the sheet (components/sent-sheet.tsx) and its list hook
+// (hooks/use-sent-list.ts) call it.
 
 /** A row's identity: a line id is stable per machine, and two machines may share one. */
 export function sentKey(entry: Pick<SentEntry, "host" | "id">): string {

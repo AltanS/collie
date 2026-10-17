@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadDraft } from "@/lib/drafts";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
@@ -14,8 +14,8 @@ import { entry } from "@/test/sent-fixtures";
 import type { SentAnswer, SentEntry } from "@/lib/types";
 import { Composer } from "./composer";
 
-// Sent in the composer of a shell pane (M61 spec 02): the belt's button, Ctrl+R, and the arrow keys.
-// A line only ever lands in the box; Send is a tap of its own and runs the ordinary Send Protocol.
+// Sent in the composer of a shell pane (M61 spec 02): the belt's button and the suggestion strip above
+// the box. A line only ever lands in the box; Send is a tap of its own and runs the ordinary Send Protocol.
 
 const CWD = "/home/altan/projects/collie";
 
@@ -108,140 +108,190 @@ describe("Composer: Sent button", () => {
   });
 });
 
-describe("Composer: Ctrl+R", () => {
-  it("opens the sheet with the cursor in the search field, and keeps the browser from reloading", async () => {
-    serveSent(["git status"], ["git status"]);
-    renderComposer();
-    box().focus();
-    const proceeded = fireEvent.keyDown(box(), { key: "r", ctrlKey: true });
-    expect(proceeded).toBe(false);
-    await screen.findByRole("dialog", { name: "Sent" });
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Search sent lines" })).toHaveFocus());
-  });
-
-  it("leaves Cmd+R and Ctrl+Shift+R to the browser, which reload", () => {
-    renderComposer();
-    expect(fireEvent.keyDown(box(), { key: "r", metaKey: true })).toBe(true);
-    expect(fireEvent.keyDown(box(), { key: "R", ctrlKey: true, shiftKey: true })).toBe(true);
-    expect(screen.queryByRole("dialog", { name: "Sent" })).toBeNull();
-  });
-
-  it("is the browser's on an agent pane", () => {
-    renderComposer({ isShell: false, agent: "claude" });
-    expect(fireEvent.keyDown(box(), { key: "r", ctrlKey: true })).toBe(true);
-    expect(screen.queryByRole("dialog", { name: "Sent" })).toBeNull();
-  });
-});
-
-describe("Composer: arrow keys through Sent", () => {
+describe("Composer: the suggestion strip", () => {
   const FOLDER = ["make test", "git status"];
-  const MACHINE = ["htop", "git status", "ls -la"];
+  const MACHINE = ["htop", "git status", "git stash", "make test", "ls -la"];
+  const STRIP = { name: "Suggestions from Sent" };
 
-  async function up() {
-    fireEvent.keyDown(box(), { key: "ArrowUp" });
+  /** "open", "closed" (still leaving), or "absent": what the strip's collapse says. */
+  function stripState(): "open" | "closed" | "absent" {
+    const strip = screen.queryByRole("group", STRIP);
+    if (strip === null) return "absent";
+    return strip.closest('[data-slot="collapse"]')?.getAttribute("data-state") === "open" ? "open" : "closed";
+  }
+  const chips = () => {
+    const strip = screen.getByRole("group", STRIP);
+    return Array.from(strip.querySelectorAll("button")).map((b) => b.textContent);
+  };
+  async function focusBox() {
+    await userEvent.click(box());
+    await waitFor(() => expect(stripState()).toBe("open"));
   }
 
-  it("steps older through this folder's lines and then the machine's, and back down to the empty box", async () => {
+  it("reads this folder (100) and this machine (200) once when the pane opens, and again after a confirmed send", async () => {
     const asked = serveSent(FOLDER, MACHINE);
     renderComposer();
-    await up();
-    await waitFor(() => expect(box()).toHaveValue("make test"));
-    // The walk read the folder first and the machine second, once each.
-    expect(asked.map((u) => u.searchParams.has("cwd"))).toEqual([true, false]);
-    await up();
-    expect(box()).toHaveValue("git status");
-    await up();
-    expect(box()).toHaveValue("htop");
-    await up();
-    expect(box()).toHaveValue("ls -la");
-    await up();
-    expect(box()).toHaveValue("ls -la");
-    fireEvent.keyDown(box(), { key: "ArrowDown" });
-    expect(box()).toHaveValue("htop");
-    fireEvent.keyDown(box(), { key: "ArrowDown" });
-    fireEvent.keyDown(box(), { key: "ArrowDown" });
-    fireEvent.keyDown(box(), { key: "ArrowDown" });
-    expect(box()).toHaveValue("");
+    await waitFor(() => expect(asked).toHaveLength(2));
+    expect(asked.map((u) => [u.searchParams.has("cwd"), u.searchParams.get("limit")])).toEqual([
+      [true, "100"],
+      [false, "200"],
+    ]);
+    await focusBox();
+    await userEvent.type(box(), "git");
+    // Typing filters on the phone and asks nothing.
+    expect(asked).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await waitFor(() => expect(asked).toHaveLength(4));
   });
 
-  it("restores the empty box on Escape", async () => {
+  it("opens when the box takes focus, over an empty box with this folder's newest lines and an All chip", async () => {
     serveSent(FOLDER, MACHINE);
     renderComposer();
-    await up();
-    await waitFor(() => expect(box()).toHaveValue("make test"));
-    fireEvent.keyDown(box(), { key: "Escape" });
-    expect(box()).toHaveValue("");
-    // The walk is over: the next ArrowUp starts a new one from the newest line.
-    await up();
-    await waitFor(() => expect(box()).toHaveValue("make test"));
+    await waitFor(() => expect(screen.queryByRole("group", STRIP)).toBeNull());
+    await focusBox();
+    expect(chips()).toEqual(["make test", "git status", "All"]);
   });
 
-  it("keeps a recalled line out of the saved draft until the person edits it", async () => {
+  it("closes when the box loses focus", async () => {
     serveSent(FOLDER, MACHINE);
     renderComposer();
-    await up();
-    await waitFor(() => expect(box()).toHaveValue("make test"));
-    expect(loadDraft(undefined, "w1:p1")).toBeNull();
-    await userEvent.type(box(), " -j4");
-    expect(loadDraft(undefined, "w1:p1")).toBe("make test -j4");
-    // An edited line is a draft: the arrow keys are the caret's again.
-    expect(fireEvent.keyDown(box(), { key: "ArrowUp" })).toBe(true);
-    expect(box()).toHaveValue("make test -j4");
+    await focusBox();
+    fireEvent.blur(box());
+    await waitFor(() => expect(stripState()).toBe("closed"));
   });
 
-  it("never steals the arrow keys in a draft", async () => {
-    const asked = serveSent(FOLDER, MACHINE);
+  it("filters while typing: prefix matches, then lines holding every word, with the match in bold", async () => {
+    serveSent(FOLDER, MACHINE);
     renderComposer();
-    await userEvent.type(box(), "git sta");
-    expect(fireEvent.keyDown(box(), { key: "ArrowUp" })).toBe(true);
-    expect(fireEvent.keyDown(box(), { key: "ArrowDown" })).toBe(true);
-    expect(box()).toHaveValue("git sta");
-    expect(asked).toEqual([]);
+    await focusBox();
+    await userEvent.type(box(), "git s");
+    expect(chips()).toEqual(["git status", "git stash", "All"]);
+    const first = screen.getByRole("button", { name: "git status" });
+    expect(first.querySelector(".font-bold")?.textContent).toBe("git s");
+    await userEvent.clear(box());
+    await userEvent.type(box(), "la ls");
+    expect(chips()).toEqual(["ls -la", "All"]);
   });
 
-  it("leaves a key with a modifier alone", async () => {
-    const asked = serveSent(FOLDER, MACHINE);
+  it("keeps one height while the chips change", async () => {
+    serveSent(FOLDER, MACHINE);
     renderComposer();
-    expect(fireEvent.keyDown(box(), { key: "ArrowUp", shiftKey: true })).toBe(true);
-    expect(fireEvent.keyDown(box(), { key: "ArrowUp", altKey: true })).toBe(true);
-    expect(asked).toEqual([]);
+    await focusBox();
+    const row = screen.getByRole("group", STRIP);
+    expect(row).toHaveClass("h-11");
+    await userEvent.type(box(), "zzz");
+    expect(chips()).toEqual(["All"]);
+    expect(screen.getByRole("group", STRIP)).toBe(row);
+    expect(row).toHaveClass("h-11");
+    expect(stripState()).toBe("open");
   });
 
-  it("does nothing on an agent pane", async () => {
-    const asked = serveSent(FOLDER, MACHINE);
-    renderComposer({ isShell: false, agent: "claude" });
-    expect(fireEvent.keyDown(box(), { key: "ArrowUp" })).toBe(true);
-    expect(asked).toEqual([]);
-  });
-
-  it("leaves the box empty when nothing was sent, or the bridge cannot answer", async () => {
-    server.use(http.get(/\/api\/sent$/, () => HttpResponse.json(answer([]))));
+  it("offers only All when the one match is the line already in the box", async () => {
+    serveSent(FOLDER, ["git status"]);
     renderComposer();
-    await up();
-    await waitFor(() => expect(box()).toHaveValue(""));
-    server.use(http.get(/\/api\/sent$/, () => new HttpResponse("nope", { status: 404 })));
-    await up();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(box()).toHaveValue("");
+    await focusBox();
+    await userEvent.type(box(), "git status");
+    expect(chips()).toEqual(["All"]);
   });
 
-  it("drops the walk when the person types while the first read is out", async () => {
-    let release: (() => void) | undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
+  it("fills the box with a tapped line, sends nothing, and leaves the box focused", async () => {
+    serveSent(FOLDER, MACHINE);
+    renderComposer();
+    await focusBox();
+    await userEvent.type(box(), "git");
+    await userEvent.click(screen.getByRole("button", { name: "git stash" }));
+    expect(box()).toHaveValue("git stash");
+    expect(box()).toHaveFocus();
+    expect(recordedSends()).toEqual([]);
+    // The caret is at the end, so the person can go on typing.
+    await waitFor(() => expect(box()).toHaveProperty("selectionStart", "git stash".length));
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    expect(recordedSends()[0]).toMatchObject({ text: "git stash" });
+  });
+
+  it("cancels the mouse-down on a chip, which is what keeps the phone's keyboard up", async () => {
+    serveSent(FOLDER, MACHINE);
+    renderComposer();
+    await focusBox();
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "make test" }))).toBe(false);
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "All sent lines" }))).toBe(false);
+  });
+
+  it("opens the Sent sheet from All", async () => {
+    serveSent(FOLDER, MACHINE);
+    renderComposer();
+    await focusBox();
+    await userEvent.click(screen.getByRole("button", { name: "All sent lines" }));
+    expect(await screen.findByRole("dialog", { name: "Sent" })).toBeInTheDocument();
+  });
+
+  describe("is not there", () => {
+    it("on an agent pane, which reads nothing either", async () => {
+      const asked = serveSent(FOLDER, MACHINE);
+      renderComposer({ isShell: false, agent: "claude" });
+      await userEvent.click(box());
+      expect(stripState()).toBe("absent");
+      expect(asked).toEqual([]);
     });
-    server.use(
-      http.get(/\/api\/sent$/, async () => {
-        await gate;
-        return HttpResponse.json(answer([entry({ line: "make test" })]));
-      }),
-    );
-    renderComposer();
-    await up();
-    await userEvent.type(box(), "ls");
-    release?.();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(box()).toHaveValue("ls");
+
+    it("when Sent has no lines, or the bridge cannot answer", async () => {
+      server.use(http.get(/\/api\/sent$/, () => HttpResponse.json(answer([]))));
+      renderComposer();
+      await userEvent.click(box());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stripState()).not.toBe("open");
+    });
+
+    it("with the switch off in Settings, and then reads nothing", async () => {
+      const asked = serveSent(FOLDER, MACHINE);
+      const props = { prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system" as const, rawTerminal: false, tapToFocus: true, expandClippedReply: true, sentSuggestions: false } };
+      renderComposer(props);
+      await userEvent.click(box());
+      expect(stripState()).toBe("absent");
+      expect(asked).toEqual([]);
+    });
+
+    it("while Type into terminal is armed", async () => {
+      serveSent(FOLDER, MACHINE);
+      renderComposer();
+      await focusBox();
+      await userEvent.click(screen.getByRole("button", { name: "Type into terminal" }));
+      await waitFor(() => expect(stripState()).toBe("closed"));
+    });
+
+    it("with a dialog card up", async () => {
+      serveSent(FOLDER, MACHINE);
+      renderComposer({ dialogCard: true });
+      await userEvent.click(box());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stripState()).not.toBe("open");
+    });
+
+    it("while the composer is locked", async () => {
+      serveSent(FOLDER, MACHINE);
+      renderComposer({ readOnly: true });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stripState()).not.toBe("open");
+    });
+
+    it("with an attachment chip in the box", async () => {
+      serveSent(FOLDER, MACHINE);
+      saveDraft(undefined, "w1:p1", "look [Image #1]", [{ n: 1, path: "/tmp/p.png", name: "p.png", kind: "image" }], 2);
+      renderComposer();
+      await userEvent.click(box());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stripState()).not.toBe("open");
+    });
+
+    it("while the box starts with a space, which keeps the line out of Sent", async () => {
+      serveSent(FOLDER, MACHINE);
+      renderComposer();
+      await focusBox();
+      await userEvent.type(box(), " git");
+      expect(chips()).toEqual(["All"]);
+    });
   });
 });
 

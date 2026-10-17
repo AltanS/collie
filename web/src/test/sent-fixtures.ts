@@ -32,7 +32,7 @@ export const CREW_MACHINES: SentMachine[] = [
 export const sentSolo: SentAnswer = {
   entries: [
     entry({ line: "git status", at: NOW - 2 * MIN, count: 7 }),
-    entry({ line: "bun test web/src/lib/sent-recall.test.ts", at: NOW - 30 * MIN, cwd: null }),
+    entry({ line: "bun test web/src/lib/sent-rows.test.ts", at: NOW - 30 * MIN, cwd: null }),
     entry({ line: "make deploy instance=next", at: NOW - 3 * 60 * MIN, kind: "run" }),
   ],
   more: false,

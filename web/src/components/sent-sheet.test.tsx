@@ -37,7 +37,7 @@ function serveSentBy(answer: (url: URL) => SentAnswer | Response): Seen[] {
   return asked;
 }
 
-function mount(props: { cwd?: string | undefined; scope?: { host?: string }; focusSearch?: boolean; crew?: boolean } = {}) {
+function mount(props: { cwd?: string | undefined; scope?: { host?: string }; crew?: boolean } = {}) {
   const onPick = vi.fn();
   const onClose = vi.fn();
   const sheet = (
@@ -46,7 +46,6 @@ function mount(props: { cwd?: string | undefined; scope?: { host?: string }; foc
       onClose={onClose}
       cwd={"cwd" in props ? props.cwd : CWD}
       scope={props.scope}
-      focusSearch={props.focusSearch ?? false}
       onPick={onPick}
     />
   );
@@ -165,16 +164,6 @@ describe("Sent sheet: search", () => {
     expect(queries.at(-1)).toBe("zzz");
     // Three keystrokes, one request: the pause is what sends.
     expect(queries.filter((q) => q !== null)).toEqual(["zzz"]);
-  });
-
-  it("puts the cursor in the field when asked to, and leaves it alone otherwise", async () => {
-    serveSent(sentSolo);
-    const first = render(<SentSheet open onClose={() => {}} cwd={CWD} scope={undefined} focusSearch onPick={() => {}} />);
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Search sent lines" })).toHaveFocus());
-    first.unmount();
-    render(<SentSheet open onClose={() => {}} cwd={CWD} scope={undefined} focusSearch={false} onPick={() => {}} />);
-    await screen.findByText("git status");
-    expect(screen.getByRole("textbox", { name: "Search sent lines" })).not.toHaveFocus();
   });
 });
 

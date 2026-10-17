@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { clearSent, getSent, isApiErrorStatus, removeSent } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
-import { appendPage, scopeOfHost, withoutEntry } from "@/lib/sent-recall";
+import { appendPage, scopeOfHost, withoutEntry } from "@/lib/sent-rows";
 import type { SentEntry, SentMachine } from "@/lib/types";
 
 // THE SENT SHEET'S DATA (M61 spec 02): one page of lines at a time, read from the bridge while the
