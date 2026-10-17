@@ -470,6 +470,16 @@ function commandCueGrew(before: Snap, after: Snap): boolean {
 }
 
 /**
+ * Whether a read shows a screen drawn where the box stands, on a harness that draws its dialogs there
+ * (`idle.dialogsInBox`): the frame walk still finds two rules, but a strong cue reads between them, so
+ * the Surface reads no box. pi 0.87.1 and 1.3.0 open the `/model` selector so (lab, 2026-10-17), and the
+ * selector's own rows hold the word `model`, so the box's text alone cannot tell that the command went.
+ */
+function screenInBox(snap: Snap, state: RunState): boolean {
+  return snap.frame !== null && state.match?.profile.idle.dialogsInBox === true && snap.cueStrength === "strong";
+}
+
+/**
  * The command's own popup as the framed read sees it: a weak cue, all of it under the box, and a Surface
  * that claims only `unknown`, never an ask or an unreadable dialog. Claude Code's full slash list, open
  * while the box holds `/`, reads so (claude-lab--popup-slash-all--w82, review of spec 15, L1).
@@ -3036,6 +3046,8 @@ export class SendProtocol {
           return "fail";
         }
         if (snap.frame === null) return command ? "pass" : "wait";
+        // A command's own screen drawn where the box stood ({@link screenInBox}) took the box as surely as no frame.
+        if (command && screenInBox(snap, state)) return "pass";
         // Queued: the running sign showed before Enter, so only the box letting go of the text is
         // evidence that the harness took it.
         if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";

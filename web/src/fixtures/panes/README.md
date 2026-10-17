@@ -2416,3 +2416,41 @@ grammar now claims it with `pointer: "field"`, and a toggle first moves the poin
 | Fixture | State / what's in it |
 |---|---|
 | `claude--v2302-multiselect-field-focused--w160.txt` | Stepper `←  ☒ Next step  ✔ Submit  →`, four `[✔]` options, `❯ 5. [ ] Type something`, `Submit`, a rule, `6. Chat about this`, footer `Enter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel`. Lifts `multi-select` with the pointer on the field; the Surface reads `modal: ask`. Labelled `dialog` |
+
+## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
+
+Read through a scratch bridge's `GET /api/pane/:id` (ANSI kept, CRLF rows) from an isolated Herdr
+session with its own config, one pane per harness, no model key. Each harness ran with a scratch
+home, so the welcome rows show no model. The user name in paths is replaced with `/home/demo/user`;
+the omp captures needed no change. The pane was 120 or 80 columns wide (`--w120`, `--w80`, read from
+the rule).
+
+pi draws the list under its bottom rule without the slash (`→ model`, then two-space entries and a
+`(1/N)` count row), and its folder and stats rows under the list. omp draws it under its open box
+(`╰─ /model`) with an icon column (`❯ ⬢  model`), wrapped descriptions at 80 columns and a scrollbar
+column, and nothing after it. Until 1.22.5 neither profile named that list. On pi the pointer row and
+the slash query read as a strong cue; on omp the list pushed the box out of the frame's reach. The
+Surface read `unreadable`, and the phone's Model shortcut stopped at `typed_not_submitted (modal_cue)`.
+Both profiles now name the list (`idle.volatile.below.commandList` with `lead: "/"` and
+`sides: ["under"]`, and pi's `footer`), so a list that points at the typed command is its own typeahead.
+
+The same reading moves three older omp captures, whose list points at the typed command, from
+`dialog` to `popup`: `omp--slash-palette--filtered.txt` (`/new`), `omp--v18-8-slash-palette.txt` and
+`omp--v18-8-slash-palette-w48.txt` (`/resume`). Enter on them runs that command, the send commit 9acc1502 let
+through.
+
+| Fixture | State / what's in it |
+|---|---|
+| `pi--v130-slash-model-list--w120.txt`, `--w80.txt` | pi 1.3.0, the box holds `/model`, under it `→ model` and `scoped-models`, then the folder and stats rows. Labelled `popup` |
+| `pi--v130-slash-settings-list--w120.txt`, `--w80.txt` | The box holds `/settings`, one entry `→ settings`. Labelled `popup` |
+| `pi--v130-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`: the list points at another command. Labelled `dialog` |
+| `pi--v130-model-selector-empty--w120.txt` | The selector `/model` opens, drawn between the box's two rules: `Only showing models from configured providers`, a `>` search row, `No matching models` and the key hints. Labelled `dialog` |
+| `pi--v130-settings-screen--w120.txt` | The settings screen `/settings` opens, in the box's place. Labelled `dialog` |
+| `pi--v0871-slash-model-list--w120.txt`, `--w80.txt` | pi 0.87.1, the same `/model` list on a pane that is not full. Labelled `popup` |
+| `pi--v0871-slash-settings-list--w120.txt`, `--w80.txt` | pi 0.87.1, the `/settings` list. Labelled `popup` |
+| `pi--v0871-model-selector-empty--w120.txt` | pi 0.87.1, the selector `/model` opens. Labelled `dialog` |
+| `omp--v18-6-slash-model-list--w120.txt`, `--w80.txt` | omp 18.6.1, the box holds `/model`, under it ten entries from `❯ ⬢  model` to `↻  loop`, a scrollbar column; at 80 columns the descriptions wrap. Labelled `popup` |
+| `omp--v18-6-slash-settings-list--w120.txt`, `--w80.txt` | The box holds `/settings`, its list pointing at `settings`. Labelled `popup` |
+| `omp--v18-6-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`. Labelled `dialog` |
+| `omp--v18-6-model-selector-empty--w120.txt` | The Models picker `/model` opens, a full-screen box with providers and models. Labelled `dialog` |
+| `omp--v18-6-settings-screen--w120.txt` | The settings screen `/settings` opens. Labelled `dialog` |
