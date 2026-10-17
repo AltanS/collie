@@ -46,6 +46,12 @@ export interface CacheProbe {
    * `model`. Display only: no rule and no TTL reads it.
    */
   selectedModel?: string;
+  /**
+   * The effort the next turn runs at, in the harness's own word: pi's thinking level, Claude's
+   * `/effort`, Codex's reasoning effort, opencode's variant (`high`, `xhigh`, `max`). A level set after
+   * the turn above wins, as {@link selectedModel} does. Display only: no rule and no TTL reads it.
+   */
+  effort?: string;
   /** Subscription or API key, where the transcript says so. */
   tier?: Tier;
   /**

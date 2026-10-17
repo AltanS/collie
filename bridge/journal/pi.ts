@@ -809,11 +809,22 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
 async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef): Promise<CacheProbe | null> {
   const tail = await probeTail(source, ref);
   if (tail === null) return null;
+  // The thinking level is the NEWEST one the walk meets, whether a `thinking_level_change` row (written
+  // when the session opens and on every change) or the `thinkingLevel` pi 1.3 stamps on each assistant
+  // message. A level row after the newest turn is met first, so the label names the level the next
+  // turn will use, the way Claude's `/model` does (#463).
+  let effort: string | undefined;
   const found = walkBack(tail.lines, (raw): CacheProbe | undefined => {
     const entry = asRecord(raw);
-    if (entry === null || entry.type !== "message") return undefined;
+    if (entry === null) return undefined;
+    if (entry.type === "thinking_level_change") {
+      effort ??= asText(entry.thinkingLevel);
+      return undefined;
+    }
+    if (entry.type !== "message") return undefined;
     const message = asRecord(entry.message);
     if (message === null || message.role !== "assistant") return undefined;
+    effort ??= asText(message.thinkingLevel);
     const usage = asRecord(message.usage);
     if (usage === null) return undefined;
     const at = Date.parse(asText(entry.timestamp) ?? "");
@@ -834,7 +845,15 @@ async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef): P
     if (pair !== undefined) probe.model = pair;
     return probe;
   });
-  return found ?? null;
+  if (found === undefined) return null;
+  // A turn that carried no level of its own: the level row the session opened with, or the last
+  // change before the turn, still stands. Only the level is looked for past the turn.
+  effort ??= walkBack(tail.lines, (raw) => {
+    const entry = asRecord(raw);
+    return entry?.type === "thinking_level_change" ? asText(entry.thinkingLevel) : undefined;
+  });
+  if (effort !== undefined) found.effort = effort;
+  return found;
 }
 
 /**

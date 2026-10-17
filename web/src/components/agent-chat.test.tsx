@@ -4490,6 +4490,13 @@ describe("AgentChat — the model above the belt", () => {
     expect(tag.previousElementSibling).toHaveAttribute("data-slot", "draft-notice-slot");
   });
 
+  it("draws the pane's effort after its model", () => {
+    const agent: AgentView = { ...fixtureAgents[0]!, model: "anthropic:claude-opus-5-5", effort: "high" };
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] });
+    const tag = container.querySelector<HTMLElement>('[data-slot="model-tag"]')!;
+    expect(tag.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5 · high");
+  });
+
   it("draws no model when the pane names none", () => {
     const { container } = renderChat();
     expect(container.querySelector('[data-slot="model-tag"]')).toBeNull();
@@ -4514,8 +4521,9 @@ describe("AgentChat — the model label and a footer that already names it", () 
 
   it("Claude Code: a statusline that prints the model hides the label, and one that does not keeps it", () => {
     terminal();
-    const named = renderChat({ text: STATUS_TEXT, agent: on("claude", "claude-opus-4-8") });
+    const named = renderChat({ text: STATUS_TEXT, agent: on("claude", "claude-opus-4-8", { effort: "high" }) });
     expect(screen.getByText("[Opus 4.8] ~/webapp · main")).toBeInTheDocument(); // the strip is up
+    // The effort goes with the model: a screen that names the model hides the whole tag (#463).
     expect(tag(named.container)).toBeNull();
     cleanup();
     const behind = renderChat({ text: STATUS_TEXT, agent: on("claude", "Fable 5.1") });

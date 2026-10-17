@@ -124,6 +124,9 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache`, and
   // absent until that agent has taken one turn. An older bridge or peer omits it.
   model: true,
+  // Not a crew dimension: the effort beside that model, from the same probe, and absent whenever the
+  // model is or the log names no level. An older bridge or peer omits it.
+  effort: true,
   // Not crew dimensions: the operator's name for this pane's one-pane tab, and the pane's position in
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
@@ -251,6 +254,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "badge",
       "cache",
       "cwd",
+      "effort",
       "focused",
       "gitHead",
       "hasSession",
