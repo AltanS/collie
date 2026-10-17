@@ -3342,8 +3342,20 @@ that does not match the signer is the uniform 401.
    address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
    own machine for `all`. The sender's machine already delivered to its own panes before it asked.
 
-The lead's sender cap is the local one: 30 messages per sender address in 10 minutes, counted again
-on the lead.
+The lead counts the caps again, as every delivering bridge does (`bridge/walky/rate.ts`): 30 tokens
+per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 6
+messages in 10 minutes between the same two addresses, either direction (`pair limit`); and one outer
+bucket per dialling member, 60 tokens in 10 minutes, all its panes together. An operator's broadcast
+takes one token per pane and per member leg. A refusal is a receipt (`refused`, `rate limit` or
+`pair limit`) in a 200, never a 429.
+
+Every delivering bridge also refuses, before anything is logged: an agent's `all` or `<member>/all`
+(`only the operator may broadcast`), a message to its sender's own pane (`that is your own pane`), and
+a reply chain deeper than 4 in its own log (`thread depth`; a link the log does not hold ends the walk
+and counts 0). The sender's own bridge refuses a reply to a message that did not reach the sender's
+pane (`unknown reply`) and sends a reply to the stored sender of what it answers. A pane id that two
+sessions use is `ambiguous pane`, and a reply whose sender pane is gone or in another session is
+`sender gone`. Added 2026-10-17 (M62 hardening).
 
 ### What a member checks
 

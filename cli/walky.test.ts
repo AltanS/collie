@@ -142,11 +142,12 @@ describe("send", () => {
     expect(d.io.stdout).toEqual(["inbox-only wt_aaaaaaaaaaa1 (dialog open)"]);
   });
 
-  test("`all` prints one line per pane, with its address", async () => {
+  test("an agent's `all` is refused: only the operator may broadcast", async () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));
-    expect(await cmdWalkySend(d, ["all", "standup"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["delivered wt_aaaaaaaaaaa1 local/%2"]);
+    expect(await cmdWalkySend(d, ["all", "standup"])).toBe(EXIT.REFUSED);
+    expect(d.io.stdout).toEqual(["refused wt_aaaaaaaaaaa1 all (only the operator may broadcast)"]);
+    expect(b.sent).toEqual([]);
   });
 
   test("usage errors: no address, a bad address, no text on a terminal", async () => {

@@ -211,7 +211,8 @@ export class WalkyCrew {
     const { message } = checked;
     this.deps.audit?.({ action: "walky.send", detail: { via: "crew", from: member.memberId, to: message.to, textLength: message.body.length } });
     // Delivered here, and routed on to every other member it names: `localOnly` is false on a lead.
-    return { status: 200, body: { receipts: await this.deps.service.receive(message, "origin", false) } };
+    // `via`: the member's outer bucket, 60 tokens per 10 minutes on this lead.
+    return { status: 200, body: { receipts: await this.deps.service.receive(message, "origin", false, member.memberId) } };
   }
 
   /** `POST /crew/v1/pane/<segment>/walky` on a member, from the dispatch. `from` is the admitted caller. */

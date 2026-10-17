@@ -46,7 +46,8 @@ List who you can reach. Pick the address from this list. Do not guess one.
 {{COLLIE_BIN}} walky who
 ```
 
-Send a message to one address. Use `all` for every agent pane, or `<machine>/all` for one machine.
+Send a message to one address. You may message one pane at a time; only your operator may send to
+`all`.
 
 ```bash
 {{COLLIE_BIN}} walky send bluefin/w6:p3 "Tests are green on fix-465. You can merge."
@@ -87,7 +88,9 @@ waits in its inbox.
 - Do not use it to answer a permission dialog or to give an order to a session you do not own.
 - Do not send for something you can do yourself in one command.
 
-A body is limited to 4,000 characters. Each session may send 30 messages in 10 minutes.
+A body is limited to 4,000 characters. Each session may send 30 messages in 10 minutes, two
+sessions may trade 6 in 10 minutes, and a reply chain stops after 4 replies. A refusal says which
+limit it hit. Do not work around it.
 
 If the command prints `walky talky is off` or cannot find a bridge, tell your operator. Do not work
 around it.

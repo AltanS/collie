@@ -11,7 +11,7 @@ import { paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
-import type { WalkyLog } from "./log.ts";
+import type { LogRecord, WalkyLog } from "./log.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** Who is sending: an agent's pane, or an operator by label. */
@@ -19,7 +19,8 @@ export type WalkySenderRef = { readonly kind: "agent"; readonly pane: WalkyPane 
 
 export interface SendInput {
   readonly id: string;
-  readonly to: string;
+  /** The address. A reply's address is the bridge's to fill: the replied-to message's sender. */
+  readonly to: string | null;
   readonly body: string;
   readonly replyTo: string | null;
 }
@@ -86,8 +87,20 @@ export class WalkyService {
     return paneAddress(this.deps.memberId, paneId);
   }
 
+  /**
+   * The message a reply answers, as this bridge's log holds it (M62 hardening D): for an agent, one
+   * that went to the agent's own pane; for the operator, any. It must have come from a pane, which is
+   * where the reply goes. Null: `unknown reply`.
+   */
+  replyParent(replyTo: string, sender: WalkySenderRef): LogRecord | null {
+    const records = this.deps.log.all(replyTo);
+    const parent =
+      sender.kind === "agent" ? records.find((record) => record.session === sender.pane.session && record.paneId === sender.pane.paneId) : records.find((record) => record.session !== null);
+    return parent === undefined || parent.message.from.address === null ? null : parent;
+  }
+
   /** Build the message a request stands for: the body cleaned, the sender named, signed on a crew. */
-  compose(input: SendInput, sender: WalkySenderRef): WalkyMessage | null {
+  compose(input: SendInput & { readonly to: string }, sender: WalkySenderRef): WalkyMessage | null {
     const clean = cleanBody(input.body);
     if (clean.body === "") return null;
     const memberId = this.deps.memberId;
@@ -100,9 +113,16 @@ export class WalkyService {
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }
 
-  /** One send, from the socket or the phone. */
+  /** One send, from the socket or the phone. A reply goes to the stored sender of what it answers. */
   async send(input: SendInput, sender: WalkySenderRef): Promise<SendAnswer> {
-    const message = this.compose(input, sender);
+    let to = input.to;
+    if (input.replyTo !== null) {
+      const parent = this.replyParent(input.replyTo, sender);
+      if (parent === null) return { ok: true, receipts: [this.deliverer.refusal(input.id, input.to ?? "-", "unknown reply")] };
+      to = parent.message.from.address;
+    }
+    if (to === null) return { ok: false, error: "bad request" };
+    const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId } : null;
     return { ok: true, receipts: await this.deliverer.deliver(message, from) };
@@ -113,8 +133,8 @@ export class WalkyService {
    * (bridge/walky/crew.ts checked its signature first). It reaches this machine's panes, and on a
    * lead it is routed on to the members it names; `verified` says how its sender was known.
    */
-  async receive(message: WalkyMessage, verified: WalkyVerified, localOnly: boolean): Promise<WalkyReceipt[]> {
-    return this.deliverer.deliver(message, null, { verified, localOnly });
+  async receive(message: WalkyMessage, verified: WalkyVerified, localOnly: boolean, via?: string): Promise<WalkyReceipt[]> {
+    return this.deliverer.deliver(message, null, via === undefined ? { verified, localOnly } : { verified, localOnly, via });
   }
 
   /** The line `who` prints below this machine's targets, or null when it lists the whole crew. */

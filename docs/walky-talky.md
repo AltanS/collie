@@ -32,10 +32,11 @@ An address names one pane, one machine's panes, or every pane.
 | Address | Who receives it |
 | --- | --- |
 | `<member>/<pane>` | One pane. On a machine with no crew the member is `local`, for example `local/w6:p3` |
-| `<member>/all` | Every agent pane on that machine, except the sender |
-| `all` | Every agent pane you can reach, except the sender |
+| `<member>/all` | Every agent pane on that machine. From the phone only |
+| `all` | Every agent pane you can reach. From the phone only |
 
-A shell pane never receives a message. Only panes the bridge sees as an agent do.
+A shell pane never receives a message. Only panes the bridge sees as an agent do. An agent may
+message one pane at a time; only you may broadcast.
 
 ## What the target pane receives
 
@@ -232,10 +233,23 @@ This removes the Claude file and cuts out the block. It leaves the rest of each 
 
 What walky talky refuses, and how to turn it off.
 
-- **30 messages per sender in 10 minutes.** The next one is refused `rate limit`. A message to `all`
-  counts once.
+| Limit | Refused as |
+| --- | --- |
+| 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label | `rate limit` |
+| Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
+| 6 messages in 10 minutes between the same two panes, either direction | `pair limit` |
+| On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
+| A reply chain deeper than 4 replies | `thread depth` |
+| An agent's message to `all` or `<member>/all`. Only you may broadcast | `only the operator may broadcast` |
+| A message to the sender's own pane | `that is your own pane` |
+| A reply to a message this pane never received | `unknown reply` |
+| A pane id that two sessions on one machine both use | `ambiguous pane` |
+| A reply whose sender pane closed, or now sits in another session | `sender gone` |
+
 - **Collie never answers a message on its own**, and never answers a dialog with one. A send over an
   open dialog is refused by the Send Protocol, and the message stays in the inbox.
+- **A reply goes back to the pane that sent the message**, found by the session and the pane the
+  bridge logged, never by the address the reply names.
 - **`COLLIE_WALKY=off`** refuses every message for this machine's panes. The CLI on that machine
   still sends.
 

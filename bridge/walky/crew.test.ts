@@ -25,7 +25,8 @@ import {
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { readWalkyReport } from "./parse.ts";
-import { WalkyService } from "./service.ts";
+import { RateLimiter } from "./rate.ts";
+import { WalkyService, type WalkyServiceDeps } from "./service.ts";
 import type { JsonValue } from "../json.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
@@ -68,6 +69,11 @@ function signed(id: string, from: string, to: string, over: Partial<WalkyMessage
   return signMessage(unsigned(id, from, to, over), material(from).keyPem, from);
 }
 
+/** The fields of an operator's message from a phone paired to `memberId`. */
+function OPERATOR(memberId: string): Partial<WalkyMessage> {
+  return { kind: "operator", from: { memberId, address: null, harness: null, label: "phone" } };
+}
+
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
   return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", terminal: true, ...over };
 }
@@ -94,7 +100,7 @@ interface Rig {
   readonly log: WalkyLog;
 }
 
-function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof leadRouteRemote>[0]["post"]): Rig {
+function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof leadRouteRemote>[0]["post"], over: Partial<WalkyServiceDeps> = {}): Rig {
   const root = mkdtempSync(join(tmpdir(), "walky-crew-"));
   roots.push(root);
   const log = new WalkyLog(join(root, "walky"), () => AT);
@@ -112,6 +118,7 @@ function service(memberId: string, panes: WalkyPane[], route?: Parameters<typeof
     keyPem: () => material(memberId).keyPem,
     now: () => AT,
     routeRemote,
+    ...over,
   });
   return { service: svc, host, log };
 }
@@ -261,15 +268,52 @@ describe("the lead takes a member's message", () => {
     expect(lead.host.sends).toEqual(["w1:p1"]);
   });
 
-  test("rate-limits per sender address, as the local path does", async () => {
+  test("rate-limits per sender, as the local path does", async () => {
     const lead = service("desk", [pane("w1:p1")]);
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
     const laptop = member({ memberId: "laptop" });
     for (let n = 0; n < 30; n += 1) {
       const id = `wt_${n.toString().padStart(12, "a")}`;
-      expect((await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1"), laptop)).status).toBe(200);
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: `phone-${String(n)}` } }), laptop)).toMatchObject({
+        body: { receipts: [{ state: "accepted" }] },
+      });
     }
-    expect(await fromMemberOf(crew, signed("wt_zzzzzzzzzzzz", "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+    // The label is display data: another label is the same operator on the same machine.
+    const over = signed("wt_zzzzzzzzzzzz", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "other" } });
+    expect(await fromMemberOf(crew, over, laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+  });
+
+  test("two panes may trade 6 messages in 10 minutes, either direction; the 7th is `pair limit`", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const laptop = member({ memberId: "laptop" });
+    for (let n = 0; n < 6; n += 1) {
+      const id = `wt_${n.toString().padStart(12, "p")}`;
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    }
+    expect(await fromMemberOf(crew, signed("wt_pppppppppppz", "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "pair limit" }] } });
+    // Another pane of the same machine is another pair.
+    const other = signed("wt_qqqqqqqqqqq1", "laptop", "desk/w1:p1", { from: { memberId: "laptop", address: "laptop/w2:p2", harness: "agent-x", label: "repo#b" } });
+    expect(await fromMemberOf(crew, other, laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+  });
+
+  test("on a lead, one outer bucket per member: the member's panes together hit it", async () => {
+    const lead = service("desk", [pane("w1:p1")], undefined, { members: new RateLimiter(3) });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const laptop = member({ memberId: "laptop" });
+    const from = (n: number) => ({ memberId: "laptop", address: `laptop/w${String(n)}:p1`, harness: "agent-x", label: "repo#x" });
+    for (let n = 0; n < 3; n += 1) {
+      expect(await fromMemberOf(crew, signed(`wt_${n.toString().padStart(12, "m")}`, "laptop", "desk/w1:p1", { from: from(n) }), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    }
+    expect(await fromMemberOf(crew, signed("wt_mmmmmmmmmmmz", "laptop", "desk/w1:p1", { from: from(9) }), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
+  });
+
+  test("an agent's broadcast is refused at the lead too", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
+    expect(answer).toMatchObject({ body: { receipts: [{ state: "refused", reason: "only the operator may broadcast" }] } });
+    expect(lead.host.sends).toEqual([]);
   });
 
   test("routes a message for another member on, with this lead's attestation for that member", async () => {
@@ -295,7 +339,7 @@ describe("the lead takes a member's message", () => {
       return { kind: "answer", status: 200, body: { receipts: [] } };
     });
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
-    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
+    const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all", OPERATOR("laptop")), member({ memberId: "laptop" }));
     expect(posted).toEqual(["other all"]);
     expect(answer.body).toMatchObject({ receipts: [{ target: "desk/w1:p1" }, { target: "other/all", state: "accepted" }] });
   });
@@ -305,7 +349,7 @@ describe("a member takes its lead's delivery", () => {
   test("verifies the attestation, delivers as `lead`, and fans `<member>/all` out to its agent panes", async () => {
     const peer = service("laptop", [pane("w1:p8"), pane("w1:p9"), pane("w1:p7", { agent: false, harness: null })]);
     const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
-    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/all");
+    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/all", OPERATOR("other"));
     const body = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") };
     const answer = await fromLeadOf(crew, "all", body, "desk");
     expect(answer).toMatchObject({ status: 200, body: { receipts: [{ target: "laptop/w1:p8", verified: "lead" }, { target: "laptop/w1:p9", verified: "lead" }] } });
@@ -369,7 +413,7 @@ describe("the outcome report", () => {
     const small = new WalkyReport("laptop", 3);
     for (let n = 0; n < 5; n += 1) {
       const id = `wt_${String(n).padStart(12, "b")}`;
-      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" } });
+      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" }, sender: null });
     }
     expect(small.drain().map((receipt) => receipt.id)).toEqual(["wt_bbbbbbbbbbb2", "wt_bbbbbbbbbbb3", "wt_bbbbbbbbbbb4"]);
     expect(WALKY_REPORT_MAX).toBe(100);
