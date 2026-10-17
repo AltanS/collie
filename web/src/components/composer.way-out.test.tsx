@@ -16,7 +16,8 @@ import { Composer } from "./composer";
 
 // M56 spec 07, one test per state. The rule (ARCHITECTURE.md, "The way out"): in every state but a pane
 // that is gone, a device that may not write and a link that is down, the Screen is one tap away, the Keys
-// dock opens in one tap and can send, and the placeholder names the state; every outcome of a send lands
+// dock opens in one tap and can send, and the placeholder stays the plain reply line (it names only a pane
+// that is gone, a device that may not write and a box out of reach); every outcome of a send lands
 // at the thumb with its reason and its next action. The thirteen states are the table in
 // test/way-out-states.ts, the same one the playground's numbered cards draw.
 
@@ -87,7 +88,7 @@ describe("the way out", () => {
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("free: while a send is in flight the probe character reads as a draft, and the placeholder keeps the free line (send drill 3)", async () => {
+  it("free: while a send is in flight the probe character reads as a draft, and the placeholder keeps the plain line before, during and after", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -133,18 +134,17 @@ describe("the way out", () => {
     // The bridge's probe character stands in the box: the pane's read says draft, mid-request.
     act(() => showDraft(true));
     expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Type a reply…");
-    expect(screen.queryByPlaceholderText(/a draft is in the box/i)).toBeNull();
     release();
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
-    // The request is over: a draft the pane still shows is named again.
-    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "A draft is in the box");
+    // The request is over: a draft the pane still shows does not change the placeholder.
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Type a reply…");
   });
 
-  it("composer draft: the placeholder names it, a send is refused at the thumb with Add, Replace and Cancel, and the way out stays", async () => {
+  it("composer draft: the placeholder stays plain, a send is refused at the thumb with Add, Replace and Cancel, and the way out stays", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface })));
     const user = userEvent.setup();
     const { onToggle } = mount("draft");
-    await user.type(screen.getByPlaceholderText(/a draft is in the box/i), "new words");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     const strip = await screen.findByTestId("send-offers");
     for (const word of ["Add to it", "Replace", "Cancel"]) expect(strip).toHaveTextContent(word);
@@ -153,18 +153,18 @@ describe("the way out", () => {
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("modal ask: the placeholder names the menu, a draft makes Send the word Answer the dialog, nothing is sent, and the way out stays", async () => {
+  it("modal ask: the placeholder stays plain, a draft makes Send the word Answer the dialog, nothing is sent, and the way out stays", async () => {
     const user = userEvent.setup();
     const onAnswerDialog = vi.fn();
     const { onToggle } = mount("ask", { onAnswerDialog });
-    await user.type(screen.getByPlaceholderText("Menu is waiting"), "for after the dialog");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
     expect(recordedSends()).toEqual([]);
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("modal unreadable: the placeholder names it, Send takes two taps (prepare, then commit with the rows seen), and the Keys dock is enabled", async () => {
+  it("modal unreadable: the placeholder stays plain, Send takes two taps (prepare, then commit with the rows seen), and the Keys dock is enabled", async () => {
     server.use(
       ...sendHandler((request) =>
         request.rowsHash === undefined
@@ -174,7 +174,7 @@ describe("the way out", () => {
     );
     const user = userEvent.setup();
     const { onToggle } = mount("unreadable");
-    await user.type(screen.getByPlaceholderText(/cannot read what is open/i), "carry on please");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
     // The first tap typed nothing and says why at the thumb, with the second tap and the way out beside it.
     await screen.findByRole("button", { name: "Type here" });
@@ -187,11 +187,11 @@ describe("the way out", () => {
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("turn running: the placeholder says so, a send is refused at the thumb naming the screen, and Open Keys leads to the pad that stops it", async () => {
+  it("turn running: the placeholder stays plain, a send is refused at the thumb naming the screen, and Open Keys leads to the pad that stops it", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { surface: wayOutCase("running").surface, detail: "The input box is not free." })));
     const user = userEvent.setup();
     const { onToggle } = mount("running");
-    await user.type(screen.getByPlaceholderText(/the agent is working/i), "hurry up");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "hurry up");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByText(/the agent was working/i);
     expect(statusLine()).toBe("");
@@ -202,11 +202,11 @@ describe("the way out", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("unknown no-match: the placeholder says the box was not found, Send takes two taps, a refused probe names the Surface and points to the Keys dock", async () => {
+  it("unknown no-match: the placeholder stays plain, Send takes two taps, a refused probe names the Surface and points to the Keys dock", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "probe_failed", { surface: wayOutCase("no-match").surface, offers: ["keys"] })));
     const user = userEvent.setup();
     const { onToggle } = mount("no-match");
-    await user.type(screen.getByPlaceholderText(/input box not found/i), "hello");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByText(/typing did not land in the input box/i);
     expect(screen.getByText(/could not find the input box/i)).toBeInTheDocument();
@@ -216,32 +216,32 @@ describe("the way out", () => {
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("unknown contested: the placeholder names the disagreement, Send asks the bridge to read again, and the way out stays", async () => {
+  it("unknown contested: the placeholder stays plain, Send asks the bridge to read again, and the way out stays", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "sent")));
     const user = userEvent.setup();
     const { onToggle } = mount("contested");
-    await user.type(screen.getByPlaceholderText(/reads disagree/i), "go on");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("unknown stale: the placeholder shows the age of the last read, and the next tap asks the bridge to read again", async () => {
+  it("unknown stale: the placeholder stays plain, and the next tap asks the bridge to read again", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "sent")));
     const user = userEvent.setup();
     const { onToggle } = mount("stale");
-    await user.type(screen.getByPlaceholderText(/last read 1[2-9] s ago/i), "go on");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     // The tap is one request: the bridge reads the screen fresh at S0, so nothing waits on the stale read.
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await wayOutIs(user, onToggle, "sends");
   });
 
-  it("unknown torn: the placeholder says the screen changed, and Send reads it again", async () => {
+  it("unknown torn: the placeholder stays plain, and Send reads it again", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "sent")));
     const user = userEvent.setup();
     const { onToggle } = mount("torn");
-    await user.type(screen.getByPlaceholderText(/the screen changed\. send again/i), "go on");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await wayOutIs(user, onToggle, "sends");

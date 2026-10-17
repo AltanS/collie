@@ -345,22 +345,7 @@ export const en = {
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
   "composer.placeholder.unreachable": "Can't reach the input box",
   "composer.placeholder.sendOff": "This machine cannot take text from the phone. Update its Collie, or check its COLLIE_SEND_PROTOCOL setting. The keys still work.",
-  "composer.placeholder.dialogWaiting": "Dialog is waiting",
-  "composer.placeholder.menuWaiting": "Menu is waiting",
-  "composer.placeholder.permissionWaiting": "Permission is waiting",
-  "composer.placeholder.questionWaiting": "Question is waiting",
   "composer.placeholder.direct": "Type into the terminal…",
-  // The way out (M56 spec 07): the placeholder names the state, whatever the state is. The field is one
-  // line on a phone, so each is the name and nothing more; what to do next is the notice beside Send.
-  // A free box keeps "Type a reply…".
-  "composer.placeholder.running": "The agent is working",
-  "composer.placeholder.draft": "A draft is in the box",
-  "composer.placeholder.unreadable": "Cannot read what is open",
-  "composer.placeholder.noMatch": "Input box not found",
-  "composer.placeholder.contested": "Reads disagree. Tap Screen to check.",
-  "composer.placeholder.stale": "Last read {age} ago",
-  "composer.placeholder.staleNoAge": "The last read is old",
-  "composer.placeholder.torn": "The screen changed. Send again.",
   "composer.placeholder.shell": "Type a shell command…",
   "composer.placeholder.reply": "Type a reply…",
   "composer.mic.unavailable": "Voice input is unavailable",

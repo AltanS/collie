@@ -993,8 +993,7 @@ export const paneBlocked: PaneFixture = {
   pane: needsYou[0]!,
   text: claudePermissionBash,
   revision: 812,
-  // The permission dialog is an ask: the composer names it in the placeholder and its Send slot
-  // goes to the card.
+  // The permission dialog is an ask: the composer's Send slot goes to the card.
   surface: {
     revision: 812,
     turn: "idle",
@@ -1058,7 +1057,7 @@ export const paneModelPicker: PaneFixture = {
   pane: { ...structuredClone(needsYou[0]!), paneId: `${needsYou[0]!.paneId}-model-picker` },
   text: claudeModelPicker,
   revision: 6_203,
-  // The picker is a `modal ask` of kind menu (M56 spec 06): the placeholder says "Menu is waiting".
+  // The picker is a `modal ask` of kind menu (M56 spec 06): Send goes to the card.
   surface: {
     revision: 6_203,
     turn: "idle",

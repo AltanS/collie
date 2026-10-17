@@ -84,7 +84,7 @@ const CASES = {
     surface: { revision: 10, ...base, reason: "stale" },
     ...FACTS,
     readAgeMs: 12_000,
-    reach: "the bridge's last read of the pane is older than two polls. The placeholder names its age; the next tap reads again.",
+    reach: "the bridge's last read of the pane is older than two polls. The next tap reads again.",
   },
   torn: {
     title: "unknown, torn",
