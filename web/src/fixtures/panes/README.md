@@ -2339,6 +2339,30 @@ captured.
 |---|---|
 | `claude--v2302-notice-over-agents-panel--w69.txt` | A running turn (`✶ Hashing… · tool use (4s · thinking with high effort)`) at 69 columns with the `✦ You should know · ` notice above the box, its three wrapped rows and the key row `1: Learn more   2: Knew this already   0: Dismiss`, then the box, two status rows, and the agents panel (`● main`, three `◯ general-purpose` rows) under them. The notice and the agents panel are vanilla Claude Code; the spinner's ` · tool use` suffix, the `[-]` row over the notice and the reply boxes come from a theme plugin (ui-themes). The panel is the footer run the Claude profile names (`frame.volatile.named`), so it is not counted against the six-row tail and the notice lifts its card (ADR 0109). Labelled `running` |
 
+## Cursor CLI input box (captured 2026-10-17, Cursor CLI 2026.10.14 and 2026.10.16, Herdr)
+
+Read through `GET /api/pane/:id` with `scripts/capture-fixture.sh` from a throwaway pane in
+`/tmp/collie-cursor-lab`, then scrubbed: the shell prompt and the CLI's tracing line above the agent
+were cut off the top, and the user skills in the slash list were replaced by neutral example rows with
+the same styling. The two rows under the box (`📁 … · ⎇ … · <model>` and `ctx N% · …`) are the
+operator's own statusline. The captures back the `cursor` input profile.
+
+| Fixture | State / what's in it |
+|---|---|
+| `cursor--trust-prompt.txt` | The folder trust prompt in a `╭` box, `▶ [a] Trust this workspace`, before the input box is drawn. Labelled `dialog` |
+| `cursor--fresh-idle.txt` | A new session: the `▄` rule, `→ Plan, search, build anything` in grey with the cursor on the first letter, the `▀` rule. Labelled `idle` |
+| `cursor--draft.txt`, `cursor--draft-wrapped.txt`, `cursor--draft-multiline.txt` | A one-row draft, a draft wrapped onto a row indented four columns, and a draft with a Ctrl+J newline. Labelled `draft` |
+| `cursor--slash-popup.txt` | The box holds `/`; the command list under it, the pointer `   → /model [filter]` at three columns, entries at five, `↓ more below` last. Labelled `popup` |
+| `cursor--slash-exact.txt` | The box holds `/model` and the list points at `/model`: the command's own typeahead. Labelled `popup` |
+| `cursor--working.txt`, `cursor--working-draft.txt` | A running turn: a braille spinner row `⠀⠞ Running  203 tokens` above the box, `1 task` under it. The first still shows the sent text in the box (Enter came too soon after the text); the second holds a new draft. Labelled `running` |
+| `cursor--working-queued.txt` | Enter in a turn queued the draft: a `┌─ follow-ups` box above the input box with `│ ○ queued note` and `│ enter steer · ↑ select/edit · esc cancel`, and `ctrl+c to stop` at the right end of the `→` row. Labelled `running` |
+| `cursor--ask-question.txt`, `cursor--ask-question-moved.txt` | The agent's question in a `┌` box that replaces the input box, with the pointer on the first and the second option. Labelled `dialog` |
+| `cursor--idle-after-turn.txt` | The turn is over: `→ Add a follow-up` in grey. Labelled `idle` |
+| `cursor--permission-shell.txt` | A shell command approval (Run Everything off) that replaces the box: `Run this command?`, `→ Run (once) (y)` and three more options. A probe character and a Backspace typed here changed nothing. Labelled `dialog` |
+| `cursor--after-skip.txt` | Escape on that approval: a box with `→ Tell the agent what to do instead (Enter to send, empty to skip, Esc to cancel)` and no statusline under it. The profile does not list that hint, so the box reads as a draft and a send stops. Labelled `other` |
+| `cursor--shell-mode-empty.txt`, `cursor--shell-mode-draft.txt` | `!` turned the box into a shell prompt: a yellow `!` and the grey hint `Run a command — e.g., git status`, then `! echo hi`. The hint is not a placeholder of the profile, so an empty shell prompt reads as a draft and a message never goes into it. Labelled `draft` |
+| `cursor--v20261016-idle-after-queued.txt` | 2026.10.16: a send held during a turn went out when the turn ended (`queued note from collie` in the transcript), and the box is empty again. Labelled `idle` |
+
 ## The slash list under the box, 2.1.302 (reconstructed 2026-10-17, not captured)
 
 Rebuilt by hand from a masked field capture (letters read `a`, digits `0`), the screen of the
@@ -2578,27 +2602,3 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--approval-w60` | The same at 60 columns, prompt `⚠` | Allow once, Deny |
 | `hermes--approval-long` | A 120-character command, `5. Show full command` | Allow once, Show full command, Deny |
 | `hermes--approval-long-full` | After `5`: row 5 gone, `❯` on Deny | Allow once, Deny |
-
-## Cursor CLI input box (captured 2026-10-17, Cursor CLI 2026.10.14 and 2026.10.16, Herdr)
-
-Read through `GET /api/pane/:id` with `scripts/capture-fixture.sh` from a throwaway pane in
-`/tmp/collie-cursor-lab`, then scrubbed: the shell prompt and the CLI's tracing line above the agent
-were cut off the top, and the user skills in the slash list were replaced by neutral example rows with
-the same styling. The two rows under the box (`📁 … · ⎇ … · <model>` and `ctx N% · …`) are the
-operator's own statusline. The captures back the `cursor` input profile.
-
-| Fixture | State / what's in it |
-|---|---|
-| `cursor--trust-prompt.txt` | The folder trust prompt in a `╭` box, `▶ [a] Trust this workspace`, before the input box is drawn. Labelled `dialog` |
-| `cursor--fresh-idle.txt` | A new session: the `▄` rule, `→ Plan, search, build anything` in grey with the cursor on the first letter, the `▀` rule. Labelled `idle` |
-| `cursor--draft.txt`, `cursor--draft-wrapped.txt`, `cursor--draft-multiline.txt` | A one-row draft, a draft wrapped onto a row indented four columns, and a draft with a Ctrl+J newline. Labelled `draft` |
-| `cursor--slash-popup.txt` | The box holds `/`; the command list under it, the pointer `   → /model [filter]` at three columns, entries at five, `↓ more below` last. Labelled `popup` |
-| `cursor--slash-exact.txt` | The box holds `/model` and the list points at `/model`: the command's own typeahead. Labelled `popup` |
-| `cursor--working.txt`, `cursor--working-draft.txt` | A running turn: a braille spinner row `⠀⠞ Running  203 tokens` above the box, `1 task` under it. The first still shows the sent text in the box (Enter came too soon after the text); the second holds a new draft. Labelled `running` |
-| `cursor--working-queued.txt` | Enter in a turn queued the draft: a `┌─ follow-ups` box above the input box with `│ ○ queued note` and `│ enter steer · ↑ select/edit · esc cancel`, and `ctrl+c to stop` at the right end of the `→` row. Labelled `running` |
-| `cursor--ask-question.txt`, `cursor--ask-question-moved.txt` | The agent's question in a `┌` box that replaces the input box, with the pointer on the first and the second option. Labelled `dialog` |
-| `cursor--idle-after-turn.txt` | The turn is over: `→ Add a follow-up` in grey. Labelled `idle` |
-| `cursor--permission-shell.txt` | A shell command approval (Run Everything off) that replaces the box: `Run this command?`, `→ Run (once) (y)` and three more options. A probe character and a Backspace typed here changed nothing. Labelled `dialog` |
-| `cursor--after-skip.txt` | Escape on that approval: a box with `→ Tell the agent what to do instead (Enter to send, empty to skip, Esc to cancel)` and no statusline under it. The profile does not list that hint, so the box reads as a draft and a send stops. Labelled `other` |
-| `cursor--shell-mode-empty.txt`, `cursor--shell-mode-draft.txt` | `!` turned the box into a shell prompt: a yellow `!` and the grey hint `Run a command — e.g., git status`, then `! echo hi`. The hint is not a placeholder of the profile, so an empty shell prompt reads as a draft and a message never goes into it. Labelled `draft` |
-| `cursor--v20261016-idle-after-queued.txt` | 2026.10.16: a send held during a turn went out when the turn ended (`queued note from collie` in the transcript), and the box is empty again. Labelled `idle` |
