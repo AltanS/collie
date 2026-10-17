@@ -2,8 +2,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
+import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -74,6 +75,7 @@ import { adapterFor } from "@/lib/harness";
 import { useLive, useReadAt } from "@/lib/liveness";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
+import type { PaneTodo } from "@/lib/types";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { VoiceTakeover } from "@/components/voice-takeover";
 import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
@@ -216,6 +218,8 @@ interface ComposerProps {
    * the pill would have nothing to show.
    */
   screen?: { on: boolean; onToggle: () => void };
+  /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
+  todos?: readonly PaneTodo[];
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -231,7 +235,7 @@ interface ComposerProps {
 // decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
-type ComposerDrawer = "quick" | "cmd" | "keys" | null;
+type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | null;
 
 
 // Grace window after a send during which a terminal draft matching what we just sent is treated as
@@ -337,7 +341,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1001,6 +1005,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
   const commands = commandsFor(agent, operatorCommands);
+  const todoList = todos ?? [];
+  const todoDone = todoList.filter((item) => item.status === "completed").length;
+  const todoLabel =
+    todoList.length > 0
+      ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
+      : "";
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -1626,6 +1636,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
+        {drawer === "todos" && todoList.length > 0 && (
+          <ComposerDock title={todoLabel} onClose={closeDrawer}>
+            <ul className="mt-2 divide-y divide-border border-t border-border">
+              {todoList.map((item) => {
+                const dotStatus =
+                  item.status === "completed" ? "done" : item.status === "in_progress" ? "working" : "idle";
+                return (
+                  <li
+                    key={item.id}
+                    className={cn(
+                      "flex items-start gap-2.5 px-3 py-2 text-sm leading-snug",
+                      item.status === "in_progress" && "bg-status-working/8",
+                      item.status === "completed" && "text-muted-foreground",
+                    )}
+                  >
+                    <StatusDot
+                      status={dotStatus}
+                      surface={item.status === "in_progress" ? "bg-status-working/8" : "bg-background"}
+                      className="mt-1"
+                    />
+                    <span className="min-w-0 flex-1 break-words">{item.text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </ComposerDock>
+        )}
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -1758,6 +1795,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       label: translate("composer.controls.agent"),
                       disabled: locked,
                       onSelect: () => requestDrawer("cmd"),
+                    },
+                  ]
+                : []),
+              ...(todoList.length > 0
+                ? [
+                    {
+                      id: "todos",
+                      icon: ListTodo,
+                      label: todoLabel,
+                      on: drawer === "todos",
+                      expanded: drawer === "todos",
+                      onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
                     },
                   ]
                 : []),
