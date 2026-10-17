@@ -370,6 +370,44 @@ function withFound(
 /** The agent names the shipped catalog is filed under — pinned against AGENT_FAMILIES in the tests. */
 export const CATALOG_AGENTS: readonly string[] = [...CATALOG.keys()];
 
+/**
+ * Commands matching a single-token `/` or `$` draft in the composer (`^([/$])\S*$`).
+ *
+ * Prefix matches on the command name come first, then substring matches on the command name, then
+ * substring matches on the description. A bare sigil (`/` or `$`) lists common commands first and
+ * the rest after, so Codex's `$` skills (which are `common: false`) still show on `$`. Returns `[]`
+ * when the draft is empty, has whitespace, starts with neither sigil, or no command in `commands`
+ * uses that sigil.
+ */
+export function suggestCommands(
+  draft: string,
+  commands: readonly AgentCommand[],
+): readonly AgentCommand[] {
+  if (!/^([/$])\S*$/u.test(draft) || commands.length === 0) return [];
+  const sigil = draft[0]!;
+  const pool = commands.filter((c) => c.command.startsWith(sigil));
+  if (pool.length === 0) return [];
+  if (draft.length === 1) {
+    return [...pool.filter((c) => c.common), ...pool.filter((c) => !c.common)];
+  }
+  const q = draft.toLowerCase();
+  const bare = q.slice(1);
+  const prefix: AgentCommand[] = [];
+  const nameHit: AgentCommand[] = [];
+  const descHit: AgentCommand[] = [];
+  for (const c of pool) {
+    const cmd = c.command.toLowerCase();
+    if (cmd.startsWith(q)) {
+      prefix.push(c);
+    } else if (cmd.includes(bare)) {
+      nameHit.push(c);
+    } else if (c.description.toLowerCase().includes(bare)) {
+      descHit.push(c);
+    }
+  }
+  return [...prefix, ...nameHit, ...descHit];
+}
+
 function catalogFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];
   const key = canonicalAgent(agent.toLowerCase().trim());

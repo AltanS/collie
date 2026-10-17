@@ -22,7 +22,7 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
+import { CommandPalette, CommandSuggestions, useClaudeCommands } from "@/components/command-palette";
 import { SentSheet } from "@/components/sent-sheet";
 import { SentSuggestions } from "@/components/sent-suggestions";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
@@ -50,7 +50,7 @@ import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
-import { commandsFor } from "@/lib/agent-commands";
+import { commandsFor, suggestCommands, type AgentCommand } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
 import {
@@ -1076,6 +1076,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     todoList.length > 0
       ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
       : "";
+  // The suggestions above the box read the agent's command list only (the shipped catalog, or the
+  // operator's rows): never the skill and command files the palette finds on disk.
+  const commandSuggestions = locked || direct.active || isShell ? [] : suggestCommands(input, commandsFor(agent, operatorCommands));
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -1424,6 +1427,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function insertCommand(value: string) {
     direct.deactivateSilently();
     updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
+    focusInputEnd();
+  }
+  function selectSuggestion(command: AgentCommand) {
+    direct.deactivateSilently();
+    updateInput(`${command.command} `);
     focusInputEnd();
   }
 
@@ -2160,6 +2168,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onAll={() => setSentOpen(true)}
           />
         )}
+        {/* Inline `/` and `$` command suggestions (#458): fed from the same catalog + operator
+            list as the Agent sheet, with a tap that fills and never sends. */}
+        <Collapse open={commandSuggestions.length > 0}>
+          {commandSuggestions.length > 0 && (
+            <CommandSuggestions commands={commandSuggestions} onSelect={selectSuggestion} />
+          )}
+        </Collapse>
         <div
           data-slot="composer-box"
           className={cn(
