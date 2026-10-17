@@ -21,7 +21,7 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, CommandSuggestions } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -43,7 +43,7 @@ import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
-import { commandsFor } from "@/lib/agent-commands";
+import { commandsFor, suggestCommands, type AgentCommand } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
 import {
@@ -1001,6 +1001,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
   const commands = commandsFor(agent, operatorCommands);
+  const suggestions = locked || direct.active || isShell ? [] : suggestCommands(input, commands);
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -1320,6 +1321,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function insertCommand(value: string) {
     direct.deactivateSilently();
     updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
+    focusInputEnd();
+  }
+  function selectSuggestion(command: AgentCommand) {
+    direct.deactivateSilently();
+    updateInput(`${command.command} `);
     focusInputEnd();
   }
 
@@ -1984,6 +1990,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
+        {/* Inline `/` and `$` command suggestions (#458): fed from the same catalog + operator
+            list as the Agent sheet, with a tap that fills and never sends. */}
+        <Collapse open={suggestions.length > 0}>
+          {suggestions.length > 0 && (
+            <CommandSuggestions commands={suggestions} onSelect={selectSuggestion} />
+          )}
+        </Collapse>
         {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
         <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onSend={resendHeld} onChanged={onSent} />
         <div

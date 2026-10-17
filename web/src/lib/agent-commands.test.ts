@@ -1,4 +1,4 @@
-import { commandsFor } from "./agent-commands";
+import { commandsFor, suggestCommands } from "./agent-commands";
 
 describe("commandsFor", () => {
   it("returns the Claude catalog for 'claude'", () => {
@@ -314,3 +314,66 @@ describe("commandsFor with the operator's own rows", () => {
     expect(commandsFor("omp", [mine]).some((c) => c.command === "/mine")).toBe(false);
   });
 });
+
+describe("suggestCommands (#458)", () => {
+  it("ranks command prefix matches ahead of command and description substring matches", () => {
+    const all = [
+      ...commandsFor("claude"),
+      {
+        command: "/to-compact-note",
+        description: "Substring on command",
+        takesArg: false,
+        argHint: "",
+        common: false,
+        dangerous: false,
+      },
+    ];
+    const hits = suggestCommands("/co", all).map((c) => c.command);
+    expect(hits.slice(0, 6)).toEqual([
+      "/compact",
+      "/context",
+      "/code-review",
+      "/config",
+      "/copy",
+      "/cost",
+    ]);
+    expect(hits.indexOf("/to-compact-note")).toBeGreaterThan(hits.indexOf("/cost"));
+    expect(hits.indexOf("/to-compact-note")).toBeLessThan(hits.indexOf("/export"));
+    // `/compact` matches via description ("Summarize the conversation to free up context; optional focus").
+    const descOnly = suggestCommands("/summarize", all).map((c) => c.command);
+    expect(descOnly).toContain("/compact");
+  });
+
+  it("lists common commands first on a bare `/`, and `$` skills on a bare `$`", () => {
+    const claude = suggestCommands("/", commandsFor("claude"));
+    expect(claude[0]?.common).toBe(true);
+    expect(claude.some((c) => !c.common)).toBe(true);
+
+    const codexWithSkill = [
+      ...commandsFor("codex"),
+      {
+        command: "$imagegen",
+        description: "Generate or edit images",
+        takesArg: true,
+        argHint: "[request]",
+        common: false,
+        dangerous: false,
+      },
+    ];
+    const codexSkills = suggestCommands("$", codexWithSkill).map((c) => c.command);
+    expect(codexSkills).toEqual(["$imagegen"]);
+
+    // Claude has no `$` commands, so `$` returns nothing there.
+    expect(suggestCommands("$100", commandsFor("claude"))).toEqual([]);
+  });
+
+  it("closes on empty input, non-sigil start, or any whitespace (including after a tap adds a trailing space)", () => {
+    const all = commandsFor("claude");
+    expect(suggestCommands("", all)).toEqual([]);
+    expect(suggestCommands("hello", all)).toEqual([]);
+    expect(suggestCommands(" /compact", all)).toEqual([]);
+    expect(suggestCommands("/compact ", all)).toEqual([]);
+    expect(suggestCommands("/compact focus", all)).toEqual([]);
+  });
+});
+

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -4325,3 +4325,67 @@ describe("the cap (M56 spec 09)", () => {
     expect(recordedSends()[2]!.capAck).toBeUndefined();
   });
 });
+
+describe("Composer command suggestions (#458)", () => {
+  beforeEach(() => __resetOperatorCommands());
+  afterEach(() => __resetOperatorCommands());
+
+  it("shows matching commands above the composer on `/`, and a tap fills with a trailing space without sending", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(document.querySelector('[data-slot="command-suggestions"]')).toBeNull();
+
+    await user.type(box, "/co");
+    const list = await screen.findByRole("list", { name: "Agent commands" });
+    expect(within(list).getByText("/compact")).toBeInTheDocument();
+    expect(within(list).getByText("/context")).toBeInTheDocument();
+    expect(within(list).getByText("/cost")).toBeInTheDocument();
+
+    // Tapping stages the command + a trailing space, never sends, and closes the list.
+    await user.click(within(list).getByText("/compact"));
+    expect(box).toHaveValue("/compact ");
+    expect(recordedSends()).toEqual([]);
+    expectLeaving(screen.queryByRole("list", { name: "Agent commands" }));
+  });
+
+  it("uses the operator's command list when one addresses the pane, and hides suggestions in Type mode", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          operatorCommands: [
+            {
+              agent: "claude",
+              command: "/deploy-staging",
+              description: "Deploy staging",
+              takesArg: true,
+              argHint: "<tag>",
+            },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "/");
+    const list = await screen.findByRole("list", { name: "Agent commands" });
+    expect(within(list).getByText("/deploy-staging")).toBeInTheDocument();
+    expect(within(list).queryByText("/compact")).toBeNull();
+
+    // Clearing the draft closes the list, and typing `/` in Type mode never opens it.
+    await user.clear(box);
+    expectLeaving(screen.queryByRole("list", { name: "Agent commands" }));
+    await user.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    await user.type(box, "/de");
+    expect(
+      document
+        .querySelector('[data-slot="command-suggestions"]')
+        ?.closest('[data-slot="collapse"]')
+        ?.getAttribute("data-state") ?? "closed",
+    ).toBe("closed");
+  });
+});
+
