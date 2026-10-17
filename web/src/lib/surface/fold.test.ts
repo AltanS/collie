@@ -535,6 +535,49 @@ describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, 
   });
 });
 
+describe("an OMP extension widget around the open box (#468)", () => {
+  // An extension draws rows with `ctx.ui.setWidget(key, lines, { placement })`. Under the box
+  // (`belowEditor`) they sit below the `╰─` prompt row, so the open box no longer ends on the
+  // screen's last row. Those rows are content under the box, not a read cut inside it.
+  const OMP = requireProfile("omp").idle;
+  const read = (name: string) => readScreen(fixtureRows(name), agentOf("omp"), OMP);
+  const IDLE_FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
+  const box = ["", " Some earlier assistant output.", "", `╭── π  model  ~/project  main ${"─".repeat(60)}`, `╰─ ${" ".repeat(86)}`];
+
+  it("omp: the reporter's screen, a belowEditor widget row under the open box, reads idle and free, not torn", () => {
+    const rows = plainRows([...box, " widget row drawn by an extension with placement: belowEditor"]);
+    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows, ask: null }, OMP).surface).toEqual(IDLE_FREE);
+  });
+
+  it("omp: a captured idle box with a belowEditor widget row under it reads idle and free, not torn", () => {
+    const r = read("omp--fresh-idle-widget-below.txt");
+    expect(r.frame).toMatchObject({ top: 26, bottom: 27, interior: { prompt: 27, text: "" } });
+    expect(r.surface).toEqual(IDLE_FREE);
+    expect(isFree(r.surface)).toBe(true);
+  });
+
+  it("omp: an aboveEditor widget row over the open box reads idle and free", () => {
+    const r = read("omp--fresh-idle-widget-above.txt");
+    expect(r.frame).toMatchObject({ top: 27, bottom: 28 });
+    expect(r.surface).toEqual(IDLE_FREE);
+  });
+
+  it("omp: up to maxTailRows rows under the box read free, one more reads torn", () => {
+    const widget = (n: number) => Array.from({ length: n }, (_, i) => ` widget row ${i + 1}`);
+    expect(OMP.frame.maxTailRows).toBe(3);
+    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, ...widget(3)]), ask: null }, OMP).surface).toEqual(IDLE_FREE);
+    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, "", ...widget(2)]), ask: null }, OMP).surface).toEqual(IDLE_FREE);
+    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, ...widget(4)]), ask: null }, OMP).surface.reason).toBe("torn");
+  });
+
+  it("omp: a draft under the widget's box still reads as a draft", () => {
+    const rows = plainRows([...box.slice(0, 4), "╰─ Reply with only OK.", "   Second line of the message.", " widget row"]);
+    const r = surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows, ask: null }, OMP);
+    expect(r.frame?.interior.text).toBe("Reply with only OK. Second line of the message.");
+    expect(r.surface.composer).toBe("draft");
+  });
+});
+
 describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", () => {
   const read = (name: string) => readScreen(fixtureRows(name), agentOf("claude"), idleFor("claude")).surface;
 

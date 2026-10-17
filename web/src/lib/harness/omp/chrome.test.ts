@@ -56,6 +56,8 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--draft-wrapped.txt",
   "omp--fresh-agents-hint.txt",
   "omp--fresh-effort-hint.txt",
+  "omp--fresh-idle-widget-above.txt",
+  "omp--fresh-idle-widget-below.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
   "omp--slash-palette--filtered.txt",
@@ -76,6 +78,10 @@ const NON_BOX_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !BOX_COMPOSER_F
 describe("locateComposer — the real corpus, pinned so any change to the walk shows up as a diff", () => {
   const PINNED: { fixture: string; top: number; bottom: number; suggestEnd: number; draftEnd?: number }[] = [
     { fixture: "omp--fresh-idle.txt", top: 26, bottom: 27, suggestEnd: 28 },
+    // Issue 468: an extension's widget row under the box (`belowEditor`) falls in the suggestion
+    // rows, and one over it (`aboveEditor`) moves the box down a row.
+    { fixture: "omp--fresh-idle-widget-below.txt", top: 26, bottom: 27, suggestEnd: 29, draftEnd: 28 },
+    { fixture: "omp--fresh-idle-widget-above.txt", top: 27, bottom: 28, suggestEnd: 29 },
     // omp 18.4's empty-composer hint (`⇧⇥ to change thinking effort`) sits right-aligned in the
     // bottom border: it changes what the row SAYS, never where the box is.
     { fixture: "omp--fresh-effort-hint.txt", top: 1, bottom: 2, suggestEnd: 3 },
