@@ -292,6 +292,7 @@ export const zh: Dictionary = {
   "composer.controls.type": "输入",
   "composer.controls.quick": "快捷",
   "composer.controls.agent": "智能体",
+  "composer.controls.tasks": "待办 {done}/{total}",
   "composer.controls.displayAria": "显示设置",
   "composer.controls.display": "显示",
   "composer.controls.screenAria": "显示屏幕行，不含卡片",

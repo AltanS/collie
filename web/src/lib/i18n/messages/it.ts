@@ -248,6 +248,7 @@ export const it: Dictionary = {
   "composer.controls.type": "Scrivi",
   "composer.controls.quick": "Rapido",
   "composer.controls.agent": "Agent",
+  "composer.controls.tasks": "Attività {done}/{total}",
   "composer.controls.displayAria": "Impostazioni display",
   "composer.controls.display": "Schermo",
   "composer.controls.screenAria": "Mostra le righe dello schermo, senza schede",

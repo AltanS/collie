@@ -300,6 +300,7 @@ export const ja: Dictionary = {
   "composer.controls.type": "入力",
   "composer.controls.quick": "クイック",
   "composer.controls.agent": "エージェント",
+  "composer.controls.tasks": "タスク {done}/{total}",
   "composer.controls.displayAria": "表示設定",
   "composer.controls.display": "表示",
   "composer.controls.screenAria": "カードなしで画面の行を表示",

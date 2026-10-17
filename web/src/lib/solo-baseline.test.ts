@@ -121,6 +121,9 @@ const AGENT_VIEW_KEYS = {
   // Also not a crew dimension: the pane's prompt-cache reading (M28/02), computed on the machine the
   // pane lives on and absent until its agent has taken one turn. A 1.8.x peer omits it.
   cache: true,
+  // Not a crew dimension: the pane's active todo list (bridge/todos.ts), absent when there are no
+  // todos or on an older bridge.
+  todos: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache`, and
   // absent until that agent has taken one turn. An older bridge or peer omits it.
   model: true,
@@ -282,6 +285,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "todos",
       "turnId",
       "workspaceId",
       "workspaceLabel",

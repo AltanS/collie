@@ -320,6 +320,9 @@ const PANE_WIRE_KEYS = {
   // pane in this baseline names a session a probe could read, so no golden byte moved — which is the
   // claim the feature makes, not an aside. The bridge never guesses a number before it measures one.
   cache: true,
+  // The pane's active todo list (bridge/todos.ts). Not a crew dimension, and absent here: the
+  // baseline builds no todo tracker, so no golden byte moved.
+  todos: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
   // here for the same reason, so no golden byte moved.
   model: true,
@@ -515,6 +518,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "todos",
       "turnId",
       "workspaceId",
       "workspaceLabel",

@@ -190,6 +190,7 @@ import {
 import { bootSources, ENV_SOURCE_NAME, planPrograms, PROGRAMS_OFF_LOG, programsOff, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { TodoTracker } from "./todos.ts";
 import {
   bridgeStampSync,
   compareSemver,
@@ -773,6 +774,7 @@ const paneCache =
   journals === null
     ? null
     : new CacheTracker(journals, { overrides: () => cacheRulesReader() }, () => Date.now());
+const todos = journals === null ? null : new TodoTracker(journals, Date.now);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -1421,6 +1423,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       );
     };
     engine.onUpdate((s) => void probeThenWarn(s.agents));
+  }
+  if (todos !== null) {
+    engine.onUpdate((s) => void todos.refresh(s.agents, { session: name }).catch(() => {}));
   }
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
@@ -2687,6 +2692,7 @@ const server = startServer({
   // Built above so the cache tracker probes through the same adapters this serves history from.
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
+  todos: todos ?? undefined,
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   walky,
