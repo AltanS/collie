@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **pi's permission prompt shows as a card with Yes, No and Cancel.** When pi's `permission-gate` example asks before a risky command such as `chmod 777`, the phone showed "Collie cannot read this dialog", and only the Keys board could answer it. The prompt quotes the command a few columns in, and Collie took that row for the first answer. Now the card shows the command in its question, and a tap on Yes or No moves the pointer, reads it back, and then presses Enter.
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with a footer from an extension refuses every send from the phone, and a Claude picker can need three taps.

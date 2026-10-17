@@ -265,6 +265,28 @@ trailing padding are as read. No user, host or path is in either file.
 | `pi--v130-custom-footer-idle.txt` | Empty editor, the cursor cell, the extension's footer | composer, empty |
 | `pi--v130-custom-footer-draft.txt` | `hello from the probe` typed, not sent | composer, draft read back |
 
+## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
+
+Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in
+an isolated Herdr session with its own bridge, a scratch `PI_CODING_AGENT_DIR` and a scratch home whose
+`project` folder held one file, `gate-probe.txt`. Model `anthropic/claude-haiku-4.5` on OpenRouter,
+thinking off. A real model turn ran `chmod 777 gate-probe.txt`, and the gate opened pi's own selector
+(`ctx.ui.select`) with a title of five rows: `⚠️ Dangerous command:`, a blank row, the command two
+columns in, a blank row, `Allow?`. Read through the bridge's `GET /api/pane/:id?lines=60`, the way the
+phone reads it. The 120-column files are cut to their last 24 rows, from the prompt box down, whole rows
+only; the 80-column files are the whole read, since pi drew the screen again when the client shrank the
+pane. CRLF line ends and the trailing padding are as read. No key, user, host or home path is in any
+file; the only path is pi's `~/project`. Collie 1.22.0 to 1.22.4 read the command row as the first
+option, found no pointer and showed the unread-dialog card (`modal: unreadable`); 1.21.x read no
+unnumbered pi dialog at all.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v0871-permission-gate.txt` | 120 columns, ` → Yes` pointed | walk: Yes, No, Cancel (Escape) |
+| `pi--v0871-permission-gate-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → No` | walk (the pair in `walk-pairs.ts`) |
+| `pi--v0871-permission-gate-narrow-moved.txt` | The same dialog at 80 columns, ` → No` | walk |
+| `pi--v0871-permission-gate-narrow.txt` | The 80-column dialog after `herdr pane send-keys <pane> Up`, ` → Yes` | walk (the pair in `walk-pairs.ts`) |
+
 ## pi quoted-dialog negatives (built 2026-10-12 from the captures above)
 
 Agent prose can quote a whole question dialog. These four files are BUILT, not captured: a real
