@@ -46,7 +46,7 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   const frame = findInputFrame(lines, CLAUDE_IDLE);
   if (frame === null) return null;
   const texts = lines.map(lineText);
-  const notice = readAboveNotice(texts, frame.top, CLAUDE_IDLE.notices ?? []);
+  const notice = readAboveNotice(texts, frame.top, CLAUDE_IDLE.notices ?? [], CLAUDE_IDLE.noticeGaps ?? []);
   if (notice === null) return null;
   // A dialog stacked over the notice holds the keys (the bridge reads the screen `unreadable`): no card.
   if (readCuesFor(lines, frame, CLAUDE_IDLE).strength === "strong") return null;

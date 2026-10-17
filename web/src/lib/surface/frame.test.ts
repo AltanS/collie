@@ -142,7 +142,7 @@ describe("pinned dialog regions", () => {
       for (const profile of [IDLE]) {
         const frame = findInputFrame(rows, profile);
         // A notice the profile names sits ABOVE the live box by design (ADR 0109): its card owns no keyboard.
-        if (frame !== null && readAboveNotice(texts, frame.top, profile.notices ?? [])?.first === firstRow) continue;
+        if (frame !== null && readAboveNotice(texts, frame.top, profile.notices ?? [], profile.noticeGaps ?? [])?.first === firstRow) continue;
         if (frame !== null) expect(frame.bottom, "a frame found on a dialog sits wholly above it").toBeLessThan(firstRow);
       }
     });

@@ -3048,9 +3048,82 @@ describe("real screens from the fixture corpus", () => {
     expect(first.cause).toBe("notice_key");
     expect(first.offers).toEqual(["commit", "keys"]);
     expect(first.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    pane.afterInput = answersDigit;
     const commit = await send("1", { rowsHash: first.rowsHash! });
     expect(commit.receipt).toMatchObject({ outcome: "sent" });
-    expect(pane.transcript.at(-1)).toBe("> 1");
+    // The digit answered the notice: no Enter followed it, so the agent got no message.
+    expect(pane.transcript.at(-1)).not.toBe("> 1");
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  // Seen live on 2026-10-17: Claude Code's usage row in the blank row between the key row and the box
+  // for about ten seconds after a turn. The profile names it (`idle.noticeGaps`), so the box stays free.
+  test("on a heads-up notice with the usage row under its keys: hello goes on one tap", async () => {
+    const { pane, send } = rig();
+    pane.over = [
+      "✦ Heads up · One of the notes says a nightly cleanup task",
+      "  deletes everything on your X: drive at 03:00. All your repos",
+      "  live on that drive.",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…",
+    ];
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> hello");
+  });
+
+  /** The notice's plugin: a box holding one of its digits alone answers it, clearing the box and the notice. */
+  function answersDigit(pane: FakePane, what: string): void {
+    if (/^(?:type|paste):\d$/u.test(what) && pane.over.length > 0) {
+      pane.over = [];
+      pane.box = "";
+    }
+  }
+
+  /** A rig with the notice over an empty box, and the first tap of `digit` refused with its rows hash. */
+  async function noticeConfirmed(digit: string): Promise<{ pane: FakePane; commit: () => Promise<SendAnswer> }> {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    const first = await send(digit);
+    expect(first.cause).toBe("notice_key");
+    return { pane, commit: () => send(digit, { rowsHash: first.rowsHash! }) };
+  }
+
+  test("notice digit commit types the digit without Enter", async () => {
+    const { pane, commit } = await noticeConfirmed("1");
+    pane.afterInput = answersDigit;
+    await commit();
+    expect(pane.calls).toEqual(["paste:1"]);
+    expect(pane.keysSeen.filter((key) => key === "Enter" || key === "ctrl+enter")).toEqual([]);
+  });
+
+  test("notice digit commit is sent when the notice clears and the box empties", async () => {
+    const { pane, commit } = await noticeConfirmed("2");
+    pane.afterInput = answersDigit;
+    const answer = await commit();
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(pane.over).toEqual([]);
+    expect(pane.box).toBe("");
+  });
+
+  test("notice digit commit with the digit left in the box ends typed_not_submitted and presses nothing", async () => {
+    const { pane, commit } = await noticeConfirmed("1");
+    const answer = await commit();
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.detail).toBe("The number is still in the box: the notice did not take it. Check the pane.");
+    expect(pane.box).toBe("1");
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("notice digit commit skips the probe", async () => {
+    const { pane, commit } = await noticeConfirmed("0");
+    pane.afterInput = answersDigit;
+    expect((await commit()).receipt).toMatchObject({ outcome: "sent" });
+    // The digit is the first and only thing written: no probe character and no Backspace before it.
+    expect(pane.calls).toEqual(["paste:0"]);
+    expect(pane.keysSeen).not.toContain("Backspace");
   });
 
   // The 2026-10-16 incident on lane 8788: the agents panel under a free box, with "↓ to view" on the
@@ -3158,8 +3231,15 @@ describe("counters, the cap and the examples", () => {
   test("a commit of a notice's digit goes past a reached cap and counts no manual send", async () => {
     const ledger = ledgerFor({ cap: 1 });
     const { pane, send } = rig({ ledger });
-    pane.over = ["✦ Heads up · Something new", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    // The notice takes the digit: it clears the box and goes, as Claude Code's plugin does.
+    pane.afterInput = (p, what) => {
+      if (/^(?:type|paste):\d$/u.test(what)) {
+        p.over = [];
+        p.box = "";
+      }
+    };
     for (const digit of ["1", "2"]) {
+      pane.over = ["✦ Heads up · Something new", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
       const first = await send(digit);
       expect(first.cause).toBe("notice_key");
       const commit = await send(digit, { rowsHash: first.rowsHash! });

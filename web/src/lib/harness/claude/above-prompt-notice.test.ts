@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
+import { requireProfile } from "../../surface/profile";
+import { readScreen } from "../../../test/surface-corpus";
 import { blockOwnsKeyboard, dialogNounOf } from "../dialog-contract";
 import { claudeAdapter, claudeBuildBlocks } from "./index";
 
@@ -101,6 +103,34 @@ describe("the notice above the box", () => {
     ].join("\n");
     expect(claudeBuildBlocks(splitLines(parseAnsi(screen))).some((b) => b.kind === "menu")).toBe(false);
     expect(claudeBuildBlocks(lines(HEADS_UP)).some((b) => b.kind === "menu")).toBe(true);
+  });
+
+  // Seen live on 2026-10-17 at 69 columns: Claude Code's usage row in the blank row between the key
+  // row and the box for about ten seconds after a turn. The composer read "Cannot read what is open".
+  it("reads the notice over the usage row with the box free, so the composer does not lock", () => {
+    const rule = "─".repeat(69);
+    const seen = [
+      `──── Sautéed for 5s ${"─".repeat(48)}…`,
+      `${" ".repeat(65)}[-]`,
+      "✦ Heads up · One of the notes says a nightly cleanup task",
+      "  deletes everything on your X: drive at 03:00. All your repos",
+      "  live on that drive.",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…",
+      rule,
+      "❯",
+      rule,
+      "  ctx:   9%  |  sub: 5h  49% (3h06m) · 7d  87% / F   1% (4d13h)  |…",
+      "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents",
+    ].join("\n");
+    const rows = splitLines(parseAnsi(seen));
+    const read = readScreen(rows, "claude", requireProfile("claude").idle);
+    expect(read.surface).toMatchObject({ modal: "none", composer: "empty" });
+    expect(claudeAdapter.composerReady?.(rows)).toBe(true);
+    const card = claudeBuildBlocks(rows).find((b) => b.kind === "menu");
+    if (card?.kind !== "menu") throw new Error("no menu");
+    expect(card.menu.actions.map((action) => action.keys)).toEqual([["1"], ["2"], ["0"]]);
+    expect(card.lines.map(lineText).at(-1)).toBe("  1: Learn more   2: Knew this already   0: Dismiss");
   });
 
   it("does not lift the rating survey over the box", () => {

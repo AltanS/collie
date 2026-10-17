@@ -1,7 +1,7 @@
 // A notice drawn above a live input box (the profile's `idle.notices`): a head row the profile names,
 // up to three continuation rows indented by two spaces, one row of `<digit>: <label>` keys, then only
-// blank rows down to the box's top edge. The harness reads its keys only when the box's whole value is
-// one of those digits, so the box keeps the keys and a message of any other text goes in as typed.
+// blank rows and rows the profile names (`idle.noticeGaps`) down to the box's top edge. The harness
+// reads its keys only when the box's whole value is one of those digits, so the box keeps the keys and a message of any other text goes in as typed.
 //
 // The reader fails closed: any row out of that order, any key item that is not a digit and a label, a
 // head the profile does not name, returns null, and the modal cues then read the rows as they always do.
@@ -32,6 +32,8 @@ export interface AboveNotice {
   readonly first: number;
   /** The key row. */
   readonly last: number;
+  /** The last row before the box's top edge: the blank and gap rows under the key row belong to the notice. */
+  readonly end: number;
   /** The head without its leading glyph, and each continuation row, joined by one space. */
   readonly text: string;
   /** The keys in the order the row printed them. */
@@ -39,12 +41,21 @@ export interface AboveNotice {
 }
 
 const compiled = new WeakMap<readonly NoticeHead[], readonly RegExp[]>();
+const compiledGaps = new WeakMap<readonly string[], readonly RegExp[]>();
 
 function headPatterns(notices: readonly NoticeHead[]): readonly RegExp[] {
   const known = compiled.get(notices);
   if (known !== undefined) return known;
   const patterns = notices.map((notice) => new RegExp(notice.head, "u"));
   compiled.set(notices, patterns);
+  return patterns;
+}
+
+function gapPatterns(gaps: readonly string[]): readonly RegExp[] {
+  const known = compiledGaps.get(gaps);
+  if (known !== undefined) return known;
+  const patterns = gaps.map((gap) => new RegExp(gap, "u"));
+  compiledGaps.set(gaps, patterns);
   return patterns;
 }
 
@@ -62,13 +73,16 @@ function keysOf(text: string): NoticeKey[] | null {
 }
 
 /**
- * The notice whose key row stands over the box's top edge `boxTop`, with only blank rows between, or
- * null when the rows there are not exactly a notice the profile names.
+ * The notice whose key row stands over the box's top edge `boxTop`, with only blank rows and rows a
+ * pattern of `gaps` matches between, or null when the rows there are not exactly a notice the profile
+ * names.
  */
-export function readAboveNotice(texts: readonly string[], boxTop: number, notices: readonly NoticeHead[]): AboveNotice | null {
+export function readAboveNotice(texts: readonly string[], boxTop: number, notices: readonly NoticeHead[], gaps: readonly string[]): AboveNotice | null {
   if (notices.length === 0) return null;
+  const gapRows = gapPatterns(gaps);
+  const skipped = (text: string): boolean => text.trim().length === 0 || gapRows.some((gap) => gap.test(text.trimEnd()));
   let last = boxTop - 1;
-  while (last >= 0 && texts[last]!.trim().length === 0) last--;
+  while (last >= 0 && skipped(texts[last]!)) last--;
   if (last < 1) return null;
   const keys = keysOf(texts[last]!);
   if (keys === null) return null;
@@ -78,7 +92,7 @@ export function readAboveNotice(texts: readonly string[], boxTop: number, notice
     const text = texts[row]!.trimEnd();
     if (heads.some((head) => head.test(text))) {
       const head = text.trim().replace(/^\S+\s+/u, "");
-      return { first: row, last, text: [head, ...continuation].join(" "), keys };
+      return { first: row, last, end: boxTop - 1, text: [head, ...continuation].join(" "), keys };
     }
     if (!CONTINUATION.test(text) || isSingleKeyRow(text) || continuation.length === MAX_CONTINUATION_ROWS) return null;
     continuation.unshift(text.trim());

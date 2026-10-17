@@ -531,7 +531,7 @@ export function withoutCommandList(rows: readonly FrameRow[], list: CommandListR
  */
 export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
   if (frame === null || idle === null) return null;
-  return readAboveNotice(texts, frame.top, idle.notices ?? []);
+  return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
 }
 
 /**
@@ -557,10 +557,11 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
  * The modal cues on a screen read. `frame` is the input frame the profile found, or null: a screen
  * with no profile, or one whose frame the profile did not find, gets the no-frame cluster. `notice` is
  * the notice over the box ({@link noticeOver}), indexed as `rows` are, or null when these rows hold
- * none: its rows are read as blank, so its key row is never a single-key prompt.
+ * none: its rows down to the box (`first` to `end`, a gap row included) are read as blank, so its key
+ * row is never a single-key prompt.
  */
 export function readCues(allRows: readonly FrameRow[], frame: Frame | null, notice: AboveNotice | null): CueRead {
-  const rows = withoutSpan(allRows, notice);
+  const rows = withoutSpan(allRows, notice === null ? null : { first: notice.first, last: notice.end });
   const texts = rows.map(rowText);
   const tail = tailCluster(texts);
   const hash = shortHash(tail.map((i) => texts[i]!.trimEnd()).join("\n"));

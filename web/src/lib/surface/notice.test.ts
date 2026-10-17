@@ -10,15 +10,37 @@ import { requireProfile } from "./profile";
 
 const IDLE = requireProfile("claude").idle;
 const NOTICES = IDLE.notices ?? [];
+const GAPS = IDLE.noticeGaps ?? [];
 const RULE = "─".repeat(60);
 const HEAD = "✦ Heads up · With GitHub triggers, anyone who files an issue can put text in front of a session";
 const KEYS = "  1: Learn more   2: Knew this already   0: Dismiss";
+const USAGE = "  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…";
+
+/**
+ * Claude Code 2.1.302 at 69 columns, seen live on 2026-10-17: the usage row it draws for about ten
+ * seconds after a turn, in the blank row between the notice's key row and the box's top edge.
+ */
+const SEEN_RULE = "─".repeat(69);
+const SEEN = [
+  `──── Sautéed for 5s ${"─".repeat(48)}…`,
+  `${" ".repeat(65)}[-]`,
+  "✦ Heads up · One of the notes says a nightly cleanup task",
+  "  deletes everything on your X: drive at 03:00. All your repos",
+  "  live on that drive.",
+  "  1: Learn more   2: Knew this already   0: Dismiss",
+  USAGE,
+  SEEN_RULE,
+  "❯",
+  SEEN_RULE,
+  "  ctx:   9%  |  sub: 5h  49% (3h06m) · 7d  87% / F   1% (4d13h)  |…",
+  "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents",
+];
 
 /** The notice over the box in these rows, read the way the Surface reads it. */
 function noticeOf(rows: ReturnType<typeof plainRows>) {
   const frame = findInputFrame(rows, IDLE);
   expect(frame).not.toBeNull();
-  return readAboveNotice(rows.map(rowText), frame!.top, NOTICES);
+  return readAboveNotice(rows.map(rowText), frame!.top, NOTICES, GAPS);
 }
 
 function screen(over: readonly string[]): ReturnType<typeof plainRows> {
@@ -91,6 +113,43 @@ describe("readAboveNotice", () => {
 
   it("reads nothing with no notice shapes", () => {
     const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
-    expect(readAboveNotice(rows.map(rowText), findInputFrame(rows, IDLE)!.top, [])).toBeNull();
+    expect(readAboveNotice(rows.map(rowText), findInputFrame(rows, IDLE)!.top, [], GAPS)).toBeNull();
   });
+});
+
+describe("a row the profile names between the notice and the box (idle.noticeGaps)", () => {
+  it("reads the seen screen's notice over the usage row, its end the row above the box", () => {
+    const rows = plainRows(SEEN);
+    const notice = noticeOf(rows);
+    expect(notice?.keys.map((k) => k.key)).toEqual(["1", "2", "0"]);
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(5);
+    expect(notice?.end).toBe(findInputFrame(rows, IDLE)!.top - 1);
+    expect(notice?.end).toBe(6);
+  });
+
+  it("reads null for a gap row with no notice above it", () => {
+    expect(noticeOf(screen([USAGE]))).toBeNull();
+  });
+
+  it("reads null for a row in the gap that no gap pattern names", () => {
+    expect(noticeOf(screen([HEAD, KEYS, "  You've used most of your weekly limit"]))).toBeNull();
+  });
+
+  const gapMatches = (line: string): boolean => GAPS.some((gap) => new RegExp(gap, "u").test(line));
+  for (const line of [USAGE, "  You've used 100% of your weekly limit", "  You've used 5% of your 5-hour limit · resets 3pm"]) {
+    it(`the claude profile's gap matches ${JSON.stringify(line)}`, () => {
+      expect(gapMatches(line)).toBe(true);
+    });
+  }
+  for (const line of [
+    "You've used 87% of your weekly limit",
+    "  ❯ You've used 87% of your weekly limit",
+    "  1: Learn more   2: Knew this already   0: Dismiss",
+    "  You've used most of your weekly limit",
+  ]) {
+    it(`the claude profile's gap does not match ${JSON.stringify(line)}`, () => {
+      expect(gapMatches(line)).toBe(false);
+    });
+  }
 });

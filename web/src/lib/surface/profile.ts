@@ -287,6 +287,13 @@ export interface Profile {
      */
     readonly notices?: readonly NoticeHead[];
     /**
+     * Rows the harness may draw between a notice's key row and the box's top edge (`idle.notices`),
+     * as regular expression sources, matched with trailing spaces cut. None may match a blank row.
+     * The notice reader skips them as it skips blank rows, and every cue read leaves them out with
+     * the notice. Any other row there is no notice. Read only beside `idle.notices`. Optional.
+     */
+    readonly noticeGaps?: readonly string[];
+    /**
      * Other shapes of the same box, tried in order when `frame` finds none. A harness whose border
      * style the person can change (OMP) draws more than one. Each is a full frame as `frame` is.
      * The first shape that finds a box wins, so a shape that is easy to match goes last. Optional.
@@ -625,6 +632,17 @@ function parseNotices(value: JsonValue | undefined): NoticeHead[] {
   });
 }
 
+/** `idle.noticeGaps`: each a pattern that compiles and cannot match a blank row. */
+function parseNoticeGaps(value: JsonValue | undefined): string[] {
+  const path = "idle.noticeGaps";
+  return list(value, path).map((item, i) => {
+    const at = `${path}[${String(i)}]`;
+    const gap = pattern(item, at);
+    if (gap.test("") || gap.test(" ")) fail(at, "must not match a blank row");
+    return gap.source;
+  });
+}
+
 /** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
 function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
   const base = {
@@ -740,7 +758,8 @@ export function parseProfile(raw: JsonValue): Profile {
     fail("idle.dialogsInBox", "must be true or false");
   }
   const withDialogs: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
-  const idleBlock: Profile["idle"] = idleNode.notices === undefined ? withDialogs : { ...withDialogs, notices: parseNotices(idleNode.notices) };
+  const withNotices: Profile["idle"] = idleNode.notices === undefined ? withDialogs : { ...withDialogs, notices: parseNotices(idleNode.notices) };
+  const idleBlock: Profile["idle"] = idleNode.noticeGaps === undefined ? withNotices : { ...withNotices, noticeGaps: parseNoticeGaps(idleNode.noticeGaps) };
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");

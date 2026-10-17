@@ -462,7 +462,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
  * so the notice's own rows never fill the band and a dialog drawn above it is still read.
  */
 function bandAbove(texts: readonly string[], top: number, idle: IdleProfile): { first: number; last: number } | null {
-  const notice = readAboveNotice(texts, top, idle.notices ?? []);
+  const notice = readAboveNotice(texts, top, idle.notices ?? [], idle.noticeGaps ?? []);
   const from = notice === null ? top : notice.first;
   const aboveRows = Math.min(idle.volatile.above.maxRows, from);
   return aboveRows > 0 ? { first: from - aboveRows, last: top - 1 } : null;
