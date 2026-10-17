@@ -22,10 +22,10 @@ import {
   classifyFooter,
   selectFooterStart,
   isBlank,
-  isHorizontalRule,
   isRuleRow,
   lineText,
   questionRowText,
+  ruleTop,
 } from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
@@ -240,11 +240,12 @@ function detectCheckboxPhase(
   // terminal's ❯ is really on, which on "Chat about this" aborts the whole tool call.
   //
   // No rule below the options means a layout we don't know: bail rather than guess. A rule that
-  // wrapped into a stub row is met at its stub first; the rule itself is the row above it.
+  // wrapped beside a theme's gutter (`isRuleRow` in markers.ts) is met at its stub first; the rule
+  // itself starts at the top of the run of rule rows the stub ends (`ruleTop`).
   let ruleIdx = -1;
   for (let i = footerAt - 1; i > firstOpt; i--) {
     if (isRuleRow(texts, i)) {
-      ruleIdx = isHorizontalRule(texts[i]!) ? i : i - 1;
+      ruleIdx = ruleTop(texts, i, firstOpt + 1);
       break;
     }
   }

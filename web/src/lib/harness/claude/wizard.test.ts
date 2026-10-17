@@ -222,7 +222,8 @@ describe("detectWizardRegion — render boundary", () => {
 });
 
 // Claude Code 2.1.302 at 54 columns: the question wraps to nine rows, so the stepper sits eleven rows
-// above the first option, and the dialog's rules wrap into a `──` stub beside the column-0 gutter cell.
+// above the first option (vanilla behaviour). The capture also runs a theme plugin whose two-column
+// gutter beside the dialog makes each full-width rule wrap into a `──` stub (theme hardening).
 describe("detectWizard — a long question at a narrow width (Claude Code 2.1.302)", () => {
   const FIXTURE = "claude--v2302-wizard-long-question--w54.txt";
 
