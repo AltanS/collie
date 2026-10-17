@@ -63,6 +63,8 @@ import { WALK_GAPS, WALK_PAIRS, walkGroupKey } from "./walk-pairs";
 import { verifyExpectedStyled, verifyPromptBinding } from "../../../../bridge/prompt-binding.ts";
 import { cropRawColumns, type ColumnRange } from "../column-range";
 import { trailingTaskChecklistStart } from "../task-checklist";
+import { findInputFrame, plainRows } from "../surface/frame";
+import { loadProfiles } from "../surface/profile";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -129,6 +131,38 @@ function lastMatchEnd(fresh: string[], expected: string[]): number {
     }
   }
   return end;
+}
+
+/** The normalized index where the footer run under an input box starts (`Frame.volatile.footer`), as
+ *  the bridge finds it: the first profile whose input frame names one decides, or null. */
+function footerStart(rows: readonly string[]): number | null {
+  for (const profile of loadProfiles().values()) {
+    const footer = findInputFrame(plainRows(rows), profile.idle)?.volatile.footer;
+    if (footer === null || footer === undefined) continue;
+    return rows.slice(0, footer.first).filter((row) => row.replace(/\s+$/, "").length > 0).length;
+  }
+  return null;
+}
+
+/**
+ * The non-blank rows the bridge counts below the last match of `expected` in a read of `rows`, or null
+ * when the read does not hold it (bridge/prompt-binding.ts `matchText`). A task checklist that ends the
+ * read is not counted. Nor is the footer run an input frame names under its box, cut only when the
+ * read would be refused `not_in_tail` without the cut, the refusal kept when the cut finds nothing:
+ * `agy--slash-exact.txt`'s region sits inside its slash popup, which is such a footer.
+ */
+function rowsBelowMatch(rows: readonly string[], expected: string[]): number | null {
+  const read = normalizeRegion(rows.join("\n"));
+  const end = trailingTaskChecklistStart(read) ?? read.length;
+  const matchEnd = lastMatchEnd(read.slice(0, end), expected);
+  if (matchEnd === -1) return null;
+  const below = end - 1 - matchEnd;
+  if (below < BRIDGE_PROMPT_TAIL_LINES) return below;
+  const footer = footerStart(rows);
+  if (footer === null || footer >= end) return below;
+  const aboveFooter = lastMatchEnd(read.slice(0, footer), expected);
+  if (aboveFooter === -1 || footer - 1 - aboveFooter >= BRIDGE_PROMPT_TAIL_LINES) return below;
+  return footer - 1 - aboveFooter;
 }
 
 // A couple of lines of ordinary agent output to append below a dialog. They must be NON-blank (a
@@ -636,10 +670,10 @@ export function describeAdapterConformance(
           const scrolled = [...loadLines(name), ...trailingOutput()];
           for (const block of adapter.buildBlocks(scrolled).filter(isNoticeMenu)) {
             if (block.kind !== "menu") continue;
-            const fresh = normalizeRegion(scrolled.map(lineText).join("\n"));
-            const matchEnd = lastMatchEnd(fresh, normalizeRegion(block.menu.signature));
-            expect(matchEnd).toBeGreaterThan(-1);
-            expect(fresh.length - 1 - matchEnd).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+            // Counted as the bridge counts them: a footer run under the box is not (`rowsBelowMatch`).
+            const below = rowsBelowMatch(scrolled.map(lineText), normalizeRegion(block.menu.signature));
+            expect(below).not.toBeNull();
+            expect(below!).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
           }
           // Output enough to push the box out of that window: the bridge would refuse the region, so no
           // card lifts at all.
@@ -793,25 +827,22 @@ export function describeAdapterConformance(
             // tap on a screen that never moved — Muse's checkbox shipped exactly that (question →
             // Submit left 6 rows below the match) until a live toggle caught it. Same normalisation
             // as the composerPrompt leg above: trailing whitespace off, blanks dropped.
-            const lines = loadLines(name);
-            const whole = normalizeRegion(lines.map(lineText).join("\n"));
+            const whole = loadLines(name).map(lineText);
             for (const model of modelsOf(adapter, name, kind)) {
               // A model read from a column range is matched, as the bridge matches it, against the
               // read cut to that range (lib/column-range.ts).
               const columns = contract.columns?.(model);
               const read =
-                columns === undefined
-                  ? whole
-                  : normalizeRegion(splitLines(parseAnsi(cropRawColumns(loadRaw(name), columns))).map(lineText).join("\n"));
-              // Nor, as the bridge does not, is a task checklist that ends the read counted against
-              // the tail (lib/task-checklist.ts).
-              const fresh = read.slice(0, trailingTaskChecklistStart(read) ?? read.length);
+                columns === undefined ? whole : splitLines(parseAnsi(cropRawColumns(loadRaw(name), columns))).map(lineText);
+              // Nor, as the bridge does not, is a task checklist that ends the read counted against the
+              // tail (lib/task-checklist.ts), nor a footer run under the box the region ends above
+              // (`rowsBelowMatch`, cut only where the uncut read would be refused).
               const expected = normalizeRegion(contract.region(model));
-              const matchEnd = lastMatchEnd(fresh, expected);
-              expect(matchEnd, `${name}: the ${kind} region is not on its own screen`).toBeGreaterThan(-1);
+              const below = rowsBelowMatch(read, expected);
+              expect(below, `${name}: the ${kind} region is not on its own screen`).not.toBeNull();
               expect(
-                fresh.length - 1 - matchEnd,
-                `${name}: ${fresh.length - 1 - matchEnd} non-blank rows sit below the ${kind} region — ` +
+                below!,
+                `${name}: ${String(below)} non-blank rows sit below the ${kind} region — ` +
                   `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
               ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
             }

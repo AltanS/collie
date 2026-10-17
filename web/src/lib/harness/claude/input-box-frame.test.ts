@@ -132,6 +132,7 @@ describe("parity with the old walk on the real corpus", () => {
     // with an empty box, and the same pane with the list under a box holding `/model`; the box stands.
     "claude--v2302-idle-full-screen--w120--h36.txt",
     "claude--v2302-slash-model-list-padded--w120--h36.txt",
+    "claude--v2302-notice-over-agents-panel--w69.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",

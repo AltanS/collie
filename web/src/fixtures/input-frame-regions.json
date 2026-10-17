@@ -1217,6 +1217,25 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2302-notice-over-agents-panel--w69.txt",
+  "frame": {
+   "top": 64,
+   "prompt": 65,
+   "bottom": 66,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 67,
+    "last": 68
+   },
+   "footer": {
+    "first": 70,
+    "last": 73
+   }
+  }
+ },
+ {
   "fixture": "claude--v2302-preview-wrapped-rule--w141.txt",
   "frame": null
  },

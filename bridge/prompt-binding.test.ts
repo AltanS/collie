@@ -711,4 +711,19 @@ describe("a notice card above a live box", () => {
     expect(drafted).not.toBe(raw);
     expect(verifyPromptBinding(drafted, region).ok).toBe(false);
   });
+
+  test("refuses the region with six plain status rows more under the box", () => {
+    const taller = [raw, ...Array.from({ length: 6 }, () => statusRow)].join("\n");
+    expect(verifyPromptBinding(taller, region)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+
+  // Claude Code's agents panel, listing three background agents under the statusline, is the footer
+  // run the input frame names: it is not counted against the tail.
+  test("binds with the agents panel under the box", () => {
+    const panel = readFileSync(join(FIXTURE_DIR, "claude--v2302-notice-over-agents-panel--w69.txt"), "utf8");
+    const rows = panel.split(/\r?\n/u);
+    expect(rows[59]).toContain("You should know · ");
+    expect(rows[66]).toMatch(/^\S*─+/u);
+    expect(verifyPromptBinding(panel, rows.slice(59, 67).join("\n"))).toEqual({ ok: true });
+  });
 });

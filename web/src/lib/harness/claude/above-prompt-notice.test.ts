@@ -70,6 +70,10 @@ describe("the notice above the box", () => {
     expect(claudeBuildBlocks(taller(6)).some((b) => b.kind === "menu")).toBe(false);
   });
 
+  it("lifts the notice with Claude Code's agents panel under the box: the panel is not counted against the tail", () => {
+    expect(claudeBuildBlocks(lines("claude--v2302-notice-over-agents-panel--w69.txt")).map((b) => b.kind)).toEqual(["raw", "menu"]);
+  });
+
   it("binds the card from the notice's head down through the box's bottom edge", () => {
     const card = claudeBuildBlocks(lines(HEADS_UP)).find((b) => b.kind === "menu");
     if (card?.kind !== "menu") throw new Error("no menu");

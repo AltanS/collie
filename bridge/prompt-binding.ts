@@ -71,7 +71,8 @@ export type StyledBindingResult =
 /**
  * Find `expected` as a contiguous run of `fresh` lines, the LAST such run, and require it to end
  * inside the last `tailLines` lines. Returns where the run starts, so the style check can look at the
- * same place. The caller has already cut a trailing task checklist off `fresh` (see `matchText`).
+ * same place. The caller has already cut a trailing task checklist and a named footer run off `fresh`
+ * (see `matchText`).
  */
 function matchInTail(
   fresh: string[],
@@ -96,10 +97,43 @@ function matchInTail(
 
 type TextRefusal = Extract<PromptBindingResult, { ok: false }>["reason"];
 
-/** The text check on already normalized lines: where the expected region starts, or why not. A task
- *  checklist that ends the read is not counted against the tail (`DEFAULT_PROMPT_TAIL_LINES`). Only
- *  the end is cut, so the start returned still indexes `freshLines`. */
+/** The read's rows with every SGR escape stripped, blank rows kept, as the input-frame module walks them. */
+function plainReadRows(freshText: string): string[] {
+  return freshText.replace(SGR_SEQUENCE, "").replace(/\r\n?/g, "\n").split("\n");
+}
+
+/** How many rows above `row` survive `normalizePromptRegion`: the normalized index of `row`. */
+function normalizedIndex(rows: readonly string[], row: number): number {
+  let index = 0;
+  for (let r = 0; r < row; r++) if (rows[r]!.replace(/\s+$/, "").length > 0) index++;
+  return index;
+}
+
+/**
+ * The normalized index where the footer run under an input box starts (Claude Code's agents panel,
+ * `Frame.volatile.footer`), or null when no profile's input frame names one. The first profile whose
+ * frame names a footer decides, since the route does not know the pane's harness.
+ */
+function trailingFooterStart(freshText: string): number | null {
+  const rows = plainReadRows(freshText);
+  for (const profile of loadProfiles().values()) {
+    const footer = findInputFrame(plainRows(rows), profile.idle)?.volatile.footer;
+    if (footer !== null && footer !== undefined) return normalizedIndex(rows, footer.first);
+  }
+  return null;
+}
+
+/**
+ * The text check on the normalized lines of `freshText`: where the expected region starts, or why
+ * not. A task checklist that ends the read is not counted against the tail (`DEFAULT_PROMPT_TAIL_LINES`).
+ * Nor is the footer run an input frame names under its box, for a region that ends above that run: it
+ * is cut only when the read is refused `not_in_tail` without the cut, and a region the cut leaves
+ * unfound keeps that first verdict: `agy--slash-exact.txt`'s slash popup is such a footer, and its own
+ * region sits inside it, so an unconditional cut would refuse it `not_found`.
+ * Only the end is cut, so the start returned still indexes `freshLines`.
+ */
 function matchText(
+  freshText: string,
   freshLines: string[],
   expected: string,
   tailLines: number,
@@ -107,7 +141,12 @@ function matchText(
   const expectedLines = normalizePromptRegion(expected);
   if (expectedLines.length === 0) return { ok: false, reason: "empty" };
   const end = trailingTaskChecklistStart(freshLines) ?? freshLines.length;
-  return matchInTail(freshLines.slice(0, end), expectedLines, tailLines);
+  const match = matchInTail(freshLines.slice(0, end), expectedLines, tailLines);
+  if (match.ok || match.reason !== "not_in_tail") return match;
+  const footerStart = trailingFooterStart(freshText);
+  if (footerStart === null || footerStart >= end) return match;
+  const aboveFooter = matchInTail(freshLines.slice(0, footerStart), expectedLines, tailLines);
+  return aboveFooter.ok ? aboveFooter : match;
 }
 
 export function verifyExpectedPrompt(
@@ -115,7 +154,7 @@ export function verifyExpectedPrompt(
   expected: string,
   tailLines = DEFAULT_PROMPT_TAIL_LINES,
 ): PromptBindingResult {
-  const match = matchText(normalizePromptRegion(freshText), expected, tailLines);
+  const match = matchText(freshText, normalizePromptRegion(freshText), expected, tailLines);
   return match.ok ? { ok: true } : { ok: false, reason: match.reason };
 }
 
@@ -157,7 +196,7 @@ export function verifyPromptBinding(
 ): PromptBindingVerdict {
   const freshText = columns === undefined ? readText : cropRawColumns(readText, columns);
   const freshLines = normalizePromptRegion(freshText);
-  const match = matchText(freshLines, expected, tailLines);
+  const match = matchText(freshText, freshLines, expected, tailLines);
   if (!match.ok) return { ok: false, reason: match.reason };
   if (expectedStyled === undefined) return { ok: true };
 
@@ -205,7 +244,7 @@ export function composerBelowShadow(
   tailLines = DEFAULT_PROMPT_TAIL_LINES,
 ): BindingShadow | undefined {
   const freshText = columns === undefined ? readText : cropRawColumns(readText, columns);
-  const match = matchText(normalizePromptRegion(freshText), expected, tailLines);
+  const match = matchText(freshText, normalizePromptRegion(freshText), expected, tailLines);
   if (!match.ok) return undefined;
   const matchEnd = match.start + normalizePromptRegion(expected).length - 1;
   const rows = freshText.replace(SGR_SEQUENCE, "").replace(/\r\n?/g, "\n").split("\n");

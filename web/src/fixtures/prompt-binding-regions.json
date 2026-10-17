@@ -270,6 +270,11 @@
     "region": "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of an unattended Claude session\n  on your main PC.\n  1: Learn more   2: Knew this already   0: Dismiss\n    \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2302-notice-over-agents-panel--w69.txt",
+    "detector": "menu",
+    "region": "✦ You should know · One of the notes says the payroll export\n  runs on an unencrypted laptop that goes home every night and\n  holds every employee's bank account number.\n  1: Learn more   2: Knew this already   0: Dismiss\n  \n─────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude--wizard-multiselect-checked.txt",
     "detector": "multi-select",
     "region": "←  ☒ Toppings  ☐ Crust  ✔ Submit  →\n\nWhich toppings would you like on your pizza?\n\n❯ 1. [✔] Pepperoni\n  Classic cured pork-and-beef slices that crisp at the edges.\n  2. [ ] Mushrooms\n  Earthy sliced creminis that soften into the cheese.\n  3. [✔] Bell peppers\n  Sweet, slightly crunchy strips of red and green pepper.\n  4. [ ] Extra cheese\n  A double layer of mozzarella for a richer, stretchier bite.\n  5. [ ] Type something\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this"
