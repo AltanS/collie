@@ -3029,6 +3029,30 @@ describe("real screens from the fixture corpus", () => {
     expect(pane.box).toBe("half a thought");
   });
 
+  // #486's first known limit: Add to it after a draft_present, on a box the person emptied in the
+  // meantime, would leave the digit alone in the box, and the notice would take it.
+  test("on a heads-up notice over an emptied box: Append of 1 is refused with the notice cause, nothing typed", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.afterInput = answersDigit;
+    const answer = await send("1", { mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.over).toEqual(NOTICE_ROWS);
+  });
+
+  test("on a heads-up notice over a draft: Append of 1 joins the draft and goes on one tap", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "pick option";
+    const answer = await send(" 1", { mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> pick option 1");
+  });
+
   test("on a heads-up notice: hello and 10 go on one tap, 1 goes on the commit with the rows hash", async () => {
     const notice = [
       "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of a session",

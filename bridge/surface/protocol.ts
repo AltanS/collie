@@ -2315,9 +2315,13 @@ export class SendProtocol {
         }
         break;
       }
-      case "append":
-        this.draftFrame(state, s0);
+      case "append": {
+        const frame = this.draftFrame(state, s0);
+        // Add to it on a box the person emptied since the phone saw its draft: the digit would stand
+        // alone in the box, and the notice would take it.
+        if (boxText(frame).trim().length === 0 && this.answersNotice(state, s0)) throw noticeRefusal(s0);
         break;
+      }
       case "send":
       case "command":
         this.gateSend(state, s0);
