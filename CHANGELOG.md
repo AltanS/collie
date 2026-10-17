@@ -28,6 +28,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Agent sessions can message each other, and you can message them.** Walky talky keeps each message in the receiving machine's log and types it into the target pane through the Send Protocol, under a one-line `[walky-talky wt_...]` header that names the sender. A pane that cannot take it now, for example one with a dialog open, keeps it in its inbox. Every message has an id and a receipt, a sender may send 30 messages in 10 minutes, and a shell pane never receives one. Send from a terminal with `collie walky send <address> <text>` (short `collie wt`), and use `who`, `reply`, `inbox` and `status` beside it. Inside a pane the message is that agent's, outside any pane it is yours. The CLI talks to the bridge over a local socket, `<stateDir>/walky/sock`, and the phone gets `POST /api/walky`, `GET /api/walky/who` and `GET /api/pane/:id/walky`. `COLLIE_WALKY=off` refuses every message for this machine's panes.
 - **`collie walky` sends a message from a terminal.** `collie walky send <address> <text>` (short `collie wt`) messages one pane, `<member>/all` or `all`, and `who`, `reply`, `inbox` and `status` sit beside it. Run inside a pane, the message is that agent's; outside any pane it is yours. With no text the body is read from stdin, and `send` waits up to 15 seconds for the receipt.
 
+### Docs
+
+- **A new page explains walky talky.** `docs/walky-talky.md` covers addresses, the header a pane receives, receipts, limits and the local socket, and `collie docs walky-talky` prints it.
+
 ## [1.22.5] - 2026-10-17
 
 ### Added
