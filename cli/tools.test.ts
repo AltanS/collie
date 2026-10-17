@@ -198,8 +198,10 @@ describe("findTool on win32 prefers a PATHEXT match over the bare name", () => {
     expect(findTool("tool", { PATH: only, PATHEXT: ".cmd" }, HOME, hostFor("win32"))).toBe(file);
   });
 
-  test("off win32 the bare name is the only candidate and is chosen", () => {
-    expect(findTool("claude", env, HOME, hostFor("linux"))).toBe(bare);
+  test("off win32 the `.cmd` sibling is never chosen", () => {
+    // A POSIX host reads the directory as a relative path on a real Windows machine and finds
+    // nothing there, and finds the bare file on Linux. Either way the suffix is not tried.
+    expect(findTool("claude", env, HOME, hostFor("linux"))).not.toBe(cmd);
   });
 });
 

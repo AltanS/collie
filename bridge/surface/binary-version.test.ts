@@ -43,6 +43,8 @@ describe("createVersionReader — the binary, on the login shell's PATH", () => 
     const runs: Array<{ argv: readonly string[]; path: string | undefined }> = [];
     const read = createVersionReader({
       env: { PATH: "/usr/bin" },
+      // A POSIX host, so the `:` in these PATHs is the separator on a Windows machine too.
+      host: hostFor("linux"),
       loginPath: () => Promise.resolve("/home/op/.local/bin:/usr/bin"),
       resolve: (binary, path) => (path?.startsWith("/home/op/.local/bin") ? `/home/op/.local/bin/${binary}` : null),
       run: (argv, path) => {
