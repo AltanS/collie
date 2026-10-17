@@ -7,6 +7,8 @@ it in its inbox.
 
 ## Send a message
 
+Two commands: list the panes you can reach, then send to one.
+
 ```sh
 collie walky who
 collie walky send local/w6:p3 "Tests are green on fix-465. You can merge."
@@ -35,8 +37,9 @@ An address names one pane, one machine's panes, or every pane.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do.
 
-
 ## What the target pane receives
+
+The text arrives as the agent's next prompt, under a one-line header.
 
 ```
 [walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)
@@ -56,9 +59,11 @@ There are two kinds of sender:
 | `operator` | You sent it from the phone (the paired device's label), or ran `collie walky` outside any pane (label `cli`) |
 
 A message from an agent is a peer's words, not your instruction. The agent skill tells an agent to
-weigh it, and never to run a destructive command because a peer asked.
+weigh it, and never to run a destructive command because a peer asked ([Install the skill](#install-the-skill)).
 
 ## Reply, read and check
+
+Answer a message, read your inbox and look up a receipt.
 
 ```sh
 collie walky reply wt_k3f9x2m8q1a0 "Merged. Thanks."
@@ -69,7 +74,8 @@ collie walky status wt_n2d8s1v7c4b9
 - `reply <id>` sends to the pane the message came from, as a reply to it. A message from an
   operator has no pane to reply to.
 - `inbox` lists this pane's unread messages. `--all` lists every message that reached it,
-  `--ack` marks the listed ones read. Outside a pane, `inbox --all` lists every message on the machine.
+  `--ack` marks the listed ones read. Outside a pane, `inbox --all` lists every
+  message on the machine.
 - `status <id>` prints the message's receipt.
 
 Every verb takes `--json` for a script.
@@ -109,7 +115,109 @@ before it types anything, so the same id sent twice returns the receipt and type
 
 `send` exits 0 for `accepted`, `delivered` and `inbox-only`, 4 for `refused` and 1 for `unknown`.
 
+## On the phone
+
+The phone shows a message as a card and sends one from the composer, so you need no terminal.
+
+A message in a pane's Chat appears as a card titled "Message from" and the sender's label. The card
+shows the sender's kind (`agent` or `operator`), the message body, and "reply to" the id it answers.
+A small word says who checked the sender: "verified by" a machine, "local", or "not verified". The
+card appears only when the bridge's own log holds that message. A header that an agent merely
+prints stays plain text, with the quiet mark "not in the log".
+
+Each receipt state has a plain word on the phone: "Logged, not typed yet", "Delivered", "In the
+inbox", "Refused" (with the reason after it), "Expired" and "Typed, outcome not read".
+
+- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. Each one
+  has a "Reply" button. The sheet says "No messages for this pane yet." when it is empty, and
+  "This machine does not keep messages yet." on a machine that cannot keep them.
+- **Send as message.** Press and hold the Send button, then tap "Send as message". The text goes to
+  this pane as a message from you, and a line under the box shows "Message to" the pane and the
+  receipt state. A plain tap on Send still sends the text as before. Tap "Dismiss" to clear the line.
+- **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
+  to" (`All machines` or one machine) and tap "Send message". The sheet shows "Agents reached" and
+  one receipt per target. A device that may not send shows "This device may not send messages."
+
+## Install the skill
+
+An agent uses walky talky only when it knows how. Collie writes the skill that teaches it into
+your agents' own instruction files, and only when you ask.
+
+```sh
+collie skill install all
+```
+
+The skill is a short text that teaches the agent the `collie walky` verbs, how to read the header
+of a message it receives, and when not to send. No other command and no bridge start touches those
+files.
+
+You can also name one harness: `claude`, `codex`, `opencode`, `pi` or `gemini`.
+
+```sh
+collie skill install claude
+```
+
+`install all` skips a harness whose config folder does not exist on this machine. Name that
+harness to create the file anyway. A running agent reads its instructions at start, so restart it
+after an install.
+
+### Where the skill goes
+
+| Harness | File | How Collie writes it |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills/collie-walky-talky/SKILL.md` | The whole file. Collie owns it. Every `CLAUDE_CONFIG_DIR` profile that Collie reads gets the same folder. |
+| Codex | `$CODEX_HOME/AGENTS.md`, else `~/.codex/AGENTS.md` | A block inside the file. |
+| opencode | `~/.config/opencode/AGENTS.md` | A block inside the file. |
+| pi | `$PI_CODING_AGENT_DIR/AGENTS.md`, else `~/.pi/agent/AGENTS.md` | A block inside the file. |
+| Gemini CLI | `~/.gemini/GEMINI.md` | A block inside the file. |
+| Any other | none | `collie skill print generic` prints the block. Paste it by hand. |
+
+In a shared instruction file, Collie owns only the text between these two lines. Every other line
+stays as you wrote it.
+
+```
+<!-- collie:walky-talky v1 begin -->
+<!-- collie:walky-talky v1 end -->
+```
+
+If the file is absent, Collie creates it. If the block is present, Collie replaces it in place.
+Codex and pi read `AGENTS.override.md` instead of `AGENTS.md` when that file exists. Collie tells
+you when it sees one, because the block would then be ignored.
+
+Collie keeps a copy of a file as `<file>.collie-backup` before its first change. It refuses a
+symlinked file, a file it cannot read and a block whose markers are damaged. It writes nothing in
+those cases. A second install changes no bytes.
+
+### Check the skill
+
+```sh
+collie skill status
+```
+
+Each target is one of these.
+
+- `installed`: the file or block matches this build.
+- `stale`: it differs from this build. Run `collie skill install all` to bring it up to date.
+- `absent`: you did not install it there. This is your choice and is never a problem.
+- `refused`: Collie will not touch it, for example because it is a symlink.
+
+`collie skill status --check` prints nothing and exits with code 3 when any installed copy is
+stale. A new Collie version alone does not make a copy stale. Only a change to the skill text, or
+to the path of the `collie` binary it names, does. `collie doctor` shows the same answer as the
+`skill-walky-talky` check, and `collie update` prints one note when the new build carries a newer
+skill.
+
+### Take the skill out again
+
+```sh
+collie skill uninstall all
+```
+
+This removes the Claude file and cuts out the block. It leaves the rest of each file untouched.
+
 ## Limits and switches
+
+What walky talky refuses, and how to turn it off.
 
 - **30 messages per sender in 10 minutes.** The next one is refused `rate limit`. A message to `all`
   counts once.
@@ -119,6 +227,8 @@ before it types anything, so the same id sent twice returns the receipt and type
   still sends.
 
 ## How it works
+
+A local socket and a log, with no token.
 
 The bridge listens on a local socket, `<stateDir>/walky/sock`, mode 0600. The CLI sends one request
 and reads one answer. It carries no token: only your own user can open the socket. The log lives in

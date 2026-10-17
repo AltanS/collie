@@ -40,7 +40,6 @@ import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
 import walkyTalky from "../docs/walky-talky.md" with { type: "text" };
-import walkyTalkySkill from "../docs/walky-talky-skill.md" with { type: "text" };
 import windows from "../docs/windows.md" with { type: "text" };
 
 // The agent-facing brief, which is not one of the pages: it is hand-written, it carries two
@@ -154,13 +153,8 @@ export const DOC_PAGES: readonly DocPage[] = [
   },
   {
     name: "walky-talky",
-    purpose: "Messages between agent sessions: who, send, reply, inbox, receipts and limits",
+    purpose: "Messages between agent sessions: who, send, reply, inbox, receipts, the phone, the skill and limits",
     text: walkyTalky,
-  },
-  {
-    name: "walky-talky-skill",
-    purpose: "Teach your agents to message each other: install, check and remove the walky talky skill",
-    text: walkyTalkySkill,
   },
   {
     name: "voice-and-push",
