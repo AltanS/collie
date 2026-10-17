@@ -1181,6 +1181,41 @@
   }
  },
  {
+  "fixture": "claude--v2302-working-agents-panel--w119.txt",
+  "frame": {
+   "top": 30,
+   "prompt": 31,
+   "bottom": 32,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 33,
+    "last": 35
+   },
+   "footer": {
+    "first": 37,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2302-working-list-echo--w119.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

@@ -921,6 +921,16 @@
    "version": "2.1.301",
    "state": "running"
   },
+  "claude--v2302-working-agents-panel--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
+  "claude--v2302-working-list-echo--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",
@@ -3775,6 +3785,7 @@
  "knownMismatches": {
   "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
   "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
-  "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it."
+  "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
+  "claude--v2302-working-list-echo--w119.txt": "Claude Code 2.1.302 draws no spinner while the answer streams: the screen shows a list growing above an empty box, and only the prompt edge can say the turn runs. A send there goes ahead and Claude Code queues it."
  }
 }

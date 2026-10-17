@@ -3979,3 +3979,36 @@ describe("a refusal receipt keeps its line and the Surface words (2026-10-17 fie
     expect(sent.receipt?.saw).toBeUndefined();
   });
 });
+
+describe("real Claude Code 2.1.302 turns with a list on screen (captured 2026-10-17)", () => {
+  /** A fixture whose box row draws what the fake pane's box holds, so the probe and the text land in it. */
+  const liveFixture = (pane: FakePane, name: string): void => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    const boxRow = rows.findIndex((row, i) => i > 0 && row.includes("❯ ") && rows[i - 1]!.includes("─".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    pane.beforeRead = (p) => {
+      const shown = [...rows];
+      if (p.box !== "") shown[boxRow] = `❯ ${p.box}`;
+      p.fixed = shown.join("\r\n");
+    };
+  };
+
+  for (const name of ["claude--v2302-working-list-echo--w119.txt", "claude--v2302-working-agents-panel--w119.txt"]) {
+    test(`${name}: a send during the turn is taken, sent or held, never refused not_free`, async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const r = rig({ version: "2.1.302", holds });
+      liveFixture(r.pane, name);
+      const answer = await r.send("then give it a title");
+      expect(["sent", "held"]).toContain(answer.receipt?.outcome);
+      expect(answer.receipt?.reason).not.toBe("not_free");
+      if (answer.receipt?.outcome === "sent") expect(r.pane.keysSeen.at(-1)).toBe("Enter");
+      else expect(r.pane.box).toBe("");
+    });
+  }
+
+  test("claude--v2302-working-list-echo--w119.txt: the list above an idle-reading box is no dialog, the send goes in", async () => {
+    const r = rig({ version: "2.1.302" });
+    liveFixture(r.pane, "claude--v2302-working-list-echo--w119.txt");
+    expect((await r.send("then give it a title")).receipt).toMatchObject({ outcome: "sent" });
+  });
+});
