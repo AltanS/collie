@@ -76,7 +76,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { commandListUnder, isRunningRow, ownCommandList, readCues, readCuesFor, runningSign, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListAt, isRunningRow, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -337,8 +337,10 @@ interface Snap {
   readonly below: number;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
   readonly otherScreen: string | null;
-  /** The profile's command list under the frame and the command its pointer rests on ({@link commandListUnder}); null with none. */
+  /** The profile's command list at the frame and the command its pointer rests on ({@link commandListAt}); null with none. */
   readonly commandList: CommandListRead | null;
+  /** That list when it is the typeahead of the command the box holds ({@link ownCommandList}); null otherwise. */
+  readonly ownList: CommandListRead | null;
   /** A short hash of the whole read. */
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
@@ -598,9 +600,14 @@ function otherScreenOf(texts: readonly string[], frame: Frame | null, screens: r
   return null;
 }
 
-/** The rows above a frame, the volatile band over the top edge left out, trailing blanks cut. */
+/**
+ * The rows above a frame, the volatile band over the top edge left out, trailing blanks cut. The typed
+ * command's own list over the box ({@link ownCommandList}) is no transcript either: a tall pane draws
+ * it there once the command is typed, and it may reach past the band.
+ */
 function transcriptAbove(snap: Snap, frame: Frame): string[] {
-  const end = frame.volatile.above === null ? frame.top : frame.volatile.above.first;
+  const band = frame.volatile.above === null ? frame.top : frame.volatile.above.first;
+  const end = snap.ownList?.side === "above" ? Math.min(band, snap.ownList.first) : band;
   const rows = snap.texts.slice(0, end).map((t) => t.trimEnd());
   while (rows.length > 0 && rows[rows.length - 1]!.length === 0) rows.pop();
   return rows;
@@ -913,12 +920,12 @@ function typedDetail(reason: SendReason): string | undefined {
       return undefined;
   }
 }
-/** The detail of a typed command whose list under the box pointed at another command: Enter would have run that one. */
-const LIST_ELSEWHERE = "The command list under the box pointed at another command, so Enter was not pressed.";
+/** The detail of a typed command whose list over or under the box pointed at another command: Enter would have run that one. */
+const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
 
 /**
  * Whether a read shows a command typed into the box while the harness's command list under it points
- * at another command ({@link commandListUnder}): Enter picks the highlighted entry, so it would run
+ * at another command ({@link commandListAt}): Enter picks the highlighted entry, so it would run
  * that one. A list whose pointer rests on the typed command is its own typeahead and passes; a list
  * with no pointer is left to the cue read.
  */
@@ -2502,8 +2509,9 @@ export class SendProtocol {
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
-    // the typed command's own list under the box (ownCommandList): Enter there picks that command.
-    const bare = withoutNamedRows(frame !== null && ownCommandList(texts, frame, idle) ? rows.slice(0, frame.bottom + 1) : rows, frame);
+    // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
+    const ownList = ownCommandList(texts, frame, idle);
+    const bare = withoutNamedRows(withoutCommandList(rows, ownList), frame);
     const snap: Snap = {
       revision: grid.value.revision,
       gateRevision,
@@ -2530,7 +2538,8 @@ export class SendProtocol {
       belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null).strength,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
-      commandList: frame === null ? null : commandListUnder(texts, frame, idle?.volatile.below.commandList),
+      commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList),
+      ownList,
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),

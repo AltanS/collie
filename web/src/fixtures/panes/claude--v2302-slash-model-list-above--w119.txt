@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.302
+▝▜██████▀  Sonnet 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   /tmp/collie-queue-test
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ❯ /model                                 Set the AI model for Claude Code (currently Sonnet 5.5)
+    /auto-mode-setup                       Teach auto mode about your environment, plus optional rule tweaks
+    /typescript:structure-module           (typescript) Organizes code into well-structured modules with clear
+                                           boundaries, exports, and locality of behavior.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /model
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  [Sonnet·high] /tmp/collie-queue-test on HEAD
+  ⏸ manual mode on

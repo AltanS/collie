@@ -4394,11 +4394,79 @@ describe("a slash command over Claude Code's command list under the box (field c
         expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
         expect(pane.keysSeen).not.toContain("Enter");
         expect(pane.box).toBe("/model");
-        expect(deps.store.get(id)?.receipt?.detail).toBe("The command list under the box pointed at another command, so Enter was not pressed.");
+        expect(deps.store.get(id)?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
         neverEscape(pane);
       });
     }
   }
+
+  /**
+   * The captured tall-pane screen (lane 8788, 2026-10-17): the list stands over the box, the statusline
+   * under it. The fake box is drawn into the box row; the list rows show only while the box holds a
+   * slash command, blank before the write and after the Enter. `list` rewrites them; `over` puts a row
+   * in the blank band above them (a running turn's spinner).
+   */
+  const ABOVE = "claude--v2302-slash-model-list-above--w119.txt";
+  const aboveScreen = (pane: FakePane, options: { list?: (rows: string[]) => string[]; over?: string } = {}): void => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${ABOVE}`), "utf8").split("\r\n");
+    const boxRow = rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    let first = boxRow - 1;
+    while (rows[first - 1]!.trim() !== "") first--;
+    const list = options.list === undefined ? rows.slice(first, boxRow - 1) : options.list(rows.slice(first, boxRow - 1));
+    expect(list.length).toBe(4);
+    if (options.over !== undefined) rows[first - 2] = options.over;
+    pane.beforeRead = (p) => {
+      const shown = [...rows];
+      shown[boxRow] = `\u276f\u00a0${p.box}`;
+      shown.splice(first, list.length, ...(p.box.startsWith("/") ? list : list.map(() => "")));
+      p.fixed = shown.join("\r\n");
+    };
+  };
+
+  test(`${ABOVE}: /model as a command is sent with the list over the box; only Enter follows the text`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    aboveScreen(pane);
+    const seen = journal(pane);
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+    expect(pane.transcript.at(-1)).toBe("> /model");
+    neverEscape(pane);
+  });
+
+  for (const other of ["/models", "/memory"]) {
+    test(`${ABOVE}: /model typed while the list over the box points at ${other} is left typed, no Enter, with the list notice`, async () => {
+      const { pane, send, deps } = rig({ version: "2.1.302" });
+      aboveScreen(pane, { list: pointAt(other) });
+      const id = `above-elsewhere-${other.slice(1)}`;
+      const answer = await send("/model", { id, mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("/model");
+      expect(deps.store.get(id)?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
+    });
+  }
+
+  test(`${ABOVE}: read as a screen with /model in the box, no dialog; Submit then goes out`, async () => {
+    const looked = rig({ version: "2.1.302" });
+    aboveScreen(looked.pane);
+    looked.pane.box = "/model";
+    const prepared = await looked.protocol.handle({ id: "above-prep-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    const { pane, send } = rig({ version: "2.1.302" });
+    aboveScreen(pane);
+    pane.box = "/model";
+    expect((await send("/model", { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test(`${ABOVE}: /model as a command into a running turn, the list over the box: queued with Enter`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    aboveScreen(pane, { over: RUNNING });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+  });
 
   test("the 2.1.302 list read as a screen: the box holds a draft, no dialog over it; pointing elsewhere still reads as before", async () => {
     const own = rig({ version: "2.1.302" });

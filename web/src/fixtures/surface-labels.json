@@ -951,6 +951,11 @@
    "version": "2.1.302",
    "state": "popup"
   },
+  "claude--v2302-slash-model-list-above--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

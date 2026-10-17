@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A command from the belt or the Agent sheet, such as Model, goes through again when Claude Code opens its command list under the box.** Claude Code 2.1.302 draws that list with the command on the left and its description on the right. On a wide pane the highlighted entry's description fits on one row, so the next entry sits right under it. Collie read the list as something open over the box and withheld Enter. The text stayed in the box, and later taps on that pane were refused while the list stayed open. Now a list whose highlighted entry is the typed command reads as that command's own list, and Enter goes out, in a turn or not. A list whose descriptions wrap onto the next row matches too. A list that highlights another command still keeps Enter back and leaves the text in the box, and its notice now says the list pointed at another command.
+- **The command's own list also counts when Claude Code draws it over the box.** On a tall pane Claude Code 2.1.302 puts its command list over the box, with the statusline under it, and Collie still withheld Enter there. Now the list is read on either side of the box, with the same rule: Enter goes out when the highlighted entry is the typed command, and stays back when it is another one.
 
 ## [1.22.3] - 2026-10-17
 

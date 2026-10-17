@@ -121,6 +121,8 @@ describe("parity with the old walk on the real corpus", () => {
     // Claude Code 2.1.302's slash list under a box holding `/model` (reconstructed from a masked field
     // capture): the box stands, as in the older autocomplete captures above.
     "claude--v2302-slash-model-list--w119.txt",
+    // The same list drawn over the box on a tall pane (captured, lane 8788): the box and statusline stand.
+    "claude--v2302-slash-model-list-above--w119.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",

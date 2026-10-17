@@ -2298,3 +2298,14 @@ are the usual welcome rows.
 | Fixture | State / what's in it |
 |---|---|
 | `claude--v2302-slash-model-list--w119.txt` | 119 columns: the box holds `/model`, and under it eleven entries with the pointer on `❯ /model  Set the AI model for Claude Code (currently Sonnet 5.5)`. That description fits on its row, so the next entry sits right under the pointer row: the generic cue read took the pointer and its aligned rows as a pointed list (strong), the Surface said `unreadable`, and a command's S1 kept Enter back. The 2.1.291 capture `claude-lab--popup-slash-model-exact--w82.txt` wraps the pointed description, which broke that alignment and hid the bug. Claude's profile names the list (`idle.volatile.below.commandList`), and a list that points at the command the box holds now reads as the command's own typeahead. Labelled `popup` |
+
+## The slash list over the box, 2.1.302 (captured 2026-10-17, lane 8788)
+
+Read live from the dev lane's pane during the round-2 check of the fix above (Claude Code 2.1.302,
+Herdr, 119 columns by 40 rows, the operator's statusline on), with the ANSI escapes stripped; the
+rows are otherwise as read. On this tall pane Claude Code draws the command list OVER the box, not
+under it: the minibuch field screen above, a shorter pane, had it under the box.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-slash-model-list-above--w119.txt` | The box holds `/model`. Right over its top rule: `❯ /model  Set the AI model for Claude Code (currently Sonnet 5.5)`, `/auto-mode-setup` and `/typescript:structure-module` with its description wrapped onto a fourth row. Under the box the two statusline rows, `[Sonnet·high] /tmp/collie-queue-test on HEAD` and `⏸ manual mode on`. 1.22.3 and the first round of the fix read the list as a pointed list over the box (strong), the Surface said `unreadable`, and a command's S1 kept Enter back. The profile's command list is now read on both sides of the box. No reader lifts a block here (the autocomplete reader looks under the box only). Labelled `popup` |

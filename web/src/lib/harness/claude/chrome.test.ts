@@ -1020,6 +1020,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // capture, 2026-10-17): the command in the left column, its description in a second column. No
     // statusline while the list is open; the list is stripped with the box, as in autocomplete-slash-long.
     { fixture: "v2302-slash-model-list--w119", statusRows: 0, draft: "/model", stripped: 23 },
+    // The same list drawn over the box on a tall pane (captured, lane 8788, 2026-10-17), the statusline under it.
+    { fixture: "v2302-slash-model-list-above--w119", statusRows: 2, draft: "/model", stripped: 5 },
     { fixture: "v2302-turn-ended-yn--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-turn-ending-stop-hooks--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-working-agents-panel--w119", statusRows: 3, draft: null, stripped: 11 },

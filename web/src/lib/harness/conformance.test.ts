@@ -131,6 +131,10 @@ const NEUTRAL = new Set([
   // panel. An ordinary box, no dialog: the list is the agent's text, not a picker.
   "claude--v2302-working-agents-panel--w119.txt",
   "claude--v2302-working-list-echo--w119.txt",
+  // Claude Code 2.1.302's slash list drawn OVER the box on a tall pane (lane 8788, 2026-10-17): the box
+  // holds `/model` and its statusline stands under it. The autocomplete reader looks under the box only,
+  // so nothing lifts; the Surface reads the list as the command's own typeahead, not a dialog.
+  "claude--v2302-slash-model-list-above--w119.txt",
   // The last two reads of a turn whose answer ends in a menu and "Confirm (y/n)" (round 3 of the same
   // field case): the agent's text above an ordinary box, no dialog.
   "claude--v2302-turn-ending-stop-hooks--w119.txt",

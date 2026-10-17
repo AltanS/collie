@@ -1194,6 +1194,22 @@
   }
  },
  {
+  "fixture": "claude--v2302-slash-model-list-above--w119.txt",
+  "frame": {
+   "top": 35,
+   "prompt": 36,
+   "bottom": 37,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": {
+    "first": 38,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2302-turn-ended-yn--w119.txt",
   "frame": {
    "top": 34,
