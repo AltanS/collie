@@ -98,6 +98,17 @@ import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE
 import { realExec, realFiles } from "./sys.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
+import {
+  askSocket,
+  cmdWalky,
+  cmdWalkyInbox,
+  cmdWalkyReply,
+  cmdWalkySend,
+  cmdWalkyStatus,
+  cmdWalkyWho,
+  WALKY_SUBCOMMANDS,
+  type WalkyDeps,
+} from "./walky.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 
 // The `collie` binary's dispatch: argv in, exit code out. This module owns ONLY the dispatch —
@@ -247,6 +258,49 @@ function hooksDeps(io: Io): HooksDeps {
  * nobody can answer must abort legibly rather than read EOF as consent — and on the codex path that
  * question IS the consent (ADR 0029).
  */
+/** `walky`: the context and the filesystem (the socket checks), stdin for a body, and the socket itself. */
+function walkyDeps(io: Io): WalkyDeps {
+  return {
+    ctx: loadContext(io.err),
+    files: realFiles,
+    uid: process.getuid?.(),
+    io,
+    platform: process.platform,
+    readStdin: () => Bun.stdin.text(),
+    stdinIsTty: process.stdin.isTTY === true,
+    ask: (path, line) => askSocket(path, line),
+  };
+}
+
+/** `walky` and its `wt` alias share THIS array, so the two spellings cannot drift. */
+const WALKY_TREE: readonly Subcommand[] = [
+  {
+    name: "who",
+    summary: "the agent panes you can message: address, machine, harness, label, state",
+    run: (args, s) => cmdWalkyWho(walkyDeps(s.io), args),
+  },
+  {
+    name: "send",
+    summary: "message one pane, a machine or everyone: `walky send <address> <text>` (no text: stdin)",
+    run: (args, s) => cmdWalkySend(walkyDeps(s.io), args),
+  },
+  {
+    name: "reply",
+    summary: "answer a message by its id: `walky reply <id> <text>` (no text: stdin)",
+    run: (args, s) => cmdWalkyReply(walkyDeps(s.io), args),
+  },
+  {
+    name: "inbox",
+    summary: "this pane's unread messages (`--all`: every one; `--ack`: mark them read)",
+    run: (args, s) => cmdWalkyInbox(walkyDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "a message's receipt: `walky status <id>`",
+    run: (args, s) => cmdWalkyStatus(walkyDeps(s.io), args),
+  },
+];
+
 function sttDeps(io: Io): SttDeps {
   const ctx = loadContext(io.err);
   const deps: SttDeps = {
@@ -785,6 +839,22 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: async (args, s) => await cmdDurable(durableVerbDeps(s.io), args),
+  },
+  // ── Walky talky (M62) ──────────────────────────────────────────────────────
+  // Messages between agent sessions, typed by an agent inside its pane or by the operator outside one.
+  // The verb talks to the running bridge over its local socket and changes nothing on disk itself.
+  // `wt` is the short spelling, the same tree under a second name.
+  {
+    name: "walky",
+    summary: `walky talky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
+    subcommands: WALKY_TREE,
+    run: (args, s) => cmdWalky({ io: s.io }, args),
+  },
+  {
+    name: "wt",
+    summary: "same as `walky`",
+    subcommands: WALKY_TREE,
+    run: (args, s) => cmdWalky({ io: s.io }, args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the

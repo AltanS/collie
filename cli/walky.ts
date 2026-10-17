@@ -1,0 +1,359 @@
+import { once } from "node:events";
+import { createConnection } from "node:net";
+
+import { readEnvMarkers, edgeStateDirs, type EdgeTargetDeps } from "./beacon.ts";
+import { holdSocketSafe } from "./hold.ts";
+import { EXIT, type Io } from "./io.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
+import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { parseAddress } from "../bridge/walky/address.ts";
+import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
+import { walkySocketPath } from "../bridge/walky/socket.ts";
+import { formatEnvelope, mintWalkyId, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
+
+// `collie walky` (alias `collie wt`): walky talky from a terminal (M62 spec 02). It talks to the
+// running bridge over its local socket, `<stateDir>/walky/sock`, one JSON request per connection.
+// No token: the socket's mode is the credential, as the hold socket's is.
+//
+// Inside a pane the CLI sends the multiplexer's own markers (`readEnvMarkers`, cli/beacon.ts), and
+// the bridge that drives that pane names it, so the message is an agent's. Outside any pane it is the
+// operator's, label `cli`. Several bridges may run on one machine: the CLI asks each live one (the
+// hook target registry, as the hold does) until one knows its pane.
+
+export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status"] as const;
+
+/** How long `send` waits for the receipt to leave `accepted`. */
+export const SEND_WAIT_MS = 15_000;
+/** How often `send` asks while it waits. */
+export const SEND_POLL_MS = 500;
+/** How long one request may take. A send answers at `accepted`, before any key is typed. */
+export const ASK_MS = 10_000;
+
+export const NO_SOCKET_TEXT = "walky talky needs a Unix socket on this host";
+
+export interface WalkyDeps extends EdgeTargetDeps {
+  readonly io: Io;
+  readonly platform: string;
+  /** stdin as text, for a body given on no command line. */
+  readStdin(): Promise<string>;
+  /** Whether stdin is a terminal: then no body on the command line is a usage error, not a wait. */
+  readonly stdinIsTty: boolean;
+  /** One request line to one socket: the answer line, or null when nothing answered. */
+  ask(path: string, line: string): Promise<string | null>;
+  /** The socket of every live bridge. Defaults to the hook target registry, then this install's own. */
+  sockets?(): readonly string[];
+  readonly mintId?: () => string;
+  readonly now?: () => number;
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/** Every bridge socket on this machine worth asking, this install's own first. */
+function socketPaths(deps: WalkyDeps): string[] {
+  const own = walkySocketPath(deps.ctx.stateDir);
+  const listed = deps.sockets?.() ?? [own, ...edgeStateDirs(deps).map((dir) => walkySocketPath(dir))];
+  return [...new Set(listed)].filter((path) => holdSocketSafe(deps, path));
+}
+
+type Answer = { readonly ok: true; readonly body: JsonObject; readonly path: string } | { readonly ok: false; readonly error: string };
+
+/**
+ * Ask the bridges in turn. A bridge that answers `not here` does not drive this pane: the next one is
+ * asked. With `path` set only that bridge is asked (the one that took a send).
+ */
+async function request(deps: WalkyDeps, body: JsonObject, path?: string): Promise<Answer> {
+  const line = `${JSON.stringify({ v: 1, markers: readEnvMarkers(deps.ctx.env), ...body })}\n`;
+  const paths = path === undefined ? socketPaths(deps) : [path];
+  let notHere = false;
+  for (const candidate of paths) {
+    const raw = await deps.ask(candidate, line).catch(() => null);
+    if (raw === null) continue;
+    const answer = parseJsonObject(raw);
+    if (answer === undefined) continue;
+    if (answer.ok === true) return { ok: true, body: answer, path: candidate };
+    const error = asJsonString(answer.error) ?? "failed";
+    if (error === "not here") {
+      notHere = true;
+      continue;
+    }
+    return { ok: false, error };
+  }
+  if (notHere) return { ok: false, error: "no Collie bridge on this machine knows this pane" };
+  return { ok: false, error: "no running Collie bridge answers on this machine" };
+}
+
+function failure(deps: WalkyDeps, answer: { readonly error: string }): number {
+  deps.io.err(`walky talky: ${answer.error}`);
+  if (answer.error.startsWith("no running")) return EXIT.UNREACHABLE;
+  if (answer.error === "empty body" || answer.error === "bad request") return EXIT.USAGE;
+  return EXIT.STATE;
+}
+
+function receiptsOf(value: JsonValue | undefined): WalkyReceipt[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const receipt = readReceipt(entry);
+    return receipt === null ? [] : [receipt];
+  });
+}
+
+/** One receipt as one line: state, id, target when asked, and the reason. */
+export function receiptLine(receipt: WalkyReceipt, withTarget: boolean): string {
+  const target = withTarget ? ` ${receipt.target}` : "";
+  const reason = receipt.reason === undefined ? "" : ` (${receipt.reason})`;
+  return `${receipt.state} ${receipt.id}${target}${reason}`;
+}
+
+/** The exit code a set of receipts stands for: a refusal is REFUSED, an unknown or expired is FAIL. */
+function exitOf(receipts: readonly WalkyReceipt[]): number {
+  if (receipts.some((receipt) => receipt.state === "refused")) return EXIT.REFUSED;
+  if (receipts.some((receipt) => receipt.state === "unknown" || receipt.state === "expired")) return EXIT.FAIL;
+  return EXIT.OK;
+}
+
+function windows(deps: WalkyDeps): boolean {
+  if (deps.platform !== "win32") return false;
+  deps.io.err(NO_SOCKET_TEXT);
+  return true;
+}
+
+/** `walky who [--json]`: every reachable target. */
+export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const json = args.includes("--json");
+  const unknown = args.find((arg) => arg !== "--json");
+  if (unknown !== undefined) return usage(deps, "who", `unknown argument \`${unknown}\``);
+  const answer = await request(deps, { op: "who" });
+  if (!answer.ok) return failure(deps, answer);
+  const targets = Array.isArray(answer.body.targets) ? answer.body.targets.flatMap((entry) => {
+    const row = asJsonObject(entry);
+    return row === undefined ? [] : [row];
+  }) : [];
+  if (json) {
+    deps.io.out(JSON.stringify({ self: answer.body.self ?? null, targets }));
+    return EXIT.OK;
+  }
+  if (targets.length === 0) {
+    deps.io.out("no agent panes to message");
+    return EXIT.OK;
+  }
+  const self = asJsonString(answer.body.self);
+  const rows = targets.map((row) => [asJsonString(row.address) ?? "-", asJsonString(row.machine) ?? "-", asJsonString(row.harness) ?? "-", asJsonString(row.label) ?? "-", asJsonString(row.state) ?? "-"]);
+  const head = ["ADDRESS", "MACHINE", "HARNESS", "LABEL", "STATE"];
+  const widths = head.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column]!.length)));
+  const line = (cells: readonly string[]): string => cells.map((cell, column) => cell.padEnd(widths[column]!)).join("  ").trimEnd();
+  deps.io.out(line(head));
+  for (const row of rows) deps.io.out(`${line(row)}${row[0] === self ? "  (you)" : ""}`);
+  return EXIT.OK;
+}
+
+interface SendArgs {
+  readonly to: string | null;
+  readonly replyTo: string | null;
+  readonly text: string | null;
+  readonly json: boolean;
+}
+
+/** `send <address> [text...]`, `--to` and `--reply-to` as aliases, `--` before a text that starts with a dash. */
+export function parseSendArgs(args: readonly string[]): SendArgs | { readonly error: string } {
+  let to: string | null = null;
+  let replyTo: string | null = null;
+  let json = false;
+  const words: string[] = [];
+  let i = 0;
+  for (; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") {
+      i += 1;
+      break;
+    }
+    // Once the address (or the id) is named, the first word that is not a flag starts the text.
+    if (to !== null && !arg.startsWith("--")) break;
+    if (arg === "--to" || arg === "--reply-to") {
+      const value = args[i + 1];
+      if (value === undefined) return { error: `\`${arg}\` needs a value` };
+      if (arg === "--to") to = value;
+      else replyTo = value;
+      i += 1;
+      continue;
+    }
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg.startsWith("--")) return { error: `unknown flag \`${arg}\`` };
+    to = arg;
+  }
+  words.push(...args.slice(i));
+  if (replyTo !== null && !WALKY_ID.test(replyTo)) return { error: `\`${replyTo}\` is not a message id` };
+  return { to, replyTo, text: words.length === 0 ? null : words.join(" "), json };
+}
+
+function usage(deps: WalkyDeps, verb: (typeof WALKY_SUBCOMMANDS)[number], why: string): number {
+  deps.io.err(`error: ${why}`);
+  deps.io.err(USAGE[verb]);
+  return EXIT.USAGE;
+}
+
+const USAGE = {
+  who: "usage: collie walky who [--json]",
+  send: "usage: collie walky send <address> [text...]   (no text: the body is read from stdin)",
+  reply: "usage: collie walky reply <id> [text...]   (no text: the body is read from stdin)",
+  inbox: "usage: collie walky inbox [--all] [--ack] [--json]",
+  status: "usage: collie walky status <id> [--json]",
+} as const satisfies Record<(typeof WALKY_SUBCOMMANDS)[number], string>;
+
+/** The body: the words on the command line, or stdin when there are none. */
+async function bodyOf(deps: WalkyDeps, text: string | null): Promise<string | null> {
+  if (text !== null) return text;
+  if (deps.stdinIsTty) return null;
+  const read = await deps.readStdin();
+  return read.trim() === "" ? null : read;
+}
+
+/** Send, then wait up to 15 s for each receipt to leave `accepted`, and print one line per receipt. */
+async function sendAndWait(deps: WalkyDeps, to: string, replyTo: string | null, body: string, json: boolean): Promise<number> {
+  const id = (deps.mintId ?? mintWalkyId)();
+  const answer = await request(deps, { op: "send", id, to, body, replyTo });
+  if (!answer.ok) return failure(deps, answer);
+  let receipts = receiptsOf(answer.body.receipts);
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const until = now() + SEND_WAIT_MS;
+  while (receipts.some((receipt) => receipt.state === "accepted") && now() < until) {
+    await sleep(SEND_POLL_MS);
+    const status = await request(deps, { op: "status", id }, answer.path);
+    if (!status.ok) break;
+    const fresh = receiptsOf(status.body.receipts);
+    if (fresh.length > 0) receipts = fresh;
+  }
+  if (json) deps.io.out(JSON.stringify({ id, receipts }));
+  else if (receipts.length === 0) deps.io.out(`accepted ${id}`);
+  else for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1 || parseAddress(to)?.kind !== "pane"));
+  return exitOf(receipts);
+}
+
+/** `walky send <address> [text...]`. */
+export async function cmdWalkySend(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const parsed = parseSendArgs(args);
+  if ("error" in parsed) return usage(deps, "send", parsed.error);
+  if (parsed.to === null) return usage(deps, "send", "name an address (see `collie walky who`)");
+  if (parseAddress(parsed.to) === null) return usage(deps, "send", `\`${parsed.to}\` is not an address: <member>/<pane>, <member>/all or all`);
+  const body = await bodyOf(deps, parsed.text);
+  if (body === null) return usage(deps, "send", "no text: give it after the address, or on stdin");
+  return sendAndWait(deps, parsed.to, parsed.replyTo, body, parsed.json);
+}
+
+/** `walky reply <id> [text...]`: send to the pane the message came from, as a reply to it. */
+export async function cmdWalkyReply(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const parsed = parseSendArgs(args);
+  if ("error" in parsed) return usage(deps, "reply", parsed.error);
+  const id = parsed.replyTo ?? parsed.to;
+  if (id === null || !WALKY_ID.test(id)) return usage(deps, "reply", "name the message id to reply to (wt_ and 12 characters)");
+  const status = await request(deps, { op: "status", id });
+  if (!status.ok) return failure(deps, status);
+  const message: WalkyMessage | null = readMessage(status.body.message);
+  if (message === null) return failure(deps, { error: `no message ${id} on this machine` });
+  if (message.from.address === null) return failure(deps, { error: `${id} came from an operator, who has no address to reply to` });
+  const body = await bodyOf(deps, parsed.text);
+  if (body === null) return usage(deps, "reply", "no text: give it after the id, or on stdin");
+  return sendAndWait(deps, message.from.address, id, body, parsed.json);
+}
+
+/** `walky inbox [--all] [--ack] [--json]`: this pane's unread messages (`--all`: every one, newest first). */
+export async function cmdWalkyInbox(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const unknown = args.find((arg) => arg !== "--all" && arg !== "--ack" && arg !== "--json");
+  if (unknown !== undefined) return usage(deps, "inbox", `unknown argument \`${unknown}\``);
+  const answer = await request(deps, { op: "inbox", all: args.includes("--all"), ack: args.includes("--ack") });
+  if (!answer.ok) {
+    if (answer.error === "needs a pane") return failure(deps, { error: "an inbox belongs to a pane: run it inside an agent's pane, or use `inbox --all`" });
+    return failure(deps, answer);
+  }
+  const entries = Array.isArray(answer.body.messages) ? answer.body.messages : [];
+  if (args.includes("--json")) {
+    deps.io.out(JSON.stringify({ pane: answer.body.pane ?? null, messages: entries }));
+    return EXIT.OK;
+  }
+  const messages = entries.flatMap((entry) => {
+    const message = readMessage(entry);
+    return message === null ? [] : [{ message, receipt: readReceipt(asJsonObject(entry)?.receipt) }];
+  });
+  if (messages.length === 0) {
+    deps.io.out("no messages");
+    return EXIT.OK;
+  }
+  messages.forEach(({ message, receipt }, index) => {
+    if (index > 0) deps.io.out("");
+    for (const line of formatEnvelope(message).split("\n")) deps.io.out(line);
+    if (receipt !== null) deps.io.out(`-- ${receiptLine(receipt, true)}`);
+  });
+  return EXIT.OK;
+}
+
+/** `walky status <id> [--json]`: a message's receipts on this machine. */
+export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const json = args.includes("--json");
+  const rest = args.filter((arg) => arg !== "--json");
+  const id = rest[0];
+  if (id === undefined || rest.length > 1 || !WALKY_ID.test(id)) return usage(deps, "status", "name one message id (wt_ and 12 characters)");
+  // Every bridge is asked until one holds receipts for the id: the sender's bridge wrote them.
+  let receipts: WalkyReceipt[] = [];
+  let reached = false;
+  for (const path of socketPaths(deps)) {
+    const answer = await request(deps, { op: "status", id }, path);
+    if (!answer.ok) continue;
+    reached = true;
+    receipts = receiptsOf(answer.body.receipts);
+    if (receipts.length > 0) break;
+  }
+  if (!reached) return failure(deps, { error: "no running Collie bridge answers on this machine" });
+  if (json) {
+    deps.io.out(JSON.stringify({ id, receipts }));
+    return receipts.length === 0 ? EXIT.STATE : exitOf(receipts);
+  }
+  if (receipts.length === 0) {
+    deps.io.out(`unknown ${id}`);
+    return EXIT.STATE;
+  }
+  for (const receipt of receipts) deps.io.out(receiptLine(receipt, receipts.length > 1));
+  return exitOf(receipts);
+}
+
+/** A bare or misspelt `collie walky`: the sub-verbs, and a usage exit. */
+export function cmdWalky(deps: Pick<WalkyDeps, "io">, args: readonly string[]): number {
+  if (args[0] !== undefined) deps.io.err(`error: unknown walky command \`${args[0]}\``);
+  deps.io.err(`usage: collie walky {${WALKY_SUBCOMMANDS.join("|")}}`);
+  for (const verb of WALKY_SUBCOMMANDS) deps.io.err(`  ${USAGE[verb].replace(/^usage: /u, "")}`);
+  return EXIT.USAGE;
+}
+
+/** One request line to a socket, and its one answer line. Null when it does not accept or answer in time. */
+export async function askSocket(path: string, line: string, ms = ASK_MS): Promise<string | null> {
+  const conn = createConnection({ path });
+  conn.on("error", () => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((done) => {
+    timer = setTimeout(() => done(null), ms);
+  });
+  const answered = (async (): Promise<string | null> => {
+    const connected = await once(conn, "connect").then(() => true, () => false);
+    if (!connected) return null;
+    conn.setEncoding("utf8");
+    conn.write(line);
+    let text = "";
+    for await (const chunk of conn) {
+      text += String(chunk);
+      const at = text.indexOf("\n");
+      if (at >= 0) return text.slice(0, at);
+      if (text.length > 4 * 1024 * 1024) return null;
+    }
+    return text === "" ? null : text;
+  })();
+  const result = await Promise.race([answered, late]);
+  clearTimeout(timer);
+  conn.destroy();
+  return result;
+}
