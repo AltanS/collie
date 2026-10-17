@@ -50,7 +50,7 @@ describe("isHorizontalRule", () => {
 describe("isRuleRow", () => {
   const RULE = `  ${"─".repeat(52)}`;
 
-  it("takes a 1-2 glyph stub under a full rule as part of it (Claude Code 2.1.302's wrapped rule)", () => {
+  it("takes a 1-2 glyph stub under a full rule as part of it (a rule wrapped beside a theme's gutter)", () => {
     expect(isRuleRow([RULE, "  ──"], 1)).toBe(true);
     expect(isRuleRow([RULE, "  ─"], 1)).toBe(true);
   });

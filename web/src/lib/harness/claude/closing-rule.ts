@@ -34,7 +34,7 @@
 import { lineText, type StyledLine } from "../../blocks";
 import { readKeyHintFooter } from "../menu-hints";
 import { hasInputBox } from "./chrome";
-import { classifyFooter, isBlank, isHorizontalRule, isRuleRow } from "./markers";
+import { classifyFooter, isBlank, isRuleRow, ruleTop } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 
 // A run of rule glyphs and, optionally, ONE label set into it: ` capture lab ─`. The label holds no
@@ -59,15 +59,15 @@ function endsReviewPair(texts: string[], last: number): boolean {
 }
 
 /**
- * The row of the closing rule that ends `texts`, or -1. A rule Claude Code 2.1.302 wrapped (it draws
- * a dialog's rule full width from column 2, beside its column-0 gutter cell) ends in a 1-2 glyph stub
- * row (`isRuleRow`), and the rule is the row above that stub.
+ * The row of the closing rule that ends `texts`, or -1. A rule that wrapped beside a theme's gutter
+ * (a plugin or theme narrows the dialog while Claude Code draws the rule at the full pane width, so it
+ * overflows by the gutter's width) ends in a stub row (`isRuleRow`), and the rule starts at the top of
+ * the run of rule rows that stub ends (`ruleTop`).
  */
 function closingRuleRow(texts: string[]): number {
   let last = texts.length - 1;
   while (last >= 0 && isBlank(texts[last]!)) last--;
-  const stub = last >= 1 && isRuleRow(texts, last) && !isHorizontalRule(texts[last]!);
-  const rule = stub ? last - 1 : last;
+  const rule = last >= 1 && isRuleRow(texts, last) ? ruleTop(texts, last, 1) : last;
   return rule >= 1 && isClosingRule(texts[rule]!) ? rule : -1;
 }
 
