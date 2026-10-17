@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
@@ -22,6 +22,8 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
 import { CommandPalette } from "@/components/command-palette";
+import { SentSheet } from "@/components/sent-sheet";
+import { useSentRecall } from "@/hooks/use-sent-recall";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -104,6 +106,8 @@ interface ComposerProps {
   agent: string | undefined | null;
   /** True for a bare shell pane — tweaks the placeholder copy. */
   isShell: boolean;
+  /** The pane's folder, absolute. Sent (M61) lists "This folder" with it; absent, it offers the machine only. */
+  cwd?: string | undefined;
   /* NO `status` AND NO `stale` HERE ANY MORE. The composer took the pane's state as a prop for one
      reason: the status band above the controls row drew it as a word. That band is gone (see the
      long note at the row below), the word went with it rather than moving, and the state is the
@@ -337,7 +341,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -473,14 +477,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * The in-memory draft is untouched: a false positive costs one draft its ability to survive the OS
    * killing the PWA, which is a cheap price for never storing a real one.
    */
-  function updateInput(value: string) {
+  function updateInput(value: string, persist = true) {
     // Anything written INTO the box ends the belt X's Undo window (M40 spec 04): a keystroke, a
     // chip's marker, a transcript, a Take over, a slash command. An Undo after that would overwrite
     // what the operator just put there. The clear itself writes "" and so never ends its own window.
     if (value !== "" || attachmentsRef.current.length > 0) endUndoWindow();
     inputValueRef.current = value;
     setInput(value);
-    persistDraft();
+    // A line recalled from Sent (arrow keys) is shown, not saved: it becomes a draft only when the
+    // person edits it, and that edit comes through here with `persist` on.
+    if (persist) persistDraft();
   }
 
   /** The write-through, text and chips together. The chip writers (addAttachment, removeAttachment,
@@ -1062,6 +1068,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
+  // SENT (M61): on a shell pane, the lines sent through Collie come back from a sheet (the belt's
+  // Sent, or Ctrl+R) and from the arrow keys. Both only put a line in the box. Sending it is the
+  // person's own tap on Send, which runs the ordinary Send Protocol with a request id of its own.
+  const [sentOpen, setSentOpen] = useState(false);
+  const [sentSearch, setSentSearch] = useState(false);
+  const sentRecall = useSentRecall({
+    enabled: isShell && !direct.active && !locked && !sending && !uploading,
+    scope,
+    cwd,
+    read: () => inputValueRef.current,
+    write: (recalled) => {
+      updateInput(recalled, false);
+      focusInputEnd();
+    },
+  });
+  function openSent(withSearch: boolean) {
+    setSentSearch(withSearch);
+    setSentOpen(true);
+  }
+  function pickSent(line: string) {
+    direct.deactivateSilently();
+    sentRecall.stop();
+    updateInput(line);
+    focusInputEnd();
+  }
+
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
@@ -1115,8 +1147,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   async function send(value: string, isDraft: boolean): Promise<boolean> {
-    const t = value.trim();
-    if (!t || locked || sending) return false;
+    // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
+    // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
+    // check and the mode read the fully trimmed text on both, so neither sees a difference.
+    const trimmed = value.trim();
+    const t = isShell ? value.trimEnd() : trimmed;
+    if (!trimmed || locked || sending) return false;
     if (offlineRef.current) {
       setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
       return false;
@@ -1128,7 +1164,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(t), null);
+    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null);
   }
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
@@ -1217,7 +1253,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function onSendClick() {
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
-    const line = composeLine(input, attachments);
+    const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
@@ -1748,6 +1784,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled: locked,
                 onSelect: () => requestDrawer(drawer === "quick" ? null : "quick"),
               },
+              // Sent (M61): the shell lines sent through Collie, on a shell pane only. The bridge's own
+              // `kind` decides that (`isShell`); no list of harness names lives in the web.
+              ...(isShell
+                ? [
+                    {
+                      id: "sent",
+                      icon: ListEnd,
+                      label: translate("sent.button"),
+                      disabled: locked,
+                      onSelect: () => openSent(false),
+                    },
+                  ]
+                : []),
               // Withdrawn rather than greyed when this pane has no commands at all: there is no
               // palette to open, which is a different thing from one this device may not use.
               ...(commands.length > 0
@@ -2033,6 +2082,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? direct.onChange
                 : (e) => {
                     rememberCaret(e);
+                    sentRecall.stop();
                     updateInput(e.target.value);
                     noteOfflineKeystroke(e.target.value);
                   }
@@ -2048,6 +2098,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
                       onSendClick();
+                    } else if (isShell && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "r") {
+                      // A shell's reverse search, as the keyboard knows it. Plain Ctrl+R only, and
+                      // only here in the box of a shell pane: Cmd+R and Ctrl+Shift+R still reload,
+                      // and "Type into terminal" (the branch above) sends Ctrl+R to the shell itself.
+                      e.preventDefault();
+                      openSent(true);
+                    } else {
+                      sentRecall.onKeyDown(e, input === "" && attachments.length === 0);
                     }
                   }
             }
@@ -2304,6 +2362,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onDiscard={recorder.discard}
         />
       )}
+
+      {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} focusSearch={sentSearch} onPick={pickSent} />}
 
       {/* Slash-command palette */}
       <CommandPalette

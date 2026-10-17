@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { CornerDownLeft, Pencil, Search } from "lucide-react";
+import { CornerDownLeft, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SearchField } from "@/components/ui/search-field";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AgentIcon } from "@/components/agent-icon";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -71,21 +72,12 @@ export function CommandPalette({
           <span className="text-sm font-medium">{agent}</span>
         </div>
       )}
-      <div className="relative mb-3">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          inputMode="search"
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("commands.search.placeholder", { count: all.length })}
-          className="h-11 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-base placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        />
-      </div>
+      <SearchField
+        className="mb-3"
+        value={query}
+        onChange={setQuery}
+        placeholder={t("commands.search.placeholder", { count: all.length })}
+      />
 
       {!q && (
         <p className="mb-2 text-[11px] label-caps text-muted-foreground">

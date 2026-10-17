@@ -170,6 +170,13 @@ describe("removeMarker", () => {
 });
 
 describe("composeLine", () => {
+  it("keeps a shell line's leading space or tab and cuts only its end, when asked to", () => {
+    expect(composeLine(" git status  ", [], true)).toBe(" git status");
+    expect(composeLine("\tls\n", [], true)).toBe("\tls");
+    expect(composeLine("  \n", [], true)).toBe("");
+    expect(composeLine("  hi  ", [])).toBe("hi");
+  });
+
   const a = { n: 1, path: "/a.png", kind: "image" as const };
   const b = { n: 2, path: "/b.png", kind: "image" as const };
 
