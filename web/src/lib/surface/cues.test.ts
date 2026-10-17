@@ -265,6 +265,22 @@ describe("the running sign on live captures (Claude Code 2.1.301, Codex 0.163.0,
   });
 });
 
+describe("the running sign on a themed Claude Code spinner (words between the ellipsis and the timer)", () => {
+  it("a spinner with one ` · <words>` segment before its bracketed timer fires", () => {
+    expect(isRunningRow("✢ Fiddle-faddling… · tool use (4m 32s · ↓ 4.8k tokens)")).toBe(true);
+    expect(isRunningRow("✽ Flowing… · tool use (5m 41s · ↓ 4.8k tokens)")).toBe(true);
+    expect(isRunningRow("✽ Flowing… · thinking (48s · ↓ 1.2k tokens)")).toBe(true);
+  });
+
+  it("look-alike rows stay off", () => {
+    expect(isRunningRow("  ctx:  9%  |  sub: 5h  49% (3h06m) · 7d  87%")).toBe(false);
+    expect(isRunningRow("  ◯ general-purpose  Create m56s2.txt file                   9s · ↓ 28.4k tokens")).toBe(false);
+    expect(isRunningRow("● Bash(ls -la)")).toBe(false);
+    expect(isRunningRow("✻ Worked for 3m 12s · done 12:40 PM")).toBe(false);
+    expect(isRunningRow("✽ Flowing… · this is a sentence well over thirty one characters long (5s)")).toBe(false);
+  });
+});
+
 describe("overlay shapes in the no-frame cluster", () => {
   const kinds = (rows: string[]) => readCues(plainRows(rows), null, null).cues.map((cue) => cue.kind);
 
