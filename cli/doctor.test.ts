@@ -406,6 +406,7 @@ describe("collie doctor — the contract", () => {
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
+      "skill-walky-talky",
       "herdr-version",
       "integration-claude",
       "integration-codex",
@@ -1698,6 +1699,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       ...(HOST.platform === "win32" ? ["windows-task", "windows-long-paths", "secrets-private"] : []),
       "beacon-hooks-claude",
       "beacons",
+      "skill-walky-talky",
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -1861,6 +1863,28 @@ describe("beacon-hooks-claude", () => {
     const { byCheck } = await findings(harness(null, [], blind(foreign)));
     expect(byCheck.get("beacon-hooks-claude")?.status).toBe("error");
     expect(byCheck.get("beacon-hooks-claude")?.detail).toContain("no settings file");
+  });
+});
+
+describe("skill-walky-talky", () => {
+  const SKILL = join(HOME, ".claude", "skills", "collie-walky-talky", "SKILL.md");
+  const STAMP = "<!-- collie-skill walky-talky v1 collie 0.0.1 -->";
+
+  test("no install anywhere is OK, because nothing writes the skill unless the operator asks", async () => {
+    const finding = (await findings(harness(null))).byCheck.get("skill-walky-talky")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.remedy).toBeNull();
+    expect(finding.detail).toContain("not installed");
+  });
+
+  test("a copy that differs from this build's text warns and names the install verb", async () => {
+    const h = harness(null, [], { files: { ...healthyFiles(), [SKILL]: `# older advice\n${STAMP}\n` } });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("skill-walky-talky")!;
+    expect(finding.status).toBe("warn");
+    expect(finding.detail).toContain("claude");
+    expect(finding.remedy).toContain("collie skill install all");
+    expect(code).toBe(EXIT.OK);
   });
 });
 

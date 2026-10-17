@@ -17,6 +17,7 @@ local:
   ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`; herdr names agents itself and does not need them for that, so they give hook edges only
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
+  ✓        skill-walky-talky     not installed — `collie skill install all` teaches agents to message each other
   ✓        herdr-version         herdr 0.9.3
   ✓        integration-claude    installed and current
   ✓        integration-codex     installed and current
@@ -58,6 +59,7 @@ local:
   ✓        mux                   herdr — see herdr-socket · no COLLIE_MUX, so `start` picks it: a Herdr socket at /home/pat/.config/herdr/herdr.sock
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`; herdr names agents itself and does not need them for that, so they give hook edges only
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
+  ✓        skill-walky-talky     not installed — `collie skill install all` teaches agents to message each other
   ✓        herdr-version         herdr 0.9.3
   ✓        integration-claude    installed and current
   ✓        integration-codex     installed and current
