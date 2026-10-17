@@ -956,6 +956,16 @@
    "version": "2.1.302",
    "state": "popup"
   },
+  "claude--v2302-slash-model-list--w120--h40.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-slash-effort-list--w120--h40.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

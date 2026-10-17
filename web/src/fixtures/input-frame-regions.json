@@ -1181,11 +1181,40 @@
   }
  },
  {
+  "fixture": "claude--v2302-slash-effort-list--w120--h40.txt",
+  "frame": {
+   "top": 17,
+   "prompt": 18,
+   "bottom": 19,
+   "label": null,
+   "text": "/effort",
+   "placeholder": false,
+   "status": {
+    "first": 20,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2302-slash-model-list--w119.txt",
   "frame": {
    "top": 5,
    "prompt": 6,
    "bottom": 7,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-slash-model-list--w120--h40.txt",
+  "frame": {
+   "top": 17,
+   "prompt": 18,
+   "bottom": 19,
    "label": null,
    "text": "/model",
    "placeholder": false,

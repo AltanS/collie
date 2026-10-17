@@ -1022,6 +1022,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2302-slash-model-list--w119", statusRows: 0, draft: "/model", stripped: 23 },
     // The same list drawn over the box on a tall pane (captured, lane 8788, 2026-10-17), the statusline under it.
     { fixture: "v2302-slash-model-list-above--w119", statusRows: 2, draft: "/model", stripped: 5 },
+    // The list under the box on the harness lab's 120 x 40 tmux pane (captured 2026-10-17), the screen scrolled up.
+    { fixture: "v2302-slash-model-list--w120--h40", statusRows: 0, draft: "/model", stripped: 24 },
+    { fixture: "v2302-slash-effort-list--w120--h40", statusRows: 0, draft: "/effort", stripped: 24 },
     { fixture: "v2302-turn-ended-yn--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-turn-ending-stop-hooks--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2302-working-agents-panel--w119", statusRows: 3, draft: null, stripped: 11 },

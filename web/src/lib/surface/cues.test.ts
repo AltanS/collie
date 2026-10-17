@@ -313,6 +313,18 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
   });
 
+  it("the harness lab's 120 x 40 tmux captures: the list under a box scrolled up the short pane is the typeahead of /model and /effort", () => {
+    for (const [name, command] of [
+      ["claude--v2302-slash-model-list--w120--h40.txt", "/model"],
+      ["claude--v2302-slash-effort-list--w120--h40.txt", "/effort"],
+    ] as const) {
+      const rows = fixtureRows(name);
+      const frame = findInputFrame(rows, IDLE)!;
+      expect(ownCommandList(texts(rows), frame, IDLE), name).toMatchObject({ pointed: command, side: "under" });
+      expect(readScreen(rows, "claude", IDLE).surface, name).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    }
+  });
+
   it("over the box: the run right above the top edge, up to a blank row or a row that is no list row", () => {
     const over = (above: string[], box = "/model") => {
       const rows = plainRows(["● done", ...above, RULE, `❯ ${box}`, RULE, "  model · ctx 3%"]);

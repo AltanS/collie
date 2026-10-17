@@ -1,0 +1,39 @@
+
+  • 󰊤 Issues https://issues.projectbluefin.io
+  • 󰊤 Ask host https://ask.projectbluefin.io
+  • 󰈙 Documentation https://docs.projectbluefin.io
+
+
+command-slash on  main
+❯ exec <lab>/phone/start-command-slash.sh
+ ▐▛███▛█   Claude Code v2.1.302
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   ~/.cache/collie-lab/harness-lab/leg-phone/claude-2.1.302/phone/projects/command-slash
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+❯ /help
+  ⎿  Help dialog dismissed
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /effort
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /effort                     Set effort level for model usage
+    /code-review                Review the current diff, or a PR number/branch/path target, for correctness bugs (plus
+                                reuse/simplification/efficiency cleanups where the model's review recipe covers them)…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
