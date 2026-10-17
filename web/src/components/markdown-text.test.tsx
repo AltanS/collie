@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { testFileOpener } from "@/test/file-links";
 
 import { FileLinksProvider } from "./file-links";
-import { MarkdownText } from "./markdown-text";
+import { MarkdownText, StretchTextContext } from "./markdown-text";
 
 // The renderer's one LAYOUT decision, which is here because no CSS property can make it.
 //
@@ -121,5 +121,109 @@ describe("MarkdownText file paths", () => {
     const { container } = withLinks("[docs/guide.md](https://example.com/guide)");
     expect(container.querySelectorAll("a")).toHaveLength(1);
     expect(container.querySelector("a")!.getAttribute("href")).toBe("https://example.com/guide");
+  });
+});
+
+// Stretchtext (`{{short|long}}`, the cc-stretch plugin's markup) is drawn only where both the screen
+// says this device draws it and the text is agent reply prose; anywhere else the markup reads as written.
+function withStretches(text: string, { query = "", stretches = true, on = true } = {}) {
+  return render(
+    <StretchTextContext.Provider value={on}>
+      <MarkdownText text={text} query={query} stretches={stretches} />
+    </StretchTextContext.Provider>,
+  );
+}
+
+describe("stretches", () => {
+  it("shows the short form, opens to the long form, and closes back", () => {
+    withStretches("see {{the cache|the cache keeps one entry per key}} now");
+    expect(screen.queryByText(/one entry per key/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "the cache" }));
+    expect(screen.getByText(/one entry per key/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "the cache" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.getByRole("button", { name: "the cache" })).toBeInTheDocument();
+    expect(screen.queryByText(/one entry per key/)).toBeNull();
+  });
+
+  it("closing a stretch closes the ones opened inside it", () => {
+    withStretches("a {{parent|outer {{child|inner words}} end}} b");
+    fireEvent.click(screen.getByRole("button", { name: "parent" }));
+    fireEvent.click(screen.getByRole("button", { name: "child" }));
+    expect(screen.getByText(/inner words/)).toBeInTheDocument();
+
+    // The parent's closer comes after its whole long form, so it is the last one.
+    const closers = screen.getAllByRole("button", { name: "Show less" });
+    fireEvent.click(closers[closers.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "parent" }));
+    expect(screen.getByRole("button", { name: "child" })).toBeInTheDocument();
+    expect(screen.queryByText(/inner words/)).toBeNull();
+  });
+
+  it("opens from the keyboard", () => {
+    withStretches("x {{short|the long form}} y");
+    fireEvent.keyDown(screen.getByRole("button", { name: "short" }), { key: "Enter" });
+    expect(screen.getByText(/the long form/)).toBeInTheDocument();
+  });
+
+  it("leaves a stretch inside a code span as written", () => {
+    withStretches("run `{{a|b}}` here");
+    expect(screen.getByText("{{a|b}}", { selector: "code" })).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("a find opens every stretch, so a hit inside a long form is marked", () => {
+    const { container } = withStretches("x {{short|a needle inside}} y", { query: "needle" });
+    expect(screen.queryByRole("button", { name: "short" })).toBeNull();
+    expect(container.querySelector("mark")?.textContent).toBe("needle");
+  });
+
+  it("reads the markup as written when this device does not draw stretches", () => {
+    withStretches("see {{a|b}} now", { on: false });
+    expect(screen.getByText("see {{a|b}} now")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("reads the markup as written in text that is not agent reply prose", () => {
+    withStretches("see {{a|b}} now", { stretches: false });
+    expect(screen.getByText("see {{a|b}} now")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("underlines each closed stretch in its own hue", () => {
+    withStretches("{{one|first words}} and {{two|second words}}");
+    expect(screen.getByRole("button", { name: "one" })).toHaveClass("decoration-stretch-1");
+    expect(screen.getByRole("button", { name: "two" })).toHaveClass("decoration-stretch-2");
+  });
+
+  it("draws the words an open stretch added in its hue, and its anchors in the text's ink", () => {
+    withStretches("x {{monad|a monad is a type}} y");
+    fireEvent.click(screen.getByRole("button", { name: "monad" }));
+    expect(screen.getByText("is a type")).toHaveClass("text-stretch-1");
+    expect(screen.getByText(/monad/).closest("[class*='text-stretch']")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveClass("text-stretch-1");
+  });
+
+  it("fades an open stretch's words once another is opened after it", () => {
+    withStretches("{{one|first words}} and {{two|second words}}");
+    fireEvent.click(screen.getByRole("button", { name: "one" }));
+    expect(screen.getByText("first words")).toHaveClass("text-stretch-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "two" }));
+    expect(screen.getByText("first words")).toHaveClass("text-stretch-1-faded");
+    expect(screen.getByText("second words")).toHaveClass("text-stretch-2");
+    // A closer keeps its stretch's unfaded colour.
+    const [first, second] = screen.getAllByRole("button", { name: "Show less" });
+    expect(first).toHaveClass("text-stretch-1");
+    expect(second).toHaveClass("text-stretch-2");
+  });
+
+  it("a stretch in bold, in a list item and in a table cell is a button", () => {
+    withStretches("**see {{bold one|b}}**\n\n- item {{list one|c}}\n\n| h | k |\n| --- | --- |\n| {{cell one|d}} | z |");
+    for (const name of ["bold one", "list one", "cell one"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
   });
 });

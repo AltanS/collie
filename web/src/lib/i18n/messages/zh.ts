@@ -270,6 +270,9 @@ export const zh: Dictionary = {
   "settings.display.fullReply.label": "完整显示最新回复",
   "settings.display.fullReply.hint":
     "智能体终端不保留回滚缓冲，长回复的开头会丢失。开启后将从智能体自身日志中取出完整回复，替换它所覆盖的那几行。",
+  "settings.display.stretchText.label": "伸缩文本回复",
+  "settings.display.stretchText.hint":
+    "使用 cc-stretch 插件撰写的回复先显示简短形式；轻点短语即可展开。",
   "settings.display.rawTerminal.label": "原始终端",
   "settings.display.rawTerminal.hint":
     "仅显示纯终端镜像，隐藏提示按钮与状态栏。适用于对话框渲染异常时通过按键手动操作。",
@@ -1381,6 +1384,9 @@ export const zh: Dictionary = {
   "transcript.truncated": "… 已截断",
   "transcript.toolImageAlt": "工具输出",
   "transcript.attachmentAlt": "附件",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "收起",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "终端图像",

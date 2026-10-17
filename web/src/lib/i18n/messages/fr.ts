@@ -232,6 +232,9 @@ export const fr: Dictionary = {
   "settings.display.tapToType.hint": "Activé, toucher n'importe où sur le miroir ouvre le clavier. Désactivé, le miroir se comporte comme un document : toucher sélectionne le texte et seule la zone de saisie ouvre le clavier.",
   "settings.display.fullReply.label": "Dernière réponse complète",
   "settings.display.fullReply.hint": "Le terminal d'un agent ne conserve pas d'historique de défilement, une réponse longue perd donc son début. Activé, cette réponse s'affiche en entier depuis le journal de l'agent, à la place des lignes qu'elle occupe.",
+  "settings.display.stretchText.label": "Réponses stretchtext",
+  "settings.display.stretchText.hint":
+    "Les réponses écrites avec le plugin cc-stretch affichent leur forme courte ; touchez une expression pour l'ouvrir.",
   "settings.display.rawTerminal.label": "Terminal brut",
   "settings.display.rawTerminal.hint": "Affiche le miroir simple : aucun bouton d'invite tactile, ni habillage ni bande d'état. Utilisez-le quand une boîte de dialogue s'affiche mal et que vous souhaitez la contrôler manuellement depuis Touches.",
   "settings.display.noInvert.label": "Rendu natif pour ce volet",
@@ -1278,6 +1281,9 @@ export const fr: Dictionary = {
   "transcript.truncated": "… tronqué",
   "transcript.toolImageAlt": "Sortie de l'outil",
   "transcript.attachmentAlt": "Pièce jointe",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Afficher moins",
   "mirror.imageAlt": "Graphismes de terminal",
   "mirror.imageBadge": "[Image]",
   "mirror.imageMatchedByOrder": "correspondance par ordre, ouvrez l'historique pour vérifier",

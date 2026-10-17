@@ -311,6 +311,9 @@ export const en = {
   "settings.display.fullReply.label": "Full latest reply",
   "settings.display.fullReply.hint":
     "An agent's terminal keeps no scrollback, so a long answer loses its start. On, that reply is shown in full from the agent's own log, in place of the rows it covers.",
+  "settings.display.stretchText.label": "Stretchtext replies",
+  "settings.display.stretchText.hint":
+    "Replies written with the cc-stretch plugin show their short form; tap a phrase to open it.",
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
     "Shows the plain mirror. No tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
@@ -1483,6 +1486,9 @@ export const en = {
   "transcript.truncated": "… truncated",
   "transcript.toolImageAlt": "Tool output",
   "transcript.attachmentAlt": "Attachment",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Show less",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Terminal graphics",

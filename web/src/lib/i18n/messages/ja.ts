@@ -278,6 +278,9 @@ export const ja: Dictionary = {
   "settings.display.fullReply.label": "最新の返答を全文表示",
   "settings.display.fullReply.hint":
     "エージェントのターミナルはスクロールバックを保持しないため、長い返答は冒頭が失われます。有効時はエージェント自身のログから全文を表示し、該当する行を置き換えます。",
+  "settings.display.stretchText.label": "ストレッチテキスト返答",
+  "settings.display.stretchText.hint":
+    "cc-stretch プラグインで書かれた返答は短い形で表示されます。語句をタップすると展開します。",
   "settings.display.rawTerminal.label": "未加工ターミナル",
   "settings.display.rawTerminal.hint":
     "プロンプトボタンやステータス表示を除いた素の出力を表示します。ダイアログの表示崩れを手動で制御する際に使用します。",
@@ -1391,6 +1394,9 @@ export const ja: Dictionary = {
   "transcript.truncated": "… 省略",
   "transcript.toolImageAlt": "ツールの出力",
   "transcript.attachmentAlt": "添付ファイル",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "折りたたむ",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "ターミナルグラフィックス",
