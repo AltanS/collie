@@ -21,6 +21,8 @@ newest tag. The phone PWA updates itself within about a minute; no reload needed
 Running a crew? Update the lead first; members follow on their own. Details:
 `docs/crew.md` → *Updating from 1.7.0*.
 
+## [Unreleased]
+
 ## [1.22.1] - 2026-10-17
 
 ### Fixed
