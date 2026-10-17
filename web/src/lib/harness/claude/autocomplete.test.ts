@@ -298,6 +298,8 @@ describe("the pointed shape (Claude Code 2.1.291)", () => {
     // The harness lab's 120 x 40 tmux pane (captured 2026-10-17): the same layout, the screen scrolled up.
     { fixture: "claude--v2302-slash-model-list--w120--h40.txt", draft: "/model", entries: 7 },
     { fixture: "claude--v2302-slash-effort-list--w120--h40.txt", draft: "/effort", entries: 2 },
+    // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): the same list, blank rows under it.
+    { fixture: "claude--v2302-slash-model-list-padded--w120--h36.txt", draft: "/model", entries: 7 },
   ];
 
   it.each(POINTED)("$fixture: the box stands and the popup lifts", ({ fixture, draft, entries }) => {

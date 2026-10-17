@@ -990,10 +990,27 @@ const DIALOG_AFTER_ENTER = "A dialog opened as the message went in. Check the ca
  * transcript with it (harness lab, tmux 120 x 40, Claude Code 2.1.302, 2026-10-17: a twelve-row list
  * under the box moved the box up eleven rows). The rows that left at the top went into the scrollback;
  * what stays above must still be the same transcript, in order. 0 with no own list.
+ *
+ * The list's region is taller than its rows. Claude Code 2.1.302 draws blank rows under the list down
+ * to a height the pane sets (12 rows and 8 blank on the lab's 40-row tmux pane, 12 and 5 on a 36-row
+ * Herdr pane), and the read leaves them out. On a screen whose rows already reach the bottom, the
+ * terminal scrolls for those blank rows too: the box moved up 16 rows where the list's rows plus one
+ * allowed 13, so every /model sent from such a screen was left typed (`changed`; fix rig, Herdr
+ * 120 x 36, 2026-10-17). Those blank rows count too, as the rows S0 drew at the bottom that are blank
+ * after the write, but only when the list stands under the box, nothing is drawn under the list, and
+ * at least {@link SCROLL_ANCHOR_ROWS} transcript rows still show above to compare.
  */
-function ownListScroll(snap: Snap): number {
-  return snap.ownList === null ? 0 : snap.ownList.last - snap.ownList.first + 1;
+function ownListScroll(before: Snap, after: Snap): number {
+  const list = after.ownList;
+  if (list === null) return 0;
+  const rows = list.last - list.first + 1;
+  if (list.side !== "under" || after.frame === null || contentEnd(after.texts) !== list.last + 1) return rows;
+  if (transcriptAbove(after, after.frame).filter((row) => row.trim().length > 0).length < SCROLL_ANCHOR_ROWS) return rows;
+  return rows + Math.max(0, contentEnd(before.texts) - contentEnd(after.texts));
 }
+
+/** How many non-blank transcript rows must still show above the box before blank rows under a list may count as scroll. */
+const SCROLL_ANCHOR_ROWS = 2;
 
 /** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
 function aboveLostOnly(before: Snap, after: Snap): boolean {
@@ -2931,7 +2948,7 @@ export class SendProtocol {
           : manual
             ? aboveLostOnly(s0, snap)
             : command
-              ? aboveUnchanged(s0, snap, ownListScroll(snap))
+              ? aboveUnchanged(s0, snap, ownListScroll(s0, snap))
               : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
         if (!outside) {
           why = "changed";

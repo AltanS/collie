@@ -136,6 +136,9 @@ const NEUTRAL = new Set([
   // field case): the agent's text above an ordinary box, no dialog.
   "claude--v2302-turn-ending-stop-hooks--w119.txt",
   "claude--v2302-turn-ended-yn--w119.txt",
+  // A screen whose rows reach the bottom, an empty box under the transcript (the fix rig, 2026-10-17):
+  // the read before a slash command whose list scrolls the whole screen up. An ordinary box, no dialog.
+  "claude--v2302-idle-full-screen--w120--h36.txt",
   // Claude Code 2.1.301's agents panel under a free box while a fork runs (the 2026-10-16 incident
   // on lane 8788): an ordinary box with a footer, no dialog.
   "claude--v2301-fork-running-main-idle.txt",

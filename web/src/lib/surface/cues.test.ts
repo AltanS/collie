@@ -317,6 +317,8 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     for (const [name, command] of [
       ["claude--v2302-slash-model-list--w120--h40.txt", "/model"],
       ["claude--v2302-slash-effort-list--w120--h40.txt", "/effort"],
+      // The fix rig's 120 x 36 Herdr pane: the same list, with blank rows under it to the pane's bottom.
+      ["claude--v2302-slash-model-list-padded--w120--h36.txt", "/model"],
     ] as const) {
       const rows = fixtureRows(name);
       const frame = findInputFrame(rows, IDLE)!;

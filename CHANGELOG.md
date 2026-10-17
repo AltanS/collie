@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Model and Effort go out from a full screen too.** Claude Code 2.1.302 draws blank rows under its command list, down to a height the pane sets. When the transcript already reached the bottom of the pane, the screen moved up by those blank rows as well, and Collie read the extra move as a changed screen. Model was then left typed in the box, and the phone asked for a second tap. Collie now counts those blank rows too, when nothing stands under the list and the rows above are still the same transcript.
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with a footer from an extension refuses every send from the phone, and a Claude picker can need three taps.
