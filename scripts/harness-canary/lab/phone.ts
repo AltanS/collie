@@ -33,7 +33,8 @@ import { passCase, failCase, notReachedCase, type CaseResult } from "../verdict"
 import { ASK_FILE, ASK_TEXT, SEND_TEXT } from "./legs";
 import { mintRequestId, type PhoneClient, type PhonePane } from "./phone-client";
 import { applyPhoneGaps, judgeStream, phoneResult, readableSentence, receiptWords, rowOf, streamSettled, WENT_IN, type PhoneScenarioId, type PhoneScenarioResult } from "./phone-verdict";
-import { viewOf } from "./screens";
+import { idleOf, viewOf } from "./screens";
+import { clearSlash, readMenu, type MenuRead, type WalkPane } from "./walk";
 import { paneCommand } from "./tmux";
 
 /** The model turns the phone leg may spend: idle 1, stream 5, turn end 2, ask 2, agents screen 1, and slack. */
@@ -51,6 +52,10 @@ const REPLY_WAIT_MS = 120_000;
 const HOLD_WAIT_MS = 120_000;
 const DIALOG_WAIT_MS = 75_000;
 const MENU_WAIT_MS = 5000;
+/** How long scenario 6 waits for a command's screen to show another screen's footer row. */
+const SCREEN_WAIT_MS = 3000;
+/** The bottom rows scenario 6 reads for that footer: the pane text carries scrollback above the screen. */
+const SCREEN_TAIL_ROWS = 40;
 const POLL_MS = 500;
 const TURN_POLL_MS = 200;
 const CLOSE_PRESS_CAP = 3;
@@ -132,18 +137,54 @@ export interface SlashPlan {
   readonly send: readonly string[];
   /** Offered by the belt and not on the safe list: never sent. */
   readonly skipped: readonly string[];
+  /** Marked "(removed)" in the agent's own `/` menu: never sent, whatever list it is on. */
+  readonly removed: readonly string[];
 }
 
-export function slashPlan(belt: readonly string[], lists: SlashLists): SlashPlan {
+export function slashPlan(belt: readonly string[], lists: SlashLists, menuRemoved: readonly string[] = []): SlashPlan {
   const safe = new Set(lists.safe.map((entry) => entry.command));
+  const gone = new Set(menuRemoved);
   const toSend: string[] = [];
   const skipped: string[] = [];
+  const removed: string[] = [];
   for (const command of ["/model", "/help", ...belt]) {
-    if (toSend.includes(command) || skipped.includes(command)) continue;
-    if (safe.has(command)) toSend.push(command);
+    if (toSend.includes(command) || skipped.includes(command) || removed.includes(command)) continue;
+    if (gone.has(command)) removed.push(command);
+    else if (safe.has(command)) toSend.push(command);
     else skipped.push(command);
   }
-  return { send: toSend, skipped };
+  return { send: toSend, skipped, removed };
+}
+
+/**
+ * The commands scenario 6 tries, in order, for a screen of its own over the conversation: `/agents`
+ * (the scenario's own command, when the menu lists it and does not mark it removed), then every
+ * command on the safe list that opens a dialog and that the menu lists and does not mark removed,
+ * names with "agent" or "task" first. An unclassified or unsafe command is never tried.
+ */
+export function fullScreenCandidates(menu: MenuRead, lists: SlashLists): string[] {
+  const gone = new Set(menu.removed);
+  const listed = new Set(menu.names.filter((name) => !gone.has(name)));
+  const dialogs = lists.safe.filter((entry) => entry.opens === "dialog" && listed.has(entry.command)).map((entry) => entry.command);
+  const out = listed.has("/agents") ? ["/agents"] : [];
+  const ordered = [...dialogs.filter(namesAgents), ...dialogs.filter((name) => !namesAgents(name))];
+  for (const command of ordered) if (!out.includes(command)) out.push(command);
+  return out;
+}
+
+/** A command whose name says agents or tasks: scenario 6 tries those first. */
+function namesAgents(command: string): boolean {
+  return /agent|task/u.test(command);
+}
+
+/** The rows the profile names as another screen's (`idle.volatile.below.otherScreens`), by name; null when none shows. */
+export function otherScreenIn(plain: readonly string[], harness: string): string | null {
+  const screens = idleOf(harness)?.volatile.below.otherScreens ?? [];
+  for (const screen of screens) {
+    const pattern = new RegExp(screen.pattern, "u");
+    if (plain.some((row) => pattern.test(row.trimEnd()))) return screen.name;
+  }
+  return null;
 }
 
 // ── The phone panes' own config ──────────────────────────────────────────────
@@ -245,6 +286,15 @@ async function send(env: PhoneEnv, pane: string, text: string, mode: SendMode, i
   return { id: made.id, outcome: last.outcome, reason: last.reason, detail: last.detail ?? last.receiptDetail, committed: made.answers.length > 1, rowsHash: last.rowsHash };
 }
 
+/** After `typed_not_submitted`: the phone's Discard, on the rows hash of that answer. Nothing for any other answer. */
+async function discardTyped(env: PhoneEnv, pane: string, text: string, sent: Sent, ids: Set<string>, scenario: PhoneScenarioId): Promise<void> {
+  if (sent.outcome !== "typed_not_submitted" || sent.rowsHash === null) return;
+  const dropId = mintRequestId();
+  ids.add(dropId);
+  const dropped = await env.client.send({ id: dropId, pane, text, mode: "discard", rowsHash: sent.rowsHash }).catch(() => null);
+  env.log(`phone ${scenario}: ${text}: Discard: ${dropped?.outcome ?? "no answer"}${dropped?.reason === null || dropped?.reason === undefined ? "" : ` (${dropped.reason})`}`);
+}
+
 /** Escape through the Keys board until the box reads free. True when it did. */
 async function escapeToFree(env: PhoneEnv, pane: string): Promise<boolean> {
   for (let press = 0; press < CLOSE_PRESS_CAP; press++) {
@@ -262,6 +312,50 @@ interface Started {
   readonly ready: boolean;
   readonly note: string;
   readonly project: string;
+  /** The first-tap check of the start line on the shell pane; null when no pane was made. */
+  readonly shell: CaseResult | null;
+  /** The scenario's cases and request ids as they come: a call that throws midway keeps what was judged before it. */
+  readonly cases: CaseResult[];
+  readonly ids: Set<string>;
+}
+
+/** The fail name of a shell send that took the unreadable-screen path (fixed on branch fix-shell-send). */
+export const SHELL_TWO_TAPS = "shell send needs two taps";
+
+/**
+ * The start line as the phone sends it into a fresh shell pane, and the check of its first answer. A
+ * shell has no profile, so the bridge types it and presses Enter blind: `sent` on the first tap, its
+ * receipt's screen words `no-profile`. A `refused unconfirmed` there is the 1.22.0 regression
+ * ({@link SHELL_TWO_TAPS}); the leg then taps commit with the rows hash, as a person would, so the
+ * scenario still runs.
+ */
+export async function sendStartLine(env: PhoneEnv, id: PhoneScenarioId, pane: string, line: string): Promise<{ readonly went: boolean; readonly check: CaseResult; readonly note: string }> {
+  const tap = async (label: string) => {
+    const answer = await env.client.send({ id: mintRequestId(), pane, text: line, mode: "send" });
+    env.log(`phone: ${id}: ${label}: ${answer.outcome ?? "no outcome"}${answer.reason === null ? "" : ` (${answer.reason})`}${answer.sawReason === null ? "" : `, saw ${answer.sawReason}`}${answer.detail === null ? "" : `: ${answer.detail}`}`);
+    return answer;
+  };
+  let first = await tap("the start line");
+  // A fresh shell may still draw its prompt (`not_free`, `stale_surface`). A person taps Send again a moment later.
+  if (first.outcome === "refused" && first.reason !== "unconfirmed") {
+    await Bun.sleep(START_RETRY_MS);
+    first = await tap("the start line, once more");
+  }
+  if (first.outcome !== null && WENT_IN.includes(first.outcome)) {
+    return { went: true, check: passCase("shell-send", `${first.outcome} on the first tap${first.sawReason === null ? "" : `, saw ${first.sawReason}`}`), note: "" };
+  }
+  const words = `${first.outcome ?? "no outcome"}${first.reason === null ? "" : ` (${first.reason})`}${first.detail === null ? "" : `: ${first.detail}`}`;
+  if (first.outcome !== "refused" || first.reason !== "unconfirmed" || first.rowsHash === null) {
+    return { went: first.outcome !== "refused", check: failCase("shell-send", `the start line on the shell pane answered ${words}`), note: `the start line was ${words}` };
+  }
+  const check = failCase("shell-send", `${SHELL_TWO_TAPS}: the first tap answered ${words}`);
+  let commit = await env.client.send({ id: mintRequestId(), pane, text: line, mode: "send", rowsHash: first.rowsHash });
+  if (commit.outcome === "refused" && commit.reason === "unconfirmed" && commit.cap !== null && commit.rowsHash !== null) {
+    env.log(`phone: ${id}: the commit met the cap, confirmed once more with capAck: ${commit.detail ?? ""}`.trimEnd());
+    commit = await env.client.send({ id: mintRequestId(), pane, text: line, mode: "send", rowsHash: commit.rowsHash, capAck: true });
+  }
+  env.log(`phone: ${id}: ${SHELL_TWO_TAPS}; the commit tap: ${commit.outcome ?? "no outcome"}${commit.reason === null ? "" : ` (${commit.reason})`}`);
+  return { went: commit.outcome !== "refused", check, note: `the start line was refused after the commit tap (${commit.reason ?? "?"}): ${commit.detail ?? ""}` };
 }
 
 /** Wait for the fresh shell to draw its prompt: some text, the same on two reads in a row. */
@@ -293,18 +387,12 @@ export async function startAgent(env: PhoneEnv, id: PhoneScenarioId, makeProject
   try {
     pane = await env.client.createPane(project, `phone-${id}`);
   } catch (err) {
-    return { pane: null, ready: false, note: `POST /api/workspace failed: ${err instanceof Error ? err.message : String(err)}`, project };
+    return { pane: null, ready: false, note: `POST /api/workspace failed: ${err instanceof Error ? err.message : String(err)}`, project, shell: null, cases: [], ids: new Set() };
   }
   env.log(`phone ${id}: pane ${pane} made through POST /api/workspace`);
   await waitShell(env, pane);
-  let start = await send(env, pane, `exec ${script}`, "send", new Set(), `${id}: the start line`);
-  // A fresh shell may still draw its prompt (the bridge answers `not_free` or `stale_surface`). A person
-  // taps Send again a moment later; the leg does that once.
-  if (start.outcome === "refused" && start.reason !== "unconfirmed") {
-    await Bun.sleep(START_RETRY_MS);
-    start = await send(env, pane, `exec ${script}`, "send", new Set(), `${id}: the start line, once more`);
-  }
-  if (start.outcome === "refused") return { pane, ready: false, note: `the start line was refused (${start.reason ?? "?"}): ${start.detail ?? ""}`, project };
+  const start = await sendStartLine(env, id, pane, `exec ${script}`);
+  if (!start.went) return { pane, ready: false, note: start.note, project, shell: start.check, cases: [], ids: new Set() };
 
   const deadline = Date.now() + START_WAIT_MS;
   let trustByKeys = false;
@@ -321,7 +409,7 @@ export async function startAgent(env: PhoneEnv, id: PhoneScenarioId, makeProject
         env.log(`phone ${id}: the folder trust question answered through /api/ask: ${reply.outcome ?? "no outcome"}${reply.reason === null ? "" : ` (${reply.reason})`}, keys ${reply.keys.join(" ")}`);
       } else if (isFree(view.surface)) {
         env.log(`phone ${id}: the agent is up, the bridge names it ${view.agent}, hooks ${view.hooks ?? "-"}, ${surfaceWords(view.surface)}`);
-        return { pane, ready: true, note: "", project };
+        return { pane, ready: true, note: "", project, shell: start.check, cases: [], ids: new Set() };
       }
     } else if (!trustByKeys && Date.now() - lastText > 1500) {
       // No agent name yet: the bridge cannot lift a dialog in a pane it calls a shell. A person taps the Keys board.
@@ -344,7 +432,40 @@ export async function startAgent(env: PhoneEnv, id: PhoneScenarioId, makeProject
     await Bun.sleep(POLL_MS);
   }
   const view = await env.client.pane(pane).catch(() => null);
-  return { pane, ready: false, note: `the agent was not up and free within ${String(START_WAIT_MS / 1000)} s (${view === null ? "no pane" : `${view.agent}, ${surfaceWords(view.surface)}`})`, project };
+  return { pane, ready: false, note: `the agent was not up and free within ${String(START_WAIT_MS / 1000)} s (${view === null ? "no pane" : `${view.agent}, ${surfaceWords(view.surface)}`})`, project, shell: start.check, cases: [], ids: new Set() };
+}
+
+// ── The slash menu, read over HTTP ───────────────────────────────────────────
+
+/** The walk's pane over the phone's calls: Type (`/reply` with no submit), the Keys board, and the pane's text. */
+function httpWalkPane(env: PhoneEnv, pane: string): WalkPane {
+  return {
+    read: async () => viewOf(await env.client.text(pane), env.harness),
+    type: async (text) => {
+      await env.client.type(pane, text);
+    },
+    keys: async (...keys) => {
+      await env.client.keys(pane, keys);
+    },
+    sleep: (ms) => Bun.sleep(ms),
+  };
+}
+
+/** The menu of each leg run, read once (the walk's readMenu) and shared by the scenarios that need it. */
+const MENUS = new WeakMap<PhoneEnv, MenuRead>();
+
+/** The agent's `/` menu: read once per leg run in the first pane that asks, then the box emptied again. */
+async function menuOf(env: PhoneEnv, pane: string): Promise<MenuRead> {
+  const known = MENUS.get(env);
+  if (known !== undefined) return known;
+  const walk = httpWalkPane(env, pane);
+  const menu = await readMenu(walk);
+  await clearSlash(walk);
+  await waitPane(env, pane, agentFree(env.harness), 5000, 250);
+  MENUS.set(env, menu);
+  const agentish = menu.names.filter((name) => /agent|task/u.test(name));
+  env.log(`phone: the / menu lists ${String(menu.names.length)} commands (agent and task names: ${agentish.length === 0 ? "none" : agentish.join(" ")}); marked removed: ${menu.removed.length === 0 ? "none" : menu.removed.join(" ")}`);
+  return menu;
 }
 
 // ── The scenarios ────────────────────────────────────────────────────────────
@@ -356,11 +477,11 @@ interface Ran {
 }
 
 async function idleSend(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
   if (!spend(env, "idle-send")) return { cases: [notReachedCase("send", "turn cap")], ids, pane };
   const sent = await send(env, pane, SEND_TEXT, "send", ids, "idle-send");
-  const cases: CaseResult[] = [];
+  const cases = started.cases;
   cases.push(sent.outcome !== null && WENT_IN.includes(sent.outcome) ? passCase("send", sent.outcome) : failCase("send", `answer ${sent.outcome ?? "none"}${sent.reason === null ? "" : ` (${sent.reason})`}: ${sent.detail ?? ""}`));
   const { view, met } = await waitPane(env, pane, agentFree(env.harness), REPLY_WAIT_MS);
   cases.push(met ? passCase("box-empty", "free after the reply") : notReachedCase("box-empty", `the reply did not end in time (${surfaceWords(view?.surface ?? null)})`));
@@ -368,9 +489,9 @@ async function idleSend(env: PhoneEnv, started: Started): Promise<Ran> {
 }
 
 async function streamSends(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
-  const cases: CaseResult[] = [];
+  const cases = started.cases;
   if (!spend(env, "the fruit prompt")) return { cases: [notReachedCase("fruit", "turn cap")], ids, pane };
   const t0 = Date.now();
   const order: string[] = [];
@@ -411,9 +532,9 @@ async function streamSends(env: PhoneEnv, started: Started): Promise<Ran> {
 }
 
 async function turnEndSend(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
-  const cases: CaseResult[] = [];
+  const cases = started.cases;
   if (!spend(env, "the short prompt")) return { cases: [notReachedCase("prompt", "turn cap")], ids, pane };
   const first = await send(env, pane, SHORT_TEXT, "send", ids, "turn-end-send: the short prompt");
   if (first.outcome === null || !WENT_IN.includes(first.outcome)) return { cases: [failCase("prompt", `answer ${first.outcome ?? "none"}: ${first.detail ?? ""}`)], ids, pane };
@@ -441,11 +562,13 @@ async function turnEndSend(env: PhoneEnv, started: Started): Promise<Ran> {
 }
 
 async function commandSlash(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
-  const cases: CaseResult[] = [];
-  const plan = slashPlan(env.belt, env.lists);
+  const cases = started.cases;
+  const menu = await menuOf(env, pane);
+  const plan = slashPlan(env.belt, env.lists, menu.removed);
   if (plan.skipped.length > 0) env.log(`phone command-slash: not on the safe list, so not sent: ${plan.skipped.join(" ")}`);
+  if (plan.removed.length > 0) env.log(`phone command-slash: the menu marks it removed, so not sent: ${plan.removed.join(" ")}`);
   const opens = new Map(env.lists.safe.map((entry) => [entry.command, entry.opens] as const));
   for (const command of plan.send) {
     const sent = await send(env, pane, command, "command", ids, `command-slash: ${command}`);
@@ -454,12 +577,7 @@ async function commandSlash(env: PhoneEnv, started: Started): Promise<Ran> {
       const shot = await capture(env, "command-slash", pane, command);
       cases.push(failCase(command, `answer ${sent.outcome ?? "none"}${sent.reason === null ? "" : ` (${sent.reason})`}: ${sent.detail ?? ""}${shot === null ? "" : ` (capture ${env.redact(shot)})`}`));
       // The text may still sit in the box. Tap Discard as the phone offers it, then Escape, or stop.
-      if (sent.outcome === "typed_not_submitted" && sent.rowsHash !== null) {
-        const dropId = mintRequestId();
-        ids.add(dropId);
-        const dropped = await env.client.send({ id: dropId, pane, text: command, mode: "discard", rowsHash: sent.rowsHash }).catch(() => null);
-        env.log(`phone command-slash: ${command}: Discard: ${dropped?.outcome ?? "no answer"}${dropped?.reason === null || dropped?.reason === undefined ? "" : ` (${dropped.reason})`}`);
-      }
+      await discardTyped(env, pane, command, sent, ids, "command-slash");
       if (!(await escapeToFree(env, pane))) {
         cases.push(failCase(`${command}-close`, "the box did not come back after Escape"));
         break;
@@ -493,9 +611,9 @@ async function commandSlash(env: PhoneEnv, started: Started): Promise<Ran> {
 }
 
 async function askAnswer(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
-  const cases: CaseResult[] = [];
+  const cases = started.cases;
   if (!spend(env, "the ask request")) return { cases: [notReachedCase("request", "turn cap")], ids, pane };
   const sent = await send(env, pane, ASK_TEXT, "send", ids, "ask-answer: the request");
   if (sent.outcome === null || !WENT_IN.includes(sent.outcome)) return { cases: [failCase("request", `answer ${sent.outcome ?? "none"}: ${sent.detail ?? ""}`)], ids, pane };
@@ -524,16 +642,38 @@ async function askAnswer(env: PhoneEnv, started: Started): Promise<Ran> {
 }
 
 async function sendOnAgentsScreen(env: PhoneEnv, started: Started): Promise<Ran> {
-  const ids = new Set<string>();
+  const ids = started.ids;
   const pane = started.pane!;
-  const cases: CaseResult[] = [];
-  const opened = await send(env, pane, "/agents", "command", ids, "send-on-agents-screen: /agents");
-  if (opened.outcome === null || !WENT_IN.includes(opened.outcome)) return { cases: [failCase("open", `answer ${opened.outcome ?? "none"}${opened.reason === null ? "" : ` (${opened.reason})`}: ${opened.detail ?? ""}`)], ids, pane };
-  const screen = await waitPane(env, pane, (view) => view.surface !== null && view.surface.modal !== "none", MENU_WAIT_MS, 250);
-  if (!screen.met) {
-    await escapeToFree(env, pane);
-    return { cases: [notReachedCase("open", `the agents screen did not come within 5 s (${surfaceWords(screen.view?.surface ?? null)})`)], ids, pane };
+  const cases = started.cases;
+  // Open a screen of its own over the conversation: the first candidate whose screen shows a row the
+  // profile names as another screen's (the agents screen's "enter to return" footer).
+  const menu = await menuOf(env, pane);
+  const candidates = fullScreenCandidates(menu, env.lists);
+  const tried: string[] = [];
+  let opened: { command: string; screen: string } | null = null;
+  for (const command of candidates) {
+    tried.push(command);
+    const sent = await send(env, pane, command, "command", ids, `send-on-agents-screen: ${command}`);
+    if (sent.outcome === null || !WENT_IN.includes(sent.outcome)) {
+      await discardTyped(env, pane, command, sent, ids, "send-on-agents-screen");
+      if (!(await escapeToFree(env, pane))) return { cases: [failCase("open", `the box did not come back after ${command}`)], ids, pane };
+      continue;
+    }
+    const deadline = Date.now() + SCREEN_WAIT_MS;
+    let screen: string | null = null;
+    while (screen === null && Date.now() < deadline) {
+      await Bun.sleep(250);
+      screen = otherScreenIn(viewOf(await env.client.text(pane).catch(() => ""), env.harness).plain.slice(-SCREEN_TAIL_ROWS), env.harness);
+    }
+    if (screen !== null) {
+      opened = { command, screen };
+      break;
+    }
+    if (!(await escapeToFree(env, pane))) return { cases: [failCase("open", `the box did not come back after ${command}`)], ids, pane };
   }
+  env.log(`phone send-on-agents-screen: tried ${tried.length === 0 ? "no command" : tried.join(" ")}; ${opened === null ? "none opened a screen of its own" : `${opened.command} opened the ${opened.screen}`}`);
+  if (opened === null) return { cases: [notReachedCase("open", `no full-screen command on this version (tried ${tried.length === 0 ? "none" : tried.join(" ")})`)], ids, pane };
+  const screen = await waitPane(env, pane, (view) => view.surface !== null, MENU_WAIT_MS, 250);
   env.log(`phone send-on-agents-screen: the screen reads ${surfaceWords(screen.view?.surface ?? null)}`);
   // A message onto that screen must be refused, and the refusal must say why in words a person reads.
   const refusedId = mintRequestId();
@@ -570,21 +710,26 @@ export async function runPhoneLeg(env: PhoneEnv, makeProject: (dir: string) => v
   const results: PhoneScenarioResult[] = [];
   for (const scenario of SCENARIOS) {
     let pane: string | null = null;
+    let started: Started | null = null;
     let result: PhoneScenarioResult;
     try {
-      const started = await startAgent(env, scenario.id, makeProject);
+      started = await startAgent(env, scenario.id, makeProject);
       pane = started.pane;
+      const shell = started.shell === null ? [] : [started.shell];
       if (!started.ready) {
-        result = phoneResult(scenario.id, [notReachedCase("start", started.note)], [], await capture(env, scenario.id, pane));
+        result = phoneResult(scenario.id, [...shell, notReachedCase("start", started.note)], [], await capture(env, scenario.id, pane));
       } else {
         const ran = await scenario.run(env, started);
         const receipts = await ownReceipts(env, pane, ran.ids);
-        result = phoneResult(scenario.id, ran.cases, receipts, await capture(env, scenario.id, pane));
+        result = phoneResult(scenario.id, [...shell, ...ran.cases], receipts, await capture(env, scenario.id, pane));
       }
     } catch (err) {
       // A failed HTTP call is not a reader verdict: the scenario is not reached, and the log says why.
+      // The cases judged before the call that threw stay: a fail found earlier is still a fail.
       const note = err instanceof Error ? err.message : String(err);
-      result = phoneResult(scenario.id, [notReachedCase("run", `the scenario stopped: ${note}`)], [], await capture(env, scenario.id, pane));
+      const kept = started === null ? [] : [...(started.shell === null ? [] : [started.shell]), ...started.cases];
+      const receipts = started === null ? [] : await ownReceipts(env, pane, started.ids).catch(() => []);
+      result = phoneResult(scenario.id, [...kept, notReachedCase("run", `the scenario stopped: ${note}`)], receipts, await capture(env, scenario.id, pane));
     }
     result = applyPhoneGaps(result, env.harness, env.gaps);
     results.push(result);
@@ -611,6 +756,8 @@ export async function runPhoneLeg(env: PhoneEnv, makeProject: (dir: string) => v
           bridge: env.client.base,
           turns: env.turns.used,
           streamWanted: env.streamWanted,
+          // The `/` menu the leg read (names and the ones marked removed), for the next person who reads a scenario 6 verdict.
+          menu: MENUS.get(env) ?? null,
           results: results.map((result) => ({ id: result.id, verdict: result.verdict, detail: result.detail, cases: result.cases, receipts: result.receipts, capture: result.capture, gap: result.gap?.ref ?? null, staleGap: result.staleGap === true })),
         },
         null,

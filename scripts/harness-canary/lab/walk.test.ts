@@ -42,13 +42,20 @@ class ScriptPane implements WalkPane {
   starts: string | null = null;
   liar: string | null = null;
 
-  constructor(private readonly menu: readonly string[]) {}
+  constructor(
+    private readonly menu: readonly string[],
+    private readonly retired: readonly string[] = [],
+  ) {}
+
+  private describe(name: string): string {
+    return this.retired.includes(name) ? "  (removed) no longer runs" : "  description";
+  }
 
   private shown(): string[] {
     const rows: string[] = [];
     for (let i = 0; i < 4; i++) {
       const name = this.menu[(this.pointer + i) % this.menu.length]!;
-      rows.push(`${i === 0 ? "❯" : " "} ${name}`.padEnd(24) + "  description");
+      rows.push(`${i === 0 ? "❯" : " "} ${name}`.padEnd(24) + this.describe(name));
     }
     return rows;
   }
@@ -114,6 +121,14 @@ describe("runWalk", () => {
     expect(done.walk.missing).toEqual(["/gone"]);
     expect(pane.entered).not.toContain("/mystery");
     expect(pane.entered).not.toContain("/clear");
+  });
+
+  test("a command the menu marks (removed) is reported as removed and never sent, even when it is on the safe list", async () => {
+    const pane = new ScriptPane(["/help", "/status", "/agents", "/mystery"], ["/status", "/agents"]);
+    const done = await runWalk(pane, LISTS);
+    expect(done.walk.removed).toEqual(["/status", "/agents"]);
+    expect(done.walk.unclassified).toEqual(["/mystery"]);
+    expect(pane.entered).toEqual(["/help"]);
   });
 
   test("every dialog it reached is a fact, expected as a dialog, with the dialog read as not free", async () => {

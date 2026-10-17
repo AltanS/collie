@@ -166,6 +166,7 @@ The lab deletes that folder at the end.
    It checks that the menu points at the command. Only then it presses Enter.
    It reads the screen with the Surface and presses Escape until the box is free.
    A command on neither list is reported as unclassified and never sent.
+   A command the menu marks "(removed)" is reported as removed and never sent, by any leg, on any list.
    A command that changes an account setting on the server is on the unsafe list.
 2. The Surface reads every screen the walk reaches.
    When a dialog screen reads `free`, the lab presses Escape once and ends the walk.
@@ -225,6 +226,7 @@ It never takes a port from 8787 to 8799. The bridge gets a temporary `HOME` and 
 the lab's tmux server, and the lab's installed agent binary first on its `PATH`.
 The lab writes one paired device into that state folder and keeps the token in memory only.
 The phone panes use a second login copy with Collie's beacon hooks, so a send can end `effective`.
+The bridge starts with a fresh state folder every time, so no counter or daily cap of an earlier run reaches it.
 At the end the lab stops the bridge and deletes its folder. The bridge log goes into the captures folder, redacted.
 
 **A running bridge.** `--bridge` takes an origin on this machine, such as `http://127.0.0.1:8788`.
@@ -233,9 +235,11 @@ The leg makes its own panes with `POST /api/workspace`. It refuses to name any o
 It starts and stops nothing else. The lab's hooks cannot reach that bridge's state folder,
 so a send there may end `sent` or `effective`, and both count.
 
-**The scenarios.** Each scenario gets its own pane. The leg types the start line into the shell pane like a person.
-The first send to a shell pane is refused as unreadable, so the leg taps commit with the rows hash.
+**The scenarios.** Each scenario gets its own pane. The leg sends the start line into the shell pane like a person.
+A shell has no profile, so the bridge types the line and presses Enter blind. The first answer must be `sent`.
+A `refused unconfirmed` there fails the scenario as "shell send needs two taps". The leg then taps commit with the rows hash, so the scenario still runs.
 Claude asks for folder trust before its hooks run. The bridge still sees a shell then, so the leg answers with the Keys board.
+The leg reads the `/` menu once per run, with the walk's own reader, through the phone's Type and Keys board.
 
 1. `idle-send`: one message into a free box ends `sent` or `effective`.
 2. `stream-sends`: a prompt for 120 fruit names, then four sends at 3, 5, 6 and 7 seconds.
@@ -243,10 +247,14 @@ Claude asks for folder trust before its hooks run. The bridge still sees a shell
 3. `turn-end-send`: the leg reads the snapshot every 200 ms and sends at the flip from running to idle.
 4. `command-slash`: `/model` must end `sent` and show a readable menu ask within 5 seconds. The leg closes it with Escape.
    Then `/help` and every belt command on the safe list. `/clear` and `/compact` are never sent.
+   A command that ends typed but not sent gets the phone's Discard, and a capture of that screen.
    The belt is the operator's bar rows from `/api/config`, or else the shipped Claude belt in `web/src/lib/harness-bar.ts`.
 5. `ask-answer`: the leg asks for a `touch` command and answers No through `/api/ask`. The file must not exist.
-6. `send-on-agents-screen`: `/agents` opens the agents screen. A message must end `refused` with a readable sentence.
-   After Escape the same message must go in.
+6. `send-on-agents-screen`: the leg looks for a command that opens a screen of its own over the conversation.
+   It tries `/agents`, then each safe command that opens a dialog, and reads the screen for a row that the Claude profile
+   names as another screen's (`otherScreens`, the agents screen's "enter to return" footer).
+   When none opens one, the scenario is `not-reached` with "no full-screen command on this version".
+   On that screen a message must end `refused` with a readable sentence. After Escape the same message must go in.
 7. `crew-send`: always `not-reached`, because the lab has no crew member yet.
 
 A scenario passes, fails or is `not-reached`, as in the canary. A known gap uses the name `phone:<scenario>` in `known-gaps.json`.
@@ -254,8 +262,10 @@ A scenario passes, fails or is `not-reached`, as in the canary. A known gap uses
 **What it leaves.** One `.ansi` capture per scenario and a `summary.json` with the receipts,
 under `~/.cache/collie-lab/harness-lab/phone/<harness>-<version>-<time>/`. Nothing goes into `web/src/fixtures/`.
 In a full run the phone lines go into the ledger row, the commit body and the issue.
-A run of the phone leg alone never makes a commit. It keeps its own lab folder and ledger, with the suffix `leg-phone`,
-so it never blocks the nightly run of the same version.
+The `summary.json` also holds the `/` menu the leg read, with the commands it marks removed.
+A run of the phone leg alone never makes a commit. Its ledger gets the suffix `leg-phone`, so it never blocks the nightly run of the same version.
+Its lab folder is `leg-phone/ledger-<hash>/`, one per ledger. A run's start sweep deletes every run folder its own ledger does not know,
+so two hand runs with two ledgers in one folder would delete each other's run folder.
 
 ### What one run costs, and what stops a repeat
 

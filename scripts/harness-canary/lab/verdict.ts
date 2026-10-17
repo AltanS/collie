@@ -61,6 +61,8 @@ export interface WalkFact {
   readonly sent: readonly string[];
   readonly unclassified: readonly string[];
   readonly missing: readonly string[];
+  /** Commands the menu marks "(removed)": reported, never sent. Left out when the walk read none. */
+  readonly removed?: readonly string[];
 }
 
 /** Which legs a run makes: every leg (the nightly run), or the phone leg alone (a hand run, `--leg phone`). */

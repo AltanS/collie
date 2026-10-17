@@ -51,6 +51,14 @@ export interface PhonePane {
   readonly held: readonly { readonly requestId: string; readonly state: string }[];
 }
 
+/** What `POST /api/send` answered: the phone's own reading, plus the receipt's line, keys and screen-word reason. */
+export interface PhoneSendReply extends SendReply {
+  readonly receiptDetail: string | null;
+  readonly keys: readonly string[];
+  /** The receipt's `saw.reason`: `no-profile` on a blind send to a pane with no profile (a shell). */
+  readonly sawReason: string | null;
+}
+
 /** What `POST /api/ask/<id>` answered, as much as the leg reads of it. */
 export interface PhoneAskReply {
   readonly outcome: string | null;
@@ -140,7 +148,7 @@ export class PhoneClient {
   }
 
   /** `POST /api/send`: one Send Protocol request. Every outcome is a 200 with the answer. */
-  async send(body: { id: string; pane: string; text: string; mode: SendMode; rowsHash?: string | undefined; capAck?: boolean | undefined }): Promise<SendReply & { readonly receiptDetail: string | null; readonly keys: readonly string[] }> {
+  async send(body: { id: string; pane: string; text: string; mode: SendMode; rowsHash?: string | undefined; capAck?: boolean | undefined }): Promise<PhoneSendReply> {
     this.mine(body.pane);
     const payload: JsonObject = { id: body.id, pane: body.pane, text: body.text, mode: body.mode };
     if (body.rowsHash !== undefined) payload.rowsHash = body.rowsHash;
@@ -150,7 +158,7 @@ export class PhoneClient {
     if (reply === null) throw new Error(`POST /api/send answered a body the phone cannot read: ${JSON.stringify(json ?? null).slice(0, 200)}`);
     const receipt = asJsonObject(asJsonObject(json)?.receipt);
     const keys = stringsOf(receipt?.keys);
-    return { ...reply, receiptDetail: asJsonString(receipt?.detail) ?? null, keys };
+    return { ...reply, receiptDetail: asJsonString(receipt?.detail) ?? null, keys, sawReason: asJsonString(asJsonObject(receipt?.saw)?.reason) ?? null };
   }
 
   /**
@@ -160,7 +168,7 @@ export class PhoneClient {
    * 09: too many sends past an unreadable screen in a day), the bridge asks to confirm once more, and
    * the leg taps once more with `capAck`, as the phone's sheet does. Returns every answer and the id of the last.
    */
-  async sendAsPhone(pane: string, text: string, mode: SendMode): Promise<{ readonly id: string; readonly answers: readonly (SendReply & { readonly receiptDetail: string | null })[] }> {
+  async sendAsPhone(pane: string, text: string, mode: SendMode): Promise<{ readonly id: string; readonly answers: readonly PhoneSendReply[] }> {
     let id = mintRequestId();
     const first = await this.send({ id, pane, text, mode });
     if (first.outcome !== "refused" || first.reason !== "unconfirmed" || first.rowsHash === null) return { id, answers: [first] };
@@ -216,6 +224,16 @@ export class PhoneClient {
     const receipt = asJsonObject(node?.receipt);
     const keys = stringsOf(receipt?.keys);
     return { outcome: asJsonString(receipt?.outcome) ?? null, reason: asJsonString(receipt?.reason) ?? null, keys, detail: asJsonString(node?.detail) ?? null, ask: readAsk(node?.ask) };
+  }
+
+  /**
+   * `POST /api/pane/<id>/reply {text, submit: false}`: the phone's Type, text into the pane with no
+   * Enter and no Send Protocol. The leg types `/` with it to read the slash menu.
+   */
+  async type(pane: string, text: string): Promise<boolean> {
+    this.mine(pane);
+    const node = asJsonObject(await this.ok("POST", `/api/pane/${encodeURIComponent(pane)}/reply`, { text, submit: false }));
+    return node?.ok === true;
   }
 
   /** `POST /api/pane/<id>/keys {keys}`: the Keys board. True when the bridge pressed them. */

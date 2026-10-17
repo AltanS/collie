@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The nightly lab drives a bridge the way the phone does.** A new phone leg sends each request over HTTP with a device token and judges it by the receipt and the Surface. It runs against a scratch bridge after the send and ask legs, or alone with `--leg phone`, also against a bridge that already runs with `--bridge` and `--token-file`. It covers a send into a free box, sends during a streaming turn, a send at the turn end, slash commands, a permission answer and a send on the agents screen.
+- **The nightly lab checks the first tap on a shell, and never sends a removed command.** The phone leg now fails a scenario when the start line on a fresh shell pane needs a second tap. A command that the agent's slash menu marks "(removed)" is reported as removed and never sent by any part of the lab. The send on the agents screen is tried only on a command that opens a screen of its own, and is reported as not reached when the agent version has none.
 
 ### Fixed
 

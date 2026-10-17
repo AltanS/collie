@@ -185,6 +185,7 @@ export function draftIssue(facts: LabFacts, verdict: Verdict, log: string, count
     out.push(`- walk: reached ${String(facts.walk.reached)}, returned to a free box ${String(facts.walk.returned)}, ${String(facts.walk.sent.length)} commands sent`);
     if (facts.walk.unclassified.length > 0) out.push(`- unclassified commands, not sent: ${facts.walk.unclassified.join(" ")}`);
     if (facts.walk.missing.length > 0) out.push(`- safe commands the menu no longer lists: ${facts.walk.missing.join(" ")}`);
+    if ((facts.walk.removed ?? []).length > 0) out.push(`- commands the menu marks removed, not sent: ${(facts.walk.removed ?? []).join(" ")}`);
     out.push(facts.send === null ? "- send: not made" : `- send: ${facts.send.outcome}${facts.send.reason === undefined ? "" : ` (${facts.send.reason})`}, ${String(facts.send.keys)} keys`);
     out.push(facts.ask === null ? "- ask: not reached" : `- ask: ${facts.ask.outcome}${facts.ask.reason === undefined ? "" : ` (${facts.ask.reason})`}, declined file made: ${String(facts.ask.fileCreated)}`);
   }
