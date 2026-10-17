@@ -623,6 +623,26 @@ describe("the interior walk on rules with no prompt glyph (M56 spec 14)", () => 
     expect(findInputFrame(lines(RULE, "Update Available", RULE, "", RULE, "typed draft", ...footer), PI)).toBeNull();
   });
 
+  it("takes a painted status line an extension draws in pi's place, never a plain one (issue 485)", () => {
+    // `ctx.ui.setFooter`: the row under the box starts with the model, not a path, in pi's own paint.
+    const custom = "GLM 5.3 (full — primary) │ nvidia #6 · 40/40 │ ~/fleet-v2/personal";
+    const painted = (text: string): StyledLine => styled({ ...plainRun(text), fg: "#7e8197" });
+    const box = [...lines("reply", RULE, ""), ...lines(RULE)];
+    expect(findInputFrame([...box, painted(custom), styled(dim("  thinking: high · bypass (F9)"))], PI)!.interior.text).toBe("");
+    expect(findInputFrame([...box, styled(dim(custom))], PI)).not.toBeNull();
+    expect(findInputFrame([...box, ...lines(custom)], PI)).toBeNull();
+    // The torn read stays refused with that footer too: the plain draft row is what sits under the gap.
+    expect(findInputFrame([...lines(RULE, "Update Available", RULE, "", RULE, "typed draft"), painted(custom)], PI)).toBeNull();
+  });
+
+  it("reads stock pi 1.3.0 under its own custom-footer example, empty and with a draft (issue 485)", () => {
+    expect(findInputFrame(fixtureRows("pi--v130-custom-footer-idle.txt"), PI)!.interior.text).toBe("");
+    expect(findInputFrame(fixtureRows("pi--v130-custom-footer-draft.txt"), PI)!.interior.text).toBe("hello from the probe");
+    // Without the flag the profile read neither: the footer row starts with `↑`, not a path.
+    const strict: typeof PI = { ...PI, frame: { ...PI.frame, underPainted: false } };
+    expect(findInputFrame(fixtureRows("pi--v130-custom-footer-idle.txt"), strict)).toBeNull();
+  });
+
   it("cuts the text a side panel draws on the prompt row", () => {
     const row = `❯${" ".repeat(40)}facts 4 queued`;
     expect(findInputFrame(lines(RULE, row, RULE, ...footer), PI)!.interior.text).toBe("");

@@ -37,7 +37,8 @@
       "continuationIndent": 0,
       "maxDraftRows": 30,
       "maxTailRows": 60,
-      "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)"
+      "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)",
+      "underPainted": true
     },
     "placeholders": {
       "texts": [],

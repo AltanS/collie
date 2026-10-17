@@ -22,6 +22,8 @@ export type IdleProfile = Profile["idle"];
 /** One styled run of a row. The attribute flags are the SGR ones the placeholder test can name. */
 export interface FrameRun {
   readonly text: string;
+  /** The run's foreground colour; absent for the terminal's default ink (`idle.frame.underPainted`). */
+  readonly fg?: string | undefined;
   readonly bold?: boolean;
   readonly dim?: boolean;
   readonly italic?: boolean;
@@ -104,6 +106,7 @@ interface CompiledInterior {
   readonly maxPad: number;
   readonly continuation: RegExp | null;
   readonly under: RegExp | null;
+  readonly underPainted: boolean;
 }
 
 interface CompiledFooterRow {
@@ -149,6 +152,7 @@ function compile(idle: IdleProfile): Compiled {
       maxPad: trailer?.maxPad ?? 0,
       continuation: continuation === undefined ? null : new RegExp(continuation, "u"),
       under: under === undefined ? null : new RegExp(under, "u"),
+      underPainted: idle.frame.underPainted === true,
     },
   };
   compiledByIdle.set(idle, compiled);
@@ -212,6 +216,13 @@ export function frameEdge(text: string, idle: IdleProfile): "prompt" | "bottom" 
  */
 export function interiorRow(text: string, idle: IdleProfile): boolean {
   return isBlank(text) || textColumn(text) >= idle.frame.continuationIndent;
+}
+
+/** Whether a row's first visible run is painted: a foreground colour, or dim. A cell that shows no
+ *  glyph (a reverse-video cursor) is not visible here, whatever its colours. */
+function paintedRow(row: FrameRow): boolean {
+  const run = row.segments.find((segment) => segment.text.trim() !== "");
+  return run !== undefined && (run.fg !== undefined || run.dim === true);
 }
 
 /** The placeholder attribute as a run flag, or null when the profile names one this module cannot
@@ -476,9 +487,10 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const open = c.bottom.open;
   if (!open && anchored(bottomText, c.bottom) === null) return null;
   if (c.interior.under !== null && !open) {
-    // The row the harness always draws under its box: the first row there that is not blank.
-    const under = texts.slice(bottom + 1).find((text) => !isBlank(text));
-    if (under !== undefined && !c.interior.under.test(under.trimEnd())) return null;
+    // The row the harness always draws under its box: the first row there that is not blank. A
+    // painted one passes too where the profile says so (`underPainted`): an extension's own status line.
+    const at = texts.findIndex((text, i) => i > bottom && !isBlank(text));
+    if (at >= 0 && !c.interior.under.test(texts[at]!.trimEnd()) && !(c.interior.underPainted && paintedRow(rows[at]!))) return null;
   }
   const budget = idle.frame.maxDraftRows;
 

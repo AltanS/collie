@@ -177,6 +177,13 @@ export interface FrameLayout {
    * (its status line) tells them apart. Optional; a closed box only.
    */
   readonly under?: string;
+  /**
+   * The interior walk only, with `under`. True when a PAINTED row (a foreground colour, or dim, on its
+   * first visible run) passes the `under` test too, whatever its words. An extension may replace the
+   * harness's status line with its own (pi's `ctx.ui.setFooter`, issue 485), and it paints it as the
+   * harness does, while a draft row cut from its box is plain. Optional.
+   */
+  readonly underPainted?: boolean;
 
 }
 
@@ -643,10 +650,15 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   const withRows = frameNode.rows === undefined ? interior : { ...interior, rows: pattern(frameNode.rows, "idle.frame.rows").source };
   const withTrailer = frameNode.trailer === undefined ? withRows : { ...withRows, trailer: parseTrailer(frameNode.trailer) };
   const withUnder = frameNode.under === undefined ? withTrailer : { ...withTrailer, under: pattern(frameNode.under, "idle.frame.under").source };
-  if (frameNode.continuation === undefined) return withUnder;
+  if (frameNode.underPainted !== undefined && frameNode.underPainted !== true && frameNode.underPainted !== false) {
+    fail("idle.frame.underPainted", "must be true or false");
+  }
+  if (frameNode.underPainted === true && frameNode.under === undefined) fail("idle.frame.underPainted", "needs an under pattern");
+  const withPainted = frameNode.underPainted === true ? { ...withUnder, underPainted: true } : withUnder;
+  if (frameNode.continuation === undefined) return withPainted;
   const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
   if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
-  return { ...withUnder, continuation: continuation.source };
+  return { ...withPainted, continuation: continuation.source };
 }
 
 export function parseProfile(raw: JsonValue): Profile {
