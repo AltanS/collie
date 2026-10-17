@@ -7213,10 +7213,14 @@ export async function walkyPostRoute(
   return json({ receipts: answer.receipts }, context.acceptEncoding);
 }
 
-/** `GET /api/walky/who`: every reachable target. */
+/**
+ * `GET /api/walky/who`: every reachable target, the shell panes a broadcast skips, and how many
+ * messages this machine refused per reason (no bodies). `skipped` and `refusals` are additive: an
+ * older bridge leaves them out.
+ */
 export function walkyWhoRoute(walky: WalkyService | undefined, acceptEncoding: string | null): Response {
   if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
-  return json({ targets: walky.who() }, acceptEncoding);
+  return json({ targets: walky.who(), skipped: walky.skipped(), refusals: walky.refusals() }, acceptEncoding);
 }
 
 /** The most messages one pane list answers, and the default. */

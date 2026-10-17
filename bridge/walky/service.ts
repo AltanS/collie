@@ -7,12 +7,13 @@
 // device, through `POST /api/walky`, and nothing else: the local socket refuses a send that names no
 // pane, so the kind fails closed. The local uid can lie about its pane (decision 4); the docs say so.
 
-import { paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
+import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
-import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import type { RefusalCounts } from "./refusals.ts";
+import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** Who is sending: an agent's pane, or an operator by label. */
 export type WalkySenderRef = { readonly kind: "agent"; readonly pane: WalkyPane } | { readonly kind: "operator"; readonly label: string };
@@ -25,7 +26,14 @@ export interface SendInput {
   readonly replyTo: string | null;
 }
 
-export type SendAnswer = { readonly ok: true; readonly receipts: readonly WalkyReceipt[] } | { readonly ok: false; readonly error: string };
+export type SendAnswer =
+  | {
+      readonly ok: true;
+      readonly receipts: readonly WalkyReceipt[];
+      /** The one pane the message went to, as `who` lists it, when this bridge knows it. */
+      readonly target?: WalkyTarget;
+    }
+  | { readonly ok: false; readonly error: string };
 
 export interface WalkyServiceDeps extends DelivererDeps {
   /** This machine's name, as `who` prints it. */
@@ -43,10 +51,16 @@ export interface WalkyServiceDeps extends DelivererDeps {
    * `status` then names those targets, and `who` says the other machines are the lead's to list.
    */
   readonly outcomesOnLead?: boolean;
+  /** On a member: its lead's member id, named in the `who` note. */
+  readonly leadName?: () => string | null;
+  /** On a lead: the shell panes the crew's members report, which a broadcast skips. */
+  readonly remoteSkipped?: () => readonly WalkySkipped[];
 }
 
-/** What `who` on a crew member adds below its own panes: the roster is the lead's. */
-export const WHO_ELSEWHERE_NOTE = "other machines: ask the lead (collie walky who there, or the phone)";
+/** What `who` on a crew member adds below its own panes: the roster is the lead's, and the command to run there. */
+export function whoElsewhereNote(lead: string | null): string {
+  return `other machines: run \`collie walky who\` on the lead${lead === null ? "" : ` (${lead})`}, or use the phone`;
+}
 
 /** A message's receipts on this bridge, and the message itself when the log holds it. */
 export interface WalkyStatus {
@@ -125,7 +139,17 @@ export class WalkyService {
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId } : null;
-    return { ok: true, receipts: await this.deliverer.deliver(message, from) };
+    const receipts = await this.deliverer.deliver(message, from);
+    const target = this.targetOf(message.to);
+    return target === null ? { ok: true, receipts } : { ok: true, receipts, target };
+  }
+
+  /** The one pane an address names, as `who` lists it, or null (a fan-out, or a pane this bridge cannot see). */
+  private targetOf(to: string): WalkyTarget | null {
+    const address = parseAddress(to);
+    if (address === null || address.kind !== "pane") return null;
+    const spelled = isSelf(address.memberId, this.deps.memberId) ? this.addressOf(address.paneId) : to;
+    return this.who().find((target) => target.address === spelled) ?? null;
   }
 
   /**
@@ -139,7 +163,27 @@ export class WalkyService {
 
   /** The line `who` prints below this machine's targets, or null when it lists the whole crew. */
   whoNote(): string | null {
-    return this.deps.outcomesOnLead === true ? WHO_ELSEWHERE_NOTE : null;
+    return this.deps.outcomesOnLead === true ? whoElsewhereNote(this.deps.leadName?.() ?? null) : null;
+  }
+
+  /** The shell panes a broadcast skips: this machine's, then what a lead knows of its members. */
+  skipped(): WalkySkipped[] {
+    const memberId = this.deps.memberId ?? LOCAL_MEMBER;
+    const local = this.deps.host
+      .panes()
+      .filter((pane) => !pane.agent)
+      .map((pane) => ({ address: this.addressOf(pane.paneId), memberId, machine: this.deps.machine, label: pane.label }));
+    return [...local, ...(this.deps.remoteSkipped?.() ?? [])];
+  }
+
+  /** Count a refusal that wrote no receipt (a socket send that named no pane). */
+  noteRefusal(reason: string): void {
+    this.deliverer.noteRefusal(reason);
+  }
+
+  /** How many messages this bridge refused, per reason, and since when. */
+  refusals(): RefusalCounts {
+    return this.deliverer.refusalCounts();
   }
 
   /** Every reachable target: this machine's agent panes, then what the crew seam adds. */

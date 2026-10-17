@@ -15,11 +15,20 @@ collie walky send local/w6:p3 "Tests are green on fix-465. You can merge."
 ```
 
 `who` lists every agent pane you can reach. Pick an address from that list and pass it to `send`.
-`collie wt` is the short spelling of `collie walky`.
+On a machine with only your own agent pane, `who` says
+`You are local/<pane>. No other agent pane yet. A message needs two.`
 
-`send` prints one line when the receipt is known, for example `delivered wt_k3f9x2m8q1a0`. It waits
-up to 15 seconds for that, then prints the state it has. With no text after the address, the body
-is read from stdin:
+`send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
+state in words.
+
+```text
+wt_k3f9x2m8q1a0
+to local/w6:p3, claude, collie-workspace#fix-465
+typed into the pane
+```
+
+When the message is not typed yet, a fourth line says `check later: collie walky status <id>`.
+With no text after the address, the body is read from stdin:
 
 ```sh
 git log --oneline -5 | collie walky send local/w6:p3
@@ -110,7 +119,8 @@ collie walky status wt_n2d8s1v7c4b9
 - `inbox` prints this pane's unread messages and marks them read. `--keep` leaves them unread.
   `--all` prints the last 50 that reached the pane. Outside a pane, `inbox --all` lists every
   message on the machine.
-- `status <id>` prints the message's receipt.
+- `status <id>` prints the id, then one line per pane: the state in words, and how this machine
+  knew the sender ("signed by" a machine, "relayed by the lead", or "this machine").
 
 Every verb takes `--json` for a script.
 
@@ -122,13 +132,14 @@ lead checks the sender's signature against the key it pinned for that machine. E
 checks that its lead passed the message on.
 
 - **`who` on the lead** lists the agent panes of every machine. **`who` on a member** lists its own
-  panes and the line `other machines: ask the lead`.
+  panes and the line ``other machines: run `collie walky who` on the lead (<lead>), or use the phone``.
 - **The outcome lives on the lead.** The machine that types a message reports the outcome to the lead
   with its next crew update. On a member, a message to another machine shows
-  `accepted (outcome known on the lead)`, and `send` does not wait for more. Run
-  `collie walky status <id>` on the lead, or open the pane on the phone, to see `delivered`.
-- **An older machine refuses.** A member that runs an older Collie gives `refused: older member`. A
-  member under an older lead gives `refused: older lead`. Update the crew to fix it.
+  `queued (outcome known on the lead)`, and `send` does not wait for more. Run
+  `collie walky status <id>` on the lead, or open the pane on the phone, to see "typed into the pane".
+- **An older machine refuses.** A message to a member whose reported version predates walky talky
+  gives `not sent: older member` at once, with no dial. A member under an older lead gives
+  `not sent: older lead`. Update the crew to fix it.
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
 was checked. `lead` means the lead checked it and this machine trusts the lead, which is what a
@@ -141,14 +152,15 @@ before it types anything, so the same id sent twice returns the receipt and type
 it has seen stay in `<stateDir>/walky/seen.json` for a day, even after the log drops a line. Across
 a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 
-| State | Meaning |
-| --- | --- |
-| `accepted` | Logged, not typed yet |
-| `delivered` | The text went into the pane and was submitted |
-| `inbox-only` | Not typed, for the reason shown (a dialog open, a hold Collie took back after 10 minutes, no terminal). It waits in the pane's inbox |
-| `refused` | Not taken: no such pane, not an agent pane, the sender's limit, or walky talky off on that machine |
-| `unknown` | May have been typed: the outcome was not read, or a hold was still pending after 10 minutes. Collie never sends it again |
+| State | Printed as | Meaning |
+| --- | --- | --- |
+| `accepted` | queued | Logged, not typed yet |
+| `delivered` | typed into the pane | The text went into the pane and was submitted |
+| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown (a dialog open, a hold Collie took back after 10 minutes, no terminal). It waits in the pane's inbox |
+| `refused` | not sent | Not taken, for the reason shown: no such pane, not an agent pane, a limit, or walky talky off on that machine |
+| `unknown` | may have arrived, will not be sent again | The outcome was not read, or a hold was still pending after 10 minutes. Collie never sends it again |
 
+The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
 `send` exits 0 for `accepted`, `delivered` and `inbox-only`, 4 for `refused` and 1 for `unknown`.
 
 ## On the phone
@@ -157,12 +169,14 @@ The phone shows a message as a card and sends one from the composer, so you need
 
 A message in a pane's Chat appears as a card titled "Message from" and the sender's label. The card
 shows the sender's kind (`agent` or `operator`), the message body, and "reply to" the id it answers.
-A small word says who checked the sender: "verified by" a machine, "local", or "not verified". The
-card appears only when the bridge's own log holds that message. A header that an agent merely
-prints stays plain text, with the quiet mark "not in the log".
+A small word says how the sender was known: "signed by" a machine, "relayed by the lead", "this
+machine", or "not verified". The card appears only when the bridge's own log holds that message. A
+header that an agent merely prints stays plain text, with the quiet mark "no log record on this
+machine". A message from another agent shows its body only once the pane read it with
+`collie walky inbox <id>`.
 
-Each receipt state has a plain word on the phone: "Logged, not typed yet", "Delivered", "In the
-inbox", "Refused" (with the reason after it), "Expired" and "Typed, outcome not read".
+Each receipt state shows the words in the table above, with the reason after "not sent" and
+"waiting in the inbox, not typed".
 
 - **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. Each one
   has a "Reply" button. The sheet says "No messages for this pane yet." when it is empty, and
@@ -171,8 +185,11 @@ inbox", "Refused" (with the reason after it), "Expired" and "Typed, outcome not 
   this pane as a message from you, and a line under the box shows "Message to" the pane and the
   receipt state. A plain tap on Send still sends the text as before. Tap "Dismiss" to clear the line.
 - **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
-  to" (`All machines` or one machine) and tap "Send message". The sheet shows "Agents reached" and
-  one receipt per target. A device that may not send shows "This device may not send messages."
+  to" (`All machines` or one machine) and tap "Send message". The sheet then asks
+  "Message 5 agents on 2 machines?" with the count for that choice. Tap "Send" to send, or "Back".
+  The sheet lists the shell panes it skips, and shows "Agents reached" and one receipt per target.
+  A line "Not sent on this machine" counts the recent refusals per reason. A device that may not
+  send shows "This device may not send messages."
 
 ## Install the skill
 
@@ -274,6 +291,9 @@ What walky talky refuses, and how to turn it off.
   bridge logged, never by the address the reply names.
 - **`COLLIE_WALKY=off`** refuses every message for this machine's panes. The CLI on that machine
   still sends.
+- **The refusals are counted**, per reason, in `<stateDir>/walky/refusals.json`, with no body and no
+  sender. `collie doctor` shows them in the row `walky-refusals`, and the Crew page shows them under
+  a broadcast.
 
 ## How it works
 

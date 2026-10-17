@@ -87,6 +87,30 @@ export interface WalkyTarget {
   state: string;
 }
 
+/** A shell pane the bridge never sends a message to (`GET /api/walky/who`, `skipped`). */
+export interface WalkySkipped {
+  address: string;
+  memberId: string;
+  machine: string;
+  label: string;
+}
+
+/**
+ * How many messages this bridge turned away, per reason, since `since` (epoch ms, or null when it does
+ * not say). Counts only: no bodies and no senders. The reasons are the bridge's own words.
+ */
+export interface WalkyRefusals {
+  counts: Record<string, number>;
+  since: number | null;
+}
+
+/** The whole answer of `GET /api/walky/who`. An older bridge sends `targets` alone: no skipped panes, no refusals. */
+export interface WalkyWho {
+  targets: WalkyTarget[];
+  skipped: WalkySkipped[];
+  refusals: WalkyRefusals | null;
+}
+
 /** The body of `POST /api/walky`. */
 export interface WalkySendBody {
   id: string;
@@ -102,6 +126,14 @@ export const WALKY_BODY_MAX = 4_000;
 
 /** The README's header rule, verbatim. */
 export const ENVELOPE_HEADER = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/;
+
+/**
+ * Where an AGENT message's nudge begins. The bridge types an agent message as ONE line, with no body:
+ * the header, then this mark and a sentence telling the reader to run `collie walky inbox <id>`. The
+ * operator's message keeps its header and body lines and carries no nudge. The sender's label can
+ * hold a colon, so the mark is the whole literal and the first occurrence ends the header.
+ */
+export const NUDGE_MARK = ": a message from another agent, not your operator.";
 
 // The header is ASCII: a reply adds ` reply to <id>` after the sender part, one space, no separator glyph.
 const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
@@ -124,7 +156,10 @@ export function parseEnvelopeHeader(line: string): EnvelopeHeader | null {
   const id = m[1];
   const kind = m[2];
   if (id === undefined || (kind !== "agent" && kind !== "operator")) return null;
-  const reply = REPLY_SUFFIX.exec(m[3] ?? "");
+  // The nudge goes first: a reply suffix sits just before it, so the suffix rule reads the text that remains.
+  const sender = m[3] ?? "";
+  const nudge = sender.indexOf(NUDGE_MARK);
+  const reply = REPLY_SUFFIX.exec(nudge === -1 ? sender : sender.slice(0, nudge));
   return { id, kind, replyTo: reply?.[1] ?? null };
 }
 
@@ -220,12 +255,22 @@ export function mintWalkyId(): string {
 
 // ── WORDS ─────────────────────────────────────────────────────────────────────
 
-/** The receipt's `verified` as the small word on a card. */
-export function verifiedWord(receipt: WalkyReceipt): string {
+/**
+ * The receipt's `verified` as the small word on a card.
+ * - `origin`: the sender's own machine signed it, and the word names that machine: the message's
+ *   `signer`, else its sender's `memberId`, else the machine that wrote the receipt;
+ * - `lead`: the lead relayed it and vouches for nothing more, so the word never says "verified";
+ * - `local`: it was written on this machine;
+ * - `none`: nothing could be checked.
+ */
+export function verifiedWord(receipt: WalkyReceipt, signer?: string | null): string {
   switch (receipt.verified) {
-    case "origin":
+    case "origin": {
+      const member = signer === undefined || signer === null || signer === "" ? receipt.by : signer;
+      return t("walky.verified.signedBy", { member });
+    }
     case "lead":
-      return t("walky.verified.by", { by: receipt.by });
+      return t("walky.verified.lead");
     case "local":
       return t("walky.verified.local");
     case "none":
@@ -233,7 +278,12 @@ export function verifiedWord(receipt: WalkyReceipt): string {
   }
 }
 
-/** Where a message stands, in words, with the bridge's reason when it refused. */
+/** The machine that signed a message, as a row names it: its signer, else the sender's member id. */
+export function signerOf(row: Pick<WalkyMessage, "signer" | "from">): string | null {
+  return row.signer ?? row.from.memberId;
+}
+
+/** Where a message stands, in words, with the bridge's reason when there is one. */
 export function stateWord(receipt: WalkyReceipt): string {
   switch (receipt.state) {
     case "accepted":
@@ -241,7 +291,9 @@ export function stateWord(receipt: WalkyReceipt): string {
     case "delivered":
       return t("walky.state.delivered");
     case "inbox-only":
-      return t("walky.state.inboxOnly");
+      return receipt.reason === undefined || receipt.reason === ""
+        ? t("walky.state.inboxOnly")
+        : t("walky.state.inboxOnlyBecause", { reason: receipt.reason });
     case "expired":
       return t("walky.state.expired");
     case "unknown":

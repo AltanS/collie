@@ -191,6 +191,7 @@ import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import {
   bridgeStampSync,
+  compareSemver,
   githubReleaseUrl,
   mirrorValue,
   releaseFetchers,
@@ -228,17 +229,20 @@ import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 import { labelOf } from "./walky/address.ts";
 import {
+  crewSkipped,
   crewTargets,
   CREW_WALKY_ROUTE,
   leadRouteRemote,
   memberRouteRemote,
   mergeReport,
+  olderThanWalky,
   WalkyCrew,
   WalkyReport,
   type CrewDialAnswer,
 } from "./walky/crew.ts";
 import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
@@ -1695,11 +1699,17 @@ const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.
 const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
 // Dedupe beside the log, kept a day and apart from its rotation: the same id never types twice.
 const walkySeen = new WalkySeen(join(cfg.stateDir, "walky"));
+// How many messages this machine refused, per reason and with no body: for `doctor` and the Crew page.
+const walkyRefusals = new RefusalCounter(join(cfg.stateDir, "walky"));
 // Across the crew (CREW_PROTOCOL §21). A member hands every message for another machine to its lead,
 // signed; the lead delivers and routes it on with its attestation. The lead's half needs the lead
 // runtime, which is built after the sessions, so it is assigned below and read through this holder.
 let walkyLeadClient: PeerClient | null = null;
-let walkyLeadHalf: { readonly route: RouteRemote; readonly targets: () => ReturnType<typeof crewTargets> } | null = null;
+let walkyLeadHalf: {
+  readonly route: RouteRemote;
+  readonly targets: () => ReturnType<typeof crewTargets>;
+  readonly skipped: () => ReturnType<typeof crewSkipped>;
+} | null = null;
 const walkyRoute: RouteRemote | undefined =
   walkyMemberId === null
     ? undefined
@@ -1709,6 +1719,7 @@ const walkyRoute: RouteRemote | undefined =
 const walky = new WalkyService({
   log: walkyLog,
   seen: walkySeen,
+  refusals: walkyRefusals,
   host: walkyHost,
   memberId: walkyMemberId,
   enabled: () => cfg.walky,
@@ -1718,6 +1729,8 @@ const walky = new WalkyService({
   routeRemote: walkyRoute,
   remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
   outcomesOnLead: crew.mode === "peer",
+  leadName: () => trustStore.current()?.lead?.memberId ?? null,
+  remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
 });
 // A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes.
 const walkyReport = crew.mode === "peer" && walkyMemberId !== null ? new WalkyReport(walkyMemberId) : null;
@@ -2139,6 +2152,8 @@ if (crewLead !== undefined && walkyMemberId !== null) {
   walkyLeadHalf = {
     route: leadRouteRemote({
       self: walkyMemberId,
+      // A member whose reported version predates walky talky is refused `older member` without a dial.
+      older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
       signing: () => {
         const held = trustStore.current();
@@ -2168,6 +2183,11 @@ if (crewLead !== undefined && walkyMemberId !== null) {
     }),
     targets: () =>
       crewTargets(
+        lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+        !cfg.redact,
+      ),
+    skipped: () =>
+      crewSkipped(
         lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
         !cfg.redact,
       ),

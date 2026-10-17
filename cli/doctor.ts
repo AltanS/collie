@@ -1,3 +1,4 @@
+import { readRefusals, refusalLine, refusalsPath } from "../bridge/walky/refusals.ts";
 import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
@@ -260,6 +261,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
+    ...walkyRefusals(deps),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
@@ -2090,6 +2092,23 @@ function skillWalkyTalky(deps: DoctorDeps): Finding {
   const refused = report.filter((r) => r.state.kind === "refused").length;
   const left = refused > 0 ? `; ${String(refused)} target${refused === 1 ? "" : "s"} refused, see \`collie skill status\`` : "";
   return ok(check, `current in ${installed.map((r) => r.file.target.harness).join(", ")}${left}`);
+}
+
+/**
+ * `walky-refusals` — how many walky talky messages this machine refused, per reason (M62 hardening I).
+ *
+ * One row when `<stateDir>/walky/refusals.json` exists, none otherwise, so a host that never refused a
+ * message reads as before. Never a warning: a refusal is the bridge doing its job. The row says which
+ * limit agents keep hitting, which is the operator's question. The file holds no body and no sender.
+ */
+function walkyRefusals(deps: DoctorDeps): Finding[] {
+  const raw = deps.files.read(refusalsPath(deps.ctx.stateDir));
+  if (raw === null) return [];
+  const held = readRefusals(raw);
+  const total = Object.values(held.counts).reduce((sum, count) => sum + count, 0);
+  if (total === 0) return [ok("walky-refusals", "none counted")];
+  const since = held.since === null ? "" : ` since ${new Date(held.since).toISOString().slice(0, 10)}`;
+  return [ok("walky-refusals", `${String(total)} refused${since}: ${refusalLine(held.counts)}`)];
 }
 
 /**

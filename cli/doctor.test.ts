@@ -1888,6 +1888,22 @@ describe("skill-walky-talky", () => {
   });
 });
 
+describe("walky-refusals", () => {
+  const FILE = `${STATE}/walky/refusals.json`;
+
+  test("no counter file writes no row: a machine that never refused a message reads as before", async () => {
+    expect((await findings(harness(null))).byCheck.has("walky-refusals")).toBe(false);
+  });
+
+  test("a counter file is one ok row with the total, the first day and each reason, the most first", async () => {
+    const counts = { v: 1, since: Date.UTC(2026, 9, 18), counts: { "pair limit": 1, "rate limit": 3 } };
+    const h = harness(null, [], { files: { ...healthyFiles(), [FILE]: JSON.stringify(counts) } });
+    const finding = (await findings(h)).byCheck.get("walky-refusals")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toBe("4 refused since 2026-10-18: rate limit 3, pair limit 1");
+  });
+});
+
 describe("beacons", () => {
   test("an empty directory with no install says so, and names the install verb", async () => {
     const { byCheck } = await findings(harness(null, [], { files: without(healthyFiles(), SETTINGS) }));

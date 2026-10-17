@@ -4,7 +4,7 @@
 // token: the socket's mode is the credential, as the hold socket's is.
 //
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
-//   send    { id, to, body, replyTo }   → { ok, receipts }
+//   send    { id, to, body, replyTo }   → { ok, receipts, target? }
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, targets, note? }
 //   status  { id }                      → { ok, receipts, message, elsewhere }
@@ -74,7 +74,7 @@ export interface WalkyServerDeps {
 /** What one request is answered with. */
 export type WalkyAnswer =
   | { readonly ok: false; readonly error: string }
-  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[] }
+  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget }
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null; readonly elsewhere: readonly string[] }
   | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
@@ -90,9 +90,13 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "send": {
       // The kind fails closed: a send names its pane, or it is not taken. An operator sends from a
       // paired device (`POST /api/walky`), which this socket cannot prove.
-      if (pane === null) return { ok: false, error: SEND_NEEDS_A_PANE };
+      if (pane === null) {
+        service.noteRefusal("no pane");
+        return { ok: false, error: SEND_NEEDS_A_PANE };
+      }
       const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, { kind: "agent", pane });
-      return answer.ok ? { ok: true, receipts: answer.receipts } : answer;
+      if (!answer.ok) return answer;
+      return answer.target === undefined ? { ok: true, receipts: answer.receipts } : { ok: true, receipts: answer.receipts, target: answer.target };
     }
     case "who": {
       const self = pane === null ? null : service.addressOf(pane.paneId);

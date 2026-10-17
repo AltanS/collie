@@ -97,6 +97,14 @@ export interface WalkyTarget {
   readonly state: string;
 }
 
+/** A shell pane, which never receives a message: a broadcast lists it as skipped. */
+export interface WalkySkipped {
+  readonly address: string;
+  readonly memberId: string;
+  readonly machine: string;
+  readonly label: string;
+}
+
 /**
  * The header regex. Exactly one line, ASCII only. The rest after the kind is the sender's address
  * and its parenthesised harness and label, and ` reply to <id>` after the parenthesis on a reply.

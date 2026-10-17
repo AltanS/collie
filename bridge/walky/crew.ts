@@ -33,7 +33,7 @@ import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
-import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
 export const CREW_WALKY_ROUTE = "walky";
@@ -289,7 +289,29 @@ export interface LeadRouteDeps {
   readonly signing: () => { readonly keyPem: string; readonly crewId: string } | null;
   /** POST one body to `/crew/v1/pane/<segment>/walky` on one member, through the lead's forward. */
   readonly post: (memberId: string, segment: string, payload: string) => Promise<CrewDialAnswer>;
+  /**
+   * Whether a member's reported version predates walky talky (`olderThanWalky`). Such a member is
+   * refused `older member` at once, without a dial; its 404 stays the backstop for one that reported
+   * nothing. Absent: every member is dialled.
+   */
+  readonly older?: (memberId: string) => boolean;
   readonly now?: () => number;
+}
+
+/** The first release that carries walky talky (CREW_PROTOCOL §21). */
+export const WALKY_FIRST_VERSION = "1.23.0";
+
+/**
+ * Whether a member's reported version is too old for walky talky: below 1.23.0, or, on a lead built
+ * before 1.23.0 (a development build that carries the feature), below the lead's own version. A
+ * member that reported no version is never called older: the 404 answers for it. `compare` is
+ * semver's (bridge/update.ts `compareSemver`), passed in so this file holds no release logic.
+ */
+export function olderThanWalky(version: string | null, own: string, compare: (a: string, b: string) => number): boolean {
+  // A version that names no release (`unknown`, a hash) is not called older either.
+  if (version === null || !/^\d+\.\d+\.\d+/u.test(version)) return false;
+  const floor = /^\d+\.\d+\.\d+/u.test(own) && compare(own, WALKY_FIRST_VERSION) < 0 ? own : WALKY_FIRST_VERSION;
+  return compare(version, floor) < 0;
 }
 
 /**
@@ -309,6 +331,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
       targets.map(async (memberId): Promise<WalkyReceipt[]> => {
         const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : message.to;
         if (!roster.includes(memberId)) return [ownReceipt(message, target, "refused", deps.self, now(), "no such member")];
+        if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
         const answer = await deps.post(memberId, segment, JSON.stringify({ message, attest }));
@@ -368,6 +391,26 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
         label: labelOf(facts, titles),
         state: member.reachable ? pane.status : "unreachable",
       });
+    }
+  }
+  return out;
+}
+
+/**
+ * The shell panes on every member, which never receive a message: the Crew page lists them as
+ * skipped beside a broadcast's count. From the same bodies, with no dial.
+ */
+export function crewSkipped(members: readonly CrewMemberView[], titles: boolean): WalkySkipped[] {
+  const out: WalkySkipped[] = [];
+  for (const member of members) {
+    const seen = new Set<string>();
+    const shells = [...(member.body?.agents ?? []).filter((pane) => pane.kind === "shell"), ...(member.body?.shellPanes ?? [])];
+    for (const pane of shells) {
+      if (seen.has(pane.paneId)) continue;
+      seen.add(pane.paneId);
+      const branch = pane.gitHead?.kind === "branch" ? pane.gitHead.name : null;
+      const facts = { paneId: pane.paneId, cwd: pane.cwd, branch, paneLabel: pane.paneLabel, terminalTitle: pane.terminalTitle };
+      out.push({ address: `${member.memberId}/${pane.paneId}`, memberId: member.memberId, machine: member.name, label: labelOf(facts, titles) });
     }
   }
   return out;

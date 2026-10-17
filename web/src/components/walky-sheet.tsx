@@ -7,7 +7,7 @@ import { useWalkyLog } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { stateWord, verifiedWord, type WalkyRow } from "@/lib/walky";
+import { signerOf, stateWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
@@ -72,11 +72,12 @@ function WalkyListRow({ row, canReply, onReply }: { row: WalkyRow; canReply: boo
       </div>
       <p className="font-content line-clamp-6 whitespace-pre-wrap break-words text-sm">{row.body}</p>
       <div className="mt-1 flex items-center gap-2">
-        <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+        {/* The state words are lower case (they also follow a colon in the composer's note), so the line capitalises its own first letter. */}
+        <p className="min-w-0 flex-1 text-[11px] text-muted-foreground first-letter:uppercase">
           <span data-slot="walky-state" className={cn(refused && "text-status-blocked")}>
             {stateWord(row.receipt)}
           </span>
-          {` · ${verifiedWord(row.receipt)}`}
+          {` · ${verifiedWord(row.receipt, signerOf(row))}`}
         </p>
         {replyable && (
           <Button

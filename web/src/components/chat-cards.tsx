@@ -58,7 +58,7 @@ import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
 import { WalkyCard } from "@/components/walky-card";
-import { useWalkyLog } from "@/components/walky-log";
+import { useWalkyLog, useWalkyReads } from "@/components/walky-log";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -469,13 +469,28 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
  * A user turn whose first line is a walky talky envelope header. The header is only text an agent could
  * have printed, so the card is drawn from the pane's own log, by id (`standingOf`):
  * - the log holds the id: "Message from <label>", drawn from the LOG's row;
- * - the log was read and lacks it: the plain turn, with a quiet "not in the log" beside the clock;
+ * - the log was read and lacks it: the plain turn, and after ONE more read of the list that still lacks
+ *   it, a quiet "no log record on this machine" beside the clock;
  * - the log could not be read: the plain turn, claiming nothing.
+ *
+ * WHY THE WAIT. The log row and the typed line reach the phone through two reads that need not agree
+ * at the same instant, so the first poll that shows the turn may simply be early. The turn remembers
+ * the read count (`useWalkyReads`, bumped by the loader per answered read) at which it first saw
+ * itself absent, and marks only once the count has moved past it. A row that arrives in between turns
+ * the turn into the card; a turn that goes absent again starts the wait over.
  */
 function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header: EnvelopeHeader }) {
   const standing = standingOf(useWalkyLog(), header.id);
+  const reads = useWalkyReads();
+  const absent = standing.standing === "absent";
+  // The read count at which this turn first found itself absent, or null while it is not. Set while
+  // rendering (React's "adjust state when a value changes" form) so the first absent render and the
+  // note of it are the same render.
+  const [absentSince, setAbsentSince] = useState<number | null>(null);
+  if (absent && absentSince === null) setAbsentSince(reads);
+  else if (!absent && absentSince !== null) setAbsentSince(null);
   if (standing.standing === "held") return <WalkyCard row={standing.row} />;
-  return <UserTurn text={text} ts={ts} notInLog={standing.standing === "absent"} />;
+  return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 
 /** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */

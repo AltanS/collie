@@ -1488,4 +1488,17 @@ describe("paneLoader and the walky talky list (M62)", () => {
     const again = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
     expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
+
+  it("counts each answered read, keeps the list's identity across a quiet poll, and does not count a failed one", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const first = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    const second = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    // The same rows object, yet a read in between: the count is what tells the two polls apart.
+    expect(second.walky).toBe(first.walky);
+    expect(second.walkyReads).toBe((first.walkyReads ?? 0) + 1);
+    failWalky();
+    const failed = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    expect(failed.walkyReads).toBe(second.walkyReads);
+  });
 });

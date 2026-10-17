@@ -28,7 +28,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
-import type { WalkyReceipt, WalkyRow, WalkySendBody, WalkyTarget } from "./walky";
+import type { WalkyReceipt, WalkyRefusals, WalkyRow, WalkySendBody, WalkySkipped, WalkyTarget, WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1495,10 +1495,17 @@ export async function postWalky(body: WalkySendBody): Promise<WalkyReceipt[]> {
   return got.receipt === undefined ? [] : [got.receipt];
 }
 
-/** GET /api/walky/who: every agent pane a message can reach, across the crew (M62). */
-export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyTarget[]> {
-  const got = await req<{ targets: WalkyTarget[] }>("/api/walky/who", { signal });
-  return got.targets;
+/**
+ * GET /api/walky/who: every agent pane a message can reach, across the crew (M62), the shell panes that
+ * never receive one, and how many messages this bridge turned away. The last two are absent from an
+ * older bridge, which reads as none.
+ */
+export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyWho> {
+  const got = await req<{ targets: WalkyTarget[]; skipped?: WalkySkipped[]; refusals?: WalkyRefusals | null }>(
+    "/api/walky/who",
+    { signal },
+  );
+  return { targets: got.targets, skipped: got.skipped ?? [], refusals: got.refusals ?? null };
 }
 
 /**

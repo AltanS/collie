@@ -937,7 +937,8 @@ export const handlers = [
     }
     return HttpResponse.json({ receipt: walkyReceipt(posted.id, posted.to) });
   }),
-  http.get("/api/walky/who", () => HttpResponse.json({ targets: [] })),
+  // No agents, no shell panes, no refusals; a test that needs more overrides it with server.use(...).
+  http.get("/api/walky/who", () => HttpResponse.json({ targets: [], skipped: [], refusals: null })),
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),

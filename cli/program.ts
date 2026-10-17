@@ -279,7 +279,7 @@ function walkyDeps(io: Io): WalkyDeps {
   };
 }
 
-/** `walky` and its `wt` alias share THIS array, so the two spellings cannot drift. */
+/** The sub-verbs of `walky`. */
 const WALKY_TREE: readonly Subcommand[] = [
   {
     name: "who",
@@ -850,16 +850,10 @@ export const COMMANDS: readonly Command[] = [
   // ── Walky talky (M62) ──────────────────────────────────────────────────────
   // Messages between agent sessions, typed by an agent inside its pane or by the operator outside one.
   // The verb talks to the running bridge over its local socket and changes nothing on disk itself.
-  // `wt` is the short spelling, the same tree under a second name.
+  // One spelling: `wt` was dropped before release, since Windows Terminal's binary is `wt.exe`.
   {
     name: "walky",
     summary: `walky talky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
-    subcommands: WALKY_TREE,
-    run: (args, s) => cmdWalky({ io: s.io }, args),
-  },
-  {
-    name: "wt",
-    summary: "same as `walky`",
     subcommands: WALKY_TREE,
     run: (args, s) => cmdWalky({ io: s.io }, args),
   },

@@ -3391,6 +3391,16 @@ On both hops the receiving bridge refuses a message whose `at` is more than **10
 own clock, either way, as a `refused: stale` receipt in a 200. The local socket and the phone route
 set `at` themselves. Added 2026-10-17 (M62 hardening).
 
+### An older member
+
+Before it dials, the lead compares the member's reported `version` (§19, the field its sweep already
+reads) with a floor: `1.23.0`, or the lead's own version when the lead is a build below `1.23.0` (a
+development build that carries walky talky). A member below the floor gets `refused: older member` at
+once, with no POST, so an older member costs no write budget and no timeout. A member that reported
+no version, or a value that names no release, is dialled as before, and its 404 on
+`POST /crew/v1/pane/:id/walky` stays the backstop with the same reason. Added 2026-10-18 (M62
+hardening I).
+
 ### The outcome report
 
 The member snapshot gains an optional sibling beside the body, in the seat §19's fields use:

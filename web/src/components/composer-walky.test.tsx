@@ -68,7 +68,7 @@ describe("Send as message (the Send button's long-press menu)", () => {
     expect(posted?.id).toMatch(/^wt_[a-z0-9]{12}$/);
     expect(posted).not.toHaveProperty("replyTo");
     // The receipt state is told beside the box, and the draft left with the message.
-    expect(await screen.findByText("Message to this pane: Logged, not typed yet")).toBeInTheDocument();
+    expect(await screen.findByText("Message to this pane: queued")).toBeInTheDocument();
     await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
     expect(plain).toEqual([]);
   });
@@ -98,7 +98,7 @@ describe("Send as message (the Send button's long-press menu)", () => {
     await user.type(screen.getByPlaceholderText(/type a reply/i), "again");
     fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Send as message" }));
-    expect(await screen.findByText("Message to this pane: Refused: rate limit")).toBeInTheDocument();
+    expect(await screen.findByText("Message to this pane: not sent: rate limit")).toBeInTheDocument();
     expect(loadDraft(undefined, "w1:p1")).toBe("again");
   });
 

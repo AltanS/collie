@@ -449,7 +449,7 @@ describe("a message a crew hop brought (CREW_PROTOCOL §21)", () => {
     });
     await r.service.send(send("wt_aaaaaaaaaaa1", "desk/w2:p2"), operator);
     expect(r.service.status("wt_aaaaaaaaaaa1").elsewhere).toEqual(["desk/w2:p2"]);
-    expect(r.service.whoNote()).toContain("ask the lead");
+    expect(r.service.whoNote()).toBe("other machines: run `collie walky who` on the lead, or use the phone");
     expect(rig([pane("w1:p1")], { memberId: "desk" }).service.whoNote()).toBeNull();
   });
 });

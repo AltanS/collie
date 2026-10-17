@@ -27,6 +27,7 @@ import { LOCAL_MEMBER, isSelf, parseAddress } from "./address.ts";
 import { canonicalMessage } from "./canonical.ts";
 import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
+import { RefusalCounter, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
 import { formatEnvelope, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
 
@@ -140,6 +141,8 @@ export interface DelivererDeps {
   readonly routeRemote?: RouteRemote;
   /** The dedupe file, `<stateDir>/walky/seen.json`. Absent: in memory, for a test. */
   readonly seen?: WalkySeen;
+  /** The refusal counter, `<stateDir>/walky/refusals.json`. Absent: in memory. */
+  readonly refusals?: RefusalCounter;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly warn?: (line: string) => void;
@@ -166,6 +169,7 @@ export class WalkyDeliverer {
   private readonly pairs: RateLimiter;
   private readonly members: RateLimiter;
   private readonly seen: WalkySeen;
+  private readonly refusals: RefusalCounter;
   private readonly running = new Set<Promise<void>>();
 
   constructor(private readonly deps: DelivererDeps) {
@@ -175,6 +179,7 @@ export class WalkyDeliverer {
     this.pairs = deps.pairs ?? new RateLimiter(PAIR_LIMIT);
     this.members = deps.members ?? new RateLimiter(MEMBER_LIMIT);
     this.seen = deps.seen ?? new WalkySeen(null, this.now);
+    this.refusals = deps.refusals ?? new RefusalCounter(null, this.now);
   }
 
   /** The `by` of every receipt this bridge writes. */
@@ -190,7 +195,18 @@ export class WalkyDeliverer {
 
   /** A refusal written by this bridge: nothing typed, nothing logged but the count (M62 hardening I). */
   refusal(id: string, target: string, reason: string, verified: WalkyVerified = "local"): WalkyReceipt {
+    this.refusals.count(reason);
     return this.receipt(id, target, "refused", { reason, verified });
+  }
+
+  /** Count a refusal that wrote no receipt. */
+  noteRefusal(reason: string): void {
+    this.refusals.count(reason);
+  }
+
+  /** How many messages this bridge refused, per reason. */
+  refusalCounts(): RefusalCounts {
+    return this.refusals.current();
   }
 
   /** A newer receipt for a logged record: same id, target and verification, a new state. */
@@ -379,7 +395,7 @@ export class WalkyDeliverer {
   /** An address on another member: through the crew seam, or refused while there is none. */
   private async remote(message: WalkyMessage, members: string, sender: SenderPane | null): Promise<WalkyReceipt[]> {
     const route = this.deps.routeRemote;
-    if (route === undefined) return [this.receipt(message.id, message.to, "refused", { reason: "crew routing not built" })];
+    if (route === undefined) return [this.refusal(message.id, message.to, "crew routing not built")];
     const placement: Placement = { session: null, paneId: null };
     const accepted = this.receipt(message.id, members === "all" ? "all" : message.to, "accepted");
     this.seen.add(message, accepted.target);
@@ -390,6 +406,8 @@ export class WalkyDeliverer {
       // its own, so `status` and the outcome report (crew.ts) can find it by id and target.
       for (const receipt of receipts) {
         if (receipt.id !== message.id) continue;
+        // A refusal the routing side wrote itself (an older member, a bad signature) counts here too.
+        if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
         if (this.deps.log.get(message.id, receipt.target) === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
         else this.deps.log.update(receipt);
       }

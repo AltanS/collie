@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { CREW, leadStore, material, member, peerStore } from "../crew/fixtures.ts";
 import type { PaneWire } from "../types.ts";
+import { compareSemver } from "../update.ts";
 import { signMessage, attestationString } from "./canonical.ts";
 import { verifyCanonical } from "../crew/signing.ts";
 import {
@@ -12,10 +13,12 @@ import {
   checkFromLead,
   checkFromMember,
   checkCrewMessage,
+  crewSkipped,
   crewTargets,
   leadRouteRemote,
   memberRouteRemote,
   mergeReport,
+  olderThanWalky,
   receiptsOfAnswer,
   WalkyCrew,
   WalkyReport,
@@ -484,6 +487,63 @@ describe("`who` on a lead", () => {
     expect(targets).toEqual([
       { address: "laptop/w1:p9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "collie#main", state: "idle" },
       { address: "other/w2:p1", memberId: "other", machine: "other", harness: "agent-x", label: "collie#main", state: "unreachable" },
+    ]);
+  });
+});
+
+describe("an older member (CREW_PROTOCOL §21)", () => {
+  test("below 1.23.0 is older; on a lead built before 1.23.0 the floor is the lead's own version; no version is never older", () => {
+    expect(olderThanWalky("1.22.4", "1.23.0", compareSemver)).toBe(true);
+    expect(olderThanWalky("1.23.0", "1.23.0", compareSemver)).toBe(false);
+    expect(olderThanWalky("1.24.1", "1.23.0", compareSemver)).toBe(false);
+    // A development lead at 1.22.5 carries the feature: members at its version are not older.
+    expect(olderThanWalky("1.22.5", "1.22.5", compareSemver)).toBe(false);
+    expect(olderThanWalky("1.22.4", "1.22.5", compareSemver)).toBe(true);
+    expect(olderThanWalky(null, "1.23.0", compareSemver)).toBe(false);
+    expect(olderThanWalky("unknown", "1.23.0", compareSemver)).toBe(false);
+  });
+
+  test("the lead refuses `older member` at once, dials nothing, and counts the refusal", async () => {
+    const posts: string[] = [];
+    const routeRemote = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop", "other"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      post: async (memberId) => {
+        posts.push(memberId);
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      older: (memberId) => memberId === "laptop",
+      now: () => AT,
+    });
+    const lead = service("desk", [pane("w1:p1")], undefined, { routeRemote });
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(answer).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "older member", target: "laptop/w9:p9" }] });
+    expect(posts).toEqual([]);
+    expect(lead.service.refusals().counts).toEqual({ "older member": 1 });
+  });
+});
+
+describe("the skipped list on a lead", () => {
+  test("lists every member's shell panes once, from the bodies, and never an agent pane", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewSkipped` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: null, kind: "shell", status: "idle", cwd: "/home/a/collie", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
+    const skipped = crewSkipped(
+      [
+        {
+          memberId: "laptop",
+          name: "laptop",
+          reachable: true,
+          body: { sessions: [], agents: [paneOf("w1:p9", { agent: "agent-x", kind: "agent" }), paneOf("w1:p3")], shellPanes: [paneOf("w1:p3"), paneOf("w1:p4")], workspaces: [], tabs: [] },
+        },
+        { memberId: "gone", name: "gone", reachable: false, body: null },
+      ],
+      true,
+    );
+    expect(skipped).toEqual([
+      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main" },
+      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main" },
     ]);
   });
 });
