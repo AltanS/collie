@@ -3818,3 +3818,140 @@ describe("a text that starts with `@` is a message on pi and OMP", () => {
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
   });
 });
+
+describe("a send at a box that is not free is held, not refused (2026-10-17 field case)", () => {
+  const FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" } as const;
+  const RUNNING = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  const BOX_HELD = "The input box is not free. Collie keeps this and sends it when the box is free.";
+  const queued = (clock = { now: 1_000_000 }): Rig & { holds: HoldStore } => {
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    return { ...rig({ holds, clock }), holds };
+  };
+  const tick = async (r: Rig, surface: typeof FREE | typeof RUNNING = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+
+  test("a dialog at the box holds the message: receipt held, nothing typed, the box's line as detail", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    const answer = await r.send("ok for the open PRs", { id: "box-0000001" });
+    expect(answer.receipt).toMatchObject({ requestId: "box-0000001", outcome: "held", keys: [] });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.offers).toEqual([]);
+    expect(answer.detail).toBe(BOX_HELD);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["box-0000001"]);
+  });
+
+  test("a box that moves between the two S0 reads holds the message too", async () => {
+    const r = queued();
+    r.pane.beforeRead = (p, n) => {
+      if (n === 2) p.box = "someone typed at the desk";
+    };
+    const answer = await r.send("hello", { id: "box-0000002" });
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(answer.detail).toBe(BOX_HELD);
+  });
+
+  test("a hold from a box that was not free has no running read: two free polls keep it, five over ten seconds send it", async () => {
+    const clock = { now: 1_000_000 };
+    const r = queued(clock);
+    r.pane.dialog = DIALOG;
+    await r.send("ok for the open PRs", { id: "box-0000003" });
+    r.pane.dialog = null;
+    // A `turn_running` hold goes on the second free poll; this one does not: it read no turn.
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    clock.now += 2500;
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "box-0000003", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> ok for the open PRs");
+    expect(r.holds.list()).toEqual([]);
+    neverEscape(r.pane);
+  });
+
+  test("a hold from a box that was not free goes after a turn a poll reads, then two free polls", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    await r.send("ok for the open PRs", { id: "box-0000004" });
+    r.pane.dialog = null;
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "box-0000004", outcome: "sent" });
+  });
+
+  test("a release that meets the box still not free goes back to its place, nothing typed", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    await r.send("ok for the open PRs", { id: "box-0000005" });
+    // The poll's Surface says free, but the dialog is still on the screen the release reads.
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const [back] = await tick(r);
+    expect(back?.receipt).toMatchObject({ requestId: "box-0000005", outcome: "held", keys: [] });
+    expect(r.holds.get("box-0000005")).toMatchObject({ state: "held", tries: 1 });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a draft in the box is still refused draft_present with its offers, nothing held", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    const answer = await r.send("hello", { id: "box-0000006" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a command at a box that is not free stays a refusal, nothing held", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    const answer = await r.send("/compact", { id: "box-0000007", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("with no hold queue a box that is not free is refused as before", async () => {
+    const r = rig();
+    r.pane.dialog = DIALOG;
+    expect((await r.send("hello")).receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+  });
+});
+
+describe("a refusal receipt keeps its line and the Surface words (2026-10-17 field case)", () => {
+  test("a box that moved between two reads: the line and four words on the receipt and on disk, never the text", async () => {
+    const r = rig();
+    r.pane.beforeRead = (p, n) => {
+      if (n === 2) p.box = "someone typed at the desk";
+    };
+    const answer = await r.send("a private sentence", { id: "detail-00001" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", detail: "The input box moved between two reads." });
+    expect(answer.receipt?.saw).toEqual({ turn: "idle", modal: "none", composer: "draft" });
+    const stored = new RequestStore(join(dir, "sends"), () => r.clock.now).get("detail-00001")?.receipt;
+    expect(stored).toMatchObject({ detail: "The input box moved between two reads.", saw: { turn: "idle", modal: "none", composer: "draft" } });
+    const file = readFileSync(join(dir, "sends", "detail-00001.json"), "utf8");
+    expect(file).not.toContain("a private sentence");
+    expect(file).not.toContain("someone typed at the desk");
+  });
+
+  test("a dialog at the box: the plain line and the modal word", async () => {
+    const r = rig();
+    r.pane.dialog = DIALOG;
+    const answer = await r.send("hello");
+    expect(answer.receipt?.detail).toBe(answer.detail ?? "");
+    expect(answer.receipt?.saw?.modal).not.toBe("none");
+  });
+
+  test("a send that went keeps neither a line nor the words", async () => {
+    const r = rig();
+    const sent = await r.send("hello there, agent");
+    expect(sent.receipt?.outcome).toBe("sent");
+    expect(sent.receipt?.detail).toBeUndefined();
+    expect(sent.receipt?.saw).toBeUndefined();
+  });
+});

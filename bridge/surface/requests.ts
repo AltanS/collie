@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
 export const REQUEST_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -151,6 +151,11 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `acknowledged` is a request id or absent (a program session's send, M56 spec 14).
   const acknowledged = node.acknowledged === undefined ? undefined : asJsonString(node.acknowledged);
   if (node.acknowledged !== undefined && (acknowledged === undefined || !REQUEST_ID.test(acknowledged))) return undefined;
+  // `detail` is a short line and `saw` four words, both on a refusal only (or absent on older receipts).
+  const detail = node.detail === undefined ? undefined : asJsonString(node.detail);
+  if (node.detail !== undefined && (detail === undefined || detail.length > RECEIPT_DETAIL_MAX)) return undefined;
+  const saw = node.saw === undefined ? undefined : readSurfaceWords(node.saw);
+  if (saw === null) return undefined;
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
@@ -180,6 +185,8 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (cap !== undefined) whole.cap = cap;
   if (node.queued === true) whole.queued = true;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
+  if (detail !== undefined) whole.detail = detail;
+  if (saw !== undefined) whole.saw = saw;
   return whole;
 }
 

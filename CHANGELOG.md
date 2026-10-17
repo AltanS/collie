@@ -23,6 +23,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A message that finds the input box not free is queued, not refused.** A send into a Claude Code turn could meet "The input box is not free" again and again, for example while the agent streamed a long answer. Now Collie keeps the message, shows it as a queued row with Cancel, and sends it once the pane reads free, after five free polls over ten seconds or after a turn it sees. A screen that does not read the same twice is queued the same way. A draft in the box, a screen that needs Type here, and a command still get a refusal, since they need you.
+- **Background subagents no longer make the composer flicker.** Each tool call of a subagent fired a hook edge on the main pane, about once a second while subagents worked. Every edge marked the pane's last read as old, so the box jumped between its state and "Last read 0 s ago". A subagent's tool edge now leaves the pane's read alone. It still ends the subagent's held permission card.
+- **"Last read N s ago" shows only for a read that is really old.** A hook edge now marks the last read stale only once that read is older than two poll intervals. A younger read keeps its state until Collie reads the screen again, about 0.7 seconds after the edge.
+- **A refused send keeps its reason line on its receipt.** The receipt stores the sentence the phone was shown and the four words of the screen state it was refused on, never the text or a screen row.
+
 ## [1.22.1] - 2026-10-17
 
 ### Fixed

@@ -66,6 +66,41 @@ export interface PlacedEdge {
   readonly at: number;
 }
 
+/** The tool edge's facts a hold book reads (see bridge/surface/hold.ts `EdgeInfo`). */
+export interface EdgeHoldInfo {
+  readonly tool: string | null;
+  readonly agent: string | null;
+  readonly at: number;
+  readonly inputHash: string | null;
+}
+
+/** Where one placed edge goes on a terminal session. */
+export interface EdgeSinks {
+  /** The pane's Surface (its fold). True when the pane took it; a pane not read yet takes none. */
+  fold(paneId: string, kind: EdgeKind, at: number): boolean;
+  /** An edge of the main session that no fold took: it is counted under its harness, like a dropped one. */
+  unfolded?(record: EdgeRecord, kind: EdgeKind): void;
+  /** A prompt edge with its salted hash: the Send Protocol closes a receipt as `effective` on it. */
+  promptEdge?(paneId: string, promptHash: string, at: number): void;
+  /** The hold book: a tool edge ends a "Sent" card of a hook-held permission, a subagent's too. */
+  hold?(paneId: string, kind: EdgeKind, info: EdgeHoldInfo): void;
+}
+
+/**
+ * Hand a placed edge to its sinks. A SUBAGENT IS NOT THE PANE: an edge whose record names a subagent
+ * (`agent`, only a tool edge carries it) came from a task inside the session, while the pane's own
+ * turn may be idle. It never goes into the fold, so it neither marks the read stale nor opens or
+ * closes a block, and it is not counted as an edge of the pane. It still reaches the hold book, which
+ * ends a subagent's held permission on it.
+ */
+export function deliverEdge(sinks: EdgeSinks, paneId: string, edge: PlacedEdge): void {
+  const { record, kind, at } = edge;
+  const subagent = record.agent !== undefined;
+  if (!subagent && !sinks.fold(paneId, kind, at)) sinks.unfolded?.(record, kind);
+  if (!subagent && kind === "prompt" && record.promptHash !== null) sinks.promptEdge?.(paneId, record.promptHash, record.at);
+  sinks.hold?.(paneId, kind, { tool: record.tool ?? null, agent: record.agent ?? null, at: record.at, inputHash: record.inputHash ?? null });
+}
+
 export type Placement =
   | { readonly kind: "placed"; readonly target: EdgeTarget; readonly paneId: string }
   | { readonly kind: "dropped"; readonly reason: DropReason };

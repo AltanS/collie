@@ -83,8 +83,10 @@ import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lif
 import type { ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
+  RECEIPT_DETAIL_MAX,
   reservedLead,
   sendLines,
+  surfaceWords,
   takesManualSend,
   wsFree,
   type ReadMark,
@@ -802,6 +804,15 @@ export function neverHeldEntry(text: string, match: ProfileMatch | null): string
 }
 /** The detail of a held send (M56 spec 15): the harness cannot take it during the turn, so Collie keeps it. */
 const HELD = "The agent is working. Collie keeps this and sends it when the turn ends.";
+/** The detail of a send held because the box was not free or would not hold still: no turn was read. */
+const HELD_BOX = "The input box is not free. Collie keeps this and sends it when the box is free.";
+/** The line of a held send that ended because its pane closed. */
+const HELD_PANE_GONE = "The pane closed before the held text could go out.";
+/** The detail a held answer carries, by what it was held for. */
+function heldDetail(end: Ended): string {
+  if (end.extra.detail === HELD_BEHIND) return HELD_BEHIND;
+  return end.reason === "turn_running" ? HELD : HELD_BOX;
+}
 /** The detail of a send held behind earlier held sends on the same pane: it never jumps the queue. */
 const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
 /**
@@ -1409,8 +1420,9 @@ export class SendProtocol {
     });
     if (accepted.kind === "id_reused") {
       // The stored request is someone else's; this refusal is not stored under its id.
-      const receipt = this.receiptOf(this.bareState(request, accepted.record, target, null), "refused", "id_reused");
-      return { receipt, offers: [], detail: "This request id was already used for another text." };
+      const detail = "This request id was already used for another text.";
+      const receipt = this.receiptOf(this.bareState(request, accepted.record, target, null), "refused", "id_reused", undefined, { detail });
+      return { receipt, offers: [], detail };
     }
     if (accepted.kind === "replay") {
       const stored = accepted.record.receipt;
@@ -1453,9 +1465,18 @@ export class SendProtocol {
 
   // ── The held send (M56 spec 15) ──
 
-  /** Whether an end is one the hold queue takes instead: a `turn_running` refusal before any key, of a new text. */
+  /**
+   * Whether an end is one the hold queue takes instead: a refusal before any key, of a new text, that
+   * means "not yet". `turn_running` as before; `not_free` and `bound` (a box that is not free, a screen
+   * that would not hold still) only for a message, never a command: a command at a box Collie could
+   * not read stays a refusal. `draft_present` and `unconfirmed` need the person, so they stay refusals.
+   */
   private holdsEnd(state: RunState, end: Ended): boolean {
-    return this.deps.holds !== undefined && end.outcome === "refused" && end.reason === "turn_running" && state.keys.length === 0 && HOLDABLE.has(state.request.mode) && state.neverHold !== true;
+    if (this.deps.holds === undefined || end.outcome !== "refused" || state.keys.length > 0) return false;
+    if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
+    if (end.reason === "turn_running") return true;
+    const command = state.command || state.request.mode === "command";
+    return (end.reason === "not_free" || end.reason === "bound") && !command;
   }
 
   /** The request goes to the end of its pane's queue; the answer's receipt says `held`. */
@@ -1468,15 +1489,18 @@ export class SendProtocol {
     if (holds.waitingCount() >= HOLD_BRIDGE_MAX) {
       return this.settle(state, new Ended("refused", "busy", { detail: `Collie already holds ${String(HOLD_BRIDGE_MAX)} messages on this machine. Cancel one, or wait for a turn to end.` }));
     }
-    // A hold made from a refusal read the turn running: the pane's release waits for it to end.
-    if (end.extra.detail !== HELD_BEHIND) this.watchOf(target.session, target.paneId).sawRunning = true;
+    // A hold made from a `turn_running` refusal read the turn running: the pane's release waits for it
+    // to end. One made from a box that was not free read no turn: it goes on the quiet rule, or after a
+    // turn a poll reads.
+    if (end.reason === "turn_running" && end.extra.detail !== HELD_BEHIND) this.watchOf(target.session, target.paneId).sawRunning = true;
+    else if (end.reason !== "turn_running") this.quietWatch(target.session, target.paneId);
     const command = state.command || request.mode === "command";
     const waitsForTurn = command && !commandCannotSteer(state.match);
     holds.add({ id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn });
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     this.count(state, receipt);
-    return answerWith({ receipt, offers: [] }, { ...end.extra, detail: end.extra.detail === HELD_BEHIND ? HELD_BEHIND : HELD });
+    return answerWith({ receipt, offers: [] }, { ...end.extra, detail: heldDetail(end) });
   }
 
   /**
@@ -1499,6 +1523,16 @@ export class SendProtocol {
   }
 
   /** The hold queue's view of a pane, made on first use. */
+  /**
+   * The watch of a pane whose first hold read no turn (a box that was not free): unlike
+   * {@link watchOf}'s first sight, it starts with no running read, so the hold goes on the quiet rule
+   * or after a turn a poll reads. A pane already watched keeps what its watch saw.
+   */
+  private quietWatch(session: string, paneId: string): void {
+    const key = `${session}\u0000${paneId}`;
+    if (!this.watches.has(key)) this.watches.set(key, { sawRunning: false, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0 });
+  }
+
   private watchOf(session: string, paneId: string): PaneWatch {
     const key = `${session}\u0000${paneId}`;
     let watch = this.watches.get(key);
@@ -1655,8 +1689,9 @@ export class SendProtocol {
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
     if (record === null || held === undefined || record.phase !== "held") return null;
-    const { reason: _none, queued: _never, ...rest } = held;
-    const receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+    const { reason: _none, queued: _never, detail: _noDetail, saw: _noSaw, ...rest } = held;
+    let receipt: SendReceipt = reason === undefined ? { ...rest, outcome } : { ...rest, outcome, reason };
+    if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
     this.deps.store.settle(entry.id, receipt);
     const ledger = this.deps.ledger;
     try {
@@ -1830,7 +1865,11 @@ export class SendProtocol {
     };
   }
 
-  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined, cap?: SendCap): SendReceipt {
+  /**
+   * The receipt of a run. A refusal also keeps its line and the words of the Surface it was refused
+   * on (`note`): the sentence the phone got, cut short, and four words. Never a row, never the text.
+   */
+  private receiptOf(state: RunState, outcome: SendOutcome, reason: SendReason | undefined, cap?: SendCap, note?: EndNote): SendReceipt {
     const { record, target, match } = state;
     const base: SendReceipt = {
       requestId: record.id,
@@ -1855,6 +1894,12 @@ export class SendProtocol {
     if (cap !== undefined) receipt.cap = cap;
     const queued = labelFromWitness(state.match) ? state.witnessed : state.queued;
     if (queued && (outcome === "sent" || outcome === "effective")) receipt.queued = true;
+    if (outcome === "refused" && note !== undefined) {
+      const detail = note.detail ?? reason;
+      if (detail !== undefined) receipt.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
+      const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
+      if (saw !== undefined) receipt.saw = surfaceWords(saw);
+    }
     return receipt;
   }
 
@@ -1899,7 +1944,7 @@ export class SendProtocol {
 
   private settle(state: RunState, end: Ended): SendAnswer {
     const outcome = this.settleOpen(state, end.outcome);
-    const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap);
+    const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;

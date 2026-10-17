@@ -15,13 +15,17 @@
 //    found; else `unknown`.
 //  - `composer`: empty on the placeholder or an empty interior, draft on text, unreachable when the
 //    pane could not be read, unknown otherwise.
-//  - `reason`: stale when the newest read is older than two poll intervals at the newest input, or
-//    older than the newest edge; torn when the read's rows end inside a frame; no-match when there is
+//  - `reason`: stale when the newest read is older than two poll intervals at the newest input (an
+//    edge newer than the read counts only once the read is that old too); torn when the read's rows end inside a frame; no-match when there is
 //    no frame, no cue and no lift; contested when the screen reads free while a running edge is
 //    younger than the settle time.
 //  - No clock makes a `free`. A tick can only take one away (stale).
 //
-// Edges (spec 11) are edges, not levels. An edge marks the last read stale. A `prompt` edge opens a
+// Edges (spec 11) are edges, not levels. An edge newer than the last read makes it stale only once
+// that read is older than two poll intervals (2026-10-17: Claude Code fires a tool edge about once a
+// second while subagents work, and each one flipped a fresh read to stale, so the composer flickered
+// "Last read 0 s ago"). Below that age the read's own verdict stands, with the blocks applied, and the
+// fresh read the edge asks for replaces it. A `prompt` edge opens a
 // running block: the turn reads running while the screen says idle. A `dialog` edge opens a modal
 // block: the modal reads `unreadable` while the screen says none. The screen lifting an ask ends a
 // modal block. A block ends on a closing edge (`stop`, `start`, `end`), or on the screen reading free
@@ -107,7 +111,7 @@ export interface FoldState {
   readonly screenRead: SurfaceRead | null;
   /** The time of the newest input of any source. */
   readonly now: number;
-  /** The time of the newest edge, or null. A read older than it is stale. */
+  /** The time of the newest edge, or null. A read older than it is stale once that read is also older than two poll intervals. */
   readonly lastEdgeAt: number | null;
   /** The running block a `prompt` edge opened, or null. */
   readonly running: EdgeBlock | null;
@@ -275,9 +279,11 @@ export function readFold(state: FoldState, context: FoldContext): SurfaceRead {
     return { surface: { revision: 0, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" }, frame: null, cues: null };
   }
   const read = state.screenRead;
+  // Stale: the read is older than two poll intervals at the newest input. An edge newer than the read
+  // moves the newest input on, so an edged read goes stale at that same age and not before: a young
+  // edged read keeps its verdict (with the edges' blocks) until the fresh read the edge asked for.
   const old = state.now - state.screen.at > 2 * context.pollMs;
-  const edged = state.lastEdgeAt !== null && state.lastEdgeAt > state.screen.at;
-  if (old || edged) return { ...read, surface: staled(read.surface) };
+  if (old) return { ...read, surface: staled(read.surface) };
   const surface = withBlocks(read.surface, state, context);
   return surface === read.surface ? read : { ...read, surface };
 }

@@ -7,8 +7,9 @@ import { liftAsk, readerBlocks } from "./lift";
 import { requireProfile } from "./profile";
 import { isFree, modalWord } from "./surface";
 
-// M56 spec 11: hook edges in the fold. An edge marks the read stale, may say running or a modal is up,
-// and never makes a free. Only the screen ends a turn; three free reads over ten seconds end a block
+// M56 spec 11: hook edges in the fold. An edge may say running or a modal is up, and never makes a
+// free. An edge newer than the read makes it stale only once the read is two poll intervals old
+// (2026-10-17): a young read keeps its verdict until the fresh read the edge asks for. Only the screen ends a turn; three free reads over ten seconds end a block
 // that lost its Stop.
 
 const CONTEXT: FoldContext = { idle: idleFor("claude"), pollMs: 1000 };
@@ -52,12 +53,26 @@ describe("edge kinds", () => {
 });
 
 describe("the fold with edges", () => {
-  it("an edge marks the last read stale until a newer read", () => {
-    const log = [read(IDLE, 0), edge("reread", 100)];
+  it("an edge newer than a young read keeps the read's verdict: no stale flicker on a tool edge a second", () => {
+    for (const kind of ["reread", "tool", "stop"] as const) {
+      const young = foldSurface([read(IDLE, 0), edge(kind, 100)], CONTEXT).surface;
+      expect(young.reason).toBeUndefined();
+      expect(isFree(young)).toBe(true);
+      // Exactly two poll intervals is not older than two.
+      expect(isFree(foldSurface([read(IDLE, 0), edge(kind, 2 * CONTEXT.pollMs)], CONTEXT).surface)).toBe(true);
+    }
+    // A running read stays running under a young edge: it never turns into a stale `unknown`.
+    const running = foldSurface([edge("prompt", 0), read(RUNNING, 700), edge("tool", 900), edge("tool", 1300)], CONTEXT).surface;
+    expect(running).toMatchObject({ turn: "running" });
+    expect(running.reason).toBeUndefined();
+  });
+
+  it("an edge newer than a read older than two poll intervals marks it stale until a newer read", () => {
+    const log = [read(IDLE, 0), edge("reread", 2 * CONTEXT.pollMs + 1)];
     const stale = foldSurface(log, CONTEXT).surface;
     expect(stale.reason).toBe("stale");
     expect(isFree(stale)).toBe(false);
-    expect(isFree(foldSurface([...log, read(IDLE, 800)], CONTEXT).surface)).toBe(true);
+    expect(isFree(foldSurface([...log, read(IDLE, 2 * CONTEXT.pollMs + 700)], CONTEXT).surface)).toBe(true);
   });
 
   it("never free: a Stop edge with the spinner still on screen keeps the turn running", () => {
@@ -76,9 +91,13 @@ describe("the fold with edges", () => {
     }
   });
 
-  it("never free: a Stop edge alone, with no read after it, leaves the read stale", () => {
-    const surface = foldSurface([read(IDLE, 0), edge("stop", 100)], CONTEXT).surface;
-    expect(isFree(surface)).toBe(false);
+  it("never free: a Stop edge alone, with no read after it, leaves a running read running, and an old read stale", () => {
+    const running = foldSurface([edge("prompt", 0), read(RUNNING, 700), edge("stop", 900)], CONTEXT).surface;
+    expect(running.turn).toBe("running");
+    expect(isFree(running)).toBe(false);
+    const old = foldSurface([edge("prompt", 0), read(IDLE, 700), edge("stop", 700 + 2 * CONTEXT.pollMs + 1)], CONTEXT).surface;
+    expect(old.reason).toBe("stale");
+    expect(isFree(old)).toBe(false);
   });
 
   it("a running edge younger than the settle time and a free screen read as contested", () => {

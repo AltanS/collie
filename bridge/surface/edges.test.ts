@@ -15,7 +15,7 @@ import type { ForegroundProcess } from "../journal/types.ts";
 import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import type { AgentView } from "../types.ts";
 import { isFree, modalWord } from "../../web/src/lib/surface/surface.ts";
-import { EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
+import { deliverEdge, EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeHoldInfo, type EdgeSinks, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
 import { SurfaceShadow } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -306,12 +306,23 @@ describe("edges in the shadow", () => {
     }
   });
 
-  test("an edge marks the read stale until the fresh read, and a pane not read yet takes none", async () => {
+  test("an edge on a young read keeps its verdict, a pane not read yet takes none (2026-10-17 flicker)", async () => {
     const s = shadowRig();
     expect(s.shadow.edge("w1:p9", "stop", 0)).toBe(false);
     s.mux.set("w1:p1", IDLE, 1);
     await s.shadow.observe([agent("w1:p1")]);
     s.shadow.edge("w1:p1", "reread", s.advance(10));
+    expect(s.shadow.surfaceOf("w1:p1")?.reason).toBeUndefined();
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+    await s.reread();
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+  });
+
+  test("an edge on a read older than two poll intervals marks it stale until the fresh read", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", IDLE, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.shadow.edge("w1:p1", "reread", s.advance(2001));
     expect(s.shadow.surfaceOf("w1:p1")?.reason).toBe("stale");
     await s.reread();
     expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
@@ -410,5 +421,52 @@ describe("codex: the notify edge (M56 spec 13)", () => {
     await s.reread();
     expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
     expect(modalWord(s.shadow.surfaceOf("w1:p1")!.modal)).toBe("ask");
+  });
+});
+
+describe("a subagent's edge is not the pane's (2026-10-17 field case)", () => {
+  /** Sinks that fold into a real shadow and write down what reached the hold book and the counters. */
+  const sinksOver = (s: ReturnType<typeof shadowRig>) => {
+    const held: { paneId: string; kind: string; info: EdgeHoldInfo }[] = [];
+    const unfolded: string[] = [];
+    const prompts: string[] = [];
+    const sinks: EdgeSinks = {
+      fold: (paneId, kind, at) => s.shadow.edge(paneId, kind, at),
+      unfolded: (_record, kind) => void unfolded.push(kind),
+      promptEdge: (_paneId, hash) => void prompts.push(hash),
+      hold: (paneId, kind, info) => void held.push({ paneId, kind, info }),
+    };
+    return { sinks, held, unfolded, prompts };
+  };
+  const placed = (over: Partial<EdgeRecord>, at: number): PlacedEdge => ({ kind: "tool", record: record({ event: "PostToolUse", tool: "Bash", inputHash: "abc", ...over }), at });
+
+  test("a tool edge with `agent` set leaves the fold's verdict as it was, and still lands in the hold book", async () => {
+    const s = shadowRig();
+    const { sinks, held, unfolded } = sinksOver(s);
+    s.mux.set("w1:p1", IDLE, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    const before = s.shadow.surfaceOf("w1:p1");
+    // Old enough that an edge of the pane itself would make the read stale.
+    const at = s.advance(2500);
+    deliverEdge(sinks, "w1:p1", placed({ agent: "sub-1" }, at));
+    expect(s.shadow.surfaceOf("w1:p1")).toEqual(before!);
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
+    expect(s.pending).toEqual([]);
+    expect(s.counted).toEqual([]);
+    expect(unfolded).toEqual([]);
+    expect(held).toEqual([{ paneId: "w1:p1", kind: "tool", info: { tool: "Bash", agent: "sub-1", at: placed({}, 0).record.at, inputHash: "abc" } }]);
+    // The same edge from the main session goes into the fold: on that old read it is stale.
+    deliverEdge(sinks, "w1:p1", placed({}, at));
+    expect(s.shadow.surfaceOf("w1:p1")?.reason).toBe("stale");
+    expect(s.counted).toEqual(["tool"]);
+    expect(held.map((row) => row.info.agent)).toEqual(["sub-1", null]);
+  });
+
+  test("a main-session edge no fold took is counted as unfolded; a prompt edge reaches the Send Protocol", () => {
+    const s = shadowRig();
+    const { sinks, unfolded, prompts } = sinksOver(s);
+    deliverEdge(sinks, "w1:p9", { kind: "prompt", record: record({ event: "UserPromptSubmit", promptHash: "h1" }), at: 0 });
+    expect(unfolded).toEqual(["prompt"]);
+    expect(prompts).toEqual(["h1"]);
   });
 });
