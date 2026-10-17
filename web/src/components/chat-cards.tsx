@@ -38,11 +38,16 @@ import {
   Bot,
   Check,
   ChevronRight,
+  Circle,
+  CircleAlert,
+  CircleDot,
+  CircleMinus,
   CircleQuestionMark,
   Clock,
   FilePlusCorner,
   FileText,
   Globe,
+  ListChecks,
   Pencil,
   Search,
   SquareTerminal,
@@ -193,7 +198,7 @@ export const ToolGroup = memo(
       [count("read"), "chat.run.reads"],
       [count("search") + count("fetch"), "chat.run.searches"],
       [count("task"), "chat.run.agents"],
-      [count("other") + count("question") + count("delete") + count("move"), "chat.run.others"],
+      [count("other") + count("plan") + count("question") + count("delete") + count("move"), "chat.run.others"],
     ];
     const summary = parts
       .filter(([n]) => n > 0)
@@ -305,6 +310,9 @@ export function stepLine(call: ChatToolCall): StepLine {
     // A sub-agent's name and a tool's own name are the harness's vocabulary, never a dictionary's.
     case "task":
       return { verb: `${call.agent}:`, subject: call.summary, mono: false };
+    // The plan's label is Collie's word; the count is two numbers and needs no translation.
+    case "plan":
+      return { verb: t("chat.card.plan"), subject: planCount(call), mono: false };
     case "question":
     case "other":
       return { verb: `${call.name}:`, subject: call.summary.split("\n")[0] ?? "", mono: false };
@@ -526,6 +534,11 @@ function StatusSlot({ status, exitCode }: { status: ChatToolStatus; exitCode?: n
   );
 }
 
+/** `done/total` for a plan's head and its folded line. */
+function planCount(call: Extract<ChatToolCall, { kind: "plan" }>): string {
+  return `${call.tasks.filter((x) => x.status === "done").length}/${call.tasks.length}`;
+}
+
 const KIND_ICON = {
   edit: Pencil,
   execute: SquareTerminal,
@@ -534,6 +547,7 @@ const KIND_ICON = {
   fetch: Globe,
   task: Bot,
   other: Wrench,
+  plan: ListChecks,
   question: CircleQuestionMark,
   delete: Trash2,
   move: ArrowRightLeft,
@@ -728,6 +742,11 @@ export function ToolCard({
       return (
         <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
           <ToolHead icon={SquareTerminal} label={t("chat.card.run")} status={status} exitCode={tool.exitCode}>
+            {tool.background && (
+              <Badge variant="outline" className="mr-1.5 shrink-0 text-muted-foreground">
+                {t("chat.card.background")}
+              </Badge>
+            )}
             {tool.description && (
               <span className="font-content min-w-0 truncate text-muted-foreground">{tool.description}</span>
             )}
@@ -747,6 +766,8 @@ export function ToolCard({
           )}
         </LineTool>
       );
+    case "plan":
+      return <PlanTool call={tool} status={status} anchor={anchor} held={held} />;
     case "question":
       return <QuestionTool call={tool} status={status} waiting={waiting} anchor={anchor} held={held} />;
     case "search":
@@ -792,7 +813,14 @@ export function ToolCard({
             {shortPath(tool.path)} → {shortPath(tool.to ?? "")}
           </span>
         ) : !("summary" in tool) || tool.summary.includes("\n") ? null : (
-          <span className="font-content min-w-0 truncate text-muted-foreground">{tool.summary}</span>
+          <span
+            className={cn(
+              "font-content min-w-0 truncate text-muted-foreground",
+              tool.kind === "other" && tool.quiet && "opacity-60",
+            )}
+          >
+            {tool.summary}
+          </span>
         );
       const body = (tool.kind === "task" || tool.kind === "other") && tool.summary.includes("\n") ? tool.summary : null;
       return (
@@ -804,12 +832,75 @@ export function ToolCard({
           output={output}
           body={body}
           waiting={waiting}
+          quiet={tool.kind === "other" && tool.quiet === true}
         >
           {subject}
         </LineTool>
       );
     }
   }
+}
+
+const PLAN_GLYPH = {
+  pending: { icon: Circle, tone: "text-muted-foreground", key: "chat.card.plan.pending" },
+  in_progress: { icon: CircleDot, tone: "text-status-working", key: "chat.card.plan.inProgress" },
+  done: { icon: Check, tone: "text-status-done", key: "chat.card.plan.done" },
+  blocked: { icon: CircleAlert, tone: "text-status-blocked", key: "chat.card.plan.blocked" },
+  dropped: { icon: CircleMinus, tone: "text-muted-foreground", key: "chat.card.plan.dropped" },
+} as const;
+
+/**
+ * A task list: done/total in the head, one row per task. Every row reserves its glyph cell, so a
+ * task moving from pending to done repaints the glyph and nothing moves (DESIGN.md §2); a dropped
+ * task is struck through and muted. Titles are the agent's words, so they wear the content face.
+ */
+function PlanTool({
+  call,
+  status,
+  anchor,
+  held,
+}: {
+  call: Extract<ChatToolCall, { kind: "plan" }>;
+  status: ChatToolStatus;
+  anchor?: string;
+  held: string | false;
+}) {
+  useLocale();
+  return (
+    <Card data-waiting={anchor} className={cn("gap-0 overflow-hidden py-0", held)}>
+      <ToolHead
+        icon={ListChecks}
+        label={t("chat.card.plan")}
+        status={status}
+        trailing={<span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">{planCount(call)}</span>}
+      />
+      {call.tasks.length === 0 ? (
+        <p className="border-t border-border px-3 py-2.5 text-xs text-muted-foreground">{t("chat.card.plan.empty")}</p>
+      ) : (
+        <ul data-slot="list-group" className="border-t border-border">
+          {call.tasks.map((task, i) => {
+            const glyph = PLAN_GLYPH[task.status];
+            const Icon = glyph.icon;
+            return (
+              <li key={i} data-status={task.status} className="flex items-start gap-2 px-3 py-1.5">
+                <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+                  <Icon role="img" aria-label={t(glyph.key)} className={cn("size-3.5", glyph.tone)} />
+                </span>
+                <span
+                  className={cn(
+                    "font-content min-w-0 whitespace-pre-wrap break-words text-sm",
+                    task.status === "dropped" && "text-muted-foreground line-through",
+                  )}
+                >
+                  {task.title}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
 }
 
 /**
@@ -956,6 +1047,7 @@ function LineTool({
   output,
   body,
   waiting,
+  quiet,
   children,
 }: {
   anchor?: string;
@@ -965,14 +1057,16 @@ function LineTool({
   output?: string;
   body?: string | null;
   waiting?: CardWaiting;
+  /** Bookkeeping (memory, phase): same row, lower contrast, so a run of them recedes. */
+  quiet?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 font-medium text-muted-foreground">{label}</span>
-      <span className="flex min-w-0 flex-1 items-center">{children}</span>
+      <span className={cn("shrink-0 font-medium text-muted-foreground", quiet && "opacity-60")}>{label}</span>
+      <span className={"flex min-w-0 flex-1 items-center"}>{children}</span>
       <StatusSlot status={status} />
       {output !== undefined && (
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
@@ -982,6 +1076,7 @@ function LineTool({
   return (
     <div
       data-waiting={anchor}
+      data-quiet={quiet || undefined}
       className={cn("rounded-md border border-transparent", waiting?.body !== undefined && "border-status-blocked bg-card")}
     >
       {output !== undefined ? (
