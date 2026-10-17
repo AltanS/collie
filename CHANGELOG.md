@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.22.2] - 2026-10-17
+
 ### Fixed
 
 - **A message that finds the input box not free is queued, not refused.** A send into a Claude Code turn could meet "The input box is not free" again and again, for example while the agent streamed a long answer. Now Collie keeps the message, shows it as a queued row with Cancel, and sends it once the pane reads free, after five free polls over ten seconds or after a turn it sees. A screen that does not read the same twice is queued the same way. So is a send whose probe character failed on a redrawing screen, when Collie read the box clean again after one Backspace. The probe itself now reads only the box and the rows under it on such a harness, so an answer streaming above the box no longer fails it. A message sent while a permission card or a question is up is queued too, and goes out after you answer it on the pane. A draft in the box and a command still get a refusal, since they need you, and a screen you confirmed with Type here is never queued.
