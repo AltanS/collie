@@ -336,7 +336,11 @@ export class TapRecorder {
       const path = new URL(response.url()).pathname;
       if (!WATCHED.test(path)) return;
       const at = Date.now();
-      const requestId = asJsonString(asJsonObject(parseJson(request.postData() ?? "{}"))?.id) ?? null;
+      const body = asJsonObject(parseJson(request.postData() ?? "{}"));
+      // A `prepare` send is a read: the bridge reads the screen and types nothing. The phone makes one
+      // before a menu commit whose card is newer than its ask (lib/dialog-ask.ts), so it is not a tap.
+      if (path === "/api/send" && asJsonString(body?.mode) === "prepare") return;
+      const requestId = asJsonString(body?.id) ?? null;
       void this.noteAnswer(response, at, path, requestId);
     });
   }
