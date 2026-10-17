@@ -436,13 +436,20 @@ export class WalkyDeliverer {
         result = this.deps.host.sendState(sendId) ?? result;
       }
       if (result.outcome === "held") {
+        // Take it back, then read what the Send Protocol says now: it may have gone out at the last
+        // moment, and a hold the cancel did not reach may still go out. Only a cancel it confirmed
+        // means nothing was typed.
         this.deps.host.cancelHeld(session, paneId, sendId);
         const after = this.deps.host.sendState(sendId);
-        result = after === null || after.outcome === "held" || after.outcome === "cancelled" ? { outcome: "held" } : after;
-        if (result.outcome === "held") {
+        if (after?.outcome === "cancelled") {
           this.deps.log.update(this.next(record, "inbox-only", "held past 10 minutes", sendId));
           return;
         }
+        if (after === null || after.outcome === "held") {
+          this.deps.log.update(this.next(record, "unknown", "held past 10 minutes, still pending", sendId));
+          return;
+        }
+        result = after;
       }
     }
     if (result.outcome === "sent" || result.outcome === "effective") {
@@ -460,8 +467,10 @@ export class WalkyDeliverer {
 
   /**
    * After a restart: every receipt still `accepted` is settled from what the Send Protocol stored.
-   * No send id means no key went out: `inbox-only`. A send id the store never took is the same. A
-   * held send is watched again from where it stood.
+   * The send id is DERIVED from the message id and the target (`sendIdOf`), never read from the
+   * receipt: a crash between logging and writing the send id must not hide a send that went out. A
+   * send id the protocol never took means no key went out: `inbox-only`. A held send is watched again
+   * from where it stood. Nothing here sends.
    */
   recover(): number {
     let count = 0;
@@ -469,10 +478,10 @@ export class WalkyDeliverer {
       const { session, paneId } = record;
       if (session === null || paneId === null) continue;
       count += 1;
-      const sendId = record.receipt.sendId;
-      const state = sendId === undefined ? null : this.deps.host.sendState(sendId);
-      if (sendId === undefined || state === null) {
-        this.deps.log.update(this.next(record, "inbox-only", "bridge restarted", sendId));
+      const sendId = sendIdOf(record.message.id, record.target);
+      const state = this.deps.host.sendState(sendId);
+      if (state === null) {
+        this.deps.log.update(this.next(record, "inbox-only", "bridge restarted"));
         continue;
       }
       this.track(this.settle(record, session, paneId, sendId, state));

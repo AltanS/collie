@@ -125,9 +125,9 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | --- | --- |
 | `accepted` | Logged, not typed yet |
 | `delivered` | The text went into the pane and was submitted |
-| `inbox-only` | Not typed, for the reason shown (a dialog open, a turn that held it for 10 minutes, no terminal). It waits in the pane's inbox |
+| `inbox-only` | Not typed, for the reason shown (a dialog open, a hold Collie took back after 10 minutes, no terminal). It waits in the pane's inbox |
 | `refused` | Not taken: no such pane, not an agent pane, the sender's limit, or walky talky off on that machine |
-| `unknown` | Typed, outcome not read. Collie never sends it again |
+| `unknown` | May have been typed: the outcome was not read, or a hold was still pending after 10 minutes. Collie never sends it again |
 
 `send` exits 0 for `accepted`, `delivered` and `inbox-only`, 4 for `refused` and 1 for `unknown`.
 
