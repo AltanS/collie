@@ -748,4 +748,12 @@ describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
     for (let n = 0; n <= 8; n++) expect(read(n).surface, String(n)).toEqual(IDLE_FREE);
     expect(isFree(read(9).surface)).toBe(false);
   });
+
+  // pi prints the folder first under its box. On Windows a folder outside the home folder starts with
+  // its drive letter; inside it, with `~`.
+  it("pi: a folder row that starts with a drive letter reads idle and free", () => {
+    const read = audit("pi--v0871-idle-windows-drive.txt", "pi");
+    expect(read.frame).not.toBeNull();
+    expect(read.surface).toEqual(IDLE_FREE);
+  });
 });

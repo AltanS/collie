@@ -2262,3 +2262,4 @@ here, not in `panes/`, so the harness readers' corpus lists stay as they are.
 | Fixture | Base | What changed |
 |---|---|---|
 | `agy--statusline-four-rows.txt` | `agy--done.txt` | The `? for shortcuts` row became the four rows of a custom `statusLine` command (`host-1 [Flash] user@example.com`, `C 91%`, `~/project`, `main`), the screen of issue 374. 1.22.0 searched three rows under the box for its bottom rule and found no box. Reads idle and free |
+| `pi--v0871-idle-windows-drive.txt` | `pi--v0871-idle.txt` | The folder row became `C:\work\pi-cap-cwd`, as pi prints a folder outside the home folder on Windows. 1.22.0 did not take a row that starts with a drive letter as pi's status row and found no box. Reads idle and free |

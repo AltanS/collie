@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **An Antigravity pane with a tall status line takes a send again.** A custom `statusLine` of four to eight rows under the input box hid the box from the send check, so each message needed a second tap, Type here. The check looks up to eight rows under the box again, as 1.21.3 did.
+- **A pi pane on Windows takes a send in a folder outside your home folder.** pi prints the folder in the first row under its box. A folder that starts with a drive letter, such as `C:\work`, did not count as that row, so Collie found no box and each message needed Type here.
 
 ## [1.22.0] - 2026-10-17
 
