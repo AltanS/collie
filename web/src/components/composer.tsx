@@ -21,7 +21,7 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -1000,7 +1000,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The operator's own palette rows, resolved against the shipped catalog for both the button's
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
-  const commands = commandsFor(agent, operatorCommands);
+  const claudeCommands = useClaudeCommands(drawer === "cmd", agent, paneId, scope, operatorCommands);
+  const commands = commandsFor(agent, operatorCommands, claudeCommands);
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -2310,7 +2311,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        paneId={paneId}
+        scope={scope}
         mine={operatorCommands}
+        found={claudeCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />
