@@ -999,7 +999,7 @@ Every key behaviour named below was sent one keystroke at a time and read back.
 ## AskUserQuestion field corpus (captured 2026-10-14, Claude Code 2.1.299, herdr 0.9.4, Windows, throwaway Herdr pane)
 
 The `Type something.` field typed into, cleared and re-answered, one keystroke at a time, for
-[`ASK_FIELD_NOTES.md`](../../lib/grammar/ASK_FIELD_NOTES.md) and ADR 0104. A 157-column pane in a
+[`ASK_FIELD_NOTES.md`](../../lib/grammar/ASK_FIELD_NOTES.md) and ADR 0107. A 157-column pane in a
 scratch folder, trimmed to the last 30 rows, home path scrubbed. Every answer named below was read
 back from the session journal.
 

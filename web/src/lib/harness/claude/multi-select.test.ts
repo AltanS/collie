@@ -366,7 +366,7 @@ describe("detectMultiSelect — the advance row is a place, not a word", () => {
   });
 });
 
-// The answer field (ADR 0104, grammar/ASK_FIELD_NOTES.md § Multi-select): the last menu row above the
+// The answer field (ADR 0107, grammar/ASK_FIELD_NOTES.md § Multi-select): the last menu row above the
 // advance row, found by POSITION, modelled as `field` and never an option. Its digit toggles its tick;
 // while `❯` is on it every digit is typed into it, which `field.focused` carries.
 describe("detectMultiSelect — the answer field", () => {

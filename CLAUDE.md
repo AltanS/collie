@@ -619,7 +619,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   the same kind of field, found by position, modelled with the `free-text` purpose, and never typed
   into (same notes file, 2026-09-26 section).
 - **AskUserQuestion's "Type something." field IS typed into, by one recipe** (`lib/answer-field.ts`,
-  [ADR 0104](./.adr/0104-an-askuserquestion-answer-is-typed-into-its-field.md)), on a single
+  [ADR 0107](./.adr/0107-an-askuserquestion-answer-is-typed-into-its-field.md)), on a single
   question, a wizard step and a multi-select question. Its digit is sent only while the field is
   EMPTY: on a filled field it submits the held text. A filled field is reached by a verified
   `Up`/`Down` walk and cleared with `ctrl+u ctrl+k` rounds only while it holds exactly what the

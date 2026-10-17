@@ -32,7 +32,7 @@ export interface MultiSelectBlockProps {
    */
   onAction: (action: MultiSelectIntent) => void | Promise<void>;
   /**
-   * Injected handler for an answer typed on the phone into the question's own field (ADR 0104,
+   * Injected handler for an answer typed on the phone into the question's own field (ADR 0107,
    * lib/multi-select-action.ts `type`). Resolves whether the answer was sent, so a refused draft
    * stays in the editor. Absent: the card offers no editor.
    */
@@ -54,7 +54,7 @@ export interface MultiSelectBlockProps {
 // can't queue toggles). Every visible string (labels, descriptions) is a React text node — the XSS
 // boundary is unchanged.
 //
-// The question's `Type something` field (ADR 0104): a typed answer is one more ticked choice, drawn as
+// The question's `Type something` field (ADR 0107): a typed answer is one more ticked choice, drawn as
 // a checkbox row after the options, and the answer editor sits below them. While the field has the
 // keyboard in the terminal a digit is typed into it and `Left` moves its caret, so every checkbox row,
 // the escape and the step arrows lock; the advance button walks off the field, and the answer editor's

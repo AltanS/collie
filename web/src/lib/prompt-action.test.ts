@@ -269,7 +269,7 @@ describe("submitPromptFeedback — the states it refuses BEFORE touching the pan
   });
 });
 
-// ADR 0104: AskUserQuestion's `answer` row runs the shared recipe (lib/answer-field.ts) and then ONE
+// ADR 0107: AskUserQuestion's `answer` row runs the shared recipe (lib/answer-field.ts) and then ONE
 // Enter, bound to the read that proved the text. Real 2.1.299 captures of one dialog: the field holding
 // text with the pointer on Blue, then focused holding it, then focused and empty after a clear.
 describe("submitPromptFeedback — an AskUserQuestion answer row", () => {

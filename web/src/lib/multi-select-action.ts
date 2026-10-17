@@ -29,7 +29,7 @@
 // moves don't read as drift while a box flipped by another device does. Both comparators are the
 // neutral contract in harness/multi-select-model.ts, wired to this kind by harness/dialog-contract.ts.
 //
-// The `type` intent (ADR 0104) is the shared answer recipe (lib/answer-field.ts), then one bound
+// The `type` intent (ADR 0107) is the shared answer recipe (lib/answer-field.ts), then one bound
 // `Enter` only if the typed row reads unticked, then a park of the pointer on the option row above the
 // field. Not on the advance row: with the pointer on `Submit`/`Next` an option's digit does nothing
 // (ASK_FIELD_NOTES.md § Multi-select), so every checkbox tap after the answer would be dead.
@@ -314,7 +314,7 @@ function multiFieldAccess(tapped: Checkbox): FieldAccess<"multi-select"> {
 }
 
 /**
- * Answer the question in the person's own words (ADR 0104): the shared recipe (lib/answer-field.ts)
+ * Answer the question in the person's own words (ADR 0107): the shared recipe (lib/answer-field.ts)
  * walks onto the field, clears what the person saw in it, types `text` and proves it arrived; then the
  * row is ticked if it reads unticked, and the pointer parked on the option row above the field, where
  * the options' digits toggle again. Nothing commits: the person still taps Submit or Next.

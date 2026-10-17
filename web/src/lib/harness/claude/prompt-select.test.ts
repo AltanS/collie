@@ -197,7 +197,7 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
 
   it("AskUserQuestion's free-text row is modelled as the answer field Collie types into", () => {
     // "Type something." is never a button. With the pointer on it a digit is typed into the field, so
-    // it locks the other buttons while focused; it carries the `answer` purpose (ADR 0104) and where
+    // it locks the other buttons while focused; it carries the `answer` purpose (ADR 0107) and where
     // the pointer sits relative to it, which the walk onto a filled field reads.
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
     expect(model.family).toBe("select");

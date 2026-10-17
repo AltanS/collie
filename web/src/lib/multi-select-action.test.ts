@@ -156,7 +156,7 @@ beforeEach(() => {
   mockSendReply.mockResolvedValue({ ok: true });
 });
 
-// The answer field of a multi-select question (ADR 0104, grammar/ASK_FIELD_NOTES.md § Multi-select),
+// The answer field of a multi-select question (ADR 0107, grammar/ASK_FIELD_NOTES.md § Multi-select),
 // in the 2.1.299 layout of the claude--v2299-ask-field-multi-* captures: three options, the field as
 // row 4, `Submit`, a rule, `5. Chat about this`. `wrap` adds a continuation line under the field.
 type FieldPointer = "opt1" | "opt3" | "field" | "submit" | "chat";

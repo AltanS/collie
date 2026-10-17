@@ -1,4 +1,4 @@
-// The one recipe that types an answer into AskUserQuestion's `Type something.` field (ADR 0104),
+// The one recipe that types an answer into AskUserQuestion's `Type something.` field (ADR 0107),
 // generic over the dialog kind so the single question, the wizard step and the multi-select question
 // share it. The ground truth for every key below is grammar/ASK_FIELD_NOTES.md.
 //

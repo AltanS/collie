@@ -205,7 +205,7 @@ Both were read back out of the agent's own transcript, not inferred from the scr
 Two more rows behave like this one. `prompt-select.ts` models the permission amend note with the
 `free-text` purpose: read, shown, and never typed into. AskUserQuestion's field was modelled the
 same way until 2026-10-14; it is now the `answer` purpose and typed into by its own recipe, measured
-in [`ASK_FIELD_NOTES.md`](./ASK_FIELD_NOTES.md) (ADR 0104). Its rules differ from this row's: its
+in [`ASK_FIELD_NOTES.md`](./ASK_FIELD_NOTES.md) (ADR 0107). Its rules differ from this row's: its
 digit SUBMITS a filled field, and `ctrl+u ctrl+k` does clear it. Fixtures `claude--v2283-*`, table
 in the fixtures README.
 

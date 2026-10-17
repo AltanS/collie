@@ -226,7 +226,7 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
   });
 });
 
-// The question's own answer field (ADR 0104): a typed answer is one more ticked choice, so the card
+// The question's own answer field (ADR 0107): a typed answer is one more ticked choice, so the card
 // shows it as a checkbox row; while the field has the keyboard in the terminal a digit is typed into
 // it and `Left` moves its caret, so every toggle, the escape and the step arrows lock.
 describe("MultiSelectBlock — the answer field", () => {

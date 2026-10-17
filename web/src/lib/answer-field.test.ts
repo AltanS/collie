@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The answer-field recipe (ADR 0104, grammar/ASK_FIELD_NOTES.md), driven through a single
+// The answer-field recipe (ADR 0107, grammar/ASK_FIELD_NOTES.md), driven through a single
 // AskUserQuestion: reach the field (its digit only while empty, else a verified walk), clear only what
 // the person saw, type, and prove the text. The api layer is mocked so every fresh screen is scripted;
 // the detector and the guard are the real thing. Each test pins one rule, and what was NOT sent.

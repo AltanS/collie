@@ -118,7 +118,7 @@ describe("WizardBlock — question step presentation", () => {
   });
 });
 
-// The step's own answer field (ADR 0104): the same states as the single-question card, plus the
+// The step's own answer field (ADR 0107): the same states as the single-question card, plus the
 // wizard's one extra lock — while the field has the keyboard, `Left`/`Right` move its caret.
 describe("WizardBlock — the answer field", () => {
   const OFFER = "Type your own answer";
