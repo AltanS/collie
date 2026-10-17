@@ -37,6 +37,9 @@
           { "name": "agents-panel-more", "pattern": "^\\s*↓ \\d+ more$" },
           { "name": "agents-panel-manage-hint", "pattern": "^\\s*↓ to manage$" },
           { "name": "tasks-view-hint", "pattern": "^\\s*(?:⏵⏵|⏸|\\?)\\s.*\\s·\\s↓ to view(?:\\s·\\s|$)" }
+        ],
+        "otherScreens": [
+          { "name": "agents screen", "pattern": "^\\s*enter to return(?:\\s·\\s|$)" }
         ]
       }
     }
