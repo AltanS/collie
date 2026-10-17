@@ -687,3 +687,28 @@ describe("hostile pane content", () => {
     });
   }
 });
+
+// The card of Claude Code's notice above a live box (ADR 0109) binds from the notice's head down
+// through the box's bottom edge, so the bridge's own read refuses a tap once the box holds a draft: a
+// digit typed then would join the draft (review F4). The status rows under the box stay inside the
+// tail window with up to five of them (review F5).
+describe("a notice card above a live box", () => {
+  const NOTICE = "claude--v2302-heads-up-above-box--w142.txt";
+  const region = REGIONS.find((row) => row.fixture === NOTICE)!.region;
+  const raw = readFileSync(join(FIXTURE_DIR, NOTICE), "utf8");
+  const statusRow = raw.split(/\r?\n/u).at(-2)!;
+
+  test("binds on the empty box, with one and with three extra status rows under it", () => {
+    expect(verifyPromptBinding(raw, region)).toEqual({ ok: true });
+    for (const extra of [1, 3]) {
+      const taller = [raw, ...Array.from({ length: extra }, () => statusRow)].join("\n");
+      expect(verifyPromptBinding(taller, region), `${String(extra)} extra`).toEqual({ ok: true });
+    }
+  });
+
+  test("refuses the tap once a draft stands in the box", () => {
+    const drafted = raw.replace("❯ ", "❯ half a thought");
+    expect(drafted).not.toBe(raw);
+    expect(verifyPromptBinding(drafted, region).ok).toBe(false);
+  });
+});

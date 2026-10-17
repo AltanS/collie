@@ -321,7 +321,17 @@ export interface SendAnswer {
   readonly replayed?: boolean;
   /** Set on the `unconfirmed` refusal the cap adds: the commit needs one more confirm (`capAck`). */
   readonly cap?: SendCap;
+  /** Which rule decided the answer, when the reason alone does not say it. Optional: an older phone
+   *  reads the reason and its own sentence for it. */
+  readonly cause?: SendCause;
 }
+
+/**
+ * The rules an answer may name beside its reason. `notice_key`: the send's whole text is one of the
+ * keys a notice above the box printed, which a box holding it alone would answer.
+ */
+export const SEND_CAUSES = ["notice_key"] as const;
+export type SendCause = (typeof SEND_CAUSES)[number];
 
 /** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */
 export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {

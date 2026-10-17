@@ -15,6 +15,7 @@ import { dropTaskChecklist } from "./claude/task-checklist";
 import { detectMenu } from "./claude/menu";
 import { detectResumePicker } from "./claude/resume";
 import { detectMarketplaces } from "./claude/marketplaces";
+import { detectAbovePromptNotice } from "./claude/above-prompt-notice";
 
 // The client half of the prompt-binding contract. See the sibling test in
 // bridge/prompt-binding.test.ts for the full reasoning; in short:
@@ -83,6 +84,9 @@ function detectRegion(input: StyledLine[]): FoundRegion | null {
   // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all six declined.
   const menu = detectMenu(lines);
   if (menu) return { detector: "menu", region: menu.signature };
+  // A notice above the live box (ADR 0109) lifts as a menu too, after every grammar above declined.
+  const notice = detectAbovePromptNotice(lines);
+  if (notice) return { detector: "menu", region: notice.model.signature };
   return null;
 }
 

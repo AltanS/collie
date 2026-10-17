@@ -127,6 +127,7 @@ describe("parity with the old walk on the real corpus", () => {
     // the screen up, and the box stands.
     "claude--v2302-slash-effort-list--w120--h40.txt",
     "claude--v2302-slash-model-list--w120--h40.txt",
+    "claude--v2302-heads-up-above-box--w142.txt",
     // The fix rig's Herdr pane, 120 x 36 (captured 2026-10-17): a screen whose rows reach the bottom
     // with an empty box, and the same pane with the list under a box holding `/model`; the box stands.
     "claude--v2302-idle-full-screen--w120--h36.txt",

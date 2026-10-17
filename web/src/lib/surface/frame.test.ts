@@ -8,6 +8,7 @@ import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_AUTOCOMPLETE_LINES } from "../harness/claude/autocomplete";
 import { displayWidth } from "../text-width";
 import { findInputFrame, frameAt, plainRows, type Frame } from "./frame";
+import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
 // M56 spec 03: one module finds the input frame from a profile's `idle` anchors, and the phone's
@@ -140,6 +141,8 @@ describe("pinned dialog regions", () => {
       const firstRow = kept[start]!.row;
       for (const profile of [IDLE]) {
         const frame = findInputFrame(rows, profile);
+        // A notice the profile names sits ABOVE the live box by design (ADR 0109): its card owns no keyboard.
+        if (frame !== null && readAboveNotice(texts, frame.top, profile.notices ?? [], profile.noticeGaps ?? [])?.first === firstRow) continue;
         if (frame !== null) expect(frame.bottom, "a frame found on a dialog sits wholly above it").toBeLessThan(firstRow);
       }
     });

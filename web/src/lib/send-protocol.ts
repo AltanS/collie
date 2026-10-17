@@ -13,11 +13,13 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue
 import {
   SEND_MODES,
   SEND_OUTCOMES,
+  SEND_CAUSES,
   SEND_REASONS,
   readSendCap,
   readSurfaceWords,
   RECEIPT_DETAIL_MAX,
   type SendCap,
+  type SendCause,
   type SendMode,
   type SendOffer,
   type SendOutcome,
@@ -44,6 +46,8 @@ export interface SendReply {
   readonly cap: SendCap | null;
   /** The receipt says the send went in while the turn ran: the harness queued it for after the turn. */
   readonly queued: boolean;
+  /** Which rule decided the answer beside its reason (`notice_key`); null when the bridge named none. */
+  readonly cause: SendCause | null;
 }
 
 const OFFERS: readonly SendOffer[] = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"];
@@ -116,6 +120,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     detail: asJsonString(node.detail) ?? null,
     cap: readSendCap(node.cap),
     queued: receipt?.queued === true,
+    cause: pick(node.cause, SEND_CAUSES),
   };
 }
 
@@ -196,6 +201,8 @@ export type SendNote =
   | "draft"
   | "typed"
   | "unconfirmed"
+  | "noticeKey"
+  | "noticeKeyHeld"
   | "capConfirm"
   | "unknown"
   | "busy"
@@ -368,6 +375,9 @@ type Verdict = Pick<SendReading, "clear" | "note" | "offers">;
 function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict {
   // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
+  // A send of one of the digits a notice above the box printed: the sentence says the digit would answer it.
+  // With no commit offered (a running turn, a Replace) it names the card and the turn's end, not Type here.
+  if (reply.outcome === "refused" && reply.cause === "notice_key") return { clear: false, note: offers.includes("commit") ? "noticeKey" : "noticeKeyHeld", offers };
   const note = sendNote(reply.outcome, reply.reason);
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
   // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.

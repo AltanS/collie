@@ -1028,6 +1028,7 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // The list under the box on the harness lab's 120 x 40 tmux pane (captured 2026-10-17), the screen scrolled up.
     { fixture: "v2302-slash-model-list--w120--h40", statusRows: 0, draft: "/model", stripped: 24 },
     { fixture: "v2302-slash-effort-list--w120--h40", statusRows: 0, draft: "/effort", stripped: 24 },
+    { fixture: "v2302-heads-up-above-box--w142", statusRows: 2, draft: null, stripped: 6 },
     // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): an empty box on a screen whose rows reach
     // the bottom, and the same pane with the list under the box, blank rows under the list.
     { fixture: "v2302-idle-full-screen--w120--h36", statusRows: 1, draft: null, stripped: 5 },
