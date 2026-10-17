@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -20,6 +20,11 @@ describe("the states playground is dev-only", () => {
   it("has an HTML entry sitting in the Vite root", () => {
     expect(existsSync(resolve(web, "playground.html"))).toBe(true);
     expect(existsSync(resolve(web, "src/playground/main.tsx"))).toBe(true);
+  });
+
+  it("has a page title that names Collie", () => {
+    const html = readFileSync(resolve(web, "playground.html"), "utf8");
+    expect(html).toMatch(/<title>[^<]*collie[^<]*<\/title>/i);
   });
 
   it("is absent from the build's rollup input", () => {

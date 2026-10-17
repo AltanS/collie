@@ -147,6 +147,11 @@ function tablist(orientation: "horizontal" | "vertical") {
 }
 
 describe("the playground's tab bar", () => {
+  it("renders a main landmark", () => {
+    render(<PlaygroundApp />);
+    expect(screen.getAllByRole("main").length).toBeGreaterThan(0);
+  });
+
   it(
     "selects the tab named in the hash and scrolls to the card handle",
     async () => {

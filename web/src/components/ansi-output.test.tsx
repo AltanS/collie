@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router";
 
@@ -10,6 +10,7 @@ import { AnsiOutput } from "./ansi-output";
 import { FileLinksProvider } from "./file-links";
 import { paneLinkHandlers, PaneFileLinks, testFileOpener } from "@/test/file-links";
 import { server } from "@/test/setup";
+import { setDeviceToken } from "@/lib/pairing";
 import { codexPaddingScreen } from "@/test/codex-padding";
 
 const ESC = "\x1b";
@@ -450,6 +451,20 @@ describe("mirror line wrapping", () => {
     expect(diffSpan.getAttribute("style")).toContain("rgb(33, 58, 43)");
   });
 
+  it("drops Codex's composer padding band from the mirror: no painted blank row is left behind", () => {
+    const body = Array.from({ length: 60 }, (_, i) => `Earlier output ${i}`).join("\n") + "\n";
+    const { container } = render(<AnsiOutput text={body + codexPaddingScreen} agent="codex" />);
+    const pre = container.querySelector("pre")!;
+
+    // The transcript stays, down to its last line; the prompt, its two background-only rows and the
+    // statusline belong to the composer and are not drawn in the mirror.
+    expect(pre.textContent).toBe(`${body}• Verification complete. Keep this transcript.`);
+    const paintedBlanks = [...pre.querySelectorAll("span")].filter(
+      (span) => span.textContent?.trim() === "" && span.style.backgroundColor !== "",
+    );
+    expect(paintedBlanks).toHaveLength(0);
+  });
+
   it("does not suppress the same ANSI background for an unknown agent", () => {
     const user = `${ESC}[48;2;240;240;240mordinary terminal output${ESC}[0m`;
     const { container } = render(<AnsiOutput text={user} agent="shell" />);
@@ -846,6 +861,61 @@ describe("terminal mirror image placeholders", () => {
     fireEvent.error(await firstImg(container));
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain("[Image]");
+  });
+
+  it("fetches the picture's bytes with the pairing token, from the blob path the journal named", async () => {
+    const seen: { path: string; auth: string | null }[] = [];
+    server.use(
+      http.get("/api/blobs/:hash", ({ request }) => {
+        seen.push({ path: new URL(request.url).pathname, auth: request.headers.get("authorization") });
+        return new HttpResponse(new Uint8Array([1]), { headers: { "content-type": "image/png" } });
+      }),
+    );
+    setDeviceToken("tok-test-placeholder");
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+    );
+    const img = await firstImg(container);
+    // The link around the picture is the object URL the page minted itself, not the bridge path.
+    expect(img.closest("a")?.getAttribute("href")).toMatch(/^blob:/);
+    expect(seen).toEqual([{ path: BLOB, auth: "Bearer tok-test-placeholder" }]);
+  });
+
+  it("speaks German: the badge and the matched-by-order line come from the German catalog", async () => {
+    vi.resetModules();
+    const [{ AnsiOutput: FreshOutput }, { __resetLocale, setLocale, whenLocaleReady }, { de }, { en }] =
+      await Promise.all([
+        import("./ansi-output"),
+        import("@/lib/i18n"),
+        import("@/lib/i18n/messages/de"),
+        import("@/lib/i18n/messages/en"),
+      ]);
+    __resetLocale();
+    try {
+      const { container } = render(
+        <FreshOutput text={`header\n${KITTY_PLACEHOLDER}\n${"x"}\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+      );
+      await act(async () => {
+        setLocale("de");
+        await whenLocaleReady("de");
+      });
+      await vi.waitFor(() => expect(container.textContent).toContain(de["mirror.imageBadge"]));
+      expect(container.textContent).toContain(de["mirror.imageMatchedByOrder"]);
+      // All three differ from English, so this cannot pass by falling back to it.
+      expect(de["mirror.imageBadge"]).not.toBe(en["mirror.imageBadge"]);
+      expect(de["mirror.imageMatchedByOrder"]).not.toBe(en["mirror.imageMatchedByOrder"]);
+      expect(de["mirror.imageAlt"]).not.toBe(en["mirror.imageAlt"]);
+      expect(container.textContent).not.toContain(en["mirror.imageBadge"]);
+      expect(container.textContent).not.toContain(en["mirror.imageMatchedByOrder"]);
+      const img = await vi.waitFor(() => {
+        const found = container.querySelector("img");
+        if (found === null) throw new Error("no picture yet");
+        return found;
+      });
+      expect(img.getAttribute("alt")).toBe(de["mirror.imageAlt"]);
+    } finally {
+      __resetLocale();
+    }
   });
 
   it("falls back to the badge when the bridge refuses the bytes", async () => {

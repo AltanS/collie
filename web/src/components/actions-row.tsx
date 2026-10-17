@@ -453,7 +453,7 @@ export interface ActionsRowProps {
    * refuses: measured under Playwright's WebKit with the iPhone descriptor (2026-09-27), a tap on a
    * button that cancels its own `pointerdown` gets no `mousedown`, no `mouseup` and no `click` at
    * all. Cancelling `mousedown` keeps the focus in both engines and the click in both
-   * (`e2e/composer-clear.spec.ts`).
+   * (`composer.test.tsx`, the belt's clear control).
    */
   clear?: {
     /** `"clear"` draws the X; `"undo"` draws the Undo mark in the same box. */

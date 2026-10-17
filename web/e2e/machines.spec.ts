@@ -12,7 +12,7 @@ import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtur
 // four-machine census and alert rules that stick (`installMachinesWorld`), so the POST's body is what
 // the case asserts on.
 //
-// NO SERVICE WORKER, for the reason `e2e/issue-180.spec.ts` states: `page.route` cannot see a request
+// NO SERVICE WORKER, because `page.route` cannot see a request
 // the worker makes on the page's behalf.
 test.use({ serviceWorkers: "block" });
 

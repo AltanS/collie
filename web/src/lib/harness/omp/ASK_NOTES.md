@@ -197,7 +197,7 @@ answers, Submit closed it, and the agent echoed all three. A separate run submit
 custom answer through the existing Other editor, then Keep / Confirm and the final review;
 the agent echoed the custom text and both choices. No component or shared action model changed.
 
-`e2e/omp-ask-chat.spec.ts` replays the real captures through Chat: the unmodified parser fails
+`src/components/agent-chat-omp-ask.test.tsx` replays the real captures through Chat: the unmodified parser fails
 to draw single and batch controls; the corrected parser completes their guarded key sequences.
 Unit cases also reject a style-only successor step, ambiguous tabs and incomplete reviews.
 Batches and the review are lifted only for the default glyph preset.
