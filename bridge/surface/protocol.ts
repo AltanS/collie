@@ -852,6 +852,14 @@ function commitKeys(state: RunState): readonly string[] {
   return keys.submit;
 }
 
+/** Whether the box answers a question the agent asked: the profile's `idle.answerPrompt` on the frame's prompt row. */
+function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
+  const source = match?.profile.idle.answerPrompt;
+  if (source === undefined || snap.frame === null) return false;
+  const row = snap.texts[snap.frame.interior.prompt];
+  return row !== undefined && new RegExp(source, "u").test(row);
+}
+
 /**
  * Whether the receipt's `queued` comes only from a witness: a harness whose Enter does not queue but
  * that takes a message in a turn through its queue key. Its queue key may be its submit key too, so a
@@ -925,6 +933,8 @@ function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
 const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may have taken it. Check the transcript.";
 
+/** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
+const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
@@ -2468,6 +2478,8 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
+    // A held send is a message for the agent; a box that answers its question would take it as the answer.
+    if (state.released === true && answersQuestion(state.match, s0)) throw new Ended("refused", "not_free", { surface, detail: ANSWER_BOX });
     if (isFree(surface)) {
       // On an empty box a digit the notice above it printed answers the notice: the manual Send.
       if (this.answersNotice(state, s0)) {

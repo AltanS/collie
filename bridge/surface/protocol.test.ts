@@ -373,6 +373,15 @@ function noCommandQueue(profile: Profile): Profile {
   return { ...profile, keys };
 }
 
+/** A profile whose harness takes nothing in a turn: Enter steers it and no key queues (Hermes's shape). */
+function steersWithNoQueueKey(profile: Profile): Profile {
+  const { commandWhileRunning, queueKey, queueKeyByPlatform, ...keys } = profile.keys;
+  void commandWhileRunning;
+  void queueKey;
+  void queueKeyByPlatform;
+  return { ...profile, keys: { ...keys, enterWhileRunning: "steers" } };
+}
+
 function neverEscape(pane: FakePane): void {
   expect(pane.keysSeen.filter((key) => /^esc(ape)?$/iu.test(key))).toEqual([]);
 }
@@ -466,6 +475,24 @@ describe("a send that goes through", () => {
       if (what === "keys:Enter") p.over = ["✻ Thinking… (2s · esc to interrupt)"];
     };
     expect((await send("start the long job")).receipt?.outcome).toBe("sent");
+  });
+
+  test("a turn that starts while the text goes in stops the send before an Enter that would steer it", async () => {
+    // S0 reads idle; the turn's row shows up once the text is in. Where Enter queues, it goes; where
+    // Enter steers the turn (Hermes's shape), the text stays in the box and no Enter is pressed.
+    const steering = rig({ edit: steersWithNoQueueKey });
+    steering.pane.afterInput = (p, what) => {
+      if (what.includes("then summarize the changes")) p.over = [LIVE_ROW];
+    };
+    const answer = await steering.send("then summarize the changes");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(answer.detail).toBe("A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.");
+    expect(steering.pane.keysSeen).not.toContain("Enter");
+    const queuing = rig();
+    queuing.pane.afterInput = (p, what) => {
+      if (what.includes("then summarize the changes")) p.over = [LIVE_ROW];
+    };
+    expect((await queuing.send("then summarize the changes")).receipt?.outcome).toBe("sent");
   });
 });
 
@@ -4002,6 +4029,49 @@ describe("the held send (M56 spec 15)", () => {
       const answer = await r.send("/exit", { id: "never-ext-01", mode: "command" });
       expect(outcomeOf(answer, holds)).toEqual({ outcome: "refused", detail: NEVER, held: 0 });
     });
+  });
+
+  test("a held send never goes into a box that answers the agent's question (idle.answerPrompt); a person's send still may", async () => {
+    const capture = (name: string): string => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8");
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ harness: "hermes", version: "0.22.2", holds, clock });
+    // Hermes works (`☤`): the message is held.
+    r.pane.fixed = capture("hermes--running.txt");
+    expect((await r.send("then summarize the changes", { id: "held-answer-01" })).receipt?.outcome).toBe("held");
+    // The turn pauses on an open question (`✎`): the Surface reads free, but the box answers it.
+    r.pane.fixed = capture("hermes--clarify-other.txt");
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-answer-01", outcome: "held" });
+    expect(holds.get("held-answer-01")?.state).toBe("held");
+    expect(r.pane.calls).toEqual([]);
+    // The person, looking at the question, may answer it from the phone: that send is typed.
+    const direct = rig({ harness: "hermes", version: "0.22.2" });
+    direct.pane.fixed = capture("hermes--clarify-other.txt");
+    const answer = await direct.send("CockroachDB");
+    expect(answer.receipt?.reason).not.toBe("not_free");
+    expect(direct.pane.calls.length).toBeGreaterThan(0);
+  });
+
+  test("a never-held command is refused, not held, on a harness that takes nothing in a turn", async () => {
+    // Hermes's shape: Enter steers a turn and no key queues, so every send in a turn is held, except
+    // the commands the profile never lets wait. An untrusted version takes the same path.
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ edit: steersWithNoQueueKey, holds });
+    r.pane.over = [LIVE_ROW];
+    for (const text of ["/clear", "/resume", "!git status"]) {
+      const answer = await r.send(text, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    }
+    expect((await r.send("/compact", { mode: "command" })).receipt?.outcome).toBe("held");
+    expect((await r.send("then give it a title")).receipt?.outcome).toBe("held");
+    expect(holds.list().map((entry) => entry.text)).toEqual(["/compact", "then give it a title"]);
+    expect(r.pane.calls).toEqual([]);
+    const untrustedHolds = new HoldStore(join(dir, "held-untrusted"));
+    const u = untrusted({ holds: untrustedHolds });
+    expect((await u.send("/clear", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(untrustedHolds.list()).toEqual([]);
   });
 
   test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {

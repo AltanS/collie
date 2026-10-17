@@ -319,6 +319,12 @@ export interface Profile {
      */
     readonly runningRows?: readonly string[];
     /**
+     * The prompt row of a box that answers a question the agent asked, as a regular expression source
+     * read on the frame's prompt row. A send typed there answers that question, so a person may send
+     * into it, but a held send never goes there: it waits for an ordinary box. Optional.
+     */
+    readonly answerPrompt?: string;
+    /**
      * Rows that mean a dialog is drawn over the screen above a live box, as regular expression
      * sources, read on every row above the box. A harness that draws its pickers and notices over
      * the transcript and leaves the box on screen needs them: the box looks free under a dialog.
@@ -883,7 +889,9 @@ export function parseProfile(raw: JsonValue): Profile {
   const withDialogs: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
   const withNotices: Profile["idle"] = idleNode.notices === undefined ? withDialogs : { ...withDialogs, notices: parseNotices(idleNode.notices) };
   const withGaps: Profile["idle"] = idleNode.noticeGaps === undefined ? withNotices : { ...withNotices, noticeGaps: parseNoticeGaps(idleNode.noticeGaps) };
-  const idleBlock: Profile["idle"] = idleNode.inlineHint === undefined ? withGaps : { ...withGaps, inlineHint: parseInlineHint(idleNode.inlineHint) };
+  const withHint: Profile["idle"] = idleNode.inlineHint === undefined ? withGaps : { ...withGaps, inlineHint: parseInlineHint(idleNode.inlineHint) };
+  const idleBlock: Profile["idle"] =
+    idleNode.answerPrompt === undefined ? withHint : { ...withHint, answerPrompt: pattern(idleNode.answerPrompt, "idle.answerPrompt").source };
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");

@@ -621,15 +621,21 @@ Collie checks that the character lands in the box, then removes it.
 
 - **Hermes** (the classic CLI; `hermes --tui` is not read) draws its box as a rule, a `❯` row and a rule.
   Below 64 columns it draws no rule under the box. A named profile shows its name before the `❯`.
-  While Hermes works, the row starts with `☤`, and Collie reads the turn from that mark.
-  What Enter does during a turn is Hermes's own setting, so Collie never presses it then.
-  A send during a turn is held, and it goes when the turn ends.
-  A question's typed answer opens a `✎` row, and a send from the phone answers the question.
+  A newline goes in as Alt+Enter: Ctrl+J sends the message when `display.cli_multiline_shortcuts` is off.
   The box shows at most eight rows. A longer message cannot be read back, so the send stops before Enter.
   Submit sends it, and the phone then cannot confirm it went.
   Hermes may show the rest of an earlier message in grey after your text.
   That send stops before Enter too, and Submit sends only what you typed.
   The model picker and the command palette open over the transcript, and the pane never reads free under one.
+
+- **Hermes during a turn** starts its row with `☤`, and Collie reads the turn from that mark.
+  What Enter does then is Hermes's own setting, so Collie never presses it during a turn.
+  A send during a turn is held, and it goes when the turn ends.
+  If a turn starts while Collie types, the send stops before Enter and the text stays in the box.
+
+- **Hermes's questions:** a question's typed answer opens a `✎` row, and a send from the phone answers it.
+  A held message never goes into that row. It waits until the question closes, then goes as a message.
+  While a held message waits, a new send joins it, so cancel the held one to answer from the phone.
 
 Grok, Antigravity and Muse are not installed on the build host.
 Their profiles rest on saved screens of each agent.

@@ -55,6 +55,7 @@
       "^☤(?: ❯)?(?: |$)",
       "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$"
     ],
+    "answerPrompt": "^✎(?: ❯)?(?: |$)",
     "overlayRows": [
       "^╭─ ⚙ Model Picker — ",
       "^│ Select a model \\(\\d+ available\\) — type to filter\\s*│$",
@@ -94,7 +95,7 @@
       "Enter"
     ],
     "newline": [
-      "ctrl+j"
+      "alt+Enter"
     ],
     "interrupt": [
       "ctrl+c"
@@ -129,7 +130,7 @@
   "probe": {
     "char": "⌁",
     "status": "provisional",
-    "note": "Live sends passed on Hermes 0.22.2, inside the range, on Herdr, 2026-10-17: one line, two lines, six lines, a clarify's typed answer, and a send held through a turn and released after it; a grey history suggestion and an input taller than the box's eight rows each stopped before Enter. The M56 spec 01 lab (the probe inert in every dialog on Herdr, tmux and zellij) has not run, so every send is probed."
+    "note": "Live sends passed on Hermes 0.22.2, inside the range, on Herdr, 2026-10-17: one line, two lines and six lines (newline Alt+Enter), a clarify's typed answer, a send held through a turn and released after it, and one held while a question opened, which waited for the question to close; a grey history suggestion and an input taller than the box's eight rows each stopped before Enter. The M56 spec 01 lab (the probe inert in every dialog on Herdr, tmux and zellij) has not run, so every send is probed."
   },
   "paste": {
     "bracketed": true
