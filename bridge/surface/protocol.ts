@@ -1460,6 +1460,8 @@ interface RunState {
   released?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
+  /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
+  answerWait?: boolean;
 }
 
 /** What the hold queue knows of one pane between polls (M56 spec 15 review). */
@@ -1791,8 +1793,10 @@ export class SendProtocol {
   private backToQueue(state: RunState, end: Ended): SendAnswer {
     const holds = this.deps.holds!;
     const entry = holds.get(state.record.id);
-    if (entry === null || entry.tries + 1 >= HOLD_TRIES) return this.settle(state, end);
-    holds.putBack(state.record.id);
+    // An open question is a wait, not a failed try: the request waits for it to close, up to its own expiry.
+    const counted = state.answerWait !== true;
+    if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
+    holds.putBack(state.record.id, counted);
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     return answerWith({ receipt, offers: [] }, { ...end.extra, detail: HELD });
@@ -2329,6 +2333,12 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
+    // A held request is a message for the agent, in every mode a release runs (a send, a command, a
+    // Replace): a box that answers the agent's question would take it as the answer. It waits.
+    if (state.released === true && answersQuestion(match, s0)) {
+      state.answerWait = true;
+      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    }
     state.manual = takesManualSend(s0.surface);
     if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
@@ -2478,8 +2488,6 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
-    // A held send is a message for the agent; a box that answers its question would take it as the answer.
-    if (state.released === true && answersQuestion(state.match, s0)) throw new Ended("refused", "not_free", { surface, detail: ANSWER_BOX });
     if (isFree(surface)) {
       // On an empty box a digit the notice above it printed answers the notice: the manual Send.
       if (this.answersNotice(state, s0)) {

@@ -4053,6 +4053,40 @@ describe("the held send (M56 spec 15)", () => {
     expect(direct.pane.calls.length).toBeGreaterThan(0);
   });
 
+  test("a held Replace waits at an answer box too, and an open question spends none of a request's tries", async () => {
+    const capture = (name: string): string => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8");
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ harness: "hermes", version: "0.22.2", holds, clock });
+    r.pane.fixed = capture("hermes--running.txt");
+    expect((await r.send("then summarize the changes", { id: "held-answer-02", mode: "replace" })).receipt?.outcome).toBe("held");
+    r.pane.fixed = capture("hermes--clarify-other.txt");
+    // Far past the five tries a pane that is not ready gets: the question stays open for minutes.
+    for (let i = 0; i < 30; i++) {
+      clock.now += 10_000;
+      await tick(r);
+    }
+    expect(holds.get("held-answer-02")).toMatchObject({ state: "held", tries: 0 });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a never-held command on a running screen with no frame is refused, not held", async () => {
+    // Hermes mid-redraw: the `☤` row stands, its rules are not drawn yet, so no frame is read and the
+    // screen takes the manual path, where the running row is read by the steering-turn gate.
+    const capture = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/hermes--running.txt"), "utf8");
+    const rows = capture.split("\n");
+    const sgr = new RegExp(`${String.fromCodePoint(0x1b)}\\[[0-9;]*m`, "gu");
+    const isRule = (row: string): boolean => /^─{20,}\s*$/u.test(row.replace(sgr, ""));
+    const rules = new Set(rows.map((row, i) => (isRule(row) ? i : -1)).filter((i) => i >= 0).slice(-2));
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ harness: "hermes", version: "0.22.2", holds });
+    r.pane.fixed = rows.filter((_, i) => !rules.has(i)).join("\n");
+    const answer = await r.send("/exit", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    expect(holds.list()).toEqual([]);
+  });
+
   test("a never-held command is refused, not held, on a harness that takes nothing in a turn", async () => {
     // Hermes's shape: Enter steers a turn and no key queues, so every send in a turn is held, except
     // the commands the profile never lets wait. An untrusted version takes the same path.
