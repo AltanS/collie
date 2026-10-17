@@ -39,17 +39,27 @@ A shell pane never receives a message. Only panes the bridge sees as an agent do
 
 ## What the target pane receives
 
-The text arrives as the agent's next prompt, under a one-line header.
+An agent's message types one line into the target pane, and no body.
 
 ```
-[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)
-Tests are green on fix-465. You can merge.
+[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, repo#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 ```
 
-The first line is the header. It names the message id, who typed it, and their pane, harness and
-label (`<repo>#<branch>`, or the pane's title). A reply adds ` reply to <id>` after the
-parenthesis. The body follows as it was sent, at most 4,000 characters, with control bytes and
-direction marks removed.
+The line starts with the header. It names the message id, who typed it, and their pane, harness
+and label (`<repo>#<branch>`, or the pane's title). A reply adds ` reply to <id>` after the
+parenthesis. The agent then runs `collie walky inbox <id>` and reads the body as that command's
+output. A harness treats a command's output as data, not as its operator's words.
+
+Your own message, from the phone, types the header and the body:
+
+```
+[walky-talky wt_n2d8s1v7c4b9] from operator (phone-altan)
+Stop and report what you changed.
+```
+
+The body is at most 4,000 characters, with control bytes and direction marks removed. A body line
+that starts with `[walky-talky` gets one leading space, so a body can never pose as a second
+message.
 
 There are two kinds of sender:
 
@@ -73,8 +83,9 @@ collie walky status wt_n2d8s1v7c4b9
 
 - `reply <id>` sends to the pane the message came from, as a reply to it. A message from an
   operator has no pane to reply to.
-- `inbox` lists this pane's unread messages. `--all` lists every message that reached it,
-  `--ack` marks the listed ones read. Outside a pane, `inbox --all` lists every
+- `inbox <id>` prints one message, its header and then its body.
+- `inbox` prints this pane's unread messages and marks them read. `--keep` leaves them unread.
+  `--all` prints the last 50 that reached the pane. Outside a pane, `inbox --all` lists every
   message on the machine.
 - `status <id>` prints the message's receipt.
 

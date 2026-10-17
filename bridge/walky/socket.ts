@@ -5,7 +5,7 @@
 //
 // Requests (`v: 1`, plus `markers`: the raw multiplexer markers the CLI read from its environment):
 //   send    { id, to, body, replyTo }   → { ok, receipts }
-//   inbox   { all, ack }                → { ok, pane, messages }
+//   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, targets, note? }
 //   status  { id }                      → { ok, receipts, message, elsewhere }
 //   ack     { ids | null }              → { ok, acked }
@@ -99,12 +99,19 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return { ok: true, receipts, message, elsewhere };
     }
     case "inbox": {
+      if (request.id !== null) {
+        // One message by id: the way an agent reads the body its nudge line named.
+        const entry = service.one(request.id, pane);
+        if (entry === null) return { ok: false, error: pane === null ? `no message ${request.id} on this machine` : `no message ${request.id} for this pane` };
+        if (pane !== null && request.ack) service.ack(pane.session, pane.paneId, [entry.id]);
+        return { ok: true, pane: pane === null ? null : service.addressOf(pane.paneId), messages: [entry] };
+      }
       if (pane === null) {
         if (!request.all) return { ok: false, error: "needs a pane" };
         return { ok: true, pane: null, messages: service.newest() };
       }
       const messages = service.inbox(pane.session, pane.paneId, request.all);
-      if (request.ack) service.ack(pane.session, pane.paneId, messages.map((message) => message.id));
+      if (request.ack && !request.all) service.ack(pane.session, pane.paneId, messages.map((message) => message.id));
       return { ok: true, pane: service.addressOf(pane.paneId), messages };
     }
     case "ack":

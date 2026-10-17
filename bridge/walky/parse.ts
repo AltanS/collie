@@ -98,7 +98,7 @@ export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack";
 
 export type WalkyRequest =
   | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string; readonly body: string; readonly replyTo: string | null }
-  | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean }
+  | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
   | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null };
@@ -122,7 +122,11 @@ export function parseWalkyRequest(line: string): WalkyRequest | null {
     const id = text(row, "id");
     return isWalkyId(id) ? { op, markers, id } : null;
   }
-  if (op === "inbox") return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true };
+  if (op === "inbox") {
+    const id = textOrNull(row, "id") ?? null;
+    if (id !== null && !isWalkyId(id)) return null;
+    return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true, id };
+  }
   if (op === "ack") {
     if (row.ids === null || row.ids === undefined) return { op, markers, ids: null };
     if (!Array.isArray(row.ids) || row.ids.length > 200) return null;

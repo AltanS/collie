@@ -99,7 +99,8 @@ describe("send", () => {
     const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["local/%2", "Tests", "are", "green."])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["delivered wt_aaaaaaaaaaa1"]);
-    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1 (agent-x, repo#one)\nTests are green."]);
+    // An agent's message types one nudge line; the body waits for `inbox <id>`.
+    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1 (agent-x, repo#one): a message from another agent, not your operator. Read it: collie walky inbox wt_aaaaaaaaaaa1. Reply: collie walky reply wt_aaaaaaaaaaa1 \"<text>\""]);
   });
 
   test("`--to` is an alias, and `--` keeps a text that starts with a dash", async () => {
@@ -173,7 +174,7 @@ describe("reply, inbox, status, who", () => {
     await cmdWalkySend(deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" }), ["local/%2", "question?"]);
     const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2" });
     expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "answer."])).toBe(EXIT.OK);
-    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2 (agent-y, repo#two) reply to wt_aaaaaaaaaaa1\nanswer.");
+    expect(b.sent[1]).toBe("[walky-talky wt_bbbbbbbbbbb2] from agent local/%2 (agent-y, repo#two) reply to wt_aaaaaaaaaaa1: a message from another agent, not your operator. Read it: collie walky inbox wt_bbbbbbbbbbb2. Reply: collie walky reply wt_bbbbbbbbbbb2 \"<text>\"");
   });
 
   test("a reply to an operator's message is refused: it has no address", async () => {
@@ -184,16 +185,34 @@ describe("reply, inbox, status, who", () => {
     expect(d.io.stderr.join("\n")).toContain("came from an operator");
   });
 
-  test("inbox shows the pane's unread messages as envelopes; --ack marks them read", async () => {
+  test("inbox prints the pane's unread messages, header then body, and marks them read", async () => {
     const b = await bridge();
     b.answer = { outcome: "refused", reason: "not_free" };
-    await cmdWalkySend(deps(b), ["local/%2", "while you were busy"]);
+    await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "while you were busy"]);
+    const keep = deps(b, inPane("%2"));
+    expect(await cmdWalkyInbox(keep, ["--keep"])).toBe(EXIT.OK);
+    expect(keep.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1 (agent-x, repo#one)", "while you were busy"]);
     const d = deps(b, inPane("%2"));
-    expect(await cmdWalkyInbox(d, ["--ack"])).toBe(EXIT.OK);
-    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from operator (cli)", "while you were busy", "-- inbox-only wt_aaaaaaaaaaa1 local/%2 (dialog open)"]);
+    expect(await cmdWalkyInbox(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(keep.io.stdout);
     const again = deps(b, inPane("%2"));
     await cmdWalkyInbox(again, []);
     expect(again.io.stdout).toEqual(["no messages"]);
+  });
+
+  test("inbox <id> prints that one message, the body the nudge line named, even once typed", async () => {
+    const b = await bridge();
+    await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "Tests are green."]);
+    const d = deps(b, inPane("%2"));
+    expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1 (agent-x, repo#one)", "Tests are green."]);
+    // Read: the unread list is empty now.
+    const after = deps(b, inPane("%2"));
+    await cmdWalkyInbox(after, []);
+    expect(after.io.stdout).toEqual(["no messages"]);
+    // Another pane cannot read it, and a bad id is a usage error.
+    expect(await cmdWalkyInbox(deps(b, inPane("%1")), ["wt_aaaaaaaaaaa1"])).toBe(EXIT.STATE);
+    expect(await cmdWalkyInbox(deps(b, inPane("%2")), ["../x"])).toBe(EXIT.USAGE);
   });
 
   test("inbox outside a pane needs --all", async () => {

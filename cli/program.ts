@@ -298,7 +298,7 @@ const WALKY_TREE: readonly Subcommand[] = [
   },
   {
     name: "inbox",
-    summary: "this pane's unread messages (`--all`: every one; `--ack`: mark them read)",
+    summary: "read one message by id, or this pane's unread ones and mark them read (`--keep`, `--all`)",
     run: (args, s) => cmdWalkyInbox(walkyDeps(s.io), args),
   },
   {

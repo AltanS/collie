@@ -9,7 +9,7 @@ import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json
 import { parseAddress } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { formatEnvelope, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
+import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 
 // `collie walky` (alias `collie wt`): walky talky from a terminal (M62 spec 02). It talks to the
 // running bridge over its local socket, `<stateDir>/walky/sock`, one JSON request per connection.
@@ -212,7 +212,7 @@ const USAGE = {
   who: "usage: collie walky who [--json]",
   send: "usage: collie walky send <address> [text...]   (no text: the body is read from stdin)",
   reply: "usage: collie walky reply <id> [text...]   (no text: the body is read from stdin)",
-  inbox: "usage: collie walky inbox [--all] [--ack] [--json]",
+  inbox: "usage: collie walky inbox [<id>] [--all] [--keep] [--json]",
   status: "usage: collie walky status <id> [--json]",
 } as const satisfies Record<(typeof WALKY_SUBCOMMANDS)[number], string>;
 
@@ -278,12 +278,22 @@ export async function cmdWalkyReply(deps: WalkyDeps, args: readonly string[]): P
   return sendAndWait(deps, message.from.address, id, body, parsed.json);
 }
 
-/** `walky inbox [--all] [--ack] [--json]`: this pane's unread messages (`--all`: every one, newest first). */
+/**
+ * `walky inbox [<id>] [--all] [--keep] [--json]`. With an id: that one message, header then body (how
+ * an agent reads the body its nudge line named). Without: this pane's unread messages, marked read
+ * unless `--keep`. `--all`: the last 50 that reached the pane, marked nothing.
+ */
 export async function cmdWalkyInbox(deps: WalkyDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
-  const unknown = args.find((arg) => arg !== "--all" && arg !== "--ack" && arg !== "--json");
-  if (unknown !== undefined) return usage(deps, "inbox", `unknown argument \`${unknown}\``);
-  const answer = await request(deps, { op: "inbox", all: args.includes("--all"), ack: args.includes("--ack") });
+  const flags = new Set(["--all", "--keep", "--json"]);
+  const words = args.filter((arg) => !flags.has(arg));
+  const unknown = words.find((arg) => arg.startsWith("-") || !WALKY_ID.test(arg));
+  if (unknown !== undefined) return usage(deps, "inbox", WALKY_ID.test(unknown) ? `unknown argument \`${unknown}\`` : `\`${unknown}\` is not a message id`);
+  if (words.length > 1) return usage(deps, "inbox", "name at most one message id");
+  const id = words[0] ?? null;
+  const all = args.includes("--all");
+  if (id !== null && all) return usage(deps, "inbox", "an id names one message: drop `--all`");
+  const answer = await request(deps, { op: "inbox", all, ack: !args.includes("--keep") && !all, id });
   if (!answer.ok) {
     if (answer.error === "needs a pane") return failure(deps, { error: "an inbox belongs to a pane: run it inside an agent's pane, or use `inbox --all`" });
     return failure(deps, answer);
@@ -303,8 +313,8 @@ export async function cmdWalkyInbox(deps: WalkyDeps, args: readonly string[]): P
   }
   messages.forEach(({ message, receipt }, index) => {
     if (index > 0) deps.io.out("");
-    for (const line of formatEnvelope(message).split("\n")) deps.io.out(line);
-    if (receipt !== null) deps.io.out(`-- ${receiptLine(receipt, true)}`);
+    for (const line of formatRead(message).split("\n")) deps.io.out(line);
+    if (all && receipt !== null) deps.io.out(`-- ${receiptLine(receipt, true)}`);
   });
   return EXIT.OK;
 }

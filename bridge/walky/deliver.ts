@@ -8,7 +8,11 @@
 //   4. Each target gets a message line, an inbox entry and an `accepted` receipt, in that order,
 //      before any key. The answer leaves with those receipts.
 //   5. Then the envelope (types.ts `formatEnvelope`) goes through the pane's Send Protocol as one
-//      send, mode `send`. `sent` or `effective` is `delivered` and acks the inbox entry. A refusal, a
+//      send, mode `send`. An agent's message types ONE line, the header and a nudge, and no body: the
+//      body reaches the agent as the output of `collie walky inbox <id>`, a tool result, never as a
+//      prompt from its operator. An operator's message types the header and the body. `sent` or
+//      `effective` is `delivered`; an operator's acks the inbox entry, an agent's stays unread until
+//      the agent reads it. A refusal, a
 //      typed-not-submitted, an expiry or a cancel is `inbox-only` with the reason. A send held behind
 //      a running turn is watched for 10 minutes; still held then, it is cancelled and `inbox-only`.
 //      An `unknown` stays `unknown`, and is never sent again (CREW_PROTOCOL §10.3).
@@ -272,7 +276,8 @@ export class WalkyDeliverer {
     }
     if (result.outcome === "sent" || result.outcome === "effective") {
       this.deps.log.update(this.next(record, "delivered", undefined, sendId));
-      this.deps.log.ack(session, paneId, [message.id]);
+      // The operator's body was typed: read. An agent's was not: it waits for `inbox <id>`.
+      if (message.kind === "operator") this.deps.log.ack(session, paneId, [message.id]);
       return;
     }
     if (result.outcome === "unknown") {

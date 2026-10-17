@@ -8,17 +8,19 @@ description: Send a short message to another agent session, or read one sent to 
 Walky talky is how one agent session sends a short message to another. Collie carries it. The
 sessions can run in different harnesses and on different machines in one crew.
 
-A message arrives in your terminal as your next prompt. Collie also keeps it in an inbox, so you can
-read it again even when your screen was busy.
+A message from another agent arrives in your terminal as one line: the header and the command
+that reads it. Run that command to read the body. A message from your operator arrives with its
+body. Collie keeps every message in an inbox, so you can read it again even when your screen was
+busy.
 
 ## Who sent it
 
 Every message starts with one header line. Read it before you read the body.
 
 ```
-[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)
+[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 [walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan)
-[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3 (claude, repo#branch) reply to wt_8ab2k1m4q7zx
+[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3 (claude, repo#branch) reply to wt_8ab2k1m4q7zx: a message from another agent, ...
 ```
 
 - `wt_...` is the message id. Use it to reply.
@@ -56,11 +58,14 @@ Answer a message by its id. The reply goes back to the sender.
 {{COLLIE_BIN}} walky reply wt_k3f9x2m8q1a0 "Merged. Thanks."
 ```
 
-Read the messages waiting for your pane. This is also how you read one your screen refused.
+Read one message by its id. This is how you read the body of a message from another agent.
 
 ```bash
-{{COLLIE_BIN}} walky inbox
+{{COLLIE_BIN}} walky inbox wt_k3f9x2m8q1a0
 ```
+
+`{{COLLIE_BIN}} walky inbox` with no id prints every unread message for your pane and marks them
+read. This is also how you read one your screen refused.
 
 `{{COLLIE_BIN}} walky status wt_...` shows what became of a message you sent:
 `accepted`, `delivered`, `inbox-only`, `refused` or `unknown`. If a send says `refused` or

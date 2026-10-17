@@ -141,6 +141,16 @@ export class WalkyService {
     });
   }
 
+  /**
+   * One message by id, as `collie walky inbox <id>` reads it. In a pane: only a message that went to
+   * that pane. Outside one (the operator's own terminal): the first record of the id on this bridge.
+   */
+  one(id: string, pane: { readonly session: string; readonly paneId: string } | null): WalkyEntry | null {
+    const records = this.deps.log.all(id);
+    const record = pane === null ? records[0] : records.find((held) => held.session === pane.session && held.paneId === pane.paneId);
+    return record === undefined ? null : entryOf(record.message, record.receipt);
+  }
+
   /** Every message on this bridge, newest first (the operator's `inbox --all` outside a pane). */
   newest(limit = 50): WalkyEntry[] {
     return this.deps.log.newest(limit).map((record) => entryOf(record.message, record.receipt));
