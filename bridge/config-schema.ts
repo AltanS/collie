@@ -519,6 +519,16 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "Mask known secret shapes in pane text before it reaches a phone or a push.",
     configField: "redact",
   },
+  {
+    key: "sent",
+    env: "COLLIE_SENT",
+    section: "access",
+    kind: "enum",
+    values: ["on", "off"],
+    default: "on",
+    doc: "Keep a record of the shell lines sent through Collie on this machine.",
+    configField: "sent",
+  },
 
   // ── push ───────────────────────────────────────────────────────────────────
   {

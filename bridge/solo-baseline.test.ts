@@ -13,6 +13,7 @@ import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
+import { SentStore, sentFileIo } from "./sent.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
@@ -821,6 +822,14 @@ describe("solo zero-tax — routes", () => {
       // collie's own sessions only. No crew route.
       "/api/send/*",
       "/api/send/receipts",
+      // Sent (ADR 0107): this machine's record of shell lines, one read and two writes, three SOLO routes
+      // that legitimately extend this list, named here rather than exempted. Session-scoped through the
+      // same closure `/api/launch` rides, the read on the read gate and the writes on the write gate, so
+      // a `?host=` call reaches that member's own `sent.jsonl`. A solo instance registers all three and
+      // answers about its own file, which it writes only once a shell line is kept (see §6 below).
+      "/api/sent",
+      "/api/sent/clear",
+      "/api/sent/remove",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
       // here rather than exempted, exactly as device pairing is. It is off until an operator
@@ -892,6 +901,7 @@ const CONFIG_KEYS = {
   dialMode: true,
   auditContent: true,
   redact: true,
+  sent: true,
   commandsFile: true,
   keysFile: true,
   quickRepliesFile: true,
@@ -968,6 +978,7 @@ describe("solo zero-tax — config", () => {
       "readLines",
       "redact",
       "sendProtocol",
+      "sent",
       "skipServe",
       "socketPath",
       "stateDir",
@@ -1008,7 +1019,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401) and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), the two `COLLIE_ACCESS_*` keys (ADR 0081) and `COLLIE_SENT` (ADR 0107) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -1051,6 +1062,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_READ_LINES",
       "COLLIE_REDACT",
       "COLLIE_SEND_PROTOCOL",
+      "COLLIE_SENT",
       "COLLIE_SKIP_SERVE",
       "COLLIE_STATE_DIR",
       "COLLIE_SUBMIT_KEYS",
@@ -1150,6 +1162,10 @@ const STATE_DIR_ENTRIES = [
   // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
   // nothing builds the store, so such an instance never has this folder.
   "sends",
+  // Sent (ADR 0107): the shell lines a person sent through Collie on this machine, one JSON record per
+  // line. Written by use and by nothing else: absent until the first line sent to a shell pane, or the
+  // first one-off run, that the skip rules keep. `COLLIE_SENT=off` never writes it.
+  "sent.jsonl",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.
@@ -1357,6 +1373,26 @@ describe("solo zero-tax — the filesystem", () => {
       await bases.record("/home/op/repo/.worktrees/x", { base: "main", createdAt: 1 });
       expect(await readdir(stateDir)).toEqual(["worktree-bases.json"]);
       expect(STATE_DIR_ENTRIES).toContain("worktree-bases.json");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // The same shape for Sent (ADR 0107): building the store writes nothing, a skipped line writes
+  // nothing, the switch off writes nothing, and the first kept line writes the one file.
+  test("Sent appears only on use: a shell line the skip rules keep", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const off = new SentStore(sentFileIo(stateDir), { off: true, home: "/home/op" });
+      expect(await off.record("git status", "/home/op/proj", "shell")).toBe("skipped");
+      const sent = new SentStore(sentFileIo(stateDir), { home: "/home/op" });
+      expect(await sent.record(" git status", "/home/op/proj", "shell")).toBe("skipped");
+      expect(await sent.record("export AWS_SECRET_ACCESS_KEY=x", "/home/op/proj", "shell")).toBe("skipped");
+      expect(await sent.clear()).toBe(0);
+      expect(await readdir(stateDir)).toEqual([]);
+      expect(await sent.record("git status", "/home/op/proj", "shell")).toBe("recorded");
+      expect(await readdir(stateDir)).toEqual(["sent.jsonl"]);
+      expect(STATE_DIR_ENTRIES).toContain("sent.jsonl");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

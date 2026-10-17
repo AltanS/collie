@@ -1883,6 +1883,53 @@ export type RecentRunsResponse =
   | { ok: true; removed: number }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
+// ── Sent: the shell lines a person sent through Collie, per machine (ADR 0107, bridge/sent.ts) ──
+
+/** `GET /api/sent`. One answer per bridge asked; a lead's `scope=all` merges its members' into it. */
+export interface SentAnswer {
+  /** Newest first, at most `limit`. */
+  entries: SentEntry[];
+  /** A later page exists on at least one machine: ask again with `before` set to the last `at`. */
+  more: boolean;
+  /** This bridge records nothing (`COLLIE_SENT=off`). */
+  off: boolean;
+  /** One per machine asked; a solo bridge lists itself. */
+  machines: SentMachine[];
+}
+
+/** One distinct line on one machine: its newest record, and how many records it has. */
+export interface SentEntry {
+  /** Stable per line on its machine: the first 16 hex characters of the line's sha256. */
+  id: string;
+  line: string;
+  /** Absolute, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the newest record. */
+  at: number;
+  /** A line sent to a shell pane, or a one-off run from the New page. Never a harness name. */
+  kind: "shell" | "run";
+  count: number;
+  /** The machine id the crew already uses; `local` on a bridge that never enrolled. */
+  host: string;
+}
+
+/** One machine a `GET /api/sent` asked. */
+export interface SentMachine {
+  host: string;
+  label: string;
+  ok: boolean;
+  /** That machine records nothing (`COLLIE_SENT=off`). */
+  off?: boolean;
+  /** Why it did not answer: a Collie that predates Sent, no connection, or no answer in 2 s. */
+  reason?: "old_version" | "unreachable" | "timeout";
+}
+
+/** `POST /api/sent/remove` and `/api/sent/clear`. `removed` is how many records went. */
+export interface SentRemoveResponse {
+  ok: true;
+  removed: number;
+}
+
 /**
  * POST /api/launch/check `{ run }` (ADR 0095, amendment): what a one-off line would be, before it runs.
  * A READ: it runs nothing and stores nothing. `noPrompts` is {@link scanNoPrompts}'s answer on the
