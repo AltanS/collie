@@ -61,7 +61,7 @@ names and confirmations on the first run with a provider.
   turn. A run caps each harness at 15 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
 - pi and omp: no turns while their turns are off; about 6 each when on.
-- Time: about 8 minutes.
+- Time: about 2 minutes. A case that waits out its reply timeouts adds up to 4 minutes.
 
 ## What it never touches
 
