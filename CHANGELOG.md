@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **An Antigravity pane with a tall status line takes a send again.** A custom `statusLine` of four to eight rows under the input box hid the box from the send check, so each message needed a second tap, Type here. The check looks up to eight rows under the box again, as 1.21.3 did.
+
 ## [1.22.0] - 2026-10-17
 
 ### Added

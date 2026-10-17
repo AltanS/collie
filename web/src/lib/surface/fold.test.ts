@@ -12,6 +12,7 @@ import {
   perturbations,
   readScreen,
   rowsOf,
+  SURFACE_FIXTURES_DIR,
 } from "../../test/surface-corpus";
 import { readCues } from "./cues";
 import { findInputFrame, plainRows } from "./frame";
@@ -723,5 +724,28 @@ describe("the agents panel under the box (incident 2026-10-16)", () => {
       expect(names.at(-1)).toBe("agents-panel-more");
       expect(read.cues?.cues).toEqual([]);
     }
+  });
+});
+
+describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
+  const IDLE_FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
+  // Derived screens in fixtures/surface/ (README there), read with their harness's own profile.
+  const audit = (name: string, harness: string) => readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), agentOf(harness), idleFor(harness));
+
+  // Issue 374's screen: a custom statusLine prints as many rows as the user wrote, and 1.21.3 found
+  // the box under up to eight of them. 1.22.0's agy profile searched three.
+  it("agy: an idle box over a four-row custom statusLine reads idle and free", () => {
+    const read = audit("agy--statusline-four-rows.txt", "agy");
+    expect(read.frame).not.toBeNull();
+    expect(read.surface).toEqual(IDLE_FREE);
+  });
+
+  it("agy: up to eight statusLine rows under the box read free, a ninth row loses the box", () => {
+    const AGY = requireProfile("agy").idle;
+    const rule = "─".repeat(60);
+    const status = (n: number) => Array.from({ length: n }, (_, i) => `status row ${String(i + 1)}`);
+    const read = (n: number) => surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows(["Done.", "", rule, ">", rule, ...status(n)]), ask: null }, AGY);
+    for (let n = 0; n <= 8; n++) expect(read(n).surface, String(n)).toEqual(IDLE_FREE);
+    expect(isFree(read(9).surface)).toBe(false);
   });
 });
