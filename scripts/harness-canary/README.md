@@ -5,7 +5,8 @@ names them, in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
 send lands. It then reads the session each agent WROTE, with the bridge's own journal adapter, and
 fails on a row or content type the reader does not recognise. With `--dialogs` it also opens real
-dialogs and sends to a busy agent, and with `--scenario options` it starts each New-sheet option once.
+dialogs and sends to a busy agent, with `--scenario options` it starts each New-sheet option once,
+and with `--scenario bar` it presses each harness-bar button through the phone's own send path.
 Specs: M37/02, M37/03 and M41/05 in the workspace tracker.
 
 ```sh
@@ -15,6 +16,7 @@ bun run canary --agent claude,codex     # some agents
 bun run canary --scenario idle,drafts   # some scenarios, no model turns
 bun run canary --keep                   # leave the session up for a look
 bun run canary --agent claude,codex --scenario options   # each New-sheet option, started once
+bun run canary --agent muse,agy --scenario bar           # each harness-bar picker, opened and closed
 bun run canary --record                 # write clean agents into the ledger
 bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 ```
@@ -41,8 +43,8 @@ command on PATH, not through the launcher: a launcher should change the provider
 installed agent, and the canary does not check that it does.
 
 A launcher is yours to write, outside this repo: it points the agent at another provider and ends
-in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios only;
-`dialogs`, `busy` and `options` start their own lines.
+in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios and
+`bar`; `dialogs`, `busy` and `options` start their own lines.
 
 A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `HOME`) moves its log
 too. Point the journal at it with the bridge's own override for that agent, `COLLIE_GROK_ROOT`,
@@ -50,7 +52,7 @@ too. Point the journal at it with the bridge's own override for that agent, `COL
 
 ## What it checks
 
-Six scenarios per agent run by default; the seventh, `options`, runs only when `--scenario` names it, and
+Six scenarios per agent run by default; `options` and `bar` run only when `--scenario` names them, and
 grok, hermes, agy, omp and muse are the five opt-in agents that run only when `--agent` names them. Only
 `sends` makes model turns: four per agent.
 
@@ -113,6 +115,19 @@ the buttons' own walk (`Right`, then `Enter`) for "Allow always", "Cancel" and "
 its declared cancel key, on the edit. "Confirm" is never pressed: it would allow the pattern until
 OpenCode restarts. Plan approval is read and never answered. A dialog the model does not open (it answers in words instead) is
 `not-reached`. The dialog screens are saved as `dialogs-<case>.ansi`.
+
+### The harness bar (`--scenario bar`)
+
+One pane per agent. Each button of the agent's shipped harness bar (`web/src/lib/harness-bar.ts`) is
+sent through the client's own `sendGuardedReply`, which is how the phone's bar sends, then Escape
+closes what it opened. Compact is left out because it spends a model turn and an empty session has
+nothing to compact; a two-tap row is left out because the phone asks before it sends one. No model
+turn is made.
+
+A case passes when the command is sent, it is gone from the input box, and Escape brings the empty
+input box back, after clearing what the agent itself left there (Grok keeps `/model` typed when
+Escape closes its picker). That does not prove a picker opened, since each agent paints its own: the screen
+each press left is saved as `bar-<id>.ansi` for a person to read.
 
 ## Verdicts
 

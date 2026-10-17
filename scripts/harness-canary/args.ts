@@ -55,7 +55,7 @@ screen and send with Collie's own readers. See scripts/harness-canary/README.md.
   --readers PATH     judge with the web/src/lib readers of another Collie checkout (a worktree)
   --out DIR          where captures and summary.json go (default: ${DEFAULT_OUT})
   --via DIR          start an agent through DIR/<agent> when that file is executable (another
-                     provider, a moved home); the default scenarios only, not dialogs or options
+                     provider, a moved home); the default scenarios and bar, not dialogs or options
   -h, --help         print this`;
 
 /** Parse argv (without the runtime and script). Throws a one-line message on anything unknown. */
