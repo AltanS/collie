@@ -1342,6 +1342,8 @@ interface BinaryOptions {
   others?: readonly string[];
   /** What `current/bin/collie hooks status --check` answers. Default: exit 0, i.e. nothing to say. */
   hooksCheck?: Partial<import("./sys.ts").ExecResult>;
+  /** What `current/bin/collie skill status --check` answers. Default: exit 0. */
+  skillCheck?: Partial<import("./sys.ts").ExecResult>;
   /** What `/api/health` answers, in order — the detached runner's gate polls it (M15/04). */
   health?: readonly HealthReply[];
   /** Extra scripted answers, appended after the fixture's own — e.g. a failing systemd bus probe. */
@@ -1390,6 +1392,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
     ],
     version("1.0.0"),
     [`${INST}/current/bin/collie hooks status --check`, over.hooksCheck ?? { code: EXIT.OK }],
+    [`${INST}/current/bin/collie skill status --check`, over.skillCheck ?? { code: EXIT.OK }],
   ];
   const seed: SeededFiles = {
     [`${BROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.0.0"\n',
@@ -2272,6 +2275,51 @@ describe("the hooks nudge", () => {
     const h = binaryHarness({ others: ["0.9.0"], hooksCheck: { code: EXIT.STATE } });
     await cmdUpdate(h.deps, ["--rollback"]);
     expect(h.exec.calls.join("\n")).not.toContain("hooks status --check");
+  });
+});
+
+// ── The skill nudge after a successful update ────────────────────────────────
+// Same design as the hooks nudge: the NEW binary answers, because the running process is the old build
+// and its embedded skill text is exactly the stale one. Silence unless the answer is "behind".
+
+const SKILL_NUDGE = "newer walky talky skill";
+const SKILL_CHECK = `${INST}/current/bin/collie skill status --check`;
+
+describe("the skill nudge", () => {
+  test("asks the NEW binary through `current`, and prints one line naming the command", async () => {
+    const h = binaryHarness({ skillCheck: { code: EXIT.STATE } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(SKILL_CHECK);
+    expect(h.io.stdout.join("\n")).toContain(SKILL_NUDGE);
+    expect(h.io.stdout.join("\n")).toContain("collie skill install all");
+  });
+
+  test("stays silent when nothing is behind, when the binary is too old to know the verb, or when the spawn throws", async () => {
+    const quiet = binaryHarness();
+    expect(await runner(quiet, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(quiet.exec.calls).toContain(SKILL_CHECK);
+    expect(quiet.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+
+    const old = binaryHarness({ skillCheck: { found: false, code: 127 } });
+    expect(await runner(old, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(old.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+
+    const boom = binaryHarness({ skillCheck: { code: EXIT.STATE } });
+    const real = boom.deps.exec.capture.bind(boom.deps.exec);
+    boom.deps.exec.capture = (tool, args, timeoutMs) => {
+      if (args.join(" ") === "skill status --check") throw new Error("ENOEXEC: posix_spawn");
+      return real(tool, args, timeoutMs);
+    };
+    expect(await runner(boom, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(boom.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    expect(boom.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+    expect(boom.io.stderr).toEqual([]);
+  });
+
+  test("never fires on a rollback", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], skillCheck: { code: EXIT.STATE } });
+    await cmdUpdate(h.deps, ["--rollback"]);
+    expect(h.exec.calls.join("\n")).not.toContain("skill status --check");
   });
 });
 
