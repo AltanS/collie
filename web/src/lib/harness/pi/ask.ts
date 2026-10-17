@@ -34,6 +34,8 @@
 // selector behind `ctx.ui.confirm` and `ctx.ui.select` (ExtensionSelectorComponent) and gentle-pi's
 // ask_user_choice (pi--v130-gentle-choice.txt). Column 0 unnumbered (`→ name`) is pi's slash palette
 // and its pickers, never read here. Unnumbered rows lift by plan (a) only: there is no digit to send.
+// The list is the run that holds the pointer; a selector's title of several rows may quote a command
+// further in above it (pi's permission gate, pi--v0871-permission-gate.txt; `unnumberedStart`).
 //
 // THE PLAN comes from the footer alone, and only these four plans exist:
 //   a. Up/Down named as moving and Enter named as select or confirm: a walked pointer list
@@ -82,6 +84,10 @@ const OTHER = /^Other(?:…|\.\.\.)$/;
 const HEADER_ROW = /^ \S/;
 /** An unnumbered option row at pointer column 1: the pointer or a space, a space, the label. */
 const UNNUMBERED_ROW = /^ ([→ ]) (\S.*)$/;
+/** A description row under an unnumbered option, four columns in. */
+const DESCRIPTION_ROW = /^ {4}(\S.*)$/;
+/** A title row indented deeper than one space: the command pi's permission gate quotes (`unnumberedStart`). */
+const QUOTED_ROW = /^ {2,}\S/;
 
 /** The frame every pi question screen shares: the two rules and the footer between them. */
 export interface PiFrame {
@@ -569,16 +575,33 @@ function readOptions(
 }
 
 /**
- * The first row of an unnumbered list in `[from, to)`: ` → Label` or `   Label`, with only blank and
- * header rows above it. Null when a row is neither first.
+ * The first row of an unnumbered list in `[from, to)`, or null. The list is the run of option rows
+ * (` → Label`, `   Label`) and description rows that holds the one pointed row, read up from it, and it
+ * must open on an option row. Above it stand header rows only: blank, or one space in.
+ *
+ * One more header row is read, for pi's own selector with a title of several rows. pi's example
+ * permission gate asks `ctx.ui.select("⚠️ Dangerous command:\n\n  <command>\n\nAllow?", …)`, and the
+ * command row is three columns in, the shape of an unpointed option (pi--v0871-permission-gate.txt). So a
+ * row indented deeper is a header row only when the selector's blank row stands right over the list and
+ * a row one space in (`Allow?`) stands between them: an option cut off by a blank row, or a label wrapped
+ * back to column 1 over the pointer, has neither, and declines.
  */
 function unnumberedStart(texts: string[], from: number, to: number): number | null {
-  for (let r = from; r < to; r++) {
+  const pointed: number[] = [];
+  for (let r = from; r < to; r++) if (UNNUMBERED_ROW.exec(texts[r]!)?.[1] === "→") pointed.push(r);
+  if (pointed.length !== 1) return null;
+  let start = pointed[0]!;
+  while (start > from && (UNNUMBERED_ROW.test(texts[start - 1]!) || DESCRIPTION_ROW.test(texts[start - 1]!))) start--;
+  if (!UNNUMBERED_ROW.test(texts[start]!)) return null;
+  const separated = start > from && texts[start - 1] === "";
+  let titled = false;
+  for (let r = start - 1; r >= from; r--) {
     const t = texts[r]!;
-    if (UNNUMBERED_ROW.test(t)) return r;
-    if (t !== "" && !HEADER_ROW.test(t)) return null;
+    if (t === "") continue;
+    if (HEADER_ROW.test(t)) titled = true;
+    else if (!(separated && titled && QUOTED_ROW.test(t))) return null;
   }
-  return null;
+  return start;
 }
 
 /**
@@ -602,7 +625,7 @@ function readUnnumbered(texts: string[], start: number, end: number): { rows: Op
       rows.push({ label, n: null, pointed: option[1] === "→", checkbox: false, freeText, row: at });
       continue;
     }
-    const desc = /^ {4}(\S.*)$/.exec(t);
+    const desc = DESCRIPTION_ROW.exec(t);
     const owner = rows.at(-1);
     if (desc !== null && owner !== undefined) {
       owner.description = owner.description === undefined ? desc[1]! : `${owner.description} ${desc[1]!}`;

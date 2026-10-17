@@ -10,6 +10,8 @@ import { keyHintPairs } from "./footer";
 import { buildBlocks } from "../index";
 import { piAdapter } from "./index";
 import { piView } from "./panel";
+import { idleFor, readScreen } from "../../../test/surface-corpus";
+import { askOf, modalWord } from "../../surface/surface";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
 const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
@@ -82,6 +84,12 @@ const LIFTS_397 = new Map<string, Expect>([
   // row under the bottom rule (issue 455).
   ["pi--v130-gentle-choice.txt", "walk"],
   ["pi--v130-gentle-choice-moved.txt", "walk"],
+  // pi's example permission-gate on pi 0.87.1: pi's own selector with a title of several rows, the
+  // command quoted in it two columns in (live captures 2026-10-17).
+  ["pi--v0871-permission-gate.txt", "walk"],
+  ["pi--v0871-permission-gate-moved.txt", "walk"],
+  ["pi--v0871-permission-gate-narrow.txt", "walk"],
+  ["pi--v0871-permission-gate-narrow-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -302,6 +310,102 @@ describe("unnumbered rows, and a frame with no status row (issue 455)", () => {
     const recoloured = linesOf(replaceLast(gentle, "\x1b[38;2;157;157;157m─", "\x1b[38;2;1;2;3m─"));
     expect(readPiFrame(recoloured)).toBeNull();
     expect(readPiFrame(lines.slice(1))).toBeNull();
+  });
+});
+
+// pi's example `permission-gate.ts` asks before a risky bash command with pi's own selector,
+// `ctx.ui.select("⚠️ Dangerous command:\n\n  <command>\n\nAllow?", ["Yes", "No"])`. The title is several
+// rows, and the command row is three columns in, the shape of an unpointed option row. Collie 1.22.0 to
+// 1.22.4 took that row for the first option, found no pointer in it, and showed "Collie cannot read this
+// dialog". Live captures, pi 0.87.1, 120 and 80 columns (fixtures README).
+describe("pi's permission gate: a selector whose title quotes the command", () => {
+  const gate = raw("pi--v0871-permission-gate.txt");
+  const strip = (row: string) => lineText(linesOf(row)[0]!).trimEnd();
+  /** The capture's raw rows, edited: `edit` gets the rows and the index of the row that reads `text`. */
+  const editRows = (text: string, find: string, edit: (rows: string[], at: number) => void) => {
+    const rows = text.split("\n");
+    const at = rows.findLastIndex((row) => strip(row) === find);
+    if (at < 0) throw new Error(`no row ${JSON.stringify(find)} in the capture`);
+    edit(rows, at);
+    return rows.join("\n");
+  };
+  const question = "⚠️ Dangerous command: chmod 777 gate-probe.txt Allow?";
+
+  it.each(["pi--v0871-permission-gate.txt", "pi--v0871-permission-gate-narrow.txt"])(
+    "walks the gate's Yes and No on %s, with the command in the question and Esc as Cancel",
+    (name) => {
+      const model = prompt(load(name));
+      expect(model.question).toBe(question);
+      expect(model.family).toBe("select");
+      expect(model.options).toEqual([
+        { label: "Yes", keys: ["Enter"], keyLabel: "→" },
+        { label: "No", keys: ["Down", "Enter"], keyLabel: "" },
+        { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+      ]);
+      expect(model.feedback).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ["pi--v0871-permission-gate.txt", "pi--v0871-permission-gate-moved.txt"],
+    ["pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
+  ])("walks from the pointer a real key moved: %s and %s are one dialog", (yes, no) => {
+    const moved = prompt(load(no));
+    expect(moved.question).toBe(question);
+    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
+    const before = prompt(load(yes));
+    expect(moved.signature).not.toBe(before.signature);
+    expect(moved.coreSignature).toBe(before.coreSignature);
+  });
+
+  it("binds the card to the selector's own rows, top rule to bottom rule", () => {
+    const lines = load("pi--v0871-permission-gate.txt");
+    const block = piAdapter.buildBlocks(lines).find((b) => b.kind === "prompt-select");
+    expect(block?.kind).toBe("prompt-select");
+    if (block?.kind !== "prompt-select") return;
+    expect(lineText(block.lines[0]!).trimEnd()).toMatch(/^─{120}$/);
+    expect(block.prompt.signature.split("\n").at(-1)).toMatch(/^─{120}$/);
+    expect(block.prompt.signature).not.toContain("~/project");
+  });
+
+  it("reads as an ask on the Surface, its options in order", () => {
+    for (const name of ["pi--v0871-permission-gate.txt", "pi--v0871-permission-gate-narrow-moved.txt"]) {
+      const read = readScreen(load(name), "pi", idleFor("pi"));
+      expect(modalWord(read.surface.modal), name).toBe("ask");
+      const ask = askOf(read.surface.modal)!;
+      expect(ask.kind).toBe("question");
+      expect(ask.options.map((o) => o.label)).toEqual(["Yes", "No", "Cancel"]);
+    }
+  });
+
+  it("reads a command of several rows, as pi draws a title with line breaks", () => {
+    const twoRows = editRows(gate, "   chmod 777 gate-probe.txt", (rows, at) => {
+      rows.splice(at + 1, 0, " \x1b[0m\x1b[1m\x1b[38;2;138;190;183mls -l gate-probe.txt\x1b[0m\r");
+    });
+    expect(prompt(linesOf(twoRows)).question).toBe("⚠️ Dangerous command: chmod 777 gate-probe.txt ls -l gate-probe.txt Allow?");
+  });
+
+  it.each([
+    // The quoted row straight over the blank row above the list, no title row between: an unpointed
+    // option cut off by a blank row has the same rows, so it declines.
+    ["no title row between the quoted row and the list", editRows(gate, " Allow?", (rows, at) => rows.splice(at, 2))],
+    ["a blank row inside the list", editRows(raw("pi--v0871-permission-gate-moved.txt"), "   Yes", (rows, at) => rows.splice(at + 1, 0, "\r"))],
+    ["no blank row between the quoted row's block and the list", editRows(gate, " → Yes", (rows, at) => rows.splice(at - 1, 1))],
+    ["two pointers", editRows(gate, "   No", (rows, at) => (rows[at] = rows[at]!.replace("   ", " → ")))],
+  ])("declines %s", (_name, text) => {
+    expect(text).not.toBe(gate);
+    expect(detectPiQuestion(linesOf(text))).toBeNull();
+  });
+
+  it("declines gentle-pi's list when a label wrapped back to column 1 stands right over the pointer", () => {
+    // The wrap reads as a title row, and the rows above it are options, not a quoted block: there is no
+    // blank row between the header and the list, so nothing indented may stand in the header.
+    const gentle = raw("pi--v130-gentle-choice.txt");
+    const pointed = (label: string) => ` \x1b[0m\x1b[38;2;157;157;157m→ ${label}\x1b[0m`;
+    const onBlue = replaceLast(replaceLast(gentle, pointed("Red"), "   Red"), "   Blue", `${pointed("Blue")}`);
+    const wrapped = replaceLast(onBlue, pointed("Blue"), ` continued\n${pointed("Blue")}`);
+    expect(prompt(linesOf(onBlue)).options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
+    expect(detectPiQuestion(linesOf(wrapped))).toBeNull();
   });
 });
 

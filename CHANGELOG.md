@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The first tap after an arrow on the Model picker works.** After Move up or Move down the card showed the new highlight, but the phone still held the picker as it was before the move, so the first tap on "Use this session only" or "Set as default" was refused and only the second tap went through. The card comes from the screen text, and what the phone answers comes from a slower read. Now the phone checks that the two show the same highlight. When they do not, Collie reads the screen once more, and the phone answers only when that read shows the highlight on the card. A row other than the one on the card is never confirmed.
+- **pi's permission prompt shows as a card with Yes, No and Cancel.** When pi's `permission-gate` example asks before a risky command such as `chmod 777`, the phone showed "Collie cannot read this dialog", and only the Keys board could answer it. The prompt quotes the command a few columns in, and Collie took that row for the first answer. Now the card shows the command in its question, and a tap on Yes or No moves the pointer, reads it back, and then presses Enter.
 
 ## [1.22.5] - 2026-10-17
 

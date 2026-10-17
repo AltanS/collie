@@ -3431,6 +3431,26 @@
    "version": "0.87.1",
    "state": "dialog"
   },
+  "pi--v0871-permission-gate-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
   "pi--v0871-question-answer-editor-typed.txt": {
    "harness": "pi",
    "version": "0.87.1",
