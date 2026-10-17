@@ -1,0 +1,15 @@
+[0m↓ Read[0;38;5;12m /workspace/tester/demo/sample-app/.test-files/demo-se[0m
+[0m  [0;38;5;12mssion-fixture/files-v3/read-once.txt (L1-1)[0m               [0m
+[0m                                                            [0m
+[0m────────────────────────────────────────────────────────────[0m
+[0m Read File requires approval                                [0m
+[0m fs_read → read-once.txt                                    [0m
+[0m                                                            [0m
+[0m [0;1;38;5;5m❯[0m [0;1;38;5;5mAllow      [0m                                              [0m
+[0m   Deny                                                     [0m
+[0m   Always deny                                              [0m
+[0m────────────────────────────────────────────────────────────[0m
+[0m esc to close · ↑↓ to navigate · ↵ to select · Tab to edit  [0m
+[0m                                                            [0m
+[0m                                                            [0m
+[0m                                                            [0m

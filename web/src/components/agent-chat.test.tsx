@@ -1781,6 +1781,15 @@ describe("AgentChat — no session reported", () => {
     expect(screen.queryByRole("button", { name: /show entire history/i })).not.toBeInTheDocument();
   });
 
+  it("does not advise installing a Herdr hook for a Kiro pane with no session", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "kiro" };
+    renderChat({ agent, agents: [agent] });
+    expect(screen.getByText(/This pane has no agent session/i)).toBeInTheDocument();
+    expect(noSessionNote()).not.toBeInTheDocument();
+    expect(screen.queryByText(/Install or update the Herdr integration/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).not.toBeInTheDocument();
+  });
+
   it("says nothing once the pane has reported a session", () => {
     const agent = { ...fixtureAgents[0]!, agent: "claude", hasSession: true };
     renderChat({ agent, agents: [agent] });

@@ -189,7 +189,8 @@ export interface ForegroundProcess {
   readonly argv: readonly string[];
   /**
    * The process id, when the multiplexer reports it (Herdr does). The hook edges (M56 spec 11) use it
-   * to check that the pid an edge names is in the pane's foreground. Absent means "not reported".
+   * to check that the pid an edge names is in the pane's foreground, and Kiro discovery matches it to
+   * a session's ownership lock. Absent means "not reported".
    */
   readonly pid?: number;
 }
@@ -243,8 +244,9 @@ export interface JournalAdapter {
    * OPTIONAL, and absent everywhere but the harnesses whose panes carry no `agentSession`:
    * custom-source session reports never surface in the pane record (Herdr keeps a session only
    * from its own integrations), Muse has no integration of its own (journal/muse.ts), and OpenClaw
-   * reports through a source Herdr drops (journal/openclaw.ts). The history and chat routes call
-   * this when the pane names no session, and `toPaneWire` offers the History affordance on its
+   * reports through a source Herdr drops (journal/openclaw.ts). Kiro can lack a native report;
+   * its fallback requires the exact foreground TUI PID and its V3 ownership lock. The history
+   * and chat routes call this when the pane names no session, and `toPaneWire` offers the History affordance on its
    * presence, so a discoverable pane reads exactly like a reporting one.
    *
    * Two clues, and an adapter takes the one its harness gives. `cwd` is the pane's folder, which is
@@ -259,7 +261,8 @@ export interface JournalAdapter {
    * `processes` is the pane's own foreground argv, when the multiplexer can say: several live
    * sessions may share one `cwd` (two tabs in one workspace), and newest-wins across them shows
    * every pane the same transcript. An adapter that can read its session out of argv answers
-   * exactly; one that cannot — or a multiplexer that offers none — falls back to the cwd walk.
+   * exactly; one that cannot can use a cwd walk only where its harness makes that unambiguous.
+   * Kiro refuses without the process hint because several sessions can share a folder.
    * Absent is always a legal answer to ignore, never an error.
    *
    * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and

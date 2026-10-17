@@ -8,6 +8,7 @@ import {
   DRAWS_IMAGES_OFF_GRID,
   journalAgents,
   KNOWN_HARNESS_NAMES,
+  NATIVE_SESSION_REPORTERS,
   REPORTS_SESSION_ON_FIRST_PROMPT,
 } from "./registry.ts";
 
@@ -22,17 +23,19 @@ const roots = {
   opencode: ["/o"],
   grok: ["/g"],
   hermes: ["/h"],
+  kiro: ["/k"],
   muse: ["/m"],
   openclaw: ["/oc"],
 };
 
 describe("buildJournalRegistry", () => {
-  test("serves the eight verified harnesses", () => {
+  test("serves the registered harnesses", () => {
     expect(journalAgents(buildJournalRegistry(roots))).toEqual([
       "claude",
       "codex",
       "grok",
       "hermes",
+      "kiro",
       "muse",
       "openclaw",
       "opencode",
@@ -62,7 +65,7 @@ describe("sendQueuedNow", () => {
 describe("adapterFor", () => {
   const registry = buildJournalRegistry(roots);
 
-  test.each(["claude", "codex", "pi", "opencode", "grok", "hermes", "muse"])("resolves %s", (agent) => {
+  test.each(["claude", "codex", "pi", "opencode", "grok", "hermes", "kiro", "muse", "openclaw"])("resolves %s", (agent) => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
   });
 
@@ -105,6 +108,14 @@ describe("the frontend mirror", () => {
     expect(listed.toSorted()).toEqual(expected.toSorted());
   });
 
+  test("the browser names the same native session reporters", async () => {
+    const source = await Bun.file(new URL("../../web/src/lib/journal-agents.ts", import.meta.url)).text();
+    const literal = /const NATIVE_SESSION_AGENTS[^=]*= new Set\(\[([^\]]*)\]\)/.exec(source)?.[1];
+    expect(literal).toBeDefined();
+    const listed = [...(literal ?? "").matchAll(/"([a-z][a-z0-9-]*)"/g)].map((m) => m[1]);
+    expect(listed.toSorted()).toEqual([...NATIVE_SESSION_REPORTERS].toSorted());
+  });
+
   // Issue #294: the phone's note and `collie doctor` must agree on which agents report their session
   // only on the first prompt, or one of them blames the integration for a pane that has had no turn.
   test("web/src/lib/journal-agents.ts names the same first-prompt agents", async () => {
@@ -142,4 +153,13 @@ test("DISCOVERS_OWN_SESSIONS names exactly the discovering adapters", () => {
     .map(([agent]) => agent)
     .toSorted();
   expect([...DISCOVERS_OWN_SESSIONS].toSorted()).toEqual(discovering);
+});
+
+test("native session reporters also offer discovery without a hook", () => {
+  const registry = buildJournalRegistry(roots);
+  for (const agent of NATIVE_SESSION_REPORTERS) {
+    expect(adapterFor(registry, agent)).toBeDefined();
+    expect(adapterFor(registry, agent)?.discover).toBeDefined();
+    expect(DISCOVERS_OWN_SESSIONS).toContain(agent);
+  }
 });

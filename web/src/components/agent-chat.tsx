@@ -116,7 +116,7 @@ import { ExperimentalBadge } from "@/components/experimental-badge";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
-import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
+import { hasJournalAdapter, reportsSessionNatively, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
@@ -914,8 +914,7 @@ export function AgentChat({
   // its absence alone cannot say which half failed, and the two want opposite words. On an agent
   // with no journal adapter there is nothing to explain and nothing renders. On one that HAS a
   // journal adapter, an absent session means the agent never reported a session ref to Herdr, which
-  // is what the `herdr integration install <agent>` hook does at agent session start — missing or
-  // outdated, it hides both history affordances with no explanation anywhere.
+  // hook-backed agents report at session start. Kiro V3 reports natively and has no hook to install.
   //
   // It EXPLAINS, it never offers: this decides no button and does not touch `historyAvailable` (a
   // pane with no session still has no transcript to open, and a tap that fetched nothing would be
@@ -931,7 +930,9 @@ export function AgentChat({
     sessionLog.capable && hasJournalAdapter(agent?.agent) && !agent?.hasSession;
   const noSessionKey = reportsSessionOnFirstPrompt(agent?.agent)
     ? "chat.scrollback.noSessionYet"
-    : "chat.scrollback.noSessionReported";
+    : reportsSessionNatively(agent?.agent)
+      ? "history.unavailable.noSession"
+      : "chat.scrollback.noSessionReported";
   // ── THE PANE'S SECOND BODY: CHAT (M41/11) ───────────────────────────────────
   //
   // Chat is a MODE, not a route: `nav.ts`'s two leaf lists are untouched, and nothing below this

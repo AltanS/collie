@@ -35,8 +35,10 @@ export interface HarnessLaunch {
   id: string;
   /** The harness's own name for itself. Its own word, never translated. */
   label: string;
-  /** The program looked for, and the line typed into the new shell. */
+  /** The program looked for on PATH. */
   binary: string;
+  /** Fixed arguments required by this harness; never supplied by the phone. */
+  args?: readonly string[];
 }
 
 /** Every agent the New sheet may start, in the order the sheet lists them. */
@@ -48,6 +50,8 @@ export const HARNESS_LAUNCHES: readonly HarnessLaunch[] = [
   { id: "omp", label: "omp", binary: "omp" },
   { id: "grok", label: "Grok", binary: "grok" },
   { id: "hermes", label: "Hermes", binary: "hermes" },
+  // kiro-cli 2.32.0 `chat --help`: --v3 selects the journal format Collie reads; V2 is still the default.
+  { id: "kiro", label: "Kiro", binary: "kiro-cli", args: ["chat", "--v3"] },
   { id: "muse", label: "Muse", binary: "muse" },
   { id: "agy", label: "Antigravity", binary: "agy" },
 ];
@@ -65,6 +69,11 @@ export const NOT_STARTED = {
 /** The launch for `id`, or `undefined` for a name Collie does not start. Exact match only. */
 export function harnessLaunch(id: string): HarnessLaunch | undefined {
   return HARNESS_LAUNCHES.find((h) => h.id === id);
+}
+
+/** The line typed for a registered harness, including its required arguments. */
+export function harnessLaunchCommand(launch: HarnessLaunch): string {
+  return [launch.binary, ...(launch.args ?? [])].join(" ");
 }
 
 /** Whether every launch id is a contract name. `harness-launch.test.ts` reads it. */

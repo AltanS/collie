@@ -6,6 +6,7 @@ import {
   NOT_STARTED,
   createHarnessProbe,
   harnessLaunch,
+  harnessLaunchCommand,
   launchIdsAreContractNames,
 } from "./harness-launch.ts";
 import { hostFor } from "./host.ts";
@@ -26,7 +27,18 @@ describe("the harness table", () => {
 
   test("ids are unique and a binary is one bare word, never a line", () => {
     expect(new Set(HARNESS_LAUNCHES.map((h) => h.id)).size).toBe(HARNESS_LAUNCHES.length);
-    for (const h of HARNESS_LAUNCHES) expect(h.binary).toMatch(/^[a-z][a-z0-9-]*$/);
+    for (const h of HARNESS_LAUNCHES) {
+      expect(h.binary).toMatch(/^[a-z][a-z0-9-]*$/);
+      for (const arg of h.args ?? []) expect(arg).toMatch(/^[A-Za-z0-9=-]+$/);
+    }
+  });
+
+  test("Kiro probes kiro-cli and always starts V3 with normal permissions", () => {
+    const launch = harnessLaunch("kiro");
+    expect(launch?.binary).toBe("kiro-cli");
+    if (launch === undefined) throw new Error("missing Kiro launch");
+    expect(harnessLaunchCommand(launch)).toBe("kiro-cli chat --v3");
+    expect(harnessLaunchCommand(launch)).not.toContain("trust-all");
   });
 
   test("a lookup is exact: no prefix, no prototype key", () => {

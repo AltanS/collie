@@ -1,0 +1,30 @@
+[0m↓ Write[0;38;5;12m /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/clipped-deny.txt[0m                    [0m
+[0m    [0;38;5;2madded 15 lines[0m in clipped-deny.txt                                                                                  [0m
+[0m     1[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_1[0m                                                                                          [0m
+[0m     2[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_2[0m                                                                                          [0m
+[0m     3[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_3[0m                                                                                          [0m
+[0m     4[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_4[0m                                                                                          [0m
+[0m     5[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_5[0m                                                                                          [0m
+[0m     6[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_6[0m                                                                                          [0m
+[0m     7[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_7[0m                                                                                          [0m
+[0m     8[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_8[0m                                                                                          [0m
+[0m     9[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_9[0m                                                                                          [0m
+[0m    10[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_10[0m                                                                                         [0m
+[0m    11[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_11[0m                                                                                         [0m
+[0m    12[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_12[0m                                                                                         [0m
+[0m    13[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_13[0m                                                                                         [0m
+[0m    14[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_14[0m                                                                                         [0m
+[0m    15[0;38;5;2m+[0m  [0;38;5;2mcollie_clipped_line_15[0m                                                                                         [0m
+[0m                                                                                                                        [0m
+[0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m Write File requires approval                                                                                           [0m
+[0m fs_write → clipped-deny.txt                                                                                            [0m
+[0m                                                                                                                        [0m
+[0m [0;1;38;5;5m❯[0m [0;1;38;5;5mAllow      [0m                                                                                                          [0m
+[0m   Deny                                                                                                                 [0m
+[0m   Always deny                                                                                                          [0m
+[0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m esc to close · ↑↓ to navigate · ↵ to select · Tab to edit                                                              [0m
+[0m                                                                                                                        [0m
+[0m                                                                                                                        [0m
+[0m                                                                                                                        [0m

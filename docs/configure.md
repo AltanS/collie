@@ -111,6 +111,8 @@ The durable agents one Collie runs beside its multiplexer are not in `config.tom
 To read history from multiple agent home directories, provide a comma-separated list in
 `COLLIE_TRANSCRIPT_ROOT`.
 
+Kiro V3 history reads `~/.kiro/sessions`, or `$KIRO_HOME/sessions` when `KIRO_HOME` is set. Override it with `COLLIE_KIRO_ROOT=/srv/kiro/sessions` or `[journal] kiro_root = ["/srv/kiro/sessions"]`; both accept several roots searched in order. `KIROOT` is not a supported V3 override. The New agent sheet starts `kiro-cli chat --v3` without changing tool permissions. V1/V2 logs and cloud session storage are not local V3 journals.
+
 [`docs/deployment.md`](deployment.md) covers custom domains and reverse proxies. Collie enforces a
 same-origin policy, so any custom hostname or external TLS terminator must be explicitly
 allowlisted:

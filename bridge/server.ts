@@ -43,7 +43,7 @@ import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
-import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
+import { createHarnessProbe, harnessLaunchCommand, type HarnessProbe } from "./harness-launch.ts";
 import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
@@ -6202,7 +6202,7 @@ async function pickLaunch(
     if (known === undefined) {
       return json({ ok: false, ...apiError("launch.unknown_harness", { harness }) } satisfies CreateResponse, null, 400);
     }
-    return { kind: "harness", row: { command: known.binary, label: known.label } };
+    return { kind: "harness", row: { command: harnessLaunchCommand(known), label: known.label } };
   }
   // Live read, behind the same mtime cache the other operator files use — a new row in
   // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to

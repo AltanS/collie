@@ -434,6 +434,29 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "steers",
     queueKey: "alt+Enter",
   },
+  {
+    id: "kiro",
+    binary: "kiro-cli",
+    versionOutput: "kiro-cli 2.32.0\n",
+    version: "2.32.0",
+    above: "2.32.1",
+    takes: [
+      { anchor: "top", row: "─".repeat(60) },
+      { anchor: "prompt", row: "› ask a question or describe a task ↵", draft: "ask a question or describe a task ↵" },
+      { anchor: "prompt", row: "› collie normal draft probe", draft: "collie normal draft probe" },
+      { anchor: "prompt", row: "›" },
+      { anchor: "bottom", row: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: "──── hello" },
+      { anchor: "prompt", row: "  collie normal draft probe" },
+      { anchor: "prompt", row: "❯ collie normal draft probe" },
+    ],
+    collapse: { text: "40 lines ▸", group: "lines", value: "40" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "steers",
+  },
 ];
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {

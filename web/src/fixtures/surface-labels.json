@@ -2061,6 +2061,321 @@
    "version": "unversioned",
    "state": "running"
   },
+  "kiro--v2-idle-w119.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-approval-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-always-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-clipped-w40.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-edit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-deny-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-deny-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-draft-cwd-wrapped-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-wrapped-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-idle-oneline-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-idle-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-idle-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-mcp-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-clipped-w40.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-edit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-trusted-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-trusted-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-always-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
   "muse--approval-date-147.txt": {
    "harness": "muse",
    "version": "1.4.7",

@@ -106,6 +106,19 @@
         "evidence": "canary run 20261012T110117Z: journal kinds asserted, nothing unrecognised"
       }
     },
+    "kiro": {
+      "version": "2.32.0",
+      "verified": "2026-10-17",
+      "how": "capture",
+      "adapter": true,
+      "evidence": "Public kiro-cli 2.32.0 V3 on Linux (stable-channel musl build, sha256 checked against its manifest). Real isolated PTY captures and harmless Allow/Deny/Close probes for shell, read_file, fs_write and str_replace at 120/60/40 columns; composer drafts captured; a live Herdr and Chromium run covered native Allow and Deny, read-only History and the V2 fallback. web/src/lib/harness/kiro/APPROVAL_NOTES.md records the captures, keys, substitutions and terminal-only limits. Generic MCP requests and incomplete or clipped file subjects deliberately have no approval buttons.",
+      "journal": {
+        "version": "2.32.0",
+        "verified": "2026-10-17",
+        "how": "live sweep",
+        "evidence": "A messages.jsonl saved by kiro-cli 2.32.0 V3 parsed through scripts/journal-probe.ts (185 turns, 108 tool results, nothing failed); the live run's History showed another 2.32.0 session read-only. bridge/journal/kiro.test.ts covers parent speech, tools/results, compaction and checkpoint reverts. bridge/journal/kiro-discovery.test.ts covers exact foreground TUI lock ownership and missing native session refs. Child histories and attachment bodies are not expanded."
+      }
+    },
     "hermes": {
       "version": "0.0.0",
       "verified": "2026-09-30",

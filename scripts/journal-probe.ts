@@ -21,14 +21,16 @@
 
 import { Database } from "bun:sqlite";
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { identityOf } from "../bridge/beacon/decorate.ts";
 import { beaconsDir } from "../bridge/beacon/paths.ts";
 import { readBeacons } from "../bridge/beacon/reader.ts";
 import { loadConfig } from "../bridge/config.ts";
+import { containedRealpath } from "../bridge/journal/files.ts";
 import { isGrokSessionId } from "../bridge/journal/grok.ts";
+import { isKiroSessionId } from "../bridge/journal/kiro-discovery.ts";
 import { adapterFor, buildJournalRegistry } from "../bridge/journal/registry.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "../bridge/journal/types.ts";
 
@@ -45,7 +47,9 @@ async function logsNewestFirst(dir: string, depth = 4): Promise<string[]> {
   const walk = async (d: string, left: number): Promise<void> => {
     let names: string[];
     try {
-      names = await readdir(d);
+      const real = await containedRealpath(d, dir);
+      if (real === null) return;
+      names = await readdir(real);
     } catch {
       return;
     }
@@ -53,7 +57,9 @@ async function logsNewestFirst(dir: string, depth = 4): Promise<string[]> {
       const p = join(d, name);
       let st: Awaited<ReturnType<typeof stat>>;
       try {
-        st = await stat(p);
+        const real = await containedRealpath(p, dir);
+        if (real === null) continue;
+        st = await stat(real);
       } catch {
         continue;
       }
@@ -82,6 +88,11 @@ const MAX_CANDIDATES = 12;
  * "no logs found" for every real Grok session.
  */
 export function refFor(agent: string, path: string): AgentSessionRef | null {
+  if (agent === "kiro") {
+    if (basename(path) !== "messages.jsonl") return null;
+    const id = basename(dirname(path));
+    return isKiroSessionId(id) ? { kind: "id", value: id } : null;
+  }
   if (agent === "pi") return { kind: "path", value: path };
   if (agent === "grok") {
     const slash = path.lastIndexOf("/");
@@ -164,7 +175,8 @@ async function candidateRefsUnder(
 
   const logs = await logsNewestFirst(root);
   const refs: AgentSessionRef[] = [];
-  for (const log of logs.slice(0, MAX_CANDIDATES)) {
+  for (const log of logs) {
+    if (refs.length >= MAX_CANDIDATES) break;
     // Claude keeps subagent logs under `subagents/` with no uuid in the name — not a session, so not
     // something Herdr would ever name. Skip rather than fail.
     const ref = refFor(agent, log);

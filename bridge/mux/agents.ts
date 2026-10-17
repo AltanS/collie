@@ -19,6 +19,7 @@ export const MUX_AGENT_NAMES: readonly string[] = [
   "codex",
   "grok",
   "hermes",
+  "kiro",
   "muse",
   "omp",
   "openclaw",

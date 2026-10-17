@@ -7,7 +7,7 @@
 // cannot say WHICH half failed — and the two want opposite words. An agent with no journal adapter
 // has nothing to explain: there is no transcript to read, ever, and a sentence about it would be
 // noise. An agent that HAS one and still reported no session is the case an operator can fix
-// (issue #137: a missing or outdated `herdr integration install <agent>` hook), and silence there
+// (usually a missing or outdated hook; Kiro instead reports natively), and silence there
 // reads as a bug in Collie. A discovering adapter (Muse, OpenClaw) never lands here: its panes always offer
 // the affordance, since no hook could fix what discovery already finds.
 //
@@ -22,7 +22,7 @@
 //
 // This is NOT `lib/harness/registry.ts`, and the two must not be folded together — that one owns
 // block grammars for the LIVE MIRROR (claude, codex, grok, omp, agy), this one owns reading an
-// on-disk log (claude, codex, grok, hermes, muse, openclaw, opencode, pi). A harness can plausibly have
+// on-disk log (claude, codex, grok, hermes, kiro, muse, openclaw, opencode, pi). A harness can plausibly have
 // either without the other, which is exactly why the bridge keeps two registries too.
 //
 // Kept in step with `bridge/journal/registry.ts` by hand, deliberately: the list is not on the wire
@@ -41,6 +41,7 @@ export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
   "codex",
   "grok",
   "hermes",
+  "kiro",
   "muse",
   "omp",
   "openclaw",
@@ -54,6 +55,9 @@ export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
  *  Must come after `JOURNAL_AGENT_NAMES` in this file: registry.test.ts reads the first set as that
  *  one. */
 const FIRST_PROMPT_AGENTS: ReadonlySet<string> = new Set(["codex"]);
+
+/** Native Herdr reporters with no installable hook. Mirrors `NATIVE_SESSION_REPORTERS`. */
+const NATIVE_SESSION_AGENTS: ReadonlySet<string> = new Set(["kiro"]);
 
 /** The agents whose session is reported at start but whose log file appears only after the first
  *  reply: pi, and Oh My Pi (`omp`), its second name. Not on the wire, so named here by hand; the
@@ -80,6 +84,11 @@ export function drawsImagesOffGrid(agent: string | undefined): boolean {
  */
 export function reportsSessionOnFirstPrompt(agent: string | undefined): boolean {
   return agent !== undefined && FIRST_PROMPT_AGENTS.has(agent);
+}
+
+/** Whether a missing session must be diagnosed as native reporting rather than a hook failure. */
+export function reportsSessionNatively(agent: string | undefined): boolean {
+  return agent !== undefined && NATIVE_SESSION_AGENTS.has(agent);
 }
 
 /**

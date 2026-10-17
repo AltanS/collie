@@ -1,0 +1,15 @@
+[0m────────────────────────────────────────[0m
+[0m Print the cancel probe message         [0m
+[0m requires approval                      [0m
+[0m shell → printf collie_cancel_probe     [0m
+[0m                                        [0m
+[0m [0;1;38;5;5m❯[0m [0;1;38;5;5mAllow       [0m                         [0m
+[0m   Always allow                         [0m
+[0m   Deny                                 [0m
+[0m   Always deny                          [0m
+[0m────────────────────────────────────────[0m
+[0m esc to     · ↑↓ to navigate · ↵ to     [0m
+[0m close        select · Tab to edit      [0m
+[0m                                        [0m
+[0m                                        [0m
+[0m                                        [0m
