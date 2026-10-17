@@ -334,14 +334,49 @@ describe("the history section", () => {
   test("`herdr integration status` that says nothing leaves every agent skipped, never ok", async () => {
     const byCheck = await run({ status: "" });
     for (const agent of JOURNAL_AGENT_NAMES) {
-      // The exception proves the rule: Muse and OpenClaw need no hook at all: their ok does not
+      // The exception proves the rule: Muse, OpenClaw and Kiro need no hook at all: their ok does not
       // come from Herdr's answer, so Herdr's silence cannot take it away.
-      if (agent === "muse" || agent === "openclaw") {
+      if (agent === "muse" || agent === "openclaw" || agent === "kiro") {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("ok");
       } else {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("skipped");
       }
     }
+  });
+
+  test("Kiro has native reporting rather than an installable hook, even when integration status is absent", async () => {
+    // Given: Herdr lists no integrations and Kiro has a session.
+    const findings = await run({ absent: ["herdr"], snapshot: snapshotOf([{ paneId: "w1:p1", agent: "kiro", hasSession: true }]) });
+    // When: doctor evaluates that pane and its integration.
+    const native = findings.get("integration-kiro");
+    // Then: Kiro needs no hook installation.
+    expect(native?.status).toBe("ok");
+    expect(native?.detail).toContain("native reporting");
+    expect(native?.remedy).toBeNull();
+    expect(findings.get("agent-sessions")?.status).toBe("ok");
+  });
+
+  test("a Kiro pane with no session asks for native V3 reporting and never hook installation", async () => {
+    // Given: Kiro is detected but the snapshot has no session reference.
+    const findings = await run({ status: "", snapshot: snapshotOf([{ paneId: "w1:p1", agent: "kiro" }]) });
+    // When: doctor explains the missing history.
+    const native = findings.get("integration-kiro");
+    // Then: both diagnostics direct the user to the native report contract.
+    expect(native?.status).toBe("warn");
+    expect(native?.remedy).toContain("kiro-cli chat --v3");
+    expect(native?.remedy).toContain("HERDR_SOCKET_PATH");
+    expect(findings.get("agent-sessions")?.status).toBe("error");
+    for (const finding of findings.values()) {
+      expect(finding.remedy ?? "").not.toContain("herdr integration install kiro");
+    }
+    expect(findings.get("agent-sessions")?.remedy).not.toContain("herdr integration install");
+  });
+
+  test("a mixed Kiro and hook-backed fault explains both reporting paths", async () => {
+    const findings = await run({ snapshot: snapshotOf([{ paneId: "w1:p1", agent: "kiro" }, { paneId: "w2:p1", agent: "claude" }]) });
+    expect(findings.get("agent-sessions")?.remedy).toContain("kiro-cli chat --v3");
+    expect(findings.get("agent-sessions")?.remedy).toContain("for the hook-backed agents");
+    expect(findings.get("agent-sessions")?.remedy).not.toContain("herdr integration install kiro");
   });
 
   test("no python3 is an error: the hook needs it and exits silently without it", async () => {
@@ -358,8 +393,8 @@ describe("the history section", () => {
   test("no journal root on disk warns, and a present-but-unlistable one says which", async () => {
     const none = await run({ files: {} });
     expect(none.get("journal-roots")?.status).toBe("warn");
-    // NINE, not eight: eight agents, and pi has two roots (the omp home and pi's own).
-    expect(none.get("journal-roots")?.detail).toContain("none of the 9 journal roots is there");
+    // pi has two default roots; every other harness has one.
+    expect(none.get("journal-roots")?.detail).toContain("none of the 10 journal roots is there");
 
     // `list` answers `[]` for a directory this user cannot read AND for an empty one; the finding
     // says both, because the seam cannot tell them apart and a doctor may not guess.

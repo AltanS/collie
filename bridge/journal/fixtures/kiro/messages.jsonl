@@ -1,0 +1,16 @@
+{"id":"msg0","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"session_start","agentType":"chat","forcedRole":true,"messageId":"msg0","content":"Synthetic private system prompt."}}
+{"id":"input-1","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"user","content":"List the sample files.","source":"chat","contextItems":[{"name":"context.txt","uri":"file:///example/context.txt","content":"Synthetic context, not speech."}]}}
+{"id":"execution-1-turn-start","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"turn_start","executionId":"execution-1"}}
+{"id":"thought-1-say","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"assistant","content":"I will check the sample folder.","operationType":"Reasoning","executionId":"execution-1"}}
+{"id":"packed-thought-say","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"assistant","content":"...","operationType":"Reasoning","reasoningSignature":"synthetic-envelope","reasoningModelId":"synthetic-model","executionId":"execution-1"}}
+{"id":"read-1-call","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"tool_call","toolCallId":"read-1","toolName":"read_file","args":{"path":"/example/sample.txt","offset":0,"limit":10},"status":"executing","kind":"read","actionType":"read_file","executionId":"execution-1"}}
+{"id":"read-1-call","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"tool_call","toolCallId":"read-1","toolName":"read_file","args":{"path":"/example/sample.txt","offset":0,"limit":10},"status":"completed","kind":"read","actionType":"read_file","executionId":"execution-1"}}
+{"id":"read-1-result","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"tool_result","toolCallId":"read-1","content":"sample-a\nsample-b","success":true,"durationMs":12,"executionId":"execution-1"}}
+{"id":"child-1-sub-agent-start","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"sub_agent_start","parentExecutionId":"execution-1","subSessionId":"child-1","subAgentName":"checker","prompt":"Check the synthetic list.","explanation":"Check sample names."}}
+{"id":"child-1-sub-agent-complete","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"sub_agent_complete","parentExecutionId":"execution-1","subSessionId":"child-1","response":"The sample names are valid.","status":"success"}}
+{"id":"note-1","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"agent_note","content":"Synthetic model-only context."}}
+{"id":"steer-envelope","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"user","content":"Synthetic consumed steer envelope.","source":"steer","_meta":{"kiro":{"syntheticUserMessageReason":"steering-injection","steeringConsumedIds":["steer-1"]}}}}
+{"id":"compaction-1","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"tombstone","kind":"summarization","effectiveFromMessageId":"input-1"}}
+{"id":"summary-1","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"assistant","content":"The user asked for sample file names.","operationType":"Summary","executionId":"execution-1"}}
+{"id":"answer-1-say","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"assistant","content":"The files are sample-a and sample-b.","operationType":"Say","executionId":"execution-1"}}
+{"id":"execution-1-turn-end","timestamp":"2026-10-01T12:00:00.000Z","payload":{"type":"turn_end","executionId":"execution-1","stopReason":"end_turn"}}

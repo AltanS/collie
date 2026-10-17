@@ -888,5 +888,227 @@
       "start": 0,
       "end": 91
     }
+  },
+  {
+    "fixture": "kiro--v3-approval-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-always-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+  },
+  {
+    "fixture": "kiro--v3-approval-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-deny-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-deny-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-deny.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-deny.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval resource rows.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval\n resource rows.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval resource rows.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval\n resource rows.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_after_replace\n     1+  collie_should_never_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_after_replace\n     1+  collie_should_never_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-deny.txt\n    added 1 line in write-deny.txt\n     1+  collie_write_denied_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-deny.txt\n    added 1 line in write-deny.txt\n     1+  collie_write_denied_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-always-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-trusted-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/notes.txt\n    added 1 line, removed 1 line in notes.txt\n     1\n     2-  beta\n     2+  gamma\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → notes.txt\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-trusted-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/notes.txt\n    added 1 line, removed 1 line in notes.txt\n     1\n     2-  beta\n     2+  gamma\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → notes.txt\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   }
 ]

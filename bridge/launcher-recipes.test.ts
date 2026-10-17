@@ -52,6 +52,12 @@ describe("buildRecipe", () => {
     expect(buildRecipe("claude", [])).toEqual({ ok: true, command: "claude", label: "Claude Code", noPrompts: false, options: [] });
   });
 
+  test("Kiro recipes retain the required V3 flag and offer no permission bypass", () => {
+    expect(buildRecipe("kiro", [])).toEqual({ ok: true, command: "kiro-cli chat --v3", label: "Kiro", noPrompts: false, options: [] });
+    expect(recipeOptions("kiro")).toEqual([]);
+    expect(buildRecipe("kiro", ["trust-all"])).toEqual({ ok: false, reason: "unknown_option" });
+  });
+
   test("options in TABLE order, whatever order they were picked in", () => {
     const a = buildRecipe("claude", ["continue", "skip", "opus"]);
     const b = buildRecipe("claude", ["opus", "skip", "continue"]);

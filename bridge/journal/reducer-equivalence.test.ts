@@ -12,6 +12,7 @@ import { createMuseReducer, parseMuseTranscript } from "./muse.ts";
 import { createOpenclawReducer, parseOpenclawTranscript } from "./openclaw.ts";
 import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
+import { kiroJournal } from "./kiro.ts";
 import type { TranscriptEntry } from "./types.ts";
 
 // ── THE GATE FOR THE ROW REDUCER ────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ const COVERED = [
   "pi",
   "grok",
   "hermes",
+  "kiro",
   "muse",
   "openclaw",
 ] as const;
@@ -193,6 +195,26 @@ describe("claude: a reducer reads a torn stream the way the parser reads a whole
     for (const line of text.split("\n")) for (const e of reducer.push(line).added) held.push(e);
     const tool = held.find((e) => e.uuid === "a1")?.parts.find((p) => p.kind === "tool");
     expect(tool?.kind === "tool" && tool.result?.text).toBe("const a = 1");
+  });
+});
+
+describe("kiro: a reducer reads a torn stream the way the parser reads a whole file", () => {
+  const adapter = kiroJournal([]);
+  const fixture = readFileSync(join(import.meta.dir, "fixtures", "kiro", "messages.jsonl"), "utf8");
+  const extra = [
+    { id: "unicode", payload: { type: "assistant", operationType: "Say", content: "First line.\nSecond line: café 日本語." } },
+    { id: "late-call", payload: { type: "tool_call", toolCallId: "late", toolName: "read_file", args: { path: "/example/sample.txt" }, status: "executing" } },
+    { id: "late-result", payload: { type: "tool_result", toolCallId: "late", content: "first", success: true } },
+    { id: "late-result", payload: { type: "tool_result", toolCallId: "late", content: "first\nsecond", success: true } },
+    { id: "rollback", payload: { type: "tombstone", kind: "checkpoint_revert", effectiveFromMessageId: "late-call" } },
+  ].map((entry) => JSON.stringify({ ...entry, timestamp: "2026-10-01T12:00:01.000Z" }));
+  const text = fixture + [...extra, ...RUBBISH].join("\n");
+
+  test("whole history, complete rows and arbitrary chunks agree", () => {
+    // Given: saved-session rows include late tool output, Unicode and a checkpoint revert.
+    // When: the same bytes arrive whole, by row or across arbitrary chunk boundaries.
+    // Then: each reading produces the same client-visible entries and tool updates.
+    expectEquivalent(adapter.reducer, adapter.parse, text);
   });
 });
 

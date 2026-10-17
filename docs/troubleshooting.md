@@ -157,6 +157,8 @@ not taken a turn yet, which is not a fault: nothing is shown before it is measur
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
 
+**Kiro has no History link.** Run `collie doctor`. Collie uses a native Herdr session reference when one is present. If Herdr omits it, Collie can match the pane's foreground Kiro TUI process to a local V3 session lock on Linux x64/arm64. This fallback checks the process start time, refuses ambiguous or stale locks, and never chooses the newest session in a shared folder. Start `kiro-cli chat --v3` in Herdr; there is no `herdr integration install kiro` target. Keep the session files under the configured Kiro root accessible to Collie's user. Native references work without process discovery; the fallback is unavailable when the multiplexer cannot expose the owning process, across a sandbox PID namespace, or on platforms without the verified process-start check. Only local V3 `session.json` and `messages.jsonl` are read.
+
 **A pane shows the terminal where you expected Chat.** Chat is the default for an agent pane, so one
 of two things holds. This device chose the terminal earlier: open the pane's **⋮** menu and tap
 **Chat view**. Or the pane has no session or no log to read. A new pane shows Chat with "Send a

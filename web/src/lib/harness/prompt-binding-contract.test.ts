@@ -139,7 +139,13 @@ describe("client/bridge binding contract", () => {
     const pinned = new Set(REGIONS.map((r) => r.fixture));
     const unpinned = readdirSync(PANES_DIR)
       .filter((n) => n.endsWith(".txt"))
-      .filter((n) => !pinned.has(n) && detectRegion(fixtureLines(n)) !== null);
+      .filter((n) => !pinned.has(n))
+      .filter((n) => {
+        const lines = fixtureLines(n);
+        // Kiro's unsupported panels must remain raw. Claude's generic footer detector
+        // is not the write path for a pane explicitly identified as Kiro.
+        return (n.startsWith("kiro--") ? adapterRegion(lines, "kiro") : detectRegion(lines)) !== null;
+      });
     expect(unpinned).toEqual([]);
   });
 });

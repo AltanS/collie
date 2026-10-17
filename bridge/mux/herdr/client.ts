@@ -221,6 +221,8 @@ export function paneAgentSession(raw: WirePane["agent_session"]): PaneAgentSessi
   if (raw === null || raw === undefined) return null;
   if (raw.kind !== "id" && raw.kind !== "path") return null;
   if (typeof raw.value !== "string" || raw.value === "") return null;
+  // Custom reporters (Kiro V3: source "kiro-cli") use the same AgentSessionInfo contract as hooks.
+  // Do not require a "herdr:" source or infer an id from a resume command.
   const agent = typeof raw.agent === "string" && raw.agent !== "" ? raw.agent : undefined;
   return { kind: raw.kind, value: raw.value, agent };
 }

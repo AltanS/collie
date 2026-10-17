@@ -23,11 +23,19 @@ export const procStatPath = (pid: number): string => `/proc/${pid}/stat`;
  * After that bracket the fields are positional: index 0 is field 3 (state), so field 22 is index 19.
  */
 export function parseProcStartTime(text: string): number | null {
-  const close = text.lastIndexOf(")");
-  if (close < 0) return null;
-  const fields = text.slice(close + 1).trim().split(/\s+/u);
-  const raw = fields[19];
+  const raw = fieldsAfterComm(text)?.[19];
   if (raw === undefined || !/^\d+$/u.test(raw)) return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+/** Field 3 of `/proc/<pid>/stat` — the one-letter process state (`Z` for a zombie) — or null. */
+export function parseProcState(text: string): string | null {
+  return fieldsAfterComm(text)?.[0] || null;
+}
+
+/** The positional fields after the executable's name, parsed as {@link parseProcStartTime} explains. */
+function fieldsAfterComm(text: string): string[] | null {
+  const close = text.lastIndexOf(")");
+  return close < 0 ? null : text.slice(close + 1).trim().split(/\s+/u);
 }

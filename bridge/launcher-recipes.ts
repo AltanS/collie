@@ -1,4 +1,4 @@
-import { harnessLaunch } from "./harness-launch.ts";
+import { harnessLaunch, harnessLaunchCommand } from "./harness-launch.ts";
 import type { LaunchCheckResponse } from "./types.ts";
 
 // ── Recipes: a harness plus option chips, and the bridge builds the line (M48 spec 02, ADR 0094) ──
@@ -133,7 +133,7 @@ export function buildRecipe(harness: string, picked: readonly string[]): BuiltRe
   }
   return {
     ok: true,
-    command: [launch.binary, ...chosen.map((o) => o.args)].join(" "),
+    command: [harnessLaunchCommand(launch), ...chosen.map((o) => o.args)].join(" "),
     label: chosen.length === 0 ? launch.label : `${launch.label}, ${chosen.map((o) => o.label).join(", ")}`,
     noPrompts: chosen.some((o) => o.noPrompts === true),
     options: chosen.map((o) => o.id),

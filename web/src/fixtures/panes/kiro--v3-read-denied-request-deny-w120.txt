@@ -1,0 +1,14 @@
+[0m↓ Read[0;38;5;12m /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-deny.txt (L1-1)[0m                 [0m
+[0m                                                                                                                        [0m
+[0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m Read File requires approval                                                                                            [0m
+[0m fs_read → read-deny.txt                                                                                                [0m
+[0m                                                                                                                        [0m
+[0m   Allow                                                                                                                [0m
+[0m [0;1;38;5;5m❯[0m [0;1;38;5;5mDeny       [0m                                                                                                          [0m
+[0m   Always deny                                                                                                          [0m
+[0m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m esc to close · ↑↓ to navigate · ↵ to select · Tab to edit                                                              [0m
+[0m                                                                                                                        [0m
+[0m                                                                                                                        [0m
+[0m                                                                                                                        [0m

@@ -2,6 +2,7 @@ import {
   AGENT_ALIASES,
   DISCOVERS_OWN_SESSIONS,
   KNOWN_HARNESS_NAMES,
+  NATIVE_SESSION_REPORTERS,
   REPORTS_SESSION_ON_FIRST_PROMPT,
 } from "../bridge/journal/registry.ts";
 import { resolveJournalRoots } from "../bridge/config.ts";
@@ -18,11 +19,13 @@ import type { Exec, Files } from "./sys.ts";
 // adapter and a session is addressable — reported on the pane record, or found by an adapter that
 // discovers its own (`DISCOVERS_OWN_SESSIONS`).
 //
-// The session ref reaches Herdr from ONE place: the agent-side hook `herdr integration install
+// Hook-backed agents report their session through the agent-side hook `herdr integration install
 // <agent>` writes. That hook exits silently when its environment is not what it expects, and it
 // loads at the agent's SESSION START — so installing it under a running agent changes nothing until
 // that agent is restarted. Miss any of it and the pane looks perfectly normal while both affordances
-// simply are not drawn, with nothing anywhere saying why. `/api/pane/:id/history` is not consulted
+// simply are not drawn, with nothing anywhere saying why. Kiro V3 instead reports directly through
+// `pane.report_agent` with source `kiro-cli`; Herdr has no installable Kiro hook.
+// `/api/pane/:id/history` is not consulted
 // for the hide, so its own `no-log` / `disabled` reasons never get a chance to explain themselves.
 //
 // One agent's session start is late on purpose: Codex fires the hook only on its first prompt
@@ -226,6 +229,11 @@ export const HERDR_MIN_WINDOWS = "0.9.3";
 
 const INSTALL_NOTE = "then start a new session of that agent in the pane (hooks load at session start)";
 
+const NATIVE_REPORT_REMEDY =
+  "run `kiro-cli chat --v3` in a Herdr pane with HERDR_ENV=1, HERDR_BIN_PATH, HERDR_PANE_ID and" +
+  " HERDR_SOCKET_PATH; check that `herdr api snapshot` reports its agent_session with source" +
+  " kiro-cli — Kiro reports natively and has no installable Herdr hook";
+
 /**
  * What one GET of this bridge's own `/api/snapshot` came back as.
  *
@@ -311,6 +319,13 @@ function integration(
   verdicts: readonly PaneVerdict[] | null,
 ): Finding {
   const check = `integration-${agent}`;
+  if (NATIVE_SESSION_REPORTERS.includes(agent)) {
+    const affected = (verdicts ?? []).filter((v) => v.pane.agent === agent && !v.pane.hasSession);
+    const detail = "native reporting — Kiro V3 reports its session directly to Herdr; no installable hook";
+    return affected.length === 0
+      ? ok(check, detail)
+      : warn(check, `${detail}; no session on ${namePanes(affected)}`, NATIVE_REPORT_REMEDY);
+  }
   const install = `\`herdr integration install ${agent}\`, ${INSTALL_NOTE}`;
   if (status === null) {
     return skipped(
@@ -387,8 +402,8 @@ function python(deps: HistoryDeps): Finding {
   if (found === null) {
     return bad(
       check,
-      "no `python3` on PATH — Herdr's agent hooks need it, and without it they exit silently, so no" +
-        " agent ever reports a session",
+      "no `python3` on PATH — Herdr's agent hooks need it, and without it they exit silently, so hook-backed" +
+        " agents report no session",
       "install `python3` — the PATH the AGENT runs with must find it, not this shell's alone",
     );
   }
@@ -452,8 +467,13 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): 
     check,
     `${summary}; ${String(faulty.length)} report NO session: ${namePanes(faulty)} — their History link and icon are` +
       ` hidden, and the pane looks otherwise normal${notYet}`,
-    `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
-      ` ${INSTALL_NOTE}`,
+    [
+      faulty.some((v) => NATIVE_SESSION_REPORTERS.includes(v.pane.agent)) ? NATIVE_REPORT_REMEDY : "",
+      faulty.some((v) => !NATIVE_SESSION_REPORTERS.includes(v.pane.agent))
+        ? `\`herdr integration install <agent>\` for the hook-backed agents named above` +
+          ` (the \`integration-…\` lines say which), ${INSTALL_NOTE}`
+        : "",
+    ].filter((note) => note !== "").join("; "),
   );
 }
 
@@ -471,7 +491,7 @@ function journalRoots(deps: HistoryDeps): Finding {
     return warn(
       check,
       "COLLIE_TRANSCRIPT is off — the bridge reads no journal at all, so no pane offers a history" +
-        " however well its hooks are installed",
+        " however it reports its session",
       `remove COLLIE_TRANSCRIPT (or set it to 1) in ${deps.ctx.configDir}/.env, then \`collie restart\``,
     );
   }
@@ -481,7 +501,7 @@ function journalRoots(deps: HistoryDeps): Finding {
     return warn(
       check,
       `COLLIE_TRANSCRIPT is on, and none of the ${String(readings.length)} journal roots is there (${whose})`,
-      "run an agent once so it writes its log, or point COLLIE_TRANSCRIPT_ROOT at the tree it uses," +
+      "run an agent once so it writes its log, or set that agent's journal root (COLLIE_KIRO_ROOT for Kiro)," +
         " then `collie restart`",
     );
   }

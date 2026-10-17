@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0.0",
+  "dataModelVersion": 1,
+  "id": "sess_11111111-2222-4333-8444-555555555555",
+  "title": "Synthetic journal example",
+  "agentMode": "vibe",
+  "workspacePaths": [
+    "/example/alpha",
+    "/example/beta"
+  ],
+  "rootPaths": [
+    "/example/alpha",
+    "/example/beta",
+    "/example/attached"
+  ],
+  "createdAt": "2026-10-01T12:00:00.000Z",
+  "lastModifiedAt": "2026-10-01T12:00:00.000Z"
+}
