@@ -183,7 +183,7 @@ Each receipt state shows the words in the table above, with the reason after "no
   "This machine does not keep messages yet." on a machine that cannot keep them.
 - **Send as message.** Press and hold the Send button, then tap "Send as message". The text goes to
   this pane as a message from you, and a line under the box shows "Message to" the pane and the
-  receipt state. A plain tap on Send still sends the text as before. Tap "Dismiss" to clear the line.
+  receipt state. While it says "queued", the line follows the receipt and changes to the final word. A plain tap on Send still sends the text as before. Tap "Dismiss" to clear the line.
 - **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
   "Message 5 agents on 2 machines?" with the count for that choice. Tap "Send" to send, or "Back".
