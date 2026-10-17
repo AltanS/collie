@@ -37,7 +37,9 @@ export interface FakeHerdr {
   stop(): void;
 }
 
-const AGENT_STATUS = { state: "idle", label: "idle" };
+// The string real Herdr sends (`mux/herdr/captures/workspaces-0.9.3.json`). An object here made the
+// lead's merge drop every member pane (`merge.ts` admits a known status string only).
+const AGENT_STATUS = "idle";
 
 /** One `pane.send_text` / `pane.send_keys` / `pane.rename` the fake received — the write evidence. */
 export type PaneWrite = { method: string; params: JsonObject };
