@@ -153,12 +153,12 @@ export function PaneSection() {
           label="1: a read dialog owns the keys, the Send word leads to its card"
           reach="open `/model` in Claude, then tap Send with a draft in the box (field case 2026-10-15,
             ADR 0009). The header StatusArea carries the same refusal, but on a phone it is scrolled
-            away or under the keyboard, so the Send slot and the placeholder carry it at the thumb."
+            away or under the keyboard, so the Send slot carries it at the thumb."
           note="Real <Composer/> inside the real pane view, over a byte-faithful capture of Claude Code
             2.1.300's `/model` picker at 119 columns. The picker lifts as a `menu` card with its Esc
             action. With a draft in the box, Send becomes an 'Answer the dialog' word: tapping it
             scrolls to the card and focuses its first button, and sends nothing. The draft is kept.
-            An empty box keeps its microphone and reads 'Menu is waiting'. The unread-dialog card
+            An empty box keeps its microphone and the plain 'Type a reply…' hint. The unread-dialog card
             keeps its two-tap override instead."
           span={2}
         >

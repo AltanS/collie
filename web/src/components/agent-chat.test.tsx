@@ -145,9 +145,9 @@ describe("AgentChat — reply flow", () => {
 // M56 spec 06: the composer reads the pane's Surface, not the mirror. A dialog the mirror draws as a
 // card does not change the Send slot by itself; the bridge's read does.
 describe("AgentChat: the composer reads the pane's Surface", () => {
-  it("an ask on the pane's Surface names the dialog in the placeholder", () => {
+  it("an ask on the pane's Surface leaves the placeholder at the plain reply line", () => {
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    expect(screen.getByPlaceholderText("Permission is waiting")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeInTheDocument();
   });
 
   it("a marked pane the bridge has not read yet keeps Send open", async () => {
@@ -1257,7 +1257,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
       }),
     );
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
     await user.click(yes);
@@ -1271,7 +1271,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   it("'Answer the dialog' focuses the card's first button and sends nothing", async () => {
     const user = userEvent.setup();
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));

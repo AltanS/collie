@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askNoun, fieldLocked, paneSurface, sendSlot, UNREAD_SURFACE, unreachable, type ComposerFacts, type SendSlot } from "./send-slot";
+import { fieldLocked, paneSurface, sendSlot, UNREAD_SURFACE, unreachable, type ComposerFacts, type SendSlot } from "./send-slot";
 import type { Surface } from "./surface/surface";
 
 const NONE: ComposerFacts = { gone: false, readOnly: false, offline: false };
@@ -37,11 +37,6 @@ describe("sendSlot", () => {
   it("only gone, read-only and a box out of reach lock the field", () => {
     const slots: SendSlot[] = ["gone", "readOnly", "unreachable", "offline", "answer", "running", "manual", "wait", "draft", "send"];
     expect(slots.filter((slot) => fieldLocked(slot))).toEqual(["gone", "readOnly", "unreachable"]);
-  });
-
-  it("names the ask's kind for the placeholder", () => {
-    expect(askNoun(ask("permission"))).toBe("permission");
-    expect(askNoun(at({}))).toBeNull();
   });
 });
 

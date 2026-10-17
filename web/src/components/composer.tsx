@@ -30,7 +30,7 @@ import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
-import { fieldLocked, sendSlot, UNREAD_SURFACE, unreachable } from "@/lib/send-slot";
+import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
@@ -71,7 +71,7 @@ import { AttachmentChip, type ComposerAttachment } from "@/components/attachment
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
-import { useLive, useReadAt } from "@/lib/liveness";
+import { useLive } from "@/lib/liveness";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
@@ -382,20 +382,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const live = useLive(paneId, scope);
   const offline = stale === true || !live;
   const slot = sendSlot(shownSurface, { gone, readOnly, offline });
-  // THE WAY OUT (M56 spec 07, lib/way-out.ts): which state this is, whether the Keys dock opens and
-  // can send, and the words the placeholder names the state with. The rule is one function so that
-  // no refusal, no flag and no lock can hide the key pad on its own; only a pane that is gone, a
-  // device that may not write and a multiplexer that sends no key at all do.
-  const readAt = useReadAt(paneId, scope);
-  const [clockNow, setClockNow] = useState(() => Date.now());
-  const way = wayOut(shownSurface, { gone, readOnly, offline }, { keysCapable: canSendKeys.capable, readAt, now: clockNow, unread: shownSurface === UNREAD_SURFACE, shell: isShell });
-  // A stale read names its age, so the age moves while it stays stale (once a second, and only then).
-  useEffect(() => {
-    if (way.state !== "stale") return;
-    setClockNow(Date.now());
-    const timer = setInterval(() => setClockNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [way.state]);
+  // THE WAY OUT (M56 spec 07, lib/way-out.ts): which state this is, and whether the Keys dock opens and
+  // can send. The rule is one function so that no refusal, no flag and no lock can hide the key pad on
+  // its own; only a pane that is gone, a device that may not write and a multiplexer that sends no key
+  // at all do.
+  const way = wayOut(shownSurface, { gone, readOnly, offline }, { keysCapable: canSendKeys.capable });
   // The field itself is off only when nothing typed here can ever leave for this pane: a gone pane,
   // a read-only device, a box out of reach. Derived from the slot, never passed in.
   const locked = fieldLocked(slot);
@@ -1247,21 +1238,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
-  // write, a box out of reach), then Type mode, then the state's own sentence (lib/way-out.ts); a free
-  // box keeps the ordinary reply or shell line.
-  // While a send is in flight the box holds the probe character or the text on its way in, which the
-  // pane's read shows as a draft (send drill 3: "A draft is in the box" flashed for 0.3 s on Claude).
-  // It is Collie's own typing, not a draft, so the placeholder keeps the free line until the answer is in;
-  // a running turn keeps its own word, because the running state outranks a draft.
-  const stateWords = way.words === null || (sending && way.state === "draft") ? null : translate(way.words.key, way.words.params);
+  // write, a box out of reach), then Type mode, then the ordinary reply or shell line. The placeholder
+  // names no other state: the notices, the Screen pill and the Send slot carry those.
   const placeholderWords =
-    way.state === "gone" || way.state === "readOnly"
-      ? (stateWords ?? "")
-      : way.state === "unreachable"
-        ? unreachableWords
-        : direct.active
-          ? translate("composer.placeholder.direct")
-          : (stateWords ?? (isShell ? translate("composer.placeholder.shell") : translate("composer.placeholder.reply")));
+    way.state === "gone"
+      ? translate("composer.placeholder.gone")
+      : way.state === "readOnly"
+        ? translate("composer.placeholder.readOnly")
+        : way.state === "unreachable"
+          ? unreachableWords
+          : direct.active
+            ? translate("composer.placeholder.direct")
+            : isShell
+              ? translate("composer.placeholder.shell")
+              : translate("composer.placeholder.reply");
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -2188,8 +2178,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // A modal ask owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
             // and never in the header: on a phone that line is scrolled off or under
             // the keyboard when Send is tapped (field case 2026-10-15, ADR 0009). The word replaces
-            // Send only once there is a draft to refuse; an empty box keeps its microphone and the
-            // placeholder carries the state. The tap is a way TO the card (scroll, focus its first
+            // Send only once there is a draft to refuse; an empty box keeps its microphone. The tap is a way TO the card (scroll, focus its first
             // button), never a send. Same shape as the two confirm words below but a muted variant,
             // because this is a state to read, not a deliberate override to arm.
             <Button
