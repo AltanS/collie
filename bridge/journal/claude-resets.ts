@@ -194,6 +194,27 @@ export function modelChosenAfter(turns: ClaudeTurns): string | undefined {
   return chosen;
 }
 
+/** `Set effort level to max (this session only).` → `max`. The word as Claude Code printed it. */
+const EFFORT_SET = /^Set effort level to ([A-Za-z][\w-]*)/;
+
+/**
+ * The newest `/effort` choice written AFTER the newest turn, or undefined.
+ *
+ * The turn's own `effort` field says what the last request ran at; an `/effort` after it says what the
+ * next one will, so the pane's label wants the second, exactly as {@link modelChosenAfter} does (#463).
+ */
+export function effortChosenAfter(turns: ClaudeTurns): string | undefined {
+  let chosen: string | undefined;
+  for (const record of stretch(turns.records, turns.newest.index + 1, turns.records.length)) {
+    if (record.isSidechain === true) continue;
+    const text = commandText(record);
+    if (text === undefined || !text.startsWith(STDOUT)) continue;
+    const word = EFFORT_SET.exec(text.slice(STDOUT.length))?.[1];
+    if (word !== undefined) chosen = word;
+  }
+  return chosen;
+}
+
 /** One assistant record that stands for a request Claude Code really sent. */
 export interface ClaudeTurn {
   /** Its line index in the window. */

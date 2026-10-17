@@ -186,6 +186,15 @@ export interface AgentView {
    */
   model?: string;
   /**
+   * The effort this pane's agent runs at, in its harness's own word: pi's thinking level, Claude's
+   * `/effort`, Codex's reasoning effort, opencode's variant (`high`, `xhigh`, `max`). A level set
+   * since the last turn first, as {@link model} does. Rides only beside {@link model}, from the same
+   * probe. Display only: the phone draws it after the model and nothing decides on it.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: no model, a log that names no level, or an older bridge.
+   */
+  effort?: string;
+  /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
    * attached at serialise time exactly as {@link cache} is.

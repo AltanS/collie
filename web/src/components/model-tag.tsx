@@ -1,6 +1,6 @@
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
-import { modelLabel } from "@/lib/model-label";
+import { effortLabel, modelLabel } from "@/lib/model-label";
 
 // THE PANE'S MODEL, SMALL, ABOVE THE BELT. Altan asked for the selected model "somewhere subtle and
 // super small above the belt, floating and at all times": which brain is answering is a fact he
@@ -17,15 +17,20 @@ import { modelLabel } from "@/lib/model-label";
 // 10px on a 12px line box, the caption size the belt's own tags use, on a translucent page ground so
 // the mirror's last row stays readable through it. Absent, never a placeholder: no model, no label.
 //
-// IT DRAWS NOTHING WHILE THE SCREEN NAMES THE MODEL. The caller passes no model then (agent-chat.tsx
+// IT DRAWS NOTHING WHILE THE SCREEN NAMES THE MODEL, the effort included. The caller passes no model then (agent-chat.tsx
 // asks hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled. The tag
 // is absolute either way, so it arriving or leaving moves nothing (DESIGN.md §2): there is no line to
 // reserve because it owns none.
 
-export function ModelTag({ model }: { model: string | undefined }) {
+export function ModelTag({ model, effort }: { model: string | undefined; effort?: string | undefined }) {
   useLocale();
-  const label = modelLabel(model);
-  if (label === null) return null;
+  const name = modelLabel(model);
+  if (name === null) return null;
+  // THE EFFORT FOLLOWS THE MODEL, in the harness's own word (#463): "Opus 5.5 · high". It never draws
+  // alone, and it goes with the model when the screen already names it, because the caller passes
+  // neither then. The same model at `high` and at `low` is a different trade-off in time and cost.
+  const level = effortLabel(effort);
+  const label = level === null ? name : `${name} · ${level}`;
   return (
     <div
       data-slot="model-tag"

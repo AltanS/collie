@@ -2658,7 +2658,7 @@ export function AgentChat({
             />
             {/* The pane's model, small on the mirror's bottom-right corner, over both bodies alike
                 and under the notice slot above (model-tag.tsx says why there). */}
-            <ModelTag model={modelOnScreen ? undefined : agent?.model} />
+            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,

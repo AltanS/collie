@@ -914,6 +914,8 @@ describe("OpencodeTranscriptSource — an OpenCode 1.18 database", () => {
     const probe = await journal.cacheProbe?.({ kind: "id", value: SID });
     expect(probe?.cacheReadTokens).toBe(400);
     expect(probe?.model).toBe("anthropic:claude-sonnet-5");
+    // V1 writes the variant the turn ran at on the assistant message itself (#463).
+    expect(probe?.effort).toBe("medium");
     await rm(base, { recursive: true, force: true });
   });
 });
@@ -1129,7 +1131,7 @@ describe("opencodeResetsV2", () => {
       ]);
     msg("msg_a", "assistant", 1, 1995, {
       time: { created: 1990, completed: 2000 },
-      model: { providerID: "opencode-go", id: "deepseek-v4.1-flash" },
+      model: { providerID: "opencode-go", id: "deepseek-v4.1-flash", variant: "max" },
       tokens: { input: 10, cache: { read: 850, write: 0 } },
     });
     msg("msg_b", "compaction", 2, 2500, { time: { created: 2500 }, summary: "…" });
@@ -1145,6 +1147,8 @@ describe("opencodeResetsV2", () => {
     expect(probe?.turnId).toBe("1995");
     expect(probe?.cacheReadTokens).toBe(850);
     expect(probe?.model).toBe("opencode-go:deepseek-v4.1-flash");
+    // V2 nests the variant under `model`, beside the id (#463).
+    expect(probe?.effort).toBe("max");
     expect(ids(probe?.resets ?? [])).toEqual(["opencode.reset.compaction", "opencode.reset.model"]);
   });
 

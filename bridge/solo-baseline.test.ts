@@ -322,6 +322,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
   // here for the same reason, so no golden byte moved.
   model: true,
+  // Not a crew dimension: the effort beside that model, from the same probe, and absent here for the
+  // same reason, so no golden byte moved.
+  effort: true,
   // Not crew dimensions: the operator's name for this pane's one-pane tab, and the pane's position in
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
@@ -485,6 +488,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "badge",
       "cache",
       "cwd",
+      "effort",
       "focused",
       "gitHead",
       "hasSession",

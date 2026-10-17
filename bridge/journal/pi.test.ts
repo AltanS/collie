@@ -8,6 +8,7 @@ import {
   isBlobHash,
   isPiSessionId,
   parsePiTranscript,
+  piJournal,
   PiTranscriptSource,
   resolveBlobPath,
   resolveImageUrl,
@@ -998,5 +999,58 @@ describe("parsePiTranscript — a message delivered while the agent works", () =
       ["u2", { kind: "text", text: "are you updating build artifacts ??" }],
     ]);
     expect(entries.map((e) => e.role)).toEqual(["user", "assistant", "user", "assistant"]);
+  });
+});
+
+// The thinking level beside the model (#463). pi writes a `thinking_level_change` row when a session
+// opens and on every change, and pi 1.3 also stamps `thinkingLevel` on each assistant message, so the
+// newest of the two is the level the next turn runs at.
+describe("the pi probe — the thinking level", () => {
+  const SID = "019f1827-bf99-7927-9684-76318de905b5";
+  const level = (id: string, thinkingLevel: string) =>
+    JSON.stringify({ type: "thinking_level_change", id, parentId: "p0", timestamp: "2026-07-29T10:00:00.000Z", thinkingLevel });
+  const answer = (id: string, extra: Record<string, JsonValue> = {}) =>
+    row(id, {
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      usage: { input: 10, output: 5, cacheRead: 900, cacheWrite: 0 },
+      ...extra,
+    });
+
+  async function probeOf(lines: readonly string[]) {
+    const created = `${tmpdir()}/collie-pi-effort-${Math.floor(performance.now() * 1000)}`;
+    const root = join(created, "sessions");
+    const project = join(root, "--repo--");
+    await mkdir(project, { recursive: true });
+    const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
+    await Bun.write(log, `${lines.join("\n")}\n`);
+    const probe = await piJournal(root).cacheProbe?.({ kind: "path", value: await realpath(log) });
+    await rm(created, { recursive: true, force: true });
+    return probe;
+  }
+
+  test("the level row written when the session opened names the effort", async () => {
+    const probe = await probeOf([header(), level("l1", "high"), answer("a1")]);
+    expect(probe?.model).toBe("anthropic:claude-opus-5-5");
+    expect(probe?.effort).toBe("high");
+  });
+
+  test("a level changed after the last turn is the one the next turn uses", async () => {
+    const probe = await probeOf([header(), level("l1", "high"), answer("a1", { thinkingLevel: "high" }), level("l2", "low")]);
+    expect(probe?.turnId).toBe("a1");
+    expect(probe?.effort).toBe("low");
+  });
+
+  test("the turn's own thinkingLevel answers when no level row is in the window", async () => {
+    const probe = await probeOf([answer("a1", { thinkingLevel: "xhigh" })]);
+    expect(probe?.effort).toBe("xhigh");
+  });
+
+  test("a log that names no level reports no effort", async () => {
+    const probe = await probeOf([header(), answer("a1")]);
+    expect(probe?.model).toBe("anthropic:claude-opus-5-5");
+    expect(probe?.effort).toBeUndefined();
   });
 });
