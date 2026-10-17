@@ -9,6 +9,7 @@ import {
   inputFocusZoomsPage,
   IOS_NO_ZOOM_FONT_PX,
   mirrorFont,
+  sentSuggestionsOf,
   useDisplayPrefs,
 } from "./use-display-prefs";
 
@@ -338,3 +339,28 @@ describe("useDisplayPrefs — hand", () => {
   });
 });
 
+
+// ── "Suggestions from Sent" (Settings -> Device): the strip above a shell pane's box (M61) ────────
+describe("useDisplayPrefs — Sent suggestions", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("is on by default, and a payload written before the setting existed reads on", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false }));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+
+  it("persists the choice under the display prefs, in the key that already exists", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    act(() => result.current.setSentSuggestions(false));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sentSuggestions).toBe(false);
+    expect(Object.keys(localStorage)).toEqual([STORAGE_KEY]);
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(false);
+    act(() => result.current.setSentSuggestions(true));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+
+  it("reads a stored value that is not a boolean as on", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sentSuggestions: "no" }));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+});

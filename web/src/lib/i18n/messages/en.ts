@@ -2624,6 +2624,11 @@ export const en = {
   "sent.clear": "Clear Sent on {machine}",
   "sent.clear.confirm": "Tap again to clear",
   "sent.clear.error": "Could not clear Sent.",
+  "sent.suggest.aria": "Suggestions from Sent",
+  "sent.suggest.all": "All",
+  "sent.suggest.all.aria": "All sent lines",
+  "settings.sentSuggestions.title": "Suggestions from Sent",
+  "settings.sentSuggestions.description": "Shows earlier shell lines above the box as you type. A tap fills the box and sends nothing.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

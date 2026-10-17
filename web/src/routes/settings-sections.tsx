@@ -12,6 +12,7 @@ import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { KeepChatControl } from "@/components/keep-chat-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { HandControl } from "@/components/hand-control";
+import { SentSuggestionsControl } from "@/components/sent-suggestions-control";
 import { SpeechControl } from "@/components/speech-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
@@ -116,6 +117,9 @@ export function SettingsDeviceRoute() {
           sheet offers the "Zen mode" row at all. Off by default, because zen takes away every way
           back except one floating button. */}
       <ZenControl />
+      {/* Whether a shell pane offers lines from Sent above its box as you type (M61). A standing choice
+          about this phone's composer, stored with the display prefs. */}
+      <SentSuggestionsControl />
       {/* How a pane's Changes view finds repos (ADR 0065). Read by the pane menu, not by here. */}
       <ChangesControl />
       {/* What this phone keeps of each pane's Chat, and for how long (M46 spec 09). Here, beside the
