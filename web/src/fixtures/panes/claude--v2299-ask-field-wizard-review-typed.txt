@@ -1,0 +1,30 @@
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mwarm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mverbatim, then stop.[0m[48;2;55;55;55m                                                                                                                                     [0m
+
+[0m[38;2;153;153;153m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which color do you prefer? → Teal, like the sea[0m
+
+[0m[38;2;255;255;255m● [0mThe user answered: "Which color do you prefer?"="Teal, like the sea"
+ 
+[0m[38;2;153;153;153m✻ Brewed for 11s · done 1:48 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mNow call AskUserQuestion exactly once with THREE questions (multiSelect false on all): Q1 'Which fruit?' header 'Fruit' options Apple, Pear; Q2 'Which [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdrink?' header 'Drink' options Tea, Coffee; Q3 'Which city?' header 'City' options Paris, Rome. After I answer, reply with only the exact tool result [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtext verbatim, then stop.[0m[48;2;55;55;55m                                                                                                                                [0m
+
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Fruit  ☒ Drink  ☒ City [0m[38;2;0;0;0m[48;2;177;185;249m ✔ Submit [0m[38;2;153;153;153m →[0m
+
+[0m[1m[38;2;255;255;255mReview your answers[0m
+ 
+ ● Which fruit?
+   [0m[38;2;78;186;101m→ Mango[0m
+ ● Which drink?
+   [0m[38;2;78;186;101m→ Tea[0m
+ ● Which city?
+   [0m[38;2;78;186;101m→ Lisbon[0m
+
+[0m[38;2;153;153;153mReady to submit your answers?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSubmit answers[0m
+  [0m[38;2;153;153;153m2. [0mCancel

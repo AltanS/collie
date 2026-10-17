@@ -531,6 +531,7 @@ export const es: Dictionary = {
   "settings.paneOrder.description":
     "Actividad pone arriba, en el panel de control y en el conmutador, el panel donde ocurrió algo por última vez. Caché pone el que pierde antes su caché de prompts. Lugar mantiene el orden de tu terminal.",
   "chat.status.feedbackSent": "Comentarios enviados",
+  "chat.status.answerSent": "Respuesta enviada",
   "chat.status.sent": "Enviado",
   "chat.status.menuChanged": "Menú modificado: recargando",
   "chat.status.askChanged": "El diálogo cambió; la tarjeta muestra el nuevo",
@@ -758,6 +759,24 @@ export const es: Dictionary = {
     "El foco de entrada está en la línea de texto de la terminal. Los botones se reactivan al cerrar el campo.",
   "prompt.feedback.freeText.typedPrefix":
     "Respuesta personalizada en la terminal: ",
+  "prompt.feedback.answer.offer": "Escribir tu propia respuesta",
+  "prompt.feedback.answer.change": "Cambiar esta respuesta",
+  "prompt.feedback.answer.editorLabel": "Tu respuesta",
+  "prompt.feedback.answer.textAria": "Texto de la respuesta",
+  "prompt.feedback.answer.placeholder": "Escribe tu respuesta...",
+  "prompt.feedback.answer.help":
+    "Se escribe en el campo de respuesta de la pregunta y se envía como tu respuesta.",
+  "prompt.feedback.answer.helpWizard":
+    "Se escribe en el campo de respuesta de esta pregunta. Al enviarla, se responde y se pasa a la siguiente.",
+  "prompt.feedback.answer.helpMulti":
+    "Añade tu respuesta como una opción marcada; toca Enviar (o Siguiente) cuando termines.",
+  "prompt.feedback.answer.send": "Enviar respuesta",
+  "prompt.feedback.answer.sending": "Escribiendo tu respuesta...",
+  "prompt.feedback.answer.focused":
+    "El campo de respuesta tiene el teclado en el terminal, así que estos botones escribirían en él. Aun así puedes enviar tu propia respuesta abajo.",
+  "prompt.feedback.answer.typedPrefix": "En el campo de respuesta: ",
+  "prompt.feedback.answer.fieldMoved": "El campo de respuesta del terminal ahora contiene «{text}». Envía de nuevo para reemplazarlo.",
+  "prompt.feedback.answer.fieldEmptied": "El campo de respuesta del terminal se vació. Envía de nuevo para rellenarlo.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Configuración del pane",
@@ -1470,6 +1489,10 @@ export const es: Dictionary = {
   "promptAction.feedback.empty": "No hay nada para enviar.",
   "promptAction.feedback.boxNotOpened": "El cuadro de comentarios no se abrió. Revisa el panel.",
   "promptAction.feedback.notArrived": "El comentario no llegó. No se envió nada.",
+  "promptAction.answer.fieldNotReached": "No se pudo llegar al campo de respuesta. No se envió nada.",
+  "promptAction.answer.notCleared": "No se pudo vaciar el campo de respuesta. No se envió nada.",
+  "promptAction.answer.notArrived": "Tu respuesta no llegó al campo. No se envió nada.",
+  "promptAction.answer.notTicked": "La respuesta se escribió, pero su fila no se marcó. Revísala en la tarjeta.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "Ocupado. Hay otra transcripción en curso. Reintenta en unos segundos.",

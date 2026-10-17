@@ -195,14 +195,118 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     expect(model!.feedback).toBeUndefined();
   });
 
-  it("AskUserQuestion's free-text row is modelled as a field Collie never types into", () => {
-    // "Type something." is never a button. Measured on Claude Code 2.1.283: with the pointer on it a
-    // digit is typed into the field, so it is modelled with the `free-text` purpose, which locks the
-    // other buttons while focused and never offers the plan flow's editor or keystroke plan.
+  it("AskUserQuestion's free-text row is modelled as the answer field Collie types into", () => {
+    // "Type something." is never a button. With the pointer on it a digit is typed into the field, so
+    // it locks the other buttons while focused; it carries the `answer` purpose (ADR 0107) and where
+    // the pointer sits relative to it, which the walk onto a filled field reads.
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
     expect(model.family).toBe("select");
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
-    expect(model.feedback).toEqual({ key: expect.any(String), focused: false, text: "", purpose: "free-text" });
+    expect(model.feedback).toEqual({
+      key: expect.any(String),
+      focused: false,
+      text: "",
+      purpose: "answer",
+      pointer: "above",
+    });
+  });
+
+  describe("the AskUserQuestion answer field on Claude Code 2.1.299", () => {
+    const field = (name: string) => detectPromptSelect(fixtureLines(name))?.feedback;
+
+    it("focused and empty", () => {
+      expect(field("claude--v2299-ask-field-single-focused-empty.txt")).toEqual({
+        key: "4",
+        focused: true,
+        text: "",
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("focused, holding a short answer", () => {
+      expect(field("claude--v2299-ask-field-single-focused-typed.txt")).toEqual({
+        key: "4",
+        focused: true,
+        text: "Teal, like the sea",
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("holding text with the pointer moved up onto an option", () => {
+      expect(field("claude--v2299-ask-field-single-typed-off-row.txt")).toEqual({
+        key: "4",
+        focused: false,
+        text: "Teal, like the sea",
+        purpose: "answer",
+        pointer: "above",
+      });
+    });
+
+    it("a value wrapped onto two display lines is rejoined exactly", () => {
+      const name = "claude--v2299-ask-field-single-focused-wrapped.txt";
+      const text =
+        "A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo " +
+        "most of the day and sleeps in the branches when it is warm, which seems like a very sensible way to live if " +
+        "you ask me, honestly the best of all the animals";
+      // The capture's own last display line, so the expected sentence is the one on screen.
+      expect(fixtureText(name)).toContain("you ask me, honestly the best of all the animals");
+      expect(field(name)).toEqual({ key: "3", focused: true, text, purpose: "answer", pointer: "on" });
+    });
+
+    it("a value wrapped onto three display lines is rejoined exactly", () => {
+      const twenty =
+        "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen " +
+        "eighteen nineteen twenty";
+      expect(field("claude--v2299-ask-field-single-focused-three-lines.txt")).toEqual({
+        key: "3",
+        focused: true,
+        text: [twenty, twenty, twenty].join(" "),
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("focusing the field keeps the dialog's identity, though the footer gains its ctrl+g hint", () => {
+      const offRow = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-typed-off-row.txt"))!;
+      const focused = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-focused-typed.txt"))!;
+      expect(fixtureText("claude--v2299-ask-field-single-focused-typed.txt")).toContain("ctrl+g to edit in Notepad");
+      expect(promptsSameIdentity(offRow, focused)).toBe(true);
+      // The byte-faithful signature still sees the change, so a committing key is checked against it.
+      expect(offRow.signature).not.toBe(focused.signature);
+    });
+
+    it("a changed question is still another dialog", () => {
+      const name = "claude--v2299-ask-field-single-focused-typed.txt";
+      // Every occurrence: the first is the agent's prompt above the dialog, not the dialog's question.
+      const other = fixtureText(name).replaceAll("Which color do you prefer?", "Which colour do you like?");
+      expect(other).not.toBe(fixtureText(name));
+      const a = detectPromptSelect(fixtureLines(name))!;
+      const b = detectPromptSelect(splitLines(parseAnsi(other)))!;
+      expect(promptsSameIdentity(a, b)).toBe(false);
+    });
+
+    it("the plan footer's path after the hint is still compared", () => {
+      const name = "claude--plan-approval.txt";
+      const other = fixtureText(name).replace("velvet-toasting-turtle.md", "other-plan-entirely.md");
+      expect(other).not.toBe(fixtureText(name));
+      const a = detectPromptSelect(fixtureLines(name))!;
+      const b = detectPromptSelect(splitLines(parseAnsi(other)))!;
+      expect(promptsSameIdentity(a, b)).toBe(false);
+    });
+
+    it("every capture lifts a prompt-select block", () => {
+      for (const name of [
+        "claude--v2299-ask-field-single-focused-empty.txt",
+        "claude--v2299-ask-field-single-focused-typed.txt",
+        "claude--v2299-ask-field-single-typed-off-row.txt",
+        "claude--v2299-ask-field-single-focused-wrapped.txt",
+        "claude--v2299-ask-field-single-focused-three-lines.txt",
+      ]) {
+        expect(detectPromptSelect(fixtureLines(name)), name).not.toBeNull();
+      }
+    });
   });
 
   it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {

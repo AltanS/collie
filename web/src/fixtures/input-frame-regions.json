@@ -838,6 +838,82 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2299-ask-field-multi-focused-cleared.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-multi-focused-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-multi-focused-unticked.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-multi-pointer-submit.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-multi-ticked-empty.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-single-focused-empty.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-single-focused-three-lines.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-single-focused-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-single-focused-wrapped.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-single-typed-off-row.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-focused-empty.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-focused-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-review-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-revisit-cleared.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-revisit-focused.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizard-revisit-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizmulti-focused-empty.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizmulti-focused-typed.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2299-ask-field-wizmulti-focused-unticked.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2299-ask-under-long-task-list.txt",
   "frame": null
  },

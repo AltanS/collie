@@ -225,3 +225,118 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
     expect(screen.queryByRole("list", { name: "Questions" })).not.toBeInTheDocument();
   });
 });
+
+// The question's own answer field (ADR 0107): a typed answer is one more ticked choice, so the card
+// shows it as a checkbox row; while the field has the keyboard in the terminal a digit is typed into
+// it and `Left` moves its caret, so every toggle, the escape and the step arrows lock.
+describe("MultiSelectBlock — the answer field", () => {
+  const OFFER = "Type your own answer";
+  const capture = (name: string) => fixtureModel(`claude--v2299-ask-field-${name}.txt`);
+
+  it("the offer opens the editor, which says the answer becomes a ticked choice", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByText(/Adds your answer as a ticked choice/)).toBeInTheDocument();
+  });
+
+  it("a typed field is a checkbox row of its own, and Change opens the editor holding it", async () => {
+    const onAction = vi.fn();
+    const onAnswer = vi.fn(() => true);
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-pointer-submit")} onAction={onAction} onAnswer={onAnswer} />);
+    const row = screen.getByRole("checkbox", { name: /Mushroom/ });
+    expect(row).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText(/In the answer field:/)).not.toBeInTheDocument();
+    await user.click(row);
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "toggle", n: 4 });
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+  });
+
+  it("a focused field locks the options, its own row, the escape and the step arrows, not Next", () => {
+    render(<MultiSelectBlock multi={capture("wizmulti-focused-typed")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
+    for (const name of [/Cheese/, /Olives/, /Basil/, /Pineapple/]) {
+      expect(screen.getByRole("checkbox", { name })).toBeDisabled();
+    }
+    for (const name of [/Chat about this/, /Previous step/, /Next step/]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: /^Next$/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Change this answer" })).toBeEnabled();
+  });
+
+  it("keeps the draft on screen when the answer is refused", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+
+  // The open editor hides what the field holds, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    function holding(multi: MultiSelectModel, text: string): MultiSelectModel {
+      if (multi.phase !== "checkbox" || !multi.field) throw new Error("capture has no answer field");
+      return { ...multi, field: { ...multi.field, text } };
+    }
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "Desk words")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal now holds “Desk words”. Send again to replace it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const multi = capture("multi-pointer-submit");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal was emptied. Send again to fill it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+});

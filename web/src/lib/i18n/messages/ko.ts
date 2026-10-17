@@ -526,6 +526,7 @@ export const ko: Dictionary = {
   "settings.paneOrder.description":
     "활동은 마지막으로 무언가 일어난 창을 대시보드와 전환기 맨 위에 둡니다. 캐시는 프롬프트 캐시가 가장 먼저 사라지는 창을 맨 위에 둡니다. 위치는 터미널의 순서를 그대로 둡니다.",
   "chat.status.feedbackSent": "피드백 전송 완료",
+  "chat.status.answerSent": "답변 전송 완료",
   "chat.status.sent": "전송 완료",
   "chat.status.menuChanged": "메뉴 변경 감지, 새로고침 중",
   "chat.status.askChanged": "대화 상자가 변경되었습니다. 카드가 새 대화 상자를 표시합니다.",
@@ -752,6 +753,21 @@ export const ko: Dictionary = {
   "prompt.feedback.freeText.focused":
     "텍스트 입력 필드가 터미널 키보드를 점유 중입니다. 필드가 닫히면 버튼이 다시 활성화됩니다.",
   "prompt.feedback.freeText.typedPrefix": "터미널에서 직접 답변 작성 중: ",
+  "prompt.feedback.answer.offer": "직접 답변 입력",
+  "prompt.feedback.answer.change": "이 답변 변경",
+  "prompt.feedback.answer.editorLabel": "내 답변",
+  "prompt.feedback.answer.textAria": "답변 내용",
+  "prompt.feedback.answer.placeholder": "답변을 입력하세요…",
+  "prompt.feedback.answer.help": "질문의 답변 칸에 입력되어 답변으로 전송됩니다.",
+  "prompt.feedback.answer.helpWizard": "이 질문의 답변 칸에 입력됩니다. 보내면 답변되고 다음 질문으로 넘어갑니다.",
+  "prompt.feedback.answer.helpMulti":
+    "답변을 체크된 선택지로 추가합니다. 다 되면 제출(또는 다음)을 누르세요.",
+  "prompt.feedback.answer.send": "답변 보내기",
+  "prompt.feedback.answer.sending": "답변 입력 중…",
+  "prompt.feedback.answer.focused": "터미널에서 답변 칸이 키보드를 사용 중이라 이 버튼을 누르면 칸에 입력됩니다. 아래에서 직접 답변을 보낼 수는 있습니다.",
+  "prompt.feedback.answer.typedPrefix": "답변 칸 내용: ",
+  "prompt.feedback.answer.fieldMoved": "터미널의 답변 칸에 이제 “{text}”이(가) 들어 있습니다. 다시 보내면 바꿉니다.",
+  "prompt.feedback.answer.fieldEmptied": "터미널의 답변 칸이 비워졌습니다. 다시 보내면 채웁니다.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "창 설정",
@@ -1461,6 +1477,10 @@ export const ko: Dictionary = {
   "promptAction.feedback.empty": "전송할 내용이 없습니다.",
   "promptAction.feedback.boxNotOpened": "피드백 입력창이 열리지 않았습니다. 창 상태를 확인하십시오.",
   "promptAction.feedback.notArrived": "피드백이 전달되지 않았습니다. 아무것도 제출되지 않았습니다.",
+  "promptAction.answer.fieldNotReached": "답변 칸으로 이동하지 못했습니다. 아무것도 전송되지 않았습니다.",
+  "promptAction.answer.notCleared": "답변 칸을 비우지 못했습니다. 아무것도 전송되지 않았습니다.",
+  "promptAction.answer.notArrived": "답변이 칸에 입력되지 않았습니다. 아무것도 제출되지 않았습니다.",
+  "promptAction.answer.notTicked": "답변은 입력되었지만 해당 행이 체크되지 않았습니다. 카드에서 확인하세요.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "다른 녹음을 변환 중입니다. 잠시 후 다시 시도하세요.",

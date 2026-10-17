@@ -99,7 +99,7 @@ import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { StatusDot } from "@/components/status-badge";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
-import { submitWizardKeys } from "@/lib/wizard-action";
+import { submitWizardAnswer, submitWizardKeys } from "@/lib/wizard-action";
 import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { submitMenuKeys } from "@/lib/menu-action";
@@ -1354,10 +1354,13 @@ export function AgentChat({
           ? await submitPromptOption({ ...base, option: action.option })
           : await submitPromptFeedback({ ...base, text: action.text });
       if (result.status === "sent") {
-        setStatus(
-          action.kind === "feedback" ? t("chat.status.feedbackSent") : t("chat.status.sent"),
-          "success",
-        );
+        const sentStatus =
+          action.kind === "option"
+            ? t("chat.status.sent")
+            : prompt.feedback?.purpose === "answer"
+              ? t("chat.status.answerSent")
+              : t("chat.status.feedbackSent");
+        setStatus(sentStatus, "success");
         await showAfterSend();
       } else if (result.status === "changed") {
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI
@@ -1406,6 +1409,41 @@ export function AgentChat({
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
+    },
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+  );
+
+  // Send an answer typed on the phone into a wizard step's field (ADR 0107): the shared recipe
+  // reaches, clears and fills the field, then one bound Enter answers the step and advances it.
+  // Resolves whether it was sent, so the card keeps a refused draft on screen.
+  const handleWizardAnswer = useCallback(
+    async (answer: string, wizard: WizardModel) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      const result = await submitWizardAnswer({
+        paneId,
+        scope,
+        requestedLines,
+        detectedRevision: shown.revision,
+        agent: agent?.agent,
+        wizard,
+        text: answer,
+      });
+      if (result.status === "sent") {
+        setStatus(t("chat.status.answerSent"), "success");
+        await showAfterSend();
+      } else if (result.status === "changed") {
+        // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
+        if (result.why !== undefined) console.info("collie: answer refused", result.why);
+        setStatus(t("chat.status.wizardChanged"), "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
+      }
+      return result.status === "sent";
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
@@ -1488,6 +1526,41 @@ export function AgentChat({
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
+    },
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+  );
+
+  // An answer typed into a multi-select question's own field (ADR 0107): the `type` intent, under the
+  // same per-pane lock as every multi-select tap. It ticks the answer and leaves Submit/Next to the
+  // person. Resolves whether it was sent, so the card keeps a refused draft in its editor.
+  const handleMultiSelectAnswer = useCallback(
+    async (answer: string, multi: MultiSelectModel) => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      const result = await submitMultiSelectIntent({
+        paneId,
+        scope,
+        requestedLines,
+        detectedRevision: shown.revision,
+        agent: agent?.agent,
+        multi,
+        intent: { kind: "type", text: answer },
+      });
+      if (result.status === "sent") {
+        setStatus(t("chat.status.answerSent"), "success");
+        await showAfterSend();
+      } else if (result.status === "changed") {
+        // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
+        if (result.why !== undefined) console.info("collie: answer refused", result.why);
+        setStatus(t("chat.status.selectionChanged"), "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || t("chat.status.sendFailed"), "error");
+      }
+      return result.status === "sent";
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
@@ -2683,8 +2756,10 @@ export function AgentChat({
               blocks={blocks}
               onPromptAction={handlePromptAction}
               onWizardAction={handleWizardAction}
+              onWizardAnswer={handleWizardAnswer}
               onPreviewAction={handlePreviewAction}
               onMultiSelectAction={handleMultiSelectAction}
+              onMultiSelectAnswer={handleMultiSelectAnswer}
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               promptDisabled={readOnly || gone}

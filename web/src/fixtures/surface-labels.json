@@ -831,6 +831,101 @@
    "version": "2.1.299",
    "state": "dialog"
   },
+  "claude--v2299-ask-field-multi-focused-cleared.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-focused-unticked.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-pointer-submit.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-ticked-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-three-lines.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-wrapped.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-typed-off-row.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-review-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-cleared.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-focused.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-unticked.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
   "claude--v2299-ask-under-task-list.txt": {
    "harness": "claude",
    "version": "2.1.299",

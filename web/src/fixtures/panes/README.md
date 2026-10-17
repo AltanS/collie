@@ -996,6 +996,35 @@ Every key behaviour named below was sent one keystroke at a time and read back.
 | `claude--v2283-shell-before-first-frame.txt` | The shell prompt with `claude-danger` typed, read while herdr already reported the agent as `claude` (about 0.3 s before the first frame) |
 | `claude--v2283-shell-after-exit.txt` | The shell prompt just after Claude exited, still reported as `claude` (about 0.5 s) |
 
+## AskUserQuestion field corpus (captured 2026-10-14, Claude Code 2.1.299, herdr 0.9.4, Windows, throwaway Herdr pane)
+
+The `Type something.` field typed into, cleared and re-answered, one keystroke at a time, for
+[`ASK_FIELD_NOTES.md`](../../lib/grammar/ASK_FIELD_NOTES.md) and ADR 0107. A 157-column pane in a
+scratch folder, trimmed to the last 30 rows, home path scrubbed. Every answer named below was read
+back from the session journal.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2299-ask-field-single-focused-empty.txt` | Single question, `4` pressed: pointer on the empty `4. Type something.`, footer gains `ctrl+g to edit in Notepad`. Answers nothing |
+| `claude--v2299-ask-field-single-focused-typed.txt` | The field focused, holding `Teal, like the sea`. `Enter` answered with it |
+| `claude--v2299-ask-field-single-typed-off-row.txt` | The same text, `Up`: pointer on `3. Blue`. The field's digit now SUBMITS the held text |
+| `claude--v2299-ask-field-single-focused-wrapped.txt` | Focused, a value wrapped to two display lines (continuation indented five columns) |
+| `claude--v2299-ask-field-single-focused-three-lines.txt` | Focused, a value wrapped to three display lines; three `ctrl+u` emptied it from the end |
+| `claude--v2299-ask-field-wizard-focused-empty.txt` | Three-question wizard, step 1, field's digit pressed: focused and empty, no advance |
+| `claude--v2299-ask-field-wizard-focused-typed.txt` | The same field holding `Mango`. `Enter` answered and advanced to step 2 |
+| `claude--v2299-ask-field-wizard-revisit-typed.txt` | Step 1 revisited after answering by typing: `3. Mango ✔`, pointer on row 1 |
+| `claude--v2299-ask-field-wizard-revisit-focused.txt` | Then `Down` × 2: `❯ 3. Mango  ✔`, focused, caret at the end |
+| `claude--v2299-ask-field-wizard-revisit-cleared.txt` | Then `ctrl+u ctrl+k`: `❯ 3. Type something. ✔`, empty |
+| `claude--v2299-ask-field-wizard-review-typed.txt` | The review step listing typed answers (`→ Mango`, `→ Lisbon`) beside a picked one |
+| `claude--v2299-ask-field-multi-ticked-empty.txt` | multiSelect after `1` and `4`: `[✔] Cheese`, `[✔] Type something` (the digit ticks, never focuses), pointer on row 1 |
+| `claude--v2299-ask-field-multi-focused-typed.txt` | `Down` × 3 and a paste: `❯ 4. [✔] Pineapple`, focused |
+| `claude--v2299-ask-field-multi-focused-unticked.txt` | `Enter` on that row: `❯ 4. [ ] Pineapple` (Enter toggles; the text stays) |
+| `claude--v2299-ask-field-multi-focused-cleared.txt` | `ctrl+u ctrl+k`: `❯ 4. [ ] Type something`, cleared and unticked |
+| `claude--v2299-ask-field-multi-pointer-submit.txt` | A typed, unticked `4. [ ] Mushroom` with the pointer on `Submit` |
+| `claude--v2299-ask-field-wizmulti-focused-empty.txt` | Two-question wizard, step 1 multiSelect (advance row `Next`): pointer on the empty, ticked field |
+| `claude--v2299-ask-field-wizmulti-focused-typed.txt` | The same field holding `Pineapple`, ticked |
+| `claude--v2299-ask-field-wizmulti-focused-unticked.txt` | `Enter` on it: `[ ] Pineapple` |
+
 ## Draft-frame and modal-edge corpus (captured 2026-09-26, Claude Code 2.1.283, herdr 0.9.0, throwaway Herdr panes)
 
 Two screens the phone read wrong. A draft holding a pasted rule or shell prompt hid its own input
