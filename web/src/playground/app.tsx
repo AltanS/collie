@@ -79,6 +79,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "motion", title: "Motion" }, load: () => import("./sections/motion").then((m) => ({ default: m.MotionSection })) },
   { def: { id: "cache", title: "Cache" }, load: () => import("./sections/cache").then((m) => ({ default: m.CacheSection })) },
   { def: { id: "pane-settings", title: "Pane settings" }, load: () => import("./sections/pane-settings").then((m) => ({ default: m.PaneSettingsSection })) },
+  { def: { id: "walky", title: "Walky talky" }, load: () => import("./sections/walky").then((m) => ({ default: m.WalkySection })) },
   { def: { id: "changes", title: "Changes" }, load: () => import("./sections/changes").then((m) => ({ default: m.ChangesSection })) },
   { def: { id: "dashboard-nav", title: "Dashboard nav" }, load: () => import("./sections/dashboard-nav").then((m) => ({ default: m.DashboardNavSection })) },
   { def: { id: "attention-icon", title: "Attention icon" }, load: () => import("./sections/attention-icon").then((m) => ({ default: m.AttentionIconSection })) },
