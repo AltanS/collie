@@ -656,6 +656,7 @@ async function codexCacheProbe(
   let stamp = "";
   let turnId = "";
   let model: string | undefined;
+  let effort: string | undefined;
   let usage: JsonObject | undefined;
 
   walkBack(tail.lines, (raw): true | undefined => {
@@ -676,6 +677,8 @@ async function codexCacheProbe(
     if (turnId === "" && entry.type === "turn_context" && payload !== null) {
       turnId = asText(payload.turn_id) ?? "";
       model = asText(payload.model);
+      // The reasoning effort rides on the same row as the model, so the two always name one turn.
+      effort = asText(payload.effort);
     }
     // `true` stops the walk; `undefined` keeps it going. Everything needed is in hand.
     return lastRequestAt !== 0 && usage !== undefined && turnId !== "" ? true : undefined;
@@ -696,5 +699,6 @@ async function codexCacheProbe(
   if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
   if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
   if (model !== undefined) probe.model = model;
+  if (effort !== undefined) probe.effort = effort;
   return probe;
 }

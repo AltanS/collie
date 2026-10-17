@@ -1369,6 +1369,9 @@ async function opencodeCacheProbe(
     if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
     if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
     if (pair !== undefined) probe.model = pair;
+    // The variant the turn ran at sits beside the model: on the message in V1, under `model` in V2.
+    const effort = asText(nested?.variant) ?? asText(message.variant);
+    if (effort !== undefined) probe.effort = effort;
     const resets = store === "v2" ? opencodeResetsV2(messages, index) : opencodeResets(messages, index);
     if (resets.length > 0) probe.resets = resets;
     return probe;
