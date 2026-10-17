@@ -4,7 +4,7 @@
 // paste on and off. The fake draws a box the way the Claude profile reads one (a rule, the prompt
 // glyph, a rule, a status row), or, for a harness with no profile, a bare editor between two rules.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -2175,6 +2175,28 @@ describe("the write and S1", () => {
     const answer = await protocol.handle({ id: "write-fail-01", text: "hello world", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "write_failed", keys: [] });
     expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("a write_failed receipt keeps a fixed Collie sentence, never the multiplexer's words; the log keeps them", async () => {
+    const r = rig({ paste: false });
+    r.pane.typeText = () => Promise.resolve(muxRefused("tmux: can't find pane: %7 /run/user/1000/tmux-1000/default"));
+    const protocol = new SendProtocol({ ...r.deps, mux: { readGrid: r.pane.readGrid, typeText: r.pane.typeText } });
+    const logged: string[] = [];
+    const warn = spyOn(console, "warn").mockImplementation((...lines: string[]): void => {
+      logged.push(lines.join(" "));
+    });
+    let answer: SendAnswer;
+    try {
+      answer = await protocol.handle({ id: "write-fail-02", text: "hello world", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    } finally {
+      warn.mockRestore();
+    }
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "write_failed", detail: "Collie could not type into the pane." });
+    const stored = r.deps.store.get("write-fail-02")?.receipt;
+    expect(stored?.detail).toBe("Collie could not type into the pane.");
+    expect(JSON.stringify(stored)).not.toContain("tmux");
+    expect(readFileSync(join(dir, "sends", "write-fail-02.json"), "utf8")).not.toContain("/run/user");
+    expect(logged.some((line) => line.includes("write_failed") && line.includes("can't find pane: %7"))).toBe(true);
   });
 
   test("a box that shows other text ends typed_not_submitted with Submit and Discard, no Enter", async () => {

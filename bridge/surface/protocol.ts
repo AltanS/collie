@@ -137,6 +137,12 @@ function probeMayRemain(probe: string): string {
   return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
 }
 
+/**
+ * The receipt's detail of a refusal `write_failed`. The multiplexer's own words (tmux or zellij
+ * stderr) stay in the bridge log: a receipt lives seven days and its list is returned to the phone.
+ */
+const WRITE_FAILED = "Collie could not type into the pane.";
+
 /** The detail after a Submit that went out on a box holding another text than the request named. */
 const HELD_OTHER = "The box held a different text than the request when Enter went out.";
 
@@ -1978,7 +1984,7 @@ export class SendProtocol {
     const queued = labelFromWitness(state.match) ? state.witnessed : state.queued;
     if (queued && (outcome === "sent" || outcome === "effective")) receipt.queued = true;
     if ((outcome === "refused" || outcome === "typed_not_submitted") && note !== undefined) {
-      const detail = note.detail ?? (outcome === "typed_not_submitted" && reason !== undefined ? typedDetail(reason) : undefined) ?? reason;
+      const detail = reason === "write_failed" && outcome === "refused" ? WRITE_FAILED : note.detail ?? (outcome === "typed_not_submitted" && reason !== undefined ? typedDetail(reason) : undefined) ?? reason;
       if (detail !== undefined) receipt.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
       if (saw !== undefined) receipt.saw = surfaceWords(saw);
@@ -2027,6 +2033,9 @@ export class SendProtocol {
 
   private settle(state: RunState, end: Ended): SendAnswer {
     const outcome = this.settleOpen(state, end.outcome);
+    if (outcome === "refused" && end.reason === "write_failed" && end.extra.detail !== undefined) {
+      console.warn(`[send] ${state.record.id} write_failed on ${state.target.paneId}: ${end.extra.detail}`);
+    }
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
     this.count(state, receipt, end.extra.surface);

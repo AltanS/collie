@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A stored send receipt is read leniently, and a failed write keeps no multiplexer text.** A receipt with a screen word this Collie does not know, or a reason line that is too long, was dropped whole, so its request id counted as new and a retry ran again. Now only the unknown `saw` word goes, a long line is cut to 240 characters, and a line of the wrong type is dropped, as on the phone. The receipt of a send that failed to write into the pane now says "Collie could not type into the pane." instead of the words tmux or zellij printed. Those words stay in the bridge log.
+
 ## [1.22.2] - 2026-10-17
 
 ### Fixed

@@ -152,10 +152,12 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const acknowledged = node.acknowledged === undefined ? undefined : asJsonString(node.acknowledged);
   if (node.acknowledged !== undefined && (acknowledged === undefined || !REQUEST_ID.test(acknowledged))) return undefined;
   // `detail` is a short line and `saw` four words, on a refusal or a typed_not_submitted only (or absent on older receipts).
-  const detail = node.detail === undefined ? undefined : asJsonString(node.detail);
-  if (node.detail !== undefined && (detail === undefined || detail.length > RECEIPT_DETAIL_MAX)) return undefined;
-  const saw = node.saw === undefined ? undefined : readSurfaceWords(node.saw);
-  if (saw === null) return undefined;
+  // Both are lenient like the phone's reader: a field that is not what it should be is dropped (a
+  // `detail` too long is cut), and the rest of the receipt stays. Rejecting the receipt would drop the
+  // record, and the same request id would count as new.
+  const storedDetail = node.detail === undefined ? undefined : asJsonString(node.detail);
+  const detail = storedDetail?.slice(0, RECEIPT_DETAIL_MAX);
+  const saw = node.saw === undefined ? undefined : (readSurfaceWords(node.saw) ?? undefined);
   const gapsMs: Partial<Record<SendStep, number>> = {};
   for (const step of STEPS) {
     const gap = asJsonNumber(gapsNode[step]);
