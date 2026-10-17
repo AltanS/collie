@@ -61,6 +61,22 @@ export class LabTmux {
     if (code !== 0) throw new Error(`tmux new-session failed (${String(code)}): ${err.trim()}`);
   }
 
+  /**
+   * The size a session gets when a client creates it with no size of its own: the phone leg's scratch
+   * bridge makes its panes with `new-session -d`, which tmux sizes from this option (80x24 by default).
+   * Set to the lab's own {@link LAB_COLS} x {@link LAB_ROWS}, so every lab pane has one size.
+   */
+  async setDefaultSize(): Promise<void> {
+    const child = Bun.spawn([this.binary, "-u", ...this.serverArgs(), "set-option", "-g", "default-size", `${String(LAB_COLS)}x${String(LAB_ROWS)}`], { stdin: "ignore", stdout: "ignore", stderr: "pipe" });
+    const [err, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+    if (code !== 0) throw new Error(`tmux set-option default-size failed (${String(code)}): ${err.trim()}`);
+  }
+
+  /** The tmux binary this server runs on. The scratch bridge is given the same one. */
+  binaryPath(): string {
+    return this.binary;
+  }
+
   /** The id of the one pane, from the adapter's own snapshot. */
   async paneId(): Promise<string> {
     const snapshot = await this.adapter().snapshot();

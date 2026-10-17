@@ -5,7 +5,8 @@
 //   2. preflight a tool or a login that is not ready defers the run. Nothing was spent, no row is written.
 //   3. claim     the `running` row, written before the first paid step.
 //   4. install   the binary at that version, into the run directory. One retry: it costs no model turn.
-//   5. session   the walk, the Surface over every screen, one probed send, one ask answer.
+//   5. session   the walk, the Surface over every screen, one probed send, one ask answer, then the
+//                phone leg (phone.ts): a scratch bridge driven over HTTP, the way the phone drives one.
 //   6. judge     pass, fail or walk-only (verdict.ts).
 //   7. publish   pass: a commit on a branch in a scratch worktree. fail: the issue as files.
 //   8. settle    the row gets its result. A run that cannot finish gets `failed`.
@@ -25,12 +26,24 @@ import { sweepLab, type Liveness } from "./sweep";
 import { harnessSpec, runDirs, type HarnessSpec, type RunDirs } from "./harnesses";
 import { draftIssue, writeIssueFiles, type IssueFiles, type PassInput, type PassResult } from "./publish";
 import { LabDeferred } from "./seed";
-import { judge, type LabFacts, type Verdict } from "./verdict";
+import { judge, type LabFacts, type LabLegs, type Verdict } from "./verdict";
+import { phoneCount } from "./phone-verdict";
 
 /** What a session returns: the facts, the counter lines, and what the session logged. */
 export interface SessionFacts {
   readonly facts: Omit<LabFacts, "harness" | "version">;
   readonly counters: readonly string[];
+}
+
+/** What the session is asked to do beyond the walk: which legs, where the phone leg writes, which bridge it drives. */
+export interface SessionPlan {
+  readonly legs: LabLegs;
+  /** A bridge that already runs, for the phone leg alone (`--bridge`). Absent: the phone leg starts a scratch bridge. */
+  readonly bridge?: { readonly url: string; readonly token: string } | undefined;
+  /** The phone leg's run folder: captures and summary.json. It outlives the run directory. */
+  readonly phoneOut: string;
+  /** Redaction for every capture and summary the phone leg writes. */
+  readonly redact: (text: string) => string;
 }
 
 export interface LabPorts {
@@ -39,7 +52,7 @@ export interface LabPorts {
   /** The binary at the version, installed under `dirs.bin`. Returns the version the binary printed. */
   install(spec: HarnessSpec, dirs: RunDirs, version: string, log: (line: string) => void): Promise<string>;
   /** The walk and the legs, in a throwaway tmux. Cleans its tmux server before it returns or throws. */
-  session(spec: HarnessSpec, dirs: RunDirs, version: string, log: (line: string) => void): Promise<SessionFacts>;
+  session(spec: HarnessSpec, dirs: RunDirs, version: string, log: (line: string) => void, plan: SessionPlan): Promise<SessionFacts>;
   /** Stop the tmux server of the session that is running now, if any. Never throws. Used on a signal. */
   stopAll(): Promise<void>;
   /** Who is alive, and which lab tmux servers exist. The sweep asks. */
@@ -69,6 +82,10 @@ export interface LabOptions {
   readonly signals?: SignalSource | undefined;
   /** For a test: the context redaction uses. */
   readonly redaction?: RedactContext | undefined;
+  /** Absent means `all`. A phone-only run never makes a pass commit. */
+  readonly legs?: LabLegs | undefined;
+  /** A bridge that already runs, for a phone-only run (`--bridge` and `--token-file`). */
+  readonly bridge?: { readonly url: string; readonly token: string } | undefined;
 }
 
 export type LabStatus = "skipped" | "deferred" | LabResult;
@@ -234,10 +251,13 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
       const printed = await twice("install", log, () => ports.install(spec, dirs, version, log));
       if (ended) return cutShort();
       log(`installed ${harness} ${printed}`);
-      const session = await ports.session(spec, dirs, version, log);
+      const legs: LabLegs = options.legs ?? "all";
+      const stamp = new Date(now()).toISOString().replace(/[:.]/gu, "-");
+      const plan: SessionPlan = { legs, bridge: options.bridge, phoneOut: join(options.labRoot, "phone", `${harness}-${version}-${stamp}`), redact: (text) => redact(text, context) };
+      const session = await ports.session(spec, dirs, version, log, plan);
       // A signal that came during the session has stopped tmux and settled the row. Nothing more may happen.
       if (ended) return cutShort();
-      const facts: LabFacts = { harness, version, ...session.facts };
+      const facts: LabFacts = { harness, version, legs, ...session.facts };
       const verdict = judge(facts);
       log(`verdict: ${verdict.result}${verdict.reasons.length > 0 ? `: ${verdict.reasons.join("; ")}` : ""}`);
       for (const line of session.counters) log(`counter: ${line}`);
@@ -247,7 +267,10 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
       if (verdict.result === "pass") {
         const send = facts.send;
         const ask = facts.ask;
-        const evidence = `harness lab ${today(now())} on ${harness} ${version}: walk, Surface on ${String(facts.screens.length)} screens, one probed send (${send?.outcome ?? "none"}), one ask answer (${ask?.outcome ?? "none"}, declined file made: ${String(ask?.fileCreated ?? false)}); ${String(facts.turns)} model turns`;
+        const phone = facts.phone === undefined || facts.phone === null ? "" : `, the phone leg over HTTP (${phoneCount(facts.phone.results)})`;
+        const evidence = `harness lab ${today(now())} on ${harness} ${version}: walk, Surface on ${String(facts.screens.length)} screens, one probed send (${send?.outcome ?? "none"}), one ask answer (${ask?.outcome ?? "none"}, declined file made: ${String(ask?.fileCreated ?? false)})${phone}; ${String(facts.turns)} model turns`;
+        // A phone leg alone never verifies a version: the walk and the readers did not run.
+        if (legs !== "all") return finish("pass", `phone-only run: no commit; the phone leg passed (${facts.phone === undefined || facts.phone === null ? "no result" : phoneCount(facts.phone.results)})`, { verdict });
         if (options.publish === false) return finish("pass", "dry run: no commit was made", { verdict });
         try {
           // The log goes into the commit body as it stands now, redacted.

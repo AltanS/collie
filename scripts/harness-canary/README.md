@@ -148,6 +148,7 @@ bun run harness:lab --plan                       # read the feeds and the ledger
 bun run harness:lab                              # run each version that has no row, at most four
 bun run harness:lab --version claude=2.1.301     # one named pair
 bun run harness:lab --version claude=2.1.301 --no-publish   # run the legs, make no commit
+bun run harness:lab --leg phone --version claude=2.1.301    # the phone leg alone, on a scratch bridge
 bun scripts/harness-canary/watch.ts              # the same lab, for an installed agent newer than the ledger
 ```
 
@@ -173,7 +174,14 @@ The lab deletes that folder at the end.
 4. One ask answer. The lab asks for a command that needs a permission, lifts the dialog and answers No through the protocol.
    The file the command would make must not exist.
 
+5. The phone leg. Claude only. The lab drives a bridge over HTTP, the way the phone does.
+   Steps 3 and 4 call the send protocol inside the lab process. The phone leg does not.
+   It sends every request with a device token (`Authorization: Bearer`), the bridge's own `Origin` and `x-requested-with`.
+   It judges each send by the receipt the bridge answers and by the Surface in `/api/snapshot`.
+   Details are in "The phone leg" below.
+
 **Pass.** No dialog screen reads `free`. The send settles. The ask answer settles (`sent` or `effective`), and the declined file does not exist.
+No phone scenario fails. A phone scenario that is `not-reached` does not fail the run.
 A dialog that no reader lifts is a fail, and the reason says so.
 Only a harness with a profile under `web/src/lib/surface/profiles/` runs steps 3 and 4.
 The others run the walk only, and the row says `walk-only`.
@@ -200,12 +208,62 @@ It says so, and stops, when the label is missing.
 The lab has no `--retry` flag on purpose, because a flag could repeat a paid action without a person looking.
 Read the log first. A `failed` row names the reason in its note.
 
+### The phone leg
+
+The phone leg finds bugs that only show over HTTP: a refusal the phone cannot read, a send that a
+running turn swallows, a command that ends typed but not sent. It runs in two modes.
+
+```sh
+bun run harness:lab --leg phone --version claude=2.1.302                 # a scratch bridge
+bun run harness:lab --leg phone --version claude=2.1.302 \
+  --bridge http://127.0.0.1:8788 --token-file ~/phone-token.txt          # a bridge that already runs
+```
+
+**The scratch bridge.** In a full run the leg runs after step 4, in the same tmux server.
+The lab starts `bridge/index.ts` of this checkout as a child process. It binds `127.0.0.1` on a free port.
+It never takes a port from 8787 to 8799. The bridge gets a temporary `HOME` and `COLLIE_STATE_DIR` inside the run folder,
+the lab's tmux server, and the lab's installed agent binary first on its `PATH`.
+The lab writes one paired device into that state folder and keeps the token in memory only.
+The phone panes use a second login copy with Collie's beacon hooks, so a send can end `effective`.
+At the end the lab stops the bridge and deletes its folder. The bridge log goes into the captures folder, redacted.
+
+**A running bridge.** `--bridge` takes an origin on this machine, such as `http://127.0.0.1:8788`.
+`--token-file` names a file that holds a device token. Pair that device by hand first.
+The leg makes its own panes with `POST /api/workspace`. It refuses to name any other pane, and it closes its panes at the end.
+It starts and stops nothing else. The lab's hooks cannot reach that bridge's state folder,
+so a send there may end `sent` or `effective`, and both count.
+
+**The scenarios.** Each scenario gets its own pane. The leg types the start line into the shell pane like a person.
+The first send to a shell pane is refused as unreadable, so the leg taps commit with the rows hash.
+Claude asks for folder trust before its hooks run. The bridge still sees a shell then, so the leg answers with the Keys board.
+
+1. `idle-send`: one message into a free box ends `sent` or `effective`.
+2. `stream-sends`: a prompt for 120 fruit names, then four sends at 3, 5, 6 and 7 seconds.
+   Every receipt must end `effective` within two minutes, and the box must be empty. A refusal or `typed_not_submitted` fails.
+3. `turn-end-send`: the leg reads the snapshot every 200 ms and sends at the flip from running to idle.
+4. `command-slash`: `/model` must end `sent` and show a readable menu ask within 5 seconds. The leg closes it with Escape.
+   Then `/help` and every belt command on the safe list. `/clear` and `/compact` are never sent.
+   The belt is the operator's bar rows from `/api/config`, or else the shipped Claude belt in `web/src/lib/harness-bar.ts`.
+5. `ask-answer`: the leg asks for a `touch` command and answers No through `/api/ask`. The file must not exist.
+6. `send-on-agents-screen`: `/agents` opens the agents screen. A message must end `refused` with a readable sentence.
+   After Escape the same message must go in.
+7. `crew-send`: always `not-reached`, because the lab has no crew member yet.
+
+A scenario passes, fails or is `not-reached`, as in the canary. A known gap uses the name `phone:<scenario>` in `known-gaps.json`.
+
+**What it leaves.** One `.ansi` capture per scenario and a `summary.json` with the receipts,
+under `~/.cache/collie-lab/harness-lab/phone/<harness>-<version>-<time>/`. Nothing goes into `web/src/fixtures/`.
+In a full run the phone lines go into the ledger row, the commit body and the issue.
+A run of the phone leg alone never makes a commit. It keeps its own lab folder and ledger, with the suffix `leg-phone`,
+so it never blocks the nightly run of the same version.
+
 ### What one run costs, and what stops a repeat
 
 - Time: about one minute of machine time. The first live run on Claude 2.1.301 took 49 seconds.
   It did an npm install, read 98 menu commands, sent 19 safe commands and made three model turns.
+  The phone leg adds about two minutes.
 - Model turns: at most four, on the person's Claude subscription. The plan uses three: the send, the ask request and what Claude does after a No.
-  A harness without a profile uses none. The ritual's own `claude -p` session is extra: Sonnet, at most 25 turns.
+  A harness without a profile uses none. The phone leg adds at most 14 more. A scenario that would pass that cap is `not-reached`. The ritual's own `claude -p` session is extra: Sonnet, at most 25 turns.
 - Keys: the lab presses about 150 keys. Most of them are Down presses that read the menu.
 - Network: the feed reads, and one npm install of about 250 MB.
 - A `(harness, version)` pair that has a row in the lab ledger never runs again. Pass, fail, failed and walk-only all count.
