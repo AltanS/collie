@@ -33,7 +33,7 @@ import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
-import { WALKY_BODY_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
 export const CREW_WALKY_ROUTE = "walky";
@@ -61,16 +61,75 @@ function cleanEnough(body: string): boolean {
   return body !== "" && [...body].length <= WALKY_BODY_MAX && cleanBody(body).body === body;
 }
 
-/** The sender's address agrees with its kind: an agent names a pane, an operator names none. */
-function senderFitsKind(message: WalkyMessage): boolean {
-  if (message.kind === "operator") return message.from.address === null && message.from.harness === null;
-  return message.from.address !== null;
-}
-
 /** An address a crew hop may carry: `all`, or one that names its member (`local` is a solo word). */
 function crewAddressable(to: string): boolean {
   const address = parseAddress(to);
   return address !== null && (address.kind === "all" || address.memberId !== LOCAL_MEMBER);
+}
+
+/** Printable ASCII with no bracket or parenthesis: the characters a header field may carry. */
+const DISPLAY_FIELD = /^[\x20-\x7e]*$/u;
+const FRAMES = /[[\]()]/u;
+
+function displayField(value: string, max: number): boolean {
+  return value.length <= max && DISPLAY_FIELD.test(value) && !FRAMES.test(value);
+}
+
+/** Whether a value holds a C0, DEL or C1 control byte: LF and CR among them. */
+function hasControl(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
+
+/** What the shape check found: nothing, a 400 that may say why, or the uniform 401. */
+export type CrewMessageProblem = { readonly status: 400; readonly error: string } | { readonly status: 401 } | null;
+
+/**
+ * THE ONE SHAPE CHECK of a message that crossed a crew hop, shared by both directions (M62 hardening
+ * B). It runs on the message as it arrived, before any signature, and it is the rule for:
+ *
+ *   - every signed string field (`id`, `kind`, `from.memberId`, `from.address`, `from.harness`, `to`,
+ *     `replyTo`, `signer`): no line break or other control byte, and never the bare `-`, which is how
+ *     the canonical string spells a null (an LF would let one field pose as two, a `-` as a null);
+ *   - `from.memberId === signer`: the machine that signed is the machine that sent;
+ *   - an agent's `from.address` names a pane on the signer's member; an operator names no address and
+ *     no harness;
+ *   - `from.label` and `from.harness`: printable ASCII with no `[ ] ( )`, at most 48 and 32 characters;
+ *   - the body as the sender's bridge cleans it, and an address that names its member.
+ *
+ * A malformed field is a 400 that says why (the caller passed both factors, §8.5); a claim that does
+ * not match the signer is the uniform 401 (§8.1).
+ */
+export function checkCrewMessage(message: WalkyMessage): CrewMessageProblem {
+  const signed = [message.id, message.kind, message.from.memberId, message.from.address, message.from.harness, message.to, message.replyTo, message.signer];
+  if (signed.some((value) => value !== null && (hasControl(value) || value === "-"))) {
+    return { status: 400, error: "a signed field holds a line break or a bare `-`" };
+  }
+  if (!displayField(message.from.label, WALKY_LABEL_MAX)) return { status: 400, error: "the sender's label is not a header field of at most 48 characters" };
+  if (message.from.harness !== null && !displayField(message.from.harness, WALKY_HARNESS_MAX)) {
+    return { status: 400, error: "the sender's harness is not a header field of at most 32 characters" };
+  }
+  if (!cleanEnough(message.body)) return { status: 400, error: "a walky message needs a clean body of at most 4000 characters" };
+  if (message.kind === "operator" && (message.from.address !== null || message.from.harness !== null)) {
+    return { status: 400, error: "the sender's address does not fit its kind" };
+  }
+  if (message.kind === "agent" && message.from.address === null) return { status: 400, error: "the sender's address does not fit its kind" };
+  if (!crewAddressable(message.to)) return { status: 400, error: "an address on a crew names its member" };
+  // The machine that signed is the machine that sent, and an agent's pane is on that machine.
+  if (message.signer === null || message.from.memberId !== message.signer) return { status: 401 };
+  if (message.from.address !== null) {
+    const from = parseAddress(message.from.address);
+    if (from === null || from.kind !== "pane" || from.memberId !== message.signer) return { status: 401 };
+  }
+  return null;
+}
+
+/** A shape problem as the route's answer. */
+function answerOf(problem: Exclude<CrewMessageProblem, null>): CrewAnswer {
+  return problem.status === 401 ? UNAUTHORIZED : badRequest(problem.error);
 }
 
 export type Checked<T> = ({ readonly ok: true } & T) | { readonly ok: false; readonly answer: CrewAnswer };
@@ -83,16 +142,12 @@ export type Checked<T> = ({ readonly ok: true } & T) | { readonly ok: false; rea
 export function checkFromMember(body: JsonValue | undefined, signer: TrustedMember): Checked<{ readonly message: WalkyMessage }> {
   const message = readMessage(body);
   if (message === null) return { ok: false, answer: badRequest("a walky message needs a well-formed message") };
-  if (!cleanEnough(message.body)) return { ok: false, answer: badRequest("a walky message needs a clean body of at most 4000 characters") };
-  if (!senderFitsKind(message)) return { ok: false, answer: badRequest("the sender's address does not fit its kind") };
-  if (!crewAddressable(message.to)) return { ok: false, answer: badRequest("an address on a crew names its member") };
-  // The member that dialled is the sender, the signer and the machine of the sender's pane. A member
-  // never speaks for another: the crew secret is crew-wide, the signature is not (§8.6).
-  if (message.signer !== signer.memberId || message.from.memberId !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
-  if (message.from.address !== null) {
-    const from = parseAddress(message.from.address);
-    if (from === null || from.kind !== "pane" || from.memberId !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
-  }
+  const problem = checkCrewMessage(message);
+  if (problem !== null) return { ok: false, answer: answerOf(problem) };
+  // The member that dialled is the signer, so (by the shape check) the sender and the machine of the
+  // sender's pane. A member never speaks for another: the crew secret is crew-wide, the signature is
+  // not (§8.6).
+  if (message.signer !== signer.memberId) return { ok: false, answer: UNAUTHORIZED };
   if (!verifyMessage(message, signer.certPem)) return { ok: false, answer: UNAUTHORIZED };
   return { ok: true, message };
 }
@@ -113,8 +168,8 @@ export function checkFromLead(
   if (delivery === null) return { ok: false, answer: badRequest("a walky delivery needs a well-formed `message` and `attest`") };
   const { message, attest } = delivery;
   if (!verifyCanonical(lead.certPem, attest, attestationString(message, crewId, self))) return { ok: false, answer: UNAUTHORIZED };
-  if (!cleanEnough(message.body)) return { ok: false, answer: badRequest("a walky message needs a clean body of at most 4000 characters") };
-  if (!senderFitsKind(message)) return { ok: false, answer: badRequest("the sender's address does not fit its kind") };
+  const problem = checkCrewMessage(message);
+  if (problem !== null) return { ok: false, answer: answerOf(problem) };
   // The route names the pane the message is for: its own pane id, or `all` for a whole machine.
   const to = parseAddress(message.to);
   const fits =
@@ -123,7 +178,10 @@ export function checkFromLead(
       ? segment === WALKY_ALL_SEGMENT
       : to.memberId === self && (to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId));
   if (!fits) return { ok: false, answer: badRequest("the route does not name this message's address on this member") };
-  const verified: WalkyVerified = message.signer === lead.memberId && verifyMessage(message, lead.certPem) ? "origin" : "lead";
+  // `origin` only when the lead itself sent it: the one certificate a member pins, the signer and the
+  // sender the same machine, and the signature good over the message as it stands.
+  const fromLead = message.signer === lead.memberId && message.from.memberId === message.signer;
+  const verified: WalkyVerified = fromLead && verifyMessage(message, lead.certPem) ? "origin" : "lead";
   return { ok: true, message, verified };
 }
 

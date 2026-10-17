@@ -10,8 +10,8 @@
 //   status  { id }                      → { ok, receipts, message, elsewhere }
 //   ack     { ids | null }              → { ok, acked }
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
-// the CLI asks the next bridge on the machine. No markers at all means the operator: kind `operator`,
-// label `cli`.
+// the CLI asks the next bridge on the machine. A send with no markers at all is refused: the operator
+// sends from a paired device, never from this socket.
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { once } from "node:events";
@@ -25,6 +25,9 @@ import type { SenderPane } from "./deliver.ts";
 import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
+
+/** What the socket answers a send that names no pane. */
+export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone";
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -85,8 +88,10 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   if (placed !== null && pane === null) return { ok: false, error: "not here" };
   switch (request.op) {
     case "send": {
-      const sender = pane === null ? { kind: "operator" as const, label: "cli" } : { kind: "agent" as const, pane };
-      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, sender);
+      // The kind fails closed: a send names its pane, or it is not taken. An operator sends from a
+      // paired device (`POST /api/walky`), which this socket cannot prove.
+      if (pane === null) return { ok: false, error: SEND_NEEDS_A_PANE };
+      const answer = await service.send({ id: request.id, to: request.to, body: request.body, replyTo: request.replyTo }, { kind: "agent", pane });
       return answer.ok ? { ok: true, receipts: answer.receipts } : answer;
     }
     case "who": {

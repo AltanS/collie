@@ -16,9 +16,10 @@ import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, 
 // No token: the socket's mode is the credential, as the hold socket's is.
 //
 // Inside a pane the CLI sends the multiplexer's own markers (`readEnvMarkers`, cli/beacon.ts), and
-// the bridge that drives that pane names it, so the message is an agent's. Outside any pane it is the
-// operator's, label `cli`. Several bridges may run on one machine: the CLI asks each live one (the
-// hook target registry, as the hold does) until one knows its pane.
+// the bridge that drives that pane names it, so the message is an agent's. Outside any pane the bridge
+// refuses a send: the operator sends from the phone, where the paired device proves who it is. Several
+// bridges may run on one machine: the CLI asks each live one (the hook target registry, as the hold
+// does) until one knows its pane.
 
 export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status"] as const;
 

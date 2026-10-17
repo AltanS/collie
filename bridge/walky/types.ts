@@ -16,6 +16,10 @@ export const WALKY_ID = /^wt_[a-z0-9]{12}$/u;
 /** The body cap, in characters (code points). */
 export const WALKY_BODY_MAX = 4000;
 
+/** The longest sender label a message carries, and the longest harness name (CREW_PROTOCOL §21). */
+export const WALKY_LABEL_MAX = 48;
+export const WALKY_HARNESS_MAX = 32;
+
 /** Who typed a message: an agent inside a pane, or the operator (a paired phone, or the CLI outside a pane). */
 export type WalkyKind = "agent" | "operator";
 
@@ -137,10 +141,10 @@ export function headerField(raw: string, max = 80): string {
 
 /** The one header line of a message. */
 export function formatHeader(message: Pick<WalkyMessage, "id" | "kind" | "from" | "replyTo">): string {
-  const label = headerField(message.from.label);
+  const label = headerField(message.from.label, WALKY_LABEL_MAX);
   const who =
     message.kind === "agent"
-      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, 32)}, ${label}`})`
+      ? `${headerField(message.from.address ?? "-", 160)} (${message.from.harness === null ? label : `${headerField(message.from.harness, WALKY_HARNESS_MAX)}, ${label}`})`
       : `(${label})`;
   const reply = message.replyTo === null ? "" : ` reply to ${message.replyTo}`;
   return `[walky-talky ${message.id}] from ${message.kind} ${who}${reply}`;

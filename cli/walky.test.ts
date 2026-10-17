@@ -45,6 +45,7 @@ interface Bridge {
   readonly stateDir: string;
   readonly sent: string[];
   answer: SendResult;
+  service?: WalkyService;
 }
 
 async function bridge(over: Partial<ConstructorParameters<typeof WalkyService>[0]> = {}): Promise<Bridge> {
@@ -64,6 +65,7 @@ async function bridge(over: Partial<ConstructorParameters<typeof WalkyService>[0
     cancelHeld: () => undefined,
   };
   const service = new WalkyService({ log: new WalkyLog(join(stateDir, "walky")), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, ...over });
+  state.service = service;
   const server = new WalkyServer({ socketPath: walkySocketPath(stateDir), service, targets: () => [target], log: () => undefined });
   expect(await server.start()).toBe(true);
   cleanups.push(() => {
@@ -105,21 +107,29 @@ describe("send", () => {
 
   test("`--to` is an alias, and `--` keeps a text that starts with a dash", async () => {
     const b = await bridge();
-    const d = deps(b);
+    const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["--to", "local/%2", "--", "--not-a-flag"])).toBe(EXIT.OK);
-    expect(b.sent).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from operator (cli)\n--not-a-flag"]);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message?.body).toBe("--not-a-flag");
   });
 
   test("no text reads the body from stdin", async () => {
     const b = await bridge();
-    const d = deps(b, {}, { stdinIsTty: false, readStdin: async () => "line one\nline two\n" });
+    const d = deps(b, inPane("%1"), { stdinIsTty: false, readStdin: async () => "line one\nline two\n" });
     expect(await cmdWalkySend(d, ["local/%2"])).toBe(EXIT.OK);
-    expect(b.sent[0]).toBe("[walky-talky wt_aaaaaaaaaaa1] from operator (cli)\nline one\nline two");
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message?.body).toBe("line one\nline two");
+  });
+
+  test("outside any pane a send is refused: the operator sends from the phone", async () => {
+    const b = await bridge();
+    const d = deps(b);
+    expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.STATE);
+    expect(d.io.stderr).toEqual(["walky talky: run this inside a pane, or send from the phone"]);
+    expect(b.sent).toEqual([]);
   });
 
   test("a refusal prints its reason and exits REFUSED", async () => {
     const b = await bridge();
-    const d = deps(b);
+    const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["local/%9", "hi"])).toBe(EXIT.REFUSED);
     expect(d.io.stdout).toEqual(["refused wt_aaaaaaaaaaa1 (no such pane)"]);
   });
@@ -127,7 +137,7 @@ describe("send", () => {
   test("a pane that cannot take it now leaves the message in the inbox", async () => {
     const b = await bridge();
     b.answer = { outcome: "refused", reason: "not_free" };
-    const d = deps(b);
+    const d = deps(b, inPane("%1"));
     expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["inbox-only wt_aaaaaaaaaaa1 (dialog open)"]);
   });
@@ -179,7 +189,7 @@ describe("reply, inbox, status, who", () => {
 
   test("a reply to an operator's message is refused: it has no address", async () => {
     const b = await bridge();
-    await cmdWalkySend(deps(b), ["local/%2", "from the desk"]);
+    await b.service?.send({ id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "from the phone", replyTo: null }, { kind: "operator", label: "phone" });
     const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2" });
     expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "ok"])).toBe(EXIT.STATE);
     expect(d.io.stderr.join("\n")).toContain("came from an operator");
@@ -223,7 +233,7 @@ describe("reply, inbox, status, who", () => {
 
   test("status prints the receipt; an id no bridge knows is `unknown`", async () => {
     const b = await bridge();
-    await cmdWalkySend(deps(b), ["local/%2", "hi"]);
+    await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "hi"]);
     const d = deps(b);
     expect(await cmdWalkyStatus(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["delivered wt_aaaaaaaaaaa1"]);
@@ -271,7 +281,7 @@ describe("on a crew member (CREW_PROTOCOL §21)", () => {
   test("a message for another machine prints `accepted` and says the lead knows the outcome, without waiting", async () => {
     const b = await member();
     let polls = 0;
-    const d = deps(b, {}, { sleep: async () => void (polls += 1) });
+    const d = deps(b, inPane("%1"), { sleep: async () => void (polls += 1) });
     expect(await cmdWalkySend(d, ["desk/w2:p2", "hi"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["accepted wt_aaaaaaaaaaa1 (outcome known on the lead)"]);
     expect(polls).toBe(1);

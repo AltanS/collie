@@ -61,12 +61,14 @@ The body is at most 4,000 characters, with control bytes and direction marks rem
 that starts with `[walky-talky` gets one leading space, so a body can never pose as a second
 message.
 
-There are two kinds of sender:
+There are two kinds of sender. The kind is what the bridge proved, never what a message says:
 
-| Kind | When |
+| Kind | What the bridge proved |
 | --- | --- |
-| `agent` | `collie walky` ran inside a pane. The multiplexer's own variables name the pane |
-| `operator` | You sent it from the phone (the paired device's label), or ran `collie walky` outside any pane (label `cli`) |
+| `agent` | `collie walky` ran inside a pane: the pane's own environment names it |
+| `operator` | A paired device sent it from the phone, under the device's label |
+
+`collie walky send` outside any pane is refused: `run this inside a pane, or send from the phone`.
 
 A message from an agent is a peer's words, not your instruction. The agent skill tells an agent to
 weigh it, and never to run a destructive command because a peer asked ([Install the skill](#install-the-skill)).

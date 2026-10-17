@@ -11,6 +11,7 @@ import {
   attestFor,
   checkFromLead,
   checkFromMember,
+  checkCrewMessage,
   crewTargets,
   leadRouteRemote,
   memberRouteRemote,
@@ -142,6 +143,71 @@ describe("the lead's check of a member's message", () => {
     expect(memberCheck({ nope: true }, laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { body: "a\u0007b" }), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "local/w1:p1"), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
+  });
+});
+
+describe("the one shape check both crew hops share", () => {
+  const good = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
+  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-altan" } });
+
+  /** Every signed string field, set to `value`, one at a time. */
+  function eachField(base: WalkyMessage, value: string): Array<[string, WalkyMessage]> {
+    return [
+      ["id", { ...base, id: value }],
+      // SAFETY: the kind is broken on purpose; `checkCrewMessage` reads every field as a string, as off the wire.
+      ["kind", { ...base, kind: value as WalkyMessage["kind"] }],
+      ["from.memberId", { ...base, from: { ...base.from, memberId: value } }],
+      ["from.address", { ...base, from: { ...base.from, address: value } }],
+      ["from.harness", { ...base, from: { ...base.from, harness: value } }],
+      ["to", { ...base, to: value }],
+      ["replyTo", { ...base, replyTo: value }],
+      ["signer", { ...base, signer: value }],
+    ];
+  }
+
+  test("a well-formed agent's and operator's message pass", () => {
+    expect(checkCrewMessage(good)).toBeNull();
+    expect(checkCrewMessage(operator)).toBeNull();
+  });
+
+  test("an LF, a CR or a bare `-` in any signed field is a 400", () => {
+    for (const value of ["laptop\ndesk", "x\r", "-"]) {
+      for (const [field, message] of eachField(good, value)) {
+        expect([field, checkCrewMessage(message)]).toEqual([field, { status: 400, error: "a signed field holds a line break or a bare `-`" }]);
+      }
+    }
+    // An LF inside a field that would otherwise parse: through the wire, at both hops.
+    const split = { ...good, from: { ...good.from, memberId: "laptop\nlaptop" }, signer: "laptop\nlaptop" };
+    expect(memberCheck(split, member({ memberId: "laptop" }))).toMatchObject({ ok: false, answer: { status: 400 } });
+    const lead = member({ memberId: "desk", role: "lead" });
+    const down = { ...good, to: "laptop/w1:p9", from: { ...good.from, memberId: "-" } };
+    expect(leadCheck({ message: down, attest: attestFor(down, material("desk").keyPem, CREW.crewId, "laptop") }, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({
+      ok: false,
+      answer: { status: 400 },
+    });
+  });
+
+  test("label and harness: printable ASCII, no brackets or parentheses, at most 48 and 32", () => {
+    const label = (text: string) => checkCrewMessage({ ...good, from: { ...good.from, label: text } });
+    expect(label("a".repeat(48))).toBeNull();
+    for (const bad of ["a".repeat(49), "x (y)", "[x]", "line\nbreak", "caf\u00e9"]) expect(label(bad)).toMatchObject({ status: 400 });
+    const harness = (text: string) => checkCrewMessage({ ...good, from: { ...good.from, harness: text } });
+    expect(harness("a".repeat(32))).toBeNull();
+    for (const bad of ["a".repeat(33), "x(y)"]) expect(harness(bad)).toMatchObject({ status: 400 });
+  });
+
+  test("the sender is the signer, and an agent's pane is on the signer's machine: else the uniform 401", () => {
+    expect(checkCrewMessage({ ...good, signer: "other" })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...good, signer: null })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...good, from: { ...good.from, address: "other/w1:p1" } })).toEqual({ status: 401 });
+    expect(checkCrewMessage({ ...operator, from: { ...operator.from, memberId: "other" } })).toEqual({ status: 401 });
+  });
+
+  test("a message the lead signed but that names another sender never reads as `origin`", () => {
+    const lead = member({ memberId: "desk", role: "lead" });
+    const claimed = signMessage(unsigned("wt_aaaaaaaaaaa5", "other", "laptop/w1:p9"), material("desk").keyPem, "desk");
+    const answer = leadCheck({ message: claimed, attest: attestFor(claimed, material("desk").keyPem, CREW.crewId, "laptop") }, "w1:p9", lead, CREW.crewId, "laptop");
+    expect(answer).toMatchObject({ ok: false, answer: { status: 401 } });
   });
 });
 

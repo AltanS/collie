@@ -3313,16 +3313,31 @@ attestation binds the crew and the receiver (§16's rule for a broadened pin), s
 present an attested message at a sibling or in another crew. Both use the primitives §8.6 already has:
 base64 ECDSA-P256-SHA256, with the key behind the signer's pinned certificate.
 
+### The shape check both hops share
+
+Both receiving sides run ONE shape check on the message as it arrived, before the message signature
+(`checkCrewMessage`, `bridge/walky/crew.ts`). Added 2026-10-17 (M62 hardening).
+
+- **Every signed string field** (`id`, `kind`, `from.memberId`, `from.address`, `from.harness`, `to`,
+  `replyTo`, `signer`) holds no line break and no other control byte, and is never the bare `-`. An
+  LF would let one field pose as two in the canonical string, and `-` is how it spells a null.
+- **`from.memberId === signer`**: the machine that signed is the machine that sent. An agent's
+  `from.address` names a pane on the signer's member. An operator names no address and no harness.
+- **`from.label` and `from.harness`** are printable ASCII without `[ ] ( )`, at most 48 and 32
+  characters. Neither is signed; both reach a header line.
+- **The body** is one a second clean leaves unchanged, at most 4,000 characters, and **the address**
+  names its member (`local/…` is a solo word).
+
+A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
+that does not match the signer is the uniform 401.
+
 ### What the lead checks, in order
 
 1. The two factors, with §8.6's request signature over the four-field string. The signature names the
    member. A request without one is the uniform 401.
-2. The body is a well-formed message, with a body that a second clean leaves unchanged and at most
-   4,000 characters, and an address that names its member (`local/…` is a solo word). A 400 that says
-   why, because the caller passed both factors.
-3. `signer` and `from.memberId` are the member the request signature named, and an agent's
-   `from.address` names a pane on that member. Then the message signature verifies against that
-   member's pinned certificate. Any failure here is the uniform 401.
+2. The shared shape check above.
+3. `signer` is the member the request signature named. Then the message signature verifies against
+   that member's pinned certificate. Any failure here is the uniform 401.
 4. The lead delivers to its own panes, with `verified: "origin"`, and routes to the members the
    address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
    own machine for `all`. The sender's machine already delivered to its own panes before it asked.
@@ -3333,14 +3348,16 @@ on the lead.
 ### What a member checks
 
 The dial attestation is checked for every route (§8.6). Then the member checks `attest` against its
-pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. The route's
-`:id` must name the message's own pane, or `all`. A message reaches this machine's agent panes only: a
-member never routes a message on, so a message cannot loop between a member and its lead.
+pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. Then the
+shared shape check above. The route's `:id` must name the message's own pane, or `all`. A message
+reaches this machine's agent panes only: a member never routes a message on, so a message cannot loop
+between a member and its lead.
 
 `verified` in the receipt says how the sender was known. **A member verifies its lead's attestation;
 only the lead verifies the origin.** A member pins no other member, so a message from member A reaches
 member B as `verified: "lead"`. The one exception is a message the lead itself sent: the member pins
-that certificate, verifies the origin signature too, and writes `verified: "origin"`.
+that certificate, verifies the origin signature too, and writes `verified: "origin"`, and only when
+`from.memberId` is the signer as well.
 
 ### Dedupe and replay
 

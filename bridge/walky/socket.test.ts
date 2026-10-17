@@ -54,14 +54,14 @@ describe("placing the CLI's pane", () => {
 });
 
 describe("the requests", () => {
-  test("a send from inside a pane is an agent's, a send with no markers the operator's", async () => {
+  test("a send from inside a pane is an agent's; a send with no markers is refused, never the operator's", async () => {
     const walky = service();
     const fromPane = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "hi" }));
     expect(await answerRequest(walky, fromPane!, [target])).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
     expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ kind: "agent", from: { address: "local/%1", harness: "agent-x", label: "repo#a" } });
     const fromDesk = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa2", to: "local/%2", body: "hi" }));
-    await answerRequest(walky, fromDesk!, [target]);
-    expect(walky.status("wt_aaaaaaaaaaa2").message).toMatchObject({ kind: "operator", from: { address: null, label: "cli" } });
+    expect(await answerRequest(walky, fromDesk!, [target])).toEqual({ ok: false, error: "run this inside a pane, or send from the phone" });
+    expect(walky.status("wt_aaaaaaaaaaa2").receipts).toEqual([]);
   });
 
   test("markers this bridge cannot place answer `not here`, so the CLI asks the next bridge", async () => {

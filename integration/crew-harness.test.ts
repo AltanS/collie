@@ -855,7 +855,15 @@ describe("the lead speaks for the crew", () => {
 });
 
 describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
-  /** One request over an instance's walky socket, as the CLI sends it with no pane markers: the operator. */
+  /** One operator message through an instance's phone route (`POST /api/walky`): the socket takes a send only from a pane. */
+  async function operatorSend(at: Instance, body: Record<string, JsonValue>): Promise<JsonValue> {
+    const res = await at.apiWrite("/api/walky", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    expect(res.status).toBe(200);
+    // SAFETY: the route answers JSON, and the assertions below read it field by field.
+    return (await res.json()) as JsonValue;
+  }
+
+  /** One read request over an instance's walky socket, as the CLI sends it with no pane markers. */
   async function walky(at: Instance, request: Record<string, JsonValue>): Promise<JsonValue> {
     const answer = await askSocket(walkySocketPath(at.stateDir), `${JSON.stringify({ v: 1, markers: [], ...request })}\n`, 5000);
     expect(answer).not.toBeNull();
@@ -874,14 +882,14 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
     expect(await walky(peer, { op: "who" })).toMatchObject({ ok: true, note: expect.stringContaining("ask the lead") });
 
     // The lead to the member: signed by the lead, so the member verifies the origin too.
-    const down = await walky(lead, { op: "send", id: "wt_crewdown0001", to: `${peerId}/${peer.paneId}`, body: "from the lead", replyTo: null });
-    expect(down).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${peerId}/${peer.paneId}`, by: peerId, verified: "origin" }] });
+    const down = await operatorSend(lead, { id: "wt_crewdown0001", to: `${peerId}/${peer.paneId}`, body: "from the lead" });
+    expect(down).toMatchObject({ receipt: { state: "accepted", target: `${peerId}/${peer.paneId}`, by: peerId, verified: "origin" } });
     expect(await walky(peer, { op: "status", id: "wt_crewdown0001" })).toMatchObject({ ok: true, receipts: [{ target: `${peerId}/${peer.paneId}`, verified: "origin" }] });
 
     // The member to the lead: the lead checks the member's signature and writes `origin`; the member
     // keeps `accepted` and is told where the outcome lives.
-    const up = await walky(peer, { op: "send", id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member", replyTo: null });
-    expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId }] });
+    const up = await operatorSend(peer, { id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member" });
+    expect(up).toMatchObject({ receipt: { state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId } });
     expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target: `${leadId}/${lead.paneId}`, verified: "origin" }] });
     expect(await walky(peer, { op: "status", id: "wt_crewup000001" })).toMatchObject({ elsewhere: [`${leadId}/${lead.paneId}`] });
   }, 60_000);

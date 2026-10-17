@@ -2,16 +2,17 @@
 // call. It builds a message from a request (cleans the body, names the sender, signs on a crew), hands
 // it to delivery, and answers the reads: who is reachable, a pane's inbox, a message's receipts.
 //
-// Two kinds, by who typed it (decision 3). `agent`: the CLI ran inside a pane the bridge placed from
-// the multiplexer's own markers. `operator`: a paired phone (its device label), or the CLI outside any
-// pane (label `cli`). The local uid can lie about its pane (decision 4); the docs say so.
+// Two kinds, by what the bridge proved (decision 3, hardened 2026-10-17). `agent`: the CLI ran inside a
+// pane the bridge placed from the multiplexer's own markers in its environment. `operator`: a paired
+// device, through `POST /api/walky`, and nothing else: the local socket refuses a send that names no
+// pane, so the kind fails closed. The local uid can lie about its pane (decision 4); the docs say so.
 
 import { paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
 import type { WalkyLog } from "./log.ts";
-import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget, WalkyVerified } from "./types.ts";
+import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** Who is sending: an agent's pane, or an operator by label. */
 export type WalkySenderRef = { readonly kind: "agent"; readonly pane: WalkyPane } | { readonly kind: "operator"; readonly label: string };
@@ -93,7 +94,7 @@ export class WalkyService {
     const from =
       sender.kind === "agent"
         ? { memberId, address: paneAddress(memberId, sender.pane.paneId), harness: sender.pane.harness, label: sender.pane.label }
-        : { memberId, address: null, harness: null, label: sender.label };
+        : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX) };
     const message: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);

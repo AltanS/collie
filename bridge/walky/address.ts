@@ -6,7 +6,7 @@
 // files by a hash (log.ts). A shell pane is never a target.
 
 import { MEMBER_ID_RE } from "../crew/identity.ts";
-import { headerField } from "./types.ts";
+import { headerField, WALKY_LABEL_MAX } from "./types.ts";
 
 /** The member id of a solo install, and the name this bridge always answers to. */
 export const LOCAL_MEMBER = "local";
@@ -70,8 +70,8 @@ export interface LabelFacts {
  */
 export function labelOf(facts: LabelFacts, titles: boolean): string {
   const repo = facts.cwd.split(/[\\/]/u).findLast((part) => part.length > 0) ?? "";
-  if (repo !== "" && facts.branch !== null) return headerField(`${repo}#${facts.branch}`);
-  if (facts.paneLabel !== undefined && facts.paneLabel.trim() !== "") return headerField(facts.paneLabel);
-  if (titles && facts.terminalTitle !== undefined && facts.terminalTitle.trim() !== "") return headerField(facts.terminalTitle);
-  return headerField(repo !== "" ? repo : facts.paneId);
+  if (repo !== "" && facts.branch !== null) return headerField(`${repo}#${facts.branch}`, WALKY_LABEL_MAX);
+  if (facts.paneLabel !== undefined && facts.paneLabel.trim() !== "") return headerField(facts.paneLabel, WALKY_LABEL_MAX);
+  if (titles && facts.terminalTitle !== undefined && facts.terminalTitle.trim() !== "") return headerField(facts.terminalTitle, WALKY_LABEL_MAX);
+  return headerField(repo !== "" ? repo : facts.paneId, WALKY_LABEL_MAX);
 }
