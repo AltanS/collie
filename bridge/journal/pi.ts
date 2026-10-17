@@ -572,6 +572,12 @@ export function createPiReducer(): RowReducer {
   const chain = new Map<string, BranchLink>();
   let leaf: string | null = null;
 
+  /** A card on a turn the branch left can no longer be folded into: the new branch draws its own. */
+  function forget(uuid: string): void {
+    if (heldPlan?.uuid === uuid) heldPlan = undefined;
+    for (const [id, card] of workCards) if (card.uuid === uuid) workCards.delete(id);
+  }
+
   /** Remember this row, and if it rewound, flip the flags the rewind changed. */
   function link(rowId: string, parentId: string | null, entries: TranscriptEntry[], changed: Set<string>): void {
     if (rowId === "") return; // no identity, so nothing can hang off it and nothing can be walked
@@ -589,6 +595,7 @@ export function createPiReducer(): RowReducer {
           if (off && entry.abandoned !== true) {
             entry.abandoned = true;
             changed.add(entry.uuid);
+            forget(entry.uuid);
           } else if (!off && entry.abandoned === true) {
             delete entry.abandoned;
             changed.add(entry.uuid);
@@ -759,7 +766,12 @@ export function createPiReducer(): RowReducer {
         const input = b.arguments !== null && typeof b.arguments === "object" && !Array.isArray(b.arguments) ? b.arguments : {};
         const lower = name.toLowerCase();
         let foldInto: PendingTool | undefined;
-        if (lower === "todo" && input.action !== "write") foldInto = heldPlan;
+        if (lower === "todo" && input.action !== "write") {
+          foldInto = heldPlan;
+          // A `clear` ends the list: its result is empty, so the card keeps the list as it last
+          // stood, and the next `add` starts a card of its own.
+          if (input.action === "clear") heldPlan = undefined;
+        }
         else if (lower === "subagent_result") foldInto = workCards.get(field(input, "task_id") ?? "");
         if (foldInto !== undefined) {
           if (typeof b.id === "string") rememberPending(pendingTools, b.id, { part, uuid, foldInto });

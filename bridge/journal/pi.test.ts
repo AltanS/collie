@@ -1057,6 +1057,33 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     expect(tools(s.rows).map((t) => t.uuid)).toEqual(["a1", "a2"]);
   });
 
+  // 14 real `clear` calls (2026-10-16): the result's list is empty, and the next `add` starts a new list.
+  test("a `clear` keeps the card's last list and lets the next `add` draw a card of its own", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Old" }] });
+    s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Old", status: "done" }]));
+    s.call("a2", "c2", "todo", { action: "clear" });
+    s.result("r2", "c2", "todo", "cleared", todo([]));
+    s.call("a3", "c3", "todo", { action: "add", title: "New" });
+    s.result("r3", "c3", "todo", "added", todo([{ id: 1, title: "New", status: "pending" }]));
+    expect(tools(s.rows).map((t) => [t.uuid, t.part.call])).toEqual([
+      ["a1", { kind: "plan", name: "todo", tasks: [{ title: "Old", status: "done" }] }],
+      ["a3", { kind: "plan", name: "todo", tasks: [{ title: "New", status: "pending" }] }],
+    ]);
+  });
+
+  test("a rewind past the held card lets the next update draw on the new branch", () => {
+    const rows = [
+      plain("a1", null, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "todo", arguments: { action: "write", tasks: [{ title: "Old" }] } }] } }),
+      plain("r1", "a1", { type: "message", message: { role: "toolResult", toolCallId: "c1", toolName: "todo", content: [{ type: "text", text: "ok" }], details: todo([{ id: 1, title: "Old", status: "pending" }]) } }),
+      plain("u1", null, { type: "message", message: { role: "user", content: [{ type: "text", text: "start over" }] } }),
+      plain("a2", "u1", { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c2", name: "todo", arguments: { action: "update", id: 1, status: "done" } }] } }),
+      plain("r2", "a2", { type: "message", message: { role: "toolResult", toolCallId: "c2", toolName: "todo", content: [{ type: "text", text: "ok" }], details: todo([{ id: 1, title: "Old", status: "done" }]) } }),
+    ];
+    const drawn = parsePiTranscript(rows.join("\n")).filter((e) => e.parts.some((p) => p.kind === "tool"));
+    expect(drawn.map((e) => [e.uuid, e.abandoned === true])).toEqual([["a1", true], ["a2", false]]);
+  });
+
   test("an update with no write before it draws its own card from the result", () => {
     const s = session();
     s.call("a1", "c1", "todo", { action: "update", id: 2, status: "done" });

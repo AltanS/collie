@@ -194,6 +194,11 @@ describe("classifyToolCall: a task list is a plan", () => {
     expect(classifyToolCall("todo", { action: "update", id: 3, status: "done" }, "")).toEqual({ kind: "plan", name: "todo", tasks: [] });
   });
 
+  // Hermes's `todo` with `merge: true` carries only the items it changed, so it is not the list.
+  test("a merge that carries only the changed items is not a plan", () => {
+    expect(classifyToolCall("todo", { todos: [{ content: "A", status: "completed" }], merge: true }, "A").kind).toBe("other");
+  });
+
   test("an unknown status is pending and an entry with no title is dropped", () => {
     const call = classifyToolCall("todo", { action: "write", tasks: [{ title: "A", status: "someday" }, { status: "done" }, "x"] }, "");
     expect(call).toEqual({ kind: "plan", name: "todo", tasks: [{ title: "A", status: "pending" }] });
@@ -228,6 +233,14 @@ describe("classifyToolCall: Gentle Shell's other tools", () => {
       kind: "task",
       agent: "agent",
       summary: "Fix the test",
+    });
+  });
+
+  test("a continue with no label is named by the one-line summary, never the whole prompt", () => {
+    expect(classifyToolCall("subagent_continue", { task_id: "t-1", prompt: "Line one\nLine two" }, "t-1")).toEqual({
+      kind: "task",
+      agent: "agent",
+      summary: "t-1",
     });
   });
 

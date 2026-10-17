@@ -400,10 +400,14 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
       return {
         kind: "task",
         agent: str(o, "subagent_type", "agent", "agent_type") ?? "agent",
-        summary: str(o, "description", "label", "task", "prompt") ?? summary,
+        // Never `prompt`: it is the whole message to the agent, and the one-line summary is its name.
+        summary: str(o, "description", "label", "task") ?? summary,
       };
     case "plan":
-      return { kind: "plan", name, tasks: planTasks(o.tasks ?? o.todos ?? o.plan) };
+      // Hermes's `todo` with `merge: true` carries only the items it changed: drawn as the list, it
+      // would claim every other task was gone.
+      if (o.merge !== true) return { kind: "plan", name, tasks: planTasks(o.tasks ?? o.todos ?? o.plan) };
+    // falls through
     default: {
       const call: ToolCall = { kind: "other", name, summary };
       const lower = name.toLowerCase();

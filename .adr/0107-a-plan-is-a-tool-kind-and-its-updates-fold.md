@@ -35,9 +35,11 @@ its result alone shows these as done while they still run.
    that keeps a list is not a new kind per tool.
 2. **On pi, a list's updates fold into the card its `write` drew.** The reducer holds the newest plan
    card; a later `todo` call that is not a `write` draws nothing of its own, and its result rewrites
-   the held card's tasks and names that turn in `changed` (ADR 0073). A new `write` opens a new card.
-   Other harnesses draw one plan card per call: their lists have no `write` to mark where one list
-   ends and the next begins.
+   the held card's tasks and names that turn in `changed` (ADR 0073). A new `write` opens a new card,
+   and a `clear` ends the held one: the card keeps the list as it last stood, and the next `add`
+   draws its own. A rewind past the held card releases it too. Other harnesses draw one plan card per
+   call: their lists have no `write` to mark where one list ends and the next begins. A call that
+   carries only the items it changed (Hermes's `todo` with `merge: true`) is not a plan.
 3. **A call can be ongoing after it returns.** `execute` and `task` carry `ongoing: true` while the
    work they started runs, and the end notice with the same id clears it, sets an exit code and marks a
    failure. Chat draws an ongoing call as running. `subagent_result` folds into the card of its
@@ -52,6 +54,11 @@ until the field is named here.
 A held plan card can sit well above the bottom of a long session, which is why a `write` opens a new
 one. If an agent writes once and updates for hours, the card is drawn where it was written and the
 reader scrolls up to it; revisit if that is reported.
+
+A live session is a bounded window (ADR 0073). When the held card has scrolled out of it, the
+updates that fold into it still draw nothing, so the reader keeps the card as it was until the next
+`write`; a fresh read of the session draws the current list. The same holds for a subagent or a job
+whose card has left the window.
 
 An ongoing call whose end notice never arrives (pi killed, notice outside the window) stays running.
 That is the same as a call whose result never arrived, and it is drawn the same way.
