@@ -3999,7 +3999,7 @@ describe("real Claude Code 2.1.302 turns with a list on screen (captured 2026-10
       const r = rig({ version: "2.1.302", holds });
       liveFixture(r.pane, name);
       const answer = await r.send("then give it a title");
-      expect(["sent", "held"]).toContain(answer.receipt?.outcome);
+      expect(["sent", "held"]).toContain(answer.receipt?.outcome ?? "none");
       expect(answer.receipt?.reason).not.toBe("not_free");
       if (answer.receipt?.outcome === "sent") expect(r.pane.keysSeen.at(-1)).toBe("Enter");
       else expect(r.pane.box).toBe("");
