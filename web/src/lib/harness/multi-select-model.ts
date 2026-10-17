@@ -16,7 +16,7 @@ import { sameKeys, sameOptionalKeys, type AnswerFieldPointer } from "./prompt-mo
 import type { WizardAnswer, WizardStepChip } from "./wizard-model";
 
 /**
- * A checkbox question's own answer field (Claude's `Type something` row, ADR 0104): a text input whose
+ * A checkbox question's own answer field (Claude's `Type something` row, ADR 0113): a text input whose
  * row also carries a checkbox. Its digit toggles the tick and never focuses it; while it has focus
  * every digit is typed into it and `Left` moves its caret, so no toggle, escape or step arrow may fire.
  */

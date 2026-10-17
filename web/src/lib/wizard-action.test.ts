@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Typing an answer into a wizard step's field (ADR 0104, grammar/ASK_FIELD_NOTES.md § Wizard): the
+// Typing an answer into a wizard step's field (ADR 0113, grammar/ASK_FIELD_NOTES.md § Wizard): the
 // shared recipe (lib/answer-field.ts) plus one bound Enter, which answers the step and advances it.
 // The api layer is mocked so every fresh screen is scripted; the detector and the guard are the real
 // thing. Each test pins one rule, and what was NOT sent.

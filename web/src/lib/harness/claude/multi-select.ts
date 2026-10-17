@@ -13,7 +13,7 @@
 //     2 cancels; a `⚠ …not answered all questions` line means `incomplete`.
 //
 // The last checkbox row above the advance row is the question's answer field (`Type something`, ADR
-// 0104), modelled as `field` and never an option: its digit toggles its tick, and while `❯` is on it
+// 0113), modelled as `field` and never an option: its digit toggles its tick, and while `❯` is on it
 // every key is typed into it (grammar/ASK_FIELD_NOTES.md § Multi-select). Prompt-select bails on the
 // checkbox rows and wizard on a checkbox step, so this detector owns the shape alone. Everything here
 // is PURE over `StyledLine[]`, fixture-driven (web/src/fixtures/panes/claude--select-multiselect-*.txt,

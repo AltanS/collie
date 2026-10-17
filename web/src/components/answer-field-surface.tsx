@@ -21,7 +21,7 @@ export interface FeedbackCopy {
 }
 
 /**
- * The copy of an AskUserQuestion answer field (ADR 0104). Only the help line differs between the
+ * The copy of an AskUserQuestion answer field (ADR 0113). Only the help line differs between the
  * cards that carry one, because only it says what Send does next. A function, not a module-level
  * object, so it re-reads the current locale on every call.
  */
@@ -69,7 +69,7 @@ export interface AnswerEditor {
   /**
    * Send the trimmed draft through `onAnswer`, unless the field no longer holds what the person last
    * saw. The open editor replaces the field's own card on screen, so text typed at the desk meanwhile
-   * was never seen here, and the recipe would clear it (ADR 0104 rule 3: clear only what was seen).
+   * was never seen here, and the recipe would clear it (ADR 0113 rule 3: clear only what was seen).
    * Then nothing is sent: the change is shown in the editor and becomes what was seen, so the next
    * Send replaces it. The editor closes only on a send `onAnswer` reports as landed.
    */
@@ -154,7 +154,7 @@ export interface AnswerFieldSurfaceProps {
 }
 
 /**
- * AskUserQuestion's `Type something.` field (ADR 0104), below a card's options: our own send in
+ * AskUserQuestion's `Type something.` field (ADR 0113), below a card's options: our own send in
  * flight, else the editor, else what the field holds with an offer to change it, else the focused
  * banner with the offer, else the offer alone. Shared by the single-question card, the wizard step and
  * the multi-select question.

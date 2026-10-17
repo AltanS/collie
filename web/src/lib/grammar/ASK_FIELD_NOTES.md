@@ -6,7 +6,7 @@ Empirical findings from driving live Claude Code `AskUserQuestion` dialogs in a 
 was produced by sending one keystroke (or one paste) at a time and reading the screen after it; every
 answer was read back out of the agent's own session journal (`The user answered: …`), not inferred
 from the screen. These are the ground truth behind `lib/answer-field.ts`, the field branches of
-`prompt-action.ts`, `wizard-action.ts` and `multi-select-action.ts`, ADR 0104, and the fixtures
+`prompt-action.ts`, `wizard-action.ts` and `multi-select-action.ts`, ADR 0113, and the fixtures
 `web/src/fixtures/panes/claude--v2299-ask-field-*.txt`.
 
 The plan dialog's input row is a different field with different rules; see

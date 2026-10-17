@@ -784,7 +784,7 @@ describe("PromptSelectBlock — Grok's z row is not Claude's plan-feedback compo
   });
 });
 
-// ADR 0104: AskUserQuestion's `Type something.` field is typed into from the phone. Real 2.1.299
+// ADR 0113: AskUserQuestion's `Type something.` field is typed into from the phone. Real 2.1.299
 // captures: the field empty (pointer on row 1), holding text with the pointer elsewhere, and focused.
 describe("PromptSelectBlock — AskUserQuestion's answer field", () => {
   const OFFER = "Type your own answer";

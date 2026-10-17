@@ -1451,7 +1451,7 @@ export function AgentChat({
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
-  // Send an answer typed on the phone into a wizard step's field (ADR 0104): the shared recipe
+  // Send an answer typed on the phone into a wizard step's field (ADR 0113): the shared recipe
   // reaches, clears and fills the field, then one bound Enter answers the step and advances it.
   // Resolves whether it was sent, so the card keeps a refused draft on screen.
   const handleWizardAnswer = useCallback(
@@ -1568,7 +1568,7 @@ export function AgentChat({
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
 
-  // An answer typed into a multi-select question's own field (ADR 0104): the `type` intent, under the
+  // An answer typed into a multi-select question's own field (ADR 0113): the `type` intent, under the
   // same per-pane lock as every multi-select tap. It ticks the answer and leaves Submit/Next to the
   // person. Resolves whether it was sent, so the card keeps a refused draft in its editor.
   const handleMultiSelectAnswer = useCallback(

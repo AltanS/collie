@@ -40,7 +40,7 @@ export interface WizardOption {
 }
 
 /**
- * A question step's own answer field (Claude's `Type something.` row, ADR 0104): a text input, never
+ * A question step's own answer field (Claude's `Type something.` row, ADR 0113): a text input, never
  * an option. While it has focus every digit is typed into it and `Left` moves its caret, so no option
  * and no step arrow may fire.
  */

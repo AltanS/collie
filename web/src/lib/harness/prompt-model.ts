@@ -58,7 +58,7 @@ export interface PromptOption {
  *   - `plan-change` — Claude's "Tell Claude what to change": the digit focuses the field, typing
  *     fills it, Enter denies the plan and hands the agent the text (PLAN_FEEDBACK_NOTES.md).
  *   - `answer` — Claude's AskUserQuestion `Type something.` field: typed into and submitted as the
- *     question's answer by `lib/answer-field.ts` (ADR 0104, ASK_FIELD_NOTES.md). Its digit focuses
+ *     question's answer by `lib/answer-field.ts` (ADR 0113, ASK_FIELD_NOTES.md). Its digit focuses
  *     the field only while it is empty; on a filled field it submits the held text.
  *   - `free-text` — a text field Collie reads and does not type into: a permission dialog's amend
  *     note, or another harness's custom-answer row (Grok's `z`). Parsed so a focused row can lock

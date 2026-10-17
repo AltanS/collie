@@ -8,7 +8,7 @@
 // between render and tap can never match `wizardsEqual` (harness/wizard-model.ts), so the keystroke
 // is discarded and the caller refreshes.
 //
-// The typed answer (ADR 0104) is the shared recipe (lib/answer-field.ts) plus one bound `Enter`,
+// The typed answer (ADR 0113) is the shared recipe (lib/answer-field.ts) plus one bound `Enter`,
 // which answers the step and advances it; the next poll renders the next step.
 
 import { fillAnswerField, type FieldAccess } from "./answer-field";
@@ -67,7 +67,7 @@ function wizardFieldAccess(tapped: WizardModel): FieldAccess<"wizard"> {
 }
 
 /**
- * Answer the step in the person's own words (ADR 0104): the shared recipe (lib/answer-field.ts)
+ * Answer the step in the person's own words (ADR 0113): the shared recipe (lib/answer-field.ts)
  * reaches the field, clears what the person saw in it, types `text` and proves it arrived; then
  * `Enter`, which answers the step and advances, bound to the read that proved the text. A keystroke at
  * the terminal after that read makes the bridge refuse rather than answer with something else.

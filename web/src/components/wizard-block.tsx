@@ -30,7 +30,7 @@ export interface WizardBlockProps {
    */
   onAction: (keys: string[]) => void | Promise<void>;
   /**
-   * Injected handler for an answer typed on the phone into the step's own field (ADR 0104,
+   * Injected handler for an answer typed on the phone into the step's own field (ADR 0113,
    * lib/wizard-action.ts `submitWizardAnswer`). Resolves whether the answer was sent, so a refused
    * draft stays in the editor. Absent: the card offers no editor.
    */
@@ -51,7 +51,7 @@ export interface WizardBlockProps {
 // string (chip labels, question, options, answers) is a React text node — the XSS boundary is
 // unchanged. One control can be in flight at a time (spinner shows, the rest lock).
 //
-// A question step's `Type something.` field (ADR 0104) renders below the answers. While it has the
+// A question step's `Type something.` field (ADR 0113) renders below the answers. While it has the
 // keyboard in the terminal, a digit is typed into it and `Left` moves its caret, so every option, the
 // escape row and both step arrows lock; the answer editor stays usable, because its recipe reaches
 // the field itself.

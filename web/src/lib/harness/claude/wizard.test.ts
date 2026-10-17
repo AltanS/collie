@@ -293,7 +293,7 @@ describe("detectWizard — a long question at a narrow width (Claude Code 2.1.30
   });
 });
 
-// The step's `Type something.` field (ADR 0104, grammar/ASK_FIELD_NOTES.md § Wizard), over the 2.1.299
+// The step's `Type something.` field (ADR 0113, grammar/ASK_FIELD_NOTES.md § Wizard), over the 2.1.299
 // captures of a three-question wizard: modelled as a field, never an option, in every state the
 // answer recipe walks it through.
 describe("detectWizard — the answer field", () => {

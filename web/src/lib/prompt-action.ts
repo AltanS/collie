@@ -290,7 +290,7 @@ function answerFieldAccess(tapped: PromptModel): FieldAccess<"prompt-select"> {
 }
 
 /**
- * Answer a single AskUserQuestion in the person's own words (ADR 0104): the shared recipe
+ * Answer a single AskUserQuestion in the person's own words (ADR 0113): the shared recipe
  * (lib/answer-field.ts) reaches the field, clears what the person saw in it, types `text` and proves
  * it arrived; then `Enter`, the one key that answers, bound to the read that proved the text. A
  * keystroke at the terminal after that read makes the bridge refuse rather than answer with
