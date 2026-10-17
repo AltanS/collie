@@ -1845,6 +1845,7 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
 | `agy--ask-two-q1.txt` | agy 1.3.5, a two-question call: `Question 1/2: Which animal do you like?`, numbered options, `4. Write-in...`, footer `↑/↓ Navigate · → Next · enter Select · esc Skip`. Lifts with each option as its digit ALONE | `blocked` |
 | `agy--ask-two-q2.txt` | The same call after `2`: `Question 2/2: Which drink do you want?`, footer `↑/↓ Navigate · ← Back · enter Submit All · esc Skip`. Lifts the same way | `blocked` |
 | `agy--ask-multi.txt` | A checkbox question: `Question 1/1`, rows `1. [ ] apple` …, footer `↑/↓ Navigate · space Toggle · enter Submit · esc Skip`. Stays raw (no recipe here ticks with Space); the unread-dialog card offers Escape | `blocked` |
+| `agy--plan-approval-135.txt` | agy 1.3.5, plan approval (`Question 1/1: Approve plan execution?`) with `1 artifact · /artifact to review` above the question, options 1..3 (`Execute plan` / `Request changes` / `Cancel`) + `4. Write-in...`, footer `↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review`. Lifts with each option as its digit ALONE | `blocked` |
 
 The three `agy--slash-*` captures of 2026-10-15 are visible-screen reads of agy 1.3.5 in a throwaway
 Herdr session (`herdr pane read --source visible --format ansi`). The account email became
@@ -1861,12 +1862,14 @@ thought, which quoted a local instruction file, was deleted. Measured at the tim
 a first Escape cleared a typed search and a second closed the picker, and Enter resumed the
 highlighted conversation (a canary run).
 
-The three `agy--ask-*` captures of 2026-10-15 are reads of agy 1.3.5 in a throwaway Herdr session, with the
-same email and path swaps; the earlier canary turns above the last question were cut, so each keeps the
-header and its own turn. Measured at the time: a digit alone answers. On a one-question call it
-submitted; on `1/2` it answered and moved to `2/2`; on `2/2` it submitted the set. The digit-then-Enter
-recipe the reader used before answered `2/2` with its highlighted row, so `1/2` lifts with the digit
-alone now. The plan-approval dialog was not re-measured on 1.3.5; the code sends the digit alone for every family, so a build where a digit only moves the pointer would not submit it (measured on 1.3.5 only).
+The three `agy--ask-*` captures and `agy--plan-approval-135.txt` of 2026-10-15 are reads of agy 1.3.5 in a
+throwaway Herdr session, with the same email and path swaps; in the `agy--ask-*` files the earlier canary
+turns above the last question were cut, so each keeps the header and its own turn (`agy--plan-approval-135.txt`
+was the session's first turn, so only the shell launch line above the header was cut). Measured at the time:
+a digit alone answers. On a one-question call it submitted; on `1/2` it answered and moved to `2/2`; on `2/2`
+it submitted the set; and on `agy--plan-approval-135.txt` pressing `3` alone submitted `Cancel`. The
+digit-then-Enter recipe the reader used before answered `2/2` with its highlighted row, including when a
+two-question call carried the plan's `ctrl+r Review` footer, so every family lifts with the digit alone now.
 
 
 - **A free-text row's LABEL is not a stable marker**: it is the placeholder only while the box is
