@@ -255,7 +255,8 @@ Stock pi 1.3.0 (`@earendil-works/pi-coding-agent`, no model, a scratch `PI_CODIN
 the example pi ships, `examples/extensions/custom-footer.ts`, turned on with `/footer`. The extension
 replaces pi's footer (`ctx.ui.setFooter`) with one dim row, `↑0 ↓0 $0.000` and the model id, so the row
 under the editor is not pi's cwd row. Collie 1.22.0 to 1.22.4 refused every send to such a pane ("could
-not find the input box"); the profile's `idle.frame.underPainted` takes the painted row. Read with
+not find the input box"); the profile's `idle.frame.underPainted` takes the painted row, as a footer
+only: straight under the editor and one short run to the screen's end. Read with
 `herdr pane read --source recent --format ansi` and cut to the editor's top rule. CRLF line ends and the
 trailing padding are as read. No user, host or path is in either file.
 

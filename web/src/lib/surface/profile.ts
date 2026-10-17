@@ -178,10 +178,13 @@ export interface FrameLayout {
    */
   readonly under?: string;
   /**
-   * The interior walk only, with `under`. True when a PAINTED row (a foreground colour, or dim, on its
-   * first visible run) passes the `under` test too, whatever its words. An extension may replace the
-   * harness's status line with its own (pi's `ctx.ui.setFooter`, issue 485), and it paints it as the
-   * harness does, while a draft row cut from its box is plain. Optional.
+   * The interior walk only, with `under`. True when a PAINTED footer passes the `under` test too,
+   * whatever its words: a row straight under the bottom edge whose first visible run has a foreground
+   * colour or is dim, opening one run with no blank row that ends the screen and is at most
+   * `volatile.below.maxRows` tall. An extension may replace the harness's status line with its own
+   * (pi's `ctx.ui.setFooter`, issue 485), and it paints it as the harness does, while a draft row cut
+   * from its box is plain. The run's shape is the rest of the test: the harness paints a picker's
+   * list and a dialog's title too, and those stand apart by a blank row or run past the bound. Optional.
    */
   readonly underPainted?: boolean;
 

@@ -643,6 +643,30 @@ describe("the interior walk on rules with no prompt glyph (M56 spec 14)", () => 
     expect(findInputFrame(fixtureRows("pi--v130-custom-footer-idle.txt"), strict)).toBeNull();
   });
 
+  it("takes a painted row only as a footer: straight under the box, one run to the screen's end (issue 485)", () => {
+    const custom = "GLM 5.3 (full — primary) │ nvidia #6 · 40/40";
+    const painted = (text: string): StyledLine => styled({ ...plainRun(text), fg: "#7e8197" });
+    const box = [...lines("reply", RULE, ""), ...lines(RULE)];
+    // A blank row between the rule and the painted row: pi sets a picker's list apart that way.
+    expect(findInputFrame([...box, ...lines(""), painted(custom)], PI)).toBeNull();
+    // A gap inside the run: the run does not reach the screen's end.
+    expect(findInputFrame([...box, painted(custom), ...lines(""), painted(custom)], PI)).toBeNull();
+    // Taller than the status bound (`idle.volatile.below.maxRows`) is a list, not a footer.
+    const rows = (n: number): StyledLine[] => Array.from({ length: n }, (_, i) => painted(`• item ${i}`));
+    expect(findInputFrame([...box, ...rows(PI.volatile.below.maxRows)], PI)).not.toBeNull();
+    expect(findInputFrame([...box, ...rows(PI.volatile.below.maxRows + 1)], PI)).toBeNull();
+  });
+
+  it("never reads a picker cut by the pane's bottom as a box, though pi paints its list rows (issue 485)", () => {
+    // OmO's /tree on a short pane: the header between the top rule and an inner rule, a blank row,
+    // then painted list rows to the last row (fixtures README, "Derived, not captured"). Any painted
+    // row read it as a box holding the header, so a Replace from the phone typed into the tree's search.
+    expect(findInputFrame(fixtureRows("pi--omo-v5130-panel-picker-tree-cut.txt"), PI)).toBeNull();
+    for (const [name, end] of [["pi--omo-v5130-picker-tree.txt", 12], ["pi--v110-stock-picker-tree.txt", 33]] as const) {
+      expect(findInputFrame(fixtureRows(name).slice(0, end), PI), name).toBeNull();
+    }
+  });
+
   it("cuts the text a side panel draws on the prompt row", () => {
     const row = `❯${" ".repeat(40)}facts 4 queued`;
     expect(findInputFrame(lines(RULE, row, RULE, ...footer), PI)!.interior.text).toBe("");

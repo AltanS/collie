@@ -284,6 +284,17 @@ describe("the generic cues alone", () => {
   });
 });
 
+describe("pi's dialogs under its profile", () => {
+  // The pi profile takes an extension's painted footer under the box (`idle.frame.underPainted`, issue
+  // 485). pi paints much more than footers, so this pins that no pi dialog, a cut one included, reads
+  // as a box with no modal: with `modal: none` the phone offers Replace, which types into the dialog.
+  it("no pi dialog fixture reads modal none, the ones cut on purpose too", CORPUS_WALK, () => {
+    const dialogs = FIXTURES.filter((name) => labelOf(name).harness === "pi" && labelOf(name).state === "dialog");
+    expect(dialogs.length).toBeGreaterThan(60);
+    expect(dialogs.filter((name) => own(name).surface.modal === "none")).toEqual([]);
+  });
+});
+
 // ── The fold's own rules ─────────────────────────────────────────────────────────────────────────
 
 const IDLE_SCREEN = plainRows(["● done", "", "─".repeat(40), "❯ ", "─".repeat(40), "  model · ctx 3%"]);
