@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The first tap after an arrow on the Model picker works.** After Move up or Move down the card showed the new highlight, but the phone still held the picker as it was before the move, so the first tap on "Use this session only" or "Set as default" was refused and only the second tap went through. The card comes from the screen text, and what the phone answers comes from a slower read. Now the phone checks that the two show the same highlight. When they do not, Collie reads the screen once more, and the phone answers only when that read shows the highlight on the card. A row other than the one on the card is never confirmed.
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with a footer from an extension refuses every send from the phone, and a Claude picker can need three taps.

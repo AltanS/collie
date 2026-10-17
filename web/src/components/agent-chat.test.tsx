@@ -37,6 +37,9 @@ import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
 import type { Ask, Surface } from "@/lib/surface/surface";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { liftDialog, readerBlocks } from "@/lib/surface/lift";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -962,17 +965,20 @@ describe("AgentChat: a dialog tap answers the pane's ask", () => {
     const user = userEvent.setup();
     const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "sent", keys: ["s"] } }));
     const picker = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"), "utf8");
+    // The hash the bridge mints for this screen: a menu tap goes out only under an ask of the card's
+    // own dialog (agent-chat-menu-ask.test.tsx has the cases where the two differ).
+    const hash = liftDialog(readerBlocks(splitLines(parseAnsi(picker)), "claude"))!.hash;
     const menuAsk: Ask = {
       id: "ask-0c0c0c0c0c0c0c",
       kind: "menu",
       options: [{ id: "1", label: "Set as default" }, { id: "2", label: "Use this session only" }, { id: "3", label: "Cancel" }],
       channel: "keys",
-      hash: "16977bfbfe0c74",
+      hash,
     };
     renderChat({ text: picker, agent: withAsk(menuAsk) });
     await user.click(await screen.findByRole("button", { name: /Use this session only/ }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash: "16977bfbfe0c74", optionId: "2", origin: "person_tap" } });
+    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash, optionId: "2", origin: "person_tap" } });
   });
 
   it("a pane whose Surface carries no ask keeps the guarded key route", async () => {
