@@ -32,7 +32,13 @@ describe("readSendReply", () => {
       detail: "No input box was found.",
       cap: null,
       queued: false,
+      cause: null,
     });
+  });
+
+  it("reads the notice cause, and drops a cause it does not know", () => {
+    expect(readSendReply({ receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key" })?.cause).toBe("notice_key");
+    expect(readSendReply({ receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "dance" })?.cause).toBeNull();
   });
 
   it("reads the cap's answer field by field and drops one that is not whole", () => {
@@ -83,6 +89,17 @@ describe("readSend", () => {
     expect(readSend(reply("sent", null))).toEqual({ clear: true, note: "sent", offers: [], surface: null, detail: null, toCard: false, cap: null });
     expect(readSend(reply("effective", null)).clear).toBe(true);
     expect(readSend(reply("unknown", "bound")).clear).toBe(false);
+  });
+
+  // The review's F3: the bridge's English detail is dropped for every `unconfirmed`, so the notice's own
+  // sentence travels as a cause the phone translates. An answer without it keeps the generic sentence.
+  it("a refusal with the notice cause says the number would answer the notice, and keeps the commit offer", () => {
+    const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That digit would answer the notice above the box." };
+    expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "noticeKey", offers: ["commit"], detail: null });
+    const running: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["keys"], cause: "notice_key" };
+    // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Type here.
+    expect(readSend(readSendReply(running)!)).toMatchObject({ note: "noticeKeyHeld", offers: [], detail: null });
+    expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"])).note).toBe("unconfirmed");
   });
 
   it("a send queued behind the running turn clears the draft and says it waits for the turn; the receipt's queued is read off the wire", () => {

@@ -14,6 +14,7 @@
 // from nothing but the rows.
 
 import { displayWidth } from "../text-width";
+import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
 /** The profile block this module reads. */
@@ -470,8 +471,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
   const { status, footer, named } = walkBelowNamed(texts, bottom, end, idle, c.footerRows);
-  const aboveRows = Math.min(idle.volatile.above.maxRows, top);
-  const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
+  const above = bandAbove(texts, top, idle);
 
   return {
     top,
@@ -482,6 +482,18 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
     volatile: { above, status, footer, named },
     anchorsHit,
   };
+}
+
+/**
+ * The volatile band above a box whose top edge is `top`: up to `volatile.above.maxRows` rows, counted up
+ * from the first row of a notice the profile names over the box (`idle.notices`) when one stands there,
+ * so the notice's own rows never fill the band and a dialog drawn above it is still read.
+ */
+function bandAbove(texts: readonly string[], top: number, idle: IdleProfile): { first: number; last: number } | null {
+  const notice = readAboveNotice(texts, top, idle.notices ?? [], idle.noticeGaps ?? []);
+  const from = notice === null ? top : notice.first;
+  const aboveRows = Math.min(idle.volatile.above.maxRows, from);
+  return aboveRows > 0 ? { first: from - aboveRows, last: top - 1 } : null;
 }
 
 /** The text a row adds to the draft on the interior walk: the profile's `text` group, or the trimmed row. */
@@ -581,8 +593,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
   // An open box has no edge to walk a statusline from: rows under it (a widget) stay in the cues' sight.
   const { status, footer, named } = open ? { status: null, footer: null, named: [] } : walkBelowNamed(texts, bottom, end, idle, c.footerRows);
-  const aboveRows = Math.min(idle.volatile.above.maxRows, top);
-  const above = aboveRows > 0 ? { first: top - aboveRows, last: top - 1 } : null;
+  const above = bandAbove(texts, top, idle);
 
   return {
     top,

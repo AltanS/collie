@@ -1181,6 +1181,22 @@
   }
  },
  {
+  "fixture": "claude--v2302-heads-up-above-box--w142.txt",
+  "frame": {
+   "top": 71,
+   "prompt": 72,
+   "bottom": 73,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 74,
+    "last": 75
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2302-idle-full-screen--w120--h36.txt",
   "frame": {
    "top": 32,

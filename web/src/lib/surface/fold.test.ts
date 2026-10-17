@@ -388,7 +388,7 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     expect(r.frame).not.toBeNull();
     expect(isFree(r.surface)).toBe(true);
     // The quote is a dialog shape: read with no frame, the cues see it.
-    expect(readCues(quote.slice(1, 5), null).strength).toBe("strong");
+    expect(readCues(quote.slice(1, 5), null, null).strength).toBe("strong");
   });
 
   it("codex (c): the same dialog flush on the box is never free", () => {
@@ -826,5 +826,25 @@ describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
     const read = own("omp--slash-palette.txt");
     expect(findInputFrame(fixtureRows("omp--slash-palette.txt"), idleFor("omp")!)).toBeNull();
     expect(read.surface.reason).toBe("torn");
+  });
+});
+
+// Claude Code 2.1.302's "Heads up" notice above a live box: its keys act only on a box that holds one
+// digit, so the box stays free. The rating survey over the box is another shape and stays unreadable.
+describe("a notice above a live box (Claude Code 2.1.302)", () => {
+  it("folds the heads-up notice with no modal over the box", () => {
+    const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", CLAUDE);
+    expect(read.frame).not.toBeNull();
+    expect(read.surface.modal).toBe("none");
+    expect(read.surface.composer).toBe("empty");
+  });
+
+  it("reads the turn as running from the spinner above the notice, words before its timer and all", () => {
+    const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", CLAUDE);
+    expect(read.surface.turn).toBe("running");
+  });
+
+  it("keeps the rating survey over the box unreadable", () => {
+    expect(readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", CLAUDE).surface.modal).toBe("unreadable");
   });
 });

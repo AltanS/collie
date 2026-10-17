@@ -63,6 +63,9 @@ export type DialogKind = keyof DialogModels;
  * `autocomplete` it would have locked the composer out of a pane whose input box is demonstrably live.
  */
 export function blockOwnsKeyboard(block: Block): boolean {
+  // A menu lifted off a notice ABOVE a live input box (`MenuModel.liveBox`) is the one card whose
+  // screen leaves the keyboard to the box: the notice's keys act only on a box holding one digit.
+  if (block.kind === "menu" && block.menu.liveBox !== undefined) return false;
   return block.kind in DIALOG_CONTRACT;
 }
 
@@ -76,6 +79,7 @@ export function dialogNounOf(blocks: readonly Block[]): DialogNoun | null {
   for (const block of blocks) {
     switch (block.kind) {
       case "menu":
+        if (block.menu.liveBox !== undefined) break;
         return "menu";
       case "prompt-select":
         return block.prompt.family === "permission" || block.prompt.family === "trust" ? "permission" : "question";
@@ -198,7 +202,9 @@ export const DIALOG_CONTRACT: DialogContract = {
   menu: {
     // A footer-named key COMMITS (in the `/model` picker, Enter writes the user's default), so it
     // takes the full signature check; an arrow only moves the highlight — which is precisely what
-    // changes the signature — so it compares identity without the leftRight label.
+    // changes the signature — so it compares identity without the leftRight label. A card off a notice
+    // above a live box (`liveBox`) has digit keys only, each printed on its key row, and no arrows: its
+    // region is the notice's rows, which the bridge finds in its fresh read or refuses the tap.
     commits: menusEqual,
     identity: menusSameIdentity,
     signature: (m) => m.signature,

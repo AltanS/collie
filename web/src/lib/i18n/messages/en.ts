@@ -439,6 +439,8 @@ export const en = {
   "composer.protocol.draft": "The box already holds a draft. Add to it, replace it, or cancel.",
   "composer.protocol.typed": "Your text is in the box, but Enter was not pressed. Submit it or discard it.",
   "composer.protocol.unconfirmed": "Collie cannot read this screen. Check the pane, then tap Type here.",
+  "composer.protocol.noticeKey": "That number would answer the notice above the box. Check the pane, then tap Type here.",
+  "composer.protocol.noticeKeyHeld": "That number would answer the notice above the box. Answer it on its card, or send the number once the turn has ended.",
   "composer.protocol.unknown": "Collie cannot tell if this was sent. Read the screen, then send again if it did not go. Your draft is kept.",
   "composer.protocol.busy": "Another send on this pane is still running. Wait, then try again.",
   "composer.protocol.notFree": "The input box is not free. Nothing was typed.",
@@ -1525,6 +1527,7 @@ export const en = {
   "dialog.autocomplete.title": "Slash commands",
   "dialog.menu.moveUp": "Move up",
   "dialog.menu.moveDown": "Move down",
+  "dialog.menu.noticeDraft": "Empty the box first: a digit would join the text there.",
   "dialog.menu.leftAria": "Left, {verb} ({label})",
   "dialog.menu.rightAria": "Right, {verb} ({label})",
   // The printed scale's chips (.adr/0054): one per value the screen listed. The chip's own text is
