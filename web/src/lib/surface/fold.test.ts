@@ -828,6 +828,11 @@ describe("a notice above a live box (Claude Code 2.1.302)", () => {
     expect(read.surface.composer).toBe("empty");
   });
 
+  it("reads the turn as running from the spinner above the notice, words before its timer and all", () => {
+    const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", CLAUDE);
+    expect(read.surface.turn).toBe("running");
+  });
+
   it("keeps the rating survey over the box unreadable", () => {
     expect(readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", CLAUDE).surface.modal).toBe("unreadable");
   });

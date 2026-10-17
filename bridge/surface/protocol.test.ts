@@ -2968,16 +2968,18 @@ describe("real screens from the fixture corpus", () => {
     expect(onDraft.offers).toEqual(["append", "replace", "cancel"]);
   });
 
-  // Claude Code 2.1.302's Heads up notice above a live box: its keys act when the box holds exactly one
-  // of its digits, so only such a send takes the manual Send; any other text goes on one tap.
-  test("a heads-up notice over the box leaves the box free, and a send of one of its digits takes the manual Send", async () => {
+  // Claude Code 2.1.302's Heads up notice above a live box, captured mid-turn under a themed spinner
+  // (`Fiddle-faddling… · tool use (4m 32s …)`): the turn reads running, so a send of one of the notice's
+  // digits is refused with the notice cause and the key pad alone, as under a plain spinner.
+  test("a heads-up notice over the box in a running turn leaves the box free, and a send of one of its digits is refused to the key pad", async () => {
     const captured = rig({ pane: still(fixture("claude--v2302-heads-up-above-box--w142.txt")) });
     const prepared = await captured.protocol.handle({ id: "fixture-notice-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
-    expect(prepared.surface).toMatchObject({ modal: "none", composer: "empty" });
+    expect(prepared.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
     const digit = await captured.send("1");
     expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(digit.cause).toBe("notice_key");
-    expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    expect(digit.offers).toEqual(["keys"]);
+    expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
     expect(captured.pane.calls).toEqual([]);
   });
 

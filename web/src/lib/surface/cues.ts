@@ -122,9 +122,11 @@ const KEY_HINT_SOURCE = `(?:^|[^\\w+])(?:press\\s+)?${KEY}\\s*(?:to\\s+|:\\s*|=\
 const KEY_HINT = new RegExp(KEY_HINT_SOURCE, "iu");
 const KEY_HINTS = new RegExp(KEY_HINT_SOURCE, "giu");
 
-/** Running signs, read in a frame's volatile rows only. */
+/** Running signs: an interrupt hint, or a spinner row whose ellipsis is followed by a bracketed timer,
+ *  with at most one ` · <words>` segment between them (`Flowing… · tool use (5m 41s …)`). The fold reads
+ *  them in a frame's volatile rows ({@link runningSign}); the bridge also scans whole screens with them. */
 const INTERRUPT_HINT = /(?:^|[·(•|│,]\s*)(?:esc|escape|ctrl\+c|⌃c)\s+to\s+interrupt\s*(?:$|[·)•|│,])/iu;
-const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
+const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)(?:\s+·\s+\p{L}[\p{L} -]{0,30})?\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
@@ -230,7 +232,8 @@ function belowRows(texts: readonly string[], frame: Frame): number[] {
 }
 
 /** Which rows of a found frame are volatile: the band above, the status and footer runs, and any
- *  rows under the bottom edge. Running signs are read here and nowhere else. */
+ *  rows under the bottom edge. The fold reads running signs here and nowhere else; the bridge's
+ *  whole-screen scans read them too. */
 export function volatileRows(texts: readonly string[], frame: Frame): number[] {
   const rows: number[] = [];
   const { above } = frame.volatile;
