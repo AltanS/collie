@@ -834,6 +834,27 @@ function commitKeys(state: RunState): readonly string[] {
   return keys.submit;
 }
 
+/** Whether the box answers a question the agent asked: the profile's `idle.answerPrompt` on the frame's prompt row. */
+function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
+  const source = match?.profile.idle.answerPrompt;
+  if (source === undefined || snap.frame === null) return false;
+  const row = snap.texts[snap.frame.interior.prompt];
+  return row !== undefined && new RegExp(source, "u").test(row);
+}
+
+/**
+ * Whether the keys a commit would press hold an Enter that a running turn takes as a steer: the
+ * harness's Enter does not queue (or its version is not trusted), and Enter is among the submit keys
+ * (the command keys for a command). A harness that submits with its queue key is never stopped.
+ */
+function enterSteersTurn(state: RunState): boolean {
+  if (enterQueues(state.match)) return false;
+  const keys = state.match?.profile.keys;
+  if (keys === undefined) return false;
+  const commit = state.command || state.request.mode === "command" ? (keys.commandSubmit ?? keys.submit) : keys.submit;
+  return commit.some((key) => key.toLowerCase() === "enter");
+}
+
 /**
  * Whether the receipt's `queued` comes only from a witness: a harness whose Enter does not queue but
  * that takes a message in a turn through its queue key. Its queue key may be its submit key too, so a
@@ -859,18 +880,20 @@ function labelFromWitness(match: ProfileMatch | null): boolean {
 function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "below" = "screen"): Ended | null {
   const { surface } = s0;
   const { request } = state;
-  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-  if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
-  if (request.mode === "discard") return null;
   const text = sendLines(request.text).join("");
   const box = boxText(frame);
   const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
   const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
   const isCommand = request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null);
-  if (isCommand && neverHeldEntry(goesOut, state.match) !== null) {
+  // A command the profile never lets wait is refused before anything else, so that the refusal that
+  // follows on a harness that takes nothing in a turn cannot turn it into a held send.
+  if (request.mode !== "discard" && isCommand && neverHeldEntry(goesOut, state.match) !== null) {
     state.neverHold = true;
     return new Ended("refused", "turn_running", { surface, detail: NEVER_HELD });
   }
+  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+  if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
+  if (request.mode === "discard") return null;
   if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
   return null;
 }
@@ -878,6 +901,10 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
 const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may have taken it. Check the transcript.";
 
+/** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
+const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
+/** The detail of a send whose turn started while its text went in, on a harness whose Enter would steer it. */
+const TURN_STARTED = "A turn started while the text went in, and Enter would steer it. The text is still in the box.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a command refused because the turn runs. */
@@ -2360,6 +2387,8 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
+    // A held send is a message for the agent; a box that answers its question would take it as the answer.
+    if (state.released === true && answersQuestion(state.match, s0)) throw new Ended("refused", "not_free", { surface, detail: ANSWER_BOX });
     if (isFree(surface)) return;
     if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
       this.gateTurn(state, s0, s0.frame);
@@ -2876,6 +2905,7 @@ export class SendProtocol {
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
     // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
     const boxOnly = s0.frame !== null && !command && !manual && queuesInTurn(state.match);
+    let turnStarted = false;
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
@@ -2893,6 +2923,11 @@ export class SendProtocol {
         }
         // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
         if (!state.queued && queuesInTurn(state.match) && !aboveUnchanged(s0, snap)) state.streamed = true;
+        // A turn that started while the text went in, with the rows above still: an Enter would steer it.
+        if (!(state.queued || state.streamed) && snap.surface.turn === "running" && enterSteersTurn(state)) {
+          turnStarted = true;
+          return "fail";
+        }
         return "pass";
       }
       // A command whose list under the box points at another command: Enter would run that one. The list
@@ -2937,6 +2972,13 @@ export class SendProtocol {
           why = "changed";
           return "wait";
         }
+        // S0 read no turn, and one started while the text went in: an Enter now would steer it. A send
+        // the moving rows put on the queued path (read fresh: this read may have put it there) presses
+        // the queue key instead.
+        if (!(state.queued || state.streamed) && snap.surface.turn === "running" && enterSteersTurn(state)) {
+          turnStarted = true;
+          return "fail";
+        }
         return "pass";
       }
       if (landing === null) return "fail";
@@ -2972,6 +3014,11 @@ export class SendProtocol {
     if (screen !== null) note.detail = otherScreenDetail(screen);
     const pointedElsewhere: boolean = elsewhere; // set inside the poll's callback
     if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
+    const started: boolean = turnStarted; // set inside the poll's callback
+    if (started) {
+      note.detail = TURN_STARTED;
+      throw new Ended("typed_not_submitted", "changed", sawNote(result.snap, note));
+    }
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 
