@@ -1026,6 +1026,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // The list under the box on the harness lab's 120 x 40 tmux pane (captured 2026-10-17), the screen scrolled up.
     { fixture: "v2302-slash-model-list--w120--h40", statusRows: 0, draft: "/model", stripped: 24 },
     { fixture: "v2302-slash-effort-list--w120--h40", statusRows: 0, draft: "/effort", stripped: 24 },
+    // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): an empty box on a screen whose rows reach
+    // the bottom, and the same pane with the list under the box, blank rows under the list.
+    { fixture: "v2302-idle-full-screen--w120--h36", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v2302-slash-model-list-padded--w120--h36", statusRows: 0, draft: "/model", stripped: 16 },
     // A multiSelect step with the pointer on its "Type something" field (sanitised field capture, 2026-10-17).
     { fixture: "v2302-multiselect-field-focused--w160", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2302-turn-ended-yn--w119", statusRows: 3, draft: null, stripped: 7 },

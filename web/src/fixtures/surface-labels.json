@@ -976,6 +976,16 @@
    "version": "2.1.302",
    "state": "popup"
   },
+  "claude--v2302-idle-full-screen--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "idle"
+  },
+  "claude--v2302-slash-model-list-padded--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
   "claude--v2302-multiselect-field-focused--w160.txt": {
    "harness": "claude",
    "version": "2.1.302",

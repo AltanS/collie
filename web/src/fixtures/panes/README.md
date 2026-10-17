@@ -2380,6 +2380,20 @@ screen up: the box moved up eleven rows between the read before the write and th
 | `claude--v2302-slash-model-list--w120--h40.txt` | The box holds `/model`, and under it seven entries, the pointer on `❯ /model  Set the AI model for Claude Code (currently Haiku 5.5)`, five of them with a wrapped description. The shell banner, the welcome rows and the tip row stand over the box, scrolled up. The first round of the fix read the list as the command's own and still kept Enter back: the rows above the box had moved up more rows than the box grew, plus one, so S1 read a changed screen (`typed_not_submitted (changed)`). Labelled `popup` |
 | `claude--v2302-slash-effort-list--w120--h40.txt` | The same pane after `/help`: the box holds `/effort`, and under it two entries, `❯ /effort  Set effort level for model usage` and `/code-review` with its description wrapped. Labelled `popup` |
 
+## The slash list from a full screen, 2.1.302 (captured 2026-10-17, fix rig)
+
+Read with `herdr pane read --source visible --format ansi --raw` from an isolated Herdr session (120
+columns by 36 rows, Claude Code 2.1.302, Haiku 5.5, a scratch config), the escapes kept, LF line ends.
+The project path on the welcome row is replaced by a neutral path of the same length. No user, host,
+key or token remains. Claude Code draws blank rows under its command list, down to a height the pane
+sets: five here, eight under the twelve list rows of the h40 capture above. When the rows before the
+write already reach the bottom of the pane, the terminal scrolls for those blank rows too.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-idle-full-screen--w120--h36.txt` | An empty box under nine `/model` and `Kept model as Haiku 5.5` pairs. The status row is the pane's last row. The read before the write. Labelled `idle` |
+| `claude--v2302-slash-model-list-padded--w120--h36.txt` | The same pane once the box holds `/model`: the list's twelve rows under the box, then five blank rows to the bottom, which the read leaves out (31 rows). The box moved up 16 rows, and the list's rows plus one allowed 13, so S1 read a changed screen and left `/model` typed (`typed_not_submitted (changed)`) until the blank rows counted too. Labelled `popup` |
+
 ## A multiSelect step with the pointer on its text field, 2.1.302 (field capture 2026-10-17, sanitised)
 
 Read through lane 8788's `GET /api/pane/:id` from a live Claude Code 2.1.302 session (Herdr, 160 columns

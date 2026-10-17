@@ -4611,7 +4611,8 @@ describe("a slash command over Claude Code's command list under the box (field c
    * by `scroll` rows. `list` rewrites the list rows.
    */
   const LAB_STATUS = ["  \u23f8 manual mode on \u00b7 ? for shortcuts \u00b7 \u2190 for agents", "                  tmux focus-events off \u00b7 add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking"];
-  const scrolledScreen = (pane: FakePane, name: string, options: { scroll?: number; list?: (rows: string[]) => string[] } = {}): number => {
+  /** `full`: the screen before the write has rows down to its last row, so the list scrolls it by all of its region. */
+  const scrolledScreen = (pane: FakePane, name: string, options: { scroll?: number; full?: boolean; list?: (rows: string[]) => string[] } = {}): number => {
     const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
     expect(rows).toHaveLength(40);
     const boxRow = rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
@@ -4619,7 +4620,7 @@ describe("a slash command over Claude Code's command list under the box (field c
     let end = boxRow + 2;
     while (end < rows.length && rows[end]!.trim() !== "") end++;
     const listRows = end - boxRow - 2;
-    const scroll = options.scroll ?? listRows - 1;
+    const scroll = options.full === true ? rows.length - (boxRow + 2 + LAB_STATUS.length) : (options.scroll ?? listRows - 1);
     const after = options.list === undefined ? rows : [...rows.slice(0, boxRow + 2), ...options.list(rows.slice(boxRow + 2, end)), ...rows.slice(end)];
     const earlier = Array.from({ length: scroll }, (_, i) => `  earlier output, row ${String(i + 1)}`);
     pane.beforeRead = (p) => {
@@ -4653,14 +4654,108 @@ describe("a slash command over Claude Code's command list under the box (field c
     });
   }
 
-  test(`${LAB_MODEL}: the rows above may scroll by the list's own rows plus one, no more: past that the screen changed`, async () => {
+  test(`${LAB_MODEL}: with a row drawn under the list, the rows above may scroll by the list's own rows plus one, no more: past that the screen changed`, async () => {
     const { pane, send } = rig({ version: "2.1.302" });
     const probe = rig({ version: "2.1.302" });
     const listRows = scrolledScreen(probe.pane, LAB_MODEL);
-    scrolledScreen(pane, LAB_MODEL, { scroll: listRows + 2 });
+    scrolledScreen(pane, LAB_MODEL, { scroll: listRows + 2, list: (rows) => [...rows, "  Background task finished"] });
     const answer = await send("/model", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
     expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  // The list's region is taller than its rows: under the twelve rows of the h40 capture stand eight
+  // blank rows down to the pane's last row. On a screen whose rows reach the bottom, the terminal
+  // scrolls for those rows too, so the box moves up by the list's rows plus its blank rows.
+  for (const [name, command] of [
+    [LAB_MODEL, "/model"],
+    [LAB_EFFORT, "/effort"],
+  ] as const) {
+    test(`${name}: ${command} from a screen whose rows reach the bottom is sent; the blank rows under the list scrolled it too`, async () => {
+      const { pane, send } = rig({ version: "2.1.302" });
+      scrolledScreen(pane, name, { full: true });
+      const seen = journal(pane);
+      const answer = await send(command, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(`:${command}`)))).toEqual([expect.stringMatching(new RegExp(`:${command}$`, "u")), "keys:Enter"]);
+      neverEscape(pane);
+    });
+  }
+
+  /**
+   * The fix rig's pair (Herdr, 120 x 36, Claude Code 2.1.302, 2026-10-17): a screen whose rows reach the
+   * bottom with an empty box, and the same pane once the box holds /model, its twelve list rows under
+   * the box and five blank rows under them (the read leaves them out). The box moved up 16 rows. The
+   * fake box is drawn into the box row of each; `s1` edits the second screen.
+   */
+  const FULL = "claude--v2302-idle-full-screen--w120--h36.txt";
+  const PADDED = "claude--v2302-slash-model-list-padded--w120--h36.txt";
+  const fullScreenPair = (pane: FakePane, options: { s0?: (rows: string[]) => string[]; s1?: (rows: string[]) => string[] } = {}): void => {
+    const read = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\n");
+    const boxAt = (rows: readonly string[]): number => rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
+    const before = options.s0 === undefined ? read(FULL) : options.s0(read(FULL));
+    const after = options.s1 === undefined ? read(PADDED) : options.s1(read(PADDED));
+    expect(before).toHaveLength(36);
+    expect([boxAt(before), boxAt(after)]).toEqual([33, 17]);
+    pane.beforeRead = (p) => {
+      const typed = p.box.startsWith("/");
+      const shown = typed ? [...after] : [...before];
+      shown[typed ? boxAt(after) : boxAt(before)] = `\u276f\u00a0${p.box}`;
+      p.fixed = shown.join("\n");
+    };
+  };
+
+  test(`${PADDED}: /model from a screen whose rows reach the bottom is sent, though the box moved up past the list's own rows plus one (rig, 2026-10-17)`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane);
+    const seen = journal(pane);
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+    expect(pane.transcript.at(-1)).toBe("> /model");
+    neverEscape(pane);
+  });
+
+  test(`${PADDED}: the same pair on a version Collie could not read is sent too (the browser leg's bridge, 2026-10-17)`, async () => {
+    const { pane, send } = rig({ version: "" });
+    fullScreenPair(pane);
+    expect((await send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test(`${PADDED}: a transcript row above the box that changed still keeps Enter back`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => rows.map((row, i) => (i === 5 ? "  \u23bf  Set model to Opus 5.5 for this session only" : row)) });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe("/model");
+  });
+
+  test(`${PADDED}: a row drawn under the list takes the blank rows' allowance away, and Enter stays back`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => [...rows, "  Background task finished"] });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test(`${PADDED}: with no transcript row left above the box to compare, the blank rows under the list do not count`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    // Sixteen transcript rows at S0, none above the box at S1: a move of 16 rows that only the blank rows could explain.
+    fullScreenPair(pane, { s0: (rows) => rows.map((row, i) => (i >= 16 && i < 26 ? "" : row)), s1: (rows) => rows.map((row, i) => (i < 10 ? "" : row)) });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test(`${PADDED}: the list pointing at another command over the blank rows is still left typed with the list notice`, async () => {
+    const { pane, send, deps } = rig({ version: "2.1.302" });
+    fullScreenPair(pane, { s1: (rows) => [...rows.slice(0, 19), ...pointAt("/models")(rows.slice(19).map(plain))] });
+    const answer = await send("/model", { id: "padded-elsewhere-1", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(deps.store.get("padded-elsewhere-1")?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
   });
 
   test(`${LAB_MODEL}: /model typed while the list points at /models on the short pane is left typed with the list notice`, async () => {
