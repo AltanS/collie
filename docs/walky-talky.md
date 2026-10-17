@@ -218,7 +218,7 @@ after an install.
 
 | Harness | File | How Collie writes it |
 | --- | --- | --- |
-| Claude Code | `~/.claude/skills/collie-walky-talky/SKILL.md` | The whole file. Collie owns it. Every `CLAUDE_CONFIG_DIR` profile that Collie reads gets the same folder. |
+| Claude Code | `~/.claude/skills/collie-walky-talky/SKILL.md` | The whole file. Collie owns it. Every Claude profile that Collie reads gets the same folder, and so does the folder `CLAUDE_CONFIG_DIR` names where you run the install. |
 | Codex | `$CODEX_HOME/AGENTS.md`, else `~/.codex/AGENTS.md` | A block inside the file. |
 | opencode | `~/.config/opencode/AGENTS.md` | A block inside the file. |
 | pi | `$PI_CODING_AGENT_DIR/AGENTS.md`, else `~/.pi/agent/AGENTS.md` | A block inside the file. |

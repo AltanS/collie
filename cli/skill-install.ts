@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 import { codexHome } from "./codex-hooks.ts";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
@@ -102,15 +102,28 @@ export interface SkillTarget {
  * `generic` is not in the table on purpose: it has no file. `collie skill print generic` prints the
  * block for a hand paste.
  */
+/**
+ * The Claude profile folders the skill goes into: every one the hooks installer knows, then
+ * `CLAUDE_CONFIG_DIR` when it is set to an absolute path. A relative value names no folder Collie
+ * could find again, so it is left out.
+ */
+export function claudeProfileDirs(ctx: Pick<CliContext, "home" | "env">): string[] {
+  const dirs = claudeSettingsTargets(ctx).map((t) => t.dir);
+  const own = ctx.env.CLAUDE_CONFIG_DIR?.trim() ?? "";
+  if (own !== "" && isAbsolute(own)) dirs.push(own.replace(/[\\/]+$/u, "") || own);
+  return [...new Set(dirs)];
+}
+
 export const SKILL_TARGETS: readonly SkillTarget[] = [
   {
     // https://code.claude.com/docs/en/skills (2026-10-17): "Personal skills: ~/.claude/skills/<skill-name>/SKILL.md".
     // A `CLAUDE_CONFIG_DIR` profile replaces `~/.claude`, so every profile the hooks installer knows
-    // (`claudeSettingsTargets`) gets the same folder.
+    // (`claudeSettingsTargets`) gets the same folder, and so does the profile `CLAUDE_CONFIG_DIR`
+    // itself names in the install's own environment (a profile set only that way, M62 live rig).
     harness: "claude",
     form: "file",
     home: (path) => dirname(dirname(dirname(path))),
-    paths: (ctx) => claudeSettingsTargets(ctx).map((t) => join(t.dir, "skills", SKILL_NAME, "SKILL.md")),
+    paths: (ctx) => claudeProfileDirs(ctx).map((dir) => join(dir, "skills", SKILL_NAME, "SKILL.md")),
   },
   {
     // https://learn.chatgpt.com/docs/agent-configuration/agents-md (2026-10-17; developers.openai.com redirects

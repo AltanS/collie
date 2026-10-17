@@ -95,6 +95,21 @@ describe("the targets", () => {
   });
 });
 
+describe("a profile set only by CLAUDE_CONFIG_DIR", () => {
+  test("gets the skill beside ~/.claude, once, and a relative value names no folder", () => {
+    const own = join("/srv", "claude-work");
+    const ownFile = join(own, "skills", "collie-walky-talky", "SKILL.md");
+    const paths = skillFiles(context({ CLAUDE_CONFIG_DIR: `${own}/` })).map((f) => f.path);
+    expect(paths.filter((p) => p === ownFile)).toHaveLength(1);
+    expect(paths).toContain(CLAUDE_FILE);
+    expect(skillFiles(context({ CLAUDE_CONFIG_DIR: join(HOME, ".claude") })).filter((f) => f.path === CLAUDE_FILE)).toHaveLength(1);
+    expect(skillFiles(context({ CLAUDE_CONFIG_DIR: "claude-work" })).map((f) => f.path)).not.toContain(join("claude-work", "skills", "collie-walky-talky", "SKILL.md"));
+    const d = deps({ env: { CLAUDE_CONFIG_DIR: own } });
+    expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(text(d, ownFile)).toBe(rendered(d));
+  });
+});
+
 describe("install", () => {
   test("writes the whole file for Claude and a managed block for the others", () => {
     const d = deps();
