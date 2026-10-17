@@ -90,9 +90,9 @@ describe("the rule is dropped once, in one place", () => {
     expect(kindsOf(fromText(raw)).at(-1)).toBe("prompt-select");
   });
 
-  it("drops a wrapped closing rule with its 1-2 glyph stub (Claude Code 2.1.302)", () => {
-    // 2.1.302 draws the rule full width from column 2, beside its column-0 gutter cell, so the rule
-    // wraps: a full row, then its last glyphs alone on the next row.
+  it("drops a wrapped closing rule with its 1-2 glyph stub (a theme's gutter beside the dialog)", () => {
+    // A theme plugin's two-column gutter narrows the dialog while Claude Code still draws the rule at
+    // the full pane width, so the rule wraps: a full row, then its last glyphs alone on the next row.
     const raw = `${withoutLastRow(text("claude-lab--ask-single-named-v2296--w82.txt"))}\n  ${"─".repeat(80)}\n  ──`;
     const lines = fromText(raw);
     const dropped = dropClosingRule(lines);
