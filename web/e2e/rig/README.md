@@ -9,6 +9,69 @@ lane. This leg starts its own bridge and Herdr, writes to them, and spends model
 the VM lab that CLAUDE.md calls Tier 3. It never runs in CI: its config throws when `CI` is set, and
 Tier 1's config ignores `e2e/rig/`.
 
+## When it runs
+
+The leg is a gate. It runs in three places:
+
+- **Before every release tag**, on the release head. All fifteen cases (three harnesses, five cases
+  each) pass on the first tap. A case that fails, or is not reached, holds the tag.
+- **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
+  it on the branch. A unit test cannot show that a tap works on a real screen.
+- **Every night**, on `origin/main`, through `nightly.ts` (below).
+
+One run costs about 5 minutes, about 5 Claude Haiku turns on the subscription, and about 5 pi turns
+and 5 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
+run" below has the detail.
+
+### The nightly runner
+
+```sh
+bun web/e2e/rig/nightly.ts --plan   # prints the tuple and whether it would run; spends nothing
+bun web/e2e/rig/nightly.ts          # runs the leg if this tuple has no row yet
+```
+
+`nightly.ts` needs only Bun and node builtins, so it runs from a checkout with no `node_modules`. It
+never writes into the checkout it starts from. It keeps a clone of its own at
+`~/.cache/collie-lab/browser-leg-nightly/clone`, fetches `origin/main` into it and checks it out
+detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the leg. The leg uses a
+rig state of its own (`~/.cache/collie-lab/browser-leg-nightly/state`), so a leg that a person runs by
+hand is never taken down by a nightly run.
+
+**Once per tuple.** A tuple is the main commit, the Claude Code version, the pi version and the omp
+version. The versions come from the binaries `bins.ts` names. The ledger
+`~/.local/state/collie-browser-leg/ledger.json` has one row per tuple, and a tuple with a row never
+runs again, whatever the result (`pass`, `fail` or `failed`). To run a tuple again, delete its row by
+hand. The runner never deletes a row. A new commit on main is a new tuple, so how often something
+starts the runner sets how many runs a day there are, and each run costs as above.
+
+The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
+
+- The `running` row is written before the clone, so a crash anywhere leaves a row.
+- A `running` row whose run died (its process is gone, or it is older than 3 hours) becomes `failed`
+  on the next start.
+- A live `running` row holds the line for every other tuple, so two runs never share the clone or the
+  rig.
+- A run that cannot finish writes `failed`. A run in which a case failed writes `fail`. A case that
+  was not reached, or is not applicable, proves nothing, so it makes the row `failed`.
+
+**Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
+free memory, no key file, a binary or the remote that will not answer, and a ledger that cannot be
+read. These cost nothing and write no row. Each appends one line to
+`~/.local/state/collie-browser-leg/notify.log`. A `fail` or `failed` run appends one line too.
+`--plan` names the same blockers and writes nothing.
+
+**The key.** `COLLIE_RIG_KEY_FILE` comes from the runner's own environment and goes on to the leg. The
+runner checks only that it names a readable file. It never reads, prints or copies the key.
+
+**Output and exit code.** One line per harness, then the path of the run's `table.md`. The row keeps
+the verdict counts and the results folder, and the run log sits under
+`~/.cache/collie-lab/browser-leg-nightly/logs/`. Exit 0: the leg passed, or there was nothing to do.
+Exit 1: a case failed. Exit 2: the run could not start or could not finish.
+
+Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves the clone, rig state
+and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
+a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
+
 ## Prerequisites
 
 - `bun install` in the checkout root and in `web/`, then `bun run build` in `web/`. The bridge serves
@@ -66,8 +129,8 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 - pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Their "Load older" history is
   one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
-- Time: about 2 minutes for Claude alone, about 6 with pi and omp. A case that waits out its reply
-  timeouts adds up to 4 minutes.
+- Time: about 5 minutes for all three harnesses, about 2 of them for Claude alone. A case that waits
+  out its reply timeouts adds up to 4 minutes.
 
 ## What it never touches
 
@@ -81,4 +144,5 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   0600: Claude's OAuth file without its refresh token, omp's `agent.db`, and pi's `auth.json` only
   when no key file is set. The bridge reads the journals of these scratch homes, never
   `~/.claude/projects`.
+- The checkout the nightly runner starts from. It works in its own clone, ledger and logs only.
 - Processes it did not start. Every kill is by a recorded pid after `/proc/<pid>/cmdline` matched.

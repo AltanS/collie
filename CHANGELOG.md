@@ -25,7 +25,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Added
 
-- **A browser leg taps real agents from a phone, the way a person does.** A Playwright phone opens a scratch bridge that mirrors a scratch Herdr, where Claude Code, pi and omp run, and checks that each tap works the first time and that the screen shows the result: the model picker, a permission card, a question, a send while the agent streams, and "Load older" with an empty phone cache. It records every tap with its receipt and prints one table. It runs by hand only, with `bunx playwright test -c e2e/rig/playwright.config.ts` in `web/`, and never touches a running lane or the operator's Herdr (`web/e2e/rig/README.md`).
+- **A browser leg taps real agents from a phone, the way a person does.** A Playwright phone opens a scratch bridge that mirrors a scratch Herdr, where Claude Code, pi and omp run, and checks that each tap works the first time and that the screen shows the result: the model picker, a permission card, a question, a send while the agent streams, and "Load older" with an empty phone cache. It records every tap with its receipt and prints one table. It starts with `bunx playwright test -c e2e/rig/playwright.config.ts` in `web/`, and never touches a running lane or the operator's Herdr (`web/e2e/rig/README.md`).
+- **The browser leg runs before every release tag, before a reader or send change merges, and every night.** `web/e2e/rig/nightly.ts` runs it on `origin/main` in a clone of its own, once for each main commit and set of agent versions (Claude Code, pi, omp), and keeps a ledger so a set never runs twice. It costs about 5 minutes and a few cents of model turns a run. A run that cannot start (a Claude login with under 25 minutes left, a missing tool, too little memory, no key file) costs nothing, writes no row and leaves one line in a notice file.
 
 ## [1.22.5] - 2026-10-17
 
