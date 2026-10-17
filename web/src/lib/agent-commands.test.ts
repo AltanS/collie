@@ -314,3 +314,53 @@ describe("commandsFor with the operator's own rows", () => {
     expect(commandsFor("omp", [mine]).some((c) => c.command === "/mine")).toBe(false);
   });
 });
+
+describe("commandsFor with the commands found on the pane's machine", () => {
+  const toSpec = { command: "/to-spec", description: "Write the spec", argHint: "" };
+  const deploy = { command: "/deploy", description: "Ship it", argHint: "[env]" };
+
+  it("joins Claude's catalog as searchable staged rows, never on the first screen", () => {
+    const all = commandsFor("claude", [], [toSpec, deploy]);
+    expect(all.find((c) => c.command === "/to-spec")).toEqual({
+      command: "/to-spec",
+      description: "Write the spec",
+      takesArg: true,
+      argHint: "",
+      common: false,
+      dangerous: false,
+    });
+    expect(all.find((c) => c.command === "/deploy")).toEqual({
+      command: "/deploy",
+      description: "Ship it",
+      takesArg: true,
+      argHint: "[env]",
+      common: false,
+      dangerous: false,
+    });
+  });
+
+  it("leaves shipped built-in rows untouched when a discovered file shares the name", () => {
+    const local = { command: "/clear", description: "My own clear", argHint: "[force]" };
+    const rows = commandsFor("claude", [], [local]).filter((c) => c.command === "/clear");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      command: "/clear",
+      description: "Start a fresh conversation with empty context",
+      takesArg: false,
+      argHint: "",
+      common: true,
+      dangerous: true,
+    });
+  });
+
+  it("is replaced when the operator's own rows address the pane (ADR 0018)", () => {
+    const mine = { agent: "claude", command: "/to-spec", description: "My own to-spec", takesArg: false, argHint: "" };
+    const rows = commandsFor("claude", [mine], [toSpec, deploy]);
+    expect(rows.map((c) => c.command)).toEqual(["/to-spec"]);
+    expect(rows[0]).toMatchObject({ description: "My own to-spec", common: true, takesArg: false });
+  });
+
+  it("stays out of every other harness", () => {
+    expect(commandsFor("codex", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(false);
+  });
+});

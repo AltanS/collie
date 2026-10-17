@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 
 import { CommandPalette } from "./command-palette";
 import type { OperatorCommand } from "@/lib/types";
+import { server } from "@/test/setup";
 
 function setup(overrides?: { agent?: string | null; mine?: OperatorCommand[] }) {
   // Widened at the binding, not asserted at the literal: the overrides below hand `null` and
@@ -173,5 +175,63 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Confirm?")).toBeInTheDocument();
     await user.click(screen.getByText("Deploy staging"));
     expect(props.onSubmit).toHaveBeenCalledExactlyOnceWith("/deploy");
+  });
+
+  it("finds the skills Claude Code would load in the pane and stages them into the composer on tap", async () => {
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () =>
+        HttpResponse.json({ commands: [{ command: "/to-spec", description: "Write the spec", argHint: "" }] }),
+      ),
+    );
+    const onInsert = vi.fn();
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} agent="claude" paneId="w1:p1" onInsert={onInsert} onSubmit={onSubmit} />);
+    expect(screen.queryByText("/to-spec")).toBeNull();
+    await user.type(screen.getByPlaceholderText(/Search \d+ commands/), "to-spec");
+    const item = await screen.findByText("/to-spec");
+    await user.click(item);
+    expect(onInsert).toHaveBeenCalledExactlyOnceWith("/to-spec ");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("clears previously discovered rows when a later refresh fails, and skips the fetch when operator rows replace the palette", async () => {
+    let calls = 0;
+    let failNext = false;
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () => {
+        calls += 1;
+        if (failNext) return new HttpResponse(null, { status: 501 });
+        return HttpResponse.json({ commands: [{ command: "/to-spec", description: "Write the spec", argHint: "" }] });
+      }),
+    );
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CommandPalette open onClose={vi.fn()} agent="claude" paneId="w1:p1" onInsert={vi.fn()} onSubmit={vi.fn()} />,
+    );
+    await user.type(screen.getByPlaceholderText(/Search \d+ commands/), "to-spec");
+    expect(await screen.findByText("/to-spec")).toBeInTheDocument();
+    expect(calls).toBe(1);
+
+    failNext = true;
+    rerender(<CommandPalette open={false} onClose={vi.fn()} agent="claude" paneId="w1:p1" onInsert={vi.fn()} onSubmit={vi.fn()} />);
+    rerender(<CommandPalette open onClose={vi.fn()} agent="claude" paneId="w1:p1" onInsert={vi.fn()} onSubmit={vi.fn()} />);
+    await user.type(screen.getByPlaceholderText(/Search \d+ commands/), "to-spec");
+    expect(await screen.findByText(/No commands match/i)).toBeInTheDocument();
+    expect(calls).toBe(2);
+
+    rerender(
+      <CommandPalette
+        open
+        onClose={vi.fn()}
+        agent="claude"
+        paneId="w1:p2"
+        mine={[{ agent: "claude", command: "/custom", description: "Custom", takesArg: false, argHint: "" }]}
+        onInsert={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText("/custom")).toBeInTheDocument();
+    expect(calls).toBe(2);
   });
 });
