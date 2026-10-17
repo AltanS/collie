@@ -199,7 +199,7 @@ export function markerMissing(
  * is lost by accident, and the chip says so before Send ({@link markerMissing}). A marker-looking
  * string with no chip behind it is left exactly as typed.
  */
-export function composeLine(text: string, attachments: readonly MarkedAttachment[]): string {
+export function composeLine(text: string, attachments: readonly MarkedAttachment[], keepLeading = false): string {
   let line = text;
   const orphans: string[] = [];
   for (const attachment of attachments) {
@@ -209,7 +209,10 @@ export function composeLine(text: string, attachments: readonly MarkedAttachment
     }
     line = line.split(markerFor(attachment)).join(attachment.path);
   }
-  const words = line.trim();
+  // A shell line may start with a space or a tab: that is how a person keeps it out of Sent (M61), so
+  // the bridge must see it. Only when no chip path stands in front of it, and only the end is cut.
+  const words = keepLeading && orphans.length === 0 ? line.trimEnd() : line.trim();
+  if (keepLeading && orphans.length === 0 && words.trim() === "") return "";
   return [...orphans, ...(words === "" ? [] : [words])].join(" ");
 }
 

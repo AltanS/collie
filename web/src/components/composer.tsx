@@ -1147,8 +1147,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   async function send(value: string, isDraft: boolean): Promise<boolean> {
-    const t = value.trim();
-    if (!t || locked || sending) return false;
+    // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
+    // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
+    // check and the mode read the fully trimmed text on both, so neither sees a difference.
+    const trimmed = value.trim();
+    const t = isShell ? value.trimEnd() : trimmed;
+    if (!trimmed || locked || sending) return false;
     if (offlineRef.current) {
       setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
       return false;
@@ -1160,7 +1164,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(t), null);
+    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null);
   }
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
@@ -1249,7 +1253,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function onSendClick() {
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
-    const line = composeLine(input, attachments);
+    const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different

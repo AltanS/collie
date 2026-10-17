@@ -244,3 +244,36 @@ describe("Composer: arrow keys through Sent", () => {
     expect(box()).toHaveValue("ls");
   });
 });
+
+describe("Composer: a leading space on a shell line", () => {
+  async function sendTyped(text: string) {
+    await userEvent.type(box(), text);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    return recordedSends()[0]!;
+  }
+
+  it("reaches the bridge, so the line stays out of Sent", async () => {
+    renderComposer();
+    const sent = await sendTyped(" ls  ");
+    expect(sent.text).toBe(" ls");
+    expect(sent.mode).toBe("send");
+  });
+
+  it("keeps a leading tab", async () => {
+    renderComposer();
+    expect((await sendTyped("\tls")).text).toBe("\tls");
+  });
+
+  it("still reads a spaced slash line as a command, as the trimmed text did before", async () => {
+    renderComposer();
+    const sent = await sendTyped("  /help");
+    expect(sent.text).toBe("  /help");
+    expect(sent.mode).toBe("command");
+  });
+
+  it("is trimmed on an agent pane, as it always was", async () => {
+    renderComposer({ isShell: false, agent: "claude" });
+    expect((await sendTyped("  hi  ")).text).toBe("hi");
+  });
+});
