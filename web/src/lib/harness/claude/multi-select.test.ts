@@ -145,6 +145,8 @@ describe("detectMultiSelect — false-positive gate", () => {
     "claude--select-menu.txt",
     "claude--wizard-q1.txt",
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
     "claude--permission-edit.txt",
     "claude--trust-prompt.txt",
     "claude--working.txt",

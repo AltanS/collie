@@ -400,8 +400,10 @@ export function planFooterLeadRow(texts: string[]): number {
   return rows.length === 0 ? -1 : rows[0]! - 1;
 }
 
-// The gutter Claude Code 2.1.283 paints down the left of a question that spans more than one row
-// ("│ Which fruit do you want?" / "│ Pick the one you like best."). It is chrome, not question text.
+// The gutter Claude Code paints down the left of a question: on the question step of a question that
+// spans more than one row (2.1.283: "│ Which fruit do you want?" / "│ Pick the one you like best."),
+// and on the wizard's review step beside an echoed question (2.1.302: "│ ● …" / "│   …"). It is
+// chrome, not question text.
 const QUESTION_GUTTER = /^\s*│\s?/;
 
 /** A question row with its `│` gutter and outer whitespace removed. */

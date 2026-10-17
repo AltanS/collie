@@ -42,8 +42,12 @@ interface RegionRow {
 const REGIONS = JSON.parse(readFileSync(join(FIXTURES_DIR, "prompt-binding-regions.json"), "utf8")) as RegionRow[];
 
 const PICKER_DETECTORS = new Set(["wizard", "preview-select", "multi-select", "prompt-select"]);
-// The two captures that already carry a theme's gutter: the gutter is taken off them below instead.
-const THEMED_FIXTURES = ["claude--v2302-wizard-long-question--w54.txt", "claude--v2302-preview-wrapped-rule--w141.txt"];
+// The captures that already carry a theme's gutter: the gutter is taken off them below instead.
+const THEMED_FIXTURES = [
+  "claude--v2302-wizard-long-question--w54.txt",
+  "claude--v2302-preview-wrapped-rule--w141.txt",
+  "claude--v2302-wizard-review-long-q--w140.txt",
+];
 const GUTTER_WIDTHS = [1, 2, 3, 4];
 // The gutter's first cell: a background-coloured space, the way the observed theme plugin draws it.
 const GUTTER_CELL = "\u001b[48;5;33m \u001b[0m";

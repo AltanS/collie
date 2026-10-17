@@ -961,6 +961,16 @@
    "version": "2.1.302",
    "state": "dialog"
   },
+  "claude--v2302-wizard-review-barred--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-wizard-review-long-q--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
   "claude--v2302-preview-wrapped-rule--w141.txt": {
    "harness": "claude",
    "version": "2.1.302",
