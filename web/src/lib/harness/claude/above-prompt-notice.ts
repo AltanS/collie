@@ -12,6 +12,7 @@
 // by surface/notice.ts, the same reader the Surface and the bridge's send gate use.
 
 import { lineText, type StyledLine } from "../../blocks";
+import { readCuesFor } from "../../surface/cues";
 import { findInputFrame } from "../../surface/frame";
 import { readAboveNotice } from "../../surface/notice";
 import type { MenuModel } from "../menu-model";
@@ -47,6 +48,8 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   const texts = lines.map(lineText);
   const notice = readAboveNotice(texts, frame.top, CLAUDE_IDLE.notices ?? []);
   if (notice === null) return null;
+  // A dialog stacked over the notice holds the keys (the bridge reads the screen `unreadable`): no card.
+  if (readCuesFor(lines, frame, CLAUDE_IDLE).strength === "strong") return null;
   const rowsUnder = texts.slice(frame.bottom + 1).filter((text) => text.trim().length > 0).length;
   if (rowsUnder >= BRIDGE_TAIL_ROWS) return null;
   return {

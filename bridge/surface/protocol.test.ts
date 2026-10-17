@@ -3023,6 +3023,7 @@ describe("real screens from the fixture corpus", () => {
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(answer.cause).toBe("notice_key");
     expect(answer.offers).toEqual(["keys"]);
+    expect(answer.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
     expect(pane.box).toBe("half a thought");
   });
 

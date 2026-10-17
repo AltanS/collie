@@ -78,6 +78,31 @@ describe("the notice above the box", () => {
     expect(region.at(-1)).toMatch(/^─+$/u);
   });
 
+  // A survey drawn above the notice holds the keys, and the Surface reads the screen `unreadable`: the
+  // notice's card must not lift beside it (review round 2).
+  it("does not lift its card under a dialog stacked above it", () => {
+    const rule = "─".repeat(60);
+    const screen = [
+      "● done",
+      "",
+      "● How is the agent doing this session? (optional)",
+      "  1: Bad    2: Fine    3: Good    0: Dismiss",
+      "",
+      "✦ Heads up · Something new",
+      "  one",
+      "  two",
+      "  three",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "",
+      rule,
+      "❯ ",
+      rule,
+      "  model · ctx 3%",
+    ].join("\n");
+    expect(claudeBuildBlocks(splitLines(parseAnsi(screen))).some((b) => b.kind === "menu")).toBe(false);
+    expect(claudeBuildBlocks(lines(HEADS_UP)).some((b) => b.kind === "menu")).toBe(true);
+  });
+
   it("does not lift the rating survey over the box", () => {
     expect(claudeBuildBlocks(lines("claude-lab--survey-rating-above-box--w82.txt")).some((b) => b.kind === "menu")).toBe(false);
   });

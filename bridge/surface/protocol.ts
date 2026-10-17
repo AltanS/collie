@@ -886,6 +886,8 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
 const NOTICE_KEY_DETAIL = "That digit would answer the notice above the box. Check the pane, then tap Type here.";
+/** The detail of a notice digit refused where no commit can go ahead (a running turn, a Replace). */
+const NOTICE_KEY_HELD_DETAIL = "That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.";
 /** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
 const NOTICE_KEY: SendCause = "notice_key";
 
@@ -894,7 +896,7 @@ const NOTICE_KEY: SendCause = "notice_key";
  * ahead (a running turn, a Replace): the person answers the notice on its card or in the pane.
  */
 function noticeRefusal(s0: Snap): Ended {
-  return new Ended("refused", "unconfirmed", { surface: s0.surface, offers: ["keys"], detail: NOTICE_KEY_DETAIL, cause: NOTICE_KEY });
+  return new Ended("refused", "unconfirmed", { surface: s0.surface, offers: ["keys"], detail: NOTICE_KEY_HELD_DETAIL, cause: NOTICE_KEY });
 }
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";

@@ -403,6 +403,7 @@ export const ja: Dictionary = {
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
   "composer.protocol.unconfirmed": "Collie はこの画面を読めません。ペインを確認してから「ここに入力」をタップしてください。",
   "composer.protocol.noticeKey": "その数字は入力欄の上のお知らせへの回答になります。ペインを確認してから「ここに入力」をタップしてください。",
+  "composer.protocol.noticeKeyHeld": "その数字は入力欄の上のお知らせへの回答になります。お知らせのカードで回答するか、ターンが終わってから数字を送ってください。",
   "composer.protocol.unknown": "Collieはこれが送信されたかどうかを判断できません。画面を確認し、送信されていなければもう一度送信してください。下書きは保持されています。",
   "composer.protocol.busy": "このペインへの別の送信がまだ実行中です。待ってから再試行してください。",
   "composer.protocol.notFree": "入力欄が空いていません。何も入力していません。",

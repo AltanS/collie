@@ -3842,7 +3842,7 @@
   "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
   "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
   "claude--v2302-turn-ending-stop-hooks--w119.txt": "The last read of a turn on Claude Code 2.1.302: the spinner row carries 'running Stop hooks' before its timer, which the running sign does not take. The turn is ending; a send there goes ahead, and Enter either queues it or starts the next turn.",
-  "claude--v2302-heads-up-above-box--w142.txt": "Claude Code 2.1.302's Heads up notice and the tip row under the spinner push the spinner past the six rows of the band above the box, where the running sign is read. A send there goes ahead and Claude Code queues it; a one-digit send still takes the manual Send.",
+  "claude--v2302-heads-up-above-box--w142.txt": "Claude Code 2.1.302's spinner row reads 'Fiddle-faddling… · tool use (4m 32s · ↓ 10.8k tokens)': it stands inside the band above the notice, but the words between the ellipsis and the timer keep the running sign off, so the screen alone reads free. A send there goes ahead and Claude Code queues it; a one-digit send still takes the manual Send.",
   "claude--v2302-working-list-echo--w119.txt": "Claude Code 2.1.302 draws no spinner while the answer streams: the screen shows a list growing above an empty box, and only the prompt edge can say the turn runs. A send there goes ahead and Claude Code queues it."
  }
 }

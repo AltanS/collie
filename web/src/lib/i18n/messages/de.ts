@@ -409,6 +409,7 @@ export const de: Dictionary = {
   "composer.protocol.typed": "Dein Text steht im Feld, aber Enter wurde nicht gedrückt. Absenden oder verwerfen.",
   "composer.protocol.unconfirmed": "Collie kann diesen Bildschirm nicht lesen. Prüfe den Bereich und tippe dann auf Hier tippen.",
   "composer.protocol.noticeKey": "Diese Zahl würde den Hinweis über dem Eingabefeld beantworten. Prüfe den Bereich und tippe dann auf Hier tippen.",
+  "composer.protocol.noticeKeyHeld": "Diese Zahl würde den Hinweis über dem Eingabefeld beantworten. Beantworte ihn auf seiner Karte oder sende die Zahl, wenn der Durchlauf beendet ist.",
   "composer.protocol.unknown": "Collie kann nicht feststellen, ob dies gesendet wurde. Lies den Bildschirm und sende erneut, falls es nicht übertragen wurde. Dein Entwurf bleibt erhalten.",
   "composer.protocol.busy": "Eine andere Sendung an diesen Bereich läuft noch. Warte und versuche es erneut.",
   "composer.protocol.notFree": "Das Eingabefeld ist nicht frei. Es wurde nichts getippt.",

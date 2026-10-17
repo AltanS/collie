@@ -202,6 +202,7 @@ export type SendNote =
   | "typed"
   | "unconfirmed"
   | "noticeKey"
+  | "noticeKeyHeld"
   | "capConfirm"
   | "unknown"
   | "busy"
@@ -375,7 +376,8 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   // A send of one of the digits a notice above the box printed: the sentence says the digit would answer it.
-  if (reply.outcome === "refused" && reply.cause === "notice_key") return { clear: false, note: "noticeKey", offers };
+  // With no commit offered (a running turn, a Replace) it names the card and the turn's end, not Type here.
+  if (reply.outcome === "refused" && reply.cause === "notice_key") return { clear: false, note: offers.includes("commit") ? "noticeKey" : "noticeKeyHeld", offers };
   const note = sendNote(reply.outcome, reply.reason);
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
   // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.

@@ -97,7 +97,8 @@ describe("readSend", () => {
     const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That digit would answer the notice above the box." };
     expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "noticeKey", offers: ["commit"], detail: null });
     const running: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["keys"], cause: "notice_key" };
-    expect(readSend(readSendReply(running)!)).toMatchObject({ note: "noticeKey", offers: [] });
+    // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Type here.
+    expect(readSend(readSendReply(running)!)).toMatchObject({ note: "noticeKeyHeld", offers: [], detail: null });
     expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"])).note).toBe("unconfirmed");
   });
 

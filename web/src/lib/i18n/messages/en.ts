@@ -440,6 +440,7 @@ export const en = {
   "composer.protocol.typed": "Your text is in the box, but Enter was not pressed. Submit it or discard it.",
   "composer.protocol.unconfirmed": "Collie cannot read this screen. Check the pane, then tap Type here.",
   "composer.protocol.noticeKey": "That number would answer the notice above the box. Check the pane, then tap Type here.",
+  "composer.protocol.noticeKeyHeld": "That number would answer the notice above the box. Answer it on its card, or send the number once the turn has ended.",
   "composer.protocol.unknown": "Collie cannot tell if this was sent. Read the screen, then send again if it did not go. Your draft is kept.",
   "composer.protocol.busy": "Another send on this pane is still running. Wait, then try again.",
   "composer.protocol.notFree": "The input box is not free. Nothing was typed.",
