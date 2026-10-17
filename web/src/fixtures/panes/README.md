@@ -2111,6 +2111,12 @@ the rows hold only the probe table.
 |---|---|---|
 | `shell--box-table-vs16-emoji.txt` | A box table printed by a script in a plain shell pane (no agent), with `⚠️` (U+26A0 U+FE0F), `❤️` (U+2764 U+FE0F) and both in one boxed row. Herdr's own cursor position report after each sample says it draws each of these two columns wide, a bare `⚠` or `❤` one, and `a`, `é`, `→`, `€` followed by U+FE0F one. So every wall after an emoji stands at the anchor's column. `table-run.test.ts` pins one run over rows 2..9. `read --source visible --format ansi --raw`, cut to the heading line and the table, CRLF as read. Synthetic content, nothing to scrub | `idle` |
 
+## Plain shell prompt under the Bluefin motd (captured 2026-10-17, Herdr, dev lane 8788, v1.22.4)
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `shell--starship-bluefin-motd--w117.txt` | A fresh `POST /api/workspace` pane with no agent (Herdr agent `shell`): the Bluefin motd box, then a starship prompt, `collie-queue-test on  master` and `❯ ` on the last row. The widest row is 117 cells; the read carries no column count. On v1.22.4 a send and a command here were refused `unconfirmed` with `no-match`, because a pane with no profile took the two-tap Send. `bridge/surface/protocol.test.ts` pins the fix: a pane with no profile is typed and Entered blind. The `text` field of the bridge's pane read, saved as JSON in the workspace's field notes, with the ANSI cut and CRLF as read. Nothing to scrub: a public motd and a test folder name | `idle` |
+
 ## Claude Code 2.1.299 task checklist under a dialog (captured 2026-10-14, herdr 0.9.4 on Windows, lab session)
 
 While a session has tasks, Claude Code 2.1.299 draws their checklist as the very last rows of the
