@@ -195,6 +195,11 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
       `XDG_CACHE_HOME=${sq(join(d.home, ".cache"))}`,
     );
   }
+  // `collie walky` inside a harness finds a bridge through its own state dir and the hook target
+  // registry under the REAL home (cli/beacon.ts edgeStateDirs). The rig's bridge registers under its
+  // own HOME (P.bridgeHome), so without this the CLI never reaches it, and it would ask the
+  // operator's live bridges instead. The rig's state dir is the one bridge a rig agent may talk to.
+  env.push(`COLLIE_STATE_DIR=${sq(P.state)}`);
   const unset = UNSET.map((name) => `-u ${name}`).join(" ");
   // The provider key: ONE name read from the key file in a subshell, exported to the harness only.
   // The script holds the file's path, never the key, and prints nothing.

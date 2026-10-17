@@ -122,7 +122,7 @@ release. 1.14.2 was cut this way on 2026-09-28.
 8. **Run the browser leg on the release head before the tag.** In `web/`, with `COLLIE_RIG_KEY_FILE`
    set: `bunx playwright test -c e2e/rig/playwright.config.ts` (*Browser tests*; the prerequisites are
    in `web/e2e/rig/README.md`). It starts a scratch bridge and Herdr with real Claude Code, pi and omp,
-   and takes about 5 minutes. All fifteen cases must pass on the first tap. A failed case holds the
+   and takes about 5 minutes. All sixteen cases must pass on the first tap. A failed case holds the
    tag, and so does a case that was not reached.
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
@@ -395,7 +395,7 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   e2e/rig/playwright.config.ts`, the provider key file named by `COLLIE_RIG_KEY_FILE`), it spends
   model turns (about 5 minutes and a few cents a run), and it never runs in CI. It is **the gate before
   every release tag**, and **the proof for a change to a harness reader, the Surface, the Send
-  Protocol or the ask code**: run it on the branch, and all fifteen cases pass on the first tap. A
+  Protocol or the ask code**: run it on the branch, and all sixteen cases pass on the first tap. A
   unit test cannot show that a tap works on a real screen. `web/e2e/rig/nightly.ts` also runs it every
   night on `origin/main`, once for each main commit and set of agent versions. The README beside it
   (*When it runs*) has the rules and the cost.

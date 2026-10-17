@@ -13,13 +13,13 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All fifteen cases (three harnesses, five cases
-  each) pass on the first tap. A case that fails, or is not reached, holds the tag.
+- **Before every release tag**, on the release head. All sixteen cases (three harnesses with five
+  cases each, and the walky talky case on Claude) pass on the first tap. A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One run costs about 5 minutes, about 5 Claude Haiku turns on the subscription, and about 5 pi turns
+One run costs about 5 minutes, about 6 Claude Haiku turns on the subscription, and about 5 pi turns
 and 5 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
 run" below has the detail.
 
@@ -72,6 +72,22 @@ Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves t
 and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
 a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
+## The cases
+
+Each harness runs the same five cases. Claude runs one more.
+
+| # | Case | Harnesses | Spec |
+| --- | --- | --- | --- |
+| 1 | Model picker: the first tap on the commit row commits | claude, pi, omp | `claude.spec.ts`, `others.spec.ts` |
+| 2 | Permission card: Yes from the phone runs the command | claude, pi, omp | same |
+| 3 | Question card: pick-many on Claude, pick-one on pi and omp | claude, pi, omp | same |
+| 4 | A send while the agent streams a long reply | claude, pi, omp | same |
+| 5 | Load older with an empty phone cache | claude, pi, omp | same |
+| 6 | Walky talky: hold Send, tap "Send as message". The pane gets one prompt, header and body. The receipt says `delivered`. Chat shows the "Message from" card with the operator badge | claude | `walky.spec.ts` |
+
+Case 6 runs on Claude only. The walky talky path is the same bridge code for every harness. The
+table prints a row only for a harness a case runs on (`scenarioApplies` in `leg.ts`).
+
 ## Prerequisites
 
 - `bun install` in the checkout root and in `web/`, then `bun run build` in `web/`. The bridge serves
@@ -122,8 +138,9 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 ## Cost of one run
 
-- Claude: 5 model turns on Haiku: the permission request, the pick-many question, the long list plus
-  one message sent while it streams, and one prompt that makes 48 Read calls. The picker needs no
+- Claude: 6 model turns on Haiku: the permission request, the pick-many question, the long list plus
+  one message sent while it streams, one prompt that makes 48 Read calls, and the reply to the
+  walky talky message. The picker needs no
   turn. A run caps each harness at 15 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
 - pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Their "Load older" history is
@@ -139,6 +156,10 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 - Any Collie lane, port 8787-8799, 5198, 5199, or a `collie*.service` unit. The bridge listens on
   127.0.0.1:18700-18799 with its own HOME, state and config.
 - Any `collie` CLI verb. The rig pairs with the bridge's own pairing module.
+- The operator's bridges, from inside a harness. Each harness starts with `COLLIE_STATE_DIR` set to
+  the rig's state dir. So a `collie walky` that an agent runs in a rig pane reaches the rig's bridge
+  first. Without it, the CLI looks for bridges in the hook target registry under the real home. The
+  rig's bridge is not listed there, because it registers under its own HOME.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
   0600: Claude's OAuth file without its refresh token, omp's `agent.db`, and pi's `auth.json` only

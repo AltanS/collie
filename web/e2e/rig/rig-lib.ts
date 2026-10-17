@@ -27,6 +27,8 @@ if (!STATE_ROOT.startsWith(join(homedir(), ".cache", "collie-lab") + "/")) {
 
 /** The Herdr session name. It exists only under the rig's XDG home. */
 export const SESSION = "collie-rig";
+/** The label the rig's one paired device carries: an operator's walky talky message names it. */
+export const DEVICE_LABEL = "browser-leg";
 /** The bridge's port range. Far from every Collie lane (8787-8799, 5198, 5199). */
 export const PORT_LO = 18700;
 export const PORT_HI = 18799;

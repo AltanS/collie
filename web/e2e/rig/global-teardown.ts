@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { HARNESS_IDS, SETUPS } from "./harnesses";
-import { SCENARIOS, type LedgerRow } from "./leg";
+import { SCENARIOS, scenarioApplies, type LedgerRow } from "./leg";
 import { P } from "./rig-lib";
 
 const WEB = resolve(import.meta.dirname, "..", "..");
@@ -19,6 +19,7 @@ export function table(rows: readonly LedgerRow[]): string {
   const body: string[][] = [];
   for (const harness of HARNESS_IDS) {
     for (const scenario of SCENARIOS) {
+      if (!scenarioApplies(scenario, harness)) continue;
       // The last row a case wrote for this cell wins: a case records once, a rerun appends.
       const row = rows.findLast((r) => r.harness === harness && r.scenario === scenario.id);
       body.push([harness, scenario.title, row?.verdict ?? "not reached", row?.taps === null || row?.taps === undefined ? "-" : row.minTaps === undefined ? String(row.taps) : `${String(row.taps)}/${String(row.minTaps)}`, row?.note ?? "the case did not run"]);

@@ -21,6 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEVICE_LABEL,
   P,
   PORT_HI,
   PORT_LO,
@@ -258,7 +259,7 @@ async function cmdUp(): Promise<void> {
     await cmdDown();
     die(`startup failed.\n${tail}`);
   }
-  await pairDevice(run!.port, "browser-leg");
+  await pairDevice(run!.port, DEVICE_LABEL);
   console.log(`up: bridge http://127.0.0.1:${run!.port}  worktree ${WORKTREE}`);
   console.log(`    herdr session ${SESSION}  socket ${run!.socket}`);
 }

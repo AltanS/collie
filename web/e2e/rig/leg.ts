@@ -55,8 +55,15 @@ export const SCENARIOS = [
   { id: "pick-many", title: "3 pick-many question" },
   { id: "stream-send", title: "4 send while streaming" },
   { id: "load-older", title: "5 load older, empty cache" },
+  // The walky talky path is the same bridge code for every harness, so one harness proves it.
+  { id: "walky", title: "6 walky talky message", only: "claude" },
 ] as const;
 export type ScenarioId = (typeof SCENARIOS)[number]["id"];
+
+/** Whether a scenario runs on a harness: every one does, unless the scenario names the one it runs on. */
+export function scenarioApplies(scenario: (typeof SCENARIOS)[number], harness: HarnessId): boolean {
+  return !("only" in scenario) || scenario.only === harness;
+}
 
 export type Verdict = "pass" | "fail" | "n/a" | "not reached";
 
@@ -306,7 +313,7 @@ export interface TapLog {
   readonly screenStillMs: number | null;
 }
 
-const WATCHED = /\/api\/(ask\/|send$|pane\/[^/]+\/(keys|reply)$)/;
+const WATCHED = /\/api\/(ask\/|send$|walky$|pane\/[^/]+\/(keys|reply)$)/;
 
 /** Records the bridge's answer to every write the page makes, and the ask ids its snapshots carried. */
 export class TapRecorder {
@@ -360,7 +367,8 @@ export class TapRecorder {
     const text = await response.text().catch(() => "");
     const doc = asJsonObject(parseJson(text)) ?? {};
     const receipt = asJsonObject(doc.receipt) ?? doc;
-    const outcome = asJsonString(receipt.outcome) ?? (doc.ok === true ? "ok" : null);
+    // A send or ask receipt says `outcome`; a walky talky receipt says `state`.
+    const outcome = asJsonString(receipt.outcome) ?? asJsonString(receipt.state) ?? (doc.ok === true ? "ok" : null);
     this.answers.push({
       at,
       path,
@@ -383,11 +391,13 @@ export function accepted(answer: Answer): boolean {
   if (answer.status !== 200) return false;
   if (answer.path.startsWith("/api/send")) return answer.outcome === "sent" || answer.outcome === "effective" || answer.outcome === "held";
   if (answer.path.startsWith("/api/ask/")) return answer.outcome === "sent" || answer.outcome === "effective";
+  // A walky talky message the bridge took: logged, typed, or kept in the inbox (lib/walky.ts wasTaken).
+  if (answer.path === "/api/walky") return answer.outcome === "accepted" || answer.outcome === "delivered" || answer.outcome === "inbox-only";
   return answer.outcome === "ok";
 }
 
 export function answerWords(answer: Answer): string {
-  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path.endsWith("/keys") ? "keys" : "reply";
+  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path === "/api/walky" ? "walky" : answer.path.endsWith("/keys") ? "keys" : "reply";
   return `${where} ${String(answer.status)} ${answer.outcome ?? "-"}${answer.reason === null ? "" : ` (${answer.reason})`}`;
 }
 
@@ -414,6 +424,27 @@ export async function tap(recorder: TapRecorder, target: Locator, label: string,
   }
   const answers = recorder.since(t0);
   return { label, at: new Date(t0).toISOString(), answers, worked: answers.every(accepted) && (opts.expectAnswer === false || answers.length > 0), screenStillMs: opts.screenStillMs ?? null };
+}
+
+/**
+ * Press and hold, as a thumb does: one touch down, `ms` still, one touch up, through the browser's own
+ * touch input (CDP), so the app sees the pointer events a phone sends. Playwright's `tap()` lifts at
+ * once and cannot hold. Returns a tap row with no answers: a hold opens something, it sends nothing.
+ */
+export async function hold(page: Page, target: Locator, label: string, ms = 800): Promise<TapLog> {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error(`${label}: the target has no box to press`);
+  const t0 = Date.now();
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+    await sleep(ms);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
+  return { label, at: new Date(t0).toISOString(), answers: [], worked: true, screenStillMs: null };
 }
 
 export function tapWords(log: TapLog): string {
