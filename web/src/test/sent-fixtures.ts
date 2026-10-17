@@ -1,10 +1,10 @@
 import type { SentAnswer, SentEntry, SentMachine } from "@/lib/types";
 
 // Fixtures of the Sent wire contract (M61, tracker spec 00): one answer per state the sheet draws.
-// Hand-written against the contract and not captured from a bridge, because the route and its
+// Times are relative to the load, so "2m ago" reads as written. Hand-written against the contract and not captured from a bridge, because the route and its
 // bridge were built beside this file. A test mocks the fetch with one of them.
 
-const NOW = 1_800_000_000_000;
+const NOW = Date.now();
 const MIN = 60_000;
 
 export const SENT_NOW = NOW;
