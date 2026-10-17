@@ -1181,6 +1181,10 @@
   }
  },
  {
+  "fixture": "claude--v2302-multiselect-field-focused--w160.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2302-preview-wrapped-rule--w141.txt",
   "frame": null
  },

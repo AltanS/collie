@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pick-many question keeps its card while the pointer is on "Type something".** In a Claude Code question where you can tick several answers, the pointer stops on the "Type something" row on its way to Submit. Collie then showed the unread-dialog card, because a digit pressed there is typed into that text field. Now the question card stays, and Submit works from there. A tap on an answer first moves the pointer up one row, reads the screen back, and sends the answer's digit only when the pointer has left the field.
+
 ## [1.22.5] - 2026-10-17
 
 ### Added

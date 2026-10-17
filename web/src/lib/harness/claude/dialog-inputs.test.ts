@@ -121,10 +121,15 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Chat about this"]);
   });
 
-  it("multi-select with the pointer on the field is not claimed (a toggle would type into it)", () => {
+  it("multi-select with the pointer on the field is claimed, the pointer read as on the field", () => {
+    // A toggle digit would be typed into the field, so the model says where the pointer is: the
+    // macros (lib/multi-select-action.ts) move it off with an arrow before any digit.
     const lines = fixtureLines("claude--v2283-multiselect-type-something-focused.txt");
-    expect(detectMultiSelect(lines)).toBeNull();
-    expect(kinds(buildBlocks(lines, { agent: "claude" }))).not.toContain("multi-select");
+    const model = detectMultiSelect(lines)!;
+    expect(model).toMatchObject({ phase: "checkbox", pointer: "field", advanceLabel: "Submit" });
+    expect(model.phase === "checkbox" && model.options.map((o) => o.label)).toEqual(["Red", "Blue", "Green"]);
+    expect(kinds(buildBlocks(lines, { agent: "claude" }))).toContain("multi-select");
+    expect(kinds(buildBlocks(lines, { agent: "claude" }))).not.toContain("unread-dialog");
   });
 
   it("a wizard step with the pointer on the field is not claimed either", () => {

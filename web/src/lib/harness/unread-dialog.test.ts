@@ -215,9 +215,6 @@ const CARD_FIXTURES = {
       "claude-lab--agents-screen--w82.txt",
       // corpus: `/status` screen, `Esc to cancel` footer — the M34 reference capture
       "claude-lab--menu-status-screen--w82.txt",
-      // README: a multiSelect with the pointer on its "Type something" field. Declined on purpose,
-      // since every toggle digit would be typed into the field, so the card is the honest answer.
-      "claude--v2283-multiselect-type-something-focused.txt",
       // corpus: `/tasks` panel, `Esc to close` footer; raw only at 40 columns, where its
       // footer wraps and the menu grammar declines. The w82 capture lifts `menu`, so no card.
       "claude-lab--tasks-panel--w40.txt",
