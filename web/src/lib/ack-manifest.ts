@@ -68,6 +68,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
   },
+  postWalky: {
+    channel: "inline",
+    why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",

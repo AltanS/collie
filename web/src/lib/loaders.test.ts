@@ -1455,6 +1455,8 @@ describe("paneLoader — the pane's saved row", () => {
 
 describe("paneLoader and the walky talky list (M62)", () => {
   const open = (paneId: string) => new Request(`http://localhost/pane/${encodeURIComponent(paneId)}`);
+  // The loader writes the mirror through to the on-device store; let that settle before the fake database goes.
+  afterEach(async () => (await import("./store")).__storeIdle());
   const failWalky = () => server.use(http.get(/\/api\/pane\/[^/]+\/walky/, () => new HttpResponse(null, { status: 404 })));
 
   it("carries the rows the bridge keeps for the pane", async () => {
