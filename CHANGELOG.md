@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A tap on the Model picker works the first time.** Claude Code writes notices such as the weekly limit into the top edge of a picker and takes them away a few seconds later. Collie counted that edge as part of the picker, so a picker nobody touched looked new, and a tap on "Use this session only" or "Set as default" was refused as a closed dialog. It took three taps on 2026-10-17. The edge no longer counts. When the picker really changed, for example after an arrow key, the reply now carries the new card, so the next tap goes through.
+- **The pinned prompt no longer covers "Load older".** When a phone has no history of a session yet, the Chat thread pins the last prompt at the top, and the pin sat on the "Load older" row. Now the top row starts under the pin while one is shown, so both stay in reach.
 
 ## [1.22.5] - 2026-10-17
 

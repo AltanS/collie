@@ -219,6 +219,10 @@ function topBlock(el: HTMLElement): number {
 const EDGE_ROW =
   "mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50 disabled:opacity-60";
 
+/** The room the top edge leaves for a prompt pin over it: the pin's fixed `h-14` (prompt-pin.tsx)
+ *  plus the 4px its overlay sits down from the scrollport's top (ChatMessageList). */
+const PIN_ROOM = "h-16";
+
 /**
  * THE SAVED-COPY LINE (M46 specs 09 and 10), at the top of the scrolled content of either body.
  *
@@ -516,6 +520,11 @@ export function SessionStream({
     };
   }, [blocks, listRef]);
   const pin = savedCopy === null ? pinAt(prompts, top, lastPrompt, holdsLastPrompt, window.hasOlder) : null;
+  // The pin a reader at the very top sees. While there is one, the top edge starts under it: the pin
+  // floats over the scrollport, and a reported prompt (a phone with no history of the session yet)
+  // sat on "Load older" and took its tap (2026-10-17). It follows what the stream holds, never the
+  // scroll, so the room changes with a page or a new prompt, not under the reader's thumb.
+  const pinOnTop = savedCopy === null && pinAt(prompts, -1, lastPrompt, holdsLastPrompt, window.hasOlder) !== null;
 
   // One scroll does not land: the blocks above the target are `content-visibility: auto`, and a page
   // that just arrived has never been laid out, so each sits at its 64px placeholder until the jump
@@ -635,6 +644,7 @@ export function SessionStream({
           none of it in memory. Where there is nothing older, the thread says where it starts — the
           History page's own line, because it is the same fact about the same session. A saved copy takes
           the slot instead of both: there is no bridge to load from (SavedCopyRow). */}
+      {pinOnTop && <div aria-hidden data-slot="pin-room" className={PIN_ROOM} />}
       {savedCopy !== null ? (
         <SavedCopyRow text={savedCopy} />
       ) : window.hasOlder ? (
