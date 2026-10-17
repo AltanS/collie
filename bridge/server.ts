@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { isIP } from "node:net";
-import { homedir, networkInterfaces } from "node:os";
+import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
@@ -93,6 +93,18 @@ import {
 } from "./launcher-adds.ts";
 import { memoryAddedLaunchers, type AddedLauncherSurface } from "./launchers-added.ts";
 import { checkRunLine, cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
+import {
+  clearSent,
+  memorySent,
+  mergeSentAnswers,
+  parseSentQuery,
+  removeSent,
+  sentAnswerHere,
+  type SentMember,
+  type SentSelf,
+  type SentSurface,
+  type SentWriteAnswer,
+} from "./sent.ts";
 import {
   clearRecentRuns,
   memoryRecentRuns,
@@ -1202,6 +1214,14 @@ export function startServer(opts: {
    */
   recentRuns?: RecentRunSurface;
   /**
+   * Sent, the shell lines a person sent through Collie on this machine (ADR 0107, `bridge/sent.ts`).
+   * Absent means an in-memory record; `bridge/index.ts` passes the file-backed one, which writes
+   * nothing until the first line is kept.
+   */
+  sent?: SentSurface;
+  /** The name Sent gives this machine. Absent: `local`, labelled with the host name. */
+  sentSelf?: () => SentSelf;
+  /**
    * The agents this host can start by id, with their found flags (ADR 0091). Absent builds the real
    * probe, which asks nothing until the first `GET /api/launchers`.
    */
@@ -1322,6 +1342,9 @@ export function startServer(opts: {
   };
   // The one-off lines run here (ADR 0095): recorded by a run that worked, listed beside the rows.
   const recentRuns = opts.recentRuns ?? memoryRecentRuns();
+  // Sent (ADR 0107): kept by a shell pane's blind send (wired in index.ts) and by a one-off run.
+  const sent = opts.sent ?? memorySent({ off: cfg.sent === "off", home: homedir() });
+  const sentSelf = opts.sentSelf ?? ((): SentSelf => ({ id: "local", name: hostname() }));
   const launchersAdding = {
     merged: () => readMerged(launcherSources),
     file: cfg.launchersFile,
@@ -1654,6 +1677,7 @@ export function startServer(opts: {
         folders,
         switches: launcherSources.switches,
         recentRuns,
+        sent,
       });
     }
     // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
@@ -1682,6 +1706,17 @@ export function startServer(opts: {
     // forwarded with `?host=` so the peer's own scan answers for the machine that would run it.
     const checkAnswer = await serveLaunchCheckRoute(req, pathname, caller);
     if (checkAnswer !== null) return checkAnswer;
+    // Sent (ADR 0107): this machine's record of shell lines, read and changed per machine. Session-scoped
+    // for `/api/launchers`' reason: `?host=` reaches that member's own file. A lead's `scope=all` asks
+    // every member itself and merges; a crew caller is a lead asking this machine, so it answers alone.
+    const sentAnswer = await serveSentRoute(req, url, caller, {
+      sent,
+      self: sentSelf,
+      redact: cfg.redact,
+      home: homedir(),
+      members: caller.via === "crew" || crewLead === undefined ? null : () => sentMembersOf(crewLead, caller.device(), cfg.redact),
+    });
+    if (sentAnswer !== null) return sentAnswer;
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
@@ -5724,6 +5759,80 @@ export async function serveRecentRunRoute(
   return json(answer.body, req.headers.get("accept-encoding"), answer.status);
 }
 
+// ── Sent (ADR 0107) ─────────────────────────────────────────────────────────────────────────────
+//
+// `GET /api/sent` reads this machine's record of shell lines; `POST /api/sent/remove` and
+// `/api/sent/clear` change it. All three are session-scoped so `?host=` forwards them to the member
+// whose file it is, and all three need the paired token (reads since 1.18.0). The pure halves are in
+// bridge/sent.ts; this owns the gates, the forward and the response.
+
+/** What {@link serveSentRoute} reads beyond the request. */
+export interface SentRouteDeps {
+  sent: SentSurface;
+  self: () => SentSelf;
+  redact: boolean;
+  home: string;
+  /** A lead's members, for `scope=all`; `null` on a bridge that leads no crew, or answers its lead. */
+  members: (() => SentMember[]) | null;
+}
+
+/** Serve the three Sent routes, or `null` when `url` is none of them. */
+export async function serveSentRoute(
+  req: Request,
+  url: URL,
+  caller: Pick<RouteCaller, "gate" | "resolve" | "device" | "audit">,
+  deps: SentRouteDeps,
+): Promise<Response | null> {
+  const { pathname } = url;
+  const ae = req.headers.get("accept-encoding");
+  if (pathname === "/api/sent" && req.method === "GET") {
+    const denied = caller.gate("read");
+    if (denied) return denied;
+    // A `?host=` call is answered by that member, scope and all: a member has no members of its own.
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    const query = parseSentQuery(url.searchParams);
+    if (typeof query === "string") return text(query, 400);
+    const local = await sentAnswerHere(deps.sent, query, deps.self(), deps.redact, deps.home);
+    if (query.scope !== "all" || deps.members === null) return json(local, ae);
+    return json(await mergeSentAnswers(local, deps.members(), query, deps.redact), ae);
+  }
+  const act = pathname === "/api/sent/remove" ? removeSent : pathname === "/api/sent/clear" ? clearSent : null;
+  if (act === null || req.method !== "POST") return null;
+  const denied = caller.gate("write");
+  if (denied) return denied;
+  const rt = await caller.resolve();
+  if (rt instanceof Response) return rt;
+  let body: JsonValue;
+  try {
+    // SAFETY: `Request.json()` output IS a JsonValue by construction; each act checks every field.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const answer: SentWriteAnswer = await act(body, { sent: deps.sent, device: caller.device(), audit: caller.audit, session: rt.name });
+  return answer.status === 200 ? json(answer.body, ae) : text(answer.text, answer.status);
+}
+
+/**
+ * Every member of a lead's crew as Sent asks it: `GET /api/sent?scope=here` through the ordinary
+ * forward, with the phone's device and the lead's own mask. A member the registry cannot resolve to
+ * a link answers a 503, which reads as `unreachable`.
+ */
+export function sentMembersOf(lead: Pick<CrewLead, "contributions" | "resolve" | "forward">, device: string | null, redact: boolean): SentMember[] {
+  return lead.contributions().map(({ state, name }) => ({
+    host: state.memberId,
+    label: name,
+    ask: async (params) => {
+      const resolved = lead.resolve({ kind: "member", id: state.memberId });
+      if (resolved === undefined || resolved.kind !== "peer") return new Response("host unreachable", { status: 503 });
+      const url = new URL(`http://collie.invalid/api/sent?${params.toString()}`);
+      url.searchParams.set("host", state.memberId);
+      return lead.forward(new Request(url), url, resolved, { device, mask: redact ? maskForwardedAnswer : undefined });
+    },
+  }));
+}
+
 // ── Check a typed line (ADR 0095, amendment) ────────────────────────────────────────────────────
 //
 // `POST /api/launch/check { run }` answers `{ ok: true, noPrompts, problem? }` and nothing else: the
@@ -6130,6 +6239,12 @@ export async function launch(
       console.warn(`[launch] the one-off run is not in the history: ${errorText(err)}`);
     }
   }
+  // The same run joins Sent as kind `run` (ADR 0107), on this machine, after the line was typed and
+  // Enter sent. The skip rules read the line as the phone sent it, before the run's own trim, so a
+  // leading space keeps it out here too. The store never throws and logs no line.
+  if (deps.sent !== undefined) {
+    await deps.sent.record(typeof fields.run === "string" ? fields.run : row.command, asked ?? besidePane?.cwd ?? null, "run");
+  }
   return json({ ...answer, noPrompts: picked.noPrompts === true } satisfies CreateResponse, ae);
 }
 
@@ -6151,6 +6266,8 @@ export interface LaunchDeps {
   switches?: () => Promise<LauncherSwitches>;
   /** Where a one-off run that worked is recorded (ADR 0095). Absent: nothing is recorded. */
   recentRuns?: Pick<RecentRunSurface, "record">;
+  /** Sent, where the same run is kept as kind `run` (ADR 0107). Absent: nothing is kept. */
+  sent?: Pick<SentSurface, "record">;
 }
 
 /**

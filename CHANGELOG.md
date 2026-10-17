@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Each machine keeps a record of the shell lines you send through Collie.** The bridge keeps a line you send to a shell pane, and a one-off command from the New page, in `<stateDir>/sent.jsonl` (mode 0600). It keeps at most 5000 lines and none older than 365 days. A crew lead lists every member's lines and keeps no copy. A line that starts with a space is not kept. Neither is a line that looks like it holds a secret, or one the secret mask would change. Prompts to agents are never kept. `GET /api/sent` lists the lines, and `POST /api/sent/remove` and `/api/sent/clear` forget them. Set `COLLIE_SENT=off` to keep nothing (ADR 0107).
+
 ## [1.22.5] - 2026-10-17
 
 ### Added

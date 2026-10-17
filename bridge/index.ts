@@ -80,6 +80,7 @@ import { AskGuardStore } from "./durable/guard.ts";
 import { OldLeadNotice } from "./durable/old-lead.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
+import { SentStore, sentFileIo, sentRecorder } from "./sent.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
@@ -816,6 +817,10 @@ const addedLaunchers = new AddedLauncherStore(addedFileIo(cfg.stateDir));
 // Nothing is written until the first run that works.
 const recentRuns = new RecentRunStore(recentRunFileIo(cfg.stateDir));
 
+// Sent: the shell lines a person sent through Collie on this machine (ADR 0107, bridge/sent.ts).
+// Nothing is written until the first line is kept; `COLLIE_SENT=off` keeps none.
+const sentStore = new SentStore(sentFileIo(cfg.stateDir), { off: cfg.sent === "off", home: homedir() });
+
 // The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
 // `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
 // is proved in `bridge/cache/warden.test.ts` instead and this line must hold nothing that could be
@@ -1489,6 +1494,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,
+          // A blind send on one of this session's shell panes joins Sent (ADR 0107); any other pane is left out.
+          blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
         })
       : undefined;
   const asks =
@@ -2432,6 +2439,12 @@ const server = startServer({
   worktreeChoices,
   addedLaunchers,
   recentRuns,
+  sent: sentStore,
+  // The name Sent gives this machine: the crew's member id, or `local` with the host name (ADR 0107).
+  sentSelf: () => {
+    const data = trustStore.current();
+    return data === null ? { id: SOLO_MACHINE_ID, name: hostname() } : crewSelfOf(data);
+  },
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   crew,

@@ -210,6 +210,10 @@ Key security boundaries and risks:
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
   [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
+- **Each machine keeps the shell lines you send through Collie.** Sent keeps a line you send to a
+  shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
+  device can read it, as it can read the panes. Some secrets are still kept
+  ([Sent: the shell lines you sent](#sent-the-shell-lines-you-sent)).
 - **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
   Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
@@ -250,6 +254,7 @@ Key security boundaries and risks:
 | `COLLIE_DEVICE_HEADER` | Name of the header your proxy injects with a device id. |
 | `COLLIE_DEVICE_ALLOWLIST` | Comma-separated device ids allowed to write; every other device stays read-only ([`docs/deployment.md`](deployment.md)). |
 | `COLLIE_REDACT=off` | Turns off the secret mask on pane text, diffs and file text ([below](#what-leaves-the-machine-is-masked)). On by default. |
+| `COLLIE_SENT=off` | Keeps no record of the shell lines you send ([below](#sent-the-shell-lines-you-sent)). On by default. |
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case
@@ -378,6 +383,47 @@ A push notification also names a pane only by the name you gave it: the pane's l
 `/rename` name, or a one-pane tab's name. It never uses the title a program in the pane set, because
 any program can set that title, and a title can hold a path, a command or a secret. A pane with no
 such name is called by its harness, for example `claude`.
+
+## Sent: the shell lines you sent
+
+Each machine keeps a record of the shell lines you send through Collie, so you can find and send one again.
+
+```bash
+# in your .env, to keep no record on this machine
+COLLIE_SENT=off
+```
+
+| question | answer |
+| --- | --- |
+| What is kept | A line you send to a shell pane, and each one-off command from the New page. For each line: the text, its folder, the time, and which of the two it was. |
+| What is never kept | Prompts to an agent, text for a program, keys from the Keys board, and Type mode. |
+| Where | `sent.jsonl` in the state folder, `~/.local/state/collie/` unless `COLLIE_STATE_DIR` moves it. The file is mode 0600, in a folder at 0700. |
+| How long | At most 5000 lines on each machine, and none older than 365 days. |
+| Who can read it | A paired device, as it can read the panes the lines went to. |
+| In a crew | Each machine keeps its own file. The lead asks its members when your phone asks, and keeps no copy. |
+
+Collie sends every line you tap, and then decides whether to keep it. It keeps nothing about a line
+that:
+
+- starts with a space or a tab,
+- sets a variable, such as `TOKEN=abc deploy` or `export AWS_SECRET_ACCESS_KEY=…`,
+- holds a URL with a password, such as `https://user:pass@host`,
+- holds a word such as `password`, `secret`, `token`, `bearer` or `authorization`,
+- holds a shape the secret mask knows, such as a `ghp_…` or `sk-…` key,
+- is longer than 4096 characters.
+
+Such a line leaves no row, no count and no log line with its text.
+
+To keep one line out, start it with a space. The shell runs it as usual, and Collie keeps nothing.
+
+> **Caution.** The check is a guess. It keeps a password you pass as a plain argument, such as
+> `mysql -pPASS`, and any secret with a shape it does not know. Start such a line with a space.
+
+To forget one line, use Forget on its row in the Sent sheet. To forget a whole machine, use Clear
+Sent. Both work while `COLLIE_SENT=off` is set. The audit log records each forget with a count, never
+the line. Every line goes through the secret mask before it leaves the machine.
+
+Why it is built this way: [ADR 0107](../.adr/0107-sent-keeps-shell-lines-per-machine.md).
 
 ## Secret files on Windows
 
