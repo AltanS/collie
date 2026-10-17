@@ -1631,6 +1631,30 @@ describe("a send into a running turn", () => {
   };
   const typing = (p: FakePane): boolean => p.calls.length > 0;
 
+  test("a numbered list with a menu and a (y/n) line streaming above the box while Collie types: sent, never left typed (live, 2026-10-17)", async () => {
+    for (const version of ["2.1.301", "2.1.302"]) {
+      const { pane, send } = rig({ version });
+      pane.height = 16;
+      pane.drawsQueuedRow = true;
+      // The turn's own answer: a menu and a single-key question stand above the box, as on Claude Code
+      // 2.1.302 when the list ended in them. No spinner while it streams, so S0 reads the pane free.
+      const listRow = (k: number): string => `  ${String(k)}. Fruit number ${String(k)}: it is a fruit with one short sentence about it.`;
+      pane.transcript = ["  Menu:", "  1. Apple", "  2. Pear", "  3. Quit", "", "  Confirm (y/n)", "", ...[1, 2, 3, 4, 5, 6].map(listRow)];
+      let n = 6;
+      pane.beforeRead = (p) => {
+        // The list streams on once the text went in (the probe saw a still screen, as live).
+        if (!p.calls.some((call) => call.includes("ACK3")) || n >= 40) return;
+        n += 2;
+        p.transcript.push(listRow(n - 1), listRow(n));
+      };
+      const answer = await send("Third message while the list streams, reply ACK3 only.");
+      expect(answer.receipt, version).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1), version).toBe("Enter");
+      expect(pane.box, version).toBe("");
+      expect(n, version).toBeGreaterThan(8);
+    }
+  });
+
   test("the answer streaming above the box while Collie types (no spinner, S0 idle): sent, and queued by the S2 witness", async () => {
     for (const version of ["2.1.200", "2.1.301"]) {
       const { pane, send } = rig({ version });

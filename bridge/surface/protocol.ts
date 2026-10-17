@@ -759,12 +759,18 @@ function labelFromWitness(match: ProfileMatch | null): boolean {
  * may be open at the box (a popup above or under it that the frame walks past, read by the frameless
  * cues); and what the box would hold once Enter goes out must not be a command (a request in mode
  * command, or a box text plus the new text that starts with a reserved lead). Discard always may.
+ *
+ * `cues` says which frameless read stands for "open at the box". At S0 it is the whole screen
+ * (`bareCues`). After the text is typed it is the rows under the box only (`belowCues`): the turn's
+ * own answer above the box may be a numbered list or a menu, and on Claude Code 2.1.302 a list that
+ * streamed in while Collie typed made the whole-screen read strong, so the send ended
+ * `typed_not_submitted(changed)` with the text left in the box (live, 2026-10-17).
  */
-function turnRefusal(state: RunState, s0: Snap, frame: Frame): Ended | null {
+function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "below" = "screen"): Ended | null {
   const { surface } = s0;
   const { request } = state;
   if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-  if (s0.bareCues === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
+  if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
   if (request.mode === "discard") return null;
   const text = sendLines(request.text).join("");
   const box = boxText(frame);
@@ -2276,7 +2282,8 @@ export class SendProtocol {
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
     if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
     if (!this.bandScrolled(state, snap)) return false;
-    if (turnRefusal(state, s0, s0.frame) !== null) return false;
+    // The text is in the box now: only something open under the box stops it, never the turn's answer above.
+    if (snap.belowCues === "strong" || turnRefusal(state, s0, s0.frame, "below") !== null) return false;
     state.streamed = true;
     return true;
   }
