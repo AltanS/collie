@@ -84,6 +84,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
+import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -213,7 +214,7 @@ function foldLabelKey(tabCount: number, paneCount: number): MessageKey {
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
-type Drawer = "switcher" | "paneMenu" | "paneSettings" | "display" | null;
+type Drawer = "switcher" | "paneMenu" | "paneSettings" | "messages" | "display" | null;
 
 // The detail view mirrors a terminal pane, NOT a chat thread. The pane's output comes from the
 // route loader (`text`); polling revalidates it. Replies/keys are confirmed via the header status
@@ -3126,6 +3127,8 @@ export function AgentChat({
           // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
           // program has no prompt cache to warn about (M56 spec 14).
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
+          // The pane's walky talky messages (M62), a read row with the others.
+          onMessages={agent ? () => setDrawer("messages") : undefined}
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
@@ -3143,6 +3146,19 @@ export function AgentChat({
               ? () => nav.down(newPath({ machine: scope?.host, pane: paneId, session: scope?.session }))
               : undefined
           }
+        />
+        {/* The pane's walky talky messages (M62). Reply hands the sender to the composer, which sends through
+            the bridge's walky route with `replyTo`; the sheet itself sends nothing. A reply is a write, so a
+            read-only device, a saved copy and a quiet machine get the list without the button. */}
+        <WalkySheet
+          open={drawer === "messages"}
+          onClose={closeDrawer}
+          canReply={!readOnly && !savedCopyWrites && hostBlock === undefined}
+          onReply={(row) => {
+            closeDrawer();
+            if (row.from.address === null) return;
+            composerRef.current?.startMessage({ to: row.from.address, replyTo: row.id, label: row.from.label });
+          }}
         />
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
             the PANE's machine, because `?host=` there names where the pane lives; the preference itself

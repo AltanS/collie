@@ -47,7 +47,7 @@ describe("a walky talky turn with its id in the log", () => {
   it("draws an operator message in its own tone, with the reply link and the local word", () => {
     inLog(
       [fixtureWalkyAgent, fixtureWalkyOperator],
-      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan) · reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
+      turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan) reply to wt_k3f9x2m8q1a0\nStop.", fixtureWalkyOperator.id, "operator", "wt_k3f9x2m8q1a0"),
     );
     const card = theCard();
     expect(card).toHaveAttribute("data-kind", "operator");

@@ -20,7 +20,7 @@ describe("parseEnvelopeHeader", () => {
   });
 
   it("reads an operator header and its reply suffix", () => {
-    const header = "[walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan) · reply to wt_8ab2c3d4e5f6";
+    const header = "[walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan) reply to wt_8ab2c3d4e5f6";
     expect(parseEnvelopeHeader(header)).toEqual({ id: "wt_k3f9x2m8q1a0", kind: "operator", replyTo: "wt_8ab2c3d4e5f6" });
   });
 

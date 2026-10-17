@@ -100,7 +100,8 @@ export const WALKY_BODY_MAX = 4_000;
 /** The README's header rule, verbatim. */
 export const ENVELOPE_HEADER = /^\[walky-talky (wt_[a-z0-9]{12})\] from (agent|operator) (.*)$/;
 
-const REPLY_SUFFIX = / · reply to (wt_[a-z0-9]{12})$/;
+// The header is ASCII: a reply adds ` reply to <id>` after the sender part, one space, no separator glyph.
+const REPLY_SUFFIX = / reply to (wt_[a-z0-9]{12})$/;
 
 export interface EnvelopeHeader {
   id: string;

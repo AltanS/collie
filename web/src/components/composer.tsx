@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, Loader2, MessageSquare, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
@@ -41,6 +41,9 @@ import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
+import { WalkyAimStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
+import { useLongPress } from "@/hooks/use-long-press";
+import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
@@ -85,6 +88,12 @@ import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendR
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
   focusInput: () => void;
+  /**
+   * Open the box for a message to another session (M62): the Reply of the pane's Messages sheet. The
+   * strip above the box names the target, and Send posts through `POST /api/walky` with `replyTo`,
+   * until the person turns it off or the message leaves.
+   */
+  startMessage: (aim: WalkyAim) => void;
 }
 
 interface ComposerProps {
@@ -727,8 +736,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // hands the button straight back. `direct.active` keeps it, because there the same button is the
   // "stop typing into the terminal" control and that must not be displaceable.
   // A chip is something to send (ADR 0060), so a box holding only chips shows Send, not the mic.
+  // Message mode (M62): "Send as message" from the Send button's long press, and a Reply handed in by
+  // the pane's Messages sheet. The draft goes when the bridge took the message, as a reply's does.
+  const walky = useWalkyComposer({
+    paneId,
+    scope,
+    onTaken: () => {
+      clearComposedDraft();
+      revalidator.revalidate();
+    },
+  });
+
   const hasDraft = input.trim() !== "" || attachments.length > 0;
   const micIsPrimary = micShown && !direct.active && !hasDraft;
+  // The Send button's hold (M62). Offered only where a message could leave: not on a locked field, not
+  // offline, not while Type mode owns the button as its Stop control, and not mid-send.
+  const canMessage = hasDraft && !locked && !offline && !direct.active && !sending && !walky.sending;
+  const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
   //
@@ -862,7 +886,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
-  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately }), []);
+  const startMessage = walky.startMessage;
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusInput: focusInputImmediately,
+      startMessage: (aim) => {
+        startMessage(aim);
+        focusInputImmediately();
+      },
+    }),
+    [startMessage],
+  );
 
   useEffect(
     () => () => {
@@ -1011,6 +1046,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // answer, so it opens the camera roll and no sheet is drawn.
   const asksWhich = offersFiles(limits);
   const [picking, setPicking] = useState(false);
+  // The Send button's long-press menu (M62): one row today, "Send as message". Opened by a HOLD, never
+  // armed by it: the row is a named choice, and the hold alone sends nothing.
+  const [sendMenu, setSendMenu] = useState(false);
   /**
    * THE ATTACH BUTTON'S OWN PRESS ECHO.
    *
@@ -1215,6 +1253,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
   function onSendClick() {
+    // A reply in message mode goes to the other session through the bridge's walky route, and is not
+    // typed into this pane by us, so the destructive-command guard (a shell concern) does not apply.
+    if (walky.aim !== null) {
+      void walky.sendMessage(composeLine(input, attachments));
+      return;
+    }
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
     const line = composeLine(input, attachments);
@@ -1869,6 +1913,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               see the component. */}
           {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
         </Collapse>
+        {/* WHERE A MESSAGE IS GOING AND WHAT BECAME OF THE LAST ONE (M62). The aim stands while a reply is
+            in the box; the note stands until it is dismissed. Both are conditions with a control. */}
+        <Collapse open={walky.aim !== null}>
+          {walky.aim !== null && <WalkyAimStrip aim={walky.aim} onCancel={walky.clearAim} />}
+        </Collapse>
+        <Collapse open={walky.note !== null}>
+          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} />}
+        </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
             without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
@@ -2184,6 +2236,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
           </AnchoredMenu>
+          {/* The Send button's long-press menu, anchored the same way as the attach picker (see above).
+              One row, a named choice: the text goes to this pane as a walky talky message from the
+              operator through the bridge's own route, which logs it, types it when the screen allows
+              and answers a receipt. The menu closes before the send, so the outcome strip is what shows. */}
+          <AnchoredMenu
+            open={sendMenu}
+            onClose={() => setSendMenu(false)}
+            label={translate("walky.composer.menu")}
+            className={hand === "left" ? "right-auto left-0" : undefined}
+          >
+            <ActionRow
+              icon={<MessageSquare aria-hidden="true" className="size-4 shrink-0" />}
+              label={translate("walky.composer.sendAsMessage")}
+              onClick={() => {
+                setSendMenu(false);
+                void walky.sendMessage(composeLine(input, attachments));
+              }}
+            />
+          </AnchoredMenu>
           {askOwnsKeys && hasDraft ? (
             // A modal ask owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
             // and never in the header: on a phone that line is scrolled off or under
@@ -2257,7 +2328,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Button
               data-slot="composer-primary"
               size="icon"
-              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
+              {...sendHold}
+              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]")}
               onClick={direct.active ? () => direct.deactivate() : onSendClick}
               disabled={locked || sending || (offline && !direct.active)}
               title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}

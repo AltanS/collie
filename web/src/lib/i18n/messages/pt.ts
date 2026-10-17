@@ -2271,6 +2271,8 @@ export const pt: Dictionary = {
   "walky.composer.cancel": "Send as a plain reply again",
   "walky.composer.sending": "Sending message",
   "walky.composer.failed": "Message not sent: {error}",
+  "walky.composer.outcome": "Message to {label}: {state}",
+  "walky.composer.dismiss": "Dismiss",
   "walky.composer.empty": "Write the message first.",
   // The Crew page's broadcast.
   "walky.crew.open": "Message all agents",

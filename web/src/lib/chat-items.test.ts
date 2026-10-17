@@ -189,7 +189,7 @@ describe("itemsOf and a walky talky envelope (M62)", () => {
   });
 
   it("tags a user turn whose first line is a header, with what the header claims", () => {
-    const [item] = itemsOf(envelope("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, x#y) · reply to wt_8ab2c3d4e5f6\nbody"));
+    const [item] = itemsOf(envelope("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, x#y) reply to wt_8ab2c3d4e5f6\nbody"));
     expect(item).toMatchObject({ kind: "user", walky: { id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: "wt_8ab2c3d4e5f6" } });
   });
 
