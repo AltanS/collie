@@ -281,6 +281,22 @@ describe("the session page's rows (send drill 3)", () => {
     expect(rows.receipts[1]!.queued).toBeUndefined();
   });
 
+  it("reads a refusal's line and Surface words off the wire, and drops words that are not whole (2026-10-17)", () => {
+    const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"], gapsMs: {}, harness: "claude", version: "2.1.302" };
+    const saw = { turn: "idle", modal: "none", composer: "empty" };
+    const rows = readSendReceipts({
+      receipts: [
+        { ...row, detail: "The probe character changed more than the box.", saw },
+        { ...row, requestId: "r2abcdefgh", detail: 7, saw: { turn: "idle", modal: "open", composer: "empty" } },
+        { ...row, requestId: "r3abcdefgh", detail: "x".repeat(400) },
+      ],
+    });
+    expect(rows.receipts[0]).toMatchObject({ detail: "The probe character changed more than the box.", saw });
+    expect(rows.receipts[1]!.detail).toBeUndefined();
+    expect(rows.receipts[1]!.saw).toBeUndefined();
+    expect(rows.receipts[2]!.detail).toHaveLength(240);
+  });
+
   it("reads the cap of a row off the wire and drops one that is not whole", () => {
     const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
     const rows = readSendReceipts({ receipts: [{ ...row, cap: { count: 5, limit: 5, harness: "codex", version: "-" } }, { ...row, requestId: "r2abcdefgh", cap: { count: "x" } }] });

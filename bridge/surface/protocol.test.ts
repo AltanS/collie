@@ -3940,6 +3940,65 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     expect(r.holds.list()).toEqual([]);
   });
 
+  test("a probe that fails on a redrawing screen and is cleaned up with a confirmed box is held, then sent on a stable read (live, 2026-10-17)", async () => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = { ...rig({ version: "2.1.999", holds, clock }), holds };
+    // The screen redraws once while the probe goes in: the hint under the box vanishes for that read.
+    let redraws = 1;
+    r.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}` && redraws > 0) {
+        redraws--;
+        p.status = [];
+      }
+    };
+    const answer = await r.send("fourth message, reply ACK4 only", { id: "probe-00001" });
+    expect(answer.receipt).toMatchObject({ requestId: "probe-00001", outcome: "held", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(answer.detail).toBe(BOX_HELD);
+    expect(r.pane.box).toBe("");
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["probe-00001"]);
+    // The hint is back and the screen holds still: the quiet rule releases it, and it goes out.
+    r.pane.status = rig().pane.status;
+    let released: SendAnswer | null | undefined;
+    for (let i = 0; i < 6 && released === undefined; i++) {
+      [released] = await tick(r);
+      clock.now += 2500;
+    }
+    expect(released?.receipt).toMatchObject({ requestId: "probe-00001", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> fourth message, reply ACK4 only");
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a probe whose cleanup is not confirmed stays a refusal, nothing held", async () => {
+    const r = queued();
+    const twice = rig({ version: "2.1.999", holds: r.holds });
+    // The Backspace is taken, but the probe character shows in the box again on the read after it.
+    twice.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+      if (what === "keys:Backspace") p.box = PROBE;
+    };
+    const answer = await twice.send("hello there", { id: "probe-00002" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toContain("may remain in the box");
+    // A probe character that shows twice gets no Backspace at all: refused too.
+    const seen = rig({ version: "2.1.999", holds: r.holds });
+    seen.pane.transcript.push(`an earlier line that shows ${PROBE}`);
+    seen.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    expect((await seen.send("hello there", { id: "probe-00003" })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a command whose probe failed with a clean box stays a refusal", async () => {
+    const r = rig({ version: "2.1.999", holds: new HoldStore(join(dir, "held")) });
+    r.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    expect((await r.send("/compact", { id: "probe-00004", mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+  });
+
   test("with no hold queue a box that is not free is refused as before", async () => {
     const r = rig();
     r.pane.dialog = DIALOG;

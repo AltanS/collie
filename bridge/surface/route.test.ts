@@ -322,6 +322,33 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
   });
 });
 
+describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 field case)", () => {
+  test("a refused send lists the detail and saw its answer had; a sent one lists neither", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      await sendRoute(rt, { id: "route-ok-0001", pane: "%1", text: "a private first message" }, context);
+      // Someone typed at the desk: the next send meets a draft and is refused.
+      await pane.typeText("%1", "half a private thought");
+      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "a private second message" }, context);
+      const answer = await res.json();
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+      expect(answer.receipt.detail).toEqual(expect.any(String));
+      expect(answer.receipt.saw).toMatchObject({ composer: "draft" });
+      const listed = await sendReceiptsRoute(rt, "%1", null).json();
+      expect(listed.receipts[0]).toMatchObject({ requestId: "route-no-0001", outcome: "refused", detail: answer.receipt.detail, saw: answer.receipt.saw });
+      expect(listed.receipts[1].requestId).toBe("route-ok-0001");
+      expect(listed.receipts[1].detail).toBeUndefined();
+      expect(listed.receipts[1].saw).toBeUndefined();
+      expect(JSON.stringify(listed)).not.toMatch(/private/u);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // `DELETE /api/send/<id>` (M56 spec 15): the Cancel on a queued row.
 describe("heldCancelRoute (M56 spec 15)", () => {
   /** A held request on pane %1, as the protocol leaves one: the record held, the row on disk. */

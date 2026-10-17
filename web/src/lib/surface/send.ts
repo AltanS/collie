@@ -246,6 +246,10 @@ export interface SendReceiptRow {
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
   readonly queued?: true;
+  /** The refusal's line, as the send's answer showed it (see {@link SendReceipt.detail}); refusals only. */
+  readonly detail?: string;
+  /** What the bridge saw at the refusal, four words (see {@link SendReceipt.saw}); refusals only. */
+  readonly saw?: SurfaceWords;
 }
 
 /** Where a held request stands (M56 spec 15): waiting, going out now, or closed with its text kept. */

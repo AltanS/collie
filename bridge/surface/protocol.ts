@@ -819,6 +819,14 @@ function heldDetail(end: Ended): string {
   if (end.extra.detail === HELD_BEHIND) return HELD_BEHIND;
   return end.reason === "turn_running" ? HELD : HELD_BOX;
 }
+/**
+ * Whether an end is a failed probe that left nothing behind (2026-10-17): the only keys were the probe
+ * character and the one Backspace of its cleanup, and a read after that Backspace showed the box as at
+ * S0. Nothing of the text went in, so the hold queue may take it like a box that was not free.
+ */
+function cleanProbe(state: RunState, end: Ended): boolean {
+  return end.reason === "probe_failed" && end.extra.probeClean === true && state.keys.length === 2 && state.keys[0] === "probe" && state.keys[1] === "Backspace";
+}
 /** The detail of a send held behind earlier held sends on the same pane: it never jumps the queue. */
 const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
 /**
@@ -1252,6 +1260,8 @@ interface EndNote {
   cap?: SendCap;
   /** The offers, when an end's own differ from the shared rules (a Submit or Discard to look at again). */
   offers?: SendOffer[];
+  /** A failed probe whose one Backspace was read back: the box holds what it held at S0 (2026-10-17). */
+  probeClean?: boolean;
 }
 
 /** A receipt being built, field by field. */
@@ -1338,6 +1348,9 @@ export class SendProtocol {
       if (receipt.reason !== undefined) row.reason = receipt.reason;
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
+      // A refusal's line and the Surface words are stored to be read later: the list carries them.
+      if (receipt.detail !== undefined) row.detail = receipt.detail;
+      if (receipt.saw !== undefined) row.saw = receipt.saw;
       rows.push(row);
     }
     return rows;
@@ -1476,13 +1489,17 @@ export class SendProtocol {
    * means "not yet". `turn_running` as before; `not_free` and `bound` (a box that is not free, a screen
    * that would not hold still) only for a message, never a command: a command at a box Collie could
    * not read stays a refusal. `draft_present` and `unconfirmed` need the person, so they stay refusals.
+   * A `probe_failed` whose cleanup was read back (see {@link cleanProbe}) counts as no key, and is held
+   * like `not_free`; one whose box Collie could not confirm clean stays a refusal.
    */
   private holdsEnd(state: RunState, end: Ended): boolean {
-    if (this.deps.holds === undefined || end.outcome !== "refused" || state.keys.length > 0) return false;
+    if (this.deps.holds === undefined || end.outcome !== "refused") return false;
+    const clean = cleanProbe(state, end);
+    if (state.keys.length > 0 && !clean) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
     if (end.reason === "turn_running") return true;
     const command = state.command || state.request.mode === "command";
-    return (end.reason === "not_free" || end.reason === "bound") && !command;
+    return (end.reason === "not_free" || end.reason === "bound" || clean) && !command;
   }
 
   /** The request goes to the end of its pane's queue; the answer's receipt says `held`. */
@@ -1940,7 +1957,7 @@ export class SendProtocol {
       return this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
     } catch (err) {
       if (!(err instanceof Ended)) throw err;
-      if (release && err.outcome === "refused" && err.reason !== undefined && NOT_YET.has(err.reason) && state.keys.length === 0) return this.backToQueue(state, err);
+      if (release && err.outcome === "refused" && err.reason !== undefined && ((NOT_YET.has(err.reason) && state.keys.length === 0) || cleanProbe(state, err))) return this.backToQueue(state, err);
       if (!release && this.holdsEnd(state, err)) return this.hold(state, err);
       return this.settle(state, err);
     } finally {
@@ -2581,7 +2598,11 @@ export class SendProtocol {
     } catch (err) {
       if (!(err instanceof StepLate)) throw err;
     }
-    if (look !== null && countIn(look.texts, probe) === countIn(s0.texts, probe)) return failed(PROBE_REMOVED, look);
+    if (look !== null && countIn(look.texts, probe) === countIn(s0.texts, probe)) {
+      const clean = failed(PROBE_REMOVED, look);
+      clean.extra.probeClean = true;
+      return clean;
+    }
     return failed(probeMayRemain(probe), look ?? snap);
   }
 

@@ -15,6 +15,8 @@ import {
   SEND_OUTCOMES,
   SEND_REASONS,
   readSendCap,
+  readSurfaceWords,
+  RECEIPT_DETAIL_MAX,
   type SendCap,
   type SendMode,
   type SendOffer,
@@ -125,7 +127,7 @@ const STEPS: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "comm
 /**
  * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire
  * carries no text and no screen row, and this reads nothing of either: outcome, reason, time, the
- * keys by name and the measured gaps.
+ * keys by name and the measured gaps, and on a refusal Collie's own line and four Surface words.
  */
 export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswer {
   const list = asJsonObject(body)?.receipts;
@@ -157,6 +159,10 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (reason !== null) row.reason = reason;
     if (cap !== null) row.cap = cap;
     if (node.queued === true) row.queued = true;
+    const detail = asJsonString(node.detail);
+    if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
+    const saw = readSurfaceWords(node.saw);
+    if (saw !== null) row.saw = saw;
     receipts.push(row);
   }
   return { receipts };
