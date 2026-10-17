@@ -161,6 +161,8 @@ export function DurableComposer({
   // The id of the program button whose tap is in flight, so a second tap on it waits for the first.
   const [running, setRunning] = useState<string | null>(null);
   const [justSent, setJustSent] = useState(false);
+  // The timer that ends the "Sent" check. One at a time, and none after the composer is gone.
+  const justSentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What became of the last Send Protocol request, at the thumb; null after a clean send.
   const [refusal, setRefusal] = useState<SendRefusal | null>(null);
   // The request id of the last send or stop, kept only while its outcome is unknown.
@@ -172,6 +174,12 @@ export function DurableComposer({
   const field = useRef<HTMLTextAreaElement | null>(null);
   // The field had focus when Send was tapped: it gets it back when the hold ends, so a thumb can go on typing.
   const refocus = useRef(false);
+  useEffect(() => () => clearTimeout(justSentTimer.current ?? undefined), []);
+  function flashSent() {
+    clearTimeout(justSentTimer.current ?? undefined);
+    setJustSent(true);
+    justSentTimer.current = setTimeout(() => setJustSent(false), 1500);
+  }
   useEffect(() => {
     if (sending || !refocus.current) return;
     refocus.current = false;
@@ -225,8 +233,7 @@ export function DurableComposer({
       // The pending line stays: the program's own item takes its place when the next read carries it.
       setPendingState(key, id.requestId, "sent");
       setSteer(false);
-      setJustSent(true);
-      setTimeout(() => setJustSent(false), 1500);
+      flashSent();
       onSent();
     } else {
       setInput(text);
@@ -277,8 +284,7 @@ export function DurableComposer({
     if (reading.clear) {
       // The pending line stays: the program's own item takes its place, and closes the receipt as effective.
       setPendingState(key, id.requestId, "sent");
-      setJustSent(true);
-      setTimeout(() => setJustSent(false), 1500);
+      flashSent();
       onSent();
       onReload();
       // A send the program takes for after its turn says so, in the place "Sent" stands.
