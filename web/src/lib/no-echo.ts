@@ -70,7 +70,14 @@ const TAIL_LINES = 2;
  * they are already looking at, so a false positive is self-evidently one.
  */
 export function detectNoEchoPrompt(lines: StyledLine[]): string | null {
-  const texts = lines.map(lineText);
+  return noEchoPromptIn(lines.map(lineText));
+}
+
+/**
+ * {@link detectNoEchoPrompt} over row texts, for a reader that holds texts and not styled lines: the
+ * bridge's Send Protocol checks a pane with no profile with it before it types blind (2026-10-17).
+ */
+export function noEchoPromptIn(texts: readonly string[]): string | null {
   let end = texts.length;
   while (end > 0 && isBlank(texts[end - 1]!)) end--;
   for (let i = end - 1; i >= 0 && i >= end - TAIL_LINES; i--) {

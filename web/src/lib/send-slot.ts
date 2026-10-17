@@ -37,7 +37,9 @@ export interface ComposerFacts {
  *   harness queues a message for after the turn (the answer says `queued`), and refuses where it does
  *   not; the key pad is the way to stop the turn.
  * - `manual`: `unknown(no-match)`, a weak cue, or `modal unreadable`; Send takes two taps, prepare
- *   then commit with the hash of the rows the person saw.
+ *   then commit with the hash of the rows the person saw. A pane with no profile (a bare shell) reads
+ *   `unknown(no-match)` too, but the bridge types its text and presses Enter on the first tap,
+ *   unless a password prompt stands on its last rows.
  * - `wait`: `unknown` from a stale, torn or contested read; Send asks the bridge for a fresh read.
  * - `draft`: the box holds a draft at the desk; Send asks the bridge, which offers Add, Replace, Cancel.
  * - `send`: `free`, the fast path.
