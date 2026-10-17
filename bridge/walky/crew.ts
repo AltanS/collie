@@ -198,17 +198,34 @@ export interface WalkyCrewDeps {
   /** The trust store as it stands, read per request: a rotation or a re-join changes it under a running bridge. */
   readonly trust: () => TrustStoreData | null;
   readonly audit?: WalkyAudit;
+  readonly now?: () => number;
+}
+
+/**
+ * How far a message's `at` may sit from this bridge's clock, either way, on a crew hop (M62 hardening
+ * E). Past it the message is refused `stale`: a replay a day later, or a sender whose clock is wrong.
+ */
+export const STALE_MS = 10 * 60 * 1000;
+
+/** Whether a message's clock is inside the window. */
+export function fresh(message: Pick<WalkyMessage, "at">, now: number): boolean {
+  return Math.abs(now - message.at) <= STALE_MS;
 }
 
 /** The two receiving halves, built once in index.ts and handed to the router and the dispatch. */
 export class WalkyCrew {
-  constructor(private readonly deps: WalkyCrewDeps) {}
+  private readonly now: () => number;
+
+  constructor(private readonly deps: WalkyCrewDeps) {
+    this.now = deps.now ?? Date.now;
+  }
 
   /** `POST /crew/v1/walky` on the lead. `member` is the member the request signature named. */
   async fromMember(body: JsonValue | undefined, member: TrustedMember): Promise<CrewAnswer> {
     const checked = checkFromMember(body, member);
     if (!checked.ok) return checked.answer;
     const { message } = checked;
+    if (!fresh(message, this.now())) return { status: 200, body: { receipts: [this.deps.service.deliverer.refusal(message.id, message.to, "stale", "origin")] } };
     this.deps.audit?.({ action: "walky.send", detail: { via: "crew", from: member.memberId, to: message.to, textLength: message.body.length } });
     // Delivered here, and routed on to every other member it names: `localOnly` is false on a lead.
     // `via`: the member's outer bucket, 60 tokens per 10 minutes on this lead.
@@ -224,6 +241,7 @@ export class WalkyCrew {
     const checked = checkFromLead(body, segment, lead, crewId, data.self.memberId);
     if (!checked.ok) return checked.answer;
     const { message, verified } = checked;
+    if (!fresh(message, this.now())) return { status: 200, body: { receipts: [this.deps.service.deliverer.refusal(message.id, message.to, "stale", verified)] } };
     this.deps.audit?.({ action: "walky.deliver", detail: { via: "crew", from, to: message.to, verified, textLength: message.body.length } });
     // This machine's panes only: a message a crew hop brought is never routed on.
     return { status: 200, body: { receipts: await this.deps.service.receive(message, verified, true) } };

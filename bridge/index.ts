@@ -239,6 +239,7 @@ import {
 } from "./walky/crew.ts";
 import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
 import { WalkyLog } from "./walky/log.ts";
+import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 
@@ -1692,6 +1693,8 @@ const walkyHost: WalkyHost = {
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
 const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// Dedupe beside the log, kept a day and apart from its rotation: the same id never types twice.
+const walkySeen = new WalkySeen(join(cfg.stateDir, "walky"));
 // Across the crew (CREW_PROTOCOL §21). A member hands every message for another machine to its lead,
 // signed; the lead delivers and routes it on with its attestation. The lead's half needs the lead
 // runtime, which is built after the sessions, so it is assigned below and read through this holder.
@@ -1705,6 +1708,7 @@ const walkyRoute: RouteRemote | undefined =
       : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload) });
 const walky = new WalkyService({
   log: walkyLog,
+  seen: walkySeen,
   host: walkyHost,
   memberId: walkyMemberId,
   enabled: () => cfg.walky,

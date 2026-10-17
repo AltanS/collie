@@ -3371,13 +3371,25 @@ member B as `verified: "lead"`. The one exception is a message the lead itself s
 that certificate, verifies the origin signature too, and writes `verified: "origin"`, and only when
 `from.memberId` is the signer as well.
 
-### Dedupe and replay
+### Dedupe, replay and the time window
 
 The message id is the dedupe key on every bridge. The same id again returns the receipts already
-stored and types nothing; the same id with another canonical string is refused `id reused`. A replay
+stored and types nothing; the same id with another canonical string is refused `id reused`. The
+sender's clock is left out of that comparison, so a phone's retry of one attempt is a replay. A replay
 of `/crew/v1/walky` inside §8.6's skew window is therefore harmless, and the route **does not advance
 the monotonic floor** (§8.6): it changes no roster, and two panes on one member may send close
-together. A replay outside the window is refused by the timestamp.
+together.
+
+Dedupe lives in its own file, `<stateDir>/walky/seen.json` (`bridge/walky/seen.ts`): an entry per
+`(id, target)` with its first sight and a hash of the message, kept 24 hours and independent of the
+log's rotation. The entry is written before the log's line and before any key. A repeat returns the
+stored receipts for the targets it has and finishes the targets it lacks, so a fan-out cut short by a
+crash resumes; a seen target whose log record is gone answers `unknown` and is never typed again.
+The crew leg of a fan-out is one target (`all`), not one per member.
+
+On both hops the receiving bridge refuses a message whose `at` is more than **10 minutes** from its
+own clock, either way, as a `refused: stale` receipt in a 200. The local socket and the phone route
+set `at` themselves. Added 2026-10-17 (M62 hardening).
 
 ### The outcome report
 

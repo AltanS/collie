@@ -117,7 +117,9 @@ member sees for a message from another member.
 ## Receipts
 
 Every message has an id (`wt_` and 12 characters) and a receipt. The bridge writes the receipt
-before it types anything, so the same id sent twice returns the receipt and types nothing.
+before it types anything, so the same id sent twice returns the receipt and types nothing. The ids
+it has seen stay in `<stateDir>/walky/seen.json` for a day, even after the log drops a line. Across
+a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 
 | State | Meaning |
 | --- | --- |

@@ -258,7 +258,7 @@ describe("a member's check of its lead's delivery", () => {
 describe("the lead takes a member's message", () => {
   test("delivers to its own pane as `origin`, and a replay returns the stored receipts and types nothing more", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
     const first = await fromMemberOf(crew, message, member({ memberId: "laptop" }));
     expect(first).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "desk/w1:p1", verified: "origin", by: "desk" }] } });
@@ -270,7 +270,7 @@ describe("the lead takes a member's message", () => {
 
   test("rate-limits per sender, as the local path does", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
     for (let n = 0; n < 30; n += 1) {
       const id = `wt_${n.toString().padStart(12, "a")}`;
@@ -285,7 +285,7 @@ describe("the lead takes a member's message", () => {
 
   test("two panes may trade 6 messages in 10 minutes, either direction; the 7th is `pair limit`", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
     for (let n = 0; n < 6; n += 1) {
       const id = `wt_${n.toString().padStart(12, "p")}`;
@@ -299,7 +299,7 @@ describe("the lead takes a member's message", () => {
 
   test("on a lead, one outer bucket per member: the member's panes together hit it", async () => {
     const lead = service("desk", [pane("w1:p1")], undefined, { members: new RateLimiter(3) });
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
     const from = (n: number) => ({ memberId: "laptop", address: `laptop/w${String(n)}:p1`, harness: "agent-x", label: "repo#x" });
     for (let n = 0; n < 3; n += 1) {
@@ -308,9 +308,31 @@ describe("the lead takes a member's message", () => {
     expect(await fromMemberOf(crew, signed("wt_mmmmmmmmmmmz", "laptop", "desk/w1:p1", { from: from(9) }), laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
   });
 
+  test("a message whose clock is more than 10 minutes off, either way, is `stale` on both hops", async () => {
+    const lead = service("desk", [pane("w1:p1")]);
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const laptop = member({ memberId: "laptop" });
+    const tenMinutes = 10 * 60 * 1000;
+    expect(await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { at: AT - tenMinutes }), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
+    for (const [id, at] of [["wt_aaaaaaaaaaa2", AT - tenMinutes - 1], ["wt_aaaaaaaaaaa3", AT + tenMinutes + 1]] as const) {
+      expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1", { at }), laptop)).toMatchObject({
+        status: 200,
+        body: { receipts: [{ state: "refused", reason: "stale" }] },
+      });
+    }
+    const peer = service("laptop", [pane("w1:p9")]);
+    const peerCrew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
+    const old = signed("wt_aaaaaaaaaaa4", "desk", "laptop/w1:p9", { at: AT - tenMinutes - 1 });
+    expect(await fromLeadOf(peerCrew, "w1:p9", { message: old, attest: attestFor(old, material("desk").keyPem, CREW.crewId, "laptop") }, "desk")).toMatchObject({
+      body: { receipts: [{ state: "refused", reason: "stale" }] },
+    });
+    await peer.service.deliverer.settled();
+    expect(peer.host.sends).toEqual([]);
+  });
+
   test("an agent's broadcast is refused at the lead too", async () => {
     const lead = service("desk", [pane("w1:p1")]);
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all"), member({ memberId: "laptop" }));
     expect(answer).toMatchObject({ body: { receipts: [{ state: "refused", reason: "only the operator may broadcast" }] } });
     expect(lead.host.sends).toEqual([]);
@@ -323,7 +345,7 @@ describe("the lead takes a member's message", () => {
       posts.push({ memberId, segment, body: JSON.parse(payload) as { message: WalkyMessage; attest: string } });
       return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "lead", at: AT, by: memberId }] } };
     });
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "other/w9:p9"), member({ memberId: "laptop" }));
     expect(answer).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "other/w9:p9", by: "other" }] } });
     expect(posts.map((post) => `${post.memberId} ${post.segment}`)).toEqual(["other w9:p9"]);
@@ -338,7 +360,7 @@ describe("the lead takes a member's message", () => {
       posted.push(`${memberId} ${segment}`);
       return { kind: "answer", status: 200, body: { receipts: [] } };
     });
-    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore() });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const answer = await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "all", OPERATOR("laptop")), member({ memberId: "laptop" }));
     expect(posted).toEqual(["other all"]);
     expect(answer.body).toMatchObject({ receipts: [{ target: "desk/w1:p1" }, { target: "other/all", state: "accepted" }] });
@@ -348,7 +370,7 @@ describe("the lead takes a member's message", () => {
 describe("a member takes its lead's delivery", () => {
   test("verifies the attestation, delivers as `lead`, and fans `<member>/all` out to its agent panes", async () => {
     const peer = service("laptop", [pane("w1:p8"), pane("w1:p9"), pane("w1:p7", { agent: false, harness: null })]);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/all", OPERATOR("other"));
     const body = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") };
     const answer = await fromLeadOf(crew, "all", body, "desk");
@@ -359,7 +381,7 @@ describe("a member takes its lead's delivery", () => {
 
   test("refuses a caller that is not its lead, and a bad attestation, with the uniform 401", async () => {
     const peer = service("laptop", [pane("w1:p9")]);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9");
     const good = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") };
     expect(await fromLeadOf(crew, "w1:p9", good, "other")).toMatchObject({ status: 401 });
@@ -401,7 +423,7 @@ describe("the outcome report", () => {
     const peer = service("laptop", [pane("w1:p9")]);
     const report = new WalkyReport("laptop");
     report.listen(peer.log);
-    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore() });
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9");
     await fromLeadOf(crew, "w1:p9", { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") }, "desk");
     await peer.service.deliverer.settled();

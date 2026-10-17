@@ -2,8 +2,9 @@
 //
 //   1. Resolve the address to target panes. A shell pane is never a target. An address on another
 //      member goes to the crew seam (`routeRemote`, spec 03); with no seam it is refused.
-//   2. The same id again returns the stored receipts and types nothing. The same id with another
-//      text is refused `id reused` and logs nothing.
+//   2. The same id again returns the stored receipts and types nothing (seen.ts keeps the ids a day,
+//      apart from the log's rotation). The same id with another text is refused `id reused` and logs
+//      nothing. A fan-out repeated after a crash finishes the targets it lacks.
 //   3. `COLLIE_WALKY=off` refuses `off`; the sender cap refuses `rate limit`. Neither is logged.
 //   4. Each target gets a message line, an inbox entry and an `accepted` receipt, in that order,
 //      before any key. The answer leaves with those receipts.
@@ -26,6 +27,7 @@ import { LOCAL_MEMBER, isSelf, parseAddress } from "./address.ts";
 import { canonicalMessage } from "./canonical.ts";
 import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
+import { seenHash, WalkySeen } from "./seen.ts";
 import { formatEnvelope, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
 
 /** How long a held send may wait before the message is left in the inbox only. */
@@ -136,6 +138,8 @@ export interface DelivererDeps {
   /** The lead's outer cap, 60 per member per 10 minutes. */
   readonly members?: RateLimiter;
   readonly routeRemote?: RouteRemote;
+  /** The dedupe file, `<stateDir>/walky/seen.json`. Absent: in memory, for a test. */
+  readonly seen?: WalkySeen;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly warn?: (line: string) => void;
@@ -161,6 +165,7 @@ export class WalkyDeliverer {
   private readonly rate: RateLimiter;
   private readonly pairs: RateLimiter;
   private readonly members: RateLimiter;
+  private readonly seen: WalkySeen;
   private readonly running = new Set<Promise<void>>();
 
   constructor(private readonly deps: DelivererDeps) {
@@ -169,6 +174,7 @@ export class WalkyDeliverer {
     this.rate = deps.rate ?? new RateLimiter();
     this.pairs = deps.pairs ?? new RateLimiter(PAIR_LIMIT);
     this.members = deps.members ?? new RateLimiter(MEMBER_LIMIT);
+    this.seen = deps.seen ?? new WalkySeen(null, this.now);
   }
 
   /** The `by` of every receipt this bridge writes. */
@@ -243,11 +249,11 @@ export class WalkyDeliverer {
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const address = parseAddress(message.to);
     if (address === null) return refuse("no such pane");
-    const stored = this.deps.log.all(message.id);
-    if (stored.length > 0) {
-      if (!sameMessage(stored[0]!.message, message)) return refuse("id reused");
-      return stored.map((record) => record.receipt);
-    }
+    // The same id again: the receipts of the targets it already has. One pane, or another machine,
+    // ends here; a fan-out goes on and finishes the targets it lacks (a crashed fan-out resumes).
+    const done = this.prior(message, verified);
+    if (done === null) return refuse("id reused");
+    if (done.size > 0 && address.kind === "pane") return [...done.values()];
     if (address.kind !== "pane" && message.kind === "agent") return refuse("only the operator may broadcast");
     const remote = address.kind !== "all" && !isSelf(address.memberId, this.deps.memberId);
     if (remote && options.localOnly === true) return refuse("no such pane");
@@ -290,20 +296,49 @@ export class WalkyDeliverer {
         targets.push(pane);
       }
     }
-    const routesOn = address.kind === "all" && this.deps.routeRemote !== undefined && options.localOnly !== true;
-    const capped = this.capped(message, targets.length + (routesOn ? 1 : 0), options);
+    const fresh = targets.filter((pane) => !done.has(`${self}/${pane.paneId}`));
+    const routes = address.kind === "all" && this.deps.routeRemote !== undefined && options.localOnly !== true;
+    const routesOn = routes && !done.has("all");
+    if (done.size > 0 && fresh.length === 0 && !routesOn) return [...done.values()];
+    const capped = this.capped(message, fresh.length + (routesOn ? 1 : 0), options);
     if (capped !== null) return capped;
     const receipts: WalkyReceipt[] = [...refusedTargets];
     for (const pane of targets) {
       const target = `${self}/${pane.paneId}`;
+      const held = done.get(target);
+      if (held !== undefined) {
+        receipts.push(held);
+        continue;
+      }
       const accepted = this.receipt(message.id, target, "accepted", { verified });
+      // Seen first, then logged, then typed: a crash between any two never types twice.
+      this.seen.add(message, target);
       const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId }, accepted, sender);
       this.deps.log.inboxAdd(pane.session, pane.paneId, message);
       receipts.push(accepted);
       this.track(this.type(record, pane));
     }
+    // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
     if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
+    else if (routes) receipts.push(...[...done].filter(([target]) => !targets.some((pane) => `${self}/${pane.paneId}` === target)).map(([, receipt]) => receipt));
     return receipts;
+  }
+
+  /**
+   * What this bridge already holds for a message id, by target: the log's receipts, and a seen entry
+   * the log lost answers `unknown` (it may have been typed; it is never typed again). Null when the
+   * id belongs to another message.
+   */
+  private prior(message: WalkyMessage, verified: WalkyVerified): Map<string, WalkyReceipt> | null {
+    const records = this.deps.log.all(message.id);
+    if (records.length > 0 && !sameMessage(records[0]!.message, message)) return null;
+    const entries = this.seen.of(message.id);
+    const hash = entries.length === 0 ? null : seenHash(message);
+    if (entries.some((entry) => entry.hash !== hash)) return null;
+    const out = new Map<string, WalkyReceipt>();
+    for (const record of records) out.set(record.target, record.receipt);
+    for (const entry of entries) if (!out.has(entry.target)) out.set(entry.target, this.receipt(message.id, entry.target, "unknown", { reason: "no log record", verified }));
+    return out;
   }
 
   /**
@@ -347,6 +382,7 @@ export class WalkyDeliverer {
     if (route === undefined) return [this.receipt(message.id, message.to, "refused", { reason: "crew routing not built" })];
     const placement: Placement = { session: null, paneId: null };
     const accepted = this.receipt(message.id, members === "all" ? "all" : message.to, "accepted");
+    this.seen.add(message, accepted.target);
     this.deps.log.record(message, accepted.target, placement, accepted, sender);
     try {
       const receipts = [...(await route(message, members))];
