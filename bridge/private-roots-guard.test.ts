@@ -38,6 +38,7 @@ const ELSEWHERE: readonly Elsewhere[] = [
   { file: "cli/config.ts", count: 2, why: "`collie config set` writes config.toml into the config folder or ~/.collie, which the loader checks" },
   { file: "cli/hooks.ts", count: 2, why: "an agent's own settings file (~/.claude), not Collie's; documented as not covered" },
   { file: "cli/codex-hooks.ts", count: 2, why: "an agent's own config file ($CODEX_HOME/config.toml), not Collie's; the same case as cli/hooks.ts" },
+  { file: "cli/skill-install.ts", count: 1, why: "the one-time `.collie-backup` copy beside an agent's own instruction file (~/.codex/AGENTS.md and kin), not Collie's; the same case as cli/hooks.ts" },
   { file: "cli/update.ts", count: 1, why: "the staging log is `stagingLogPath(deps.ctx.stateDir, runId)`, set further up the same function" },
   { file: "bridge/stt/whistle-model.ts", count: 6, why: "every path is `whistlePaths(deps.stateDir)`, the model's folder inside the state folder" },
   { file: "bridge/stt/local-cli.ts", count: 2, why: "one recording's mkdtemp folder under the OS temp dir, the user's own; removed in finally" },

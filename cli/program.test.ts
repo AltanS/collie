@@ -410,6 +410,8 @@ describe("the subcommand trees", () => {
       "crew",
       // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
       "pack",
+      // `skill` is a leaf that prints the general brief, and a tree for the walky talky installer.
+      "skill",
     ]);
   });
 });

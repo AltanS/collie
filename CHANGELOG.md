@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A walky talky skill, installed and kept current.** `collie skill install <claude|codex|opencode|pi|gemini|all>` writes a short skill that teaches an agent the `collie walky` verbs, how to read a message header and when not to send. Claude Code gets its own skill file. The other harnesses get a managed block in their global instruction file, and everything else in that file stays. `collie skill status` reports each target as installed, stale, absent or refused, `collie doctor` warns on a stale copy, and `collie update` prints one note when the new build carries a newer skill. Nothing is written unless you run the install.
+
 ## [1.22.5] - 2026-10-17
 
 ### Added
