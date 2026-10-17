@@ -1,0 +1,61 @@
+import { describe, expect, test } from "bun:test";
+import { join, resolve } from "node:path";
+import { parseBridgeUrl, parseCli, PHONE_ONLY_SUFFIX, readTokenFile, type CliOptions } from "./cli";
+
+// The phone leg's flags: --leg, --bridge and --token-file.
+
+const argv = (...args: string[]): CliOptions => {
+  const parsed = parseCli(args, "/checkout", {}, "/home/u");
+  if (parsed === "help") throw new Error("help");
+  return parsed;
+};
+
+describe("--leg", () => {
+  test("the default is every leg, a scratch bridge, and the nightly lab root and ledger", () => {
+    const cli = argv();
+    expect(cli.legs).toBe("all");
+    expect(cli.bridge).toBeNull();
+    expect(cli.ledger).toBe(join("/home/u", ".local", "state", "collie-harness-lab", "ledger.json"));
+  });
+
+  test("--leg phone is a hand run of one named version, with its own lab root and ledger", () => {
+    const cli = argv("--leg", "phone", "--version", "claude=2.1.302");
+    expect(cli.legs).toBe("phone");
+    expect(cli.labRoot).toBe(join(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")), PHONE_ONLY_SUFFIX));
+    expect(cli.ledger).toBe(join("/home/u", ".local", "state", "collie-harness-lab", `ledger.${PHONE_ONLY_SUFFIX}.json`));
+    expect(argv("--leg", "phone", "--version", "claude=2.1.302", "--ledger", "/tmp/l.json").ledger).toBe(`/tmp/l.${PHONE_ONLY_SUFFIX}.json`);
+  });
+
+  test("--leg phone needs one version and runs Claude only; an unknown leg is refused", () => {
+    expect(() => argv("--leg", "phone")).toThrow(/name it with --version/);
+    expect(() => argv("--leg", "phone", "--version", "claude=2.1.301,claude=2.1.302")).toThrow(/name it with --version/);
+    expect(() => argv("--leg", "phone", "--version", "codex=0.156.1")).toThrow(/Claude only/);
+    expect(() => argv("--leg", "walk")).toThrow(/--leg takes all or phone/);
+    expect(argv("--leg", "phone", "--plan").legs).toBe("phone");
+  });
+});
+
+describe("--bridge and --token-file", () => {
+  test("they go together, and only with --leg phone", () => {
+    const cli = argv("--leg", "phone", "--version", "claude=2.1.302", "--bridge", "http://127.0.0.1:8788", "--token-file", "/tmp/tok");
+    expect(cli.bridge).toEqual({ url: "http://127.0.0.1:8788", tokenFile: "/tmp/tok" });
+    expect(() => argv("--leg", "phone", "--version", "claude=2.1.302", "--bridge", "http://127.0.0.1:8788")).toThrow(/go together/);
+    expect(() => argv("--bridge", "http://127.0.0.1:8788", "--token-file", "/tmp/tok")).toThrow(/add --leg phone/);
+  });
+
+  test("the bridge must be on this machine, an origin with no path", () => {
+    expect(parseBridgeUrl("http://localhost:5199/")).toBe("http://localhost:5199");
+    expect(() => parseBridgeUrl("http://bluefin:8788")).toThrow(/on this machine/);
+    expect(() => parseBridgeUrl("http://127.0.0.1:8788/collie/")).toThrow(/no path/);
+    expect(() => parseBridgeUrl("ftp://127.0.0.1:21")).toThrow(/http URL/);
+    expect(() => parseBridgeUrl("not a url")).toThrow(/URL like/);
+  });
+
+  test("the token is the file's first line, and an empty or missing file stops the command", () => {
+    expect(readTokenFile("/t", () => "  abc123 \nsecond line\n")).toBe("abc123");
+    expect(() => readTokenFile("/t", () => "\n")).toThrow(/holds no token/);
+    expect(() => readTokenFile("/t", () => {
+      throw new Error("ENOENT");
+    })).toThrow(/cannot be read/);
+  });
+});

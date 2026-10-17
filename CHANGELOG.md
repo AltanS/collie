@@ -23,9 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The nightly lab drives a bridge the way the phone does.** A new phone leg sends each request over HTTP with a device token and judges it by the receipt and the Surface. It runs against a scratch bridge after the send and ask legs, or alone with `--leg phone`, also against a bridge that already runs with `--bridge` and `--token-file`. It covers a send into a free box, sends during a streaming turn, a send at the turn end, slash commands, a permission answer and a send on the agents screen.
+
 ### Fixed
 
 - **A send to a plain shell pane goes through on the first tap again.** Since 1.22.0 a text or a command sent to a pane with no agent, such as a shell with a starship prompt, was refused with "Collie cannot read this screen. Check the pane, then tap Type here." Collie has no profile for a shell, so it found no input box to check and asked for a second tap. Now a pane with no profile, a shell or an agent Collie does not know yet, gets the text and then Enter, as before 1.22.0. Collie reads the screen once first, only to look for a password prompt such as `[sudo] password for`. At a password prompt the send is refused before any key, nothing is typed, and the phone shows its password notice with Type, as before 1.22.0. Collie never queues a send on a pane with no profile. Its receipt says `sent`, and its screen words say `no-profile`. A pane with a profile still has its input box checked before Enter. A text of more than one line is still refused on a pane with no profile.
+- **On a short pane the command's own list may scroll the screen.** A list drawn under the box pushes the transcript and the box up, and Collie read the moved rows as a changed screen, so Model and Effort were left typed in the box. Now the rows above the box may move up by as many rows as the list has, as long as what stays there is the same transcript.
 
 ## [1.22.4] - 2026-10-17
 

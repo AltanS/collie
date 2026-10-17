@@ -123,6 +123,10 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2302-slash-model-list--w119.txt",
     // The same list drawn over the box on a tall pane (captured, lane 8788): the box and statusline stand.
     "claude--v2302-slash-model-list-above--w119.txt",
+    // The list under the box on the harness lab's 120 x 40 tmux pane (captured 2026-10-17): it scrolls
+    // the screen up, and the box stands.
+    "claude--v2302-slash-effort-list--w120--h40.txt",
+    "claude--v2302-slash-model-list--w120--h40.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
@@ -364,11 +368,14 @@ describe("invariant: rows appended below a box never change the box or its draft
   // that follows is this module's designed failure mode (a false refusal, never a blind keystroke),
   // and the capture's own test below pins both halves of the bound.
   // The focused agents panel of 2.1.301 ("❯ ● main", lab 2026-10-16) is the same class, and so is
-  // 2.1.302's slash list, whose pointer row ("  ❯ /model") stands in the tail under the box.
+  // 2.1.302's slash list, whose pointer row ("  ❯ /model") stands in the tail under the box (the
+  // reconstructed field screen and the two harness lab captures).
   const POINTER_TAILS = {
     "claude--footer-pointed-agent.txt": true,
     "claude--v2301-lab-agents-panel-focused.txt": true,
     "claude--v2302-slash-model-list--w119.txt": true,
+    "claude--v2302-slash-effort-list--w120--h40.txt": true,
+    "claude--v2302-slash-model-list--w120--h40.txt": true,
   } satisfies Record<string, true>;
 
   it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {

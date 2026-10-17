@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { failCase, notReachedCase, passCase } from "../verdict";
+import { phoneResult } from "./phone-verdict";
 import { judge, type LabFacts, type ScreenFact, type WalkFact } from "./verdict";
 
 const walk: WalkFact = { reached: true, returned: true, menuRead: true, startedTurn: null, sent: ["/help"], unclassified: [], missing: [] };
@@ -88,5 +90,30 @@ describe("judge", () => {
   test("a harness with no profile is walk-only when the walk is clean, and fails when it is not", () => {
     expect(judge(facts({ profile: "none", send: null, ask: null, screens: [] })).result).toBe("walk-only");
     expect(judge(facts({ profile: "none", send: null, ask: null, screens: [screen({ free: true })] })).result).toBe("fail");
+  });
+});
+
+describe("judge, with the phone leg", () => {
+  const phone = (verdicts: readonly ("pass" | "fail" | "not-reached")[]) => ({
+    target: "scratch" as const,
+    turns: 3,
+    summary: "/lab/phone/summary.json",
+    results: verdicts.map((verdict, i) => phoneResult(i === 0 ? "idle-send" : "stream-sends", [verdict === "pass" ? passCase("send") : verdict === "fail" ? failCase("send", "ended refused (turn_running)") : notReachedCase("send", "the turn did not end")])),
+  });
+
+  test("a full run fails when a phone scenario fails, and passes when the rest only did not reach", () => {
+    expect(judge(facts({ phone: phone(["pass", "fail"]) })).reasons).toEqual(["phone stream-sends: 0/1, send: ended refused (turn_running)"]);
+    expect(judge(facts({ phone: phone(["pass", "not-reached"]) })).result).toBe("pass");
+  });
+
+  test("a phone leg that should have run and did not is a fail with its note", () => {
+    expect(judge(facts({ phone: null, phoneNote: "the scratch bridge did not answer /api/health" })).reasons).toEqual(["the phone leg did not run: the scratch bridge did not answer /api/health"]);
+  });
+
+  test("a phone-only run is judged by the phone leg alone: no send and no ask is no reason", () => {
+    const only = facts({ legs: "phone", send: null, ask: null, screens: [], phone: phone(["pass"]) });
+    expect(judge(only)).toMatchObject({ result: "pass", reasons: [] });
+    expect(judge({ ...only, phone: phone(["fail"]) }).result).toBe("fail");
+    expect(judge({ ...only, phone: undefined }).reasons).toEqual(["this harness has no phone leg"]);
   });
 });

@@ -2,23 +2,45 @@
 // run.ts holds the order of the steps. This file does the work, so a test of the order needs none of it.
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveTmuxBinary } from "../../../bridge/mux/tmux/exec";
 import { gateFor } from "../../../bridge/surface/key-gate";
 import { profileFor } from "../../../web/src/lib/surface/profile";
 import { loadSlashLists } from "../slash-commands";
-import { binaryPath, serverEnv, type HarnessSpec, type RunDirs } from "./harnesses";
+import { binaryPath, serverEnv, type EnvMap, type HarnessSpec, type RunDirs } from "./harnesses";
 import { LabCounters, labProfile, runAskLeg, runSendLeg, TmuxPane, type LegEnv } from "./legs";
 import { ensureClone } from "./clone";
 import { openIssue, publishPass } from "./publish";
-import type { LabPorts, SessionFacts } from "./run";
+import type { LabPorts, SessionFacts, SessionPlan } from "./run";
+import { loadKnownGaps } from "../known-gaps";
+import { beltCommands, operatorBelt, PHONE_TURN_CAP, runPhoneLeg, shippedBeltFromDisk, writeBeaconHooks, type PhoneFacts } from "./phone";
+import { ScratchBridge } from "./phone-bridge";
+import { PhoneClient } from "./phone-client";
 import { LabDeferred, LabInfraError, seedClaude, type SeedSource } from "./seed";
 import { realLiveness } from "./sweep";
 import { LabTmux, paneCommand } from "./tmux";
-import { isDialogScreen, SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact } from "./verdict";
+import { isDialogScreen, SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact, type WalkFact } from "./verdict";
 import { runWalk } from "./walk";
 
 const INSTALL_TIMEOUT_MS = 6 * 60_000;
+
+/** The ports the person's own Collie instances use (README of the workspace). The lab never binds one. */
+export const RESERVED_PORTS = { from: 8787, to: 8799 } as const;
+
+/**
+ * A free TCP port on 127.0.0.1 for the phone leg's scratch bridge: the kernel picks one, the lab
+ * closes it again and hands the number on. A port in {@link RESERVED_PORTS} is refused, and the
+ * kernel is asked again, at most five times.
+ */
+export function freePort(listen: (port: number) => { readonly port: number; stop(): void } = (port) => Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } })): number {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const server = listen(0);
+    const port = server.port;
+    server.stop();
+    if (port < RESERVED_PORTS.from || port > RESERVED_PORTS.to) return port;
+  }
+  throw new LabInfraError("the kernel offered only ports the person's Collie uses");
+}
 const START_TIMEOUT_MS = 45_000;
 const VERSION_IN_TEXT = /\d+\.\d+\.\d+/u;
 
@@ -68,14 +90,103 @@ async function waitStarted(pane: TmuxPane, log: (line: string) => void): Promise
   log("the first screen did not hold still in time; the walk reads what is there");
 }
 
+/** The walk did not run (a phone-only run). Every flag reads clean, so it adds no reason; the verdict ignores it. */
+const NOT_WALKED: WalkFact = { reached: true, returned: true, menuRead: true, startedTurn: null, sent: [], unclassified: [], missing: [] };
+
+/** This checkout: the scratch bridge and the beacon hooks run from it. */
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
+
+type PhoneTarget = { readonly kind: "scratch"; readonly tmux: LabTmux } | { readonly kind: "bridge"; readonly url: string; readonly token: string };
+
 export function realPorts(options: RealOptions = {}): LabPorts {
   const env = options.env ?? process.env;
   // The tmux server of the session that runs now. A signal handler stops it through `stopAll`.
   let active: LabTmux | null = null;
+  // The phone leg's scratch bridge, while it runs. `stopAll` stops it before the tmux server.
+  let activeBridge: ScratchBridge | null = null;
+
+  /**
+   * The phone leg: its own config folder (a second login copy, no refresh token, inside the run
+   * folder), its own panes, and a scratch bridge or the bridge the operator named. Never throws: a
+   * leg that cannot start returns a note, and the verdict says the phone leg did not run.
+   */
+  async function phoneLeg(input: { spec: HarnessSpec; dirs: RunDirs; version: string; log: (line: string) => void; plan: SessionPlan; target: PhoneTarget }): Promise<{ facts: PhoneFacts | null; note?: string }> {
+    const { spec, dirs, version, log, plan, target } = input;
+    const work = join(dirs.root, "phone");
+    const config = join(work, "config");
+    let bridge: ScratchBridge | null = null;
+    try {
+      mkdirSync(work, { recursive: true, mode: 0o700 });
+      // The phone panes' folders are not trusted ahead: the trust question is answered like a person would.
+      seedClaude(config, join(work, "nothing-trusted"), options.seedSource, options.minLoginMinutes);
+      const phoneDirs: RunDirs = { ...dirs, config };
+      let client: PhoneClient;
+      let agentEnv: EnvMap;
+      let streamWanted: readonly string[];
+      if (target.kind === "scratch") {
+        writeBeaconHooks(config, REPO_ROOT);
+        await target.tmux.setDefaultSize();
+        bridge = await ScratchBridge.start({ repoRoot: REPO_ROOT, root: join(work, "bridge"), tmuxSocket: target.tmux.socket, tmuxBinary: target.tmux.binaryPath(), agentBinDir: dirname(binaryPath(dirs, spec)), agentConfig: config, env }, log);
+        activeBridge = bridge;
+        client = new PhoneClient(bridge.url, bridge.token);
+        // The hooks write their edges to the scratch bridge's state dir and find no other bridge.
+        agentEnv = { ...spec.env(phoneDirs), COLLIE_STATE_DIR: bridge.stateDir, XDG_STATE_HOME: bridge.xdgState };
+        streamWanted = ["effective"];
+      } else {
+        client = new PhoneClient(target.url, target.token);
+        if (!(await client.health())) throw new LabInfraError(`the bridge at ${target.url} does not answer /api/health`);
+        await client.config();
+        // No hooks against a running bridge: the leg does not know its state dir, so a send ends `sent` there.
+        agentEnv = { ...spec.env(phoneDirs), COLLIE_STATE_DIR: join(work, "no-bridge-state"), XDG_STATE_HOME: join(work, "xdg-state") };
+        streamWanted = ["sent", "effective"];
+        log(`phone: against the running bridge ${target.url}; no hooks reach it from the lab, so a stream send may end sent or effective`);
+      }
+      const belt = beltCommands(shippedBeltFromDisk(spec.id), operatorBelt(await client.config().catch(() => undefined), spec.id));
+      const facts = await runPhoneLeg(
+        {
+          harness: spec.id,
+          version,
+          client,
+          target: target.kind,
+          streamWanted,
+          agentBinary: binaryPath(dirs, spec),
+          agentArgs: spec.startArgs(phoneDirs),
+          agentEnv,
+          workDir: work,
+          outDir: plan.phoneOut,
+          redact: plan.redact,
+          turns: { used: 0, cap: PHONE_TURN_CAP },
+          gaps: loadKnownGaps(),
+          lists: loadSlashLists(spec.id),
+          belt,
+          log,
+        },
+        makeProject,
+      );
+      log(`phone: summary ${facts.summary}`);
+      return { facts };
+    } catch (err) {
+      const note = err instanceof Error ? err.message : String(err);
+      log(`phone: the leg could not run: ${note}`);
+      return { facts: null, note };
+    } finally {
+      if (bridge !== null) {
+        mkdirSync(plan.phoneOut, { recursive: true });
+        writeFileSync(join(plan.phoneOut, "bridge.log"), plan.redact(bridge.logText()));
+        const gone = await bridge.stop();
+        activeBridge = null;
+        log(`scratch bridge: ${gone ? "stopped, its state folder deleted" : "NOT STOPPED"}`);
+      }
+    }
+  }
+
   return {
     liveness: realLiveness,
     clone: (source, labRoot) => ensureClone(source, labRoot),
     async stopAll(): Promise<void> {
+      const bridge = activeBridge;
+      activeBridge = null;
+      if (bridge !== null) await bridge.stop();
       const tmux = active;
       active = null;
       if (tmux !== null) await tmux.stop();
@@ -101,14 +212,31 @@ export function realPorts(options: RealOptions = {}): LabPorts {
       return found;
     },
 
-    async session(spec, dirs, version, log): Promise<SessionFacts> {
+    async session(spec, dirs, version, log, plan): Promise<SessionFacts> {
+      const legs = plan?.legs ?? "all";
+      const phonePlan = plan ?? null;
+      const profile = profileFor(spec.id, version, { log });
+      // A phone-only run against a bridge that already runs: no tmux, no scratch bridge.
+      if (phonePlan?.bridge !== undefined) {
+        const phone = await phoneLeg({ spec, dirs, version, log, plan: phonePlan, target: { kind: "bridge", url: phonePlan.bridge.url, token: phonePlan.bridge.token } });
+        return { facts: { profile: profile?.status ?? "none", walk: NOT_WALKED, screens: [], send: null, ask: null, turns: phone.facts?.turns ?? 0, phone: phone.facts, phoneNote: phone.note }, counters: [] };
+      }
       const tmux = new LabTmux();
       active = tmux;
       const counters = new LabCounters();
       try {
-        const command = paneCommand(spec.env(dirs), binaryPath(dirs, spec), spec.startArgs(dirs));
+        const command = legs === "all" ? paneCommand(spec.env(dirs), binaryPath(dirs, spec), spec.startArgs(dirs)) : "exec sleep 86400";
         await tmux.start(dirs.project, command, serverEnv(env));
         log(`tmux server ${tmux.socket} started`);
+        const runPhone = async (): Promise<{ phone?: PhoneFacts | null; phoneNote?: string }> => {
+          if (!spec.phone || phonePlan === null) return {};
+          const phone = await phoneLeg({ spec, dirs, version, log, plan: phonePlan, target: { kind: "scratch", tmux } });
+          return { phone: phone.facts, phoneNote: phone.note };
+        };
+        if (legs === "phone") {
+          const phone = await runPhone();
+          return { facts: { profile: profile?.status ?? "none", walk: NOT_WALKED, screens: [], send: null, ask: null, turns: phone.phone?.turns ?? 0, ...phone }, counters: [] };
+        }
         const mux = tmux.adapter();
         const paneId = await tmux.paneId();
         const gate = gateFor(mux);
@@ -118,7 +246,6 @@ export function realPorts(options: RealOptions = {}): LabPorts {
         // The walk logs each line as it writes it, so every line carries its own time.
         const walked = await runWalk(pane, loadSlashLists(spec.id), log);
         const screens: ScreenFact[] = [...walked.screens];
-        const profile = profileFor(spec.id, version, { log });
         const turns = { used: 0, cap: spec.turnCap };
         let send: SendFact | null = null;
         let ask: AskFact | null = null;
@@ -145,8 +272,10 @@ export function realPorts(options: RealOptions = {}): LabPorts {
             if (asked.note.length > 0) log(`ask leg: ${asked.note}`);
           }
         }
+        // After step 4: the phone leg, on its own panes of the same tmux server, through a scratch bridge.
+        const phone = labProfile(spec.id, version, () => {}) !== null ? await runPhone() : {};
         return {
-          facts: { profile: profile?.status ?? "none", walk: walked.walk, screens, send, ask, turns: turns.used, sendNote, askNote },
+          facts: { profile: profile?.status ?? "none", walk: walked.walk, screens, send, ask, turns: turns.used + (phone.phone?.turns ?? 0), sendNote, askNote, ...phone },
           counters: [...counters.lines, `key presses by the lab: ${String(pane.keysSent)}`, `screen reads: ${String(pane.reads)}`, `key gate sends: ${JSON.stringify(gate.sentBy())}`],
         };
       } finally {

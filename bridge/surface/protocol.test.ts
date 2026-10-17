@@ -4603,6 +4603,75 @@ describe("a slash command over Claude Code's command list under the box (field c
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
   });
 
+  /**
+   * The harness lab's tmux pane (120 x 40, Claude Code 2.1.302, captured 2026-10-17): the list under the
+   * box pushes the whole screen up. Before the write the screen is unscrolled: `scroll` rows of earlier
+   * output, then the capture's rows down to the bottom rule with the fake box drawn in, then the two
+   * status rows. Once the box holds a slash command the read is the capture itself, the screen moved up
+   * by `scroll` rows. `list` rewrites the list rows.
+   */
+  const LAB_STATUS = ["  \u23f8 manual mode on \u00b7 ? for shortcuts \u00b7 \u2190 for agents", "                  tmux focus-events off \u00b7 add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking"];
+  const scrolledScreen = (pane: FakePane, name: string, options: { scroll?: number; list?: (rows: string[]) => string[] } = {}): number => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    expect(rows).toHaveLength(40);
+    const boxRow = rows.findIndex((row, i) => i > 0 && row.startsWith("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    let end = boxRow + 2;
+    while (end < rows.length && rows[end]!.trim() !== "") end++;
+    const listRows = end - boxRow - 2;
+    const scroll = options.scroll ?? listRows - 1;
+    const after = options.list === undefined ? rows : [...rows.slice(0, boxRow + 2), ...options.list(rows.slice(boxRow + 2, end)), ...rows.slice(end)];
+    const earlier = Array.from({ length: scroll }, (_, i) => `  earlier output, row ${String(i + 1)}`);
+    pane.beforeRead = (p) => {
+      if (p.box.startsWith("/")) {
+        const shown = [...after];
+        shown[boxRow] = `\u276f\u00a0${p.box}`;
+        p.fixed = shown.join("\r\n");
+        return;
+      }
+      const before = [...earlier, ...rows.slice(0, boxRow), `\u276f\u00a0${p.box}`, rows[boxRow + 1]!, ...LAB_STATUS];
+      p.fixed = [...before, ...Array.from({ length: Math.max(0, 40 - before.length) }, () => "")].slice(0, 40).join("\r\n");
+    };
+    return listRows;
+  };
+  const LAB_MODEL = "claude--v2302-slash-model-list--w120--h40.txt";
+  const LAB_EFFORT = "claude--v2302-slash-effort-list--w120--h40.txt";
+
+  for (const [name, command] of [
+    [LAB_MODEL, "/model"],
+    [LAB_EFFORT, "/effort"],
+  ] as const) {
+    test(`${name}: ${command} as a command is sent though its list under the box scrolls the short pane up`, async () => {
+      const { pane, send } = rig({ version: "2.1.302" });
+      scrolledScreen(pane, name);
+      const seen = journal(pane);
+      const answer = await send(command, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(`:${command}`)))).toEqual([expect.stringMatching(new RegExp(`:${command}$`, "u")), "keys:Enter"]);
+      expect(pane.transcript.at(-1)).toBe(`> ${command}`);
+      neverEscape(pane);
+    });
+  }
+
+  test(`${LAB_MODEL}: the rows above may scroll by the list's own rows plus one, no more: past that the screen changed`, async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    const probe = rig({ version: "2.1.302" });
+    const listRows = scrolledScreen(probe.pane, LAB_MODEL);
+    scrolledScreen(pane, LAB_MODEL, { scroll: listRows + 2 });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test(`${LAB_MODEL}: /model typed while the list points at /models on the short pane is left typed with the list notice`, async () => {
+    const { pane, send, deps } = rig({ version: "2.1.302" });
+    scrolledScreen(pane, LAB_MODEL, { list: pointAt("/models") });
+    const answer = await send("/model", { id: "lab-elsewhere-1", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(deps.store.get("lab-elsewhere-1")?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
+  });
+
   test("the 2.1.302 list read as a screen: the box holds a draft, no dialog over it; pointing elsewhere still reads as before", async () => {
     const own = rig({ version: "2.1.302" });
     listScreen(own.pane, V2302);

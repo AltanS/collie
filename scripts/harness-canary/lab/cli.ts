@@ -1,7 +1,7 @@
 // The lab's command line (M56 spec 10), shared by the nightly entry (main.ts) and the version-change
 // entry (../watch.ts). Pure parts first, so the parse and the one-per-version rules are tested.
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { realLiveness, sweepLab, type Liveness } from "./sweep";
@@ -11,6 +11,7 @@ import { HARNESSES } from "./harnesses";
 import { ledgerPath, loadLedger, markNotified, findRow } from "./lab-ledger";
 import type { LabOptions, LabOutcome, LabPorts } from "./run";
 import { runLab } from "./run";
+import { LAB_LEGS, type LabLegs } from "./verdict";
 
 export interface Candidate {
   readonly harness: string;
@@ -33,6 +34,27 @@ export interface CliOptions {
   readonly maxRuns: number;
   /** watch.ts only: `harness=version` the installed binary pretends to be. */
   readonly fakeVersions: readonly { readonly harness: string; readonly version: string }[];
+  /** `all` (the default) or `phone` alone (`--leg phone`). */
+  readonly legs: LabLegs;
+  /** `--bridge URL --token-file PATH`: the phone leg against a bridge that already runs. Null: a scratch bridge. */
+  readonly bridge: { readonly url: string; readonly tokenFile: string } | null;
+}
+
+/** The suffix a phone-only run puts on its lab root and its ledger, so it never blocks or sweeps the nightly run. */
+export const PHONE_ONLY_SUFFIX = "leg-phone";
+
+/** A `--bridge` URL: http on this machine, a port, no path. The start line names the lab's binary by path. */
+export function parseBridgeUrl(text: string): string {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new Error(`--bridge takes a URL like http://127.0.0.1:8788, not "${text}"`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`--bridge takes an http URL, not "${text}"`);
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) throw new Error("--bridge must name a bridge on this machine (127.0.0.1 or localhost): the phone leg starts the lab's own binary by its path");
+  if (url.pathname !== "/" || url.search !== "" || url.hash !== "") throw new Error(`--bridge takes the bridge's origin with no path, not "${text}"`);
+  return url.origin;
 }
 
 export const DEFAULT_MAX_RUNS = 4;
@@ -59,6 +81,11 @@ fail writes an issue as files. It never pushes. A pair in the ledger is never ru
   --no-publish        a pass settles the row and makes no commit (a dry run of the legs)
   --plan              read the feeds and the ledger, print what would run, run nothing
   --max-runs N        most pairs one invocation runs (default: ${String(DEFAULT_MAX_RUNS)})
+  --leg all|phone     all legs (default), or the phone leg alone: a hand run that needs one --version,
+                      makes no commit, and keeps its own ledger and run folders (${PHONE_ONLY_SUFFIX})
+  --bridge URL        with --leg phone: drive this running bridge on this machine instead of a scratch
+                      bridge. The leg makes its own panes, touches no other, and closes them at the end.
+  --token-file PATH   with --bridge: a file holding a device token the operator paired by hand
   -h, --help          print this`;
 
 export function parsePairs(text: string, flag: string): { harness: string; version: string }[] {
@@ -82,6 +109,9 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
   let publish = true;
   let plan = false;
   let maxRuns = DEFAULT_MAX_RUNS;
+  let legs: LabLegs = "all";
+  let bridgeUrl: string | null = null;
+  let tokenFile: string | null = null;
   const value = (i: number, flag: string): string => {
     const v = argv[i + 1];
     if (v === undefined || v.startsWith("--")) throw new Error(`${flag} needs a value`);
@@ -139,12 +169,38 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
         i++;
         break;
       }
+      case "--leg": {
+        const named = value(i, arg);
+        const found = LAB_LEGS.find((leg) => leg === named);
+        if (found === undefined) throw new Error(`--leg takes ${LAB_LEGS.join(" or ")}, not "${named}"`);
+        legs = found;
+        i++;
+        break;
+      }
+      case "--bridge":
+        bridgeUrl = parseBridgeUrl(value(i, arg));
+        i++;
+        break;
+      case "--token-file":
+        tokenFile = resolve(value(i, arg));
+        i++;
+        break;
       default:
         throw new Error(`unknown option "${arg}"`);
     }
   }
   if (fakeVersions.length > 0 && !plan) throw new Error("--fake-version needs --dry-run: a fake version must never start a real run");
-  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions };
+  if ((bridgeUrl === null) !== (tokenFile === null)) throw new Error("--bridge and --token-file go together");
+  if (bridgeUrl !== null && legs !== "phone") throw new Error("--bridge runs the phone leg alone: add --leg phone");
+  if (legs === "phone") {
+    if (!plan && pairs.length !== 1) throw new Error("--leg phone is a hand run of one version: name it with --version harness=x.y.z");
+    for (const pair of pairs) if (HARNESSES[pair.harness]?.phone !== true) throw new Error(`--leg phone runs Claude only, not ${pair.harness}`);
+    // Its own lab root and ledger: a phone-only row never blocks the nightly run, and neither run's sweep removes the other's folders.
+    labRoot = join(labRoot, PHONE_ONLY_SUFFIX);
+    ledger = ledger.endsWith(".json") ? `${ledger.slice(0, -".json".length)}.${PHONE_ONLY_SUFFIX}.json` : `${ledger}.${PHONE_ONLY_SUFFIX}`;
+  }
+  const bridge = bridgeUrl === null || tokenFile === null ? null : { url: bridgeUrl, tokenFile };
+  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions, legs, bridge };
 }
 
 /** The pairs the ledger has no row for, in the order given, at most `max`. A pair named twice counts once. */
@@ -196,9 +252,24 @@ export interface RunReport {
 }
 
 /** Run each pending candidate once, in order. Never throws for one pair's end. */
+/** The device token in a `--token-file`: the first line, trimmed. Throws when the file is missing or empty. */
+export function readTokenFile(path: string, read: (path: string) => string = (file) => readFileSync(file, "utf8")): string {
+  let text: string;
+  try {
+    text = read(path);
+  } catch (err) {
+    throw new Error(`--token-file ${path} cannot be read: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+  }
+  const token = text.split("\n")[0]?.trim() ?? "";
+  if (token.length === 0) throw new Error(`--token-file ${path} holds no token`);
+  return token;
+}
+
 export async function runCandidates(candidates: readonly Candidate[], cli: CliOptions, ports: LabPorts, notify: Notify, now: () => number = () => Date.now()): Promise<RunReport> {
   const outcomes: LabOutcome[] = [];
   let told = 0;
+  // Read once, before any run: a missing token stops the command before anything is spent.
+  const bridge = cli.bridge === null ? undefined : { url: cli.bridge.url, token: readTokenFile(cli.bridge.tokenFile) };
   for (const candidate of pending(candidates, cli.ledger, now(), cli.maxRuns)) {
     const options: LabOptions = {
       harness: candidate.harness,
@@ -210,6 +281,8 @@ export async function runCandidates(candidates: readonly Candidate[], cli: CliOp
       issueRepo: cli.issueRepo ?? undefined,
       publish: cli.publish,
       now,
+      legs: cli.legs,
+      bridge,
     };
     const outcome = await runLab(options, ports);
     outcomes.push(outcome);

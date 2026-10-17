@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claim, findRow, readLedger, settle } from "./lab-ledger";
 import type { PassInput } from "./publish";
-import { runLab, runRoot, type LabOptions, type LabPorts, type SessionFacts, type SignalSource } from "./run";
+import { failCase, passCase } from "../verdict";
+import { phoneResult } from "./phone-verdict";
+import { runLab, runRoot, type LabOptions, type LabPorts, type SessionFacts, type SessionPlan, type SignalSource } from "./run";
 import type { Liveness } from "./sweep";
 import { LabDeferred, LabInfraError } from "./seed";
 import type { ScreenFact } from "./verdict";
@@ -132,6 +134,39 @@ describe("runLab, the order of a run", () => {
     expect(existsSync(runRoot(labRoot, "claude", "2.1.301"))).toBe(false);
     expect(spy.passes[0]?.log).toContain("verdict: pass");
     expect(readFileSync(done.logPath, "utf8")).toContain("claimed");
+  });
+
+  test("a phone-only run that passes settles a pass row and makes no commit; the session is told the legs and the phone folder", async () => {
+    const { options, labRoot, ledger } = setup();
+    const plans: SessionPlan[] = [];
+    const spy = fakes({
+      async session(_spec, _dirs, _version, _log, plan) {
+        plans.push(plan);
+        return { facts: { profile: "provisional", walk: goodWalk, screens: [], send: null, ask: null, turns: 3, phone: { target: "scratch", turns: 3, summary: "/s.json", results: [phoneResult("idle-send", [passCase("send")])] } }, counters: [] };
+      },
+    });
+    const done = await runLab({ ...options, legs: "phone" }, spy.ports);
+    expect(done.status).toBe("pass");
+    expect(done.note).toContain("phone-only run: no commit");
+    expect(spy.calls).not.toContain("publish");
+    expect(findRow(readLedger(ledger), "claude", "2.1.301")?.result).toBe("pass");
+    expect(plans[0]?.legs).toBe("phone");
+    expect(plans[0]?.phoneOut.startsWith(join(labRoot, "phone", "claude-2.1.301-"))).toBe(true);
+    expect(plans[0]?.redact("/home/alice/x")).not.toContain("alice");
+  });
+
+  test("a full run whose phone leg fails writes the issue with the phone lines", async () => {
+    const { options } = setup();
+    const spy = fakes({
+      async session() {
+        const base = session(false);
+        return { ...base, facts: { ...base.facts, phone: { target: "scratch", turns: 5, summary: "/s.json", results: [phoneResult("stream-sends", [failCase("send-2", "ended refused (turn_running)")])] } } };
+      },
+    });
+    const done = await runLab(options, spy.ports);
+    expect(done.status).toBe("fail");
+    expect(done.note).toContain("phone stream-sends");
+    expect(readFileSync(done.issue!.markdown, "utf8")).toContain("- phone stream-sends: fail");
   });
 
   test("a second run on the same pair is skipped, in every result, and spends nothing", async () => {

@@ -984,6 +984,17 @@ const OPEN_AT_BOX = "Something is open at the input box.";
  */
 const DIALOG_AFTER_ENTER = "A dialog opened as the message went in. Check the card before you answer it.";
 
+/**
+ * How far the typed command's own list may scroll the rows above the box ({@link ownCommandList}): its
+ * row count. On a short pane the list drawn under the box pushes the whole screen up, the box and the
+ * transcript with it (harness lab, tmux 120 x 40, Claude Code 2.1.302, 2026-10-17: a twelve-row list
+ * under the box moved the box up eleven rows). The rows that left at the top went into the scrollback;
+ * what stays above must still be the same transcript, in order. 0 with no own list.
+ */
+function ownListScroll(snap: Snap): number {
+  return snap.ownList === null ? 0 : snap.ownList.last - snap.ownList.first + 1;
+}
+
 /** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
 function aboveLostOnly(before: Snap, after: Snap): boolean {
   if (before.frame === null || after.frame === null) return false;
@@ -995,13 +1006,16 @@ function manualOutsideUnchanged(before: Snap, after: Snap): boolean {
   return !cueAppeared(before, after) && aboveLostOnly(before, after);
 }
 
-/** {@link outsideUnchanged} for a `command`: the transcript above the box only; its popup may fill the rows under it. */
-function aboveUnchanged(before: Snap, after: Snap): boolean {
+/**
+ * {@link outsideUnchanged} for a `command`: the transcript above the box only; its popup may fill the
+ * rows under it. The transcript may scroll up by as many rows as the box grew, plus one, plus `scroll`.
+ */
+function aboveUnchanged(before: Snap, after: Snap, scroll = 0): boolean {
   if (before.frame === null || after.frame === null) return false;
   const a = transcriptAbove(before, before.frame);
   const b = transcriptAbove(after, after.frame);
   const grew = after.frame.bottom - after.frame.top - (before.frame.bottom - before.frame.top);
-  for (let shift = 0; shift <= Math.max(0, grew) + 1; shift++) {
+  for (let shift = 0; shift <= Math.max(0, grew) + 1 + scroll; shift++) {
     const tail = a.slice(shift);
     if (tail.length === b.length && tail.every((row, i) => row === b[i])) return true;
   }
@@ -2917,7 +2931,7 @@ export class SendProtocol {
           : manual
             ? aboveLostOnly(s0, snap)
             : command
-              ? aboveUnchanged(s0, snap)
+              ? aboveUnchanged(s0, snap, ownListScroll(snap))
               : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
         if (!outside) {
           why = "changed";

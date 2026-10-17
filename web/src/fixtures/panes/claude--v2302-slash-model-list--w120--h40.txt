@@ -1,0 +1,39 @@
+    brew help                                              │ Manage command line packages
+
+  Check out  ujust bbrew  for curated selections of development and command line apps
+
+  • 󰊤 Issues https://issues.projectbluefin.io
+  • 󰊤 Ask host https://ask.projectbluefin.io
+  • 󰈙 Documentation https://docs.projectbluefin.io
+
+
+command-slash on  main
+❯ exec <lab>/phone/start-command-slash.sh
+ ▐▛███▛█   Claude Code v2.1.302
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   ~/.cache/collie-lab/harness-lab/leg-phone/claude-2.1.302/phone/projects/command-slash
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /model
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /model                      Set the AI model for Claude Code (currently Haiku 5.5)
+    /code-review                Review the current diff, or a PR number/branch/path target, for correctness bugs (plus
+                                reuse/simplification/efficiency cleanups where the model's review recipe covers them)…
+    /update-config              Use this skill to configure the Claude Code harness via settings.json. Automated
+                                behaviors ("from now on when X", "each time X", "whenever X", "before/after X") requi…
+    /loop                       Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo). Omit the
+                                interval to let the model self-pace.
+    /claude-api                 Reference for the Claude API / Anthropic SDK — model ids, pricing, params, streaming,
+                                tool use, MCP, agents, caching, token counting, model migration. TRIGGER — read BEFOR…
+    /effort                     Set effort level for model usage
+    /status                     Show Claude Code status including version, model, account, API connectivity, and tool
+                                statuses
+
+
+
+
+
+
+

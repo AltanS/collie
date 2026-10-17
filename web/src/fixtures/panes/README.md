@@ -2326,3 +2326,16 @@ Claude Code 2.1.302 paints a coloured background cell in column 0 of every dialo
 |---|---|
 | `claude--v2302-wizard-long-question--w54.txt` | A two-question wizard at 54 columns, under a task checklist: the question wraps to nine rows in the `│` gutter, so the stepper `←  ☐ Branch  ☐ Ranger dies  ✔ Submit  →` sits eleven rows above `❯ 1.`. Read by the wizard grammar (`wizard.ts`), whose stepper scan stops at the dialog's rule, not at a row count |
 | `claude--v2302-preview-wrapped-rule--w141.txt` | A single-question preview select at 141 columns: four options whose labels wrap in the left column, the preview pane, `Notes: press n to add notes`, then the wrapped rule's stub between the Notes line and `Chat about this`. Read by the preview grammar (`preview-select.ts`) |
+
+## The slash list on a short pane, 2.1.302 (captured 2026-10-17, harness lab)
+
+Read through the scratch bridge's `GET /api/pane/:id` by the harness lab's phone leg (tmux, 120 columns
+by 40 rows, Claude Code 2.1.302, Haiku 5.5), the ANSI escapes stripped and the last 40 rows kept, the
+viewport the Send Protocol reads. The lab path in the shell prompt is redacted as `<lab>`; the rows at
+the top are the lab host's shell banner. On this pane the list stands under the box and pushes the whole
+screen up: the box moved up eleven rows between the read before the write and the read after it.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-slash-model-list--w120--h40.txt` | The box holds `/model`, and under it seven entries, the pointer on `❯ /model  Set the AI model for Claude Code (currently Haiku 5.5)`, five of them with a wrapped description. The shell banner, the welcome rows and the tip row stand over the box, scrolled up. The first round of the fix read the list as the command's own and still kept Enter back: the rows above the box had moved up more rows than the box grew, plus one, so S1 read a changed screen (`typed_not_submitted (changed)`). Labelled `popup` |
+| `claude--v2302-slash-effort-list--w120--h40.txt` | The same pane after `/help`: the box holds `/effort`, and under it two entries, `❯ /effort  Set effort level for model usage` and `/code-review` with its description wrapped. Labelled `popup` |
