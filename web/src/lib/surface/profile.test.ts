@@ -322,6 +322,8 @@ interface Spec14Case {
   readonly enterWhileRunning: "queues" | "steers" | undefined;
   /** The key that queues a message in a turn, where Enter does not queue. */
   readonly queueKey?: string;
+  /** What backs the verified range, where it is not a ledger row: a live send on the version the probe note names. */
+  readonly verifiedBy?: "live send";
 }
 
 const SPEC14_CASES: readonly Spec14Case[] = [
@@ -468,6 +470,32 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "steers",
     queueKey: "alt+Enter",
   },
+  {
+    id: "cursor",
+    binary: "cursor-agent",
+    versionOutput: "2026.10.16-e3cb207\n",
+    version: "2026.10.16",
+    above: "2026.10.20",
+    takes: [
+      { anchor: "top", row: ` ${"▄".repeat(40)}` },
+      { anchor: "prompt", row: "  → hello there", draft: "hello there" },
+      { anchor: "prompt", row: `  → Add a follow-up${" ".repeat(60)}ctrl+c to stop`, draft: "Add a follow-up" },
+      { anchor: "prompt", row: "  ! echo hi", draft: "echo hi" },
+      { anchor: "bottom", row: ` ${"▀".repeat(40)}` },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  !important" },
+      { anchor: "prompt", row: "    → a wrapped row" },
+      { anchor: "prompt", row: "   → /model [filter]           Select model (Tab to edit)" },
+      { anchor: "top", row: ` ${"▀".repeat(40)}` },
+      { anchor: "bottom", row: ` ${"▄".repeat(40)}` },
+    ],
+    collapse: { text: "[Pasted text #1 +301 lines]", group: "lines", value: "301" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "queues",
+    verifiedBy: "live send",
+  },
 ];
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
@@ -508,6 +536,16 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
   });
 
   it(`${c.id}: verified through the ledger row, provisional above it`, () => {
+    if (c.verifiedBy === "live send") {
+      const verified = profile().versions.filter((range) => range.status === "verified");
+      expect(verified).toHaveLength(1);
+      expect(profile().probe.status).toBe("verified");
+      expect(profile().probe.note).toContain(verified[0]!.verifiedThrough!);
+      expect(profileFor(c.id, c.version, { log: () => {} })?.status).toBe("verified");
+      resetProfileLog();
+      expect(profileFor(c.id, c.above, { log: () => {} })?.status).toBe("provisional");
+      return;
+    }
     // SAFETY: the ledger is this repo's own committed JSON; every agent row has a version and a verified date, and the key is a harness id from this table.
     const row = (ledgerJson.agents as Record<string, { version: string; verified: string }>)[c.id]!;
     if (c.rangeStatus === "provisional") {

@@ -189,7 +189,7 @@ describe("no harness names in the surface code", () => {
   });
 
   it("the M56 spec 14 profiles join the ban by directory, and no surface file names them", () => {
-    const added = ["opencode", "pi", "omp", "grok", "agy", "muse"];
+    const added = ["opencode", "pi", "omp", "grok", "agy", "muse", "cursor"];
     for (const id of added) {
       expect(profileIds()).toContain(id);
       expect(namesIn(`const key = ${id}Profile.keys;`, [id])).toHaveLength(1);

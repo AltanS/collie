@@ -452,6 +452,11 @@ const SPEC14: readonly ProfileCase[] = [
     idleMin: 14,
     quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
   },
+  {
+    id: "cursor",
+    idleMin: 2,
+    quote: ["Here is the dialog you asked about:", "  Run this command?", "  → Run (once) (y)", "    Skip & tell the agent what to do instead (esc or n)", "", "That is all it shows."],
+  },
 ];
 
 describe.each(SPEC14)("the $id profile over its fixtures (M56 spec 14)", ({ id, idleMin, quote, states }) => {

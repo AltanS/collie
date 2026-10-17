@@ -1886,6 +1886,96 @@
    "version": "unversioned",
    "state": "running"
   },
+  "cursor--after-skip.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "other"
+  },
+  "cursor--ask-question.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "dialog"
+  },
+  "cursor--ask-question-moved.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "dialog"
+  },
+  "cursor--draft.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "draft"
+  },
+  "cursor--draft-multiline.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "draft"
+  },
+  "cursor--draft-wrapped.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "draft"
+  },
+  "cursor--fresh-idle.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "idle"
+  },
+  "cursor--idle-after-turn.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "idle"
+  },
+  "cursor--permission-shell.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "dialog"
+  },
+  "cursor--shell-mode-draft.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "draft"
+  },
+  "cursor--shell-mode-empty.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "draft"
+  },
+  "cursor--slash-exact.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "popup"
+  },
+  "cursor--slash-popup.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "popup"
+  },
+  "cursor--trust-prompt.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "dialog"
+  },
+  "cursor--working.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "running"
+  },
+  "cursor--working-draft.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "running"
+  },
+  "cursor--working-queued.txt": {
+   "harness": "cursor",
+   "version": "2026.10.14",
+   "state": "running"
+  },
+  "cursor--v20261016-idle-after-queued.txt": {
+   "harness": "cursor",
+   "version": "2026.10.16",
+   "state": "idle"
+  },
   "grok--ask-color-moved.txt": {
    "harness": "grok",
    "version": "unversioned",

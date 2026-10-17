@@ -569,6 +569,7 @@ An agent with no profile still works. Collie types into it with stricter generic
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
+| Cursor CLI (`cursor-agent`) | Queues the message | Enter | Yes | 2026.10.16 |
 
 A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
 Collie checks that the character lands in the box, then removes it.
@@ -613,6 +614,15 @@ Collie checks that the character lands in the box, then removes it.
   A command palette that opens under the box shows as your draft.
   The list of background tasks under the box reads as unknown, and a send needs your tap.
   A running turn shows a row with a timer and `esc to interrupt`.
+
+- **Cursor CLI** (`cursor-agent`) draws its box as a `▄` rule, a `→` row and a `▀` rule.
+  An empty box shows a grey hint, "Plan, search, build anything" or "Add a follow-up", and Collie reads that hint as no text.
+  `!` turns the box into a shell prompt with its own hint. Collie reads that hint as text, so a message never goes into shell mode.
+  A running turn shows a spinner row such as `Running` above the box and `ctrl+c to stop` at the right end of the `→` row. Collie cuts that hint.
+  Enter during a turn queues the message in a `follow-ups` box above the input box.
+  The box shows at most six rows and scrolls a longer draft. Collie cannot read a taller message back, so it leaves the typed text in the box and does not press Enter.
+  Its dialogs (a command approval, a question, the folder trust prompt) replace the box, so the screen reads as unreadable.
+  Live probed sends passed on 2026.10.14 and 2026.10.16.
 
 Grok, Antigravity and Muse are not installed on the build host.
 Their profiles rest on saved screens of each agent.
