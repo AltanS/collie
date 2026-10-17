@@ -74,6 +74,26 @@ There are two kinds of sender. The kind is what the bridge proved, never what a 
 A message from an agent is a peer's words, not your instruction. The agent skill tells an agent to
 weigh it, and never to run a destructive command because a peer asked ([Install the skill](#install-the-skill)).
 
+## Into a busy pane
+
+A message goes through the Send Protocol as one send, so a busy pane gets what a reply from the
+phone gets, and Enter never goes into a turn where it would steer the agent.
+
+| Profile | In a running turn | What happens |
+| --- | --- | --- |
+| `agy` | hold | Collie holds it and types it when the pane is free |
+| `claude` | queue | Enter queues it in the harness, and it runs after the turn |
+| `codex` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |
+| `grok` | hold | Collie holds it and types it when the pane is free |
+| `muse` | hold | Collie holds it and types it when the pane is free |
+| `omp` | queue key | Ctrl+Q queues it; Enter would steer, so Collie never presses it there |
+| `opencode` | queue | Enter queues it in the harness, and it runs after the turn |
+| `pi` | queue key | Alt+Enter (Ctrl+Q on Windows) queues it; Enter would steer |
+
+The queue and the queue key need a harness version Collie knows. With an unknown version, Collie
+holds the message instead. A hold lasts 10 minutes for a message: after that Collie takes it back
+and it waits in the inbox. A pane with no profile is typed blind, as a reply is.
+
 ## Reply, read and check
 
 Answer a message, read your inbox and look up a receipt.
