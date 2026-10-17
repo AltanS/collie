@@ -1309,6 +1309,7 @@ export const fr: Dictionary = {
   "dialog.autocomplete.title": "Commandes slash",
   "dialog.menu.moveUp": "Monter",
   "dialog.menu.moveDown": "Descendre",
+  "dialog.menu.noticeDraft": "Videz d'abord la zone : un chiffre s'ajouterait au texte qui s'y trouve.",
   "dialog.menu.leftAria": "Gauche : {verb} ({label})",
   "dialog.menu.rightAria": "Droite : {verb} ({label})",
   "dialog.menu.levelAria": "{verb} vers {label}",

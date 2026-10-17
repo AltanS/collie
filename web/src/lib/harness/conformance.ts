@@ -153,6 +153,11 @@ function lastNonBlank(lines: StyledLine[]): number {
   return i < 0 ? lines.length : i;
 }
 
+/** Whether a block is a menu lifted off a notice above a live box (`MenuModel.liveBox`). */
+function isNoticeMenu(block: Block): boolean {
+  return block.kind === "menu" && block.menu.liveBox !== undefined;
+}
+
 /** The signatures of every menu block in a build — the race guard's freshness token, in order. */
 function menuSignatures(blocks: Block[]): string[] {
   return blocks.flatMap((b) => (b.kind === "menu" ? [b.menu.signature] : []));
@@ -616,7 +621,11 @@ export function describeAdapterConformance(
       for (const name of ownFixtures) {
         it(`${name}: does NOT lift once ordinary output scrolls below it`, () => {
           const scrolled = [...loadLines(name), ...trailingOutput()];
-          expect(interactiveBlocks(adapter.buildBlocks(scrolled))).toEqual([]);
+          // A notice card (`MenuModel.liveBox`, ADR 0109) is exempt. It lifts only with the live input
+          // box under it, whose status rows cannot be told from output walked as status rows, and its
+          // tap is bound to the notice's rows by the prompt-binding check: a notice that has gone
+          // refuses the tap rather than types it.
+          expect(interactiveBlocks(adapter.buildBlocks(scrolled)).filter((b) => !isNoticeMenu(b))).toEqual([]);
         });
       }
     });
@@ -626,10 +635,43 @@ export function describeAdapterConformance(
     // honest about it. What is pinned here is what a menu block PROMISES the renderer and the race
     // guard — not how any one harness finds it.
     describe("menu blocks (the generic modal contract)", () => {
+      // A menu lifted off a notice ABOVE a live box (`MenuModel.liveBox`, ADR 0109) is held to its own
+      // contract below: its keys are digits its key row printed, and the box stays the composer's.
       const menuFixtures = ownFixtures.filter((name) =>
-        adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "menu"),
+        adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "menu" && !isNoticeMenu(b)),
       );
+      const noticeFixtures = ownFixtures.filter((name) => adapter.buildBlocks(loadLines(name)).some(isNoticeMenu));
       if (menuFixtures.length === 0) it.todo("adapter lifts no menu blocks from its own fixtures");
+
+      for (const name of noticeFixtures) {
+        // .adr/0009 still holds: no key is synthesised. Each is one digit the notice's own key row
+        // printed as `<digit>:` (the last row of the block), in the printed order.
+        it(`${name}: a notice card's keys are the digits its key row printed`, () => {
+          for (const block of adapter.buildBlocks(loadLines(name))) {
+            if (block.kind !== "menu" || block.menu.liveBox === undefined) continue;
+            const keyRow = lineText(block.lines.at(-1)!);
+            const printed = [...keyRow.matchAll(/(?:^|\s)(\d):/gu)].map((m) => m[1]);
+            expect(block.menu.actions.map((a) => a.keys)).toEqual(printed.map((key) => [key]));
+            expect(block.menu.nav).toEqual({ upDown: false });
+          }
+        });
+
+        it(`${name}: composerReady is true under a notice card (the box keeps the keys)`, () => {
+          if (!adapter.composerReady) return;
+          expect(adapter.composerReady(loadLines(name))).toBe(true);
+        });
+
+        // A row between the key row and the box breaks the notice's exact shape: no card lifts, and the
+        // screen falls back to what it was without the reader.
+        it(`${name}: a splice that breaks the notice lifts no card`, () => {
+          const lines = loadLines(name);
+          const block = adapter.buildBlocks(lines).find(isNoticeMenu)!;
+          const keyRow = lines.indexOf(block.lines.at(-1)!);
+          const perturbed = [...lines];
+          perturbed.splice(keyRow + 1, 0, textLine("  ○ Something else entirely"));
+          expect(adapter.buildBlocks(perturbed).some(isNoticeMenu)).toBe(false);
+        });
+      }
 
       for (const name of menuFixtures) {
         // .adr/0009 at the CI edge: a synthesised digit is a VALID Herdr key, so the key-grammar leg

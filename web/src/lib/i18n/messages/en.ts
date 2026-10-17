@@ -1525,6 +1525,7 @@ export const en = {
   "dialog.autocomplete.title": "Slash commands",
   "dialog.menu.moveUp": "Move up",
   "dialog.menu.moveDown": "Move down",
+  "dialog.menu.noticeDraft": "Empty the box first: a digit would join the text there.",
   "dialog.menu.leftAria": "Left, {verb} ({label})",
   "dialog.menu.rightAria": "Right, {verb} ({label})",
   // The printed scale's chips (.adr/0054): one per value the screen listed. The chip's own text is

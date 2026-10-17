@@ -1309,6 +1309,7 @@ export const pt: Dictionary = {
   "dialog.autocomplete.title": "Comandos de barra",
   "dialog.menu.moveUp": "Mover para cima",
   "dialog.menu.moveDown": "Mover para baixo",
+  "dialog.menu.noticeDraft": "Esvazie a caixa primeiro: um dígito se juntaria ao texto que está lá.",
   "dialog.menu.leftAria": "Esquerda: {verb} ({label})",
   "dialog.menu.rightAria": "Direita: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} para {label}",

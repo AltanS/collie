@@ -3,10 +3,18 @@ import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+vi.mock("@/lib/api", async (original) => ({
+  ...(await original<typeof import("@/lib/api")>()),
+  fetchPane: vi.fn(),
+  sendKeys: vi.fn(),
+}));
+
+import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { claudeBuildBlocks } from "@/lib/harness/claude";
-import { MenuBlock } from "./menu-block";
+import { submitMenuKeys } from "@/lib/menu-action";
+import { MenuBlock, type MenuBlockAction } from "./menu-block";
 
 // The generic menu renderer. Driven off the real `/model` capture through the real pipeline, so what
 // it renders is exactly what the adapter lifts.
@@ -209,5 +217,40 @@ describe("MenuBlock — a card that reads the body drops the mirror", () => {
   it("still renders the mirror for a menu that reads only the footer", () => {
     const container = renderMenuContainer(PICKER);
     expect(container.querySelector("pre")).toBeInTheDocument();
+  });
+});
+
+// Claude Code 2.1.302's Heads up notice above a live box: a card of the digits its key row printed.
+describe("MenuBlock over a notice above the box", () => {
+  const NOTICE = readFileSync(join(PANES, "claude--v2302-heads-up-above-box--w142.txt"), "utf8");
+
+  beforeEach(() => {
+    vi.mocked(fetchPane).mockResolvedValue({ paneId: "w1:p1", text: NOTICE, truncated: false, revision: 0 });
+    vi.mocked(sendKeys).mockResolvedValue({ ok: true });
+  });
+
+  it("a tap sends the printed digit, bound to the notice's rows", async () => {
+    const block = menuBlock(NOTICE);
+    const onAction = vi.fn(async (action: MenuBlockAction): Promise<void> => {
+      await submitMenuKeys({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude", menu: block.menu, keys: action.keys, nav: action.nav });
+    });
+    render(<MenuBlock menu={block.menu} lines={block.lines} onAction={onAction} />);
+    await userEvent.click(screen.getByRole("button", { name: "Learn more" }));
+    expect(onAction).toHaveBeenCalledWith({ keys: ["1"], nav: false });
+    await vi.waitFor(() => expect(sendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, block.menu.signature));
+    expect(block.menu.signature).toContain("1: Learn more");
+  });
+
+  it("keeps its keys off while the box holds a draft, and says why", () => {
+    const block = menuBlock(NOTICE);
+    render(<MenuBlock menu={{ ...block.menu, liveBox: { draft: true } }} lines={block.lines} onAction={vi.fn()} />);
+    for (const name of ["Learn more", "Knew this already", "Dismiss"]) expect(screen.getByRole("button", { name })).toBeDisabled();
+    expect(screen.getByText("Empty the box first: a digit would join the text there.")).toBeInTheDocument();
+  });
+
+  it("leaves its keys on with an empty box", () => {
+    renderMenu(vi.fn(), NOTICE);
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    expect(screen.queryByText("Empty the box first: a digit would join the text there.")).not.toBeInTheDocument();
   });
 });

@@ -1416,6 +1416,7 @@ export const zhTW: Dictionary = {
   "dialog.autocomplete.title": "斜線指令",
   "dialog.menu.moveUp": "上移",
   "dialog.menu.moveDown": "下移",
+  "dialog.menu.noticeDraft": "請先清空輸入框：數字會接在框裡的文字後面。",
   "dialog.menu.leftAria": "向左：{verb}（{label}）",
   "dialog.menu.rightAria": "向右：{verb}（{label}）",
   "dialog.menu.levelAria": "{verb}至 {label}",

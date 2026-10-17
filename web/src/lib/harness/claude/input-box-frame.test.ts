@@ -127,6 +127,7 @@ describe("parity with the old walk on the real corpus", () => {
     // the screen up, and the box stands.
     "claude--v2302-slash-effort-list--w120--h40.txt",
     "claude--v2302-slash-model-list--w120--h40.txt",
+    "claude--v2302-heads-up-above-box--w142.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",

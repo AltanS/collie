@@ -1429,6 +1429,7 @@ export const ko: Dictionary = {
   "dialog.autocomplete.title": "슬래시 명령",
   "dialog.menu.moveUp": "위로 이동",
   "dialog.menu.moveDown": "아래로 이동",
+  "dialog.menu.noticeDraft": "먼저 입력란을 비우세요. 숫자가 입력란의 글에 덧붙여집니다.",
   "dialog.menu.leftAria": "왼쪽: {verb} ({label})",
   "dialog.menu.rightAria": "오른쪽: {verb} ({label})",
   "dialog.menu.levelAria": "{label}에 {verb}",

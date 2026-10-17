@@ -1430,6 +1430,7 @@ export const ja: Dictionary = {
   "dialog.autocomplete.title": "スラッシュコマンド",
   "dialog.menu.moveUp": "上へ移動",
   "dialog.menu.moveDown": "下へ移動",
+  "dialog.menu.noticeDraft": "先に入力欄を空にしてください。数字は入力中の文字に付け足されます。",
   "dialog.menu.leftAria": "左: {verb}（{label}）",
   "dialog.menu.rightAria": "右: {verb}（{label}）",
   "dialog.menu.levelAria": "{label}に{verb}",

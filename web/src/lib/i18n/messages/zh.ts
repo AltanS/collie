@@ -1420,6 +1420,7 @@ export const zh: Dictionary = {
   "dialog.autocomplete.title": "斜杠命令",
   "dialog.menu.moveUp": "上移",
   "dialog.menu.moveDown": "下移",
+  "dialog.menu.noticeDraft": "请先清空输入框：数字会接在框里的文字后面。",
   "dialog.menu.leftAria": "向左：{verb}（{label}）",
   "dialog.menu.rightAria": "向右：{verb}（{label}）",
   "dialog.menu.levelAria": "{verb}至 {label}",

@@ -2968,6 +2968,42 @@ describe("real screens from the fixture corpus", () => {
     expect(onDraft.offers).toEqual(["append", "replace", "cancel"]);
   });
 
+  // Claude Code 2.1.302's Heads up notice above a live box: its keys act when the box holds exactly one
+  // of its digits, so only such a send takes the manual Send; any other text goes on one tap.
+  test("a heads-up notice over the box leaves the box free, and a send of one of its digits takes the manual Send", async () => {
+    const captured = rig({ pane: still(fixture("claude--v2302-heads-up-above-box--w142.txt")) });
+    const prepared = await captured.protocol.handle({ id: "fixture-notice-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ modal: "none", composer: "empty" });
+    const digit = await captured.send("1");
+    expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    expect(captured.pane.calls).toEqual([]);
+  });
+
+  test("on a heads-up notice: hello and 10 go on one tap, 1 goes on the commit with the rows hash", async () => {
+    const notice = [
+      "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of a session",
+      "  on your main PC.",
+      "  1: Learn more   2: Knew this already   0: Dismiss",
+      "",
+    ];
+    for (const text of ["hello", "10"]) {
+      const { pane, send } = rig();
+      pane.over = notice;
+      const answer = await send(text);
+      expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+      expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+    }
+    const { pane, send } = rig();
+    pane.over = notice;
+    const first = await send("1");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    const commit = await send("1", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> 1");
+  });
+
   // The 2026-10-16 incident on lane 8788: the agents panel under a free box, with "↓ to view" on the
   // mode row and "↓ to manage" under the panel. 37 sends were refused `unconfirmed`; a plain send goes in.
   test("a plain send goes in with the agents panel under the box (incident 2026-10-16)", async () => {

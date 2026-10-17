@@ -86,6 +86,7 @@ import { commandListAt, isRunningRow, ownCommandList, readCues, readCuesFor, run
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
+import { readAboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
@@ -880,6 +881,8 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
+/** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
+const NOTICE_KEY_DETAIL = "That digit would answer the notice above the box. Check the pane, then tap Type here.";
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";
 /** The detail of a command the profile never lets wait in a turn (`keys.neverHeld`). */
@@ -2360,6 +2363,12 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
+    if (this.answersNotice(state, s0)) {
+      state.manual = true;
+      this.gateSteeringTurn(state, s0);
+      this.gateManual(state, s0, NOTICE_KEY_DETAIL);
+      return;
+    }
     if (isFree(surface)) return;
     if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
       this.gateTurn(state, s0, s0.frame);
@@ -2373,16 +2382,36 @@ export class SendProtocol {
       throw new Ended("refused", "draft_present", { surface, framed: s0.frame !== null, detail: "The box already holds a draft." });
     }
     if (takesManualSend(surface)) {
-      if (state.request.rowsHash === undefined) {
-        throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: "Collie cannot read this screen. Check the pane, then tap Type here." });
-      }
-      if (state.request.rowsHash !== s0.rowsHash) {
-        throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
-      }
-      this.gateCap(state, s0);
+      this.gateManual(state, s0, "Collie cannot read this screen. Check the pane, then tap Type here.");
       return;
     }
     throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+  }
+
+  /** The manual Send: the first tap is refused `unconfirmed` with the rows hash, the commit goes ahead
+   *  on the same rows, and the cap may ask for one more confirm. */
+  private gateManual(state: RunState, s0: Snap, unconfirmed: string): void {
+    const { surface } = s0;
+    if (state.request.rowsHash === undefined) {
+      throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: unconfirmed });
+    }
+    if (state.request.rowsHash !== s0.rowsHash) {
+      throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
+    }
+    this.gateCap(state, s0);
+  }
+
+  /**
+   * Whether S0 shows a notice the profile names over the found box (`idle.notices`) and the send's
+   * whole text, trimmed, is one of the keys it printed. The harness reads such a box as the answer to
+   * the notice, so the send takes the manual Send even on a free screen.
+   */
+  private answersNotice(state: RunState, s0: Snap): boolean {
+    const notices = state.match?.profile.idle.notices ?? [];
+    if (s0.frame === null || notices.length === 0) return false;
+    const notice = readAboveNotice(s0.texts, s0.frame.top, notices);
+    const text = state.request.text.trim();
+    return notice !== null && notice.keys.some((key) => key.key === text);
   }
 
   /**

@@ -1439,6 +1439,7 @@ export const de: Dictionary = {
   "dialog.autocomplete.title": "Slash-Befehle",
   "dialog.menu.moveUp": "Nach oben",
   "dialog.menu.moveDown": "Nach unten",
+  "dialog.menu.noticeDraft": "Leere zuerst das Eingabefeld: Eine Ziffer würde an den Text dort angehängt.",
   "dialog.menu.leftAria": "Links: {verb} ({label})",
   "dialog.menu.rightAria": "Rechts: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} zu {label}",

@@ -66,6 +66,13 @@ export interface MenuModel {
    * it MUST be non-empty and MUST change when the region's text changes.
    */
   signature: string;
+  /**
+   * Present on a card lifted off a notice drawn ABOVE the agent's live input box (Claude Code's
+   * "Heads up" notice, surface/notice.ts): the box keeps the keyboard, so the card owns none of it
+   * (dialog-contract.ts `blockOwnsKeyboard`) and the composer stays free. `draft` says the box holds
+   * text: a digit typed then would join the draft instead of answering, so the card's keys are off.
+   */
+  liveBox?: { draft: boolean };
 }
 
 /** Whether two derivations are the SAME on-screen menu — the decisive check for a COMMITTING key.

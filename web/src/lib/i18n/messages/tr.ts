@@ -1309,6 +1309,7 @@ export const tr: Dictionary = {
   "dialog.autocomplete.title": "Bölü çizgisi komutları",
   "dialog.menu.moveUp": "Yukarı taşı",
   "dialog.menu.moveDown": "Aşağı taşı",
+  "dialog.menu.noticeDraft": "Önce kutuyu boşaltın: Bir rakam oradaki metne eklenir.",
   "dialog.menu.leftAria": "Sol: {verb} ({label})",
   "dialog.menu.rightAria": "Sağ: {verb} ({label})",
   "dialog.menu.levelAria": "{label} hedefine {verb}",

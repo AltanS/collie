@@ -33,7 +33,8 @@
 // Pure: the same rows always give the same answer.
 
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
-import type { CommandListRows } from "./profile";
+import { readAboveNotice } from "./notice";
+import type { CommandListRows, NoticeHead } from "./profile";
 import { shortHash } from "./surface";
 
 export type CueKind =
@@ -227,11 +228,13 @@ function tailCluster(texts: readonly string[]): number[] {
   return rows.toReversed();
 }
 
-/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. */
-function aboveRun(texts: readonly string[], frame: Frame): number[] {
+/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. The rows of
+ *  a notice the profile names ({@link readAboveNotice}) are passed over: the box keeps its keys. */
+function aboveRun(texts: readonly string[], frame: Frame, notices: readonly NoticeHead[]): number[] {
   const band = frame.volatile.above;
   if (band === null) return [];
-  let i = frame.top - 1;
+  const notice = readAboveNotice(texts, frame.top, notices);
+  let i = notice === null ? frame.top - 1 : notice.first - 1;
   while (i >= band.first && isBlank(texts[i]!)) i--;
   const rows: number[] = [];
   while (i >= band.first && !isBlank(texts[i]!)) rows.push(i--);
@@ -547,7 +550,7 @@ export function withoutCommandList(rows: readonly FrameRow[], list: CommandListR
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(allRows.map(rowText), frame, idle));
-  const plain = readCues(rows, frame);
+  const plain = readCues(rows, frame, idle?.notices ?? []);
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   const at = frame.top;
@@ -559,9 +562,10 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
 
 /**
  * The modal cues on a screen read. `frame` is the input frame the profile found, or null: a screen
- * with no profile, or one whose frame the profile did not find, gets the no-frame cluster.
+ * with no profile, or one whose frame the profile did not find, gets the no-frame cluster. `notices`
+ * are the profile's notice heads (`idle.notices`); a read with no profile has none.
  */
-export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRead {
+export function readCues(rows: readonly FrameRow[], frame: Frame | null, notices: readonly NoticeHead[] = []): CueRead {
   const texts = rows.map(rowText);
   const tail = tailCluster(texts);
   const hash = shortHash(tail.map((i) => texts[i]!.trimEnd()).join("\n"));
@@ -574,7 +578,7 @@ export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRea
   // Over the box, only a strong shape counts: a dialog a harness draws above its own live box (a
   // rating survey, a question) is strong, and a weak shape there is a quote in the transcript.
   const cluster = belowRows(texts, frame);
-  const above = aboveRun(texts, frame);
+  const above = aboveRun(texts, frame, notices);
   const under = cuesIn(texts, cluster);
   const over = cuesIn(texts, above);
   // A panel's dismiss hint, alone over the box: the panel holds the keys, whatever the box looks like.

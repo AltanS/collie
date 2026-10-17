@@ -1371,6 +1371,7 @@ export const ru: Dictionary = {
   "dialog.autocomplete.title": "Команды со слэшем",
   "dialog.menu.moveUp": "Вверх",
   "dialog.menu.moveDown": "Вниз",
+  "dialog.menu.noticeDraft": "Сначала очистите поле: цифра добавится к тексту в нём.",
   "dialog.menu.leftAria": "Влево: {verb} ({label})",
   "dialog.menu.rightAria": "Вправо: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} в {label}",

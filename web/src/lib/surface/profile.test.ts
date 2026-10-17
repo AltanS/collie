@@ -563,6 +563,15 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
   });
 
+  it("checks the notice heads: each compiles and none matches a blank row", () => {
+    expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "[unclosed")).path).toBe("idle.notices[0].head");
+    expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "^\\s*$")).path).toBe("idle.notices[0].head");
+    expect(failure(change(rawClaude(), ["idle", "notices"], "no list")).path).toBe("idle.notices");
+    expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
+    expect(parseProfile(rawClaude()).idle.notices).toEqual([{ head: "^✦ (?:Heads up|You should know) · " }]);
+    expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
+  });
+
   it("accepts a profile that names no hook", () => {
     expect(parseProfile(rawOpencode()).hooks).toEqual({});
   });

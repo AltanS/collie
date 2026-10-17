@@ -20,6 +20,7 @@ import { detectSwitchModelRegion } from "./switch-model";
 import { detectMarketplacesRegion } from "./marketplaces";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
+import { detectAbovePromptNotice } from "./above-prompt-notice";
 import {
   stripChrome,
   extractStatusLines,
@@ -172,6 +173,18 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
   // the popup is simply lifted out of the mirror, where a 220-column list soft-wrapped into an
   // unreadable wall on a phone, and rendered as a list. An `unknown` tail gets no block of its own: it
   // is left on the raw mirror by stripChrome, below the transcript.
+  // A NOTICE above the live box (above-prompt-notice.ts): the one card on a screen whose box keeps the
+  // keyboard. Every grammar above needs the box gone or a footer that names keys, so none claims it;
+  // the transcript above the notice stays raw, and the box is stripped as on any idle screen.
+  const noticeRegion = detectAbovePromptNotice(lines);
+  if (noticeRegion) {
+    const before = trimTrailingBlank(lines.slice(0, noticeRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "menu", menu: noticeRegion.model, lines: lines.slice(noticeRegion.startLine, noticeRegion.endLine + 1) });
+    return blocks;
+  }
+
   if (inputBoxTail(lines) === "autocomplete") {
     const autoRegion = detectAutocompleteRegion(lines);
     if (autoRegion) {

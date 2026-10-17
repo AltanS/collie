@@ -61,6 +61,28 @@ describe("the bottom cluster", () => {
     expect(read.surface.modal).toBe("unreadable");
   });
 
+  it("passes over the profile's notice above a live box: its key row is no single-key prompt", () => {
+    const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", IDLE);
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("single-key");
+    expect(read.cues?.strength).toBe("none");
+    expect(read.surface.modal).toBe("none");
+  });
+
+  it("keeps the strong cue on a notice-shaped block that is not exact", () => {
+    const keys = "  1: Learn more   2: Knew this already   0: Dismiss";
+    const notExact = [
+      ["  on your main PC.", keys],
+      ["✦ Heads up · Something new", "  1: Learn more   y: Yes   0: Dismiss"],
+      ["✦ Heads up · Something new", keys, "  something else"],
+    ];
+    for (const over of notExact) {
+      const rows = rowsOf(["● done", "", ...over, RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n"));
+      const read = readScreen(rows, "claude", IDLE);
+      expect(read.cues?.strength, over.join(" / ")).toBe("strong");
+      expect(read.surface.modal).toBe("unreadable");
+    }
+  });
+
   it("never reads the status rows under a box for a cue", () => {
     const read = readScreen(fixtureRows("claude-lab--statusline-numbered-rows--w82.txt"), "claude", IDLE);
     expect(read.cues?.cues).toEqual([]);

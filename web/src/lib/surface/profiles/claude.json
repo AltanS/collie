@@ -47,7 +47,10 @@
           "wrapped": "^ {8,}\\S"
         }
       }
-    }
+    },
+    "notices": [
+      { "head": "^✦ (?:Heads up|You should know) · " }
+    ]
   },
   "keys": {
     "submit": ["Enter"],

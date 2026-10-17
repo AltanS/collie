@@ -56,11 +56,16 @@ export interface MenuBlockProps {
 // because these are the agent's own terminal colours.
 //
 // There are NO digit buttons, and there never will be: in the `/model` picker a digit confirms AND
-// persists the choice as the user's default (.adr/0009). Only footer-named keys and arrows ship.
+// persists the choice as the user's default (.adr/0009). Only footer-named keys and arrows ship. The
+// one card with digits is a notice above a live box (`liveBox`, ADR 0109): its digits are the keys
+// its own row prints as `<digit>: <label>`, never a number read off a list row.
 export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
-  const locked = disabled || sending !== null;
+  // A notice above a live box (`liveBox`) reads a digit only from a box that holds nothing else: with a
+  // draft there, the digit would join the draft, so the card's keys wait for the box to empty.
+  const draftBlocks = menu.liveBox?.draft === true;
+  const locked = disabled || draftBlocks || sending !== null;
 
   async function press(id: string, action: MenuBlockAction) {
     if (locked) return;
@@ -121,6 +126,8 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
           show, so rendering both would repeat the same scale twice, wrapped fragments and all; its
           way back to these rows is the Terminal toggle above instead (ADR 0056). */}
       {!readsBody && <RawMirror lines={lines} />}
+
+      {draftBlocks && <p className="font-content text-xs text-muted-foreground">{t("dialog.menu.noticeDraft")}</p>}
 
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an
           "←/→ to <verb>" row for Left/Right). Each is one keystroke; they move a highlight and commit

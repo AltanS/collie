@@ -1309,6 +1309,7 @@ export const it: Dictionary = {
   "dialog.autocomplete.title": "Comandi slash",
   "dialog.menu.moveUp": "Sposta su",
   "dialog.menu.moveDown": "Sposta giù",
+  "dialog.menu.noticeDraft": "Svuota prima la casella: una cifra si aggiungerebbe al testo che c'è.",
   "dialog.menu.leftAria": "Sinistra: {verb} ({label})",
   "dialog.menu.rightAria": "Destra: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} a {label}",
