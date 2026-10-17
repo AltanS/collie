@@ -81,6 +81,7 @@ describe("the card starts at the question row, so the mirror above it does not r
     ["agy--permission-bash.txt", "Do you want to proceed?"],
     ["agy--permission-edit.txt", "Do you want to proceed?"],
     ["agy--plan-approval.txt", "Question 1/1: Approve plan execution?"],
+    ["agy--plan-approval-135.txt", "Question 1/1: Approve plan execution?"],
     ["agy--select-menu.txt", "Question 1/1: Which color theme should the dashboard use?"],
   ])("%s", (name, question) => {
     const [raw, prompt] = blocksOf(name);
@@ -563,6 +564,7 @@ describe("agy: a question takes its digit alone (1.3.5)", () => {
   it.each([
     ["agy--ask-two-q1.txt", "Question 1/2: Which animal do you like?", [["cat", "1"], ["dog", "2"], ["fox", "3"]]],
     ["agy--ask-two-q2.txt", "Question 2/2: Which drink do you want?", [["tea", "1"], ["coffee", "2"]]],
+    ["agy--plan-approval-135.txt", "Question 1/1: Approve plan execution?", [["Execute plan", "1"], ["Request changes", "2"], ["Cancel", "3"]]],
   ])("%s lifts each option as its digit alone", (name, question, options) => {
     const prompt = promptOf(read(name));
     expect(prompt?.question).toBe(question);

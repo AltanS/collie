@@ -25,6 +25,11 @@
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nRequesting permission for:\n   cat << 'EOF' > test_logger.py\n   import unittest\n   import os\n   import logging\n   ⋯ (25 lines hidden)\n\nDo you want to proceed?\n> 1. Yes\n  2. Yes, and always allow in this conversation for commands that start with 'cat << 'EOF' > test_logger.py\nimport unittest\nimport os\nimport logging\nfrom logg...'\n  3. Yes, and always allow for commands that start with 'cat << 'EOF' > test_logger.py\nimport unittest\nimport os\nimport logging\nfrom logg...' (Persist to settings.json)\n  4. No\n\n  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command · ctrl+r Review\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
   },
   {
+    "fixture": "agy--plan-approval-135.txt",
+    "detector": "menu",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Approve plan execution?\n\n> 1. Execute plan\n  2. Request changes\n  3. Cancel\n  4. Write-in...\n\n  ↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review\nesc to cancel                                                                                    Gemini 3.8 Flash · high"
+  },
+  {
     "fixture": "agy--plan-approval.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Approve plan execution?\n\n> 1. Execute plan\n  2. Request changes\n  3. Cancel\n  4. Write-in...\n\n  ↑/↓ Navigate · enter Select · esc Skip · ctrl+r Review\nesc to cancel                                                                                                                                                                                                   Gemini 3.7 Flash · low"
