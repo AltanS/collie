@@ -133,6 +133,42 @@ describe("the notice above the box", () => {
     expect(card.lines.map(lineText).at(-1)).toBe("  1: Learn more   2: Knew this already   0: Dismiss");
   });
 
+  // Seen live at 141 columns: when the usage row fits the pane, Claude Code right-aligns it, here from
+  // column 18 to column 140. The statusline rows are replaced with neutral words of the same width.
+  describe("over a usage row at 141 columns", () => {
+    const rule = "─".repeat(142);
+    const usage = "You've used 93% of your weekly limit · resets Oct 22, 1am (America/Los_Angeles) · /usage-credits to keep using Claude Code";
+    const screenWithUsageAt = (column: number): StyledLine[] => {
+      const seen = [
+        "✢ Forming… · tool use (1m 31s · ↓ 1.7k tokens)",
+        `  ⎿  ${"neutral words ".repeat(10).slice(0, 85)}`,
+        `${" ".repeat(138)}[-]`,
+        "✦ Heads up · One of the notes says a weekly report script emails customers' card numbers and home addresses to a public mailing list.",
+        "  1: Learn more   2: Knew this already   0: Dismiss",
+        `${" ".repeat(column)}${usage}`,
+        rule,
+        "❯ ",
+        rule,
+        `  ctx:  11%  |  ${"neutral words ".repeat(10).slice(0, 123)}…`,
+        "  ⏵⏵ bypass permissions on (shift+tab to cycle) · neutral · ← 2 agents",
+      ].join("\n");
+      return splitLines(parseAnsi(seen));
+    };
+
+    it("reads the notice over the right-aligned row with the box free, and lifts its card", () => {
+      const rows = screenWithUsageAt(18);
+      expect(lineText(rows[5]!).trimEnd()).toHaveLength(140);
+      expect(readScreen(rows, "claude", requireProfile("claude").idle).surface).toMatchObject({ modal: "none", composer: "empty" });
+      expect(claudeBuildBlocks(rows).some((b) => b.kind === "menu")).toBe(true);
+    });
+
+    it("reads the notice over the same row at column 2, and lifts its card", () => {
+      const rows = screenWithUsageAt(2);
+      expect(readScreen(rows, "claude", requireProfile("claude").idle).surface).toMatchObject({ modal: "none", composer: "empty" });
+      expect(claudeBuildBlocks(rows).some((b) => b.kind === "menu")).toBe(true);
+    });
+  });
+
   it("does not lift the rating survey over the box", () => {
     expect(claudeBuildBlocks(lines("claude-lab--survey-rating-above-box--w82.txt")).some((b) => b.kind === "menu")).toBe(false);
   });
