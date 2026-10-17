@@ -118,6 +118,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2301-working-draft--w100.txt",
     "claude--v2301-working-queued-message--w100.txt",
     "claude--v2301-working-quiet--w100.txt",
+    // Claude Code 2.1.302's slash list under a box holding `/model` (reconstructed from a masked field
+    // capture): the box stands, as in the older autocomplete captures above.
+    "claude--v2302-slash-model-list--w119.txt",
     "claude--v2302-turn-ended-yn--w119.txt",
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
@@ -358,8 +361,13 @@ describe("invariant: rows appended below a box never change the box or its draft
   // "❯" mark refuses: the rule pinned by "a ❯-led row in an unknown tail refuses" above. The stall
   // that follows is this module's designed failure mode (a false refusal, never a blind keystroke),
   // and the capture's own test below pins both halves of the bound.
-  // The focused agents panel of 2.1.301 ("❯ ● main", lab 2026-10-16) is the same class.
-  const POINTER_TAILS = { "claude--footer-pointed-agent.txt": true, "claude--v2301-lab-agents-panel-focused.txt": true } satisfies Record<string, true>;
+  // The focused agents panel of 2.1.301 ("❯ ● main", lab 2026-10-16) is the same class, and so is
+  // 2.1.302's slash list, whose pointer row ("  ❯ /model") stands in the tail under the box.
+  const POINTER_TAILS = {
+    "claude--footer-pointed-agent.txt": true,
+    "claude--v2301-lab-agents-panel-focused.txt": true,
+    "claude--v2302-slash-model-list--w119.txt": true,
+  } satisfies Record<string, true>;
 
   it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {
     const base = textRows(load(name));

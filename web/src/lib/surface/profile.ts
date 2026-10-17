@@ -105,6 +105,22 @@ export interface OtherScreenRow {
 }
 
 /**
+ * The harness's own completion list for a slash command (`idle.volatile.below.commandList`), drawn
+ * in the rows under the box while the box holds the command: one entry per row, the command in the
+ * left column and its description in a second column, a long description wrapped onto rows indented
+ * to that column. A pointer marks the entry Enter picks. Each source is matched on a row with its
+ * trailing space cut; `pointer` and `entry` hold the command in the named group `command`.
+ */
+export interface CommandListRows {
+  /** The highlighted entry: the pointer glyph, the command, and maybe its description. */
+  readonly pointer: string;
+  /** Any other entry: the command, and maybe its description. */
+  readonly entry: string;
+  /** A row of a wrapped description, under the entry it belongs to. */
+  readonly wrapped: string;
+}
+
+/**
  * The rows a box always draws under the draft that hold no draft text (a model row inside the box,
  * and the padding between it and the bottom edge). The interior walk (`idle.frame.walk`) takes them
  * off the draft.
@@ -227,6 +243,13 @@ export interface Profile {
          * row count under the box. Optional.
          */
         readonly otherScreens?: readonly OtherScreenRow[];
+        /**
+         * The harness's completion list for a slash command ({@link CommandListRows}). Under a box that
+         * holds a command, a list whose pointer rests on that same command is the command's own
+         * typeahead, not a dialog: Enter there picks the typed command. A list that points at another
+         * command, or at none, reads as before. Never Escape. Optional.
+         */
+        readonly commandList?: CommandListRows;
       };
     };
     /**
@@ -549,7 +572,21 @@ function otherScreens(value: JsonValue | undefined): OtherScreenRow[] {
   });
 }
 
-/** `idle.volatile.below`: its row counts, and the hint rows, named footer rows and other screens' rows only when the profile names them. */
+/** `idle.volatile.below.commandList`: three patterns that cannot match a blank row; the pointer and the entry hold the group `command`. */
+function commandList(value: JsonValue | undefined): CommandListRows {
+  const path = "idle.volatile.below.commandList";
+  const node = object(value, path);
+  const one = (key: "pointer" | "entry" | "wrapped"): string => {
+    const at = `${path}.${key}`;
+    const compiled = pattern(field(node, key, path), at);
+    if (compiled.test("")) fail(at, "must not match a blank row");
+    if (key !== "wrapped" && !compiled.source.includes("(?<command>")) fail(at, "must hold the named group command");
+    return compiled.source;
+  };
+  return { pointer: one("pointer"), entry: one("entry"), wrapped: one("wrapped") };
+}
+
+/** `idle.volatile.below`: its row counts, and the hint rows, named footer rows, other screens' rows and command list only when the profile names them. */
 function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const maxRows = whole(field(node, "maxRows", "idle.volatile.below"), "idle.volatile.below.maxRows", 0);
   const footerMaxRows = whole(field(node, "footerMaxRows", "idle.volatile.below"), "idle.volatile.below.footerMaxRows", 0);
@@ -559,7 +596,8 @@ function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
       ? base
       : { ...base, hints: list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source) };
   const withFooter = node.footerRows === undefined ? withHints : { ...withHints, footerRows: footerRows(node.footerRows) };
-  return node.otherScreens === undefined ? withFooter : { ...withFooter, otherScreens: otherScreens(node.otherScreens) };
+  const withScreens = node.otherScreens === undefined ? withFooter : { ...withFooter, otherScreens: otherScreens(node.otherScreens) };
+  return node.commandList === undefined ? withScreens : { ...withScreens, commandList: commandList(node.commandList) };
 }
 /** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
 function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {

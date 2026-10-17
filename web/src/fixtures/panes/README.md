@@ -2283,3 +2283,18 @@ holds a numbered list, a menu and a `(y/n)` line was refused `not_free`, or type
 | `claude--v2302-turn-ending-stop-hooks--w119.txt` | The last read of a turn: the whole answer drawn, a numbered list, the menu `41. Apple`, `42. Pear`, `43. Quit` and `Confirm (y/n)` above `✢ Simmering… (running Stop hooks… 0/2 · 5s · ↓ 621 tokens)`. Labelled `running`; the screen alone reads free, since the words before the timer keep the running sign off (listed in `knownMismatches`) |
 | `claude--v2302-turn-ended-yn--w119.txt` | The next read, 112 ms later: the same rows with `✻ Churned for 5s · done 12:17 PM` in the spinner's place. The turn is over and the `(y/n)` line is the agent's text, not a dialog: the box is free. Reads `idle`. The pair is the round-3 field case: a send typed between the two reads must still be sent |
 | `claude--v2302-working-agents-panel--w119.txt` | A running turn (`✶ Noodling… (7s · ↓ 592 tokens)`) after two background agents started, with the last turns' list, menu and `Confirm (y/n)` above, and the agents panel (`● main`, two `◯ general-purpose` rows with timers) under the box. Reads `running` |
+
+## The slash list under the box, 2.1.302 (reconstructed 2026-10-17, not captured)
+
+Rebuilt by hand from a masked field capture (letters read `a`, digits `0`), the screen of the
+2026-10-17 field case on a crew member pane: the phone sent `/model` as a command from the actions
+belt, Claude Code 2.1.302 opened its command list under the box, and Collie 1.22.3 withheld Enter.
+The shape follows the masked rows: the box, then the list right under its bottom edge, the pointer row
+indented two columns, every other entry four, the description in a second column at column 43, and a
+long description wrapped onto rows indented to that column. The entries are real command names with
+plausible descriptions, fitted to the masked widths where a name matched; the header rows above the box
+are the usual welcome rows.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-slash-model-list--w119.txt` | 119 columns: the box holds `/model`, and under it eleven entries with the pointer on `❯ /model  Set the AI model for Claude Code (currently Sonnet 5.5)`. That description fits on its row, so the next entry sits right under the pointer row: the generic cue read took the pointer and its aligned rows as a pointed list (strong), the Surface said `unreadable`, and a command's S1 kept Enter back. The 2.1.291 capture `claude-lab--popup-slash-model-exact--w82.txt` wraps the pointed description, which broke that alignment and hid the bug. Claude's profile names the list (`idle.volatile.below.commandList`), and a list that points at the command the box holds now reads as the command's own typeahead. Labelled `popup` |

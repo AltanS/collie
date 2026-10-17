@@ -40,7 +40,12 @@
         ],
         "otherScreens": [
           { "name": "agents screen", "pattern": "^\\s*enter to return(?:\\s·\\s|$)" }
-        ]
+        ],
+        "commandList": {
+          "pointer": "^ {1,4}❯ (?<command>[/…]\\S+)(?: +\\S.*)?$",
+          "entry": "^ {2,6}(?<command>[/…]\\S+)(?: +\\S.*)?$",
+          "wrapped": "^ {8,}\\S"
+        }
       }
     }
   },

@@ -1,0 +1,26 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▜[0m[38;2;215;119;87m▌   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.302[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m▛▘  [0m[38;2;153;153;153mSonnet 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m~/projects/workbench/throwaways[0m
+
+
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[38;2;177;185;249m/model[0m
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;177;185;249m❯ /[0m[1m[38;2;177;185;249mmodel[0m[38;2;177;185;249m                                 Set the AI model for Claude Code (currently Sonnet 5.5)[0m
+    [0m[38;2;153;153;153m/auto-mode-setup                       Teach auto mode about your environment, plus optional rule tweaks[0m
+    [0m[38;2;153;153;153m/typescript:structure-module           (typescript) Organizes code into well-structured modules with clear[0m
+                                           [0m[38;2;153;153;153mboundaries, exports, and locality of behavior.[0m
+    [0m[38;2;153;153;153m/dev-tools:wordsmith                   (dev-tools) Send user-facing prose through Gemini 3.8 Flash on OpenRouter[0m
+                                           [0m[38;2;153;153;153mand take its wording, or translate it into another language. Use when[0m
+    [0m[38;2;153;153;153m/code-review                           3 free /ultrareview · Review the current diff, or a PR number/branch/path[0m
+                                           [0m[38;2;153;153;153mtarget, for correctness bugs (plus reuse/simplification/efficiency cleanups…[0m
+    [0m[38;2;153;153;153m/update-config                         Use this skill to configure the Claude Code harness via settings.json.[0m
+                                           [0m[38;2;153;153;153mAutomated behaviors ("from now on when X", "each time X") require hooks…[0m
+    [0m[38;2;153;153;153m/loop                                  Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo).[0m
+                                           [0m[38;2;153;153;153mOmit the interval to let the model self-pace.[0m
+    [0m[38;2;153;153;153m/claude-api                            Reference for the Claude API / Anthropic SDK — model ids, pricing, params,[0m
+                                           [0m[38;2;153;153;153mstreaming, tool use, MCP, agents, caching, token counting, model migration.[0m
+    [0m[38;2;153;153;153m/advisor                               Let Claude consult a stronger model at key moments[0m
+    [0m[38;2;153;153;153m/effort                                Set effort level for model usage[0m
+    [0m[38;2;153;153;153m/status                                Show Claude Code status including version, model, account, API connectivity,[0m
+                                           [0m[38;2;153;153;153mand tool statuses[0m

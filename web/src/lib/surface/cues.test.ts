@@ -2,8 +2,8 @@ import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, readCues } from "./cues";
-import { findInputFrame, plainRows } from "./frame";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListUnder, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, ownCommandList, readCues } from "./cues";
+import { findInputFrame, plainRows, rowText } from "./frame";
 import { requireProfile } from "./profile";
 import { isFree } from "./surface";
 
@@ -250,5 +250,68 @@ describe("overlay shapes in the no-frame cluster", () => {
     expect(read.frame).not.toBeNull();
     expect(read.cues?.strength).toBe("none");
     expect(isFree(read.surface)).toBe(true);
+  });
+});
+
+describe("the typed command's own list under the box (idle.volatile.below.commandList, field case 2026-10-17)", () => {
+  const LIST = IDLE.volatile.below.commandList;
+  const texts = (rows: ReturnType<typeof plainRows>): string[] => rows.map(rowText);
+  /** A box holding `box` over a list: `pointed` names the entry with the pointer, null for none. */
+  const screen = (box: string, pointed: string | null, entries = ["/model", "/models", "/memory"]) =>
+    plainRows([
+      "● done",
+      RULE,
+      `❯ ${box}`,
+      RULE,
+      ...entries.map((name) => `${name === pointed ? "  ❯ " : "    "}${name.padEnd(30)}What ${name.slice(1)} does, in a second column`),
+    ]);
+
+  it("the 2.1.302 two-column list at 119 columns: the pointer on the typed /model is its own typeahead, no cue, no dialog", () => {
+    const rows = fixtureRows("claude--v2302-slash-model-list--w119.txt");
+    const frame = findInputFrame(rows, IDLE)!;
+    expect(commandListUnder(texts(rows), frame, LIST)).toEqual({ pointed: "/model" });
+    expect(ownCommandList(texts(rows), frame, IDLE)).toBe(true);
+    const read = readScreen(rows, "claude", IDLE);
+    expect(read.cues?.strength).toBe("none");
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+  });
+
+  it("the 2.1.291 list with the pointed description wrapped reads the same", () => {
+    const rows = fixtureRows("claude-lab--popup-slash-model-exact--w82.txt");
+    const frame = findInputFrame(rows, IDLE)!;
+    expect(commandListUnder(texts(rows), frame, LIST)).toEqual({ pointed: "/model" });
+    expect(ownCommandList(texts(rows), frame, IDLE)).toBe(true);
+  });
+
+  it("a list while the box holds a query, not the command (/mo, /): pointed elsewhere, read as before", () => {
+    for (const name of ["claude-lab--popup-slash-mo--w82.txt", "claude-lab--popup-slash-all--w82.txt", "claude-lab--popup-slash-all--w40.txt"]) {
+      const rows = fixtureRows(name);
+      const frame = findInputFrame(rows, IDLE)!;
+      expect(commandListUnder(texts(rows), frame, LIST)?.pointed, name).toMatch(/^\/\S+$/u);
+      expect(ownCommandList(texts(rows), frame, IDLE), name).toBe(false);
+    }
+  });
+
+  it("exact: /model is pointed at by ❯ /model, never by ❯ /models; a list with no pointer is no typeahead", () => {
+    const at = (rows: ReturnType<typeof plainRows>) => ownCommandList(texts(rows), findInputFrame(rows, IDLE), IDLE);
+    expect(at(screen("/model", "/model"))).toBe(true);
+    expect(at(screen("/model", "/models"))).toBe(false);
+    expect(at(screen("/models", "/model"))).toBe(false);
+    expect(at(screen("/model", "/memory"))).toBe(false);
+    expect(at(screen("/model", null))).toBe(false);
+    expect(commandListUnder(texts(screen("/model", null)), findInputFrame(screen("/model", null), IDLE)!, LIST)).toEqual({ pointed: null });
+  });
+
+  it("anything else under the box is no list: a dialog, a status row, a second pointer, a gap under the bottom edge", () => {
+    const under = (extra: string[]) => {
+      const rows = plainRows(["● done", RULE, "❯ /model", RULE, ...extra]);
+      return commandListUnder(texts(rows), findInputFrame(rows, IDLE)!, LIST);
+    };
+    expect(under(["  ❯ /model      Set the model", "    /models     List the models"])).toEqual({ pointed: "/model" });
+    expect(under(["  ❯ /model      Set the model", " Do you want to proceed?", " ❯ 1. Yes", "   2. No"])).toBeNull();
+    expect(under(["  ❯ /model      Set the model", "  ❯ /models     List the models"])).toBeNull();
+    expect(under(["  ❯ /model      Set the model", "  model · ctx 3%"])).toBeNull();
+    expect(under(["", "  ❯ /model      Set the model"])).toBeNull();
+    expect(under([" ❯ 1. Yes", "   2. No"])).toBeNull();
   });
 });

@@ -33,6 +33,7 @@
 // Pure: the same rows always give the same answer.
 
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import type { CommandListRows } from "./profile";
 import { shortHash } from "./surface";
 
 export type CueKind =
@@ -415,12 +416,86 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
   return { cues, listed, pointerListed, pointedList, keyHints, overlay };
 }
 
+/** The profile's command list, read under a frame: the command its pointer rests on, or null with no pointer. */
+export interface CommandListRead {
+  readonly pointed: string | null;
+}
+
+interface CompiledCommandList {
+  readonly pointer: RegExp;
+  readonly entry: RegExp;
+  readonly wrapped: RegExp;
+}
+
+const compiledLists = new WeakMap<CommandListRows, CompiledCommandList>();
+
+function listPatterns(list: CommandListRows): CompiledCommandList {
+  const known = compiledLists.get(list);
+  if (known !== undefined) return known;
+  const compiled = { pointer: new RegExp(list.pointer, "u"), entry: new RegExp(list.entry, "u"), wrapped: new RegExp(list.wrapped, "u") };
+  compiledLists.set(list, compiled);
+  return compiled;
+}
+
+/**
+ * The profile's completion list for a slash command (`idle.volatile.below.commandList`), when it is
+ * all that stands under the frame: the first row under the bottom edge is an entry, every other
+ * non-blank row there is an entry or a wrapped description row, and at most one entry carries the
+ * pointer. The command in the left column may have its description in a second column on the same
+ * row, or wrapped onto rows under it. Null when the profile names no list or any row there is
+ * something else (a dialog, a status row, a second pointer).
+ */
+export function commandListUnder(texts: readonly string[], frame: Frame, list: CommandListRows | undefined): CommandListRead | null {
+  if (list === undefined) return null;
+  const { pointer, entry, wrapped } = listPatterns(list);
+  let pointed: string | null = null;
+  let entries = 0;
+  for (let i = frame.bottom + 1; i < texts.length; i++) {
+    const text = texts[i]!.trimEnd();
+    if (isBlank(text)) {
+      // The list starts right under the bottom edge.
+      if (entries === 0) return null;
+      continue;
+    }
+    const head = pointer.exec(text);
+    if (head !== null) {
+      if (pointed !== null) return null;
+      pointed = head.groups?.["command"] ?? null;
+      if (pointed === null) return null;
+      entries++;
+      continue;
+    }
+    if (entry.test(text)) {
+      entries++;
+      continue;
+    }
+    if (entries > 0 && wrapped.test(text)) continue;
+    return null;
+  }
+  return entries === 0 ? null : { pointed };
+}
+
+/**
+ * Whether the rows under a found frame are the typeahead of the command the box holds: the profile's
+ * command list, its pointer on an entry whose command is exactly the box's text (`/model` is pointed
+ * at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed, so the
+ * list is no dialog and its rows are read for no cue. A list that points at another command, or at
+ * none, is read as before.
+ */
+export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): boolean {
+  if (frame === null || idle === null || frame.placeholder) return false;
+  const pointed = commandListUnder(texts, frame, idle.volatile.below.commandList)?.pointed ?? null;
+  return pointed !== null && pointed === frame.interior.text.trim();
+}
+
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
- * the box rows included.
+ * the box rows included. The typed command's own list under the box ({@link ownCommandList}) is left
+ * out of both.
  */
-export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
+export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
+  const rows = frame !== null && ownCommandList(allRows.map(rowText), frame, idle) ? allRows.slice(0, frame.bottom + 1) : allRows;
   const plain = readCues(rows, frame);
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.

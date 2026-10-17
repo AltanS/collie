@@ -4323,3 +4323,124 @@ describe("real Claude Code 2.1.302 turns with a list on screen (captured 2026-10
     expect((await r.send("then give it a title")).receipt).toMatchObject({ outcome: "sent" });
   });
 });
+
+describe("a slash command over Claude Code's command list under the box (field case, 2.1.302, 2026-10-17)", () => {
+  const V2302 = "claude--v2302-slash-model-list--w119.txt";
+  const V2291 = "claude-lab--popup-slash-model-exact--w82.txt";
+  const RUNNING = "✶ Noodling… (7s · ↓ 592 tokens)";
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;]*m/gu, "");
+
+  /**
+   * A capture of the list split at the box's bottom edge: the screen with the fake box drawn into its
+   * box row, and under it the list only while the box holds a slash command (else a hint row, as
+   * before the write and after the Enter). `list` rewrites the list rows, read as plain text; `over`
+   * puts a row above the box (a running turn's spinner).
+   */
+  const listScreen = (pane: FakePane, name: string, options: { list?: (rows: string[]) => string[]; over?: string } = {}): void => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    const boxRow = rows.findIndex((row, i) => i > 0 && row.startsWith("❯ ") && rows[i - 1]!.includes("─".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    const head = rows.slice(0, boxRow + 2);
+    const under = options.list === undefined ? rows.slice(boxRow + 2) : options.list(rows.slice(boxRow + 2).map(plain));
+    if (options.over !== undefined) head.splice(boxRow - 2, 1, options.over);
+    pane.beforeRead = (p) => {
+      const top = [...head];
+      top[boxRow] = `❯ ${p.box}`;
+      p.fixed = [...top, ...(p.box.startsWith("/") ? under : ["  ? for shortcuts"])].join("\r\n");
+    };
+  };
+
+  /** The list with the pointer moved to `command`, on the first entry's row, and that entry shown without it. */
+  const pointAt =
+    (command: string) =>
+    (rows: string[]): string[] => {
+      const at = rows.findIndex((row) => row.includes("❯ /"));
+      const col = rows[at]!.search(/ {2,}\S/u);
+      const desc = rows[at]!.slice(col).trimStart();
+      const pointer = `  ❯ ${command}`;
+      return rows.map((row, i) => (i === at ? `${pointer}${" ".repeat(Math.max(2, col + 2 - pointer.length))}${desc}` : row));
+    };
+
+  /** Every write and key in order, so a test can say what followed the text. */
+  const journal = (pane: FakePane): string[] => {
+    const seen: string[] = [];
+    pane.afterInput = (_p, what) => seen.push(what);
+    return seen;
+  };
+
+  for (const [name, version] of [
+    [V2302, "2.1.302"],
+    [V2291, "2.1.291"],
+  ] as const) {
+    test(`${name}: /model as a command is sent, the list pointing at /model is its own typeahead; only Enter follows the text`, async () => {
+      const { pane, send } = rig({ version });
+      listScreen(pane, name);
+      const seen = journal(pane);
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(seen.slice(seen.findIndex((what) => what.endsWith(":/model")))).toEqual([expect.stringMatching(/:\/model$/u), "keys:Enter"]);
+      expect(pane.transcript.at(-1)).toBe("> /model");
+      neverEscape(pane);
+    });
+
+    for (const other of ["/models", "/memory"]) {
+      test(`${name}: /model typed while the list points at ${other} is left typed, no Enter, and the detail says the list points elsewhere`, async () => {
+        const { pane, send, deps } = rig({ version });
+        listScreen(pane, name, { list: pointAt(other) });
+        const id = `list-elsewhere-${other.slice(1)}`;
+        const answer = await send("/model", { id, mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe("/model");
+        expect(deps.store.get(id)?.receipt?.detail).toBe("The command list under the box pointed at another command, so Enter was not pressed.");
+        neverEscape(pane);
+      });
+    }
+  }
+
+  test("the 2.1.302 list read as a screen: the box holds a draft, no dialog over it; pointing elsewhere still reads as before", async () => {
+    const own = rig({ version: "2.1.302" });
+    listScreen(own.pane, V2302);
+    own.pane.box = "/model";
+    const prepared = await own.protocol.handle({ id: "list-prep-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    const elsewhere = rig({ version: "2.1.302" });
+    listScreen(elsewhere.pane, V2302, { list: pointAt("/models") });
+    elsewhere.pane.box = "/model";
+    const looked = await elsewhere.protocol.handle({ id: "list-prep-2", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(looked.surface?.modal).toBe("unreadable");
+  });
+
+  test("a list with no pointer keeps today's reading (no dialog, its rows weak at most) and the command goes out as before", async () => {
+    const noPointer = (rows: string[]): string[] => rows.map((row) => row.replace("\u276f /", "  /"));
+    const looked = rig({ version: "2.1.302" });
+    listScreen(looked.pane, V2302, { list: noPointer });
+    looked.pane.box = "/model";
+    const prepared = await looked.protocol.handle({ id: "list-prep-3", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ modal: "none", composer: "draft" });
+    const { pane, send } = rig({ version: "2.1.302" });
+    listScreen(pane, V2302, { list: noPointer });
+    expect((await send("/model", { mode: "command" })).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test("Submit of /model after typed_not_submitted, the list pointing at it: sent, not refused not_free", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    listScreen(pane, V2302);
+    pane.box = "/model";
+    const answer = await send("/model", { mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> /model");
+  });
+
+  test("/model as a command into a running turn, the list pointing at it: queued with Enter, not refused or left typed", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    listScreen(pane, V2302, { over: RUNNING });
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    neverEscape(pane);
+  });
+});

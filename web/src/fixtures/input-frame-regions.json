@@ -1181,6 +1181,19 @@
   }
  },
  {
+  "fixture": "claude--v2302-slash-model-list--w119.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2302-turn-ended-yn--w119.txt",
   "frame": {
    "top": 34,

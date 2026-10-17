@@ -292,6 +292,9 @@ describe("the pointed shape (Claude Code 2.1.291)", () => {
     { fixture: "claude-lab--popup-slash-mo--w82.txt", draft: "/mo", entries: 12 },
     { fixture: "claude-lab--popup-slash-model-exact--w82.txt", draft: "/model", entries: 11 },
     { fixture: "claude-lab--working-popup-open--w82.txt", draft: "/ref", entries: 8 },
+    // Claude Code 2.1.302 at 119 columns (reconstructed from a masked field capture, 2026-10-17): the
+    // pointed entry's description fits on its row, so the next entry sits right under it.
+    { fixture: "claude--v2302-slash-model-list--w119.txt", draft: "/model", entries: 11 },
   ];
 
   it.each(POINTED)("$fixture: the box stands and the popup lifts", ({ fixture, draft, entries }) => {

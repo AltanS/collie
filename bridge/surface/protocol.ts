@@ -76,7 +76,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { isRunningRow, readCues, readCuesFor, runningSign, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListUnder, isRunningRow, ownCommandList, readCues, readCuesFor, runningSign, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -337,6 +337,8 @@ interface Snap {
   readonly below: number;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
   readonly otherScreen: string | null;
+  /** The profile's command list under the frame and the command its pointer rests on ({@link commandListUnder}); null with none. */
+  readonly commandList: CommandListRead | null;
   /** A short hash of the whole read. */
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
@@ -911,6 +913,22 @@ function typedDetail(reason: SendReason): string | undefined {
       return undefined;
   }
 }
+/** The detail of a typed command whose list under the box pointed at another command: Enter would have run that one. */
+const LIST_ELSEWHERE = "The command list under the box pointed at another command, so Enter was not pressed.";
+
+/**
+ * Whether a read shows a command typed into the box while the harness's command list under it points
+ * at another command ({@link commandListUnder}): Enter picks the highlighted entry, so it would run
+ * that one. A list whose pointer rests on the typed command is its own typeahead and passes; a list
+ * with no pointer is left to the cue read.
+ */
+function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
+  const pointed = snap.commandList?.pointed ?? null;
+  if (pointed === null || snap.frame === null) return false;
+  if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
+  return pointed !== (prefix + lines.join("")).trim();
+}
+
 /** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
 function otherScreenDetail(screen: string): string {
   return `The typed text went into the ${screen}'s own box, not the conversation's, so Enter was not pressed.`;
@@ -2483,8 +2501,9 @@ export class SendProtocol {
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
-    // The frameless reads never see a row the profile names as a footer row (the frame found it).
-    const bare = withoutNamedRows(rows, frame);
+    // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
+    // the typed command's own list under the box (ownCommandList): Enter there picks that command.
+    const bare = withoutNamedRows(frame !== null && ownCommandList(texts, frame, idle) ? rows.slice(0, frame.bottom + 1) : rows, frame);
     const snap: Snap = {
       revision: grid.value.revision,
       gateRevision,
@@ -2511,6 +2530,7 @@ export class SendProtocol {
       belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null).strength,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
+      commandList: frame === null ? null : commandListUnder(texts, frame, idle?.volatile.below.commandList),
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
@@ -2755,6 +2775,8 @@ export class SendProtocol {
     let why: SendReason = "mismatch";
     // The other screen that owns the box, when a read showed one (typedBoxVerdict): the detail names it.
     let otherScreen: string | null = null;
+    // The last read showed the command typed and the harness's command list pointing at another one.
+    let elsewhere = false;
     let earlier: Snap | null = null;
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
@@ -2778,6 +2800,13 @@ export class SendProtocol {
         // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
         if (!state.queued && queuesInTurn(state.match) && !aboveUnchanged(s0, snap)) state.streamed = true;
         return "pass";
+      }
+      // A command whose list under the box points at another command: Enter would run that one. The list
+      // may still be catching up with the paste, so the read waits; when no read passes, the text stays.
+      elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse);
+      if (elsewhere) {
+        why = "modal_cue";
+        return "wait";
       }
       // In a turn: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
       // A frameless cue that grew while the rows above moved is the turn's own list (aboveMovedInTurn).
@@ -2847,6 +2876,8 @@ export class SendProtocol {
     if (result.snap !== null) note.rowsHash = result.snap.rowsHash;
     const screen: string | null = otherScreen; // set inside the poll's callback
     if (screen !== null) note.detail = otherScreenDetail(screen);
+    const pointedElsewhere: boolean = elsewhere; // set inside the poll's callback
+    if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 
