@@ -65,6 +65,8 @@ import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantRe
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
 import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
+import { WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
+import type { WalkyReceipt } from "../walky/types.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
@@ -168,6 +170,11 @@ export const CREW_TAKEOVER_PATH = "/crew/v1/takeover";
  * front door for its own operator (RFC §16, decision 5; pairing is always on, ADR 0086).
  */
 export const CREW_PAIRING_PATH = "/crew/v1/pairing";
+/**
+ * `POST` — a member hands its lead one walky talky message to deliver and route (§21). Signed per
+ * §8.6, because it travels peer → lead, and answered only by a collie that leads.
+ */
+export const CREW_WALKY_PATH = "/crew/v1/walky";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -230,6 +237,11 @@ const SIGNABLE_PATHS: ReadonlySet<string> = new Set([
   // construction — a doubled deposition lands the same store — which is what makes it safe beside
   // `leave` and `lead` in `MEMBERSHIP_PATHS`.
   CREW_TAKEOVER_PATH,
+  // §21's walky talky message, member → lead (added 2026-10-17). It travels the one direction where
+  // the transport cannot pin, so the signature is what names the member that sent it. It is NOT in
+  // `MEMBERSHIP_PATHS`: it changes no roster, the message id is its replay key, and a replay returns
+  // the stored receipts and types nothing, so it never advances the monotonic floor.
+  CREW_WALKY_PATH,
 ]);
 
 /** The subset of {@link SIGNABLE_PATHS} that CHANGES STATE, and therefore advances the replay floor. */
@@ -500,6 +512,16 @@ export interface CrewRouterDeps {
    * follow decision can never cost this snapshot its answer.
    */
   readonly onFollow?: (a: { readonly leadRelease: string | null; readonly turn: string | null }) => void;
+  /**
+   * Walky talky across the crew (§21). `fromMember` answers `POST /crew/v1/walky` on a LEAD, for the
+   * member §8.6's signature named; `report` is a MEMBER's outcome report, drained into the `walky`
+   * sibling of each snapshot answer. Absent ⇒ the route 404s and the snapshot carries no report,
+   * which is what a build before §21 does.
+   */
+  readonly walky?: {
+    readonly fromMember?: (body: JsonValue | undefined, member: TrustedMember) => Promise<CrewAnswer>;
+    readonly report?: () => readonly WalkyReceipt[];
+  };
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
@@ -1014,6 +1036,15 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     if (pathname === CREW_LEAD_PATH && req.method === "POST") {
       return newLead(req, signedBody, verdict.member, verdict.self);
     }
+    if (pathname === CREW_WALKY_PATH && req.method === "POST" && deps.walky?.fromMember !== undefined && data !== null && isLeading(data)) {
+      // §21: only a collie that leads routes a message, and only a SIGNED caller reaches it — the
+      // signature named the member, and the message must name that member as sender and signer.
+      // Every verification failure is the uniform 401, audited with its route like any refusal.
+      if (signed.member === null) return refuse(pathname, "certificate");
+      const answer = await deps.walky.fromMember(await readJson(req, signedBody), verdict.member);
+      if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
     if (pathname === CREW_LEAVE_PATH && req.method === "POST") {
       // The caller drops ITSELF, and can drop nothing else — the member id is the admitted one, never
       // a body field. Removal is idempotent: a second `leave` from a member already gone answers 200
@@ -1099,6 +1130,11 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // one, which the lead reads as "not reported", never as an idle machine (§7.1).
       const load = deps.machineStats?.() ?? null;
       const withLoad = load === null ? withVersion : { ...withVersion, [CREW_MACHINE_FIELD]: load };
+      // §21: the receipts this member wrote since the last answer for messages from elsewhere, in that
+      // same seat. Drained by this answer, and omitted when there are none, which the lead reads as
+      // "nothing to report" (§7.1). A report on the exchange, never a stored state (§18.5).
+      const walkyReceipts = deps.walky?.report?.() ?? [];
+      const withWalky = walkyReceipts.length === 0 ? withLoad : { ...withLoad, [WALKY_REPORT_FIELD]: { receipts: walkyReceipts } };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never
@@ -1107,7 +1143,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
         leadRelease: headerValue(req, LEAD_RELEASE_HEADER),
         turn: headerValue(req, UPDATE_TURN_HEADER),
       });
-      return new Response(JSON.stringify(withLoad), {
+      return new Response(JSON.stringify(withWalky), {
         status: 200,
         headers: crewResponseHeaders(verdict.self),
       });

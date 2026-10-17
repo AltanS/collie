@@ -75,6 +75,12 @@ const FORWARDABLE: readonly RegExp[] = [
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
   /^pane\/[^/]+\/files\/image$/,
   /^workspace\/[^/]+\/files\/image$/,
+  // A walky talky message the LEAD routes to the member that owns the pane (CREW_PROTOCOL.md §21),
+  // `pane/<id>/walky`, or `pane/all/walky` for every agent pane there. Mirrors `WALKY_PANE_ROUTE` in
+  // bridge/server.ts one-for-one. A WRITE, sent by the lead itself and never by a phone: the browser
+  // path answers only the GET there, and the member answers the POST only from its lead, with the
+  // lead's attestation in the body. Additive-optional (§7.1): a member that predates it answers 404.
+  /^pane\/[^/]+\/walky$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   // A space's rename (M53 spec 05): a WRITE to the member that owns the space. Mirrors `SPACE_ACTION_ROUTE` in
@@ -244,6 +250,8 @@ export function forwardAuditAction(route: string): string | null {
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   if (action === "close" || action === "rename") return `pane.${action}`;
+  // The member writes the same name for the message it takes (bridge/walky/crew.ts).
+  if (action === "walky") return "walky.deliver";
   return action; // reply | keys | upload
 }
 

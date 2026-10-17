@@ -258,6 +258,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
 | `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
 | `POST` | `/crew/v1/pane/:id/action` | `POST …/action` | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 07). A tap on one of the buttons a durable agent lists for a pane, by `requestId` and `actionId`, with the `turnId` the phone saw when it names one: a turn that moved is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as a refusal, never as done |
+| `POST` | `/crew/v1/pane/:id/walky` | none: the lead's own call, beside `GET /api/pane/:id/walky` (`WALKY_PANE_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-17 (M62). A walky talky message the LEAD routes to the member that owns the pane, `:id` the pane id or `all` for every agent pane there, with the lead's attestation in the body (§21). A WRITE on the write budget, refused before it is attempted when the member is not taking writes (§10.3). Never a phone's: the browser path answers only the GET on this path, and the member answers the POST only from its lead, through walky's own handler and never through the reply handler. It is not behind the member's device gate, because no phone stands behind it and the attestation is what admits it. Audited `walky.deliver` on both sides (§12). A peer that predates it answers 404, which the lead writes as `refused: older member` in the receipt |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/space/:id/rename` | `POST /api/space/:id/rename` (`SPACE_ACTION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 05). Renames a space on a durable agent that declares `renameSpace`; a member that predates it answers 404. |
@@ -442,6 +443,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/secret` | the lead | Hands a peer the rotated crew secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is crew-wide, so any other admitted member accepting one could lock the lead out of its own crew. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
 | `POST` | `/crew/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the crew secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/crew/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
+| `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
 | `POST` | `/crew/v1/warrant` | the lead | Delivers or refreshes the warrant naming the crew's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `crew status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/crew/v1/lead` is one fact arriving at two kinds of recipient. |
@@ -449,8 +451,8 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
 
-**Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`
-and, since 2026-08-20, `warrant` and `takeover`. It is exactly the routes that travel **peer → lead**, the one
+**Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`,
+since 2026-08-20 `warrant` and `takeover`, and since 2026-10-17 `walky` (§21). It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -1111,10 +1113,12 @@ travel it are the most consequential in the protocol: `leave` removes a member f
 speak for any other. The second factor is therefore re-established over material both sides already
 pinned — no new key, no new trust, the same guarantee the handshake gives the other way.
 
-**`POST /crew/v1/leave`, `POST /crew/v1/lead` and `POST /crew/v1/warrant` MUST carry a signature.**
+**`POST /crew/v1/leave`, `POST /crew/v1/lead`, `POST /crew/v1/warrant` and `POST /crew/v1/walky` MUST carry a signature.**
 `GET /crew/v1/hello` MAY, and does when a verb sends it, so `collie crew status` and `collie
 reconnect` can probe a lead at all. (`warrant` joined the set on 2026-08-20: §18.12's deposition
-travels peer → lead, into a listener that pins nothing inbound.) Nothing else may: the proxy surface
+travels peer → lead, into a listener that pins nothing inbound. `walky` joined it on 2026-10-17: a
+member's walky talky message travels the same direction, and the signature is what names the member
+that sent it, §21.) Nothing else may: the proxy surface
 (§5) runs lead → peer over a pinned handshake, and hashing a body to verify a signature there would
 pull a streamed upload (§13) into memory on the security path. `/crew/v1/enroll` cannot — at that
 instant nobody has pinned the caller (§8.2).
@@ -1143,6 +1147,10 @@ instant nobody has pinned the caller (§8.2).
   counter that resets on restart is no counter and every membership verb restarts this collie. The
   floor moves **before** the request is handled. It is advanced only for the membership routes, which
   are the state-changing ones — a replayed `hello` changes nothing and is bounded by the skew window.
+  `walky` does not advance it either (§21): its message id is its replay key, and a replay inside the
+  window is answered with the receipts already stored and types nothing. A member may send several
+  messages close together from two panes, and a floor would refuse the later of any two that share a
+  stamp.
 - **A failure at any step is the uniform 401** of §8.1 — indistinguishable from a wrong secret, an
   unpinned certificate, or an unknown member. The signature is checked **before** the timestamp, so a
   caller who cannot sign learns nothing about this collie's clock or about what it has already seen.
@@ -3253,3 +3261,130 @@ A member that predates this amendment ignores both headers and omits the field. 
 are the closed one, and none of them refuses anything. A lead that predates it sends neither header,
 which is the state every crew is in until an operator confirms an update. The protocol integer is
 still the only thing that refuses (§7.1).
+
+---
+
+## 21. Walky talky messages *(added 2026-10-17, M62)*
+
+Walky talky lets one agent session message another, and the operator message a session
+(`docs/walky-talky.md`). On one machine a message never touches this link. Between two machines it
+always travels **through the lead**, because that is the only topology the trust store supports: a
+member pins only its lead, and the lead pins every member (§8.1). A message from member A to member B
+is two hops, A to the lead and the lead to B.
+
+### The two routes
+
+| Method | Path | Sent by | Body | Answer |
+|---|---|---|---|---|
+| `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
+| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest }` | `{ receipts }` |
+
+- `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
+  collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
+  pin. Only a collie that leads answers it; a peer answers 404.
+- `/crew/v1/pane/:id/walky` is a **forwarded write** (§5's table, `FORWARDABLE` in
+  `bridge/crew/forward.ts`). `:id` is the pane id when the message names one pane, and `all` when it
+  names `<member>/all` or `all`. The lead sends it through its own forward, so it gets the write budget
+  and §10.3's rules: refused before it is attempted when the member is not taking writes, and an
+  attempted write whose outcome is unknown is written `unknown` and never sent again. The dial
+  attestation rides it like every lead → peer dial (§8.6).
+- Both answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the
+  write budget. Neither waits for the typing. (The M62 contract named a single `{ receipt }` for the
+  lead → member hop; a `<member>/all` reaches several panes, so the answer is a list, for the reason
+  the receipt gained `target` in spec 01.)
+
+### The canonical strings
+
+Two signed objects, each behind its own fixed domain tag, LF between fields, `-` for every null field
+(`bridge/walky/canonical.ts`). The message, signed by the sending bridge's crew key:
+
+```
+collie-walky-v1\n<id>\n<kind>\n<from.memberId>\n<from.address>\n<from.harness>\n<to>\n<replyTo>\n<at>\n<sha256(body) hex>
+```
+
+The lead's attestation, signed by the lead's key, beside a message it routes to one member:
+
+```
+collie-walky-attest-v1\n<id>\n<crewId>\n<receiver memberId>\n<sha256(the message's canonical string) hex>
+```
+
+`from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed. The
+attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
+present an attested message at a sibling or in another crew. Both use the primitives §8.6 already has:
+base64 ECDSA-P256-SHA256, with the key behind the signer's pinned certificate.
+
+### What the lead checks, in order
+
+1. The two factors, with §8.6's request signature over the four-field string. The signature names the
+   member. A request without one is the uniform 401.
+2. The body is a well-formed message, with a body that a second clean leaves unchanged and at most
+   4,000 characters, and an address that names its member (`local/…` is a solo word). A 400 that says
+   why, because the caller passed both factors.
+3. `signer` and `from.memberId` are the member the request signature named, and an agent's
+   `from.address` names a pane on that member. Then the message signature verifies against that
+   member's pinned certificate. Any failure here is the uniform 401.
+4. The lead delivers to its own panes, with `verified: "origin"`, and routes to the members the
+   address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
+   own machine for `all`. The sender's machine already delivered to its own panes before it asked.
+
+The lead's sender cap is the local one: 30 messages per sender address in 10 minutes, counted again
+on the lead.
+
+### What a member checks
+
+The dial attestation is checked for every route (§8.6). Then the member checks `attest` against its
+pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. The route's
+`:id` must name the message's own pane, or `all`. A message reaches this machine's agent panes only: a
+member never routes a message on, so a message cannot loop between a member and its lead.
+
+`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation;
+only the lead verifies the origin.** A member pins no other member, so a message from member A reaches
+member B as `verified: "lead"`. The one exception is a message the lead itself sent: the member pins
+that certificate, verifies the origin signature too, and writes `verified: "origin"`.
+
+### Dedupe and replay
+
+The message id is the dedupe key on every bridge. The same id again returns the receipts already
+stored and types nothing; the same id with another canonical string is refused `id reused`. A replay
+of `/crew/v1/walky` inside §8.6's skew window is therefore harmless, and the route **does not advance
+the monotonic floor** (§8.6): it changes no roster, and two panes on one member may send close
+together. A replay outside the window is refused by the timestamp.
+
+### The outcome report
+
+The member snapshot gains an optional sibling beside the body, in the seat §19's fields use:
+
+```json
+{ "...": "the snapshot body", "walky": { "receipts": [ { "id": "wt_…", "target": "laptop/w1:p9", "state": "delivered", "verified": "lead", "at": 1786000000000, "by": "laptop" } ] } }
+```
+
+It holds the receipts this member wrote **since its last answer**, for its own panes, for messages
+that came from another machine, past `accepted`. At most 100, the oldest dropped. It is a report on
+the exchange, never a stored state (§18.5): each answer empties it, so an answer the lead never read
+loses those lines and the lead keeps `accepted`. **Absent means "nothing to report"** (§7.1).
+
+The lead writes each reported receipt into its own log, and only when the member wrote it (`by`), for a
+pane on that member, for a message the lead routed there.
+
+### What the sender learns
+
+The lead holds the outcome. When the operator sent from the phone or from the lead, `collie walky
+status <id>` on the lead shows it. **The lead has no path back to a member**, so a member that sent a
+message to a third machine sees `accepted` and the words "outcome known on the lead". The CLI stops
+waiting on such a receipt at once. A message from a member to the lead's own pane is the same: the
+lead's answer carries `accepted`, and the outcome stays on the lead. Nothing here was built to close
+that gap. A later amendment could add a sibling on a lead → member exchange that already happens; it
+would be additive-optional like this one.
+
+`collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
+holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
+"other machines: ask the lead".
+
+### Compatibility
+
+Additive inside protocol version 2, and every reading is the closed one (§7.1). A member that predates
+this section answers 404 on `/crew/v1/pane/:id/walky`, which the lead writes as `refused: older member`
+in the receipt. A lead that predates it answers 404 on `/crew/v1/walky`, which the member writes as
+`refused: older lead`. A member that predates the report omits the `walky` sibling, and the lead keeps
+`accepted`. A solo install mints no key, signs nothing, registers neither route and never sends a
+message off the machine (§11). `CREW_PROTOCOL_VERSION` stays `2`.

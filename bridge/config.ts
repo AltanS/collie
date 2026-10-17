@@ -393,6 +393,11 @@ export interface Config {
    */
   sendProtocol: boolean;
   /**
+   * Walky talky (`COLLIE_WALKY`, M62): whether this machine takes messages for its panes. Off refuses
+   * every message with `refused: off`; the CLI on this machine still sends. On by default.
+   */
+  walky: boolean;
+  /**
    * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
@@ -716,6 +721,7 @@ export function loadConfig(env: Environment = process.env): Config {
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
     sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
+    walky: envBool("COLLIE_WALKY", true, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

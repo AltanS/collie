@@ -191,6 +191,10 @@ import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
+import { isPaneId, parseAddress } from "./walky/address.ts";
+import { parsePhoneSend } from "./walky/parse.ts";
+import type { WalkyService } from "./walky/service.ts";
+import type { WalkyCrew } from "./walky/crew.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -460,6 +464,17 @@ const STT_MODEL_ROUTE = /^\/api\/stt\/model\/([^/]+)$/;
  * on the machine whose journal named it and is therefore a forwarded READ.
  */
 const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
+
+/**
+ * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
+ * newest receipt. Read-gated like the pane read. A route of its own beside `PANE_ROUTE` for 1.23.0:
+ * the GET answers this collie's own sessions only, and a `?host=` read answers 400.
+ *
+ * The same path carries the lead's message to a member (CREW_PROTOCOL.md §21): a POST, reached only
+ * through the crew dispatch, answered by walky's own handler (`bridge/walky/crew.ts`), never by the
+ * phone's reply. `bridge/crew/forward.ts` mirrors this literal one-for-one (`forward.test.ts`).
+ */
+const WALKY_PANE_ROUTE = /^\/api\/pane\/([^/]+)\/walky$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -1020,6 +1035,17 @@ export function startServer(opts: {
    */
   surfaceTotals?: () => SurfaceTotals | null;
   /**
+   * Walky talky (M62): the service the local socket also calls. Absent, the three `/api/walky` routes
+   * answer 404: an instance built without it (a test) takes no message.
+   */
+  walky?: WalkyService;
+  /**
+   * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
+   * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
+   * test) ⇒ that POST answers 404, which the lead reads as an older member.
+   */
+  walkyCrew?: Pick<WalkyCrew, "fromLead">;
+  /**
    * The **deposed** answer, when this collie has learned the crown has moved (CREW_PROTOCOL.md
    * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
    * instance that has not been deposed passes `undefined` and this file's dispatch is byte-identical
@@ -1226,6 +1252,7 @@ export function startServer(opts: {
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
   const gitHeads = opts.gitHeads;
+  const walky = opts.walky;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
   /**
@@ -2036,6 +2063,29 @@ export function startServer(opts: {
         const gone = await forgetDeviceRows(addedLaunchers, forgotten.trim(), "crew", audit.scoped({ via: "crew", from }), "device-revoked");
         return json({ ok: true, removed: gone.length }, req.headers.get("accept-encoding"));
       }
+      // A walky talky message the lead routed here (§21). Crew-only by construction: the browser path
+      // answers only the GET on this path. Not behind the device gate: no phone stands behind it, and
+      // the lead's attestation in the body is what admits it (bridge/walky/crew.ts checks it).
+      const walkyPane = url.pathname.match(WALKY_PANE_ROUTE);
+      if (walkyPane && req.method === "POST") {
+        const handler = opts.walkyCrew;
+        if (handler === undefined) return jsonError({ error: "not found" }, 404, null);
+        let segment: string;
+        let body: JsonValue | undefined;
+        try {
+          segment = decodeURIComponent(walkyPane[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `checkFromLead` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await handler.fromLead(segment, body, from);
+        return new Response(JSON.stringify(answer.body), { status: answer.status, headers: { "content-type": "application/json; charset=utf-8" } });
+      }
       const routed = await serveSessionRoute(req, url, {
         resolve: async () => localRuntime(session, null),
         gate: (level) => {
@@ -2464,6 +2514,50 @@ export function startServer(opts: {
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
         return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
+      }
+      // ── Walky talky (M62) ────────────────────────────────────────────────
+      // A message from the phone is an operator's, under the paired device's label, and a write under
+      // the same gate a reply rides. `who` and a pane's list are reads. This collie's own panes only in
+      // 1.23.0: a `?host=` read answers 400 until spec 03 makes the pane list forwardable, and an
+      // address on another member is the crew seam's business (bridge/walky/deliver.ts `routeRemote`).
+      if (pathname === "/api/walky" && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `parsePhoneSend` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return walkyPostRoute(walky, body, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      if (pathname === "/api/walky/who" && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(WALKY_LOCAL_TEXT, 400);
+        return walkyWhoRoute(walky, req.headers.get("accept-encoding"));
+      }
+      const walkyPane = pathname.match(WALKY_PANE_ROUTE);
+      // The POST on this path is the lead's, through the crew dispatch (§21): never a phone's.
+      if (walkyPane && req.method !== "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        return text("method not allowed", 405);
+      }
+      if (walkyPane && req.method === "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        if (host.kind === "member") return text(WALKY_LOCAL_TEXT, 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(walkyPane[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        return walkyPaneRoute(walky, rt.name, paneId, url.searchParams.get("limit"), req.headers.get("accept-encoding"));
       }
       // ── Ask v1 (M56 spec 08) ─────────────────────────────────────────────
       // `POST /api/ask/<id>?session=<name>`: a tap on a dialog card, as one Answer to a single-use ask
@@ -7097,6 +7191,47 @@ async function programSendRoute(
  * settled requests for the pane, newest first. With the protocol off the route is not there; a call
  * with no pane is a 400. A program session lists its own driver's receipts.
  */
+/** What a walky talky route answers on a bridge built without the service. */
+export const WALKY_OFF_TEXT = "walky talky is not running on this bridge";
+/** What a walky talky read answers with `?host=` in 1.23.0. */
+export const WALKY_LOCAL_TEXT = "walky talky reads this machine's panes only for now; ask the machine itself";
+
+/** `POST /api/walky`: one message from the phone, as an operator, under the device's label. */
+export async function walkyPostRoute(
+  walky: WalkyService | undefined,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  const input = parsePhoneSend(body);
+  if ("error" in input) return text(input.error, 400);
+  const answer = await walky.send(input, { kind: "operator", label: context.device ?? "phone" });
+  context.audit.record({ action: "walky.send", device: context.device, detail: { to: input.to, textLength: input.body.length } });
+  if (!answer.ok) return text(answer.error, 400);
+  // One pane answers one receipt; a fan-out (`all`, `<member>/all`) answers one per pane.
+  if (parseAddress(input.to)?.kind === "pane" && answer.receipts.length === 1) return json({ receipt: answer.receipts[0] }, context.acceptEncoding);
+  return json({ receipts: answer.receipts }, context.acceptEncoding);
+}
+
+/** `GET /api/walky/who`: every reachable target. */
+export function walkyWhoRoute(walky: WalkyService | undefined, acceptEncoding: string | null): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  return json({ targets: walky.who() }, acceptEncoding);
+}
+
+/** The most messages one pane list answers, and the default. */
+export const WALKY_LIST_MAX = 200;
+const WALKY_LIST_DEFAULT = 50;
+
+/** `GET /api/pane/:id/walky?limit=50`: the messages that reached one pane, newest first. */
+export function walkyPaneRoute(walky: WalkyService | undefined, session: string, paneId: string, limitRaw: string | null, acceptEncoding: string | null): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isPaneId(paneId)) return text("bad pane", 400);
+  const limit = limitRaw === null ? WALKY_LIST_DEFAULT : Number(limitRaw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > WALKY_LIST_MAX) return text("bad limit", 400);
+  return json({ messages: walky.inbox(session, paneId, true, limit) }, acceptEncoding);
+}
+
 export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {
   if (rt.send === undefined && rt.driver === undefined) return text(SEND_OFF_TEXT, 404);
   if (pane === null || pane.length === 0 || pane.length > 256) return text("bad pane", 400);

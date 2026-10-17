@@ -102,7 +102,7 @@ function readMarker(entry: JsonValue): BeaconMarker | null {
  * nest" bug this list exists to prevent. A record with no readable marker at all names no pane and is
  * rejected by the caller.
  */
-function readMarkers(value: JsonValue | undefined): BeaconMarker[] {
+export function readMarkers(value: JsonValue | undefined): BeaconMarker[] {
   if (!Array.isArray(value)) return [];
   const markers: BeaconMarker[] = [];
   for (const entry of value.slice(0, MAX_MARKERS)) {

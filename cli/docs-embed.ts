@@ -39,6 +39,7 @@ import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
+import walkyTalky from "../docs/walky-talky.md" with { type: "text" };
 import walkyTalkySkill from "../docs/walky-talky-skill.md" with { type: "text" };
 import windows from "../docs/windows.md" with { type: "text" };
 
@@ -150,6 +151,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "multiplexers",
     purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each terminal can answer",
     text: multiplexers,
+  },
+  {
+    name: "walky-talky",
+    purpose: "Messages between agent sessions: who, send, reply, inbox, receipts and limits",
+    text: walkyTalky,
   },
   {
     name: "walky-talky-skill",

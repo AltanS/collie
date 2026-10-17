@@ -296,6 +296,12 @@ describe("which routes cross a link", () => {
     expect(crewRouteFor("/api/durable/conversation/c1/close")).toBeNull();
     expect(crewRouteFor("/api/durable/conversations/x")).toBeNull();
     expect(apiPathFor("durable/conversation/c1/items")).toBe("/api/durable/conversation/c1/items");
+    // Walky talky's message from the lead (CREW_PROTOCOL.md §21): one opaque pane segment, then the
+    // literal `walky`, on a route of its own beside `PANE_ROUTE` in server.ts.
+    const walky = server.match(/^const WALKY_PANE_ROUTE = (.+);$/m)![1]!;
+    expect(walky).toBe("/^\\/api\\/pane\\/([^/]+)\\/walky$/");
+    expect(crewRouteFor("/api/pane/x/walky")).toBe("pane/x/walky");
+    expect(crewRouteFor("/api/pane/x/walky/y")).toBeNull();
   });
 
   test("history: the program's list and items are reads, a reopen is a write audited as durable.reopen, and the items are masked as History", () => {

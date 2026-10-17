@@ -1,0 +1,120 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { inboxKey, LOG_KEEP_MS, LOG_MAX_LINES, LOG_ROTATE_TO, WalkyLog, INBOX_MAX } from "./log.ts";
+import type { WalkyMessage, WalkyReceipt } from "./types.ts";
+
+const dirs: string[] = [];
+function fresh(): string {
+  const dir = join(mkdtempSync(join(tmpdir(), "walky-log-")), "walky");
+  dirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(join(dir, ".."), { recursive: true, force: true });
+});
+
+function message(n: number, at = 1000): WalkyMessage {
+  return {
+    v: 1,
+    id: `wt_${String(n).padStart(12, "0")}`,
+    kind: "operator",
+    from: { memberId: null, address: null, harness: null, label: "cli" },
+    to: "local/w1:p1",
+    replyTo: null,
+    at,
+    body: `body ${n}`,
+    signer: null,
+    signature: null,
+  };
+}
+
+function receipt(m: WalkyMessage, state: WalkyReceipt["state"], at = 1000): WalkyReceipt {
+  return { id: m.id, target: "local/w1:p1", state, verified: "local", at, by: "solo" };
+}
+
+const here = { session: "main", paneId: "w1:p1" };
+
+describe("the log", () => {
+  test("keeps a message with its newest receipt, across a restart", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    const m = message(1);
+    log.record(m, "local/w1:p1", here, receipt(m, "accepted"));
+    log.update(receipt(m, "delivered", 1001));
+    const again = new WalkyLog(dir, () => 1002);
+    expect(again.get(m.id, "local/w1:p1")?.receipt.state).toBe("delivered");
+    expect(again.forPane("main", "w1:p1", 10).map((entry) => entry.id)).toEqual([m.id]);
+    expect(again.pending()).toEqual([]);
+  });
+
+  test("is private: a 0700 folder and a 0600 file", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(dir, "log.jsonl")).mode & 0o777).toBe(0o600);
+  });
+
+  test("skips a line it cannot read", () => {
+    const dir = fresh();
+    new WalkyLog(dir, () => 1000).record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    writeFileSync(join(dir, "log.jsonl"), `${readFileSync(join(dir, "log.jsonl"), "utf8")}{"t":"message","at":1}\nnot json\n`);
+    expect(new WalkyLog(dir, () => 1000).all(message(1).id)).toHaveLength(1);
+  });
+
+  test("drops what is older than 7 days", () => {
+    const dir = fresh();
+    let now = 1000;
+    const log = new WalkyLog(dir, () => now);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    now = 1000 + LOG_KEEP_MS + 1;
+    log.record(message(2, now), "local/w1:p1", here, receipt(message(2, now), "accepted", now));
+    expect(log.get(message(1).id, "local/w1:p1")).toBeNull();
+    expect(readFileSync(join(dir, "log.jsonl"), "utf8").trim().split("\n")).toHaveLength(2);
+  });
+
+  test("keeps at most 2,000 lines, rotating to the newest 1,500", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    for (let n = 0; n < LOG_MAX_LINES / 2 + 1; n++) log.record(message(n), "local/w1:p1", here, receipt(message(n), "accepted"));
+    const lines = readFileSync(join(dir, "log.jsonl"), "utf8").trim().split("\n");
+    expect(lines.length).toBeLessThanOrEqual(LOG_MAX_LINES);
+    // The rotate ran after the 2,001st line; the receipt line of that message came after it.
+    expect(lines.length).toBe(LOG_ROTATE_TO + 1);
+    expect(log.get(message(0).id, "local/w1:p1")).toBeNull();
+    expect(log.get(message(LOG_MAX_LINES / 2).id, "local/w1:p1")).not.toBeNull();
+  });
+});
+
+describe("the inbox", () => {
+  test("holds a pane's unread messages under a hashed name, and ack takes them out", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.inboxAdd("main", "../../etc", message(1));
+    log.inboxAdd("main", "../../etc", message(2));
+    log.inboxAdd("main", "../../etc", message(2));
+    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "../../etc")}.json`]);
+    expect(log.inbox("main", "../../etc").map((m) => m.id)).toEqual([message(1).id, message(2).id]);
+    expect(log.ack("main", "../../etc", [message(1).id])).toBe(1);
+    expect(log.inbox("main", "../../etc").map((m) => m.id)).toEqual([message(2).id]);
+    expect(log.ack("main", "../../etc", null)).toBe(1);
+    expect(existsSync(join(dir, "inbox", `${inboxKey("main", "../../etc")}.json`))).toBe(false);
+  });
+
+  test("keeps at most 200, the oldest dropped", () => {
+    const log = new WalkyLog(fresh(), () => 1000);
+    for (let n = 0; n < INBOX_MAX + 5; n++) log.inboxAdd("main", "w1:p1", message(n));
+    const held = log.inbox("main", "w1:p1");
+    expect(held).toHaveLength(INBOX_MAX);
+    expect(held[0]!.id).toBe(message(5).id);
+  });
+
+  test("a session and a pane are one inbox: another session's same pane id is another", () => {
+    const log = new WalkyLog(fresh(), () => 1000);
+    log.inboxAdd("main", "%1", message(1));
+    expect(log.inbox("other", "%1")).toEqual([]);
+  });
+});

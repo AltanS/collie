@@ -240,6 +240,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     multiSession: true,
     surfaceShadow: false,
     sendProtocol: false,
+    walky: true,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,

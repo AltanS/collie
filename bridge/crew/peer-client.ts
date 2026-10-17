@@ -829,6 +829,10 @@ export class PeerClient {
    * (§10.1). Absent — every forwarded read — is the poll budget plus a cold link's bootstrap credit,
    * exactly as before. `forward.ts` is the only caller that passes it, and it passes it on the same
    * read/write split §5 and §10.3 are already written in terms of.
+   *
+   * `sign` is false for every forward, whose body is a stream (§8.6). One caller passes true: a
+   * member's walky talky message to its lead (§21), whose body is a small JSON string and whose route
+   * is in the signed set, and which reads the lead's own status (a 404 is an older lead).
    */
   async proxy(
     link: CrewLink,
@@ -836,8 +840,9 @@ export class PeerClient {
     params?: Record<string, string>,
     init: CrewRequestInit = {},
     budgetMs?: number,
+    sign = false,
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "passthrough", budgetMs, false);
+    return this.dial(link, route, params, init, "passthrough", budgetMs, sign);
   }
 
   /**

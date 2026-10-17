@@ -4,11 +4,17 @@ import { describe, expect, it } from "vitest";
 
 // M56 spec 02: the surface code never names a harness. The ids are the file stems in `profiles/`,
 // read by directory, so a new profile joins this check with no edit here. An id that appears as an
-// identifier or as a string literal in `web/src/lib/surface/*.ts` or `bridge/surface/*.ts` fails.
+// identifier or as a string literal in `web/src/lib/surface/*.ts`, `bridge/surface/*.ts` or
+// `bridge/walky/*.ts` fails.
 // Comments are not scanned. Test files are not scanned either: a test of a profile has to name it.
 // `profiles/` itself is the one place a name may live, and it is not in either glob.
 
-const SURFACE_DIRS = [join(import.meta.dirname), join(import.meta.dirname, "..", "..", "..", "..", "bridge", "surface")];
+// Walky talky (M62) holds the same rule: a message names its sender's harness as an open string.
+const SURFACE_DIRS = [
+  join(import.meta.dirname),
+  join(import.meta.dirname, "..", "..", "..", "..", "bridge", "surface"),
+  join(import.meta.dirname, "..", "..", "..", "..", "bridge", "walky"),
+];
 const PROFILES_DIR = join(import.meta.dirname, "profiles");
 
 function profileIds(): string[] {
