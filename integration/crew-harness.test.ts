@@ -879,17 +879,19 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
       10_000,
       "the lead's who never listed the member's pane",
     );
-    expect(await walky(peer, { op: "who" })).toMatchObject({ ok: true, note: expect.stringContaining("ask the lead") });
+    expect(await walky(peer, { op: "who" })).toMatchObject({ ok: true, note: expect.stringContaining("run `collie walky who` on the lead (") });
 
     // The lead to the member: signed by the lead, so the member verifies the origin too.
     const down = await operatorSend(lead, { id: "wt_crewdown0001", to: `${peerId}/${peer.paneId}`, body: "from the lead" });
     expect(down).toMatchObject({ receipt: { state: "accepted", target: `${peerId}/${peer.paneId}`, by: peerId, verified: "origin" } });
     expect(await walky(peer, { op: "status", id: "wt_crewdown0001" })).toMatchObject({ ok: true, receipts: [{ target: `${peerId}/${peer.paneId}`, verified: "origin" }] });
 
-    // The member to the lead: the lead checks the member's signature and writes `origin`; the member
-    // keeps `accepted` and is told where the outcome lives.
-    const up = await operatorSend(peer, { id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member" });
-    expect(up).toMatchObject({ receipt: { state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId } });
+    // The member to the lead, from the member's agent pane over its socket (a member takes no phone:
+    // its listener admits only the lead). The lead checks the member's signature and writes `origin`;
+    // the member keeps `accepted` and is told where the outcome lives.
+    const marker = { namespace: "herdr", scope: peer.socketPath, pane: peer.paneId, schemaVersion: 1, harness: "claude" };
+    const up = await walky(peer, { op: "send", id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member", replyTo: null, markers: [marker] });
+    expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId }] });
     expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target: `${leadId}/${lead.paneId}`, verified: "origin" }] });
     expect(await walky(peer, { op: "status", id: "wt_crewup000001" })).toMatchObject({ elsewhere: [`${leadId}/${lead.paneId}`] });
   }, 60_000);
