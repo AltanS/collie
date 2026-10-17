@@ -3,8 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadSlashLists } from "../slash-commands";
-import { scratchBridgeEnv } from "./phone-bridge";
-import { beltCommands, operatorBelt, shippedBelt, shippedBeltFromDisk, slashPlan, writeBeaconHooks } from "./phone";
+import { asJsonObject, parseJson, type JsonValue } from "../../../web/src/lib/json";
+import { ScratchBridge, scratchBridgeEnv } from "./phone-bridge";
+import { PhoneClient } from "./phone-client";
+import { beltCommands, fullScreenCandidates, operatorBelt, otherScreenIn, sendStartLine, SHELL_TWO_TAPS, shippedBelt, shippedBeltFromDisk, slashPlan, writeBeaconHooks, type PhoneEnv } from "./phone";
+import { viewOf } from "./screens";
 import { freePort, RESERVED_PORTS } from "./ports";
 
 let dirs: string[] = [];
@@ -32,6 +35,12 @@ describe("the belt the slash scenario sends", () => {
     expect(beltCommands(["/model"], ["/fork"])).toEqual(["/fork"]);
     expect(beltCommands(["/model"], [])).toEqual(["/model"]);
     expect(operatorBelt(undefined, "claude")).toEqual([]);
+  });
+
+  test("a command the agent's menu marks removed is never sent, even from the belt or the safe list", () => {
+    const plan = slashPlan(["/model", "/effort", "/agents"], loadSlashLists("claude"), ["/effort", "/agents"]);
+    expect(plan.send).toEqual(["/model", "/help"]);
+    expect(plan.removed).toEqual(["/effort", "/agents"]);
   });
 
   test("/model and /help go first, then the belt's safe commands; /clear and /compact are never sent", () => {
@@ -82,5 +91,88 @@ describe("the scratch bridge", () => {
     expect(Object.keys(doc)).toEqual(["hooks"]);
     expect(Object.keys(doc.hooks)).toContain("UserPromptSubmit");
     expect(JSON.stringify(doc)).not.toContain("PermissionRequest");
+  });
+});
+
+describe("scenario 6: a screen of its own", () => {
+  const lists = loadSlashLists("claude");
+
+  test("/agents is tried first only when the menu lists it and does not mark it removed; then safe dialogs, agent and task names first", () => {
+    const names = ["/agents", "/help", "/tasks", "/context", "/mystery", "/clear"];
+    expect(fullScreenCandidates({ names, removed: [] }, lists)).toEqual(["/agents", "/tasks", "/help"]);
+    expect(fullScreenCandidates({ names, removed: ["/agents"] }, lists)).toEqual(["/tasks", "/help"]);
+    expect(fullScreenCandidates({ names: ["/mystery", "/clear"], removed: [] }, lists)).toEqual([]);
+  });
+
+  test("the agents screen's footer row is read from the profile's otherScreens", () => {
+    const panes = join(import.meta.dir, "..", "..", "..", "web", "src", "fixtures", "panes");
+    const agents = viewOf(readFileSync(join(panes, "claude-lab--agents-screen--w82.txt"), "utf8"), "claude");
+    const idle = viewOf(readFileSync(join(panes, "claude--fresh-idle.txt"), "utf8"), "claude");
+    expect(otherScreenIn(agents.plain, "claude")).toBe("agents screen");
+    expect(otherScreenIn(idle.plain, "claude")).toBeNull();
+  });
+});
+
+describe("the start line on a shell pane", () => {
+  interface Leg {
+    readonly env: PhoneEnv;
+    readonly bodies: JsonValue[];
+    readonly client: PhoneClient;
+  }
+
+  /** A leg env around a fake bridge whose /api/send answers come from `answers`, in order. */
+  function legWith(answers: JsonValue[]): Leg {
+    const bodies: JsonValue[] = [];
+    const client = new PhoneClient("http://127.0.0.1:41000", "t", async (url, init) => {
+      if (url.endsWith("/api/workspace")) return new Response(JSON.stringify({ ok: true, pane: { paneId: "%1" } }));
+      bodies.push(parseJson(init.body ?? "") ?? null);
+      return new Response(JSON.stringify(answers.shift() ?? {}));
+    });
+    const env: PhoneEnv = {
+      harness: "claude",
+      version: "2.1.302",
+      client,
+      target: "scratch",
+      streamWanted: ["effective"],
+      agentBinary: "/bin/true",
+      agentArgs: [],
+      agentEnv: {},
+      workDir: "/nowhere",
+      outDir: "/nowhere",
+      redact: (text) => text,
+      turns: { used: 0, cap: 14 },
+      gaps: [],
+      lists: loadSlashLists("claude"),
+      belt: [],
+      log: () => {},
+    };
+    return { env, bodies, client };
+  }
+
+  test("a blind send that comes back sent on the first tap passes, with the no-profile screen words", async () => {
+    const { env, bodies, client } = legWith([{ receipt: { requestId: "r1", outcome: "sent", keys: ["Enter"], saw: { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" } }, offers: [] }]);
+    const pane = await client.createPane("/p", "x");
+    const done = await sendStartLine(env, "idle-send", pane, "exec /p/start.sh");
+    expect(done.went).toBe(true);
+    expect(done.check).toMatchObject({ verdict: "pass" });
+    expect(done.check.detail).toContain("saw no-profile");
+    expect(bodies).toHaveLength(1);
+  });
+
+  test("refused unconfirmed on the first tap fails as a two-tap shell send, and the commit tap still starts the agent", async () => {
+    const { env, bodies, client } = legWith([{ receipt: { requestId: "r1", outcome: "refused", reason: "unconfirmed", keys: [] }, rowsHash: "h1", offers: ["commit"] }, { receipt: { requestId: "r2", outcome: "unknown", reason: "no_evidence", keys: ["Enter"] }, offers: [] }]);
+    const pane = await client.createPane("/p", "x");
+    const done = await sendStartLine(env, "idle-send", pane, "exec /p/start.sh");
+    expect(done.check.verdict).toBe("fail");
+    expect(done.check.detail).toStartWith(SHELL_TWO_TAPS);
+    expect(done.went).toBe(true);
+    expect(asJsonObject(bodies[1] ?? null)?.rowsHash).toBe("h1");
+  });
+});
+
+describe("the scratch bridge's folder", () => {
+  test("it refuses a folder too near the root, because it deletes the folder first", async () => {
+    const options = { repoRoot: "/repo", root: "/lab", tmuxSocket: "s", tmuxBinary: "/usr/bin/tmux", agentBinDir: "/b", agentConfig: "/c", env: {}, port: 45001 };
+    await expect(ScratchBridge.start(options, () => {})).rejects.toThrow(/deletes it first/);
   });
 });

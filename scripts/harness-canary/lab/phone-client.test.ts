@@ -83,6 +83,14 @@ describe("the phone's call shapes", () => {
     expect(bodyOf(calls, 3)).toMatchObject({ rowsHash: "h2", capAck: true, id: made.id });
   });
 
+  test("Type is a reply with no submit: text into the pane, no Enter, no Send Protocol", async () => {
+    const { calls, client } = fakeBridge((path) => (path === "/api/workspace" ? { ok: true, pane: { paneId: "%1" } } : { ok: true }));
+    const pane = await client.createPane("/tmp/p", "x");
+    expect(await client.type(pane, "/")).toBe(true);
+    expect(calls[1]!.url).toEndWith("/api/pane/%251/reply");
+    expect(bodyOf(calls, 1)).toEqual({ text: "/", submit: false });
+  });
+
   test("an ask answer is a person's tap with the ask's hash", async () => {
     const { calls, client } = fakeBridge((path) => (path === "/api/workspace" ? { ok: true, pane: { paneId: "%1" } } : { receipt: { outcome: "sent", keys: ["3", "Enter"] } }));
     const pane = await client.createPane("/tmp/p", "x");

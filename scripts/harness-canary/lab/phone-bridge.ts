@@ -18,7 +18,7 @@
 
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { DEVICES_FILENAME, sha256Hex } from "../../../bridge/pairing";
 import { SERVER_ENV_KEYS, type EnvMap } from "./harnesses";
 import { PhoneClient } from "./phone-client";
@@ -75,6 +75,13 @@ export function scratchBridgeEnv(options: ScratchBridgeOptions, port: number): E
   };
 }
 
+/** How many folders deep a path sits under its root: `/a/b/c` is 3. */
+function depthOf(path: string): number {
+  let depth = 0;
+  for (let at = path; dirname(at) !== at; at = dirname(at)) depth++;
+  return depth;
+}
+
 export class ScratchBridge {
   private constructor(
     readonly url: string,
@@ -93,6 +100,9 @@ export class ScratchBridge {
     if (port >= RESERVED_PORTS.from && port <= RESERVED_PORTS.to) throw new Error(`the scratch bridge refuses port ${String(port)}: it belongs to the person's Collie`);
     const env = scratchBridgeEnv(options, port);
     const stateDir = env.COLLIE_STATE_DIR!;
+    // Fresh state on every start: no pairing, counter or cap of an earlier run reaches this one.
+    if (!isAbsolute(options.root) || depthOf(options.root) < 3) throw new Error(`the scratch bridge refuses the folder ${options.root}: it deletes it first`);
+    rmSync(options.root, { recursive: true, force: true });
     for (const dir of [options.root, stateDir, env.HERDR_PLUGIN_CONFIG_DIR!, env.HOME!, env.XDG_STATE_HOME!]) mkdirSync(dir, { recursive: true, mode: 0o700 });
     const token = randomBytes(32).toString("hex");
     const now = Date.now();

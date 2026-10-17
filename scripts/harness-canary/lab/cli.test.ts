@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import { parseBridgeUrl, parseCli, PHONE_ONLY_SUFFIX, readTokenFile, type CliOptions } from "./cli";
+import { parseBridgeUrl, parseCli, PHONE_ONLY_SUFFIX, phoneOnlyRoot, readTokenFile, type CliOptions } from "./cli";
 
 // The phone leg's flags: --leg, --bridge and --token-file.
 
@@ -21,9 +21,13 @@ describe("--leg", () => {
   test("--leg phone is a hand run of one named version, with its own lab root and ledger", () => {
     const cli = argv("--leg", "phone", "--version", "claude=2.1.302");
     expect(cli.legs).toBe("phone");
-    expect(cli.labRoot).toBe(join(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")), PHONE_ONLY_SUFFIX));
+    expect(cli.labRoot).toBe(phoneOnlyRoot(resolve(join("/home/u", ".cache", "collie-lab", "harness-lab")), cli.ledger));
+    expect(cli.labRoot).toMatch(/\/leg-phone\/ledger-[0-9a-f]{10}$/u);
     expect(cli.ledger).toBe(join("/home/u", ".local", "state", "collie-harness-lab", `ledger.${PHONE_ONLY_SUFFIX}.json`));
-    expect(argv("--leg", "phone", "--version", "claude=2.1.302", "--ledger", "/tmp/l.json").ledger).toBe(`/tmp/l.${PHONE_ONLY_SUFFIX}.json`);
+    const other = argv("--leg", "phone", "--version", "claude=2.1.302", "--ledger", "/tmp/l.json");
+    expect(other.ledger).toBe(`/tmp/l.${PHONE_ONLY_SUFFIX}.json`);
+    // Two ledgers, two folders: one run's start sweep never deletes the other's run folder.
+    expect(other.labRoot).not.toBe(cli.labRoot);
   });
 
   test("--leg phone needs one version and runs Claude only; an unknown leg is refused", () => {

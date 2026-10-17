@@ -1,6 +1,7 @@
 // The lab's command line (M56 spec 10), shared by the nightly entry (main.ts) and the version-change
 // entry (../watch.ts). Pure parts first, so the parse and the one-per-version rules are tested.
 
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -42,6 +43,16 @@ export interface CliOptions {
 
 /** The suffix a phone-only run puts on its lab root and its ledger, so it never blocks or sweeps the nightly run. */
 export const PHONE_ONLY_SUFFIX = "leg-phone";
+
+/**
+ * The lab root of a phone-only run: one folder per ledger under `<lab root>/leg-phone/`. A run's start
+ * sweep deletes every run folder its own ledger has no live row for, so two hand runs with two ledgers
+ * in one folder delete each other's run folder mid-run (2026-10-17: the scratch bridge lost its state
+ * and answered 403). The folder name (`ledger-<hash>`) is no run folder name, so no sweep takes it.
+ */
+export function phoneOnlyRoot(labRoot: string, ledger: string): string {
+  return join(labRoot, PHONE_ONLY_SUFFIX, `ledger-${createHash("sha256").update(resolve(ledger)).digest("hex").slice(0, 10)}`);
+}
 
 /** A `--bridge` URL: http on this machine, a port, no path. The start line names the lab's binary by path. */
 export function parseBridgeUrl(text: string): string {
@@ -196,8 +207,8 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
     if (!plan && pairs.length !== 1) throw new Error("--leg phone is a hand run of one version: name it with --version harness=x.y.z");
     for (const pair of pairs) if (HARNESSES[pair.harness]?.phone !== true) throw new Error(`--leg phone runs Claude only, not ${pair.harness}`);
     // Its own lab root and ledger: a phone-only row never blocks the nightly run, and neither run's sweep removes the other's folders.
-    labRoot = join(labRoot, PHONE_ONLY_SUFFIX);
     ledger = ledger.endsWith(".json") ? `${ledger.slice(0, -".json".length)}.${PHONE_ONLY_SUFFIX}.json` : `${ledger}.${PHONE_ONLY_SUFFIX}`;
+    labRoot = phoneOnlyRoot(labRoot, ledger);
   }
   const bridge = bridgeUrl === null || tokenFile === null ? null : { url: bridgeUrl, tokenFile };
   return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions, legs, bridge };
