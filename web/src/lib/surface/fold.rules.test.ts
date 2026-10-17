@@ -92,6 +92,22 @@ describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", ()
   });
 });
 
+// Hermes draws `☤` in front of its input while the agent runs, and nowhere else in that row: the
+// prompt row is the turn's sign. A streaming reply shows no spinner, so nothing else would say it.
+describe("a running turn on Hermes 0.22.2 captures (2026-10-16)", () => {
+  const read = (name: string) => readScreen(fixtureRows(name), agentOf("hermes"), idleFor("hermes")).surface;
+
+  it("the `☤` prompt reads running with the box empty, so a send waits for the turn", () => {
+    expect(read("hermes--running.txt")).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("a clarify's typed answer reads idle and free: the question's ticking panel is no turn", () => {
+    for (const name of ["hermes--clarify-other.txt", "hermes--clarify-other-w60.txt", "hermes--clarify-open.txt"]) {
+      expect(read(name), name).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    }
+  });
+});
+
 describe("foldSurface", () => {
   const context = { idle: CLAUDE, pollMs: 1000 };
 

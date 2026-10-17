@@ -313,7 +313,9 @@ export interface Profile {
     /**
      * Rows that mean a turn runs, as regular expression sources, read on the volatile band above the
      * box, the frame's bottom edge and the rows under it (cues.ts `runningSign`). Optional: the generic running signs above the box
-     * always count. For a harness that marks a turn on its own status rows.
+     * always count. For a harness that marks a turn on its own status rows. The prompt row is read
+     * too, for a harness that swaps its prompt glyph while a turn runs: a draft that happens to match
+     * only reads as a turn, which sends nothing.
      */
     readonly runningRows?: readonly string[];
     /**

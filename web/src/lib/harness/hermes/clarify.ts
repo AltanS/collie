@@ -37,7 +37,6 @@ import { tailLinesFor } from "../../tail-lines";
 import { locateInput, type InputFrame } from "./chrome";
 import {
   CLARIFY_HINT,
-  FREETEXT_HINT,
   isBlank,
   isPanelRow,
   PANEL_BOTTOM,
@@ -209,21 +208,6 @@ function parseBody(texts: string[], top: number, bottom: number): ParsedQuestion
     return null;
   }
   return questions;
-}
-
-/**
- * The question a clarify's typed answer (`✎ ❯`) is for: the active question's text, read off the
- * panel above the input. Null when the input is not that, or the panel cannot be read (clipped,
- * an unknown row). The adapter's `inputPurpose` is built from it.
- */
-export function freetextQuestion(lines: StyledLine[]): string | null {
-  const frame = locateInput(lines);
-  if (frame === null || frame.state !== "freetext") return null;
-  const span = panelAboveInput(lines, frame, FREETEXT_HINT);
-  if (span === null || TITLE.exec(rowTexts(lines)[span.top]!) === null) return null;
-  const questions = parseBody(rowTexts(lines), span.top, span.bottom);
-  const active = questions?.filter((q) => q.marker === "▸") ?? [];
-  return active.length === 1 ? active[0]!.text : null;
 }
 
 /** The clarify panel at the tail, waiting for a choice, as a `prompt-select`; or null. */

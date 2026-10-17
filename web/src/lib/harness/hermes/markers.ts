@@ -107,8 +107,7 @@ export const STATUS_BAR = /^ ?(?:[^│☤]{1,20} │ )?☤ \S/;
 export const SPINNER_END = /\((?: *\d+\.\d+s|\d+m\d+s)(?: · [^()]+)?\)$/;
 
 /** The key-hint row Hermes prints under a panel, its countdown `(Ns)` optional (absent when the
- *  timeout is unlimited). `hint_clarify_batch`, `hint_approval` and `hint_clarify_freetext` in
+ *  timeout is unlimited). `hint_clarify_batch` and `hint_approval` in
  *  locales/en.yaml; the countdown is `_poll_modal_queue`'s, repainted about once a second. */
 export const CLARIFY_HINT = /^ {2}↑\/↓ to select, Enter to lock, Tab next question(?: {2}\(\d+s\))?$/;
-export const FREETEXT_HINT = /^ {2}type your answer and press Enter(?: {2}\(\d+s\))?$/;
 export const APPROVAL_HINT = /^ {2}↑\/↓ to select, Enter to confirm(?: {2}\(\d+s\))?$/;

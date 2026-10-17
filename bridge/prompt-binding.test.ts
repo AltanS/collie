@@ -364,9 +364,16 @@ describe("an input box under the region (shadow only)", () => {
     expect(composerBelowShadow(fresh, region)).toBeUndefined();
   });
 
-  test("a half box under the region (no bottom edge) is no frame", () => {
-    const fresh = [region, RULE, "❯ "].join("\n");
+  test("a half box under the region (no bottom edge) on a wide pane is no frame", () => {
+    const fresh = [region, "─".repeat(80), "❯ "].join("\n");
     expect(composerBelowShadow(fresh, region)).toBeUndefined();
+  });
+
+  // Below 64 columns Hermes draws a rule and its `❯` row and nothing under them, so there the same
+  // half box is a whole box, and the shadow records it.
+  test("a rule and a `❯` row under the region on a narrow pane are Hermes's whole box", () => {
+    const fresh = [region, RULE, "❯ "].join("\n");
+    expect(composerBelowShadow(fresh, region)).toBe("composer_below");
   });
 
   test("a region the text check refuses gives no shadow", () => {

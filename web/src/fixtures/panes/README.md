@@ -2527,7 +2527,7 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--draft-wrapped` | One long line wrapped onto a second row | composer, rows joined |
 | `hermes--draft-multiline` | Three lines typed with raw newlines, none submitted | composer, newlines kept |
 | `hermes--draft-six-lines` | Six lines typed in one write: no paste placeholder | composer, all six read back |
-| `hermes--running` | A turn streaming, `☤ ❯` and the busy placeholder | composer (a send interrupts the turn) |
+| `hermes--running` | A turn streaming, `☤ ❯` and the busy placeholder | composer, turn running (a send is held) |
 | `hermes--done` | The turn finished after a clarify answer | composer |
 | `hermes--slash-popup` | `/mo` typed, grey auto-suggestion `a`, completion menu under the input | composer, draft `/mo` |
 | `hermes--model-picker` | `/model`, the model list; status slot blank, input still idle | picker, Ctrl+C card |
@@ -2542,7 +2542,7 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--clarify-two-second` | The first locked as `Green`, the second active | digits for the second |
 | `hermes--clarify-multi` | A multi-select question, nothing toggled | raw, Keys pad, no card |
 | `hermes--clarify-multi-toggled` | The same after `2` toggled `Tests` | raw, Keys pad, no card |
-| `hermes--clarify-other` | After `4`: `Other (type below)`, prompt `✎ ❯` | composer, bound to the `✎` row |
+| `hermes--clarify-other` | After `4`: `Other (type below)`, prompt `✎ ❯` | composer: a send answers the question |
 | `hermes--clarify-other-draft` | `CockroachDB 23.2` typed as the answer, not sent | composer, draft read back |
 | `hermes--clarify-other-w60` | The typed-answer screen at 60 columns, prompt `✎` | composer |
 | `hermes--clarify-other-draft-w60` | `Firebird` typed at 60 columns | composer, draft read back |

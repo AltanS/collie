@@ -7,12 +7,14 @@
 //   - clarify, waiting for a choice (`prompt-select`, a digit locks the choice; CLARIFY_NOTES.md),
 //   - the dangerous-command approval (`prompt-select`, a digit confirms; APPROVAL_NOTES.md).
 // A clarify's typed answer ("Other (type your answer)", or a question with no choices) is not a
-// dialog at all: Hermes takes it in its own input row (`✎ ❯`), so the phone's composer answers it
-// through the ordinary guarded send, bound to that row (chrome.ts).
+// dialog at all: Hermes takes it in its own input row (`✎ ❯`).
 //
-// Registering this adapter switches Hermes panes off the one-shot send: from now on
-// `extractInputDraft` is what the submit key waits on, and `composerReady` decides whether a byte is
-// typed at all (lib/reply-action.ts).
+// A send from the phone is the bridge's Send Protocol, which reads Hermes's box from its profile
+// (lib/surface/profiles/hermes.json): the idle `❯` row, the `✎` answer row and the `☤` row of a
+// running turn. This adapter lifts the panels into asks, reads the draft for the chat view, and
+// names the pickers for the unread-dialog card. `composerPrompt`, `overlayHoldsKeyboard` and
+// `submitSettleMs` served the phone's old send guard and are read by nothing since M56 spec 06
+// (harness/types.ts); they stay so their tests keep pinning the screens.
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
