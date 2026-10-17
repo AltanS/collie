@@ -129,7 +129,7 @@ async function answer(route: Route, path: string): Promise<void> {
   if (path === "/api/walky" && method === "POST") {
     // SAFETY: the body is the app's own, `lib/api.ts`'s `postWalky` is the only caller and it posts `{ id, to, body, replyTo? }`.
     const posted = route.request().postDataJSON() as { id: string; to: string };
-    return fulfillJson(route, { receipt: { id: posted.id, state: "accepted", verified: "local", at: Date.now(), by: "solo" } });
+    return fulfillJson(route, { receipt: { id: posted.id, state: "accepted", verified: "local", at: Date.now(), by: "solo", target: posted.to } });
   }
   if (/^\/api\/pane\/[^/]+$/.test(path)) {
     return fulfillJson(route, {

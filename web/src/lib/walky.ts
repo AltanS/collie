@@ -54,7 +54,11 @@ export interface WalkyReceipt {
   /** The message id. */
   id: string;
   state: WalkyState;
-  /** refused: "no such pane", "dialog open", "password prompt", "rate limit", "off", "no terminal", "signature". */
+  /**
+   * Why, in the bridge's words: "no such pane", "not an agent pane", "dialog open", "password prompt",
+   * "rate limit", "off", "no terminal" (a session with no terminal is `inbox-only`, not refused),
+   * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature".
+   */
   reason?: string;
   verified: WalkyVerified;
   /** When this state was written. */
@@ -64,11 +68,10 @@ export interface WalkyReceipt {
   /** The Send Protocol request id, when a send was made. */
   sendId?: string;
   /**
-   * NOT IN THE README. A fan-out (`to: "all"`) answers one receipt per target, and a receipt that
-   * names only the message id cannot say which target it is for. The phone reads this when the bridge
-   * sends it and falls back to `by`. Spec 01 should add it.
+   * The pane address this receipt is about. A message to `all` or `<memberId>/all` yields one receipt
+   * per target under the same message `id`, and this is what tells them apart.
    */
-  to?: string;
+  target: string;
 }
 
 /** One row of `GET /api/pane/:id/walky`: the message with its receipt. */

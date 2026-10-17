@@ -568,7 +568,7 @@ export const fixtureWalkyAgent: WalkyRow = {
   body: "Tests are green on fix-465. You can merge.",
   signer: "bluefin",
   signature: "c2ln",
-  receipt: { id: "wt_k3f9x2m8q1a0", state: "delivered", verified: "origin", at: Date.parse("2026-10-17T09:30:02Z"), by: "bluefin" },
+  receipt: { id: "wt_k3f9x2m8q1a0", state: "delivered", verified: "origin", at: Date.parse("2026-10-17T09:30:02Z"), by: "bluefin", target: "bluefin/w1:p1" },
 };
 
 /** An operator message from a paired phone, a reply to the agent's, written locally. */
@@ -583,7 +583,7 @@ export const fixtureWalkyOperator: WalkyRow = {
   body: "Stop and report what you changed.",
   signer: null,
   signature: null,
-  receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo" },
+  receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo", target: "bluefin/w1:p1" },
 };
 
 let walkyRows: WalkyRow[] = [];
@@ -602,7 +602,7 @@ export function resetWalky(): void {
   walkyPosts = [];
 }
 function walkyReceipt(id: string, to: string): WalkyReceipt {
-  return { id, state: "accepted", verified: "local", at: Date.now(), by: to.split("/")[0] ?? "solo", to };
+  return { id, state: "accepted", verified: "local", at: Date.now(), by: to.split("/")[0] ?? "solo", target: to };
 }
 
 // Default happy-path handlers; individual tests can override via server.use(...).

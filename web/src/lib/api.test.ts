@@ -1298,7 +1298,7 @@ describe("the walky talky routes (M62)", () => {
     server.use(
       http.post("/api/walky", async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json({ receipt: { id: "wt_aaaaaaaaaaaa", state: "accepted", verified: "local", at: 1, by: "solo" } });
+        return HttpResponse.json({ receipt: { id: "wt_aaaaaaaaaaaa", state: "accepted", verified: "local", at: 1, by: "solo", target: "local/w1:p1" } });
       }),
     );
     const receipts = await postWalky({ id: "wt_aaaaaaaaaaaa", to: "local/w1:p1", body: "hi", replyTo: "wt_bbbbbbbbbbbb" });

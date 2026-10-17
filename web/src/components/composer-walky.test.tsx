@@ -91,7 +91,7 @@ describe("Send as message (the Send button's long-press menu)", () => {
     const user = userEvent.setup();
     server.use(
       http.post("/api/walky", () =>
-        HttpResponse.json({ receipt: { id: "wt_aaaaaaaaaaaa", state: "refused", reason: "rate limit", verified: "local", at: 1, by: "solo" } }),
+        HttpResponse.json({ receipt: { id: "wt_aaaaaaaaaaaa", state: "refused", reason: "rate limit", verified: "local", at: 1, by: "solo", target: "local/w1:p1" } }),
       ),
     );
     renderComposer();

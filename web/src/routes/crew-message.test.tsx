@@ -47,6 +47,24 @@ describe("Message all agents", () => {
     expect(within(dialog).getByRole("textbox")).toHaveValue("");
   });
 
+  it("names each receipt's target by its label when the who list knows it", async () => {
+    server.use(
+      http.get("/api/walky/who", () =>
+        HttpResponse.json({
+          targets: [{ address: "bluefin/w1:p1", memberId: "bluefin", machine: "bluefin", harness: "claude", label: "collie#main", state: "idle" }],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderCrew();
+    const dialog = await open(user);
+    await within(dialog).findByText("Agents reached: 1");
+    await user.type(within(dialog).getByRole("textbox"), "hi");
+    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    expect(await within(dialog).findByText("collie#main (bluefin/w1:p1)")).toBeInTheDocument();
+    expect(within(dialog).getByText("minibuch/w2:p1")).toBeInTheDocument();
+  });
+
   it("aims at one machine as <memberId>/all", async () => {
     const user = userEvent.setup();
     renderCrew();

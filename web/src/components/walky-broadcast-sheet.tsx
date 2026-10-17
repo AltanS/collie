@@ -30,6 +30,12 @@ import {
 
 const ALL = "all";
 
+/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else the address. */
+function labelOf(reachable: readonly WalkyTarget[] | null, address: string): string {
+  const known = reachable?.find((r) => r.address === address);
+  return known === undefined ? address : `${known.label} (${address})`;
+}
+
 interface BroadcastMember {
   id: string;
   name: string;
@@ -129,8 +135,9 @@ export function WalkyBroadcastSheet({
             ) : (
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
                 {receipts.map((r, i) => (
-                  <li key={`${r.to ?? r.by}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate font-medium">{r.to ?? r.by}</span>
+                  <li key={`${r.target}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
+                    {/* The target's own label (repo#branch) when the who list knows it, then its address. */}
+                    <span className="min-w-0 truncate font-medium">{labelOf(reachable, r.target)}</span>
                     <span className={cn("text-xs", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
                       {`${stateWord(r)} · ${verifiedWord(r)}`}
                     </span>
