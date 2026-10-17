@@ -518,6 +518,19 @@ function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly s
   return "pass";
 }
 
+/**
+ * The probe's half of the box-only rule ({@link typedBoxVerdict}): the frame is there, its interior
+ * holds exactly what it held plus the probe character, the rows under it keep their count and read no
+ * stronger cue than at S0, and the Surface claims no dialog. The rows above may move: an answer that
+ * streams there, a row still growing above queued messages, or the turn ending, is not the box.
+ */
+function probeBoxPasses(s0: Snap, snap: Snap, prefix: string, probe: string): boolean {
+  if (s0.frame === null || snap.frame === null) return false;
+  if (modalAtBox(snap) || framedCueGrew(s0, snap)) return false;
+  if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return false;
+  return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe;
+}
+
 /** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
 const FRAMELESS_READS = 2;
 
@@ -2569,6 +2582,9 @@ export class SendProtocol {
     state.keys.push("probe");
     let landing: Landing | null = null;
     let frameless = 0;
+    // A message probe on a harness that takes a message during a turn: only the box and the rows under
+    // it decide, as at S1 (2026-10-17). Commands and manual sends keep the full compare below.
+    const boxOnly = s0.frame !== null && !state.command && !state.manual && queuesInTurn(state.match);
     const typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, (snap) => {
       if (s0.frame !== null) {
         // Queued: the Surface's claim of a modal over a found box fails, and so do two reads in a row
@@ -2578,6 +2594,12 @@ export class SendProtocol {
         if (inTurn && (frameless >= FRAMELESS_READS || modalAtBox(snap))) return "fail";
         if (snap.frame === null) return "wait";
         if (boxText(snap.frame) === boxText(s0.frame)) return "wait";
+        if (boxOnly) {
+          if (!probeBoxPasses(s0, snap, prefix, probe)) return "fail";
+          // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
+          if (!state.queued && !aboveUnchanged(s0, snap)) state.streamed = true;
+          return "pass";
+        }
         // The probe character opens no popup, so a command in a turn is held to the full compare too.
         const outside = inTurn
           ? this.turnOutside(state, s0, snap)

@@ -1020,7 +1020,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
-  test("a row above the Codex box that gains text still fails the probe", async () => {
+  test("a row above the Codex box that gains text no longer fails the probe: the send goes in with Tab, never Enter (2026-10-17 decision)", async () => {
     const { pane, send } = codex({ version: "0.164.0" });
     // Rows high above the box, past the profile's volatile band over the top edge.
     pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
@@ -1028,9 +1028,10 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
       // The fourth row: below the three rows at the very top that may come back from the scrollback.
       if (what.startsWith("type:")) p.transcript = [...p.transcript.slice(0, 3), "• fourth, and a new line of output", ...p.transcript.slice(4)];
     };
+    // Only the box and the rows under it decide the probe now; rows above that moved route the commit to the queue key.
     const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
-    expect(pane.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
@@ -4083,6 +4084,20 @@ describe("the turn ends while Collie types (live, 2026-10-17, round 3)", () => {
   const ENDING = captured("claude--v2302-turn-ending-stop-hooks--w119.txt");
   const ENDED = captured("claude--v2302-turn-ended-yn--w119.txt");
   const TEXT = "Fourth message, reply ACK4 only.";
+  /** A list streaming above two queued messages, its last row still growing; `from` says when the stream starts. */
+  const streamingWithQueue = (pane: FakePane, from: (call: string) => boolean): void => {
+    pane.height = 40;
+    pane.drawsQueuedRow = true;
+    pane.transcript = ["> Write a numbered list of 120 fruits", "", ...Array.from({ length: 40 }, (_, i) => listRow(i + 1)), "  41."];
+    pane.over = ["", "\u276f Second message sent during the turn, reply with the word ACK only.", "", "\u276f Third message while the list streams, reply ACK3 only.", "  ctrl+enter to send now", ""];
+    let n = 40;
+    pane.beforeRead = (p) => {
+      if (!p.calls.some(from) || n >= 120) return;
+      n += 3;
+      p.transcript.splice(-1, 1, listRow(n - 2), listRow(n - 1), listRow(n), `  ${String(n + 1)}.`);
+    };
+  };
+
 
   test("real 2.1.302 screens: the Stop hooks row at S0, the finished turn with its menu and Confirm (y/n) at S1: sent", async () => {
     const { pane, send } = rig({ version: "2.1.302" });
@@ -4101,20 +4116,43 @@ describe("the turn ends while Collie types (live, 2026-10-17, round 3)", () => {
       pane.height = 40;
       pane.drawsQueuedRow = true;
       // The answer's last row is still growing ("  41."), and the queued messages stand under it, over
-      // the box: the growing row is not the last row above the box (lane 8788, 120-row list).
-      pane.transcript = ["> Write a numbered list of 120 fruits", "", ...Array.from({ length: 40 }, (_, i) => listRow(i + 1)), "  41."];
-      pane.over = ["", "\u276f Second message sent during the turn, reply with the word ACK only.", "", "\u276f Third message while the list streams, reply ACK3 only.", "  ctrl+enter to send now", ""];
-      let n = 40;
-      pane.beforeRead = (p) => {
-        // The list streams on every read once the text went in (the probe saw a still screen).
-        if (!p.calls.some((call) => call.includes("ACK4")) || n >= 120) return;
-        n += 3;
-        p.transcript.splice(-1, 1, listRow(n - 2), listRow(n - 1), listRow(n), `  ${String(n + 1)}.`);
-      };
+      // the box: the growing row is not the last row above the box (lane 8788, 120-row list). The list
+      // streams once the text went in (the probe saw a still screen).
+      streamingWithQueue(pane, (call) => call.includes("ACK4"));
       const answer = await send(TEXT);
       expect(answer.receipt, version).toMatchObject({ outcome: "sent" });
       expect(pane.keysSeen.at(-1), version).toBe("Enter");
     }
+  });
+
+  test("the probe while the list streams above two queued messages, a row still growing: it passes, and the send goes in (2026-10-17, round 4)", async () => {
+    for (const version of ["2.1.301", "2.1.302"]) {
+      const { pane, send } = rig({ version });
+      streamingWithQueue(pane, (call) => call.startsWith("type:"));
+      const answer = await send(TEXT);
+      expect(answer.receipt, version).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    }
+  });
+
+  test("the probe with the frame gone at its read fails as before, no Backspace", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.fixed = ["", "  Your conversation moved to the background.", "", "  Nothing is selected."].join("\n");
+    };
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("the probe with a dialog under the box at its read fails as before, and one Backspace cleans the box", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.popup = [...DIALOG];
+    };
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.calls).toEqual([`type:${PROBE}`]);
   });
 
   test("the frame with the text gone at S1 (the screen replaced): typed_not_submitted, no Enter, and the receipt names the rule", async () => {
