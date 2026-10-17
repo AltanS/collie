@@ -20,6 +20,7 @@
 
 import { t } from "./i18n";
 import type { ToolCall, TranscriptEntry, TranscriptPart } from "./types";
+import { firstLine, parseEnvelopeHeader, type EnvelopeHeader } from "./walky";
 
 /** What became of a tool call, as a card colours it. */
 export type ChatToolStatus = "running" | "done" | "failed" | "denied";
@@ -47,7 +48,9 @@ export type ChatToolCall = WithOutput<ToolCall>;
 export type ChatItem =
   // `requestId`: the send that made this line, when the program says so (a durable pane): the phone's own pending line
   // is matched to it and replaced (lib/durable-pending.ts).
-  | { id: string; ts?: string; kind: "user"; text: string; requestId?: string }
+  // `walky`: the turn's first line is a walky talky envelope header (lib/walky.ts). A CLAIM, not a fact:
+  // the card draws only when the pane's own log holds the id (components/walky-card.tsx).
+  | { id: string; ts?: string; kind: "user"; text: string; requestId?: string; walky?: EnvelopeHeader }
   // `partial`: the program is still writing this text and will write it again under the same id (a durable pane,
   // WIRE.md 7.15). The card draws a cursor at its end until the flag goes.
   | { id: string; ts?: string; kind: "reply"; text: string; partial?: true }
@@ -148,21 +151,32 @@ export function itemsOf(entry: TranscriptEntry, showCompactions = false): ChatIt
   // Only a turn the program is still writing, and only a text a person reads: never a tool, never the user's own line.
   const grows = entry.partial === true && entry.role !== "user" ? ({ partial: true } as const) : {};
   const asked = entry.role === "user" && entry.requestId !== undefined ? { requestId: entry.requestId } : {};
+  // Only the FIRST text of a turn can open with an envelope: the body follows the header, and a header
+  // quoted further down a turn is only text.
+  let firstText = true;
   entry.parts.forEach((part, i) => {
     const id = part.kind === "tool" && part.id ? part.id : `${entry.uuid}:${i}`;
     switch (part.kind) {
-      case "text":
+      case "text": {
         // A `note` is machine-injected, so it is a notice rather than a reply. (A compaction summary
         // never gets here: it is its own item above.)
         if (!part.text.trim()) return;
+        if (said === "user") {
+          const header = firstText ? parseEnvelopeHeader(firstLine(part.text)) : null;
+          const item: ChatItem = { id, ts, kind: said, text: part.text, ...asked };
+          if (header !== null) item.walky = header;
+          firstText = false;
+          items.push(item);
+          return;
+        }
+        firstText = false;
         items.push(
           said === "notice"
             ? { id, ts, kind: said, text: part.text, note: true, ...grows }
-            : said === "user"
-              ? { id, ts, kind: said, text: part.text, ...asked }
-              : { id, ts, kind: said, text: part.text, ...grows },
+            : { id, ts, kind: said, text: part.text, ...grows },
         );
         return;
+      }
       case "thinking":
         if (part.text.trim()) items.push({ id, ts, kind: "thinking", text: part.text, ...grows });
         return;

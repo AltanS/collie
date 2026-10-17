@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useLoaderData, useLocation, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
+import { WalkyLogProvider } from "@/components/walky-log";
 import { FileLinksProvider, usePaneFileLinks } from "@/components/file-links";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
@@ -113,7 +114,7 @@ export function DetailRoute() {
   const herd = useMemo(() => [...root.agents, ...root.shellPanes], [root.agents, root.shellPanes]);
   const fileLinks = usePaneFileLinks({ paneId, scope, pane: agent, panes: herd, workspaces: root.workspaces });
 
-  return (
+  const view = (
     <FileLinksProvider value={fileLinks}>
       <AgentChat
         // Keyed by the pane's FULL address, not its id. The key exists to remount the composer on a
@@ -161,4 +162,7 @@ export function DetailRoute() {
       />
     </FileLinksProvider>
   );
+
+  // The pane's walky talky list, the cross-check behind the Chat card and the mirror's row style (lib/walky.ts).
+  return <WalkyLogProvider rows={pane.walky}>{view}</WalkyLogProvider>;
 }

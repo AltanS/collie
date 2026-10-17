@@ -691,7 +691,11 @@ const lastWalky = new Map<string, WalkyRow[]>();
 async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | undefined): Promise<WalkyRow[] | null> {
   const key = paneKey(paneId, scope);
   try {
-    const rows = await fetchPaneWalky(paneId, scope, signal);
+    const fresh = await fetchPaneWalky(paneId, scope, signal);
+    // The previous list's own objects wherever nothing changed, so a poll that brought no new message
+    // hands the screen the same reference and no card, and no mirror, draws again for it.
+    const previous = lastWalky.get(key);
+    const rows = previous === undefined ? fresh : shareEqual(previous, fresh);
     lastWalky.set(key, rows);
     return rows;
   } catch {

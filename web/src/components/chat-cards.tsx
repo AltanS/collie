@@ -57,6 +57,8 @@ import { isPlainClick, useFileLinks } from "@/components/file-links";
 import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
+import { WalkyCard } from "@/components/walky-card";
+import { useWalkyLog } from "@/components/walky-log";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -69,6 +71,7 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
+import { standingOf, type EnvelopeHeader } from "@/lib/walky";
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
@@ -320,7 +323,9 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
   const waiting = useContext(CardWaitingCtx)[item.id];
   switch (item.kind) {
     case "user":
-      return <UserTurn text={item.text} ts={item.ts} />;
+      // A turn that opens with an envelope header is a CLAIM to be a message; only the pane's own log
+      // can make it one. The other user turns never subscribe to the log, so a poll redraws none of them.
+      return item.walky === undefined ? <UserTurn text={item.text} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
       return <Growing partial={item.partial === true}><MarkdownText text={item.text} /></Growing>;
@@ -419,7 +424,7 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
  * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
  * blue is "this is literal", the orange is "this is yours".
  */
-function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: PendingState }) {
+function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean }) {
   const time = ts && pending === undefined ? clockTimeOf(ts) : "";
   return (
     <div
@@ -436,6 +441,13 @@ function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: 
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
+        {/* A turn that printed a walky talky header the bridge's log does not hold: still the plain turn, with a quiet word
+            beside the clock saying why it is not a card (lib/walky.ts, the cross-check). */}
+        {notInLog && (
+          <span data-slot="walky-not-in-log" className="font-normal normal-case tracking-normal opacity-80">
+            {t("walky.card.notInLog")}
+          </span>
+        )}
         {/* The clock takes the slot the time takes once the program's line is here, so the swap moves nothing. */}
         {pending !== undefined && (
           <span className="flex items-center gap-1 font-normal normal-case tracking-normal opacity-80">
@@ -451,6 +463,19 @@ function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: 
       <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
   );
+}
+
+/**
+ * A user turn whose first line is a walky talky envelope header. The header is only text an agent could
+ * have printed, so the card is drawn from the pane's own log, by id (`standingOf`):
+ * - the log holds the id: "Message from <label>", drawn from the LOG's row;
+ * - the log was read and lacks it: the plain turn, with a quiet "not in the log" beside the clock;
+ * - the log could not be read: the plain turn, claiming nothing.
+ */
+function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header: EnvelopeHeader }) {
+  const standing = standingOf(useWalkyLog(), header.id);
+  if (standing.standing === "held") return <WalkyCard row={standing.row} />;
+  return <UserTurn text={text} ts={ts} notInLog={standing.standing === "absent"} />;
 }
 
 /** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */
