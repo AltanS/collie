@@ -118,6 +118,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2301-working-draft--w100.txt",
     "claude--v2301-working-queued-message--w100.txt",
     "claude--v2301-working-quiet--w100.txt",
+    "claude--v2302-turn-ended-yn--w119.txt",
+    "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
     "claude--v2302-working-list-echo--w119.txt",
     "claude--working-esc-to-interrupt.txt",

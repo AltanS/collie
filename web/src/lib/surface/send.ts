@@ -184,10 +184,11 @@ export interface SendReceipt {
   readonly acknowledged?: string;
   /**
    * Set on a refusal: the bridge's own line for it, the fixed sentence the phone was shown, cut to
-   * {@link RECEIPT_DETAIL_MAX} characters. Never the person's text and never a screen row.
+   * {@link RECEIPT_DETAIL_MAX} characters. Set on a `typed_not_submitted` too: the rule that kept
+   * Enter back (2026-10-17). Never the person's text and never a screen row.
    */
   readonly detail?: string;
-  /** Set on a refusal when the bridge had a read: the Surface it refused on, as words. No rows. */
+  /** Set on a refusal or a `typed_not_submitted` when the bridge had a read: the Surface it ended on, as words. No rows. */
   readonly saw?: SurfaceWords;
 }
 
@@ -246,9 +247,9 @@ export interface SendReceiptRow {
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
   readonly queued?: true;
-  /** The refusal's line, as the send's answer showed it (see {@link SendReceipt.detail}); refusals only. */
+  /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
-  /** What the bridge saw at the refusal, four words (see {@link SendReceipt.saw}); refusals only. */
+  /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
   readonly saw?: SurfaceWords;
 }
 

@@ -495,6 +495,29 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
   return false;
 }
 
+/**
+ * The S1 rule of a message into a framed box (2026-10-17 decision, after two live sends near the end of
+ * a turn were left typed): once the text is typed, only the box and what is under it decide. Enter may
+ * go out when the frame is still there, its interior holds exactly the typed text, the rows under it
+ * keep their count and read no stronger cue than at S0, and the Surface claims no dialog. The rows
+ * above the box may move or finish freely, in a running turn or an idle one: the answer streaming,
+ * ending, or printing a list, a menu or a "(y/n)" line there is the agent's text, not a dialog.
+ *
+ * The screen-replaced guard is "the frame with our text is gone": no frame, a frame whose interior
+ * does not hold the text, or a frame with other rows under it (Claude Code's agents screen draws its
+ * own key-hint row under its own box). A read like that waits; when no read passes, the send ends
+ * `typed_not_submitted` with the text in the box. A dialog that appeared ends it at once (`modal_cue`).
+ * A replaced screen that draws a box holding the text and the same count of rows under it is not told
+ * apart any more: the rows above no longer decide.
+ */
+function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): "pass" | "wait" | "modal_cue" | "mismatch" | "changed" {
+  if (modalAtBox(snap) || framedCueGrew(s0, snap)) return "modal_cue";
+  if (s0.frame === null || snap.frame === null) return "changed";
+  if (!boxMatches(boxText(snap.frame), prefix, lines, collapse)) return "mismatch";
+  if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return "changed";
+  return "pass";
+}
+
 /** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
 const FRAMELESS_READS = 2;
 
@@ -826,6 +849,22 @@ function heldDetail(end: Ended): string {
  */
 function cleanProbe(state: RunState, end: Ended): boolean {
   return end.reason === "probe_failed" && end.extra.probeClean === true && state.keys.length === 2 && state.keys[0] === "probe" && state.keys[1] === "Backspace";
+}
+/**
+ * The receipt's line for a send left typed in the box at S1 (2026-10-17): which rule kept Enter back.
+ * Only the receipt carries it; the phone's own sentence for `typed_not_submitted` stays.
+ */
+function typedDetail(reason: SendReason): string | undefined {
+  switch (reason) {
+    case "changed":
+      return "The frame with the typed text was gone, or the rows under the box changed, so Enter was not pressed.";
+    case "mismatch":
+      return "The box did not hold exactly the typed text, so Enter was not pressed.";
+    case "modal_cue":
+      return "Something opened at the box after the text was typed, so Enter was not pressed.";
+    default:
+      return undefined;
+  }
 }
 /** The detail of a send held behind earlier held sends on the same pane: it never jumps the queue. */
 const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
@@ -1917,8 +1956,8 @@ export class SendProtocol {
     if (cap !== undefined) receipt.cap = cap;
     const queued = labelFromWitness(state.match) ? state.witnessed : state.queued;
     if (queued && (outcome === "sent" || outcome === "effective")) receipt.queued = true;
-    if (outcome === "refused" && note !== undefined) {
-      const detail = note.detail ?? reason;
+    if ((outcome === "refused" || outcome === "typed_not_submitted") && note !== undefined) {
+      const detail = note.detail ?? (outcome === "typed_not_submitted" && reason !== undefined ? typedDetail(reason) : undefined) ?? reason;
       if (detail !== undefined) receipt.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
       if (saw !== undefined) receipt.saw = surfaceWords(saw);
@@ -2638,9 +2677,23 @@ export class SendProtocol {
     const { command, manual } = state;
     let why: SendReason = "mismatch";
     let earlier: Snap | null = null;
+    // A message into a framed box on a harness that takes one in a turn: only the box and what is under
+    // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
+    // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
+    const boxOnly = s0.frame !== null && !command && !manual && queuesInTurn(state.match);
     const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
+      if (boxOnly) {
+        const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse);
+        if (verdict !== "pass") {
+          if (verdict !== "wait") why = verdict;
+          return verdict === "modal_cue" ? "fail" : "wait";
+        }
+        // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
+        if (!state.queued && queuesInTurn(state.match) && !aboveUnchanged(s0, snap)) state.streamed = true;
+        return "pass";
+      }
       // In a turn: the cue read inside the frame and the Surface's claim only (framedCueGrew says why).
       // A frameless cue that grew while the rows above moved is the turn's own list (aboveMovedInTurn).
       // A command: only its own popup is excused, the generic cues of the rows under the box. The
@@ -2698,6 +2751,11 @@ export class SendProtocol {
       return "wait";
     });
     if (result.verdict === "pass" && result.snap !== null) return result.snap;
+    // A dialog that took the box's place leaves no frame to claim it at: the last read's Surface says
+    // so when it reads an ask or an unreadable dialog (a screen it cannot read is `unknown`, not one).
+    const endedOn = (): SendReason => why; // set inside the poll's callback, so read through a closure
+    const dialogUp = result.snap !== null && result.snap.surface.modal !== "none" && result.snap.surface.modal !== "unknown";
+    if (boxOnly && endedOn() === "changed" && dialogUp) why = "modal_cue";
     state.marks.s1 = result.snap;
     // The rows hash binds a later Submit or Discard to the screen this answer saw.
     const note: EndNote = { framed: s0.frame !== null };

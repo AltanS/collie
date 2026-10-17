@@ -151,7 +151,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `acknowledged` is a request id or absent (a program session's send, M56 spec 14).
   const acknowledged = node.acknowledged === undefined ? undefined : asJsonString(node.acknowledged);
   if (node.acknowledged !== undefined && (acknowledged === undefined || !REQUEST_ID.test(acknowledged))) return undefined;
-  // `detail` is a short line and `saw` four words, both on a refusal only (or absent on older receipts).
+  // `detail` is a short line and `saw` four words, on a refusal or a typed_not_submitted only (or absent on older receipts).
   const detail = node.detail === undefined ? undefined : asJsonString(node.detail);
   if (node.detail !== undefined && (detail === undefined || detail.length > RECEIPT_DETAIL_MAX)) return undefined;
   const saw = node.saw === undefined ? undefined : readSurfaceWords(node.saw);

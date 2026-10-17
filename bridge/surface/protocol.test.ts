@@ -1134,7 +1134,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a pinned first row does not excuse rows under it that were replaced, not scrolled: no Enter, no Tab", async () => {
+  test("rows under a pinned first row that were replaced while the box holds the text: the queue key goes out, never Enter (2026-10-17 decision)", async () => {
     const { pane, send } = codex();
     pane.height = 26;
     pane.pinned = "› Write the numbers from one to four hundred as English words";
@@ -1144,10 +1144,11 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
       // Another screen under the same top row: none of the rows before stands in the read after.
       p.transcript = Array.from({ length: 20 }, (_, i) => `  other screen ${String(n)} row ${String(i)}`);
     };
+    // Once the text is typed only the box and the rows under it decide; the rows above may change.
     const answer = await send("now reply with the single word cherry");
-    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.keysSeen).not.toContain("Enter");
-    expect(pane.keysSeen).not.toContain("Tab");
   });
 
   test("Submit of a draft while the answer streams with no working row presses Tab, never Enter (K1)", async () => {
@@ -1844,6 +1845,9 @@ describe("a send into a running turn", () => {
       const { pane, send } = rig({ version });
       pane.height = 16;
       pane.transcript = [...ANSWER];
+      // The conversation's statusline as on the lane: three rows under the box, where the agents screen
+      // draws one key-hint row. Since 2026-10-17 that is the guard: the rows above no longer decide.
+      pane.status = ["  CTX:4% CACHE:100%", "  [Sonnet·high] /tmp/project on main", "  ⏸ manual mode on · ← 11 agents"];
       // The agents screen has a prompt-shaped box of its own: the typed text lands there.
       pane.beforeWrite = (p, what) => {
         if (what.startsWith("paste:") || what === "type:then give it a title") {
@@ -1869,7 +1873,7 @@ describe("a send into a running turn", () => {
       );
   const HEADER = plainRows("claude--v2301-idle.txt").slice(0, 3);
 
-  test("the agents screen under the same header as the conversation, as the text goes in: no Enter", async () => {
+  test("the agents screen under the same header and footer as the conversation, its box without the text: no Enter", async () => {
     const agents = plainRows("claude-lab--agents-screen--w82.txt");
     // Both header rows of the agents screen made equal to the conversation's: only the bottom anchor tells them apart.
     const firstHeader = agents.findIndex((row) => row.includes("Claude Code v"));
@@ -1882,11 +1886,11 @@ describe("a send into a running turn", () => {
       const { pane, send } = rig({ version });
       pane.transcript = [...HEADER];
       pane.status = ["  ⏸ manual mode on · ? for shortcuts · ← for agents"];
+      // The agents screen comes up as the text goes in; the text stays in the conversation's box under
+      // it, and the agents box shows its own placeholder. The frame with the text is gone: no Enter.
+      // (One that drew the text in its own box, under the same rows, is not told apart since 2026-10-17.)
       pane.beforeWrite = (p, what) => {
-        if (what.startsWith("paste:") || what === "type:then give it a title") {
-          const text = what.slice(what.indexOf(":") + 1);
-          p.fixed = agents.join("\n").replace("❯ describe a task for a new session", `❯ ${text}`);
-        }
+        if (what.startsWith("paste:") || what === "type:then give it a title") p.fixed = agents.join("\n");
       };
       const answer = await send("then give it a title");
       expect(pane.keysSeen.includes("Enter"), version).toBe(false);
@@ -4036,6 +4040,110 @@ describe("a refusal receipt keeps its line and the Surface words (2026-10-17 fie
     expect(sent.receipt?.outcome).toBe("sent");
     expect(sent.receipt?.detail).toBeUndefined();
     expect(sent.receipt?.saw).toBeUndefined();
+  });
+});
+
+describe("the turn ends while Collie types (live, 2026-10-17, round 3)", () => {
+  const listRow = (k: number): string => `  ${String(k)}. Fruit number ${String(k)}: it is a fruit with one short sentence about it.`;
+
+  test("running at S0, idle at S1 with the finished answer and a (y/n) line above the box: sent", async () => {
+    for (const version of ["2.1.301", "2.1.302"]) {
+      const { pane, send } = rig({ version });
+      pane.height = 16;
+      pane.drawsQueuedRow = true;
+      pane.transcript = ["> Write a numbered list of 40 fruits", "", ...[1, 2, 3, 4, 5, 6, 7, 8].map(listRow)];
+      pane.over = [LIVE_ROW];
+      let ended = false;
+      pane.afterInput = (p, what) => {
+        // The answer finishes as the text goes in: the last rows, the menu and the question, then the finished row.
+        if (ended || !what.includes("ACK4")) return;
+        ended = true;
+        p.over = [];
+        p.transcript.push(...[9, 10, 11, 12].map(listRow), "  1. Apple", "  2. Pear", "  3. Quit", "", "  Confirm (y/n)", "", "\u273b Cooked for 5s \u00b7 done 12:17 PM");
+      };
+      const answer = await send("Fourth message, reply ACK4 only.");
+      expect(ended, version).toBe(true);
+      expect(answer.receipt, version).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1), version).toBe("Enter");
+      expect(pane.box, version).toBe("");
+    }
+  });
+
+  /** A capture's rows with the fake pane's box drawn into its box row. */
+  const captured = (name: string): ((box: string) => string) => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    const boxRow = rows.findIndex((row, i) => i > 0 && row.includes("\u276f\u00a0") && rows[i - 1]!.includes("\u2500".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    return (box) => {
+      const shown = [...rows];
+      if (box !== "") shown[boxRow] = `\u276f\u00a0${box}`;
+      return shown.join("\r\n");
+    };
+  };
+  const ENDING = captured("claude--v2302-turn-ending-stop-hooks--w119.txt");
+  const ENDED = captured("claude--v2302-turn-ended-yn--w119.txt");
+  const TEXT = "Fourth message, reply ACK4 only.";
+
+  test("real 2.1.302 screens: the Stop hooks row at S0, the finished turn with its menu and Confirm (y/n) at S1: sent", async () => {
+    const { pane, send } = rig({ version: "2.1.302" });
+    pane.beforeRead = (p) => {
+      p.fixed = p.calls.some((call) => call.includes("ACK4")) ? ENDED(p.box) : ENDING(p.box);
+    };
+    const answer = await send(TEXT);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+    expect(pane.box).toBe("");
+  });
+
+  test("the list streams above two queued messages over the box while Collie types (no spinner, S0 idle): sent, never left typed (live replay, 2026-10-17)", async () => {
+    for (const version of ["2.1.301", "2.1.302"]) {
+      const { pane, send } = rig({ version });
+      pane.height = 40;
+      pane.drawsQueuedRow = true;
+      // The answer's last row is still growing ("  41."), and the queued messages stand under it, over
+      // the box: the growing row is not the last row above the box (lane 8788, 120-row list).
+      pane.transcript = ["> Write a numbered list of 120 fruits", "", ...Array.from({ length: 40 }, (_, i) => listRow(i + 1)), "  41."];
+      pane.over = ["", "\u276f Second message sent during the turn, reply with the word ACK only.", "", "\u276f Third message while the list streams, reply ACK3 only.", "  ctrl+enter to send now", ""];
+      let n = 40;
+      pane.beforeRead = (p) => {
+        // The list streams on every read once the text went in (the probe saw a still screen).
+        if (!p.calls.some((call) => call.includes("ACK4")) || n >= 120) return;
+        n += 3;
+        p.transcript.splice(-1, 1, listRow(n - 2), listRow(n - 1), listRow(n), `  ${String(n + 1)}.`);
+      };
+      const answer = await send(TEXT);
+      expect(answer.receipt, version).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1), version).toBe("Enter");
+    }
+  });
+
+  test("the frame with the text gone at S1 (the screen replaced): typed_not_submitted, no Enter, and the receipt names the rule", async () => {
+    const { pane, send, deps } = rig({ version: "2.1.302" });
+    pane.beforeRead = (p) => {
+      // Another screen took the place, with plain rows and no box (a list or a menu there would read as a dialog).
+      p.fixed = p.calls.some((call) => call.includes("ACK4")) ? ["", "  Your conversation moved to the background.", "", "  Nothing is selected."].join("\r\n") : ENDING(p.box);
+    };
+    const answer = await send(TEXT, { id: "typed-00001" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(TEXT);
+    const stored = deps.store.get("typed-00001")?.receipt;
+    expect(stored?.detail).toBe("The frame with the typed text was gone, or the rows under the box changed, so Enter was not pressed.");
+    expect(stored?.saw).toEqual({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" });
+    expect(JSON.stringify(stored)).not.toContain("ACK4");
+  });
+
+  test("a dialog at S1: typed_not_submitted, no Enter, the text stays, and the receipt says a dialog came", async () => {
+    const { pane, send, deps } = rig({ version: "2.1.302" });
+    pane.over = [LIVE_ROW];
+    pane.afterInput = (p, what) => {
+      if (what.includes("ACK4")) p.dialog = DIALOG;
+    };
+    const answer = await send(TEXT, { id: "typed-00002" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(TEXT);
+    expect(deps.store.get("typed-00002")?.receipt?.detail).toBe("Something opened at the box after the text was typed, so Enter was not pressed.");
   });
 });
 

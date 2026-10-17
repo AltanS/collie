@@ -1,0 +1,40 @@
+  15. Papaya: It has soft flesh and many small black seeds.
+  16. Pineapple: It has a spiky skin and a sweet, tangy center.
+  17. Guava: It has a strong scent and a pink or white center.
+  18. Passion fruit: It has a wrinkled skin and a tart, seedy pulp.
+  19. Lychee: It has a rough red shell and a white, juicy center.
+  20. Kiwi: It has fuzzy brown skin and green flesh.
+  21. Fig: It is soft inside and full of tiny seeds.
+  22. Date: It is a very sweet fruit from the date palm.
+  23. Pomegranate: It holds hundreds of red seeds in a leathery shell.
+  24. Persimmon: It is orange and very sweet when fully ripe.
+  25. Strawberry: It wears its seeds on the outside.
+  26. Raspberry: It is a soft red berry that breaks apart easily.
+  27. Blackberry: It is dark, juicy, and grows on thorny bushes.
+  28. Blueberry: It is a small blue berry full of antioxidants.
+  29. Cranberry: It is a tart red berry that grows in bogs.
+  30. Watermelon: It is large, green, and full of red juicy flesh.
+  31. Cantaloupe: It has a netted skin and sweet orange flesh.
+  32. Honeydew: It is a pale green melon with a smooth rind.
+  33. Grape: It grows in bunches and makes wine and raisins.
+  34. Coconut: It has a hard shell with water and white flesh inside.
+  35. Avocado: It has creamy green flesh and one large seed.
+  36. Dragon fruit: It has bright pink skin and tiny black seeds.
+  37. Starfruit: Slices of this fruit look like stars.
+  38. Jackfruit: It is huge and has a sweet, stringy flesh.
+  39. Tamarind: It has a sticky, sour pulp inside a brown pod.
+  40. Quince: It is hard and sour raw, but good when cooked.
+  41. Apple
+  42. Pear
+  43. Quit
+
+  Confirm (y/n)
+
+[0m[38;2;215;119;87m✢ [0m[38;2;218;124;92mSimmering…[0m[38;2;215;119;87m [0m[38;2;153;153;153m(running Stop hooks… 0/2 · 5s · ↓ 621 tokens)[0m
+
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m6%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m95%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m1%[0m[38;5;246m/4h:45m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;167m86%[0m[38;5;246m/3d:14h[0m
+  [0m[38;5;75m[Sonnet[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m/tmp/collie-queue-test[0m[38;2;153;153;153m [0m[38;5;109mon HEAD[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← 11 agents[0m

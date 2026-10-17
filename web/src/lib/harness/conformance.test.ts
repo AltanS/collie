@@ -131,6 +131,10 @@ const NEUTRAL = new Set([
   // panel. An ordinary box, no dialog: the list is the agent's text, not a picker.
   "claude--v2302-working-agents-panel--w119.txt",
   "claude--v2302-working-list-echo--w119.txt",
+  // The last two reads of a turn whose answer ends in a menu and "Confirm (y/n)" (round 3 of the same
+  // field case): the agent's text above an ordinary box, no dialog.
+  "claude--v2302-turn-ending-stop-hooks--w119.txt",
+  "claude--v2302-turn-ended-yn--w119.txt",
   // Claude Code 2.1.301's agents panel under a free box while a fork runs (the 2026-10-16 incident
   // on lane 8788): an ordinary box with a footer, no dialog.
   "claude--v2301-fork-running-main-idle.txt",
