@@ -391,7 +391,8 @@ harness runs it after the turn. A harness that cannot take a send during its tur
 instead. So does a message that finds the input box not free, for example under a popup, or on a
 screen that changes between Collie's two reads, or a probe character that failed and that one
 Backspace took back out of a box Collie read clean again. Such a message goes after five free polls over ten
-seconds, or after a turn Collie sees. A command there is still refused. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
+seconds, or after a turn Collie sees. A command there is still refused, and so is a send on a
+screen you confirmed with Type here or on a harness Collie has no profile for. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
 ends." The row shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held

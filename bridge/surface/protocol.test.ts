@@ -4004,6 +4004,46 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     expect((await r.send("/compact", { id: "probe-00004", mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
   });
 
+  test("a manual send (Type here) whose probe fails clean stays refused, nothing held (review, 2026-10-17)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const framed = rig({ holds });
+    framed.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
+    framed.pane.over = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss"];
+    const look = await framed.send("carry on");
+    expect(look.surface?.modal).toBe("unreadable");
+    framed.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.transcript.splice(2, 0, "a new row of output");
+    };
+    const answer = await framed.send("carry on", { rowsHash: look.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toContain("the box is clean again");
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("a box that is not free on a pane with no profile stays refused, nothing held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ harness: NO_PROFILE, holds });
+    // The screen moves between the two S0 reads: not_free, the reason a profiled pane holds.
+    r.pane.beforeRead = (p, n) => {
+      if (n === 2) p.transcript.push("a row that came in");
+    };
+    const answer = await r.send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("a Replace whose text starts with a reserved lead is a command: no hold at a box that is not free", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    r.pane.dialog = DIALOG;
+    const answer = await r.send("/compact", { id: "box-0000008", mode: "replace" });
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(r.holds.list()).toEqual([]);
+    // The same Replace with a plain text is held.
+    const plain = await r.send("a plain thought", { id: "box-0000009", mode: "replace" });
+    expect(plain.receipt?.outcome).toBe("held");
+  });
+
   test("with no hold queue a box that is not free is refused as before", async () => {
     const r = rig();
     r.pane.dialog = DIALOG;

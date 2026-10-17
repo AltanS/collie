@@ -1543,6 +1543,12 @@ export class SendProtocol {
    * not read stays a refusal. `draft_present` and `unconfirmed` need the person, so they stay refusals.
    * A `probe_failed` whose cleanup was read back (see {@link cleanProbe}) counts as no key, and is held
    * like `not_free`; one whose box Collie could not confirm clean stays a refusal.
+   *
+   * The box holds (`not_free`, `bound`, a clean `probe_failed`) also need a profile and a send that is
+   * not manual (review, 2026-10-17): a pane with no profile, or a screen the person confirmed with Type
+   * here, never reads free, so such a hold would wait out its 30 minutes with every later message
+   * behind it, and its release carries no rows hash for the confirm. A `replace` whose text starts with
+   * a reserved lead is a command here too.
    */
   private holdsEnd(state: RunState, end: Ended): boolean {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
@@ -1550,7 +1556,9 @@ export class SendProtocol {
     if (state.keys.length > 0 && !clean) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
     if (end.reason === "turn_running") return true;
-    const command = state.command || state.request.mode === "command";
+    if (state.manual || state.match === null) return false;
+    const leads = state.match.profile.reservedLeads;
+    const command = state.command || state.request.mode === "command" || (state.request.mode === "replace" && reservedLead(sendLines(state.request.text)[0] ?? "", leads) !== null);
     return (end.reason === "not_free" || end.reason === "bound" || clean) && !command;
   }
 

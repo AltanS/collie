@@ -2788,7 +2788,7 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     const line = byCheck.get("surface-agent-2.1.301")!;
     // 8 refusals against 18 sends is above the refusal rate, so the line warns (2026-10-17).
     expect(line.status).toBe("warn");
-    expect(line.remedy).toContain("8 sends refused against 18 that went out on agent 2.1.301, most of them not_free (8)");
+    expect(line.remedy).toContain("8 sends refused by the reader against 18 that went out on agent 2.1.301, most of them not_free (8)");
     expect(line.detail).toBe(
       "2.1.301 provisional · free 150 · unknown 16 (no-match 12, weak-cue 4) · modal 6 (permission 6) · refused 8 (not_free 8) · probed 10 · manual 3 · sent 18 · effective 0 · unknown-outcome 2 · typed-not-submitted 0 · discarded 2",
     );
@@ -2815,10 +2815,10 @@ describe("doctor: the surface table (M56 spec 09)", () => {
 
   test("surface: refusals above 0.3 per send that went out, over at least 10 sends, warn and name the top reason", async () => {
     // 2026-10-17: the field case, seven not_free refusals against a handful of sends.
-    const { byCheck, code } = await run([day(0, [row({ manual: 0, sent: 8, effective: 2, refused: { not_free: 3, draft_present: 1 } })])]);
+    const { byCheck, code } = await run([day(0, [row({ manual: 0, sent: 8, effective: 2, refused: { not_free: 3, probe_failed: 1, draft_present: 5 } })])]);
     const line = byCheck.get("surface-agent-2.1.301")!;
     expect(line.status).toBe("warn");
-    expect(line.remedy).toContain("4 sends refused against 10 that went out on agent 2.1.301, most of them not_free (3)");
+    expect(line.remedy).toContain("4 sends refused by the reader against 10 that went out on agent 2.1.301, most of them not_free (3)");
     expect(line.remedy).toContain(join(STATE, "surface", "examples"));
     expect(code).toBe(0);
   });
@@ -2831,6 +2831,15 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     // Seven days add up: two days of 5 sends and 2 refusals each pass both limits together.
     const twoDays = await run([day(0, [row({ manual: 0, sent: 5, refused: { bound: 2 } })]), day(2, [row({ manual: 0, sent: 5, refused: { bound: 2 } })])]);
     expect(twoDays.byCheck.get("surface-agent-2.1.301")!.remedy).toContain("most of them bound (4)");
+  });
+
+  test("surface: only the reader's refusals count toward the warning, never the person's or the pane's", async () => {
+    const theirs = { draft_present: 4, unconfirmed: 3, stale_surface: 2, busy: 2, id_reused: 1, pane_gone: 1, turn_running: 5 };
+    const quiet = await run([day(0, [row({ manual: 0, sent: 10, refused: { ...theirs, not_free: 3 } })])]);
+    expect(quiet.byCheck.get("surface-agent-2.1.301")!.status).toBe("ok");
+    const loud = await run([day(0, [row({ manual: 0, sent: 10, refused: { ...theirs, bound: 2, probe_failed: 2 } })])]);
+    expect(loud.byCheck.get("surface-agent-2.1.301")!.remedy).toContain("4 sends refused by the reader against 10");
+    expect(loud.byCheck.get("surface-agent-2.1.301")!.remedy).not.toContain("turn_running");
   });
 
   test("surface: a row with both warnings carries both remedies", async () => {
