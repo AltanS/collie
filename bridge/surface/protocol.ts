@@ -1388,6 +1388,8 @@ interface RunState {
   released?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
+  /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
+  answerWait?: boolean;
 }
 
 /** What the hold queue knows of one pane between polls (M56 spec 15 review). */
@@ -1716,8 +1718,10 @@ export class SendProtocol {
   private backToQueue(state: RunState, end: Ended): SendAnswer {
     const holds = this.deps.holds!;
     const entry = holds.get(state.record.id);
-    if (entry === null || entry.tries + 1 >= HOLD_TRIES) return this.settle(state, end);
-    holds.putBack(state.record.id);
+    // An open question is a wait, not a failed try: the request waits for it to close, up to its own expiry.
+    const counted = state.answerWait !== true;
+    if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
+    holds.putBack(state.record.id, counted);
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     return answerWith({ receipt, offers: [] }, { ...end.extra, detail: HELD });
@@ -2252,6 +2256,12 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
+    // A held request is a message for the agent, in every mode a release runs (a send, a command, a
+    // Replace): a box that answers the agent's question would take it as the answer. It waits.
+    if (state.released === true && answersQuestion(match, s0)) {
+      state.answerWait = true;
+      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    }
     state.manual = takesManualSend(s0.surface);
     if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
@@ -2387,8 +2397,6 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
-    // A held send is a message for the agent; a box that answers its question would take it as the answer.
-    if (state.released === true && answersQuestion(state.match, s0)) throw new Ended("refused", "not_free", { surface, detail: ANSWER_BOX });
     if (isFree(surface)) return;
     if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
       this.gateTurn(state, s0, s0.frame);
@@ -2494,13 +2502,14 @@ export class SendProtocol {
     const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
     if (!runs) return;
-    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
     const leads = profile.reservedLeads;
     const isCommand = state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null;
+    // The never-held check comes first, as in turnRefusal: the refusal after it would be held.
     if (isCommand && neverHeldEntry(state.request.text, state.match) !== null) {
       state.neverHold = true;
       throw new Ended("refused", "turn_running", { surface: s0.surface, detail: NEVER_HELD });
     }
+    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
     if (isCommand && !commandQueues(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
     state.queued = true;
   }
