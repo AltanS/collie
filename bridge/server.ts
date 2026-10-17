@@ -1127,6 +1127,11 @@ export function startServer(opts: {
    */
   cache?: { get(sessionKey: string): PaneCache | undefined; model?(sessionKey: string): string | undefined };
   /**
+   * Each pane's active todo list (bridge/todos.ts), read synchronously at serialise time like
+   * `cache`. Absent means no pane carries a `todos` key.
+   */
+  todos?: { get(pane: AgentView): AgentView["todos"] };
+  /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
    * carries a `gitHead` key, which is every test that builds this server by hand.
@@ -1443,9 +1448,11 @@ export function startServer(opts: {
       // The model label rides beside it, from the same probe's memo (bridge/cache/tracker.ts).
       const model = key === undefined ? undefined : cache?.model?.(key);
       const withCache = model === undefined ? read : { ...read, model };
+      const todos = opts.todos?.get(p);
+      const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withCache : { ...withCache, gitHead };
+      return gitHead === undefined ? withTodos : { ...withTodos, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

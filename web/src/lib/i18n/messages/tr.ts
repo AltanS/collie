@@ -248,6 +248,7 @@ export const tr: Dictionary = {
   "composer.controls.type": "Yaz",
   "composer.controls.quick": "Hızlı",
   "composer.controls.agent": "Ajan",
+  "composer.controls.tasks": "Görevler {done}/{total}",
   "composer.controls.displayAria": "Ekran ayarları",
   "composer.controls.display": "Ekran",
   "composer.controls.screenAria": "Kartlar olmadan ekran satırlarını göster",

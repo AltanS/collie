@@ -12,6 +12,7 @@ import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { SttWireIdentity } from "./stt/config.ts";
+import type { PaneTodo } from "./todos.ts";
 import type { UpdateRun } from "./update-run.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
@@ -22,6 +23,7 @@ export type { ChatBody, ChatEntry, ChatOlderBody, ChatWindowBody } from "./journ
 export type { CacheStateName, PaneCache } from "./cache/engine.ts";
 export type { Confidence } from "./cache/claims.ts";
 export type { GitHead } from "./git-head.ts";
+export type { PaneTodo, PaneTodoStatus } from "./todos.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -176,6 +178,12 @@ export interface AgentView {
    * solo body byte-identical to 1.8.2's for every non-agent pane (`solo-baseline.test.ts`).
    */
   cache?: PaneCache;
+  /**
+   * The pane's active todo list, read from the session's task files or journal by the todo tracker
+   * (bridge/todos.ts). Attached at serialise time and ABSENT, NEVER A PLACEHOLDER: a pane with no
+   * tasks carries no key at all.
+   */
+  todos?: PaneTodo[];
   /**
    * The model this pane's agent is on, as its harness names it: a `/model` chosen since the last turn
    * first (Claude), else the model that turn ran on (`claude-opus-5-5`, `provider:model` for opencode
