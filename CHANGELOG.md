@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A browser leg taps real agents from a phone, the way a person does.** A Playwright phone opens a scratch bridge that mirrors a scratch Herdr, where Claude Code, pi and omp run, and checks that each tap works the first time and that the screen shows the result: the model picker, a permission card, a question, a send while the agent streams, and "Load older" with an empty phone cache. It records every tap with its receipt and prints one table. It runs by hand only, with `bunx playwright test -c e2e/rig/playwright.config.ts` in `web/`, and never touches a running lane or the operator's Herdr (`web/e2e/rig/README.md`).
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with a footer from an extension refuses every send from the phone, and a Claude picker can need three taps.
