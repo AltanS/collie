@@ -109,8 +109,8 @@ release. 1.14.2 was cut this way on 2026-09-28.
    installs, updates and rolls back a Windows build on the test VM, which no CI job can do. It
    resets the VM's disk and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit
    the release first. Read its table: a failed step holds the tag, and so does an unavailable VM.
-   The `windows.yml` run on the release commit must be green as well. Then tag and push (next
-   paragraph).
+   The `windows.yml` run on the release commit must be green as well. Then run the browser leg
+   (step 8), then tag and push (the paragraph after it).
 
    A missing Windows zip stops the release from the first of two moments: once an earlier stable
    release (not a draft, not a prerelease) has carried one, or on 2026-11-15
@@ -119,6 +119,11 @@ release. 1.14.2 was cut this way on 2026-09-28.
    repository variable `COLLIE_WINDOWS_ASSET_OVERRIDE` to `optional` (Settings > Secrets and
    variables > Actions > Variables) before the tag, and delete it right after the release: the run
    warns loudly while it is set. To move the date instead, change that one constant in a commit.
+8. **Run the browser leg on the release head before the tag.** In `web/`, with `COLLIE_RIG_KEY_FILE`
+   set: `bunx playwright test -c e2e/rig/playwright.config.ts` (*Browser tests*; the prerequisites are
+   in `web/e2e/rig/README.md`). It starts a scratch bridge and Herdr with real Claude Code, pi and omp,
+   and takes about 5 minutes. All fifteen cases must pass on the first tap. A failed case holds the
+   tag, and so does a case that was not reached.
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
 line — send the functional commits only. The version is the maintainer's to pick, because it depends
@@ -384,6 +389,16 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   runner at somebody's machine.
 - **Tier 3** is the VM lab: a real three-machine crew and a real update run. It is named here as the
   end state and is not built.
+- **The browser leg** is a Playwright phone (Pixel 7) that taps a scratch bridge and a scratch Herdr
+  running real Claude Code, pi and omp. It is not a tier of the CI suite and not the VM lab. It lives
+  under `web/e2e/rig/` with its own config (`cd web && bunx playwright test -c
+  e2e/rig/playwright.config.ts`, the provider key file named by `COLLIE_RIG_KEY_FILE`), it spends
+  model turns (about 5 minutes and a few cents a run), and it never runs in CI. It is **the gate before
+  every release tag**, and **the proof for a change to a harness reader, the Surface, the Send
+  Protocol or the ask code**: run it on the branch, and all fifteen cases pass on the first tap. A
+  unit test cannot show that a tap works on a real screen. `web/e2e/rig/nightly.ts` also runs it every
+  night on `origin/main`, once for each main commit and set of agent versions. The README beside it
+  (*When it runs*) has the rules and the cost.
 
 **Fixtures.** Tier 1 imports the same fixture modules the vitest suite already uses,
 `web/src/test/handlers.ts`, and feeds them to `page.route`. A
