@@ -976,6 +976,11 @@
    "version": "2.1.302",
    "state": "popup"
   },
+  "claude--v2302-multiselect-field-focused--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
    "version": "unversioned",

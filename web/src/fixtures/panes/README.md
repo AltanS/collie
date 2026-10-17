@@ -2339,3 +2339,17 @@ screen up: the box moved up eleven rows between the read before the write and th
 |---|---|
 | `claude--v2302-slash-model-list--w120--h40.txt` | The box holds `/model`, and under it seven entries, the pointer on `❯ /model  Set the AI model for Claude Code (currently Haiku 5.5)`, five of them with a wrapped description. The shell banner, the welcome rows and the tip row stand over the box, scrolled up. The first round of the fix read the list as the command's own and still kept Enter back: the rows above the box had moved up more rows than the box grew, plus one, so S1 read a changed screen (`typed_not_submitted (changed)`). Labelled `popup` |
 | `claude--v2302-slash-effort-list--w120--h40.txt` | The same pane after `/help`: the box holds `/effort`, and under it two entries, `❯ /effort  Set effort level for model usage` and `/code-review` with its description wrapped. Labelled `popup` |
+
+## A multiSelect step with the pointer on its text field, 2.1.302 (field capture 2026-10-17, sanitised)
+
+Read through lane 8788's `GET /api/pane/:id` from a live Claude Code 2.1.302 session (Herdr, 160 columns
+by 45 rows), the ANSI kept. The words are replaced, the rows, styles and widths are the capture's own:
+the transcript above the dialog, the stepper, the question, four ticked options with a description row
+each, the pointer on the empty field, `Submit`, the rule, `Chat about this` and the footer with its
+`ctrl+g to edit in nano` hint. Until 1.22.5 the multiSelect grammar declined any screen with the pointer
+on the field, so the phone showed the unread-dialog card and the Surface read `modal: unreadable`. The
+grammar now claims it with `pointer: "field"`, and a toggle first moves the pointer off the field.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-multiselect-field-focused--w160.txt` | Stepper `←  ☒ Next step  ✔ Submit  →`, four `[✔]` options, `❯ 5. [ ] Type something`, `Submit`, a rule, `6. Chat about this`, footer `Enter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel`. Lifts `multi-select` with the pointer on the field; the Surface reads `modal: ask`. Labelled `dialog` |

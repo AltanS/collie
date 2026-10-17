@@ -5,7 +5,9 @@
 //   - `checkbox`: numbered rows carry a `[ ]`/`[✔]` checkbox prefix (THE discriminator vs a single
 //     select), a navigable `Submit` row sits below them, and a single-question stepper
 //     (`←  ☐ Toppings  ✔ Submit  →` — exactly ONE question chip + the Submit chip) anchors the top.
-//     A digit N TOGGLES option N on/off (pointer-independent); Enter activates the POINTED row.
+//     A digit N TOGGLES option N on/off (pointer-independent); Enter activates the POINTED row. The
+//     one exception is the `Type something` field: with the pointer on it a digit is typed into the
+//     field, which the model says as `pointer: "field"`.
 //   - `review`: activating Submit advances here — `Ready to submit your answers?` over
 //     `❯ 1. Submit answers` / `2. Cancel`, with the same single-question stepper. Digit 1 submits,
 //     2 cancels; a `⚠ …not answered all questions` line means `incomplete`.
@@ -150,12 +152,20 @@ function coreSignature(texts: string[], from: number, to: number): string {
 
 /** Classify which row the `❯` pointer sits on across [`from` … `to`] (raw line text — the pointer is
  *  a leading glyph). `null` when no row carries it. */
-function pointerAt(texts: string[], from: number, to: number, advanceIdx: number): MultiPointer {
+function pointerAt(
+  texts: string[],
+  from: number,
+  to: number,
+  advanceIdx: number,
+  fieldIdx: number,
+): MultiPointer {
   for (let i = from; i <= to; i++) {
     if (!/^\s*❯/.test(texts[i]!)) continue;
     const trimmed = texts[i]!.trim();
     // By index: a line that merely READS "Submit"/"Next" is not the advance row (see its location above).
     if (i === advanceIdx) return "advance";
+    // By index too: the field reads "[✔] teal" once someone has typed into it.
+    if (i === fieldIdx) return "field";
     const parsed = parseOptionRow(trimmed);
     if (!parsed) return "other";
     if (CHAT_ESCAPE.test(parsed.label)) return "chat";
@@ -256,11 +266,13 @@ function detectCheckboxPhase(
 
   // The "Type something" text field is the last checkbox row above the advance row, by POSITION: once
   // someone types, the row reads "[✔] teal". While `❯` is on it every digit is typed INTO it (measured
-  // on Claude Code 2.1.283), so a toggle button would write its digit into someone's answer. No
-  // model has a lock for that, so the screen is not claimed; off the field, the typed row toggles
-  // with its digit like any other row (measured) and stays an option.
-  const fieldRow = menu.findLast((row) => row.index < advanceIdx);
-  if (fieldRow !== undefined && /^\s*❯/.test(texts[fieldRow.index]!)) return null;
+  // on Claude Code 2.1.283), so a toggle button would write its digit into someone's answer. The
+  // pointer there reads `field`, which is the lock: the macros move the pointer off with an arrow and
+  // read it back before any digit, and the commit comparison tells a focused field from an unfocused
+  // one. Off the field, the typed row toggles with its digit like any other row (measured) and stays
+  // an option. Until 1.22.5 the screen was not claimed at all while the pointer stood there, and fell
+  // to the unread-dialog card (Claude Code 2.1.302, the field capture of 2026-10-17).
+  const fieldIdx = menu.findLast((row) => row.index < advanceIdx)?.index ?? -1;
 
   // The question: every non-blank line between the stepper and the first option, joined, without the
   // `│` gutter Claude paints down a question of more than one row.
@@ -309,7 +321,7 @@ function detectCheckboxPhase(
       escape,
       steps: stepper.steps,
       advanceLabel,
-      pointer: pointerAt(texts, firstOpt, fi, advanceIdx),
+      pointer: pointerAt(texts, firstOpt, fi, advanceIdx, fieldIdx),
       pointerRow: null, // digit mode never reads it — the digit toggles pointer-independently
       toggle: "digit",
       // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a
