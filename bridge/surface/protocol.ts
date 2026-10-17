@@ -80,7 +80,7 @@ import { isRunningRow, readCues, readCuesFor, runningSign, type Cue } from "../.
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
-import type { ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
+import type { OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -335,6 +335,8 @@ interface Snap {
   readonly cuesUnderBox: boolean;
   /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
   readonly below: number;
+  /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
+  readonly otherScreen: string | null;
   /** A short hash of the whole read. */
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
@@ -510,15 +512,20 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
  * ending, or printing a list, a menu or a "(y/n)" line there is the agent's text, not a dialog.
  *
  * The screen-replaced guard is "the frame with our text is gone": no frame, a frame whose interior
- * does not hold the text, or a frame with other rows under it (Claude Code's agents screen draws its
- * own key-hint row under its own box). A read like that waits; when no read passes, the send ends
- * `typed_not_submitted` with the text in the box. A dialog that appeared ends it at once (`modal_cue`).
- * A replaced screen that draws a box holding the text and the same count of rows under it is not told
- * apart any more: the rows above no longer decide.
+ * does not hold the text, or a frame with another count of rows under it. A read like that waits; when
+ * no read passes, the send ends `typed_not_submitted` with the text in the box. A dialog that appeared
+ * ends it at once (`modal_cue`).
+ *
+ * The rows above no longer tell a replaced screen apart, so the box's own identity does: a box with a
+ * row under it that the profile names as another screen's (`idle.volatile.below.otherScreens`) is not
+ * the conversation's box, and the send ends at once (`other_screen`, reported as `changed`). Claude
+ * Code's agents screen draws a box of its own with a one-row key-hint footer, the same count as a
+ * conversation with the statusline off, and Enter there starts a new background session with the text.
  */
-function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): "pass" | "wait" | "modal_cue" | "mismatch" | "changed" {
+function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): "pass" | "wait" | "modal_cue" | "mismatch" | "changed" | "other_screen" {
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return "modal_cue";
   if (s0.frame === null || snap.frame === null) return "changed";
+  if (snap.otherScreen !== null) return "other_screen";
   if (!boxMatches(boxText(snap.frame), prefix, lines, collapse)) return "mismatch";
   if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return "changed";
   return "pass";
@@ -527,11 +534,13 @@ function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly s
 /**
  * The probe's half of the box-only rule ({@link typedBoxVerdict}): the frame is there, its interior
  * holds exactly what it held plus the probe character, the rows under it keep their count and read no
- * stronger cue than at S0, and the Surface claims no dialog. The rows above may move: an answer that
- * streams there, a row still growing above queued messages, or the turn ending, is not the box.
+ * stronger cue than at S0, the box is not another screen's ({@link otherScreenOf}), and the Surface
+ * claims no dialog. The rows above may move: an answer that streams there, a row still growing above
+ * queued messages, or the turn ending, is not the box.
  */
 function probeBoxPasses(s0: Snap, snap: Snap, prefix: string, probe: string): boolean {
   if (s0.frame === null || snap.frame === null) return false;
+  if (snap.otherScreen !== null) return false;
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return false;
   if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return false;
   return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe;
@@ -568,6 +577,23 @@ function countBelow(texts: readonly string[], frame: Frame | null, hints: readon
     if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
   }
   return n;
+}
+
+/**
+ * The name of the other screen that owns the box, when a row under the frame matches one of the
+ * profile's `idle.volatile.below.otherScreens`: Claude Code's agents screen draws a box of its own
+ * ("describe a task for a new session") with its key-hint row under it, and Enter there starts a new
+ * background session with the text. Null with no frame or no such row.
+ */
+function otherScreenOf(texts: readonly string[], frame: Frame | null, screens: readonly OtherScreenRow[]): string | null {
+  if (frame === null || screens.length === 0) return null;
+  const compiled = screens.map((screen) => ({ name: screen.name, pattern: new RegExp(screen.pattern, "u") }));
+  for (let i = frame.bottom + 1; i < texts.length; i++) {
+    const text = texts[i]!.trimEnd();
+    const hit = compiled.find((screen) => screen.pattern.test(text));
+    if (hit !== undefined) return hit.name;
+  }
+  return null;
 }
 
 /** The rows above a frame, the volatile band over the top edge left out, trailing blanks cut. */
@@ -884,6 +910,14 @@ function typedDetail(reason: SendReason): string | undefined {
     default:
       return undefined;
   }
+}
+/** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
+function otherScreenDetail(screen: string): string {
+  return `The typed text went into the ${screen}'s own box, not the conversation's, so Enter was not pressed.`;
+}
+/** The first half of a failed probe's detail when its character went into another screen's box. */
+function probeOtherScreen(screen: string): string {
+  return `The probe character went into the ${screen}'s own box, not the conversation's.`;
 }
 /** The detail of a send held behind earlier held sends on the same pane: it never jumps the queue. */
 const HELD_BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
@@ -2476,6 +2510,7 @@ export class SendProtocol {
             : readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null).strength,
       belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null).strength,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
+      otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
@@ -2630,7 +2665,10 @@ export class SendProtocol {
       return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
     });
     if (typed.verdict !== "pass") {
-      throw await this.probeCleanup(state, s0, typed.snap, probe, typed.verdict === "wait" ? "The probe character did not show in the box." : "The probe character changed more than the box.");
+      const screen = boxOnly ? (typed.snap?.otherScreen ?? null) : null;
+      const why =
+        typed.verdict === "wait" ? "The probe character did not show in the box." : screen !== null ? probeOtherScreen(screen) : "The probe character changed more than the box.";
+      throw await this.probeCleanup(state, s0, typed.snap, probe, why);
     }
 
     try {
@@ -2715,6 +2753,8 @@ export class SendProtocol {
     const collapse = collapseOf(state.match);
     const { command, manual } = state;
     let why: SendReason = "mismatch";
+    // The other screen that owns the box, when a read showed one (typedBoxVerdict): the detail names it.
+    let otherScreen: string | null = null;
     let earlier: Snap | null = null;
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
@@ -2725,6 +2765,12 @@ export class SendProtocol {
       earlier = snap;
       if (boxOnly) {
         const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse);
+        if (verdict === "other_screen") {
+          // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
+          why = "changed";
+          otherScreen = snap.otherScreen;
+          return "fail";
+        }
         if (verdict !== "pass") {
           if (verdict !== "wait") why = verdict;
           return verdict === "modal_cue" ? "fail" : "wait";
@@ -2799,6 +2845,8 @@ export class SendProtocol {
     // The rows hash binds a later Submit or Discard to the screen this answer saw.
     const note: EndNote = { framed: s0.frame !== null };
     if (result.snap !== null) note.rowsHash = result.snap.rowsHash;
+    const screen: string | null = otherScreen; // set inside the poll's callback
+    if (screen !== null) note.detail = otherScreenDetail(screen);
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 

@@ -1840,25 +1840,69 @@ describe("a send into a running turn", () => {
     expect(b.readsAfterEnter()).toBe(1);
   });
 
-  test("a screen that replaces the conversation as the text goes in (claude-lab--agents-screen--w82): no Enter", async () => {
+  // The agents screen's key-hint row under its own box, as the capture holds it (claude-lab--agents-screen--w82).
+  const AGENTS_DETAIL = "The typed text went into the agents screen's own box, not the conversation's, so Enter was not pressed.";
+
+  test("a screen that replaces the conversation as the text goes in (claude-lab--agents-screen--w82): no Enter, idle or running", async () => {
+    const agents = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--agents-screen--w82.txt"), "utf8");
+    for (const version of ["2.1.200", "2.1.301"]) {
+      for (const running of [false, true]) {
+        const label = `${version} ${running ? "running" : "idle"}`;
+        const { pane, send } = rig({ version });
+        pane.height = 16;
+        pane.transcript = [...ANSWER];
+        if (running) pane.over = [LIVE_ROW];
+        // A conversation with the statusline off: one row under the box, as the agents screen draws one
+        // key-hint row under its own box. The row count does not tell them apart; the hint row does.
+        pane.status = ["  ⏸ manual mode on · ← 11 agents"];
+        // The agents screen has a prompt-shaped box of its own: the typed text lands there.
+        pane.beforeWrite = (p, what) => {
+          if (what.startsWith("paste:") || what === "type:then give it a title") {
+            const text = what.slice(what.indexOf(":") + 1);
+            p.fixed = agents.replace("❯ describe a task for a new session", `❯ ${text}`);
+          }
+        };
+        const answer = await send("then give it a title");
+        expect(pane.keysSeen.includes("Enter"), label).toBe(false);
+        expect(answer.receipt, label).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", detail: AGENTS_DETAIL });
+      }
+    }
+  });
+
+  test("a conversation with the statusline off and a plain hint row under the box: sent, idle or running", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      for (const status of ["  ? for shortcuts", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"]) {
+        const idle = rig({ version });
+        idle.pane.status = [status];
+        expect((await idle.send("then give it a title")).receipt, `${version} idle ${status}`).toMatchObject({ outcome: "sent" });
+
+        const running = rig({ version });
+        running.pane.over = [LIVE_ROW];
+        running.pane.status = [status];
+        expect((await running.send("then give it a title")).receipt, `${version} running ${status}`).toMatchObject({ outcome: "sent", queued: true });
+      }
+    }
+  });
+
+  test("the probe lands in the agents screen's box: it fails, one Backspace cleans the box, no Enter", async () => {
     const agents = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/claude-lab--agents-screen--w82.txt"), "utf8");
     for (const version of ["2.1.200", "2.1.301"]) {
       const { pane, send } = rig({ version });
-      pane.height = 16;
-      pane.transcript = [...ANSWER];
-      // The conversation's statusline as on the lane: three rows under the box, where the agents screen
-      // draws one key-hint row. Since 2026-10-17 that is the guard: the rows above no longer decide.
-      pane.status = ["  CTX:4% CACHE:100%", "  [Sonnet·high] /tmp/project on main", "  ⏸ manual mode on · ← 11 agents"];
-      // The agents screen has a prompt-shaped box of its own: the typed text lands there.
+      pane.over = [LIVE_ROW];
+      pane.status = ["  ⏸ manual mode on · ← 11 agents"];
+      // The agents screen comes up as the probe goes in: the probe character stands in its box, and
+      // one Backspace takes it out again.
       pane.beforeWrite = (p, what) => {
-        if (what.startsWith("paste:") || what === "type:then give it a title") {
-          const text = what.slice(what.indexOf(":") + 1);
-          p.fixed = agents.replace("❯ describe a task for a new session", `❯ ${text}`);
-        }
+        if (what === `type:${PROBE}`) p.fixed = agents.replace("❯ describe a task for a new session", `❯ ${PROBE}`);
+      };
+      pane.afterInput = (p, what) => {
+        if (what === "keys:Backspace" && p.fixed !== null) p.fixed = agents;
       };
       const answer = await send("then give it a title");
-      expect(pane.keysSeen.includes("Enter"), version).toBe(false);
-      expect(answer.receipt?.outcome, version).toBe("typed_not_submitted");
+      expect(answer.receipt, version).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+      expect(answer.detail, version).toBe("The probe character went into the agents screen's own box, not the conversation's. One Backspace removed the probe character, so the box is clean again.");
+      expect(pane.keysSeen, version).toEqual(["Backspace"]);
+      expect(pane.calls.filter((call) => call.startsWith("paste:")), version).toEqual([]);
     }
   });
 
@@ -1889,7 +1933,7 @@ describe("a send into a running turn", () => {
       pane.status = ["  ⏸ manual mode on · ? for shortcuts · ← for agents"];
       // The agents screen comes up as the text goes in; the text stays in the conversation's box under
       // it, and the agents box shows its own placeholder. The frame with the text is gone: no Enter.
-      // (One that drew the text in its own box, under the same rows, is not told apart since 2026-10-17.)
+      // (One that draws the text in its own box is told apart by its own key-hint row, the test above.)
       pane.beforeWrite = (p, what) => {
         if (what.startsWith("paste:") || what === "type:then give it a title") p.fixed = agents.join("\n");
       };

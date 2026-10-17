@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A stored send receipt is read leniently, and a failed write keeps no multiplexer text.** A receipt with a screen word this Collie does not know, or a reason line that is too long, was dropped whole, so its request id counted as new and a retry ran again. Now only the unknown `saw` word goes, a long line is cut to 240 characters, and a line of the wrong type is dropped, as on the phone. The receipt of a send that failed to write into the pane now says "Collie could not type into the pane." instead of the words tmux or zellij printed. Those words stay in the bridge log.
+- **A message typed into Claude Code's agents screen no longer starts a new background session.** The agents screen draws its own input box, "describe a task for a new session", with one key-hint row under it. A conversation with the statusline off also has one row under its box. When the screen switched to the agents screen while Collie typed, the text landed in that box, the row count under it matched, and Enter started a new session with your text. Collie now reads the hint row under the box, "enter to return", and never presses Enter there, in a turn or not. The send ends typed but not sent, and its notice says the text went into the agents screen's box. A probe character that lands there fails, and one Backspace takes it out again.
 
 ## [1.22.2] - 2026-10-17
 

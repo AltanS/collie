@@ -193,6 +193,20 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(nameOf("  [Fable·medium] ~/projects/sample-workspace on main*")).toBeNull();
   });
 
+  it("claude: the agents screen's key-hint row under its own box is another screen's, no conversation footer is (claude-lab--agents-screen)", () => {
+    const screens = parseProfile(rawClaude()).idle.volatile.below.otherScreens!;
+    const nameOf = (text: string): string | null => screens.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
+    // The hint row as the w82 and w40 captures hold it.
+    expect(nameOf("  enter to return · space to reply · ctrl+x to delete · ? for shortcuts")).toBe("agents screen");
+    expect(nameOf("  enter to return · ? for shortcuts")).toBe("agents screen");
+    expect(nameOf("  ⏸ manual mode on · ← 11 agents")).toBeNull();
+    expect(nameOf("  ⏸ manual mode on · ? for shortcuts · ← for agents")).toBeNull();
+    expect(nameOf("  ? for shortcuts")).toBeNull();
+    expect(nameOf("  ⏵⏵ bypass permissions on (shift+tab to cycle) · 2 background tasks · ↓ to view · ← 11 agents")).toBeNull();
+    // Codex names none: its box is not affected.
+    expect(parseProfile(rawCodex()).idle.volatile.below.otherScreens).toBeUndefined();
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -568,6 +582,10 @@ describe("parseProfile names the failing field", () => {
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
     ["a footer row that is no expression", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "[unclosed", "idle.volatile.below.footerRows[0].pattern"],
     ["a footer row that matches a blank row", ["idle", "volatile", "below", "footerRows", 0, "pattern"], "^\\s*$", "idle.volatile.below.footerRows[0].pattern"],
+    ["other screens that are no list", ["idle", "volatile", "below", "otherScreens"], "enter to return", "idle.volatile.below.otherScreens"],
+    ["an other screen with no name", ["idle", "volatile", "below", "otherScreens", 0, "name"], undefined, "idle.volatile.below.otherScreens[0].name"],
+    ["an other screen row that is no expression", ["idle", "volatile", "below", "otherScreens", 0, "pattern"], "[unclosed", "idle.volatile.below.otherScreens[0].pattern"],
+    ["an other screen row that matches a blank row", ["idle", "volatile", "below", "otherScreens", 0, "pattern"], "^\\s*$", "idle.volatile.below.otherScreens[0].pattern"],
     ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
     ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
     ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],
