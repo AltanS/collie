@@ -15,6 +15,7 @@ import {
   noEchoPrompt,
   paneBlocked,
   paneHeadsUp,
+  paneHeadsUpDraft,
   paneModelPicker,
   paneShell,
   paneStack,
@@ -181,6 +182,21 @@ export function PaneSection() {
         >
           <PhoneFrameCard height={800}>
             <PaneRouter home={homeSolo} fixture={paneHeadsUp} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-heads-up-notice-draft"
+          label="2: a notice above a box that holds a draft keeps its keys off"
+          reach="The same notice with text typed into the box under it (ADR 0109). A digit would join the draft
+            instead of answering the notice."
+          note="Real pane view over the capture with a draft put into its box. The card's keys are off and
+            the line under the title says to empty the box first; that line is kept, empty, when the box
+            is empty, so the buttons never move when a draft comes or goes."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneHeadsUpDraft} />
           </PhoneFrameCard>
         </Card>
       </Group>

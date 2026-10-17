@@ -345,6 +345,7 @@ export const fr: Dictionary = {
   "composer.protocol.draft": "Le champ contient déjà un brouillon. Ajoutez, remplacez ou annulez.",
   "composer.protocol.typed": "Votre texte est dans le champ, mais Entrée n'a pas été pressée. Envoyez-le ou supprimez-le.",
   "composer.protocol.unconfirmed": "Collie ne peut pas lire cet écran. Vérifiez le volet, puis touchez Taper ici.",
+  "composer.protocol.noticeKey": "Ce chiffre répondrait à l'avis au-dessus de la zone. Vérifiez le volet, puis touchez Taper ici.",
   "composer.protocol.unknown": "Collie ne peut pas savoir si l'envoi a réussi. Lisez l'écran, puis renvoyez si ce n'est pas parti. Votre brouillon est conservé.",
   "composer.protocol.busy": "Un autre envoi vers ce volet est en cours. Attendez, puis réessayez.",
   "composer.protocol.notFree": "Le champ de saisie n'est pas libre. Rien n'a été tapé.",

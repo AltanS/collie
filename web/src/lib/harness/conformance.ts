@@ -621,11 +621,30 @@ export function describeAdapterConformance(
       for (const name of ownFixtures) {
         it(`${name}: does NOT lift once ordinary output scrolls below it`, () => {
           const scrolled = [...loadLines(name), ...trailingOutput()];
-          // A notice card (`MenuModel.liveBox`, ADR 0109) is exempt. It lifts only with the live input
-          // box under it, whose status rows cannot be told from output walked as status rows, and its
-          // tap is bound to the notice's rows by the prompt-binding check: a notice that has gone
-          // refuses the tap rather than types it.
+          // A notice card (`MenuModel.liveBox`, ADR 0109) is exempt here. It lifts only with the live
+          // input box under it, whose status rows cannot be told from output walked as status rows. Its
+          // binding region runs through the box's bottom edge, so the bridge binds the tap only while
+          // that box still stands inside its tail window: the leg below holds both halves of that.
           expect(interactiveBlocks(adapter.buildBlocks(scrolled)).filter((b) => !isNoticeMenu(b))).toEqual([]);
+        });
+      }
+
+      for (const name of ownFixtures.filter((fixture) => adapter.buildBlocks(loadLines(fixture)).some(isNoticeMenu))) {
+        it(`${name}: a notice card binds only while its box stands in the bridge's tail window`, () => {
+          // A notice card that still lifts under scrolled output names a region the bridge finds inside
+          // its window (bridge/prompt-binding.ts), box and all.
+          const scrolled = [...loadLines(name), ...trailingOutput()];
+          for (const block of adapter.buildBlocks(scrolled).filter(isNoticeMenu)) {
+            if (block.kind !== "menu") continue;
+            const fresh = normalizeRegion(scrolled.map(lineText).join("\n"));
+            const matchEnd = lastMatchEnd(fresh, normalizeRegion(block.menu.signature));
+            expect(matchEnd).toBeGreaterThan(-1);
+            expect(fresh.length - 1 - matchEnd).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+          }
+          // Output enough to push the box out of that window: the bridge would refuse the region, so no
+          // card lifts at all.
+          const buried = [...loadLines(name), ...Array.from({ length: BRIDGE_PROMPT_TAIL_LINES }, () => trailingOutput()).flat()];
+          expect(interactiveBlocks(adapter.buildBlocks(buried))).toEqual([]);
         });
       }
     });
@@ -645,12 +664,15 @@ export function describeAdapterConformance(
 
       for (const name of noticeFixtures) {
         // .adr/0009 still holds: no key is synthesised. Each is one digit the notice's own key row
-        // printed as `<digit>:` (the last row of the block), in the printed order.
+        // printed as `<digit>:` (the last row of the block), in the printed order. The row is parsed
+        // here on its own terms, not the reader's: every keyed item, a letter or a digit after a space,
+        // the row's start or a separator glyph, so a letter key the reader dropped shows.
         it(`${name}: a notice card's keys are the digits its key row printed`, () => {
           for (const block of adapter.buildBlocks(loadLines(name))) {
             if (block.kind !== "menu" || block.menu.liveBox === undefined) continue;
             const keyRow = lineText(block.lines.at(-1)!);
-            const printed = [...keyRow.matchAll(/(?:^|\s)(\d):/gu)].map((m) => m[1]);
+            const printed = [...keyRow.matchAll(/(?:^|[\s|│·•])([A-Za-z0-9])[:)]/gu)].map((m) => m[1]!);
+            expect(printed.every((key) => /^\d$/u.test(key)), `${name}: a key row with a letter key lifted a card`).toBe(true);
             expect(block.menu.actions.map((a) => a.keys)).toEqual(printed.map((key) => [key]));
             expect(block.menu.nav).toEqual({ upDown: false });
           }
@@ -661,15 +683,15 @@ export function describeAdapterConformance(
           expect(adapter.composerReady(loadLines(name))).toBe(true);
         });
 
-        // A row between the key row and the box breaks the notice's exact shape: no card lifts, and the
-        // screen falls back to what it was without the reader.
+        // A row between the key row and the box breaks the notice's exact shape: no interactive block
+        // lifts at all, and the screen falls back to what it was without the reader.
         it(`${name}: a splice that breaks the notice lifts no card`, () => {
           const lines = loadLines(name);
           const block = adapter.buildBlocks(lines).find(isNoticeMenu)!;
           const keyRow = lines.indexOf(block.lines.at(-1)!);
           const perturbed = [...lines];
           perturbed.splice(keyRow + 1, 0, textLine("  ○ Something else entirely"));
-          expect(adapter.buildBlocks(perturbed).some(isNoticeMenu)).toBe(false);
+          expect(interactiveBlocks(adapter.buildBlocks(perturbed))).toEqual([]);
         });
       }
 

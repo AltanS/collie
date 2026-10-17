@@ -391,6 +391,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
   "composer.protocol.unconfirmed": "Collie 無法讀取此畫面。請檢查窗格，然後點按「在此輸入」。",
+  "composer.protocol.noticeKey": "這個數字會回答輸入框上方的提示。請檢查窗格，然後點按「在此輸入」。",
   "composer.protocol.unknown": "Collie 無法判定是否已傳送。請查看螢幕，若未送出請重新傳送。系統會保留您的草稿。",
   "composer.protocol.busy": "此窗格的另一次傳送仍在進行。請稍候再試。",
   "composer.protocol.notFree": "輸入框不空閒。未輸入任何內容。",

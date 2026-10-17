@@ -18,6 +18,13 @@ import type { MenuModel } from "../menu-model";
 import { extractInputDraft, inputBoxTail } from "./chrome";
 import { CLAUDE_IDLE } from "./markers";
 
+/**
+ * The bridge binds a tap only to a region that ends inside the last this-many non-blank rows of its
+ * fresh read (`DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts). A card whose region could not
+ * bind there would only ever be refused, so it does not lift.
+ */
+const BRIDGE_TAIL_ROWS = 6;
+
 /** A notice found above the box: its rows, `startLine` to `endLine` inclusive, and its card. */
 export interface AbovePromptNoticeRegion {
   startLine: number;
@@ -28,6 +35,10 @@ export interface AbovePromptNoticeRegion {
 /**
  * The notice over Claude's input box, or null. Only a box whose tail is the statusline run counts, so
  * the rows the view keeps above the box are exactly the rows above the notice.
+ *
+ * The card's binding region (`signature`) runs from the notice's head down through the box's bottom
+ * edge: the bridge's fresh read must find the box as empty as it was, so a draft typed after the card
+ * was drawn refuses the tap instead of taking a digit at its end.
  */
 export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeRegion | null {
   if (inputBoxTail(lines) !== "statusline") return null;
@@ -36,6 +47,8 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   const texts = lines.map(lineText);
   const notice = readAboveNotice(texts, frame.top, CLAUDE_IDLE.notices ?? []);
   if (notice === null) return null;
+  const rowsUnder = texts.slice(frame.bottom + 1).filter((text) => text.trim().length > 0).length;
+  if (rowsUnder >= BRIDGE_TAIL_ROWS) return null;
   return {
     startLine: notice.first,
     endLine: notice.last,
@@ -43,7 +56,7 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
       title: notice.text,
       actions: notice.keys.map((key) => ({ label: key.label, keys: [key.key] })),
       nav: { upDown: false },
-      signature: texts.slice(notice.first, notice.last + 1).join("\n"),
+      signature: texts.slice(notice.first, frame.bottom + 1).join("\n"),
       liveBox: { draft: extractInputDraft(lines) !== null },
     },
   };

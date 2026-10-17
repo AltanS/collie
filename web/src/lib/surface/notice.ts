@@ -8,7 +8,7 @@
 //
 // Pure, and it names no harness (no-harness-names.test.ts): the head comes from the profile.
 
-import { isSingleKeyRow } from "./cues";
+import { isSingleKeyRow, keyRowItems } from "./key-row";
 import type { NoticeHead } from "./profile";
 
 /** The most continuation rows a notice's text wraps onto under its head. */
@@ -17,8 +17,8 @@ const MAX_CONTINUATION_ROWS = 3;
 const CONTINUATION = /^ {2}\S/u;
 /** One printed key: a digit, a colon, the label. */
 const KEY_ITEM = /^(\d):\s*(\S(?:.*\S)?)$/u;
-/** The gap between two key items on the key row. */
-const ITEM_GAP = /\s{2,}/u;
+/** A keyed item inside a label (`Learn more 2: Knew`): one letter or digit, then a colon or a parenthesis. */
+const KEYED_IN_LABEL = /(?:^|\s)[A-Za-z0-9][:)]\s*\S/u;
 
 /** One key the notice printed, as printed. */
 export interface NoticeKey {
@@ -48,13 +48,14 @@ function headPatterns(notices: readonly NoticeHead[]): readonly RegExp[] {
   return patterns;
 }
 
-/** The key row's items as printed keys, or null when one item is not `<digit>: <label>`. */
+/** The key row's items, split as the modal cues split them, as printed keys; null when one item is
+ *  not `<digit>: <label>`, or its label holds another keyed item. */
 function keysOf(text: string): NoticeKey[] | null {
   if (!isSingleKeyRow(text)) return null;
   const keys: NoticeKey[] = [];
-  for (const item of text.trim().split(ITEM_GAP)) {
+  for (const item of keyRowItems(text)) {
     const match = KEY_ITEM.exec(item);
-    if (match === null) return null;
+    if (match === null || KEYED_IN_LABEL.test(match[2]!)) return null;
     keys.push({ key: match[1]!, label: match[2]! });
   }
   return keys;

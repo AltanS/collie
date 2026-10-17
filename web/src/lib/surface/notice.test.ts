@@ -63,12 +63,27 @@ describe("readAboveNotice", () => {
     ["four continuation rows", [HEAD, "  one", "  two", "  three", "  four", KEYS]],
     ["a continuation indented deeper than two", [HEAD, "    deeper", KEYS]],
     ["no key row", [HEAD, "  on your main PC.", ""]],
+    // Items a separator glyph joins are split as the single-key cue splits them, so a letter key there shows.
+    ["a letter key joined by ·", [HEAD, "  1: Learn more · y: Yes   0: Dismiss"]],
+    ["a letter key joined by •", [HEAD, "  1: Learn more • y: Yes   0: Dismiss"]],
+    ["a letter key joined by │", [HEAD, "  1: Learn more │ y: Yes   0: Dismiss"]],
+    ["a label that holds another key", [HEAD, "  1: Learn more 2: Knew this   0: Dismiss"]],
   ];
   for (const [name, over] of failClosed) {
     it(`fails closed on ${name}`, () => {
       expect(noticeOf(screen(over))).toBeNull();
     });
   }
+
+  it("reads every key of a row whose items a separator glyph joins", () => {
+    for (const joined of ["  1: Learn more | 2: Knew this   0: Dismiss", "  1: Learn more • 2: Knew this │ 0: Dismiss"]) {
+      expect(noticeOf(screen([HEAD, joined]))?.keys.map((k) => k.key), joined).toEqual(["1", "2", "0"]);
+    }
+  });
+
+  it("reads a head drawn with nothing after its separator", () => {
+    expect(noticeOf(screen(["✦ Heads up ·", "  on your main PC.", KEYS]))?.text).toBe("Heads up · on your main PC.");
+  });
 
   it("does not read the rating survey over the box", () => {
     expect(noticeOf(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"))).toBeNull();

@@ -345,6 +345,7 @@ export const pt: Dictionary = {
   "composer.protocol.draft": "A caixa já tem um rascunho. Acrescente, substitua ou cancele.",
   "composer.protocol.typed": "Seu texto está na caixa, mas o Enter não foi pressionado. Envie ou descarte.",
   "composer.protocol.unconfirmed": "O Collie não consegue ler esta tela. Confira o painel e toque em Digitar aqui.",
+  "composer.protocol.noticeKey": "Esse número responderia ao aviso acima da caixa. Confira o painel e toque em Digitar aqui.",
   "composer.protocol.unknown": "O Collie não consegue identificar se isso foi enviado. Leia a tela e tente enviar novamente se o envio não tiver ocorrido. Seu rascunho foi mantido.",
   "composer.protocol.busy": "Outro envio para este painel ainda está em andamento. Aguarde e tente de novo.",
   "composer.protocol.notFree": "A caixa de entrada não está livre. Nada foi digitado.",

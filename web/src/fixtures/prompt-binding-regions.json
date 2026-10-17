@@ -267,7 +267,7 @@
   {
     "fixture": "claude--v2302-heads-up-above-box--w142.txt",
     "detector": "menu",
-    "region": "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of an unattended Claude session\n  on your main PC.\n  1: Learn more   2: Knew this already   0: Dismiss"
+    "region": "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of an unattended Claude session\n  on your main PC.\n  1: Learn more   2: Knew this already   0: Dismiss\n    \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
   },
   {
     "fixture": "claude--wizard-multiselect-checked.txt",

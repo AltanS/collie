@@ -95,6 +95,9 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   // render it. One predicate, two uses below: it also decides the chip row, because a card with
   // chips to show is exactly a card that no longer needs the mirror.
   const readsBody = scale.length >= 2 && current >= 0;
+  // A notice card's title is the notice's whole text, so mirroring its rows would say it twice; its
+  // rows stay one tap away behind the Terminal toggle, as a card that reads the body keeps them.
+  const mirrors = !readsBody && menu.liveBox === undefined;
 
   /** The arrow presses that walk the marker from `current` to `target`, in order. */
   const stepKeys = (target: number): string[] => {
@@ -116,18 +119,24 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   );
 
   return (
-    // rawMode (ADR 0056 counsel fix): !readsBody is exactly the branch below that still renders
+    // rawMode (ADR 0056 counsel fix): `mirrors` is exactly the branch below that still renders
     // the RawMirror in children, so the control there only puts the buttons away, never a swap.
-    <PromptPanel ariaLabel={menu.title} raw={lines} rawMode={readsBody ? "reveal" : "declutter"}>
+    <PromptPanel ariaLabel={menu.title} raw={lines} rawMode={mirrors ? "declutter" : "reveal"}>
       <OptionGroupCaption>{menu.title}</OptionGroupCaption>
 
       {/* The region, mirrored verbatim by default — ONLY for a card that reads just the footer. A
           card that reads the body (readsBody, above) has already parsed everything the mirror could
           show, so rendering both would repeat the same scale twice, wrapped fragments and all; its
           way back to these rows is the Terminal toggle above instead (ADR 0056). */}
-      {!readsBody && <RawMirror lines={lines} />}
+      {mirrors && <RawMirror lines={lines} />}
 
-      {draftBlocks && <p className="font-content text-xs text-muted-foreground">{t("dialog.menu.noticeDraft")}</p>}
+      {/* The draft note's line is always there on a notice card and only its text comes and goes, so a
+          poll that sees a draft appear never moves the buttons under a thumb (DESIGN.md §2). */}
+      {menu.liveBox !== undefined && (
+        <p aria-hidden={!draftBlocks} className={cn("font-content text-xs text-muted-foreground", !draftBlocks && "invisible")}>
+          {t("dialog.menu.noticeDraft")}
+        </p>
+      )}
 
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an
           "←/→ to <verb>" row for Left/Right). Each is one keystroke; they move a highlight and commit

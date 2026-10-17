@@ -401,6 +401,7 @@ export const ko: Dictionary = {
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
   "composer.protocol.typed": "텍스트가 입력란에 있지만 Enter는 누르지 않았습니다. 보내거나 버리세요.",
   "composer.protocol.unconfirmed": "Collie가 이 화면을 읽을 수 없습니다. 창을 확인한 뒤 여기에 입력을 누르세요.",
+  "composer.protocol.noticeKey": "그 숫자는 입력란 위의 알림에 대한 응답이 됩니다. 창을 확인한 뒤 여기에 입력을 누르세요.",
   "composer.protocol.unknown": "Collie가 전송 여부를 확인할 수 없습니다. 화면을 읽은 후 전송되지 않았다면 다시 전송하십시오. 작성 중인 초안은 유지됩니다.",
   "composer.protocol.busy": "이 창으로 보내는 다른 작업이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
   "composer.protocol.notFree": "입력란이 비어 있지 않습니다. 아무것도 입력하지 않았습니다.",

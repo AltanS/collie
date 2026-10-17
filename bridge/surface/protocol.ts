@@ -82,11 +82,11 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
-import { commandListAt, isRunningRow, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
-import { readAboveNotice } from "../../web/src/lib/surface/notice.ts";
+import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
@@ -99,6 +99,7 @@ import {
   type ReadMark,
   type SendAnswer,
   type SendCap,
+  type SendCause,
   type SendMode,
   type SendOffer,
   type SendOutcome,
@@ -347,6 +348,8 @@ interface Snap {
   readonly belowCues: "none" | "weak" | "strong";
   /** The framed cue read found cues, and every one stands under the frame's bottom edge. */
   readonly cuesUnderBox: boolean;
+  /** The notice the profile names over the frame ({@link noticeOver}), left out of every cue read; null with none. */
+  readonly notice: AboveNotice | null;
   /** The rows under the frame that count, the profile's hint rows left out ({@link countBelow}); 0 with no frame. */
   readonly below: number;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
@@ -883,6 +886,16 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
 const NOTICE_KEY_DETAIL = "That digit would answer the notice above the box. Check the pane, then tap Type here.";
+/** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
+const NOTICE_KEY: SendCause = "notice_key";
+
+/**
+ * The refusal of a send whose box would hold one of a notice's digits alone where no commit can go
+ * ahead (a running turn, a Replace): the person answers the notice on its card or in the pane.
+ */
+function noticeRefusal(s0: Snap): Ended {
+  return new Ended("refused", "unconfirmed", { surface: s0.surface, offers: ["keys"], detail: NOTICE_KEY_DETAIL, cause: NOTICE_KEY });
+}
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";
 /** The detail of a command the profile never lets wait in a turn (`keys.neverHeld`). */
@@ -1411,6 +1424,8 @@ interface EndNote {
   offers?: SendOffer[];
   /** A failed probe whose one Backspace was read back: the box holds what it held at S0 (2026-10-17). */
   probeClean?: boolean;
+  /** Which rule decided the end, copied onto the answer ({@link SendAnswer.cause}). */
+  cause?: SendCause;
 }
 
 /** A receipt being built, field by field. */
@@ -1434,6 +1449,7 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.rowsHash !== undefined) draft.rowsHash = note.rowsHash;
   if (note.detail !== undefined) draft.detail = note.detail;
   if (note.cap !== undefined) draft.cap = note.cap;
+  if (note.cause !== undefined) draft.cause = note.cause;
   return draft;
 }
 
@@ -2256,6 +2272,8 @@ export class SendProtocol {
       }
       case "replace": {
         const frame = this.draftFrame(state, s0);
+        // The box would end up holding one of the notice's digits alone, which answers the notice.
+        if (this.answersNotice(state, s0)) throw noticeRefusal(s0);
         // S0 ends with its two reads; emptying the box is its own step with its own bound.
         this.lap(state, "s0");
         if (boxText(frame).length > 0) {
@@ -2363,18 +2381,25 @@ export class SendProtocol {
    */
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
-    if (this.answersNotice(state, s0)) {
-      state.manual = true;
-      this.gateSteeringTurn(state, s0);
-      this.gateManual(state, s0, NOTICE_KEY_DETAIL);
+    if (isFree(surface)) {
+      // On an empty box a digit the notice above it printed answers the notice: the manual Send.
+      if (this.answersNotice(state, s0)) {
+        state.manual = true;
+        this.gateSteeringTurn(state, s0);
+        this.gateManual(state, s0, NOTICE_KEY_DETAIL, NOTICE_KEY);
+      }
       return;
     }
-    if (isFree(surface)) return;
     if (surface.turn === "running" && surface.modal === "none" && s0.frame !== null && (surface.composer === "empty" || surface.composer === "draft")) {
       this.gateTurn(state, s0, s0.frame);
       if (surface.composer === "draft") {
         state.queued = false;
         throw new Ended("refused", "draft_present", { surface, framed: true, detail: "The box already holds a draft." });
+      }
+      // In a turn the digit would answer the notice before the harness queues it, so no commit is offered.
+      if (this.answersNotice(state, s0)) {
+        state.queued = false;
+        throw noticeRefusal(s0);
       }
       return;
     }
@@ -2390,15 +2415,18 @@ export class SendProtocol {
 
   /** The manual Send: the first tap is refused `unconfirmed` with the rows hash, the commit goes ahead
    *  on the same rows, and the cap may ask for one more confirm. */
-  private gateManual(state: RunState, s0: Snap, unconfirmed: string): void {
+  private gateManual(state: RunState, s0: Snap, unconfirmed: string, cause?: SendCause): void {
     const { surface } = s0;
     if (state.request.rowsHash === undefined) {
-      throw new Ended("refused", "unconfirmed", { surface, rowsHash: s0.rowsHash, detail: unconfirmed });
+      const note: EndNote = { surface, rowsHash: s0.rowsHash, detail: unconfirmed };
+      if (cause !== undefined) note.cause = cause;
+      throw new Ended("refused", "unconfirmed", note);
     }
     if (state.request.rowsHash !== s0.rowsHash) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
     }
-    this.gateCap(state, s0);
+    // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
+    if (cause !== NOTICE_KEY) this.gateCap(state, s0);
   }
 
   /**
@@ -2407,11 +2435,8 @@ export class SendProtocol {
    * the notice, so the send takes the manual Send even on a free screen.
    */
   private answersNotice(state: RunState, s0: Snap): boolean {
-    const notices = state.match?.profile.idle.notices ?? [];
-    if (s0.frame === null || notices.length === 0) return false;
-    const notice = readAboveNotice(s0.texts, s0.frame.top, notices);
     const text = state.request.text.trim();
-    return notice !== null && notice.keys.some((key) => key.key === text);
+    return s0.notice !== null && s0.notice.keys.some((key) => key.key === text);
   }
 
   /**
@@ -2626,6 +2651,9 @@ export class SendProtocol {
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
     const ownList = ownCommandList(texts, frame, idle);
     const bare = withoutNamedRows(withoutCommandList(rows, ownList), frame);
+    // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
+    // box holding one of its digits, so its key row is no prompt that holds the keys.
+    const notice = noticeOver(texts, frame, idle);
     const snap: Snap = {
       revision: grid.value.revision,
       gateRevision,
@@ -2647,9 +2675,11 @@ export class SendProtocol {
         frame !== null && idle?.dialogsInBox === true
           ? framed.strength
           : frame !== null && idle?.frame.top.blank === true
-            ? readCues(bare.slice(frame.bottom + 1), null).strength
-            : readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null).strength,
-      belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null).strength,
+            ? readCues(bare.slice(frame.bottom + 1), null, null).strength
+            : // The notice stands above the box's interior, so its rows keep their index in this read.
+              readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null, notice).strength,
+      belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null, null).strength,
+      notice,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList),

@@ -2976,8 +2976,54 @@ describe("real screens from the fixture corpus", () => {
     expect(prepared.surface).toMatchObject({ modal: "none", composer: "empty" });
     const digit = await captured.send("1");
     expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(digit.cause).toBe("notice_key");
     expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
     expect(captured.pane.calls).toEqual([]);
+  });
+
+  const NOTICE_ROWS = ["✦ Heads up · With GitHub triggers, anyone who files an issue can put text in front of a session", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+
+  // The review's F2: the bare read (no frame, the whole screen) saw the notice's key row as a single-key
+  // prompt, so a plain send into a running turn was refused `not_free`.
+  test("on a heads-up notice under a running turn: hello goes on one tap, and the screen reads no modal", async () => {
+    const { pane, protocol, send } = rig();
+    pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...NOTICE_ROWS];
+    const prepared = await protocol.handle({ id: "notice-running-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+  });
+
+  test("on a heads-up notice under a running turn: 1 is refused with the notice cause and the key pad alone", async () => {
+    const { pane, send } = rig();
+    pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...NOTICE_ROWS];
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("on a heads-up notice over a draft: 1 is refused draft_present with its offers", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "half a thought";
+    const answer = await send("1");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(answer.cause).toBeUndefined();
+  });
+
+  test("on a heads-up notice over a draft: Replace with 1 is refused with the notice cause, the draft kept", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    pane.box = "half a thought";
+    const answer = await send("1", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(answer.cause).toBe("notice_key");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.box).toBe("half a thought");
   });
 
   test("on a heads-up notice: hello and 10 go on one tap, 1 goes on the commit with the rows hash", async () => {
@@ -2998,6 +3044,8 @@ describe("real screens from the fixture corpus", () => {
     pane.over = notice;
     const first = await send("1");
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.cause).toBe("notice_key");
+    expect(first.offers).toEqual(["commit", "keys"]);
     expect(first.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
     const commit = await send("1", { rowsHash: first.rowsHash! });
     expect(commit.receipt).toMatchObject({ outcome: "sent" });
@@ -3102,6 +3150,22 @@ describe("counters, the cap and the examples", () => {
     const { send } = rig({ mode: "generic", ledger, harness: NO_PROFILE });
     expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
     expect(rowOf(ledger, NO_PROFILE)).toMatchObject({ manual: 0, sent: 1, probed: 0, status: "-", profileId: "-" });
+  });
+
+  // The cap counts sends typed past a screen Collie cannot read. A notice's digit is a screen it reads,
+  // so its commit neither meets the cap nor counts toward it, and files nothing for the lab.
+  test("a commit of a notice's digit goes past a reached cap and counts no manual send", async () => {
+    const ledger = ledgerFor({ cap: 1 });
+    const { pane, send } = rig({ ledger });
+    pane.over = ["✦ Heads up · Something new", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    for (const digit of ["1", "2"]) {
+      const first = await send(digit);
+      expect(first.cause).toBe("notice_key");
+      const commit = await send(digit, { rowsHash: first.rowsHash! });
+      expect(commit.receipt, digit).toMatchObject({ outcome: "sent" });
+      expect(commit.cap).toBeUndefined();
+    }
+    expect(rowOf(ledger, "claude")).toMatchObject({ manual: 0 });
   });
 
   test("past the cap the commit is refused once more with the count and the version, files the frame hash, and counts no manual send", async () => {

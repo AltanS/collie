@@ -162,17 +162,6 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     return blocks;
   }
 
-  // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
-  // because it is the least specific tail shape, and it is gated on the input box's tail being
-  // CLASSIFIED as the popup (chrome.ts), because that is what separates a live composer with a popup
-  // under it from a modal, and from popup-shaped rows under a box whose draft is not a slash command.
-  // `stripChrome` below has already had to find the same box and the same tail, so the two answers
-  // cannot disagree.
-  //
-  // The transcript above stays raw and the box stays stripped, exactly as on any other idle screen —
-  // the popup is simply lifted out of the mirror, where a 220-column list soft-wrapped into an
-  // unreadable wall on a phone, and rendered as a list. An `unknown` tail gets no block of its own: it
-  // is left on the raw mirror by stripChrome, below the transcript.
   // A NOTICE above the live box (above-prompt-notice.ts): the one card on a screen whose box keeps the
   // keyboard. Every grammar above needs the box gone or a footer that names keys, so none claims it;
   // the transcript above the notice stays raw, and the box is stripped as on any idle screen.
@@ -185,6 +174,17 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     return blocks;
   }
 
+  // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
+  // because it is the least specific tail shape, and it is gated on the input box's tail being
+  // CLASSIFIED as the popup (chrome.ts), because that is what separates a live composer with a popup
+  // under it from a modal, and from popup-shaped rows under a box whose draft is not a slash command.
+  // `stripChrome` below has already had to find the same box and the same tail, so the two answers
+  // cannot disagree.
+  //
+  // The transcript above stays raw and the box stays stripped, exactly as on any other idle screen —
+  // the popup is simply lifted out of the mirror, where a 220-column list soft-wrapped into an
+  // unreadable wall on a phone, and rendered as a list. An `unknown` tail gets no block of its own: it
+  // is left on the raw mirror by stripChrome, below the transcript.
   if (inputBoxTail(lines) === "autocomplete") {
     const autoRegion = detectAutocompleteRegion(lines);
     if (autoRegion) {

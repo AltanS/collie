@@ -49,7 +49,7 @@
       }
     },
     "notices": [
-      { "head": "^✦ (?:Heads up|You should know) · " }
+      { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)" }
     ]
   },
   "keys": {

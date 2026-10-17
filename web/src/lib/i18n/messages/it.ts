@@ -345,6 +345,7 @@ export const it: Dictionary = {
   "composer.protocol.draft": "Il campo contiene già una bozza. Aggiungi, sostituisci o annulla.",
   "composer.protocol.typed": "Il tuo testo è nel campo, ma Invio non è stato premuto. Invialo o scartalo.",
   "composer.protocol.unconfirmed": "Collie non riesce a leggere questa schermata. Controlla il riquadro, poi tocca Scrivi qui.",
+  "composer.protocol.noticeKey": "Quel numero risponderebbe all'avviso sopra la casella. Controlla il riquadro, poi tocca Scrivi qui.",
   "composer.protocol.unknown": "Collie non può determinare se l'invio è avvenuto. Legga lo schermo, quindi invii di nuovo se l'operazione non è riuscita. La Sua bozza viene conservata.",
   "composer.protocol.busy": "Un altro invio a questo riquadro è ancora in corso. Attendi e riprova.",
   "composer.protocol.notFree": "Il campo di input non è libero. Non è stato scritto nulla.",

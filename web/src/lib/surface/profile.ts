@@ -87,7 +87,7 @@ export interface FrameAnchor {
 
 /** A notice the harness draws above its live box (`idle.notices`), read by surface/notice.ts. */
 export interface NoticeHead {
-  /** A regular expression source, matched on the notice's first row with its trailing space cut. */
+  /** A regular expression source, matched on the notice's first row with its trailing spaces cut: it must not need a trailing space. */
   readonly head: string;
 }
 

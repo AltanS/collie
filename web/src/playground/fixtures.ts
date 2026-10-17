@@ -1089,6 +1089,16 @@ export const paneHeadsUp: PaneFixture = {
   surface: { revision: 7_302, turn: "running", modal: "none", composer: "empty" },
 };
 
+/** The same notice with a draft typed into the box under it: the card's keys are off and say why. */
+export const paneHeadsUpDraft: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-heads-up-draft` },
+  // The capture's box row is `❯` and a no-break space; the draft follows them as Claude Code draws it.
+  text: claudeHeadsUp.replace("❯ ", "❯ half a thought"),
+  revision: 7_303,
+  surface: { revision: 7_303, turn: "running", modal: "none", composer: "draft" },
+};
+
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */
 export const paneShell: PaneFixture = {
   pane: shells[0]!,

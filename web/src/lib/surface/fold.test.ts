@@ -377,7 +377,7 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     expect(r.frame).not.toBeNull();
     expect(isFree(r.surface)).toBe(true);
     // The quote is a dialog shape: read with no frame, the cues see it.
-    expect(readCues(quote.slice(1, 5), null).strength).toBe("strong");
+    expect(readCues(quote.slice(1, 5), null, null).strength).toBe("strong");
   });
 
   it("codex (c): the same dialog flush on the box is never free", () => {

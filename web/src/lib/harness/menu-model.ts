@@ -82,6 +82,8 @@ export interface MenuModel {
  *  Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
  *  adapter produced the block through exactly these two functions. */
 export function menusEqual(a: MenuModel, b: MenuModel): boolean {
+  // A notice card over a box that now holds a draft (`liveBox.draft`): a digit would join the draft.
+  if (a.liveBox?.draft === true || b.liveBox?.draft === true) return false;
   return a.signature === b.signature && menusSameIdentity(a, b);
 }
 

@@ -34,7 +34,8 @@ describe("the notice above the box", () => {
     ]);
     expect(card.menu.nav).toEqual({ upDown: false });
     expect(card.menu.liveBox).toEqual({ draft: false });
-    expect(card.menu.signature).toBe(card.lines.map(lineText).join("\n"));
+    // The card mirrors the notice's rows; its binding region goes on down through the box (review F4).
+    expect(card.menu.signature.startsWith(`${card.lines.map(lineText).join("\n")}\n`)).toBe(true);
     expect(card.lines).toHaveLength(3);
   });
 
@@ -54,6 +55,27 @@ describe("the notice above the box", () => {
   it("marks the box's draft, so the card's keys wait", () => {
     const card = claudeBuildBlocks(withDraft("half a thought")).find((b) => b.kind === "menu");
     expect(card?.kind === "menu" && card.menu.liveBox).toEqual({ draft: true });
+  });
+
+  // The bridge binds the card's region only when it ends inside the last six non-blank rows of its read;
+  // the region ends at the box's bottom edge, so up to five status rows may stand under it (review F5).
+  it("lifts with one and three extra status rows under the box, and not with six", () => {
+    const all = lines(HEADS_UP);
+    const statusRow = all.at(-2)!;
+    const taller = (extra: number) => [...all, ...Array.from({ length: extra }, () => statusRow)];
+    expect(claudeBuildBlocks(taller(1)).some((b) => b.kind === "menu")).toBe(true);
+    expect(claudeBuildBlocks(taller(3)).some((b) => b.kind === "menu")).toBe(true);
+    expect(claudeBuildBlocks(taller(6)).some((b) => b.kind === "menu")).toBe(false);
+  });
+
+  it("binds the card from the notice's head down through the box's bottom edge", () => {
+    const card = claudeBuildBlocks(lines(HEADS_UP)).find((b) => b.kind === "menu");
+    if (card?.kind !== "menu") throw new Error("no menu");
+    const region = card.menu.signature.split("\n").map((row) => row.trimEnd());
+    expect(region[0]).toMatch(/^✦ Heads up · /u);
+    expect(region.at(-3)).toMatch(/^─+$/u);
+    expect(region.at(-2)).toBe("❯");
+    expect(region.at(-1)).toMatch(/^─+$/u);
   });
 
   it("does not lift the rating survey over the box", () => {
