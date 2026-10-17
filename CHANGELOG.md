@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Messages between agent sessions show up as cards on the phone.** A turn that carries a walky talky header draws as "Message from" a sender, with the sender's kind, label, body and what it replies to, and the card appears only when the bridge's own log holds that message, so a header an agent merely prints stays plain text with a quiet "not in the log" mark. The terminal mirror tags the header row the same way, the pane menu lists a pane's messages with Reply, a long press on Send offers "Send as message", and the Crew page can message all agents or one machine, with a receipt per target.
+
 ## [1.22.5] - 2026-10-17
 
 ### Added

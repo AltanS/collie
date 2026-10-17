@@ -19,6 +19,7 @@ import {
   fetchCrew,
   fetchMachines,
   fetchPane,
+  fetchPaneWalky,
   fetchSnapshot,
   isApiErrorStatus,
   isPairingRefusal,
@@ -72,6 +73,7 @@ import type {
   UpdateInfo,
   WorkspaceView,
 } from "@/lib/types";
+import type { WalkyRow } from "@/lib/walky";
 
 // A superseded revalidation is aborted via the loader's request.signal; that surfaces as an
 // AbortError we must RETHROW so React Router discards the stale run — swallowing it into the
@@ -216,6 +218,14 @@ export interface PaneData {
    * herd for. A missing row is then "not known", never "gone" (see {@link savedPaneRow}).
    */
   savedPane?: AgentView;
+  /**
+   * The pane's walky talky messages, newest first, each with its receipt (M62), or `null` when the
+   * list could not be read (an older bridge, a failed read, a saved copy). It is the cross-check
+   * behind the Chat card and the mirror row: an envelope header on a screen is only text until its id
+   * is found here (lib/walky.ts). `null` claims nothing either way; an empty list claims "none".
+   * Optional in the TYPE only, so hand-built fixtures stay valid.
+   */
+  walky?: WalkyRow[] | null;
 }
 
 // ── THE COLD OPEN (M46 spec 10) ───────────────────────────────────────────────
@@ -668,6 +678,27 @@ export function prefetchPaneData(paneId: string, scope: Scope | undefined): Prom
   return prefetchPane(paneId, scope, getRequestedLines(paneId, scope));
 }
 
+/** The last list each pane answered, so one failed poll does not turn every card back into plain text. */
+const lastWalky = new Map<string, WalkyRow[]>();
+
+/**
+ * The pane's walky talky list, or `null` when it could not be read (M62). Never throws: the list is
+ * the cross-check for a card and a row style, and a screen that cannot be checked simply draws
+ * nothing extra. A failed or superseded poll answers the list the pane last had, so a card does not
+ * flicker back to plain text for one bad read; a pane that never had one (an older bridge with no
+ * route) stays `null`.
+ */
+async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | undefined): Promise<WalkyRow[] | null> {
+  const key = paneKey(paneId, scope);
+  try {
+    const rows = await fetchPaneWalky(paneId, scope, signal);
+    lastWalky.set(key, rows);
+    return rows;
+  } catch {
+    return lastWalky.get(key) ?? null;
+  }
+}
+
 export async function paneLoader({
   params,
   request,
@@ -715,9 +746,12 @@ export async function paneLoader({
       error: false,
       authError: false,
       stale: false,
+      walky: await readWalky(paneId, scope, request?.signal),
     };
   }
 
+  // The walky list is asked beside the mirror, not after it: the two reads share the poll's deadline.
+  const walkyRead = readWalky(paneId, scope, request?.signal);
   try {
     // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the
     // `?? lastPaneText` is just belt-and-suspenders. Both paths are a success (not the error
@@ -777,6 +811,7 @@ export async function paneLoader({
       error: false,
       authError: false,
       stale: false,
+      walky: await walkyRead,
     };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it

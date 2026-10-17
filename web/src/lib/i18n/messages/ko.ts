@@ -2397,4 +2397,57 @@ export const ko: Dictionary = {
   "stt.model.error.storageFailed": "이 휴대폰이 모델을 저장하지 못했습니다.",
   "stt.model.error.damaged": "저장된 모델이 손상되었습니다. 다시 다운로드하세요.",
   "stt.model.error.missing": "이 휴대폰에는 아직 모델이 없습니다.",
+
+  // --- walky talky (M62): messages between agent sessions and from the operator ---
+  // A message card in Chat. `{label}` is the sender's own label from the log (`repo#branch`, a pane
+  // title, or a device label) and is never translated.
+  "walky.card.title": "Message from {label}",
+  "walky.card.replyTo": "reply to {id}",
+  "walky.card.notInLog": "not in the log",
+  "walky.kind.agent": "agent",
+  "walky.kind.operator": "operator",
+  // The receipt's `verified` as a small word. `{by}` is the machine that checked it.
+  "walky.verified.by": "verified by {by}",
+  "walky.verified.local": "local",
+  "walky.verified.none": "not verified",
+  // Where a message stands.
+  "walky.state.accepted": "Logged, not typed yet",
+  "walky.state.delivered": "Delivered",
+  "walky.state.inboxOnly": "In the inbox",
+  "walky.state.refused": "Refused",
+  "walky.state.refusedBecause": "Refused: {reason}",
+  "walky.state.expired": "Expired",
+  "walky.state.unknown": "Typed, outcome not read",
+  // The pane sheet's row and the sheet it opens.
+  "walky.sheet.row": "Messages",
+  "walky.sheet.title": "Messages",
+  "walky.sheet.empty": "No messages for this pane yet.",
+  "walky.sheet.unavailable": "This machine does not keep messages yet.",
+  "walky.sheet.reply": "Reply",
+  "walky.sheet.replyAria": "Reply to {label}",
+  "walky.sheet.from": "{kind}: {label}",
+  // The composer's long-press menu, and the strip that says where a message is going.
+  "walky.composer.menu": "Send options",
+  "walky.composer.sendAsMessage": "Send as message",
+  "walky.composer.to": "Message to {label}",
+  "walky.composer.toThisPane": "this pane",
+  "walky.composer.replyTo": "Reply to {label}",
+  "walky.composer.cancel": "Send as a plain reply again",
+  "walky.composer.sending": "Sending message",
+  "walky.composer.failed": "Message not sent: {error}",
+  "walky.composer.empty": "Write the message first.",
+  // The Crew page's broadcast.
+  "walky.crew.open": "Message all agents",
+  "walky.crew.title": "Message all agents",
+  "walky.crew.text": "Message",
+  "walky.crew.textPlaceholder": "Write what the agents should read",
+  "walky.crew.target": "Send to",
+  "walky.crew.targetAll": "All machines",
+  "walky.crew.reach": "Agents reached: {count}",
+  "walky.crew.send": "Send message",
+  "walky.crew.sending": "Sending",
+  "walky.crew.receipts": "Receipts",
+  "walky.crew.noReceipts": "The bridge answered with no receipts.",
+  "walky.crew.failed": "Message not sent: {error}",
+  "walky.crew.readOnly": "This device may not send messages.",
 };

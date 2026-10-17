@@ -28,6 +28,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
+import type { WalkyReceipt, WalkyRow, WalkySendBody, WalkyTarget } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1463,6 +1464,41 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
   if (normalizeScope(scope).host) return [];
   const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope), undefined, sendRecover());
   return readSendReceipts(got).receipts.slice();
+}
+
+/**
+ * GET /api/pane/:id/walky: the walky talky messages kept for one pane, newest first, each with its
+ * receipt (M62). A poll read, so it takes the poll's deadline; forwardable like the pane read.
+ * The pane loader asks it beside the mirror, and the Chat card and the mirror row take their
+ * cross-check from the answer (lib/walky.ts).
+ */
+export async function fetchPaneWalky(paneId: string, scope?: Scope, signal?: AbortSignal, limit = 50): Promise<WalkyRow[]> {
+  const got = await req<{ messages: WalkyRow[] }>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/walky?limit=${limit}`, scope),
+    { signal, timeoutMs: POLL_TIMEOUT_MS },
+  );
+  return got.messages;
+}
+
+/**
+ * POST /api/walky: send an operator message (M62). `to` is one address, `all` or `<memberId>/all`.
+ * Carries no scope: a lead routes by `to`. The bridge answers `{ receipt }` for one target and
+ * `{ receipts }` for a fan-out; this always hands back a list. The caller keeps `body.id` for a retry
+ * of the same attempt, and the same id twice returns the receipt without typing again.
+ */
+export async function postWalky(body: WalkySendBody): Promise<WalkyReceipt[]> {
+  const got = await req<{ receipt?: WalkyReceipt; receipts?: WalkyReceipt[] }>("/api/walky", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (got.receipts !== undefined) return got.receipts;
+  return got.receipt === undefined ? [] : [got.receipt];
+}
+
+/** GET /api/walky/who: every agent pane a message can reach, across the crew (M62). */
+export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyTarget[]> {
+  const got = await req<{ targets: WalkyTarget[] }>("/api/walky/who", { signal });
+  return got.targets;
 }
 
 /**

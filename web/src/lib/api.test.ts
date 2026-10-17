@@ -21,6 +21,7 @@ import {
   fetchFileImage,
   fetchHistory,
   fetchPane,
+  fetchPaneWalky,
   fetchSnapshot,
   filesImagePath,
   getNotifyPrefs,
@@ -31,6 +32,8 @@ import {
   removeRecentRun,
   sendKeys,
   startLaunch,
+  fetchWalkyWho,
+  postWalky,
   sendReply,
   textBeforeLastSend,
   uploadFile,
@@ -1279,5 +1282,36 @@ describe("cancelHeldSend (M56 spec 15)", () => {
     server.use(http.delete("/api/send/:id", ({ request }) => (urls.push(request.url), HttpResponse.json({ result: "cancelled" }))));
     await expect(cancelHeldSend("req00001", "w1:p1", { host: "badger" })).rejects.toMatchObject({ status: 400 });
     expect(urls).toEqual([]);
+  });
+});
+
+describe("the walky talky routes (M62)", () => {
+  it("reads a pane's list newest first, scoped to the machine that owns the pane", async () => {
+    const urls: string[] = [];
+    server.use(http.get(/\/api\/pane\/[^/]+\/walky/, ({ request }) => (urls.push(request.url), HttpResponse.json({ messages: [] }))));
+    await expect(fetchPaneWalky("w1:p1", { host: "badger" })).resolves.toEqual([]);
+    expect(urls).toEqual(["http://localhost:3000/api/pane/w1%3Ap1/walky?limit=50&host=badger"]);
+  });
+
+  it("posts the body as given and hands back a list for one receipt", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/walky", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ receipt: { id: "wt_aaaaaaaaaaaa", state: "accepted", verified: "local", at: 1, by: "solo" } });
+      }),
+    );
+    const receipts = await postWalky({ id: "wt_aaaaaaaaaaaa", to: "local/w1:p1", body: "hi", replyTo: "wt_bbbbbbbbbbbb" });
+    expect(bodies).toEqual([{ id: "wt_aaaaaaaaaaaa", to: "local/w1:p1", body: "hi", replyTo: "wt_bbbbbbbbbbbb" }]);
+    expect(receipts.map((r) => r.state)).toEqual(["accepted"]);
+  });
+
+  it("hands back every receipt of a fan-out", async () => {
+    const receipts = await postWalky({ id: "wt_aaaaaaaaaaaa", to: "all", body: "hi" });
+    expect(receipts).toHaveLength(2);
+  });
+
+  it("lists the reachable targets", async () => {
+    await expect(fetchWalkyWho()).resolves.toEqual([]);
   });
 });

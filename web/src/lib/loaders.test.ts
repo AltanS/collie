@@ -8,7 +8,9 @@ import {
   fixtureCrewSnapshot,
   fixtureCrewStatus,
   fixtureSnapshot,
+  fixtureWalkyAgent,
   paneTextWithDraft,
+  setWalkyRows,
 } from "@/test/handlers";
 
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
@@ -1448,5 +1450,40 @@ describe("paneLoader — the pane's saved row", () => {
     (await import("./pairing")).markNotPaired();
     failPane();
     expect((await paneAt("/pane/w1:p1")).savedPane).toBeUndefined();
+  });
+});
+
+describe("paneLoader and the walky talky list (M62)", () => {
+  const open = (paneId: string) => new Request(`http://localhost/pane/${encodeURIComponent(paneId)}`);
+  const failWalky = () => server.use(http.get(/\/api\/pane\/[^/]+\/walky/, () => new HttpResponse(null, { status: 404 })));
+
+  it("carries the rows the bridge keeps for the pane", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(data.walky).toEqual([fixtureWalkyAgent]);
+  });
+
+  it("answers an empty list when the bridge holds none", async () => {
+    const { paneLoader } = await import("./loaders");
+    expect((await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") })).walky).toEqual([]);
+  });
+
+  it("answers null from a bridge that has no such route, and still reads the mirror", async () => {
+    failWalky();
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(data.walky).toBeNull();
+    expect(data.error).toBe(false);
+    expect(data.text).not.toBe("");
+  });
+
+  it("keeps the last list through one failed poll, so a card does not turn back into text", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    failWalky();
+    const again = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
 });
