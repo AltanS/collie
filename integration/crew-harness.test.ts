@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
+import { askSocket } from "../cli/walky.ts";
+import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { cmdDevicesRevoke } from "../cli/pairing.ts";
 import {
   cmdJoin,
@@ -850,6 +852,39 @@ describe("the lead speaks for the crew", () => {
     // had to materialise something under its own state dir.
     expect(readdirSync(lead.stateDir).toSorted()).not.toContain("uploads");
   });
+});
+
+describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
+  /** One request over an instance's walky socket, as the CLI sends it with no pane markers: the operator. */
+  async function walky(at: Instance, request: Record<string, JsonValue>): Promise<JsonValue> {
+    const answer = await askSocket(walkySocketPath(at.stateDir), `${JSON.stringify({ v: 1, markers: [], ...request })}\n`, 5000);
+    expect(answer).not.toBeNull();
+    // SAFETY: the bridge writes one JSON line, and the assertions below read it field by field.
+    return JSON.parse(answer!) as JsonValue;
+  }
+
+  test("the lead lists the member's pane, routes both ways, and each side records how the sender was known", async () => {
+    const leadId = lead.store()!.self.memberId;
+    const peerId = peer.store()!.self.memberId;
+    await waitFor(
+      async () => JSON.stringify(await walky(lead, { op: "who" })).includes(`"${peerId}/${peer.paneId}"`),
+      10_000,
+      "the lead's who never listed the member's pane",
+    );
+    expect(await walky(peer, { op: "who" })).toMatchObject({ ok: true, note: expect.stringContaining("ask the lead") });
+
+    // The lead to the member: signed by the lead, so the member verifies the origin too.
+    const down = await walky(lead, { op: "send", id: "wt_crewdown0001", to: `${peerId}/${peer.paneId}`, body: "from the lead", replyTo: null });
+    expect(down).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${peerId}/${peer.paneId}`, by: peerId, verified: "origin" }] });
+    expect(await walky(peer, { op: "status", id: "wt_crewdown0001" })).toMatchObject({ ok: true, receipts: [{ target: `${peerId}/${peer.paneId}`, verified: "origin" }] });
+
+    // The member to the lead: the lead checks the member's signature and writes `origin`; the member
+    // keeps `accepted` and is told where the outcome lives.
+    const up = await walky(peer, { op: "send", id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member", replyTo: null });
+    expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId }] });
+    expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target: `${leadId}/${lead.paneId}`, verified: "origin" }] });
+    expect(await walky(peer, { op: "status", id: "wt_crewup000001" })).toMatchObject({ elsewhere: [`${leadId}/${lead.paneId}`] });
+  }, 60_000);
 });
 
 // ── Failure modes ────────────────────────────────────────────────────────────

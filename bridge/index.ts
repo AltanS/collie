@@ -113,6 +113,7 @@ import {
   crewTimeoutBudget,
   crewTimeoutClampWarning,
   PeerClient,
+  WRITE_BUDGET_MS,
 } from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
 import { leadReleaseHeader, LEG_WALL_CLOCK_MS, CrewFollower, UpdateTurns } from "./crew/follow.ts";
@@ -128,6 +129,8 @@ import {
   type PairingCollision,
 } from "./crew/staleness.ts";
 import { signDial, signRequest } from "./crew/signing.ts";
+import type { JsonValue } from "./json.ts";
+import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import {
   armThresholdMs,
   armThresholdWarning,
@@ -224,7 +227,17 @@ import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
 import { labelOf } from "./walky/address.ts";
-import type { SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
+import {
+  crewTargets,
+  CREW_WALKY_ROUTE,
+  leadRouteRemote,
+  memberRouteRemote,
+  mergeReport,
+  WalkyCrew,
+  WalkyReport,
+  type CrewDialAnswer,
+} from "./walky/crew.ts";
+import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
 import { WalkyLog } from "./walky/log.ts";
 import { WalkyService } from "./walky/service.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
@@ -1678,14 +1691,37 @@ const walkyHost: WalkyHost = {
   },
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
+const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// Across the crew (CREW_PROTOCOL §21). A member hands every message for another machine to its lead,
+// signed; the lead delivers and routes it on with its attestation. The lead's half needs the lead
+// runtime, which is built after the sessions, so it is assigned below and read through this holder.
+let walkyLeadClient: PeerClient | null = null;
+let walkyLeadHalf: { readonly route: RouteRemote; readonly targets: () => ReturnType<typeof crewTargets> } | null = null;
+const walkyRoute: RouteRemote | undefined =
+  walkyMemberId === null
+    ? undefined
+    : crew.mode === "lead"
+      ? (message, members) => (walkyLeadHalf === null ? Promise.reject(new Error("the crew is not wired yet")) : walkyLeadHalf.route(message, members))
+      : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload) });
 const walky = new WalkyService({
-  log: new WalkyLog(join(cfg.stateDir, "walky")),
+  log: walkyLog,
   host: walkyHost,
   memberId: walkyMemberId,
   enabled: () => cfg.walky,
   machine: hostname(),
   keyPem: () => (walkyMemberId === null ? null : (trustStore.current()?.self.keyPem ?? null)),
   warn: (line) => console.warn(line),
+  routeRemote: walkyRoute,
+  remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
+  outcomesOnLead: crew.mode === "peer",
+});
+// A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes.
+const walkyReport = crew.mode === "peer" && walkyMemberId !== null ? new WalkyReport(walkyMemberId) : null;
+walkyReport?.listen(walkyLog);
+const walkyCrew = new WalkyCrew({
+  service: walky,
+  trust: () => trustStore.current(),
+  audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
 });
 const walkyRecovered = walky.deliverer.recover();
 if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} message(s) left open by the last run`);
@@ -1986,6 +2022,10 @@ const crewLead = (() => {
     },
     // ADR 0084: a member's own load, off the answer this sweep already parsed, on this lead's clock.
     onMachineStats: (memberId, sample, at) => machineWatch?.observe(memberId, sample, at),
+    // §21: how a message this lead routed ended on that member, into this lead's own walky log.
+    onWalkyReceipts: (memberId, receipts) => {
+      mergeReport(walkyLog, memberId, receipts);
+    },
     onPeerGone: (memberId) => {
       peerNotifier?.forget(memberId);
       // A member that left takes its last sample and its day of history with it (ADR 0084).
@@ -2086,6 +2126,49 @@ const crewLead = (() => {
       })(),
   });
 })();
+
+// Walky talky's lead half (§21): a message for another member goes to that member through the lead's
+// own forward, with this lead's attestation beside it; `who` lists every member's agent panes from the
+// bodies the sweep already holds.
+if (crewLead !== undefined && walkyMemberId !== null) {
+  const lead = crewLead;
+  walkyLeadHalf = {
+    route: leadRouteRemote({
+      self: walkyMemberId,
+      members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      signing: () => {
+        const held = trustStore.current();
+        return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
+      },
+      post: async (memberId, segment, payload): Promise<CrewDialAnswer> => {
+        const resolved = lead.resolve({ kind: "member", id: memberId });
+        if (resolved === undefined || resolved.kind !== "peer") return { kind: "refused", reason: "no such member" };
+        const url = new URL(`http://collie.invalid/api/pane/${encodeURIComponent(segment)}/walky`);
+        url.searchParams.set("host", memberId);
+        const req = new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload });
+        const res = await lead.forward(req, url, resolved, {
+          device: null,
+          audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+        });
+        const body = await res.json().catch(() => null);
+        // SAFETY: `Response.json()` output IS a JsonValue by construction; only `code` and `error` are read here.
+        const row = asJsonObject(body as JsonValue);
+        // The lead's own refusals (§10.3): nothing reached the member, or it may have and is not re-sent.
+        if (row?.code === "write_outcome_unknown") return { kind: "unknown", reason: "crew: outcome unknown" };
+        if (row?.code === "host_unreachable" || row?.code === "host_incompatible") {
+          return { kind: "refused", reason: asJsonString(row.error) ?? String(row.code) };
+        }
+        // SAFETY: as above.
+        return { kind: "answer", status: res.status, body: body as JsonValue | null };
+      },
+    }),
+    targets: () =>
+      crewTargets(
+        lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+        !cfg.redact,
+      ),
+  };
+}
 
 /**
  * `GET /api/crew`'s body, asked for per request and answered from memory (bridge/crew/status-wire.ts).
@@ -2270,6 +2353,46 @@ if (crewLead) {
  * door that terminates TLS before the process ({@link takeoverDialTls}). There the crew secret and
  * the dial attestation are the whole of it, and both ride EVERY call this client makes.
  */
+/**
+ * A member's one dial to its lead for walky talky (§21): the ordinary crew client, signed per §8.6
+ * and attested on every dial, with no pin for the lead (its address is a front door that terminates
+ * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
+ */
+async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
+  const data = trustStore.current();
+  const lead = data?.lead ?? null;
+  if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
+  walkyLeadClient ??= new PeerClient({
+    self: data.self.memberId,
+    secret: () => trustStore.current()?.crew?.secret ?? null,
+    timeoutMs: crewTimeoutBudget(cfg.pollMs),
+    patientTimeoutMs: crewHelloBudget(cfg.pollMs),
+    fetch: (url, init) => fetch(url, init),
+    sign: (parts) => signRequest(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    tls: (link) => takeoverDialTls(trustStore.current(), link.memberId),
+  });
+  const outcome = await walkyLeadClient.proxy(
+    { memberId: lead.memberId, address: lead.address },
+    CREW_WALKY_ROUTE,
+    undefined,
+    { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+    WRITE_BUDGET_MS,
+    true,
+  );
+  if (outcome.ok) {
+    const body = await outcome.value.json().catch(() => null);
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; `receiptsOfAnswer` reads it.
+    return { kind: "answer", status: outcome.status, body: body as JsonValue | null };
+  }
+  // Nothing was sent, or the lead answered and refused: the message did not land there.
+  if (outcome.state !== "unreachable") return { kind: "refused", reason: `lead: ${outcome.reason}` };
+  if (outcome.authRefused === true) return { kind: "refused", reason: "signature" };
+  if (outcome.attempted === false) return { kind: "refused", reason: `lead: ${outcome.reason}` };
+  // It may have landed (§10.3): never re-sent, and said so.
+  return { kind: "unknown", reason: `crew: ${outcome.reason}` };
+}
+
 function takeoverClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
@@ -2512,6 +2635,7 @@ const server = startServer({
   // enrolled has no store, gets no handler, and so registers no crew route at all (§11). The
   // surface is handed back by server.ts so a peer answers its lead out of the same closures its own
   // browser routes use — the same snapshot body, and the same session-scoped handlers (§5).
+  walkyCrew,
   crewRouter:
     trustStore.current() === null
       ? undefined
@@ -2519,6 +2643,11 @@ const server = startServer({
           createCrewRouter({
             store: trustStore,
             audit,
+            // §21: a lead takes a member's message; a member reports how messages from elsewhere ended.
+            walky: {
+              fromMember: (body, member) => walkyCrew.fromMember(body, member),
+              report: walkyReport === null ? undefined : () => walkyReport.drain(),
+            },
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).

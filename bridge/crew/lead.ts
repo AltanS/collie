@@ -1,6 +1,9 @@
 import type { JsonValue } from "../json.ts";
 import type { SnapshotView } from "../sessions.ts";
 import { parsePeerMachineStats } from "../machine-parse.ts";
+import { WALKY_REPORT_FIELD } from "../walky/crew.ts";
+import { readWalkyReport } from "../walky/parse.ts";
+import type { WalkyReceipt } from "../walky/types.ts";
 import type { MachineSample, MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import {
@@ -234,6 +237,13 @@ export interface CrewLeadDeps {
    * it is. Optional, so a lead built without the machine watch sweeps exactly as before.
    */
   readonly onMachineStats?: (memberId: string, sample: MachineSample, at: number) => void;
+  /**
+   * A member's walky talky report, read off the answer this sweep just parsed (CREW_PROTOCOL §21):
+   * the receipts it wrote since its last answer for messages from elsewhere. Called only when the
+   * answer carried at least one, so a member with nothing to say costs nothing. The receiver decides
+   * which of them it believes (`bridge/walky/crew.ts` → `mergeReport`).
+   */
+  readonly onWalkyReceipts?: (memberId: string, receipts: readonly WalkyReceipt[]) => void;
   /**
    * A member answered §18.10's named `lead_conflict`: **it follows somebody else now.**
    *
@@ -587,6 +597,9 @@ export class CrewLead {
           // re-checks every field and answers `null` for anything it cannot trust.
           const load = this.deps.onMachineStats === undefined ? null : parsePeerMachineStats(outcome.value as JsonValue);
           if (load !== null) this.deps.onMachineStats?.(memberId, load, this.now());
+          // §21: that member's walky report, off the same answer. SAFETY: the same cast and reason.
+          const walky = this.deps.onWalkyReceipts === undefined ? [] : readWalkyReport(outcome.value as JsonValue, WALKY_REPORT_FIELD);
+          if (walky.length > 0) this.deps.onWalkyReceipts?.(memberId, walky);
         }
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());

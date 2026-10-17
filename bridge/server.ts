@@ -194,6 +194,7 @@ import type { MachineSurface } from "./machines.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { parsePhoneSend } from "./walky/parse.ts";
 import type { WalkyService } from "./walky/service.ts";
+import type { WalkyCrew } from "./walky/crew.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -467,8 +468,11 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
 /**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
  * newest receipt. Read-gated like the pane read. A route of its own beside `PANE_ROUTE` for 1.23.0:
- * it answers this collie's own sessions only. Spec 03 makes it a forwardable read (`?host=`) by
- * joining it to the pane grammar here and in `bridge/crew/forward.ts`, which is a crew-wire change.
+ * the GET answers this collie's own sessions only, and a `?host=` read answers 400.
+ *
+ * The same path carries the lead's message to a member (CREW_PROTOCOL.md §21): a POST, reached only
+ * through the crew dispatch, answered by walky's own handler (`bridge/walky/crew.ts`), never by the
+ * phone's reply. `bridge/crew/forward.ts` mirrors this literal one-for-one (`forward.test.ts`).
  */
 const WALKY_PANE_ROUTE = /^\/api\/pane\/([^/]+)\/walky$/;
 
@@ -1035,6 +1039,12 @@ export function startServer(opts: {
    * answer 404: an instance built without it (a test) takes no message.
    */
   walky?: WalkyService;
+  /**
+   * Walky talky's crew half (CREW_PROTOCOL.md §21): on a member, the handler of the lead's
+   * `POST /crew/v1/pane/<pane | all>/walky`, reached through the crew dispatch only. Absent (solo, a
+   * test) ⇒ that POST answers 404, which the lead reads as an older member.
+   */
+  walkyCrew?: Pick<WalkyCrew, "fromLead">;
   /**
    * The **deposed** answer, when this collie has learned the crown has moved (CREW_PROTOCOL.md
    * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
@@ -2053,6 +2063,29 @@ export function startServer(opts: {
         const gone = await forgetDeviceRows(addedLaunchers, forgotten.trim(), "crew", audit.scoped({ via: "crew", from }), "device-revoked");
         return json({ ok: true, removed: gone.length }, req.headers.get("accept-encoding"));
       }
+      // A walky talky message the lead routed here (§21). Crew-only by construction: the browser path
+      // answers only the GET on this path. Not behind the device gate: no phone stands behind it, and
+      // the lead's attestation in the body is what admits it (bridge/walky/crew.ts checks it).
+      const walkyPane = url.pathname.match(WALKY_PANE_ROUTE);
+      if (walkyPane && req.method === "POST") {
+        const handler = opts.walkyCrew;
+        if (handler === undefined) return jsonError({ error: "not found" }, 404, null);
+        let segment: string;
+        let body: JsonValue | undefined;
+        try {
+          segment = decodeURIComponent(walkyPane[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `checkFromLead` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await handler.fromLead(segment, body, from);
+        return new Response(JSON.stringify(answer.body), { status: answer.status, headers: { "content-type": "application/json; charset=utf-8" } });
+      }
       const routed = await serveSessionRoute(req, url, {
         resolve: async () => localRuntime(session, null),
         gate: (level) => {
@@ -2506,6 +2539,12 @@ export function startServer(opts: {
         return walkyWhoRoute(walky, req.headers.get("accept-encoding"));
       }
       const walkyPane = pathname.match(WALKY_PANE_ROUTE);
+      // The POST on this path is the lead's, through the crew dispatch (§21): never a phone's.
+      if (walkyPane && req.method !== "GET") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        return text("method not allowed", 405);
+      }
       if (walkyPane && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;

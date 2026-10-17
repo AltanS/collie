@@ -18,9 +18,13 @@ import {
   CREW_SECRET_PATH,
   CREW_SNAPSHOT_PATH,
   CREW_TAKEOVER_PATH,
+  CREW_WALKY_PATH,
   CREW_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
+import type { JsonValue } from "../json.ts";
+import type { CrewAnswer } from "../walky/crew.ts";
+import type { WalkyReceipt } from "../walky/types.ts";
 import { signDial, signRequest, DIAL_HEADER, MAX_SKEW_MS, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo, type Warrant } from "./trust-store.ts";
 import { mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
@@ -2699,5 +2703,94 @@ describe("version negotiation", () => {
       expected: 2,
       received: null,
     });
+  });
+});
+
+describe("POST /crew/v1/walky — a member hands its lead a message (§21)", () => {
+  const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "desk/w1:p1", state: "accepted", verified: "origin", at: T0, by: "desk" };
+
+  function walkyRig(answer: CrewAnswer = { status: 200, body: { receipts: [receipt] } }) {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: { body: JsonValue | undefined; member: string }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      walky: {
+        fromMember: async (body, from) => {
+          seen.push({ body, member: from.memberId });
+          return answer;
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a signed request from a pinned member reaches the walky handler as that member, and its receipts come back", async () => {
+    const { h, handler, seen } = walkyRig();
+    const res = (await call(handler, CREW_WALKY_PATH, signedPost("laptop", CREW_WALKY_PATH, { v: 1, id: "wt_aaaaaaaaaaa1" }, T0)))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ receipts: [receipt] });
+    expect(seen).toEqual([{ body: { v: 1, id: "wt_aaaaaaaaaaa1" }, member: "laptop" }]);
+    // Not a membership route: the replay floor is not advanced and the store is not written.
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a replay is admitted again inside the window and answered by the handler: the message id dedupes", async () => {
+    const { h, handler, seen } = walkyRig();
+    const init = () => signedPost("laptop", CREW_WALKY_PATH, { id: "wt_aaaaaaaaaaa1" }, T0);
+    expect((await call(handler, CREW_WALKY_PATH, init()))!.status).toBe(200);
+    expect((await call(handler, CREW_WALKY_PATH, init()))!.status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+  });
+
+  test("a bad signature, an unknown member and an unsigned request are the uniform 401, and reach no handler", async () => {
+    const { handler, seen } = walkyRig();
+    const forged = signedPost("laptop", CREW_WALKY_PATH, { id: "wt_aaaaaaaaaaa1" }, T0);
+    const tampered: RequestInit = { ...forged, body: JSON.stringify({ id: "wt_bbbbbbbbbbb1" }) };
+    for (const init of [tampered, signedPost("stranger", CREW_WALKY_PATH, {}, T0), post({})]) {
+      const res = (await call(handler, CREW_WALKY_PATH, init))!;
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("a message the handler cannot verify is the same uniform 401, audited as a refusal", async () => {
+    const { h, handler } = walkyRig({ status: 401, body: { error: "unauthorized" } });
+    const res = (await call(handler, CREW_WALKY_PATH, signedPost("laptop", CREW_WALKY_PATH, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+  });
+
+  test("a collie that does not lead answers 404, even to its own lead", async () => {
+    const h = harness(peerStore());
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true, walky: { fromMember: async () => ({ status: 200, body: { receipts: [] } }) } });
+    const res = (await call(handler, CREW_WALKY_PATH, post({})))!;
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("the walky report rides the snapshot answer (§21)", () => {
+  const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered", verified: "lead", at: T0, by: "laptop" };
+
+  test("the drained receipts sit beside the body, and an empty report is omitted", async () => {
+    const h = harness(peerStore());
+    const held = [[receipt], []];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      walky: { report: () => held.shift() ?? [] },
+    });
+    const first = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(first).toMatchObject({ bridge: "connected", walky: { receipts: [receipt] } });
+    const second = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(second).not.toHaveProperty("walky");
   });
 });

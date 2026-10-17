@@ -35,8 +35,6 @@ An address names one pane, one machine's panes, or every pane.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do.
 
-> **Note.** In this build an address on another crew member is refused with
-> `crew routing not built`. Messages between the panes of one machine work in full.
 
 ## What the target pane receives
 
@@ -75,6 +73,26 @@ collie walky status wt_n2d8s1v7c4b9
 - `status <id>` prints the message's receipt.
 
 Every verb takes `--json` for a script.
+
+## Across a crew
+
+In a crew, a message for another machine always goes through the lead. A member sends it to the
+lead, and the lead types it on its own panes or passes it on to the machine the address names. The
+lead checks the sender's signature against the key it pinned for that machine. Each machine then
+checks that its lead passed the message on.
+
+- **`who` on the lead** lists the agent panes of every machine. **`who` on a member** lists its own
+  panes and the line `other machines: ask the lead`.
+- **The outcome lives on the lead.** The machine that types a message reports the outcome to the lead
+  with its next crew update. On a member, a message to another machine shows
+  `accepted (outcome known on the lead)`, and `send` does not wait for more. Run
+  `collie walky status <id>` on the lead, or open the pane on the phone, to see `delivered`.
+- **An older machine refuses.** A member that runs an older Collie gives `refused: older member`. A
+  member under an older lead gives `refused: older lead`. Update the crew to fix it.
+
+The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
+was checked. `lead` means the lead checked it and this machine trusts the lead, which is what a
+member sees for a message from another member.
 
 ## Receipts
 
