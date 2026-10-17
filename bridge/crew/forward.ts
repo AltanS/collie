@@ -643,6 +643,43 @@ function withSaltedTag(res: Response): Response {
 export const REPLY_OLD_MEMBER_TEXT = "that machine runs an older Collie and cannot take checked text from this phone; update it, or use the keys";
 
 /**
+ * The sentence the phone shows under its "refused" note for that same refusal (see
+ * {@link oldMemberRefusal}), in the voice of the Send Protocol's own detail lines.
+ */
+export const SEND_OLD_MEMBER_DETAIL = "This machine runs an older Collie and cannot take a send from the phone yet. Update it from the Crew page.";
+
+/**
+ * The lead's answer to a text submit for a member with no Surface reader: the reply route's old
+ * refusal for an old reader, and beside it, under `send`, a Send Protocol answer the phone reads (an
+ * outcome of `refused`, nothing typed, and {@link SEND_OLD_MEMBER_DETAIL}). Before 2026-10-17 it
+ * carried no `send`, and the phone said "a body this phone cannot read". No receipt is stored: the
+ * request never left the lead, and the phone's request id stays the phone's.
+ */
+function oldMemberRefusal(requestId: string | null): Response {
+  const receipt: JsonObject = { outcome: "refused" };
+  if (requestId !== null) receipt.requestId = requestId;
+  const send: JsonObject = { receipt, offers: ["keys"], detail: SEND_OLD_MEMBER_DETAIL };
+  const refusal = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: REPLY_OLD_MEMBER_TEXT }), send };
+  return new Response(JSON.stringify(refusal), {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+/**
+ * The request id a text submit names, or null. Read from a clone like {@link isTextSubmit}.
+ */
+async function textSubmitId(req: Request): Promise<string | null> {
+  try {
+    const body: JsonValue = await req.clone().json();
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+    return typeof body.id === "string" ? body.id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether this request is a text submit to a pane's reply route: `POST pane/:id/reply` with a body of
  * `submit: true` (or no `submit`, which means true) and non-empty text. The body is read from a clone,
  * so the original still streams to the member. A body that is not JSON is not a text submit here, and
@@ -686,12 +723,18 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // A text reply to a member with no Surface reader (an older build) is refused here, before any dial:
   // that member types blind and answers a bare `ok`. The phone locks its own field for such a member, so
   // this guards the callers that are not that phone. Keys and `submit: false` text go on as they were.
+  // The lead writes its own line for it, like every forward it refuses: one `reply` row naming the
+  // member, `forwarded: "old_member"`, so the audit says why no forward followed the tap.
   if (deps.surfaceVersion === null && (await isTextSubmit(req, route))) {
-    const refusal = { ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: REPLY_OLD_MEMBER_TEXT }) };
-    return new Response(JSON.stringify(refusal), {
-      status: 200,
-      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
-    });
+    if (deps.audit !== undefined) {
+      const entry: ForwardAuditEntry = { action: "reply", host: deps.link.memberId, outcome: "old_member" };
+      const paneId = forwardPaneId(route);
+      const session = url.searchParams.get("session");
+      if (paneId !== undefined) entry.paneId = paneId;
+      if (session !== null) entry.session = session;
+      deps.audit(entry);
+    }
+    return oldMemberRefusal(await textSubmitId(req));
   }
 
   // §13: the size bound is enforced BEFORE forwarding as well as by the peer. A phone on cellular

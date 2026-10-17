@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
+import { plainFailureMessage } from "./api";
 import { modeFor, sendText } from "./reply-action";
 
 // M46 spec 11: the pane is pinned live here; reply-action-offline.test.ts covers the gate itself.
@@ -114,5 +115,48 @@ describe("sendText", () => {
     expect(out).toMatchObject({ status: "answered", reading: { clear: true } });
     expect(calls).toEqual(["POST /api/pane/w1%3Ap1/reply"]);
     expect(recordedSends()).toEqual([{ id: expect.stringMatching(/^test-request-/u), pane: "w1:p1", text: "from the lead", mode: "send", host: "workshop" }]);
+  });
+
+  it("a refusal whose body is not JSON says its status and its first line, not that the phone cannot read it", async () => {
+    server.use(http.post("/api/send", () => new HttpResponse("the send protocol does not cross a crew link yet\nsecond line", { status: 400 })));
+    const out = await sendText({ paneId: "w1:p1", text: "/model", held: null, mint });
+    expect(out).toMatchObject({ status: "noAnswer", error: "HTTP 400: the send protocol does not cross a crew link yet" });
+  });
+
+  it("an older member's refusal on the reply route reads as a refusal with the lead's sentence (2026-10-17 field case)", async () => {
+    const detail = "This machine runs an older Collie and cannot take a send from the phone yet. Update it from the Crew page.";
+    server.use(
+      http.post("/api/pane/:id/reply", () =>
+        HttpResponse.json({
+          ok: false,
+          textDelivered: false,
+          error: "that machine runs an older Collie",
+          code: "reply.send_failed",
+          detail: { reason: "that machine runs an older Collie" },
+          send: { receipt: { outcome: "refused", requestId: "test-request-0001" }, offers: ["keys"], detail },
+        }),
+      ),
+    );
+    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "minibuch" }, held: null, mint });
+    expect(out).toMatchObject({ status: "answered", reading: { clear: false, note: "refused", detail } });
+  });
+
+  it("a reply route refusal with no send answer is said in its own words", async () => {
+    server.use(
+      http.post("/api/pane/:id/reply", () =>
+        HttpResponse.json({ ok: false, textDelivered: false, error: "nope", code: "reply.send_failed", detail: { reason: "update the lead" } }),
+      ),
+    );
+    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "minibuch" }, held: null, mint });
+    expect(out).toMatchObject({ status: "noAnswer", error: "The message couldn't be sent: update the lead" });
+  });
+});
+
+describe("plainFailureMessage", () => {
+  it("keeps the status and the first line that has words, and leaves a JSON body to the catalogue", () => {
+    expect(plainFailureMessage(404, "\n  no such terminal pane  \nmore")).toBe("HTTP 404: no such terminal pane");
+    expect(plainFailureMessage(502, "")).toBe("HTTP 502");
+    expect(plainFailureMessage(400, `{"error":"x"}`)).toBeNull();
+    expect(plainFailureMessage(400, "x".repeat(400))).toHaveLength("HTTP 400: ".length + 160);
   });
 });

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A crew member updated after the lead takes sends from the phone again.** When the lead came up first and the member followed it to the new release, the lead kept the member's old answer and refused every text, command and Model pick on that member's panes until the lead restarted. The phone then said "a body this phone cannot read". Now the lead asks the member again on the next sweep that names a new release, also after a rollback. A member that really runs an older Collie gets a refusal the phone can read, which says to update it from the Crew page. A send route that answers with plain text now shows its status and first line.
+
 ## [1.22.2] - 2026-10-17
 
 ### Fixed
