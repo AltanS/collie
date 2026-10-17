@@ -22,6 +22,8 @@ export type IdleProfile = Profile["idle"];
 /** One styled run of a row. The attribute flags are the SGR ones the placeholder test can name. */
 export interface FrameRun {
   readonly text: string;
+  /** The run's foreground colour; absent for the terminal's default ink (`idle.frame.underPainted`). */
+  readonly fg?: string | undefined;
   readonly bold?: boolean;
   readonly dim?: boolean;
   readonly italic?: boolean;
@@ -104,6 +106,7 @@ interface CompiledInterior {
   readonly maxPad: number;
   readonly continuation: RegExp | null;
   readonly under: RegExp | null;
+  readonly underPainted: boolean;
 }
 
 interface CompiledFooterRow {
@@ -149,6 +152,7 @@ function compile(idle: IdleProfile): Compiled {
       maxPad: trailer?.maxPad ?? 0,
       continuation: continuation === undefined ? null : new RegExp(continuation, "u"),
       under: under === undefined ? null : new RegExp(under, "u"),
+      underPainted: idle.frame.underPainted === true,
     },
   };
   compiledByIdle.set(idle, compiled);
@@ -212,6 +216,30 @@ export function frameEdge(text: string, idle: IdleProfile): "prompt" | "bottom" 
  */
 export function interiorRow(text: string, idle: IdleProfile): boolean {
   return isBlank(text) || textColumn(text) >= idle.frame.continuationIndent;
+}
+
+/** Whether a row's first visible run is painted: a foreground colour, or dim. A cell that shows no
+ *  glyph (a reverse-video cursor) is not visible here, whatever its colours. */
+function paintedRow(row: FrameRow): boolean {
+  const run = row.segments.find((segment) => segment.text.trim() !== "");
+  return run !== undefined && (run.fg !== undefined || run.dim === true);
+}
+
+/**
+ * Whether the rows under the bottom edge are a status line an extension draws in the harness's place
+ * (`idle.frame.underPainted`): a painted row straight under the edge, and from it to the screen's last
+ * row one run with no blank row, at most `volatile.below.maxRows` tall. That is where a footer sits.
+ * The harness paints its other rows too (a dialog's title, a picker's list, the transcript), so a
+ * painted row alone is no footer: under a rule pair that is not the box (a picker taller than the
+ * pane, a read cut inside the screen) those rows stand apart by a blank row or run on past the bound.
+ */
+function paintedFooter(rows: readonly FrameRow[], texts: readonly string[], bottom: number, idle: IdleProfile): boolean {
+  const first = bottom + 1;
+  let end = texts.length;
+  while (end > first && isBlank(texts[end - 1]!)) end--;
+  if (end <= first || end - first > idle.volatile.below.maxRows || !paintedRow(rows[first]!)) return false;
+  for (let j = first; j < end; j++) if (isBlank(texts[j]!)) return false;
+  return true;
 }
 
 /** The placeholder attribute as a run flag, or null when the profile names one this module cannot
@@ -476,9 +504,10 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const open = c.bottom.open;
   if (!open && anchored(bottomText, c.bottom) === null) return null;
   if (c.interior.under !== null && !open) {
-    // The row the harness always draws under its box: the first row there that is not blank.
-    const under = texts.slice(bottom + 1).find((text) => !isBlank(text));
-    if (under !== undefined && !c.interior.under.test(under.trimEnd())) return null;
+    // The row the harness always draws under its box: the first row there that is not blank. Where
+    // the profile says so (`underPainted`), an extension's own status line passes too (paintedFooter).
+    const at = texts.findIndex((text, i) => i > bottom && !isBlank(text));
+    if (at >= 0 && !c.interior.under.test(texts[at]!.trimEnd()) && !(c.interior.underPainted && paintedFooter(rows, texts, bottom, idle))) return null;
   }
   const budget = idle.frame.maxDraftRows;
 
