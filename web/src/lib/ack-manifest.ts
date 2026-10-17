@@ -172,6 +172,14 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "The history empties on the page the person is looking at once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the history is read again (ADR 0095).",
   },
+  removeSent: {
+    channel: "inline",
+    why: "The row leaves the Sent sheet under the thumb once the machine answers. A refusal or a lost answer must stay readable while the person decides what to do, so the sheet says it in its own notice and keeps the row (M61).",
+  },
+  clearSent: {
+    channel: "inline",
+    why: "The Sent sheet empties and reads the list again once the machine answers. A refusal or a lost answer is said in the sheet's own notice, beside the button that asked, and the lines stay (M61).",
+  },
   addLauncher: {
     channel: "inline",
     why: "The added row appears in the list the person is looking at, so the list is the acceptance. A refusal names a field (a character the bridge refuses, a line too long) or a switch the operator turned off, and the person must still read it while they fix the line, so it sits in the add form itself and not on the status line (M48, ADR 0094).",
