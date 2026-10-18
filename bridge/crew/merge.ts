@@ -2,6 +2,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { NARROW_VIEW, type SnapshotView } from "../sessions.ts";
 import { STATUS_RANK } from "../types.ts";
 import type { PaneWire, ServerSummary, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
+import { INSTANCE_TOKEN } from "../walky/address.ts";
 import type { PeerState } from "./registry.ts";
 
 // The ONE place the lead re-serialises (CREW_PROTOCOL.md §9.2). Everything else a crew link carries
@@ -415,9 +416,14 @@ function untagSession(s: SessionSummary): SessionSummary {
   return rest;
 }
 
+/**
+ * A peer's pane without its own `host` claim. Its walky instance token (`PaneWire.instance`) is the
+ * member's word and reaches an address (bridge/walky/crew.ts `crewTargets`), so it is kept only as
+ * four characters of [a-z0-9]; anything else is dropped, as an older member sends none.
+ */
 function untagPane(p: PaneWire): PaneWire {
-  const { host: _ignored, ...rest } = p;
-  return rest;
+  const { host: _ignored, instance, ...rest } = p;
+  return typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...rest, instance } : rest;
 }
 
 function untagWorkspace(w: WorkspaceView): WorkspaceView {

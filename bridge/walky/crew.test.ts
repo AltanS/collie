@@ -78,7 +78,7 @@ function OPERATOR(memberId: string): Partial<WalkyMessage> {
 }
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -364,6 +364,35 @@ describe("the lead takes a member's message", () => {
     expect(lead.host.sends).toEqual([]);
   });
 
+  test("an address with a pane instance token travels signed; the route and every receipt name the pane id only", async () => {
+    const posts: { memberId: string; segment: string; body: { message: WalkyMessage } }[] = [];
+    const lead = service("desk", [pane("w1:p1")], async (memberId, segment, payload) => {
+      // SAFETY: the route posts the JSON it built itself.
+      posts.push({ memberId, segment, body: JSON.parse(payload) as { message: WalkyMessage } });
+      return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "lead", at: AT, by: memberId }] } };
+    });
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const sent = signed("wt_aaaaaaaaaaa1", "laptop", "other/w9:p9#k3f9", { from: { memberId: "laptop", address: "laptop/w1:p1#aaaa", harness: "agent-x", label: "repo#main" } });
+    const answer = await fromMemberOf(crew, sent, member({ memberId: "laptop" }));
+    expect(answer).toMatchObject({ status: 200, body: { receipts: [{ state: "accepted", target: "other/w9:p9", by: "other" }] } });
+    expect(posts.map((post) => `${post.memberId} ${post.segment} ${post.body.message.to}`)).toEqual(["other w9:p9 other/w9:p9#k3f9"]);
+    expect(lead.log.get("wt_aaaaaaaaaaa1", "other/w9:p9")?.receipt).toMatchObject({ by: "other" });
+    // The member's later report names the bare target too, and lands on the same record.
+    expect(mergeReport(lead.log, "other", [{ id: "wt_aaaaaaaaaaa1", target: "other/w9:p9", state: "delivered", verified: "lead", at: AT + 1, by: "other" }])).toBe(1);
+  });
+
+  test("a member resolves the token its lead carried: another instance at that pane id is `pane replaced`", async () => {
+    const peer = service("laptop", [pane("w1:p9", { instance: "zzzz" })]);
+    const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
+    const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9#k3f9");
+    const answer = await fromLeadOf(crew, "w1:p9", { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "laptop") }, "desk");
+    expect(answer).toMatchObject({ status: 200, body: { receipts: [{ state: "refused", reason: "pane replaced", target: "laptop/w1:p9" }] } });
+    const kept = signed("wt_aaaaaaaaaaa2", "desk", "laptop/w1:p9#zzzz");
+    expect(await fromLeadOf(crew, "w1:p9", { message: kept, attest: attestFor(kept, material("desk").keyPem, CREW.crewId, "laptop") }, "desk")).toMatchObject({
+      body: { receipts: [{ state: "accepted", target: "laptop/w1:p9" }] },
+    });
+  });
+
   test("`all` from a member reaches the lead's panes and every other member, never the sender's machine", async () => {
     const posted: string[] = [];
     const lead = service("desk", [pane("w1:p1")], async (memberId, segment) => {
@@ -494,7 +523,7 @@ describe("the outcome report", () => {
     const small = new WalkyReport("laptop", 3);
     for (let n = 0; n < 5; n += 1) {
       const id = `wt_${String(n).padStart(12, "b")}`;
-      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" }, sender: null });
+      small.note({ session: "main", paneId: "w1:p9", instance: "aaaa", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" }, sender: null });
     }
     expect(small.drain().map((receipt) => receipt.id)).toEqual(["wt_bbbbbbbbbbb2", "wt_bbbbbbbbbbb3", "wt_bbbbbbbbbbb4"]);
     expect(WALKY_REPORT_MAX).toBe(100);
@@ -581,6 +610,17 @@ describe("`who` on a lead", () => {
       { address: "laptop/w1:p9", memberId: "laptop", machine: "laptop", harness: "agent-x", label: "collie#main", state: "idle" },
       { address: "other/w2:p1", memberId: "other", machine: "other", harness: "agent-x", label: "collie#main", state: "unreachable" },
     ]);
+  });
+
+  test("names a member's pane by its instance token when the member sends one, bare when it does not", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewTargets` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: "agent-x", status: "idle", cwd: "/home/a/collie", ...over }) as PaneWire;
+    const targets = crewTargets(
+      [{ memberId: "laptop", name: "laptop", reachable: true, body: { sessions: [], agents: [paneOf("w1:p1", { instance: "k3f9" }), paneOf("w1:p2"), paneOf("w1:p3", { instance: "../x" })], shellPanes: [], workspaces: [], tabs: [] } }],
+      true,
+    );
+    expect(targets.map((target) => target.address)).toEqual(["laptop/w1:p1#k3f9", "laptop/w1:p2", "laptop/w1:p3"]);
   });
 });
 

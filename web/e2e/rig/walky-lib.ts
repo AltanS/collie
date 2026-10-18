@@ -49,6 +49,15 @@ export function wrapped(text: string): string {
 /** The single-pane address of a pane on a solo install, which is what the rig's bridge is. */
 export const addressOf = (paneId: string): string => `local/${paneId}`;
 
+/**
+ * An agent's address as the bridge writes it, without the pane instance token (`#` and four
+ * characters) that `who` and a sender's `from.address` carry. Compare it with {@link addressOf}.
+ */
+export const withoutInstance = (address: string): string => address.replace(/#[a-z0-9]{4}$/u, "");
+
+/** A RegExp source for an agent's address in a header: the bare address, and its token if any. */
+export const addressPattern = (address: string): string => `${escape(address)}(?:#[a-z0-9]{4})?`;
+
 /** A fresh message id: `wt_` and 12 characters of [a-z0-9], as the phone mints one. */
 export function mintId(): string {
   let out = "wt_";

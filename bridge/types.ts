@@ -215,6 +215,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    *  file is missing still answers `available:false` with reason `no-log`. */
   hasSession?: boolean;
   /**
+   * The pane's walky talky instance token (bridge/walky/instances.ts): four characters of [a-z0-9]
+   * that name the session holding this pane id now. A multiplexer reuses a pane id once the pane
+   * closes; the token does not carry over, so `<member>/<pane>#<token>` reaches this pane only.
+   * Absent from a bridge built without walky talky, and from an older member (CREW_PROTOCOL §21).
+   */
+  instance?: string;
+  /**
    * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
    * paneId)` address (CREW_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
    * is; absent on every solo snapshot (§11). Pane ids are only unique per machine, which is why a
@@ -564,15 +571,20 @@ export function journalAgentOf(pane: AgentView): string {
  * session is addressable — reported on the pane record, or discoverable by an adapter that finds
  * its own (`JournalAdapter.discover`). Keyed off the live `agent` either way, so an exited
  * agent's pane still offers no affordance and reads like every other shell pane.
+ *
+ * `instance` is the pane's walky talky instance token, from the bridge's instance registry; absent,
+ * the wire carries no `instance` key.
  */
 export function toPaneWire(
   pane: AgentView,
   hasJournal: (agent: string) => boolean,
   discoversSessions: (agent: string) => boolean = () => false,
+  instance?: string,
 ): PaneWire {
   const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
   const addressable = agentSession !== undefined || discoversSessions(pane.agent);
-  return addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
+  const wire: PaneWire = addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
+  return instance === undefined ? wire : { ...wire, instance };
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */

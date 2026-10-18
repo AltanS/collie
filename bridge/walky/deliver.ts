@@ -23,7 +23,7 @@
 
 import { createHash } from "node:crypto";
 
-import { LOCAL_MEMBER, isSelf, parseAddress } from "./address.ts";
+import { bareAddress, LOCAL_MEMBER, isSelf, paneAddress, parseAddress } from "./address.ts";
 import { canonicalMessage } from "./canonical.ts";
 import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
@@ -48,6 +48,11 @@ export const PANE_BUSY = "pane busy";
 export interface WalkyPane {
   readonly session: string;
   readonly paneId: string;
+  /**
+   * The pane's instance token (instances.ts): the session that holds this pane id now. An address
+   * with a token reaches this pane only while the token matches.
+   */
+  readonly instance: string;
   /** False for a bare shell: it never receives a message. */
   readonly agent: boolean;
   readonly harness: string | null;
@@ -148,6 +153,13 @@ export function withoutAnsweredLegs<T extends Pick<WalkyReceipt, "target">>(rece
 export interface SenderPane {
   readonly session: string;
   readonly paneId: string;
+  /** The sender pane's instance token; null for a reply pinned by a log line from before instances. */
+  readonly instance: string | null;
+}
+
+/** Whether a pane is the sender's: the same session and pane id, and the same instance when it is known. */
+function isPaneOf(pane: WalkyPane, sender: SenderPane): boolean {
+  return pane.session === sender.session && pane.paneId === sender.paneId && (sender.instance === null || pane.instance === sender.instance);
 }
 
 export interface DelivererDeps {
@@ -223,8 +235,9 @@ export class WalkyDeliverer {
     return this.deps.memberId ?? "solo";
   }
 
+  /** Every receipt this bridge writes. Its target never carries an instance token (address.ts `bareAddress`). */
   private receipt(id: string, target: string, state: WalkyReceiptState, extra: ReceiptExtra = {}): WalkyReceipt {
-    const base: WalkyReceipt = { id, target, state, verified: extra.verified ?? "local", at: this.now(), by: this.by };
+    const base: WalkyReceipt = { id, target: bareAddress(target), state, verified: extra.verified ?? "local", at: this.now(), by: this.by };
     const withReason = extra.reason === undefined ? base : { ...base, reason: extra.reason };
     return extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
   }
@@ -255,12 +268,24 @@ export class WalkyDeliverer {
     while (this.running.size > 0) await Promise.all(this.running);
   }
 
-  /** An address as this bridge spells it: `local/…` on a crew member is its own member id. */
+  /** An address as this bridge spells it: `local/…` on a crew member is its own member id. The token stays. */
   private normal(raw: string): string {
     const address = parseAddress(raw);
     if (address === null || address.kind === "all") return raw;
     const member = isSelf(address.memberId, this.deps.memberId) ? (this.deps.memberId ?? LOCAL_MEMBER) : address.memberId;
-    return address.kind === "pane" ? `${member}/${address.paneId}` : `${member}/all`;
+    return address.kind === "pane" ? paneAddress(member, address.paneId, address.instance) : `${member}/all`;
+  }
+
+  /**
+   * Whether `to` names the sender's own pane: the same member and pane id, and the same instance
+   * unless one of the two names none. A message a crew hop brought has no sender pane here, so this
+   * is the check that holds for it whatever spelling the sender chose.
+   */
+  private ownPane(from: string, to: string): boolean {
+    const a = parseAddress(this.normal(from));
+    const b = parseAddress(this.normal(to));
+    if (a?.kind !== "pane" || b?.kind !== "pane") return false;
+    return a.memberId === b.memberId && a.paneId === b.paneId && (a.instance === null || b.instance === null || a.instance === b.instance);
   }
 
   /**
@@ -291,8 +316,9 @@ export class WalkyDeliverer {
    *   `that is your own pane`           the target is the sender's own pane
    *   `thread depth`                    the reply chain is deeper than 4 in this bridge's log
    *   `off`                             COLLIE_WALKY=off on this machine
-   *   `ambiguous pane`                  more than one session has a pane with the target's id
-   *   `sender gone`                     a reply's pane is gone, or now in another session
+   *   `ambiguous pane`                  more than one session has a pane with the target's id (and token)
+   *   `pane replaced`                   the address names a token, and the pane id is held by another instance
+   *   `sender gone`                     a reply's pane is gone, now in another session, or another instance
    *   `not an agent pane`               the target is a shell
    *   `rate limit` / `pair limit`       a cap is full: the sender's, the lead's per member, or the pair's
    */
@@ -309,12 +335,12 @@ export class WalkyDeliverer {
     if (address.kind !== "pane" && message.kind === "agent") return refuse("only the operator may broadcast");
     const remote = address.kind !== "all" && !isSelf(address.memberId, this.deps.memberId);
     if (remote && options.localOnly === true) return refuse("no such pane");
-    if (message.from.address !== null && this.normal(message.from.address) === this.normal(message.to)) return refuse("that is your own pane");
+    if (message.from.address !== null && this.ownPane(message.from.address, message.to)) return refuse("that is your own pane");
     if (this.threadDepth(message) > THREAD_DEPTH_MAX) return refuse("thread depth");
     if (remote) return this.capped(message, 1, options) ?? this.remote(message, address.memberId, sender);
     if (!this.deps.enabled()) return refuse("off");
     const panes = this.deps.host.panes();
-    const isSender = (pane: WalkyPane): boolean => sender !== null && pane.session === sender.session && pane.paneId === sender.paneId;
+    const isSender = (pane: WalkyPane): boolean => sender !== null && isPaneOf(pane, sender);
     const self = this.deps.memberId ?? LOCAL_MEMBER;
     const refusedTargets: WalkyReceipt[] = [];
     let targets: WalkyPane[];
@@ -322,12 +348,17 @@ export class WalkyDeliverer {
       let pane: WalkyPane | undefined;
       const pin = this.replyPin(message);
       if (pin !== null) {
-        pane = panes.find((candidate) => candidate.session === pin.session && candidate.paneId === pin.paneId);
+        // The stored sender pane, and the instance that sent, when the log knows it.
+        pane = panes.find((candidate) => isPaneOf(candidate, pin));
         if (pane === undefined || pane.paneId !== address.paneId) return refuse("sender gone");
+        if (address.instance !== null && pane.instance !== address.instance) return refuse("sender gone");
       } else {
         const named = panes.filter((candidate) => candidate.paneId === address.paneId);
-        if (named.length > 1) return refuse("ambiguous pane");
-        pane = named[0];
+        // A token names one instance: the pane id held by another is a pane that closed and gave its id away.
+        const meant = address.instance === null ? named : named.filter((candidate) => candidate.instance === address.instance);
+        if (meant.length === 0 && named.length > 0) return refuse("pane replaced");
+        if (meant.length > 1) return refuse("ambiguous pane");
+        pane = meant[0];
       }
       if (pane === undefined) return refuse("no such pane");
       if (isSender(pane)) return refuse("that is your own pane");
@@ -365,8 +396,8 @@ export class WalkyDeliverer {
       const accepted = this.receipt(message.id, target, "accepted", { verified });
       // Seen first, then logged, then typed: a crash between any two never types twice.
       this.seen.add(message, target);
-      const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId }, accepted, sender);
-      this.deps.log.inboxAdd(pane.session, pane.paneId, message);
+      const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
+      this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
       receipts.push(accepted);
       this.track(this.inLane(record, pane));
     }
@@ -403,8 +434,8 @@ export class WalkyDeliverer {
     const parent = this.deps.log.first(message.replyTo);
     if (parent === null || parent.sender === null || parent.message.from.address === null) return null;
     if (this.normal(parent.message.from.address) !== this.normal(message.to)) return null;
-    const { session, paneId } = parent.sender;
-    return session === null || paneId === null ? null : { session, paneId };
+    const { session, paneId, instance } = parent.sender;
+    return session === null || paneId === null ? null : { session, paneId, instance };
   }
 
   /**
@@ -417,8 +448,9 @@ export class WalkyDeliverer {
     const verified = options.verified ?? "local";
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const count = Math.max(1, tokens);
-    const key = senderKey(message.kind, message.from.memberId, message.from.address);
-    const pair = message.from.address === null ? null : pairKey(this.normal(message.from.address), this.normal(message.to));
+    // A sender and a pair are counted by pane id, the token left out, so a new spelling never opens a new bucket.
+    const key = senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
+    const pair = message.from.address === null ? null : pairKey(bareAddress(this.normal(message.from.address)), bareAddress(this.normal(message.to)));
     if (!this.rate.room(key, now, count)) return refuse("rate limit");
     if (options.via !== undefined && !this.members.room(options.via, now, count)) return refuse("rate limit");
     if (pair !== null && !this.pairs.room(pair, now)) return refuse("pair limit");
@@ -432,7 +464,7 @@ export class WalkyDeliverer {
   private async remote(message: WalkyMessage, members: string, sender: SenderPane | null): Promise<WalkyReceipt[]> {
     const route = this.deps.routeRemote;
     if (route === undefined) return [this.refusal(message.id, message.to, "crew routing not built")];
-    const placement: Placement = { session: null, paneId: null };
+    const placement: Placement = { session: null, paneId: null, instance: null };
     const accepted = this.receipt(message.id, members === "all" ? "all" : message.to, "accepted");
     this.seen.add(message, accepted.target);
     this.deps.log.record(message, accepted.target, placement, accepted, sender);
@@ -516,11 +548,11 @@ export class WalkyDeliverer {
       result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
     }
     answered();
-    await this.settle(record, pane.session, pane.paneId, sendId, result);
+    await this.settle(record, pane.session, pane.paneId, pane.instance, sendId, result);
   }
 
   /** Write the receipt an outcome stands for. A held send is watched until it ends or its 10 minutes pass. */
-  private async settle(record: LogRecord, session: string, paneId: string, sendId: string, first: SendResult): Promise<void> {
+  private async settle(record: LogRecord, session: string, paneId: string, instance: string | null, sendId: string, first: SendResult): Promise<void> {
     const { message } = record;
     let result = first;
     if (result.outcome === "held") {
@@ -549,7 +581,8 @@ export class WalkyDeliverer {
     if (result.outcome === "sent" || result.outcome === "effective") {
       this.deps.log.update(this.next(record, "delivered", undefined, sendId));
       // The operator's body was typed: read. An agent's was not: it waits for `inbox <id>`.
-      if (message.kind === "operator") this.deps.log.ack(session, paneId, [message.id]);
+      // A record from before instances names no inbox this log still writes: nothing to ack.
+      if (message.kind === "operator" && instance !== null) this.deps.log.ack(session, paneId, instance, [message.id]);
       return;
     }
     if (result.outcome === "unknown") {
@@ -578,7 +611,7 @@ export class WalkyDeliverer {
         this.deps.log.update(this.next(record, "inbox-only", "bridge restarted"));
         continue;
       }
-      this.track(this.settle(record, session, paneId, sendId, state));
+      this.track(this.settle(record, session, paneId, record.instance, sendId, state));
     }
     return count;
   }

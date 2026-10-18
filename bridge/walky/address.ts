@@ -1,5 +1,7 @@
 // Walky talky addresses (M62 README, "Addressing"). One opaque string per target:
-//   `<memberId>/<paneId>`  one pane on one machine; on a solo install the member id is `local`
+//   `<memberId>/<paneId>#<token>`  one pane instance: the session that holds that pane id now
+//                         (instances.ts), so a pane that closed and gave its id away is not reached
+//   `<memberId>/<paneId>`  whatever pane holds that id now; on a solo install the member id is `local`
 //   `<memberId>/all`       every agent pane on one machine
 //   `all`                  every agent pane in the crew
 // Every address is checked here before it is used, and none ever becomes a path: the log names its
@@ -17,6 +19,9 @@ export const LOCAL_MEMBER = "local";
  */
 export const PANE_ID = /^[A-Za-z0-9_.:%@+=-]{1,128}$/u;
 
+/** A pane instance token as an address carries it after `#` (instances.ts mints them). */
+export const INSTANCE_TOKEN = /^[a-z0-9]{4}$/u;
+
 export function isPaneId(value: string): boolean {
   return PANE_ID.test(value) && !/^\.+$/u.test(value);
 }
@@ -24,7 +29,13 @@ export function isPaneId(value: string): boolean {
 export type WalkyAddress =
   | { readonly kind: "all" }
   | { readonly kind: "member-all"; readonly memberId: string }
-  | { readonly kind: "pane"; readonly memberId: string; readonly paneId: string };
+  | {
+      readonly kind: "pane";
+      readonly memberId: string;
+      readonly paneId: string;
+      /** The pane instance the address names, or null: whatever pane holds the id now. */
+      readonly instance: string | null;
+    };
 
 function isMember(value: string): boolean {
   return value === LOCAL_MEMBER || MEMBER_ID_RE.test(value);
@@ -40,12 +51,28 @@ export function parseAddress(raw: string): WalkyAddress | null {
   const rest = value.slice(slash + 1);
   if (!isMember(memberId)) return null;
   if (rest === "all") return { kind: "member-all", memberId };
-  return isPaneId(rest) ? { kind: "pane", memberId, paneId: rest } : null;
+  // `#` is not a pane id character, so the first one ends the id and starts the token.
+  const hash = rest.indexOf("#");
+  const paneId = hash < 0 ? rest : rest.slice(0, hash);
+  const instance = hash < 0 ? null : rest.slice(hash + 1);
+  // `all` names a whole machine, never a pane instance.
+  if (!isPaneId(paneId) || paneId === "all" || (instance !== null && !INSTANCE_TOKEN.test(instance))) return null;
+  return { kind: "pane", memberId, paneId, instance };
 }
 
-/** The address of one pane on the machine with this member id (null: solo). */
-export function paneAddress(memberId: string | null, paneId: string): string {
-  return `${memberId ?? LOCAL_MEMBER}/${paneId}`;
+/** The address of one pane on the machine with this member id (null: solo), with its instance token when given. */
+export function paneAddress(memberId: string | null, paneId: string, instance?: string | null): string {
+  const bare = `${memberId ?? LOCAL_MEMBER}/${paneId}`;
+  return instance === undefined || instance === null ? bare : `${bare}#${instance}`;
+}
+
+/**
+ * An address without its instance token: what a receipt's `target` holds. A receipt names the pane
+ * id only, so a lead's leg and a member's own receipt for it keep matching. Anything else unchanged.
+ */
+export function bareAddress(raw: string): string {
+  const address = parseAddress(raw);
+  return address?.kind === "pane" && address.instance !== null ? `${address.memberId}/${address.paneId}` : raw;
 }
 
 /** Whether an address's member id names this bridge: its own member id, or `local`. */

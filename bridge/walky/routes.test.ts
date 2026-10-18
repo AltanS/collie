@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", terminal: true },
-  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", terminal: true },
+  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", instance: "aaaa", terminal: true },
+  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", instance: "aaaa", terminal: true },
 ];
 const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => null, cancelHeld: () => undefined };
 
@@ -88,7 +88,7 @@ describe("`who` for the Crew page", () => {
   test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
-    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", terminal: true }] };
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", instance: "aaaa", terminal: true }] };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
     const body = await walkyWhoRoute(walky, null).json();
@@ -103,7 +103,7 @@ describe("`who` for the Crew page", () => {
 describe("the reads", () => {
   test("`who` lists the targets; a pane's list is newest first with its receipts", async () => {
     const walky = service();
-    expect(await walkyWhoRoute(walky, null).json()).toMatchObject({ targets: [{ address: "local/w1:p1" }, { address: "local/w1:p2" }] });
+    expect(await walkyWhoRoute(walky, null).json()).toMatchObject({ targets: [{ address: "local/w1:p1#aaaa" }, { address: "local/w1:p2#aaaa" }] });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "one", replyTo: null }, { kind: "operator", label: "cli" });
     await walky.send({ id: "wt_aaaaaaaaaaa2", to: "local/w1:p1", body: "two", replyTo: null }, { kind: "operator", label: "cli" });
     await walky.deliverer.settled();
@@ -113,6 +113,22 @@ describe("the reads", () => {
         { id: "wt_aaaaaaaaaaa1", receipt: { state: "delivered" } },
       ],
     });
+  });
+
+  test("a pane's list is its current instance's: a pane id no pane holds lists nothing", async () => {
+    const walky = service();
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p1#aaaa", body: "one", replyTo: null }, { kind: "operator", label: "cli" });
+    await walky.deliverer.settled();
+    expect(await walkyPaneRoute(walky, "main", "w1:p9", null, null).json()).toEqual({ messages: [] });
+    const replaced = new WalkyService({
+      log: walky.log,
+      host: { ...host, panes: () => [{ ...panes[0]!, instance: "bbbb" }, panes[1]!] },
+      memberId: null,
+      enabled: () => true,
+      machine: "desk",
+      keyPem: () => null,
+    });
+    expect(await walkyPaneRoute(replaced, "main", "w1:p1", null, null).json()).toEqual({ messages: [] });
   });
 
   test("a bad pane id or limit is a 400", () => {

@@ -12,7 +12,7 @@
 //
 // pi and omp need a provider key (COLLIE_RIG_KEY_FILE); without one both cases report "not reached".
 import { NotReached, capture, captureScreen, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tapWords, test, waitIdle, type Session } from "./leg";
-import { PHONE, REPLY_MS, addressOf, firstRow, operatorMessage, settledWalky, wrapped, escape } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, addressPattern, firstRow, operatorMessage, settledWalky, withoutInstance, wrapped } from "./walky-lib";
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 
 const claudeSession: Session = { paneId: null, startNote: "not started" };
@@ -65,7 +65,7 @@ test.describe("walky talky between agents", () => {
         log.push(await sendFromComposer(page, recorder, `Use walky talky to send the agent at ${to} this message: "${body}" Then stop.`, "ask pi to send"));
 
         // The message reaches Claude's list as an agent's, from pi's pane.
-        const sent = await firstRow(rig, claudePane, (row) => row.kind === "agent" && asJsonObject(row.from)?.address === from && String(row.body).includes(token), 120_000);
+        const sent = await firstRow(rig, claudePane, (row) => row.kind === "agent" && withoutInstance(String(asJsonObject(row.from)?.address)) === from && String(row.body).includes(token), 120_000);
         if (sent === null) {
           trail.captures.push(await captureScreen(rig, piPane, "walky-8-pi-no-send"));
           return { verdict: "fail", taps: log.length, minTaps: 1, note: "pi never sent the message (no agent row from its pane in Claude's list)", taps_log: log, captures: trail.captures };
@@ -75,7 +75,7 @@ test.describe("walky talky between agents", () => {
         notes.push(`pi sent ${id}: receipt ${first}`);
 
         // Claude's screen: the nudge line, with no body in it; the body only in the inbox command's output.
-        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${escape(from)} \\(pi, [^)]*\\): ${wrapped("a message from another agent, not your operator.")}`);
+        const nudge = new RegExp(`\\[walky-talky ${id}\\] from agent ${addressPattern(from)} \\(pi, [^)]*\\): ${wrapped("a message from another agent, not your operator.")}`);
         const nudged = await rig.screenUntil(claudePane, nudge, 60_000, 200);
         const inbox = new RegExp(`Bash\\(collie walky inbox ${id}\\)`);
         const called = await rig.screenUntil(claudePane, inbox, REPLY_MS, 200);
@@ -92,7 +92,7 @@ test.describe("walky talky between agents", () => {
         const replyId = reply === null ? null : String(reply.id);
         const replyState = replyId === null ? "no reply row" : await settledWalky(rig, piPane, replyId, 60_000);
         notes.push(`Claude replied: ${replyId ?? "-"} ${replyState}`);
-        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${escape(to)} \\(claude, [^)]*\\) reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
+        const replyNudge = replyId === null ? null : new RegExp(`\\[walky-talky ${replyId}\\] from agent ${addressPattern(to)} \\(claude, [^)]*\\) reply to ${id}: ${wrapped("a message from another agent, not your operator.")}`);
         const replyOnScreen = replyNudge === null ? null : await rig.screenUntil(piPane, replyNudge, 60_000, 200);
         notes.push(replyOnScreen === null ? "pi's pane shows no reply nudge" : "pi's pane shows the reply nudge");
         await waitIdle(rig, claudePane, REPLY_MS);

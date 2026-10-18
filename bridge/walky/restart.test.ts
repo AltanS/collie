@@ -134,7 +134,7 @@ class FakeProtocol implements WalkyHost {
 }
 
 function pane(paneId: string): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "working", terminal: true };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "working", instance: "aaaa", terminal: true };
 }
 
 function bridge(dir: string, world: World, panes: WalkyPane[], random: () => number): WalkyService {

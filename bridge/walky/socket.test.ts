@@ -31,8 +31,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const marker = (pane: string) => [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }];
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", terminal: true },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", terminal: true },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", instance: "aaaa", terminal: true },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", instance: "bbbb", terminal: true },
 ];
 
 const host: WalkyHost = {
@@ -62,7 +62,7 @@ describe("the requests", () => {
     const walky = service();
     const fromPane = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "hi" }));
     expect(await answerRequest(walky, fromPane!, [target])).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
-    expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ kind: "agent", from: { address: "local/%1", harness: "agent-x", label: "repo#a" } });
+    expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ kind: "agent", from: { address: "local/%1#aaaa", harness: "agent-x", label: "repo#a" } });
     const fromDesk = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa2", to: "local/%2", body: "hi" }));
     expect(await answerRequest(walky, fromDesk!, [target])).toEqual({ ok: false, error: "run this inside a pane, or send from the phone" });
     expect(walky.status("wt_aaaaaaaaaaa2").receipts).toEqual([]);
@@ -89,13 +89,33 @@ describe("the requests", () => {
     const walky = service();
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/%1", body: "one", replyTo: null }, { kind: "operator", label: "phone" });
     await walky.deliverer.settled();
-    walky.log.inboxAdd("main", "%1", walky.status("wt_aaaaaaaaaaa1").message!);
+    walky.log.inboxAdd("main", "%1", "aaaa", walky.status("wt_aaaaaaaaaaa1").message!);
     const who = await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: marker("%1") }))!, [target]);
-    expect(who).toMatchObject({ ok: true, self: "local/%1", targets: [{ address: "local/%1" }, { address: "local/%2" }] });
+    expect(who).toMatchObject({ ok: true, self: "local/%1#aaaa", targets: [{ address: "local/%1#aaaa" }, { address: "local/%2#bbbb" }] });
     const inbox = await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "inbox", markers: marker("%1"), ack: true }))!, [target]);
-    expect(inbox).toMatchObject({ ok: true, pane: "local/%1", messages: [{ id: "wt_aaaaaaaaaaa1" }] });
-    expect(walky.inbox("main", "%1", false)).toEqual([]);
+    expect(inbox).toMatchObject({ ok: true, pane: "local/%1#aaaa", messages: [{ id: "wt_aaaaaaaaaaa1" }] });
+    expect(walky.inbox("main", "%1", "aaaa", false)).toEqual([]);
     expect(await answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "ack", markers: [] }))!, [target])).toEqual({ ok: false, error: "needs a pane" });
+  });
+
+  test("inbox reads the pane's current instance: a new session that took the pane id starts empty", async () => {
+    const list: WalkyPane[] = [...panes];
+    const root = mkdtempSync(join(tmpdir(), "walky-socket-"));
+    roots.push(root);
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: { ...host, panes: () => list }, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null });
+    // An agent's message waits in %2's inbox, unread, and its record names instance bbbb.
+    const fromPane = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2#bbbb", body: "for the first" }));
+    expect(await answerRequest(walky, fromPane!, [target])).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "local/%2" }] });
+    await walky.deliverer.settled();
+    const read = (id: string | null = null) => answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op: "inbox", markers: marker("%2"), ack: false, all: false, id }))!, [target]);
+    expect(await read()).toMatchObject({ ok: true, pane: "local/%2#bbbb", messages: [{ id: "wt_aaaaaaaaaaa1" }] });
+    // The pane closed, and a new session took %2: same id, another instance.
+    list[1] = { ...list[1]!, instance: "cccc" };
+    expect(await read()).toEqual({ ok: true, pane: "local/%2#cccc", messages: [] });
+    expect(await read("wt_aaaaaaaaaaa1")).toEqual({ ok: false, error: "no message wt_aaaaaaaaaaa1 for this pane" });
+    // A send to the old instance is refused, and one to the bare id reaches the new session.
+    const stale = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa2", to: "local/%2#bbbb", body: "late" }));
+    expect(await answerRequest(walky, stale!, [target])).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "pane replaced", target: "local/%2" }] });
   });
 
   test("a bad line is no request: wrong version, unknown op, bad id, bad address", () => {
@@ -127,7 +147,7 @@ describe("the socket", () => {
       conn.on("close", () => resolve(text));
       conn.write(`${JSON.stringify({ v: 1, op: "who", markers: [] })}\n`);
     });
-    expect(JSON.parse(answer)).toMatchObject({ ok: true, self: null, targets: [{ address: "local/%1" }, { address: "local/%2" }] });
+    expect(JSON.parse(answer)).toMatchObject({ ok: true, self: null, targets: [{ address: "local/%1#aaaa" }, { address: "local/%2#bbbb" }] });
     server.stop();
   });
 

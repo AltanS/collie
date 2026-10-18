@@ -21,7 +21,6 @@ import { dirname, join } from "node:path";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
-import type { SenderPane } from "./deliver.ts";
 import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
@@ -37,6 +36,12 @@ export function walkySocketPath(stateDir: string): string {
 /** How long the server waits for the request line. */
 export const REQUEST_LINE_MS = 2000;
 
+/** The pane the markers name: a session and a pane id. The service then reads its instance. */
+export interface PlacedPane {
+  readonly session: string;
+  readonly paneId: string;
+}
+
 /** One terminal session, as the socket places a marker on it (an edge target's three fields). */
 export interface PlaceTarget {
   readonly session: string;
@@ -49,8 +54,8 @@ export interface PlaceTarget {
  * edge is placed (bridge/surface/edges.ts `placeEdge`), without the pid check: the CLI is not the
  * agent's process, and a local process could lie about its pane anyway (decision 4).
  */
-export async function placeMarkers(markers: readonly BeaconMarker[], targets: readonly PlaceTarget[]): Promise<SenderPane | null> {
-  const hits: SenderPane[] = [];
+export async function placeMarkers(markers: readonly BeaconMarker[], targets: readonly PlaceTarget[]): Promise<PlacedPane | null> {
+  const hits: PlacedPane[] = [];
   for (const target of targets) {
     const own = markers.filter((marker) => marker.namespace === target.matcher.namespace);
     if (own.length === 0) continue;
@@ -99,7 +104,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return answer.target === undefined ? { ok: true, receipts: answer.receipts } : { ok: true, receipts: answer.receipts, target: answer.target };
     }
     case "who": {
-      const self = pane === null ? null : service.addressOf(pane.paneId);
+      const self = pane === null ? null : service.addressOf(pane.paneId, pane.instance);
       const note = service.whoNote();
       return note === null ? { ok: true, self, targets: service.who() } : { ok: true, self, targets: service.who(), note };
     }
@@ -112,20 +117,21 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
         // One message by id: the way an agent reads the body its nudge line named.
         const entry = service.one(request.id, pane);
         if (entry === null) return { ok: false, error: pane === null ? `no message ${request.id} on this machine` : `no message ${request.id} for this pane` };
-        if (pane !== null && request.ack) service.ack(pane.session, pane.paneId, [entry.id]);
-        return { ok: true, pane: pane === null ? null : service.addressOf(pane.paneId), messages: [entry] };
+        if (pane !== null && request.ack) service.ack(pane.session, pane.paneId, pane.instance, [entry.id]);
+        return { ok: true, pane: pane === null ? null : service.addressOf(pane.paneId, pane.instance), messages: [entry] };
       }
       if (pane === null) {
         if (!request.all) return { ok: false, error: "needs a pane" };
         return { ok: true, pane: null, messages: service.newest() };
       }
-      const messages = service.inbox(pane.session, pane.paneId, request.all);
-      if (request.ack && !request.all) service.ack(pane.session, pane.paneId, messages.map((message) => message.id));
-      return { ok: true, pane: service.addressOf(pane.paneId), messages };
+      // The pane's current instance: a new session that took an old pane id reads its own inbox only.
+      const messages = service.inbox(pane.session, pane.paneId, pane.instance, request.all);
+      if (request.ack && !request.all) service.ack(pane.session, pane.paneId, pane.instance, messages.map((message) => message.id));
+      return { ok: true, pane: service.addressOf(pane.paneId, pane.instance), messages };
     }
     case "ack":
       if (pane === null) return { ok: false, error: "needs a pane" };
-      return { ok: true, acked: service.ack(pane.session, pane.paneId, request.ids) };
+      return { ok: true, acked: service.ack(pane.session, pane.paneId, pane.instance, request.ids) };
   }
 }
 

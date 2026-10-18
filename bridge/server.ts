@@ -1159,6 +1159,13 @@ export function startServer(opts: {
    */
   gitHeads?: GitHeadSurface;
   /**
+   * Each pane's walky talky instance token (bridge/walky/instances.ts), read at serialise time like
+   * `gitHeads`: it answers from memory, minting a token for a pane it has not seen yet. Every pane on
+   * the wire then carries `instance`, the solo snapshot and the one a member serves its lead alike.
+   * Absent means no pane carries the key, which is every test that builds this server by hand.
+   */
+  walkyInstance?: (session: string, paneId: string) => string;
+  /**
    * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
    *
    * Absent means the three `cache-watch` routes answer 404, which is every caller that builds this
@@ -1252,6 +1259,7 @@ export function startServer(opts: {
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
   const gitHeads = opts.gitHeads;
+  const walkyInstance = opts.walkyInstance;
   const walky = opts.walky;
   const pairing = opts.pairing;
   const localCredential = opts.localCredential;
@@ -1535,7 +1543,10 @@ export function startServer(opts: {
         // back from `withOpenAsks` and `withTurn` as the same object. One whose program lists belt actions
         // carries them (M53 spec 07), the same way.
         panes: pick(from).map((p) =>
-          withSurface(withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions), from.herdr), from.herdr), from.herdr), from),
+          withSurface(
+            withActions(withTurn(withOpenAsks(toPaneWire(withActivity(from, p), hasJournal, discoversSessions, walkyInstance?.(from.name, p.paneId)), from.herdr), from.herdr), from.herdr),
+            from,
+          ),
         ),
       }));
       // Not widened is not "widened with one source": an unwidened body must carry NO `session` key
@@ -7227,13 +7238,17 @@ export function walkyWhoRoute(walky: WalkyService | undefined, acceptEncoding: s
 export const WALKY_LIST_MAX = 200;
 const WALKY_LIST_DEFAULT = 50;
 
-/** `GET /api/pane/:id/walky?limit=50`: the messages that reached one pane, newest first. */
+/**
+ * `GET /api/pane/:id/walky?limit=50`: the messages that reached the pane's current instance, newest
+ * first. A pane id no pane holds now lists nothing: a new session that takes the id starts empty.
+ */
 export function walkyPaneRoute(walky: WalkyService | undefined, session: string, paneId: string, limitRaw: string | null, acceptEncoding: string | null): Response {
   if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
   if (!isPaneId(paneId)) return text("bad pane", 400);
   const limit = limitRaw === null ? WALKY_LIST_DEFAULT : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > WALKY_LIST_MAX) return text("bad limit", 400);
-  return json({ messages: walky.inbox(session, paneId, true, limit) }, acceptEncoding);
+  const instance = walky.instanceOf(session, paneId);
+  return json({ messages: instance === null ? [] : walky.inbox(session, paneId, instance, true, limit) }, acceptEncoding);
 }
 
 export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {

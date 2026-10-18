@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 139 in all, each one named, with its reason:
-#              bridge 79. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 30 are the
+#              Today, 140 in all, each one named, with its reason:
+#              bridge 80. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 5 the walky ones, 30 are the
 #                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
@@ -39,8 +39,9 @@
 #                - "a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision" (it dials that socket)
 #                - "a placed request reaches the session; the decision travels back as one line" (the same)
 #                - "an unparsed line is dropped" (the same)
-#              Walky talky, bridge (4). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
+#              Walky talky, bridge (5). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
 #                0700 and 0600 sit in their own skipped test, and the behaviour beside them runs on Windows:
+#                - "keeps its tokens at 0600 in a 0700 folder" (instances.test.ts, "the instance registry")
 #                - "is private: a 0700 folder and a 0600 file" (log.test.ts, "the log")
 #                - "keeps its file at 0600 in a 0700 folder" (refusals.test.ts, "the refusal counter")
 #                - "keeps an id and target a day, apart from the log, on disk at 0600" (seen.test.ts, "the seen file")
@@ -86,7 +87,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 79,
+  [int]$MaxSkipsBridge = 80,
   [int]$MaxSkipsCli = 35,
   [int]$MaxSkipsScripts = 25
 )

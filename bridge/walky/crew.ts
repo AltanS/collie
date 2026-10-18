@@ -26,7 +26,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
-import { labelOf, LOCAL_MEMBER, parseAddress } from "./address.ts";
+import { bareAddress, INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, paneAddress, parseAddress } from "./address.ts";
 import { attestationString, verifyMessage } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
@@ -356,7 +356,8 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
     const signing = deps.signing();
     const lists = await Promise.all(
       targets.map(async (memberId): Promise<WalkyReceipt[]> => {
-        const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : message.to;
+        // A receipt names the pane id, never the instance token the address may carry.
+        const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : bareAddress(message.to);
         if (!roster.includes(memberId)) return [ownReceipt(message, target, "refused", deps.self, now(), "no such member")];
         if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
@@ -404,7 +405,7 @@ export interface MemberRouteDeps {
 export function memberRouteRemote(deps: MemberRouteDeps): RouteRemote {
   const now = deps.now ?? Date.now;
   return async (message, members) => {
-    const target = members === WALKY_ALL_SEGMENT ? WALKY_ALL_SEGMENT : message.to;
+    const target = members === WALKY_ALL_SEGMENT ? WALKY_ALL_SEGMENT : bareAddress(message.to);
     const answer = await deps.post(JSON.stringify(message));
     return receiptsOfAnswer(message, target, answer, deps.self, now(), "older lead");
   };
@@ -423,6 +424,8 @@ export interface CrewMemberView {
 /**
  * Every agent pane on every member, from the bodies the lead's sweep already holds: no dial. A
  * member the lead cannot reach right now keeps its last panes, each with the state `unreachable`.
+ * A pane that carries its instance token (`PaneWire.instance`) is listed as `<member>/<pane>#<token>`;
+ * one from an older member, with no token, as `<member>/<pane>`.
  */
 export function crewTargets(members: readonly CrewMemberView[], titles: boolean): WalkyTarget[] {
   const out: WalkyTarget[] = [];
@@ -433,8 +436,10 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
       seen.add(pane.paneId);
       const branch = pane.gitHead?.kind === "branch" ? pane.gitHead.name : null;
       const facts = { paneId: pane.paneId, cwd: pane.cwd, branch, paneLabel: pane.paneLabel, terminalTitle: pane.terminalTitle };
+      // The token is the member's word, already parsed at the merge (crew/merge.ts `untagPane`); checked again here.
+      const instance = pane.instance !== undefined && INSTANCE_TOKEN.test(pane.instance) ? pane.instance : null;
       out.push({
-        address: `${member.memberId}/${pane.paneId}`,
+        address: paneAddress(member.memberId, pane.paneId, instance),
         memberId: member.memberId,
         machine: member.name,
         harness: pane.agent,
@@ -523,7 +528,7 @@ export function mergeReport(log: WalkyLog, memberId: string, receipts: readonly 
       // target of its own under the leg's message.
       const leg = log.get(receipt.id, `${memberId}/all`) ?? log.get(receipt.id, "all");
       if (leg === null) continue;
-      log.record(leg.message, receipt.target, { session: null, paneId: null }, receipt);
+      log.record(leg.message, receipt.target, { session: null, paneId: null, instance: null }, receipt);
       written += 1;
       continue;
     }

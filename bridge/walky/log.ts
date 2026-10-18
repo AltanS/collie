@@ -3,10 +3,12 @@
 //   log.jsonl            one line per message (per target pane) or receipt, append only. Lines older
 //                        than 7 days go, and at most 2,000 lines are kept: past that the file is
 //                        rewritten with its newest 1,500 lines (oldest dropped on rotate).
-//   inbox/<key>.json     the unacknowledged messages of one pane, at most 200, oldest dropped. The key
-//                        is a hash of the session and the pane id: no value a client sent ever
-//                        becomes a path. A file whose newest message is past the 7 days goes on the
-//                        log's rotate, so the inbox of a pane that closed does not stay forever.
+//   inbox/<key>.json     the unacknowledged messages of one pane instance, at most 200, oldest dropped.
+//                        The key is a hash of the session, the pane id and the instance token
+//                        (instances.ts): no value a client sent ever becomes a path, and a new pane
+//                        that took an old pane id starts with an empty inbox. The file goes when the
+//                        instance does (`inboxDrop`), and any file whose newest message is past the 7
+//                        days goes on the log's rotate, an inbox from before instances included.
 //
 // A message to `all` has one message line and one receipt per target pane, all under one id. The
 // receipt is written before any key is typed (decision 7), and the same id to the same target
@@ -19,6 +21,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFile
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
+import { INSTANCE_TOKEN } from "./address.ts";
 import { readMessage, readReceipt } from "./parse.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt } from "./types.ts";
 
@@ -32,6 +35,16 @@ export const INBOX_MAX = 200;
 export interface Placement {
   readonly session: string | null;
   readonly paneId: string | null;
+  /**
+   * The pane's instance token (instances.ts). Null on a crew hop, and on a line written before
+   * instances: such a record matches whatever instance holds the pane now.
+   */
+  readonly instance: string | null;
+}
+
+/** Whether a stored instance matches the pane's current one: a stored null matches any. */
+export function sameInstance(stored: string | null, current: string): boolean {
+  return stored === null || stored === current;
 }
 
 interface MessageLine extends Placement {
@@ -67,9 +80,19 @@ function keyOf(id: string, target: string): string {
   return `${id}\u0000${target}`;
 }
 
-/** The file stem of a pane's inbox: a hash, never the pane id itself. */
-export function inboxKey(session: string, paneId: string): string {
-  return createHash("sha256").update(session).update("\u0000").update(paneId).digest("hex").slice(0, 32);
+/**
+ * The file stem of a pane instance's inbox: a hash, never the pane id itself. A null instance is the
+ * key an inbox had before instances, which only the prune still meets.
+ */
+export function inboxKey(session: string, paneId: string, instance: string | null): string {
+  const hash = createHash("sha256").update(session).update("\u0000").update(paneId);
+  if (instance !== null) hash.update("\u0000").update(instance);
+  return hash.digest("hex").slice(0, 32);
+}
+
+/** A stored instance field: a token, or null for anything else (a line from before instances). */
+function instanceField(raw: string | undefined): string | null {
+  return raw !== undefined && INSTANCE_TOKEN.test(raw) ? raw : null;
 }
 
 function readLine(raw: string): LogLine | null {
@@ -90,8 +113,8 @@ function readLine(raw: string): LogLine | null {
   const from = asJsonObject(row.sender);
   const senderSession = from === undefined ? undefined : asJsonString(from.session);
   const senderPane = from === undefined ? undefined : asJsonString(from.paneId);
-  const line: MessageLine = { t: "message", at, target, session, paneId, message };
-  return senderSession === undefined || senderPane === undefined ? line : { ...line, sender: { session: senderSession, paneId: senderPane } };
+  const line: MessageLine = { t: "message", at, target, session, paneId, instance: instanceField(asJsonString(row.instance)), message };
+  return senderSession === undefined || senderPane === undefined ? line : { ...line, sender: { session: senderSession, paneId: senderPane, instance: instanceField(asJsonString(from?.instance)) } };
 }
 
 export class WalkyLog {
@@ -174,7 +197,7 @@ export class WalkyLog {
       // The first message line for a target wins; a receipt may already be waiting for it.
       if (this.records.has(key)) return;
       const accepted: WalkyReceipt = { id: line.message.id, target: line.target, state: "accepted", verified: "none", at: line.at, by: "-" };
-      this.records.set(key, { session: line.session, paneId: line.paneId, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null });
+      this.records.set(key, { session: line.session, paneId: line.paneId, instance: line.instance, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null });
       return;
     }
     const key = keyOf(line.receipt.id, line.receipt.target);
@@ -221,7 +244,7 @@ export class WalkyLog {
   /** Log a message to one target with its first receipt. The caller checked {@link get} first. */
   record(message: WalkyMessage, target: string, placement: Placement, receipt: WalkyReceipt, sender: Placement | null = null): LogRecord {
     const at = this.now();
-    const line: MessageLine = { t: "message", at, target, session: placement.session, paneId: placement.paneId, message };
+    const line: MessageLine = { t: "message", at, target, session: placement.session, paneId: placement.paneId, instance: placement.instance, message };
     this.append(sender === null ? line : { ...line, sender });
     this.append({ t: "receipt", at, receipt });
     return this.get(message.id, target) ?? { ...placement, target, message, receipt, sender };
@@ -238,12 +261,12 @@ export class WalkyLog {
     this.append({ t: "receipt", at: this.now(), receipt });
   }
 
-  /** The messages that went to one pane, newest first. */
-  forPane(session: string, paneId: string, limit: number): WalkyEntry[] {
+  /** The messages that went to one pane instance, newest first. A record from before instances counts for any. */
+  forPane(session: string, paneId: string, instance: string, limit: number): WalkyEntry[] {
     const out: WalkyEntry[] = [];
     for (const record of [...this.records.values()].toReversed()) {
       if (out.length >= limit) break;
-      if (record.session === session && record.paneId === paneId) out.push({ ...record.message, receipt: record.receipt });
+      if (record.session === session && record.paneId === paneId && sameInstance(record.instance, instance)) out.push({ ...record.message, receipt: record.receipt });
     }
     return out;
   }
@@ -255,47 +278,56 @@ export class WalkyLog {
 
   // ── The inbox ──────────────────────────────────────────────────────────────────────────────────
 
-  private inboxPath(session: string, paneId: string): string {
-    return join(this.inboxDir, `${inboxKey(session, paneId)}.json`);
+  private inboxPath(session: string, paneId: string, instance: string | null): string {
+    return join(this.inboxDir, `${inboxKey(session, paneId, instance)}.json`);
   }
 
-  /** The unacknowledged messages of one pane, oldest first. */
-  inbox(session: string, paneId: string): WalkyMessage[] {
-    const path = this.inboxPath(session, paneId);
+  /** The unacknowledged messages of one pane instance, oldest first. */
+  inbox(session: string, paneId: string, instance: string): WalkyMessage[] {
+    const path = this.inboxPath(session, paneId, instance);
     if (!existsSync(path)) return [];
     const row = parseJsonObject(readFileSync(path, "utf8"));
-    if (row === undefined || row.session !== session || row.paneId !== paneId || !Array.isArray(row.messages)) return [];
+    if (row === undefined || row.session !== session || row.paneId !== paneId || row.instance !== instance || !Array.isArray(row.messages)) return [];
     return row.messages.flatMap((entry) => {
       const message = readMessage(asJsonObject(entry));
       return message === null ? [] : [message];
     });
   }
 
-  private writeInbox(session: string, paneId: string, messages: readonly WalkyMessage[]): void {
-    const path = this.inboxPath(session, paneId);
+  private writeInbox(session: string, paneId: string, instance: string, messages: readonly WalkyMessage[]): void {
+    const path = this.inboxPath(session, paneId, instance);
     if (messages.length === 0) {
       if (existsSync(path)) unlinkSync(path);
       return;
     }
     this.ensureDirs();
     const temp = `${path}.tmp`;
-    writeFileSync(temp, `${JSON.stringify({ v: 1, session, paneId, messages })}\n`, { mode: 0o600 });
+    writeFileSync(temp, `${JSON.stringify({ v: 1, session, paneId, instance, messages })}\n`, { mode: 0o600 });
     renameSync(temp, path);
   }
 
-  /** Put a message in a pane's inbox. Once only; past the cap the oldest goes. */
-  inboxAdd(session: string, paneId: string, message: WalkyMessage): void {
-    const messages = this.inbox(session, paneId).filter((held) => held.id !== message.id);
+  /** Put a message in a pane instance's inbox. Once only; past the cap the oldest goes. */
+  inboxAdd(session: string, paneId: string, instance: string, message: WalkyMessage): void {
+    const messages = this.inbox(session, paneId, instance).filter((held) => held.id !== message.id);
     messages.push(message);
-    this.writeInbox(session, paneId, messages.slice(Math.max(0, messages.length - INBOX_MAX)));
+    this.writeInbox(session, paneId, instance, messages.slice(Math.max(0, messages.length - INBOX_MAX)));
   }
 
-  /** Mark messages read for a pane: the named ids, or every one when `ids` is null. How many went. */
-  ack(session: string, paneId: string, ids: readonly string[] | null): number {
-    const messages = this.inbox(session, paneId);
+  /** Mark messages read for a pane instance: the named ids, or every one when `ids` is null. How many went. */
+  ack(session: string, paneId: string, instance: string, ids: readonly string[] | null): number {
+    const messages = this.inbox(session, paneId, instance);
     const kept = ids === null ? [] : messages.filter((message) => !ids.includes(message.id));
-    this.writeInbox(session, paneId, kept);
+    this.writeInbox(session, paneId, instance, kept);
     return messages.length - kept.length;
+  }
+
+  /**
+   * Drop a pane instance's inbox, read or not: the instance is gone (instances.ts `onDrop`), and no
+   * other pane may ever read it. The log keeps the records.
+   */
+  inboxDrop(session: string, paneId: string, instance: string): void {
+    const path = this.inboxPath(session, paneId, instance);
+    if (existsSync(path)) unlinkSync(path);
   }
 
   /** How many inbox files exist. For a test and for a status line. */

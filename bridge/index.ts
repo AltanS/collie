@@ -241,6 +241,7 @@ import {
   type CrewDialAnswer,
 } from "./walky/crew.ts";
 import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
+import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
 import { WalkyLog } from "./walky/log.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
 import { WalkySeen } from "./walky/seen.ts";
@@ -1662,19 +1663,25 @@ hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
 // Send Protocol; a session with no protocol keeps the inbox only. This machine's member id names its
 // panes on a crew (`local` on a solo install), and its crew key signs each message it builds.
+// Every pane carries an instance token (bridge/walky/instances.ts, `<stateDir>/walky/instances.json`):
+// a multiplexer reuses a pane id, and the token tells the pane a sender meant from a new session that
+// took its id. A pane out of sight for 30 seconds loses its token, and its inbox goes with it.
+const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
+/** Every pane of every session, without its token: what the instance registry observes. */
+const walkyRawPanes = (): Omit<WalkyPane, "instance">[] =>
+  registry.ordered().flatMap((rt) => {
+    const { agents, shellPanes } = rt.engine.current();
+    const of = (view: AgentView, agent: boolean): Omit<WalkyPane, "instance"> => {
+      const head = gitHeads.get(view.cwd);
+      const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
+      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, terminal: rt.send !== undefined };
+    };
+    const out = agents.map((view) => of(view, true));
+    for (const view of shellPanes) out.push(of(view, false));
+    return out;
+  });
 const walkyHost: WalkyHost = {
-  panes: () =>
-    registry.ordered().flatMap((rt) => {
-      const { agents, shellPanes } = rt.engine.current();
-      const of = (view: AgentView, agent: boolean): WalkyPane => {
-        const head = gitHeads.get(view.cwd);
-        const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
-        return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, terminal: rt.send !== undefined };
-      };
-      const out = agents.map((view) => of(view, true));
-      for (const view of shellPanes) out.push(of(view, false));
-      return out;
-    }),
+  panes: () => walkyInstances.stamp(walkyRawPanes()),
   send: async (pane, sendId, text): Promise<SendResult> => {
     const protocol = registry.get(pane.session)?.send;
     if (protocol === undefined) return { outcome: "refused", reason: "no terminal" };
@@ -1697,6 +1704,11 @@ const walkyHost: WalkyHost = {
 };
 const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
 const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// A pane instance that went takes its inbox with it: a new session that takes the id starts empty.
+walkyInstances.onDrop((session, paneId, token) => walkyLog.inboxDrop(session, paneId, token));
+// Look at the panes every 10 seconds even when no message asks, so a closed pane is dropped on time.
+const walkyInstanceTimer = setInterval(() => walkyInstances.observe(walkyRawPanes()), INSTANCE_TICK_MS);
+walkyInstanceTimer.unref();
 // Dedupe beside the log, kept a day and apart from its rotation: the same id never types twice.
 const walkySeen = new WalkySeen(join(cfg.stateDir, "walky"));
 // How many messages this machine refused, per reason and with no body: for `doctor` and the Crew page.
@@ -2633,6 +2645,7 @@ const server = startServer({
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
   gitHeads,
+  walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   walky,
   cacheWatch,
   folders,
@@ -2754,6 +2767,7 @@ const shutdown = async () => {
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
+  clearInterval(walkyInstanceTimer);
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();

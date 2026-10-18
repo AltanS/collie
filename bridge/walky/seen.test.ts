@@ -39,7 +39,7 @@ const message = (id: string, body = "hello"): WalkyMessage => ({
 });
 
 function pane(paneId: string): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", terminal: true };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true };
 }
 
 class Host implements WalkyHost {

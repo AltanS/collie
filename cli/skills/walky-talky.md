@@ -18,9 +18,9 @@ busy.
 Every message starts with one header line. Read it before you read the body.
 
 ```
-[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
+[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3#k3f9 (claude, collie-workspace#fix-465): a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0. Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 [walky-talky wt_k3f9x2m8q1a0] from operator (phone-altan)
-[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3 (claude, repo#branch) reply to wt_8ab2k1m4q7zx: a message from another agent, ...
+[walky-talky wt_n2d8s1v7c4b9] from agent bluefin/w6:p3#k3f9 (claude, repo#branch) reply to wt_8ab2k1m4q7zx: a message from another agent, ...
 ```
 
 - `wt_...` is the message id. Use it to reply.
@@ -52,7 +52,8 @@ Answer a message from your operator in your own output, as you answer any prompt
 
 Run these in your terminal.
 
-List who you can reach. Pick the address from this list. Do not guess one.
+List who you can reach. Pick the address from this list. Do not guess one. An address from `who`
+ends with `#` and four characters that name the pane's current session. Use it as printed.
 
 ```bash
 {{COLLIE_BIN}} walky who
@@ -62,8 +63,10 @@ Send a message to one address. You may message one pane at a time; only your ope
 `all`.
 
 ```bash
-{{COLLIE_BIN}} walky send bluefin/w6:p3 "Tests are green on fix-465. You can merge."
+{{COLLIE_BIN}} walky send bluefin/w6:p3#k3f9 "Tests are green on fix-465. You can merge."
 ```
+
+A send to a pane that closed, whose id another pane took, is refused `pane replaced`. Run `who` again.
 
 Answer a message by its id. The reply goes back to the sender.
 

@@ -26,7 +26,7 @@ export type WalkyKind = "agent" | "operator";
 export interface WalkySender {
   /** Null on a solo install. */
   readonly memberId: string | null;
-  /** `<memberId>/<paneId>` for an agent; null for an operator. */
+  /** `<memberId>/<paneId>#<token>` for an agent, its pane's instance (address.ts); null for an operator. */
   readonly address: string | null;
   /** An open string from the adapter registry, agent only. */
   readonly harness: string | null;
@@ -39,7 +39,7 @@ export interface WalkyMessage {
   readonly id: string;
   readonly kind: WalkyKind;
   readonly from: WalkySender;
-  /** One address `<memberId>/<paneId>`, or `all`, or `<memberId>/all`. */
+  /** One address `<memberId>/<paneId>`, with or without `#<token>`, or `all`, or `<memberId>/all`. */
   readonly to: string;
   readonly replyTo: string | null;
   /** Epoch ms, the sender's clock. */
@@ -63,7 +63,8 @@ export interface WalkyReceipt {
   /**
    * The address this receipt is for. A message to one pane has one receipt; a message to `all` or
    * `<memberId>/all` has one per target pane, all under the same message id. Added to the README's
-   * contract by spec 01, since a fan-out needs one receipt per pane.
+   * contract by spec 01, since a fan-out needs one receipt per pane. Never an instance token: a
+   * receipt names `<memberId>/<paneId>`, so a lead's leg and a member's own receipt keep matching.
    */
   readonly target: string;
   readonly state: WalkyReceiptState;

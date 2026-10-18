@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -93,7 +93,7 @@ describe("one message to one pane", () => {
     expect(r.host.sends).toEqual([{ pane: "w1:p1", id: sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1"), text: "[walky-talky wt_aaaaaaaaaaa1] from operator (cli)\nhello" }]);
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "delivered", sendId: sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1") });
     // Delivered through the screen: the inbox entry is acked.
-    expect(r.log.inbox("main", "w1:p1")).toEqual([]);
+    expect(r.log.inbox("main", "w1:p1", "aaaa")).toEqual([]);
   });
 
   test("an agent's message types the nudge line only, and stays unread until the agent reads it", async () => {
@@ -106,7 +106,7 @@ describe("one message to one pane", () => {
     expect(r.host.sends[0]!.text.includes("the body")).toBe(false);
     expect(r.host.sends[0]!.text).toContain("Read it: collie walky inbox wt_aaaaaaaaaaa1.");
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
-    expect(r.service.inbox("main", "w1:p2", false).map((entry) => entry.body)).toEqual(["the body"]);
+    expect(r.service.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.body)).toEqual(["the body"]);
   });
 
   test("a forged operator header in the body is typed and logged with one leading space", async () => {
@@ -152,7 +152,7 @@ describe("one message to one pane", () => {
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
     await r.service.deliverer.settled();
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "box not free" });
-    expect(r.service.inbox("main", "w1:p1", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
+    expect(r.service.inbox("main", "w1:p1", "aaaa", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
   });
 
   test("an unknown outcome stays unknown and is never sent again", async () => {
@@ -274,7 +274,7 @@ describe("fan-out and senders", () => {
 
   test("`who` lists agent panes only, with machine, harness, label and state", () => {
     const r = rig([pane("w1:p1"), pane("w1:p2", { agent: false, harness: null })]);
-    expect(r.service.who()).toEqual([{ address: "local/w1:p1", memberId: "local", machine: "desk", harness: "agent-x", label: "repo#w1:p1", state: "idle" }]);
+    expect(r.service.who()).toEqual([{ address: "local/w1:p1#aaaa", memberId: "local", machine: "desk", harness: "agent-x", label: "repo#w1:p1", state: "idle" }]);
   });
 });
 
@@ -298,7 +298,7 @@ describe("loops, replies and the panes they name (M62 hardening D, F)", () => {
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2", "question?"), agentIn(panes[0]!));
     const answer = await r.service.send(reply("wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa1", "local/w1:p3"), agentIn(panes[1]!));
     expect(answer).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "local/w1:p1" }] });
-    expect(r.service.status("wt_aaaaaaaaaaa2").message).toMatchObject({ to: "local/w1:p1", replyTo: "wt_aaaaaaaaaaa1" });
+    expect(r.service.status("wt_aaaaaaaaaaa2").message).toMatchObject({ to: "local/w1:p1#aaaa", replyTo: "wt_aaaaaaaaaaa1" });
   });
 
   test("a reply to a message this pane never received is `unknown reply`", async () => {
@@ -357,6 +357,88 @@ describe("loops, replies and the panes they name (M62 hardening D, F)", () => {
     expect(await r.service.send(reply("wt_aaaaaaaaaaa4", "wt_aaaaaaaaaaa1"), agentIn(panes[1]!))).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "local/%1" }] });
     await r.service.deliverer.settled();
     expect(r.log.get("wt_aaaaaaaaaaa4", "local/%1")?.session).toBe("main");
+  });
+});
+
+describe("pane instances: a pane id another session took since", () => {
+  const agentIn = (target: WalkyPane) => ({ kind: "agent" as const, pane: target });
+  const reply = (id: string, replyTo: string) => ({ id, to: null, body: "re", replyTo });
+
+  test("an address with the token reaches that instance; the receipt names the pane id only", async () => {
+    const r = rig([pane("w1:p1", { instance: "k3f9" })]);
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1#k3f9"), operator);
+    expect(answer).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "local/w1:p1" }], target: { address: "local/w1:p1#k3f9" } });
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ target: "local/w1:p1", state: "delivered" }]);
+    expect(r.log.get("wt_aaaaaaaaaaa1", "local/w1:p1")).toMatchObject({ session: "main", paneId: "w1:p1", instance: "k3f9" });
+  });
+
+  test("the pane id held by another instance is `pane replaced`; no pane at all is `no such pane`", async () => {
+    const r = rig([pane("w1:p1", { instance: "zzzz" })]);
+    expect(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1#k3f9"), operator)).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "pane replaced", target: "local/w1:p1" }] });
+    expect(await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p2#k3f9"), operator)).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "no such pane" }] });
+    expect(r.log.all("wt_aaaaaaaaaaa1")).toEqual([]);
+    expect(r.host.sends).toEqual([]);
+  });
+
+  test("a bare address is whatever pane holds the id now, as before", async () => {
+    const r = rig([pane("w1:p1", { instance: "zzzz" })]);
+    expect(await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator)).toMatchObject({ ok: true, receipts: [{ state: "accepted" }], target: { address: "local/w1:p1#zzzz" } });
+    const twins = rig([pane("%1", { instance: "aaaa" }), pane("%1", { session: "twin", instance: "bbbb" })]);
+    expect(await twins.service.send(send("wt_aaaaaaaaaaa1", "local/%1"), operator)).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "ambiguous pane" }] });
+  });
+
+  test("a token tells two sessions' panes with one id apart", async () => {
+    const r = rig([pane("%1", { instance: "aaaa" }), pane("%1", { session: "twin", instance: "bbbb" })]);
+    expect(await r.service.send(send("wt_aaaaaaaaaaa1", "local/%1#bbbb"), operator)).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
+    await r.service.deliverer.settled();
+    expect(r.log.get("wt_aaaaaaaaaaa1", "local/%1")).toMatchObject({ session: "twin", instance: "bbbb" });
+  });
+
+  test("an agent's message carries its pane's token; its own pane by either spelling is refused", async () => {
+    const panes = [pane("w1:p1", { instance: "aaaa" }), pane("w1:p2", { instance: "bbbb" })];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), agentIn(panes[0]!));
+    expect(r.service.status("wt_aaaaaaaaaaa1").message?.from.address).toBe("local/w1:p1#aaaa");
+    await r.service.deliverer.settled();
+    expect(r.host.sends[0]!.text).toStartWith("[walky-talky wt_aaaaaaaaaaa1] from agent local/w1:p1#aaaa (agent-x, repo#w1:p1)");
+    for (const [id, to] of [["wt_aaaaaaaaaaa2", "local/w1:p1"], ["wt_aaaaaaaaaaa3", "local/w1:p1#aaaa"]] as const) {
+      expect(await r.service.send(send(id, to), agentIn(panes[0]!))).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "that is your own pane" }] });
+    }
+  });
+
+  test("a crew hop's message to its sender's own pane is refused by either spelling", async () => {
+    const r = rig([pane("w1:p1", { instance: "aaaa" })], { memberId: "desk" });
+    const from = { memberId: "desk", address: "desk/w1:p1#aaaa", harness: "agent-x", label: "x" };
+    for (const [id, to] of [["wt_aaaaaaaaaaa1", "desk/w1:p1"], ["wt_aaaaaaaaaaa2", "desk/w1:p1#aaaa"]] as const) {
+      const message = { v: 1 as const, id, kind: "agent" as const, from, to, replyTo: null, at: r.clock, body: "to myself", signer: null, signature: null };
+      expect(await r.service.receive(message, "lead", true)).toMatchObject([{ state: "refused", reason: "that is your own pane", target: "desk/w1:p1" }]);
+    }
+    expect(r.host.sends).toEqual([]);
+  });
+
+  test("a reply pins the instance that sent: a new session at the sender's pane id is `sender gone`", async () => {
+    const panes = [pane("%1", { instance: "aaaa" }), pane("%2", { instance: "bbbb" })];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/%2", "question?"), agentIn(panes[0]!));
+    expect(r.log.first("wt_aaaaaaaaaaa1")?.sender).toEqual({ session: "main", paneId: "%1", instance: "aaaa" });
+    // The sender's pane closed, and a new session took %1 in the same multiplexer session.
+    r.host.list = [pane("%1", { instance: "cccc" }), panes[1]!];
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa1"), agentIn(panes[1]!))).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "sender gone", target: "local/%1" }] });
+    // The sender is back under its own token: the reply goes.
+    r.host.list = panes;
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa3", "wt_aaaaaaaaaaa1"), agentIn(panes[1]!))).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "local/%1" }] });
+  });
+
+  test("a new instance at a pane id cannot reply to what reached the old one", async () => {
+    const panes = [pane("%1", { instance: "aaaa" }), pane("%2", { instance: "bbbb" })];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/%2", "question?"), agentIn(panes[0]!));
+    const newcomer = pane("%2", { instance: "cccc" });
+    r.host.list = [panes[0]!, newcomer];
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa1"), agentIn(newcomer))).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "unknown reply" }] });
+    expect(r.service.inbox("main", "%2", "cccc", false)).toEqual([]);
+    expect(r.service.one("wt_aaaaaaaaaaa1", newcomer)).toBeNull();
   });
 });
 

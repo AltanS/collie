@@ -40,7 +40,7 @@ function receipt(m: WalkyMessage, state: WalkyReceipt["state"], at = 1000): Walk
   return { id: m.id, target: "local/w1:p1", state, verified: "local", at, by: "solo" };
 }
 
-const here = { session: "main", paneId: "w1:p1" };
+const here = { session: "main", paneId: "w1:p1", instance: "aaaa" };
 
 describe("the log", () => {
   test("keeps a message with its newest receipt, across a restart", () => {
@@ -51,7 +51,7 @@ describe("the log", () => {
     log.update(receipt(m, "delivered", 1001));
     const again = new WalkyLog(dir, () => 1002);
     expect(again.get(m.id, "local/w1:p1")?.receipt.state).toBe("delivered");
-    expect(again.forPane("main", "w1:p1", 10).map((entry) => entry.id)).toEqual([m.id]);
+    expect(again.forPane("main", "w1:p1", "aaaa", 10).map((entry) => entry.id)).toEqual([m.id]);
     expect(again.pending()).toEqual([]);
   });
 
@@ -106,21 +106,21 @@ describe("the inbox", () => {
   test("holds a pane's unread messages under a hashed name, and ack takes them out", () => {
     const dir = fresh();
     const log = new WalkyLog(dir, () => 1000);
-    log.inboxAdd("main", "../../etc", message(1));
-    log.inboxAdd("main", "../../etc", message(2));
-    log.inboxAdd("main", "../../etc", message(2));
-    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "../../etc")}.json`]);
-    expect(log.inbox("main", "../../etc").map((m) => m.id)).toEqual([message(1).id, message(2).id]);
-    expect(log.ack("main", "../../etc", [message(1).id])).toBe(1);
-    expect(log.inbox("main", "../../etc").map((m) => m.id)).toEqual([message(2).id]);
-    expect(log.ack("main", "../../etc", null)).toBe(1);
-    expect(existsSync(join(dir, "inbox", `${inboxKey("main", "../../etc")}.json`))).toBe(false);
+    log.inboxAdd("main", "../../etc", "aaaa", message(1));
+    log.inboxAdd("main", "../../etc", "aaaa", message(2));
+    log.inboxAdd("main", "../../etc", "aaaa", message(2));
+    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "../../etc", "aaaa")}.json`]);
+    expect(log.inbox("main", "../../etc", "aaaa").map((m) => m.id)).toEqual([message(1).id, message(2).id]);
+    expect(log.ack("main", "../../etc", "aaaa", [message(1).id])).toBe(1);
+    expect(log.inbox("main", "../../etc", "aaaa").map((m) => m.id)).toEqual([message(2).id]);
+    expect(log.ack("main", "../../etc", "aaaa", null)).toBe(1);
+    expect(existsSync(join(dir, "inbox", `${inboxKey("main", "../../etc", "aaaa")}.json`))).toBe(false);
   });
 
   test("keeps at most 200, the oldest dropped", () => {
     const log = new WalkyLog(fresh(), () => 1000);
-    for (let n = 0; n < INBOX_MAX + 5; n++) log.inboxAdd("main", "w1:p1", message(n));
-    const held = log.inbox("main", "w1:p1");
+    for (let n = 0; n < INBOX_MAX + 5; n++) log.inboxAdd("main", "w1:p1", "aaaa", message(n));
+    const held = log.inbox("main", "w1:p1", "aaaa");
     expect(held).toHaveLength(INBOX_MAX);
     expect(held[0]!.id).toBe(message(5).id);
   });
@@ -130,21 +130,76 @@ describe("the inbox", () => {
     let now = 1000;
     const log = new WalkyLog(dir, () => now);
     log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
-    log.inboxAdd("main", "w1:p1", message(1));
+    log.inboxAdd("main", "w1:p1", "aaaa", message(1));
     now = 1000 + LOG_KEEP_MS + 1;
-    log.inboxAdd("main", "w1:p2", message(2, now));
+    log.inboxAdd("main", "w1:p2", "aaaa", message(2, now));
     // The next line ages the first one out: the rotate runs, and with it the inbox sweep.
     log.record(message(2, now), "local/w1:p2", here, receipt(message(2, now), "accepted", now));
-    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "w1:p2")}.json`]);
-    expect(log.inbox("main", "w1:p1")).toEqual([]);
-    expect(log.inbox("main", "w1:p2").map((m) => m.id)).toEqual([message(2).id]);
+    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "w1:p2", "aaaa")}.json`]);
+    expect(log.inbox("main", "w1:p1", "aaaa")).toEqual([]);
+    expect(log.inbox("main", "w1:p2", "aaaa").map((m) => m.id)).toEqual([message(2).id]);
     // A restart sweeps too.
     expect(new WalkyLog(dir, () => now).inboxCount()).toBe(1);
   });
 
   test("a session and a pane are one inbox: another session's same pane id is another", () => {
     const log = new WalkyLog(fresh(), () => 1000);
-    log.inboxAdd("main", "%1", message(1));
-    expect(log.inbox("other", "%1")).toEqual([]);
+    log.inboxAdd("main", "%1", "aaaa", message(1));
+    expect(log.inbox("other", "%1", "aaaa")).toEqual([]);
+  });
+
+  test("a new instance of a pane id starts with an empty inbox, and a dropped instance takes its file", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.inboxAdd("main", "w1:p1", "aaaa", message(1));
+    expect(inboxKey("main", "w1:p1", "aaaa")).not.toBe(inboxKey("main", "w1:p1", "bbbb"));
+    expect(log.inbox("main", "w1:p1", "bbbb")).toEqual([]);
+    log.inboxAdd("main", "w1:p1", "bbbb", message(2));
+    expect(log.inbox("main", "w1:p1", "aaaa").map((m) => m.id)).toEqual([message(1).id]);
+    log.inboxDrop("main", "w1:p1", "aaaa");
+    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "w1:p1", "bbbb")}.json`]);
+    expect(log.inbox("main", "w1:p1", "aaaa")).toEqual([]);
+    // Dropping what is not there is a no-op.
+    log.inboxDrop("main", "w1:p404", "aaaa");
+  });
+
+  test("an inbox file from before instances is never read under one, and the 7-day prune still takes it", () => {
+    const dir = fresh();
+    let now = 1000;
+    const log = new WalkyLog(dir, () => now);
+    log.inboxAdd("main", "w1:p1", "aaaa", message(1));
+    const legacy = join(dir, "inbox", `${inboxKey("main", "w1:p1", null)}.json`);
+    writeFileSync(legacy, `${JSON.stringify({ v: 1, session: "main", paneId: "w1:p1", messages: [message(2)] })}\n`);
+    expect(log.inbox("main", "w1:p1", "aaaa").map((m) => m.id)).toEqual([message(1).id]);
+    now = 1000 + LOG_KEEP_MS + 1;
+    expect(new WalkyLog(dir, () => now).inboxCount()).toBe(0);
+    expect(existsSync(legacy)).toBe(false);
+  });
+});
+
+describe("a record and its instance", () => {
+  test("matches only its own instance; a line from before instances matches any", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    // A line written before instances: no `instance` key at all.
+    const old = { t: "message", at: 1000, target: "local/w1:p1", session: "main", paneId: "w1:p1", message: message(2) };
+    writeFileSync(join(dir, "log.jsonl"), `${readFileSync(join(dir, "log.jsonl"), "utf8")}${JSON.stringify(old)}\n`);
+    const again = new WalkyLog(dir, () => 1000);
+    expect(again.get(message(1).id, "local/w1:p1")?.instance).toBe("aaaa");
+    expect(again.get(message(2).id, "local/w1:p1")?.instance).toBeNull();
+    expect(again.forPane("main", "w1:p1", "aaaa", 10).map((entry) => entry.id)).toEqual([message(2).id, message(1).id]);
+    expect(again.forPane("main", "w1:p1", "bbbb", 10).map((entry) => entry.id)).toEqual([message(2).id]);
+  });
+
+  test("keeps the sender's instance, and reads a sender from before instances as null", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"), { session: "main", paneId: "w1:p2", instance: "cccc" });
+    const old = { t: "message", at: 1000, target: "local/w1:p1", session: "main", paneId: "w1:p1", message: message(2), sender: { session: "main", paneId: "w1:p2" } };
+    writeFileSync(join(dir, "log.jsonl"), `${readFileSync(join(dir, "log.jsonl"), "utf8")}${JSON.stringify(old)}\n`);
+    const again = new WalkyLog(dir, () => 1000);
+    expect(again.get(message(1).id, "local/w1:p1")?.sender).toEqual({ session: "main", paneId: "w1:p2", instance: "cccc" });
+    expect(again.get(message(2).id, "local/w1:p1")?.sender).toEqual({ session: "main", paneId: "w1:p2", instance: null });
   });
 });

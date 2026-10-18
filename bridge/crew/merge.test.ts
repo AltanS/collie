@@ -581,6 +581,17 @@ describe("parsePeerSnapshot — a peer contributes rows, never claims", () => {
     expect(merged.agents.filter((p) => p.host === "laptop")).toHaveLength(1);
   });
 
+  test("a pane's walky instance token is kept only as four characters of [a-z0-9]", () => {
+    const parsed = parsePeerSnapshot({
+      sessions: [],
+      agents: [{ ...pane({ paneId: "w1:p1" }), instance: "k3f9" }, { ...pane({ paneId: "w1:p2" }), instance: "../x" }, { ...pane({ paneId: "w1:p3" }), instance: 1234 }],
+      shellPanes: [{ ...pane({ paneId: "w1:p4", kind: "shell" }), instance: "zz00" }],
+    })!;
+    expect(parsed.agents.map((p) => p.instance)).toEqual(["k3f9", undefined, undefined]);
+    expect("instance" in parsed.agents[1]!).toBe(false);
+    expect(parsed.shellPanes[0]!.instance).toBe("zz00");
+  });
+
   test("a body missing any of the three PANE lists is not a snapshot to salvage", () => {
     expect(parsePeerSnapshot(null)).toBeNull();
     expect(parsePeerSnapshot("nope")).toBeNull();

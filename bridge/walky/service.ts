@@ -11,7 +11,7 @@ import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
-import type { LogRecord, WalkyLog } from "./log.ts";
+import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import type { RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
@@ -96,9 +96,14 @@ export class WalkyService {
     return this.deps.host.panes().find((pane) => pane.session === session && pane.paneId === paneId) ?? null;
   }
 
-  /** The address of a pane of this bridge. */
-  addressOf(paneId: string): string {
-    return paneAddress(this.deps.memberId, paneId);
+  /** The instance token a pane of this bridge holds now, or null when no such pane is there. */
+  instanceOf(session: string, paneId: string): string | null {
+    return this.paneAt(session, paneId)?.instance ?? null;
+  }
+
+  /** The address of a pane of this bridge, with its instance token when given (as `who` prints it). */
+  addressOf(paneId: string, instance?: string | null): string {
+    return paneAddress(this.deps.memberId, paneId, instance);
   }
 
   /**
@@ -109,7 +114,9 @@ export class WalkyService {
   replyParent(replyTo: string, sender: WalkySenderRef): LogRecord | null {
     const records = this.deps.log.all(replyTo);
     const parent =
-      sender.kind === "agent" ? records.find((record) => record.session === sender.pane.session && record.paneId === sender.pane.paneId) : records.find((record) => record.session !== null);
+      sender.kind === "agent"
+        ? records.find((record) => record.session === sender.pane.session && record.paneId === sender.pane.paneId && sameInstance(record.instance, sender.pane.instance))
+        : records.find((record) => record.session !== null);
     return parent === undefined || parent.message.from.address === null ? null : parent;
   }
 
@@ -120,7 +127,7 @@ export class WalkyService {
     const memberId = this.deps.memberId;
     const from =
       sender.kind === "agent"
-        ? { memberId, address: paneAddress(memberId, sender.pane.paneId), harness: sender.pane.harness, label: sender.pane.label }
+        ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label }
         : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX) };
     const message: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
     const key = this.deps.keyPem();
@@ -140,18 +147,26 @@ export class WalkyService {
     if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
-    const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId } : null;
+    const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId, instance: sender.pane.instance } : null;
     const receipts = await this.deliverer.deliver(message, from);
     const target = this.targetOf(message.to);
     return target === null ? { ok: true, receipts } : { ok: true, receipts, target };
   }
 
-  /** The one pane an address names, as `who` lists it, or null (a fan-out, or a pane this bridge cannot see). */
+  /**
+   * The one pane an address names, as `who` lists it, or null (a fan-out, or a pane this bridge cannot
+   * see). A bare address matches the listed pane with that id; one with a token, that instance only.
+   */
   private targetOf(to: string): WalkyTarget | null {
     const address = parseAddress(to);
     if (address === null || address.kind !== "pane") return null;
-    const spelled = isSelf(address.memberId, this.deps.memberId) ? this.addressOf(address.paneId) : to;
-    return this.who().find((target) => target.address === spelled) ?? null;
+    const member = isSelf(address.memberId, this.deps.memberId) ? (this.deps.memberId ?? LOCAL_MEMBER) : address.memberId;
+    return (
+      this.who().find((target) => {
+        const listed = parseAddress(target.address);
+        return listed?.kind === "pane" && listed.memberId === member && listed.paneId === address.paneId && (address.instance === null || listed.instance === address.instance);
+      }) ?? null
+    );
   }
 
   /**
@@ -194,14 +209,17 @@ export class WalkyService {
     const local = this.deps.host
       .panes()
       .filter((pane) => pane.agent)
-      .map((pane) => ({ address: this.addressOf(pane.paneId), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state }));
+      .map((pane) => ({ address: this.addressOf(pane.paneId, pane.instance), memberId, machine: this.deps.machine, harness: pane.harness, label: pane.label, state: pane.state }));
     return [...local, ...(this.deps.remoteTargets?.() ?? [])];
   }
 
-  /** A pane's unread messages, oldest first, each with its newest receipt. `all`: every message that reached the pane, newest first. */
-  inbox(session: string, paneId: string, all: boolean, limit = 50): WalkyEntry[] {
-    if (all) return this.deps.log.forPane(session, paneId, limit);
-    return this.deps.log.inbox(session, paneId).map((message) => {
+  /**
+   * A pane instance's unread messages, oldest first, each with its newest receipt. `all`: every
+   * message that reached the instance, newest first (a record from before instances counts too).
+   */
+  inbox(session: string, paneId: string, instance: string, all: boolean, limit = 50): WalkyEntry[] {
+    if (all) return this.deps.log.forPane(session, paneId, instance, limit);
+    return this.deps.log.inbox(session, paneId, instance).map((message) => {
       const target = this.addressOf(paneId);
       const receipt = this.deps.log.get(message.id, target)?.receipt ?? { id: message.id, target, state: "inbox-only", verified: "local", at: message.at, by: this.deliverer.by };
       return entryOf(message, receipt);
@@ -210,11 +228,12 @@ export class WalkyService {
 
   /**
    * One message by id, as `collie walky inbox <id>` reads it. In a pane: only a message that went to
-   * that pane. Outside one (the operator's own terminal): the first record of the id on this bridge.
+   * that pane instance. Outside one (the operator's own terminal): the first record of the id on this bridge.
    */
-  one(id: string, pane: { readonly session: string; readonly paneId: string } | null): WalkyEntry | null {
+  one(id: string, pane: { readonly session: string; readonly paneId: string; readonly instance: string } | null): WalkyEntry | null {
     const records = this.deps.log.all(id);
-    const record = pane === null ? records[0] : records.find((held) => held.session === pane.session && held.paneId === pane.paneId);
+    const record =
+      pane === null ? records[0] : records.find((held) => held.session === pane.session && held.paneId === pane.paneId && sameInstance(held.instance, pane.instance));
     return record === undefined ? null : entryOf(record.message, record.receipt);
   }
 
@@ -247,8 +266,8 @@ export class WalkyService {
     return { receipts: shown, message: records[0]?.message ?? null, elsewhere };
   }
 
-  /** Mark messages read for a pane: the ids, or all of them. */
-  ack(session: string, paneId: string, ids: readonly string[] | null): number {
-    return this.deps.log.ack(session, paneId, ids);
+  /** Mark messages read for a pane instance: the ids, or all of them. */
+  ack(session: string, paneId: string, instance: string, ids: readonly string[] | null): number {
+    return this.deps.log.ack(session, paneId, instance, ids);
   }
 }

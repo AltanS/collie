@@ -9,7 +9,7 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket } from "../cli/walky.ts";
-import { asJsonString } from "../web/src/lib/json.ts";
+import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { readReceiptsAnswer } from "../bridge/walky/parse.ts";
@@ -878,8 +878,10 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
   test("the lead lists the member's pane, routes both ways, and each side records how the sender was known", async () => {
     const leadId = lead.store()!.self.memberId;
     const peerId = peer.store()!.self.memberId;
+    // The member's pane carries its instance token on the snapshot it serves the lead, so `who` there
+    // names it `<member>/<pane>#<token>`.
     await waitFor(
-      async () => JSON.stringify(await walky(lead, { op: "who" })).includes(`"${peerId}/${peer.paneId}"`),
+      async () => JSON.stringify(await walky(lead, { op: "who" })).includes(`"${peerId}/${peer.paneId}#`),
       10_000,
       "the lead's who never listed the member's pane",
     );
@@ -898,6 +900,33 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
     expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId }] });
     expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target: `${leadId}/${lead.paneId}`, verified: "origin" }] });
     expect(await walky(peer, { op: "status", id: "wt_crewup000001" })).toMatchObject({ elsewhere: [`${leadId}/${lead.paneId}`] });
+  }, 60_000);
+
+  test("the lead's who names the member's pane with its instance token, and a send to that address lands", async () => {
+    const peerId = peer.store()!.self.memberId;
+    const bare = `${peerId}/${peer.paneId}`;
+    let address: string | null = null;
+    await waitFor(
+      async () => {
+        const who = await walky(lead, { op: "who" });
+        const targets = asJsonObject(who)?.targets;
+        const listed = Array.isArray(targets) ? targets.map((row) => asJsonString(asJsonObject(row)?.address)).find((a) => a?.startsWith(`${bare}#`) === true) : undefined;
+        address = listed ?? null;
+        return address !== null;
+      },
+      10_000,
+      "the lead's who never listed the member's pane with a token",
+    );
+    expect(address!.slice(bare.length)).toMatch(/^#[a-z0-9]{4}$/u);
+    // The receipt names the pane id only, on both machines; the message keeps the token it was sent to.
+    const sent = await operatorSend(lead, { id: "wt_crewtoken001", to: address!, body: "to the instance" });
+    expect(sent).toMatchObject({ receipt: { target: bare, by: peerId } });
+    const state = asJsonString(asJsonObject(asJsonObject(sent)?.receipt)?.state);
+    expect(["accepted", "delivered", "inbox-only"]).toContain(state);
+    expect(await walky(peer, { op: "status", id: "wt_crewtoken001" })).toMatchObject({ ok: true, receipts: [{ target: bare }], message: { to: address! } });
+    // Another token at that pane id is a pane that closed and gave its id away: refused, nothing typed.
+    const other = address!.endsWith("#zzzz") ? `${bare}#yyyy` : `${bare}#zzzz`;
+    expect(await operatorSend(lead, { id: "wt_crewtoken002", to: other, body: "to a gone instance" })).toMatchObject({ receipt: { state: "refused", reason: "pane replaced", target: bare, by: peerId } });
   }, 60_000);
 });
 
@@ -2270,6 +2299,8 @@ describe("walky talky in a crew of four, on the real wire", () => {
 
   const idOf = (i: Instance): string => i.store()!.self.memberId;
   const paneOf = (i: Instance): string => `${idOf(i)}/${i.paneId}`;
+  /** A pane's address as `who` prints it: the pane id, then `#` and the pane's instance token. */
+  const tokened = (i: Instance) => expect.stringMatching(new RegExp(`^${paneOf(i)}#[a-z0-9]{4}$`, "u"));
 
   /** The harness's own copy of the standby block's `enrol`: invite, join, and the lead's restart. */
   async function enrol(leadInstance: Instance, memberInstance: Instance): Promise<void> {
@@ -2347,11 +2378,14 @@ describe("walky talky in a crew of four, on the real wire", () => {
   ): Promise<{ status: number; body: JsonValue }> {
     const store = member.store()!;
     const memberId = store.self.memberId;
+    // The sender's address as its own bridge signs it: the pane id and its instance token, which the
+    // member's `who` names as `self` for a CLI inside that pane.
+    const self = asJsonString(asJsonObject(await walky(member, { op: "who", markers: markersOf(member) }))?.self);
     const unsigned: WalkyMessage = {
       v: 1,
       id: fields.id,
       kind: "agent",
-      from: { memberId, address: fields.address ?? `${memberId}/${member.paneId}`, harness: "claude", label: "drill" },
+      from: { memberId, address: fields.address ?? self ?? `${memberId}/${member.paneId}`, harness: "claude", label: "drill" },
       to: fields.to,
       replyTo: null,
       at: fields.at,
@@ -2411,18 +2445,19 @@ describe("walky talky in a crew of four, on the real wire", () => {
     await waitFor(
       async () => {
         const listed = JSON.stringify(await walky(wl, { op: "who" }));
-        return [wa, wb, wo].every((m) => listed.includes(`"${paneOf(m)}"`));
+        return [wa, wb, wo].every((m) => listed.includes(`"${paneOf(m)}#`));
       },
       20_000,
       async () => `the lead's who never listed all three members: ${JSON.stringify(await walky(wl, { op: "who" }))}`,
     );
     // The lead's own pane first, then each member's: five addresses on one machine and three on others.
     const listed = JSON.stringify(await walky(wl, { op: "who" }));
-    for (const m of [wl, wa, wb, wo]) expect(listed).toContain(`"address":"${paneOf(m)}"`);
+    // Each one with its pane's instance token: the members send it on their snapshots.
+    for (const m of [wl, wa, wb, wo]) expect(listed).toMatch(new RegExp(`"address":"${paneOf(m)}#[a-z0-9]{4}"`, "u"));
     // A member lists its own pane only: the roster is the lead's, and the note says which command reaches it.
     for (const m of [wa, wb]) {
       const own = await walky(m, { op: "who" });
-      expect(own).toMatchObject({ ok: true, targets: [{ address: paneOf(m) }], note: expect.stringContaining(`run \`collie walky who\` on the lead (${idOf(wl)})`) });
+      expect(own).toMatchObject({ ok: true, targets: [{ address: tokened(m) }], note: expect.stringContaining(`run \`collie walky who\` on the lead (${idOf(wl)})`) });
     }
   }, 60_000);
 
@@ -2437,13 +2472,13 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(await walky(wb, { op: "status", id })).toMatchObject({
       ok: true,
       receipts: [{ target: paneOf(wb), by: idOf(wb), verified: "lead" }],
-      message: { id, kind: "agent", signer: idOf(wa), from: { memberId: idOf(wa), address: paneOf(wa) } },
+      message: { id, kind: "agent", signer: idOf(wa), from: { memberId: idOf(wa), address: tokened(wa) } },
     });
     // The lead logged the message it routed, from A's pane to B's.
     expect(await walky(wl, { op: "status", id })).toMatchObject({
       ok: true,
       receipts: [{ target: paneOf(wb), by: idOf(wb) }],
-      message: { id, from: { address: paneOf(wa) }, to: paneOf(wb) },
+      message: { id, from: { address: tokened(wa) }, to: paneOf(wb) },
     });
     // A keeps `accepted` and is told where the outcome lives; it never learns B's.
     expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, elsewhere: [paneOf(wb)] });
@@ -2453,7 +2488,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     const lines = typedFor(wb, id);
     expect(lines).toHaveLength(1);
     const line = lines[0];
-    expect(line).toContain(`[walky-talky ${id}] from agent ${paneOf(wa)} (claude, `);
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wa)}#[a-z0-9]{4} \\(claude, `, "u"));
     expect(line).toContain(NUDGE_MARK);
     expect(line).toContain(`collie walky inbox ${id}`);
     expect(line).not.toContain(body);
@@ -2489,7 +2524,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(lines).toHaveLength(1);
     const line = lines[0];
     // Hardening A: ONE line, the header and the nudge. The body reaches the agent as `collie walky inbox <id>`.
-    expect(line).toContain(`[walky-talky ${id}] from agent ${paneOf(wl)} (claude, `);
+    expect(line).toMatch(new RegExp(`\\[walky-talky ${id}\\] from agent ${paneOf(wl)}#[a-z0-9]{4} \\(claude, `, "u"));
     expect(line).toContain(`${NUDGE_MARK} Read it: collie walky inbox ${id}. Reply: collie walky reply ${id} "<text>"`);
     expect(line).not.toContain(body);
     expect(line).not.toContain("\n");

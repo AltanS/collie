@@ -1348,6 +1348,9 @@ prevents (`web/src/lib/api.ts:201-203`).
   buttons the durable agent of a durable pane lists, at most four, each with an `id`, a `label` and optional
   `icon`, `busy` and `disabled`. The merge passes it through like `asks` and `turnId`, and a lead that
   predates it does the same, so the phone draws no durable agent buttons for a member it cannot read.
+- **A pane may carry `instance`** (additive-optional, §7.1, added 2026-10-18): its walky talky
+  instance token, four characters of `[a-z0-9]`; the merge keeps it only in that form (§21, "Pane
+  instances").
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then
@@ -3439,6 +3442,37 @@ would be additive-optional like this one.
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
 holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
 "other machines: ask the lead".
+
+### Pane instances (added 2026-10-18)
+
+A multiplexer reuses a pane id once the pane closes (Herdr `w1:p1`, zellij `terminal_1`, tmux `%7`),
+so `<member>/<pane>` alone cannot tell the pane a sender meant from a new session that took its id.
+Every bridge therefore gives each `(session, paneId)` it sees a token, four characters of `[a-z0-9]`
+from a CSPRNG, minted the first time it sees the pane (`bridge/walky/instances.ts`, persisted in
+`<stateDir>/walky/instances.json`). A pane not seen for more than 30 seconds loses its token, and its
+inbox is deleted; on load the same rule runs against the clock, so a restart inside 30 seconds keeps
+the tokens.
+
+- **The address.** `<member>/<pane>#<token>` names one instance; `<member>/<pane>` still means
+  whatever pane holds the id now. `#` is not a pane id character, so the split is unambiguous. `who`
+  prints every address with its token, and an agent's `from.address` carries its own, so both are
+  signed in the canonical string as they stand.
+- **Delivery.** The bridge that owns the pane resolves the token. The pane id held by another
+  instance is `refused: pane replaced`; no pane with that id is `no such pane`. A reply whose stored
+  sender pane now holds another instance is `sender gone`.
+- **The route.** `/crew/v1/pane/:id/walky` keeps `:id` the bare pane id; the token rides in the
+  message's `to`, under the attestation.
+- **Receipts never carry the token.** A receipt's `target` stays `<member>/<pane>`, so the lead's leg
+  and the member's own receipt, its outcome report included, keep matching by `(id, target)`.
+- **The wire.** Each pane on a snapshot carries `instance` (§9.2). The lead keeps a member's token
+  only as four characters of `[a-z0-9]`, and its `who` prints `<member>/<pane>#<token>` when the
+  member's pane has one, bare when not.
+
+A member that sends no `instance` has its panes listed bare, and they work as before. A bridge built
+before this subsection cannot parse an address with a token. As a member it answers a routed message
+whose `to` carries one with a 400, which the lead never builds for it, because its panes carry no
+token. As a lead it answers a member's agent message whose `from.address` carries one with a 400, so
+an agent on a newer member cannot message through an older lead; an operator's message still goes.
 
 ### Compatibility
 
