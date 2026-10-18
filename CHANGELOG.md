@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Claude Code 2.1.302 is verified for the screen reader.** The harness lab walked its slash menu, read the Surface on 22 screens, made one probed send and one ask answer, and passed on 2026-10-17. The browser leg on the 1.22.6 release commit ran on 2.1.302 as well and passed all fifteen cases on the first tap. The journal reader stays verified on 2.1.296.
 
+### Fixed
+
+- **The phone offers an update only once its release is published.** The release check reads each release's `collie-release.json`, and a tag whose file answers 404 is not offered yet, so the banner, the update sheet and the push wait until the release is out. `collie update` in that window says the release is not published yet, and the phone shows the same reason instead of a generic one. A slow or failed read still offers the update. Thanks @viniciosrab (#503).
+
 ## [1.22.6] - 2026-10-18
 
 ### Changed

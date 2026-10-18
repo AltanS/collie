@@ -1683,6 +1683,17 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version), mirror.base);
   const manifestResponse = await deps.net.getJson(manifestUrl, via);
   if (!manifestResponse.ok) {
+    // A 404 here is one specific thing: the tag exists (the tag list just named it) and its assets do
+    // not, because release.yml publishes the release as its LAST step (#503). The phone could be
+    // offered the version in that window and started two updates against it. Say so, in the words the
+    // phone will print too, and keep every other manifest failure on its own wording.
+    if (manifestResponse.failure.status === 404) {
+      deps.io.err(
+        `error: Collie ${target.version} is tagged, but its release is not published yet. Try again in a few minutes. Nothing was changed.`,
+      );
+      abandonStaging(deps, NOT_PUBLISHED_YET(target.version));
+      return EXIT.FAIL;
+    }
     netError(deps, `the release manifest for ${target.version}`, manifestUrl, manifestResponse.failure);
     return EXIT.FAIL;
   }
@@ -2572,6 +2583,10 @@ function abandonStaging(deps: UpdateDeps, reason: string = STAGING_GAVE_UP): voi
 
 /** What an aborted staging record says. The terminal above it has already said which step and why. */
 const STAGING_GAVE_UP = "staging stopped before the new version was laid down";
+/** The abort reason when the tag exists but its release is not published yet (#503): its manifest
+ *  answers 404. The phone prints the record's reason as it stands, so this is the sentence it shows. */
+const NOT_PUBLISHED_YET = (version: string): string =>
+  `${version} is not published yet, try again in a few minutes`;
 /** The abort reason when the target was already `current`: nothing was staged because nothing needed to be. */
 
 /**

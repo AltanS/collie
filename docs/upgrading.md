@@ -458,8 +458,9 @@ are in [Updating to 1.9.0 from 1.7.0 or 1.8.x](crew.md#updating-to-190-from-170-
 the lead to 1.9.0: 1.9.0 answers the old paths with nothing, and a member still on 1.7.0 then shows
 red on the lead's preflight, naming both versions and the command to run on that machine. The
 `collie-release.json` asset the
-release publishes only feeds the wording of that notice on the band, on the Updates card and in the
-daily push; it never gates an update and never changes what one does.
+release publishes feeds the wording of that notice on the band, on the Updates card and in the
+daily push, and it never changes what an update does. It also tells the check that a release is
+out: a tag whose asset still answers 404 is not offered, and the next check asks again.
 
 Two requirements decide whether a peer can follow at all:
 

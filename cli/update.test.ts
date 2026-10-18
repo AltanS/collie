@@ -1327,6 +1327,8 @@ const manifestDoc = (over: JsonObject = {}) => ({
 interface BinaryOptions {
   tags?: readonly { name: string; commit: { sha: string } }[];
   manifest?: JsonObject | null;
+  /** Fail the manifest GET with this instead of answering it. `manifest: null` is the 404 case. */
+  manifestFailure?: { status: number | null; message: string };
   /** The digest the download reports — a different one is the corruption case. */
   digest?: string;
   tagsFailure?: { status: number | null; message: string };
@@ -1417,6 +1419,9 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
             ? { ok: true as const, value: over.tags ?? apiTags("v1.0.0", `v${NEW}`) }
             : { ok: false as const, failure: over.tagsFailure },
         );
+      }
+      if (over.manifestFailure !== undefined) {
+        return Promise.resolve({ ok: false as const, failure: over.manifestFailure });
       }
       const manifest = over.manifest === undefined ? manifestDoc() : over.manifest;
       return Promise.resolve(
@@ -3292,7 +3297,7 @@ describe("staging reports itself while it builds", () => {
     // later — about a process that exited cleanly with the real diagnosis already on the terminal.
     // The phone reads that record as a live run and disables the button, so the retry is not on
     // offer either. `abort` is the state machine's own word for it.
-    const h = binaryHarness({ manifest: null });
+    const h = binaryHarness({ manifestFailure: { status: 500, message: "HTTP 500" } });
     expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
     const run = parseUpdateRun(h.files.read(RUN_FILE));
     expect(run?.state).toBe("idle");
@@ -3302,6 +3307,59 @@ describe("staging reports itself while it builds", () => {
     expect(run?.reason).toContain("staging");
     // Nothing was launched, so nothing is coming later to correct the record.
     expect(h.exec.spawned).toEqual([]);
+  });
+
+  describe("a tag whose release is not published yet (#503)", () => {
+    // release.yml pushes the tag first and publishes the release last, and in between every asset
+    // under the tag answers 404. The phone was offered the version in that window and printed only
+    // "staging stopped before the new version was laid down" for the two updates it started.
+    const LINE = `error: Collie ${NEW} is tagged, but its release is not published yet. Try again in a few minutes. Nothing was changed.`;
+
+    test("a manifest 404 says the release is not out, and the phone reads the same words", async () => {
+      const h = binaryHarness({ manifest: null });
+      const fetched: string[] = [];
+      h.deps.net = { ...h.deps.net, download: (url) => (fetched.push(url), Promise.reject(new Error("no download expected"))) };
+      expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+
+      const err = h.io.stderr.join("\n");
+      expect(err).toContain(LINE);
+      // Not the generic network sentence, which is what the operator and the phone had before.
+      expect(err).not.toContain("failed (HTTP 404)");
+
+      const run = parseUpdateRun(h.files.read(RUN_FILE));
+      expect(run?.state).toBe("idle");
+      expect(run?.to).toBe(NEW);
+      expect(run?.reason).toBe(`${NEW} is not published yet, try again in a few minutes`);
+
+      // Changed nothing, and fetched nothing.
+      expect(fetched).toEqual([]);
+      expect(h.link.ops).toEqual([]);
+      expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+      expect(currentTarget(h)).toBe(BROOT);
+      expect(h.exec.spawned).toEqual([]);
+    });
+
+    test("it is the same on a plain run with no run id", async () => {
+      const h = binaryHarness({ manifest: null });
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stderr.join("\n")).toContain(LINE);
+    });
+
+    test("every other manifest failure keeps its own message and the generic reason", async () => {
+      for (const [failure, line] of [
+        [{ status: 500, message: "HTTP 500" }, `error: the release manifest for ${NEW} failed (HTTP 500). Nothing was changed.`],
+        [{ status: 403, message: "HTTP 403" }, "GitHub rate-limited the release manifest for"],
+        [{ status: null, message: "connection refused" }, "could not reach github.com"],
+      ] as const) {
+        const h = binaryHarness({ manifestFailure: failure });
+        expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+        const err = h.io.stderr.join("\n");
+        expect(err).toContain(line);
+        expect(err).not.toContain("not published yet");
+        const run = parseUpdateRun(h.files.read(RUN_FILE));
+        expect(run?.reason).toBe("staging stopped before the new version was laid down");
+      }
+    });
   });
 
   test("a second update beside a live one writes nothing: `update.json` keeps one writer", async () => {

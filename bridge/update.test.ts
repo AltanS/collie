@@ -33,6 +33,7 @@ import {
   parseSemverTag,
   parseTagsResponse,
   releaseReadingUrl,
+  type ReleaseReadingResult,
   restartCommandFor,
   shouldNotify,
   stampOf,
@@ -1244,22 +1245,25 @@ describe("UpdateMonitor — the urgent marker (ADR 0046)", () => {
 describe("UpdateMonitor — reading a sidecar, and remembering the answer", () => {
   it("asks about a 404 once, and asks again after a failure", async () => {
     const asked: string[] = [];
-    // 1.9.1 published no sidecar (a 404, definite); 1.9.2's read fails (a timeout, this minute only).
+    // 0.12.0 published no sidecar (a 404, definite: no release before 1.8.0 did); 0.12.1's read
+    // fails (a timeout, this minute only). From 1.8.0 on a 404 is a different fact, see below.
     const { monitor } = makeMonitor({
-      current: "1.9.0",
-      fetchTags: async () => apiTags("v1.9.1", "v1.9.2"),
+      current: "0.11.0",
+      fetchTags: async () => apiTags("v0.12.0", "v0.12.1"),
       fetchReleaseReading: async (version) => {
         asked.push(version);
-        return version === "1.9.1" ? "absent" : null;
+        return version === "0.12.0" ? "absent" : null;
       },
     });
     await monitor.checkRelease();
-    expect(asked.toSorted()).toEqual(["1.9.1", "1.9.2"]);
+    expect(asked.toSorted()).toEqual(["0.12.0", "0.12.1"]);
 
     asked.length = 0;
     await monitor.checkRelease();
     // The absence was a fact about a published release and is remembered; the failure was not.
-    expect(asked).toEqual(["1.9.2"]);
+    expect(asked).toEqual(["0.12.1"]);
+    // And both are still offered: a release from before the sidecar is published, whatever it answers.
+    expect(monitor.status()).toMatchObject({ latest: "0.12.1", newerVersions: ["0.12.0", "0.12.1"] });
   });
 
   it("survives every read failing — the delta still reports, and nothing is urgent", async () => {
@@ -1282,6 +1286,217 @@ describe("UpdateMonitor — reading a sidecar, and remembering the answer", () =
     expect(pushes).toEqual([
       { versions: ["1.9.1", "1.9.2", "1.10.0"], linkChange: null, urgent: null },
     ]);
+  });
+});
+
+describe("UpdateMonitor — a tag is not a release yet (#503)", () => {
+  // release.yml pushes the tag first and publishes the release last, so for a few minutes the tag
+  // exists and every asset under it answers 404. The phone was offered 1.22.6 in that window and its
+  // update failed twice. A release from 1.8.0 on always carries `collie-release.json`, so that
+  // sidecar answering 404 is the proof the version cannot be installed yet.
+  const NEWEST = "1.22.7";
+  const TAGS = apiTags("v1.22.5", "v1.22.6", `v${NEWEST}`);
+  /** A sidecar that answers 404 for the versions named, and a normal reading for the rest. */
+  const notOut =
+    (asked: string[], ...versions: string[]) =>
+    async (version: string): Promise<ReleaseReadingResult> => {
+      asked.push(version);
+      return versions.includes(version) ? "absent" : { version, crewProtocol: 2 };
+    };
+
+  it("does not offer the newest tag while its sidecar answers 404, and offers the one below it", async () => {
+    const asked: string[] = [];
+    const { monitor, pushes } = makeMonitor({
+      current: "1.22.5",
+      fetchTags: async () => TAGS,
+      fetchReleaseReading: notOut(asked, NEWEST),
+    });
+    await monitor.checkRelease();
+
+    const status = monitor.status();
+    expect(status).toMatchObject({
+      latest: "1.22.6",
+      latestUrl: "https://github.com/AltanS/collie/releases/tag/v1.22.6",
+      releaseAvailable: true,
+      newerVersions: ["1.22.6"],
+    });
+    // The push names what is out, and never the version that is only tagged.
+    expect(pushes.map((p) => p.versions)).toEqual([["1.22.6"]]);
+    // One request per version for the whole check: the probe, the link-change read and the urgency
+    // sweep share the one answer rather than asking three times.
+    expect(asked.toSorted()).toEqual(["1.22.6", NEWEST]);
+  });
+
+  it("offers nothing when the only newer tag is not published, and pushes nothing", async () => {
+    const { monitor, notified } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => TAGS,
+      fetchReleaseReading: notOut([], NEWEST),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "1.22.6",
+      releaseAvailable: false,
+      newerVersions: [],
+    });
+    expect(monitor.status().checkedAt).not.toBeNull();
+    expect(notified).toEqual([]);
+  });
+
+  it("offers a version whose sidecar answers 200", async () => {
+    const asked: string[] = [];
+    const { monitor, notified } = makeMonitor({
+      current: "1.22.5",
+      fetchTags: async () => TAGS,
+      fetchReleaseReading: notOut(asked),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: NEWEST, releaseAvailable: true, newerVersions: ["1.22.6", NEWEST] });
+    expect(notified).toEqual(["1.22.6", NEWEST]);
+  });
+
+  it("asks again at the next check, and offers the version once its release is out", async () => {
+    let published = false;
+    const asked: string[] = [];
+    const { monitor, notified, tick } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => TAGS,
+      fetchReleaseReading: async (version) => {
+        asked.push(version);
+        return version === NEWEST && !published ? "absent" : { version, crewProtocol: 2 };
+      },
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.22.6", releaseAvailable: false });
+
+    // The next ordinary check, no timer of its own: the 404 was not remembered, so it is asked again.
+    published = true;
+    tick(6 * 3600_000);
+    asked.length = 0;
+    await monitor.checkRelease();
+    expect(asked).toEqual([NEWEST]);
+    expect(monitor.status()).toMatchObject({ latest: NEWEST, releaseAvailable: true, newerVersions: [NEWEST] });
+    expect(notified).toEqual([NEWEST]);
+
+    // And once it is out it is a published release like any other: never asked about again.
+    asked.length = 0;
+    await monitor.checkRelease();
+    expect(asked).toEqual([]);
+  });
+
+  it("keeps the offer when the sidecar fetch fails: a flaky read never hides an update", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => TAGS,
+      fetchReleaseReading: async () => null, // a timeout, a 5xx, a body that is not the document
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: NEWEST, releaseAvailable: true, newerVersions: [NEWEST] });
+  });
+
+  it("skips several unpublished tags in a row and lands on the newest that is out", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.22.4",
+      fetchTags: async () => apiTags("v1.22.4", "v1.22.5", "v1.22.6", `v${NEWEST}`),
+      fetchReleaseReading: notOut([], "1.22.6", NEWEST),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.22.5", newerVersions: ["1.22.5"] });
+  });
+
+  it("treats a 404 below 1.8.0 as a published release, which is what it always was", async () => {
+    const { monitor } = makeMonitor({
+      current: "0.11.0",
+      fetchTags: async () => apiTags("v0.12.0"),
+      fetchReleaseReading: async () => "absent",
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "0.12.0", releaseAvailable: true });
+  });
+
+  it("does not name a higher major whose release is not out", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => apiTags("v1.22.6", "v2.0.0", "v2.0.1"),
+      fetchReleaseReading: notOut([], "2.0.1"),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "1.22.6",
+      majorAvailable: "2.0.0",
+      majorUrl: "https://github.com/AltanS/collie/releases/tag/v2.0.0",
+    });
+
+    const none = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => apiTags("v1.22.6", "v2.0.0"),
+      fetchReleaseReading: notOut([], "2.0.0"),
+    });
+    await none.monitor.checkRelease();
+    expect(none.monitor.status()).toMatchObject({ majorAvailable: null, majorUrl: null });
+  });
+
+  describe("through the real sidecar fetcher", () => {
+    /** A loopback mirror that answers `/collie-release.json` with `reply(version)` for the versions
+     *  it is asked about, and records every request path. */
+    function mirror(reply: (version: string) => Response) {
+      const paths: string[] = [];
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(req) {
+          const path = new URL(req.url).pathname;
+          paths.push(path);
+          const m = /^\/AltanS\/collie\/releases\/download\/v([^/]+)\/collie-release\.json$/.exec(path);
+          return m?.[1] === undefined ? new Response("no", { status: 400 }) : reply(m[1]);
+        },
+      });
+      return { base: `http://127.0.0.1:${server.port}`, paths, stop: () => server.stop(true) };
+    }
+    const reading = (version: string) => Response.json({ version, crewProtocol: 2 });
+
+    it("reads 404 as absent, 200 as the document, and a 5xx or a refused connection as a failure", async () => {
+      const m = mirror((v) => (v === "1.22.7" ? new Response("Not Found", { status: 404 }) : v === "1.22.8" ? new Response("boom", { status: 502 }) : reading(v)));
+      try {
+        const read = releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: m.base }).fetchReleaseReading;
+        expect(await read("1.22.7")).toBe("absent");
+        expect(await read("1.22.8")).toBeNull();
+        expect(await read("1.22.6")).toMatchObject({ version: "1.22.6", crewProtocol: 2 });
+      } finally {
+        m.stop();
+      }
+      // The listener is gone: the connection is refused, which is a failure and not an absence.
+      expect(await releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: m.base }).fetchReleaseReading("1.22.6")).toBeNull();
+    });
+
+    it("hides the 404 tag, offers it on a 200, and keeps it on a 5xx or a refused connection", async () => {
+      let status = 404;
+      const m = mirror((v) =>
+        v === NEWEST ? (status === 200 ? reading(v) : new Response("x", { status })) : reading(v),
+      );
+      try {
+        const fetchReleaseReading = releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: m.base }).fetchReleaseReading;
+        const { monitor, tick } = makeMonitor({ current: "1.22.6", fetchTags: async () => TAGS, fetchReleaseReading });
+
+        await monitor.checkRelease();
+        expect(monitor.status()).toMatchObject({ latest: "1.22.6", releaseAvailable: false });
+
+        for (const [answer, offered] of [[500, true], [404, false], [200, true]] as const) {
+          status = answer;
+          tick(6 * 3600_000);
+          await monitor.checkRelease();
+          expect(monitor.status().releaseAvailable).toBe(offered);
+          expect(monitor.status().latest).toBe(offered ? NEWEST : "1.22.6");
+        }
+      } finally {
+        m.stop();
+      }
+      // A mirror that is not there at all is a failure too, and the update is still offered.
+      const down = releaseFetchers("AltanS/collie", { COLLIE_UPDATE_MIRROR: m.base }).fetchReleaseReading;
+      const refused = makeMonitor({ current: "1.22.6", fetchTags: async () => TAGS, fetchReleaseReading: down });
+      await refused.monitor.checkRelease();
+      expect(refused.monitor.status()).toMatchObject({ latest: NEWEST, releaseAvailable: true });
+    });
   });
 });
 
