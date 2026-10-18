@@ -232,6 +232,19 @@ prints stays plain text, with the quiet mark "no log record on this machine"
 ([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from the bridge's log
 at once, also for a message from another agent that its pane has not read yet.
 
+Tap the card to open the Messages sheet on that message. The sheet scrolls to it and marks it, and
+its Reply button is next to it. A pane on a crew member has no Messages sheet, so its card is not a
+button.
+
+When an agent runs `collie walky` in a tool card, the card wears a small "walky talky" badge. After
+`send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example
+"Message to local/w6:p3: typed into the pane". After `inbox <id>`, the message's card shows under
+the tool card. Both come from the bridge's log, never from what the command printed. If the log
+does not hold the id, the card shows plain output. A message id in Chat text, or in a tool's
+output, becomes a small chip when the log holds it, and a tap on the chip opens the Messages sheet
+on that message. Any other id stays plain text. The terminal view marks every row that prints an id
+the log holds the same way as the header row.
+
 Each receipt state shows the words in the table above, with the reason after "not sent" and
 "waiting in the inbox, not typed".
 

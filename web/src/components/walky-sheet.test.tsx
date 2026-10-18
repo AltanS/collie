@@ -88,3 +88,104 @@ describe("WalkySheet", () => {
     expect(screen.getByText("This machine does not keep messages yet.")).toBeInTheDocument();
   });
 });
+
+describe("WalkySheet focus (a tapped card or id chip)", () => {
+  /** An element the case needs, or a failure: a lookup that cannot narrow without an assertion. */
+  const el = (node: Element | null | undefined): HTMLElement => {
+    if (!(node instanceof HTMLElement)) throw new Error("element missing");
+    return node;
+  };
+  const focused = () => [...document.querySelectorAll('[data-slot="walky-list-row"][data-focused="true"]')];
+
+  it("highlights the row of the focused id, and only that row", () => {
+    sheet([fixtureWalkyAgent, fixtureWalkyOperator], { focusId: fixtureWalkyAgent.id });
+    expect(focused()).toHaveLength(1);
+    expect(focused()[0]).toHaveAttribute("data-kind", "agent");
+    // The focused row keeps its Reply, in the same row.
+    expect(within(el(focused()[0])).getByRole("button", { name: "Reply to collie-workspace#fix-465" })).toBeInTheDocument();
+  });
+
+  it("changes only the paint of the row: the border is in the base, nothing is added or removed", () => {
+    sheet([fixtureWalkyAgent], { focusId: fixtureWalkyAgent.id });
+    const cls = el(focused()[0]).className;
+    expect(cls).toContain("border ");
+    expect(cls).toContain("bg-status-working/8");
+    expect(cls).not.toMatch(/(^|\s)(border-l|border-l-\d|rounded-l)/);
+  });
+
+  it("highlights nothing for no id, or for an id the log lacks", () => {
+    sheet([fixtureWalkyAgent], { focusId: null });
+    expect(focused()).toHaveLength(0);
+    document.body.innerHTML = "";
+    sheet([fixtureWalkyAgent], { focusId: "wt_zzzzzzzzzzzz" });
+    expect(focused()).toHaveLength(0);
+  });
+
+  it("scrolls the focused row to the middle of the sheet's own scroller", () => {
+    const panel = document.createElement("div");
+    document.body.append(panel);
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      // SAFETY: the sheet reads only `top` and `height` of a rect; the rest of a DOMRect is not used here.
+      return { top: this.tagName === "LI" ? 900 : 100, height: 80 } as DOMRect;
+    });
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(2000);
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(500);
+    // SAFETY: the scroller walk reads only `overflowY` of the computed style.
+    const overflow = vi.spyOn(window, "getComputedStyle").mockReturnValue({ overflowY: "auto" } as CSSStyleDeclaration);
+    try {
+      sheet([fixtureWalkyOperator, fixtureWalkyAgent], { focusId: fixtureWalkyAgent.id });
+      const scroller = [...document.querySelectorAll<HTMLElement>("*")].find((node) => node.scrollTop > 0);
+      // Row top 900 minus scroller top 100, less half of the room left around an 80px row in 500px.
+      expect(scroller?.scrollTop).toBe(900 - 100 - (500 - 80) / 2);
+    } finally {
+      spy.mockRestore();
+      scrollHeight.mockRestore();
+      clientHeight.mockRestore();
+      overflow.mockRestore();
+      panel.remove();
+    }
+  });
+
+  it("moves the focus to the message a row answers when its reply-to chip is tapped, if the log holds it", async () => {
+    const user = userEvent.setup();
+    sheet([fixtureWalkyAgent, fixtureWalkyOperator], { focusId: fixtureWalkyOperator.id });
+    expect(focused()[0]).toHaveAttribute("data-kind", "operator");
+    const note = document.querySelector('[data-slot="walky-reply-to"]');
+    expect(note).toHaveTextContent(`In reply to ${fixtureWalkyAgent.id}`);
+    await user.click(within(el(note)).getByRole("button", { name: `Open message ${fixtureWalkyAgent.id}` }));
+    expect(focused()).toHaveLength(1);
+    expect(focused()[0]).toHaveAttribute("data-kind", "agent");
+  });
+
+  it("shows the answered id as plain text when the log lacks it", () => {
+    sheet([fixtureWalkyOperator]);
+    const note = document.querySelector('[data-slot="walky-reply-to"]');
+    expect(note).toHaveTextContent(`In reply to ${fixtureWalkyAgent.id}`);
+    expect(within(el(note)).queryByRole("button")).toBeNull();
+  });
+
+  it("names no reply-to on a message that answers nothing", () => {
+    sheet([fixtureWalkyAgent]);
+    expect(document.querySelector('[data-slot="walky-reply-to"]')).toBeNull();
+  });
+
+  it("starts again from the given focus when the sheet closes and opens", async () => {
+    const user = userEvent.setup();
+    const rows = [fixtureWalkyAgent, fixtureWalkyOperator];
+    const view = render(
+      <WalkyLogProvider rows={rows}>
+        <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply focusId={fixtureWalkyOperator.id} />
+      </WalkyLogProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: `Open message ${fixtureWalkyAgent.id}` }));
+    expect(focused()[0]).toHaveAttribute("data-kind", "agent");
+    const again = (open: boolean) => (
+      <WalkyLogProvider rows={rows}>
+        <WalkySheet open={open} onClose={vi.fn()} onReply={vi.fn()} canReply focusId={fixtureWalkyOperator.id} />
+      </WalkyLogProvider>
+    );
+    view.rerender(again(false));
+    view.rerender(again(true));
+    expect(focused()[0]).toHaveAttribute("data-kind", "operator");
+  });
+});

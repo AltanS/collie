@@ -4,6 +4,11 @@ import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
 
 import {
   bareAddress,
+  findWalkyIds,
+  parseWalkyCommand,
+  resultId,
+  shellLineOf,
+  splitWalkyIds,
   mintWalkyId,
   NUDGE_MARK,
   mirrorHeaderId,
@@ -214,5 +219,126 @@ describe("the words", () => {
     expect(stateWord({ ...receipt, state: "refused" })).toBe("not sent");
     // The bridge's words show as they are, in every translation: a replaced pane reads like a busy one.
     expect(stateWord({ ...receipt, state: "refused", reason: "pane replaced" })).toBe("not sent: pane replaced");
+  });
+});
+
+describe("findWalkyIds", () => {
+  it("finds each id in running text, with its place", () => {
+    const text = "see wt_k3f9x2m8q1a0, then (wt_p0q9r8s7t6u5).";
+    const hits = findWalkyIds(text);
+    expect(hits.map((h) => h.id)).toEqual(["wt_k3f9x2m8q1a0", "wt_p0q9r8s7t6u5"]);
+    expect(hits.map((h) => text.slice(h.start, h.end))).toEqual(["wt_k3f9x2m8q1a0", "wt_p0q9r8s7t6u5"]);
+  });
+
+  it("finds an id at the very start, the very end, and inside a header", () => {
+    expect(findWalkyIds("wt_k3f9x2m8q1a0")).toHaveLength(1);
+    expect(findWalkyIds("[walky-talky wt_k3f9x2m8q1a0] from agent x")).toHaveLength(1);
+  });
+
+  it.each([
+    "wt_short",
+    "wt_K3F9X2M8Q1A0",
+    "wt_k3f9x2m8q1a0b",
+    "xwt_k3f9x2m8q1a0",
+    "wt_k3f9x2m8q1a0_",
+    "wt_k3f9x2m8q1a",
+    "no ids here",
+    "",
+  ])("finds nothing in %j", (text) => {
+    expect(findWalkyIds(text)).toEqual([]);
+  });
+
+  it("is stable across calls: the global pattern keeps no position", () => {
+    expect(findWalkyIds("wt_k3f9x2m8q1a0")).toHaveLength(1);
+    expect(findWalkyIds("wt_k3f9x2m8q1a0")).toHaveLength(1);
+  });
+});
+
+describe("splitWalkyIds", () => {
+  const held = (id: string) => id === "wt_k3f9x2m8q1a0";
+
+  it("cuts at the ids the caller accepts and leaves the rest in the text around them", () => {
+    const text = "a wt_k3f9x2m8q1a0 b wt_zzzzzzzzzzzz c";
+    expect(splitWalkyIds(text, held)).toEqual([
+      { kind: "text", text: "a " },
+      { kind: "id", id: "wt_k3f9x2m8q1a0" },
+      { kind: "text", text: " b wt_zzzzzzzzzzzz c" },
+    ]);
+  });
+
+  it("returns one text part when no id is accepted, and joins back to the input", () => {
+    const text = "only wt_zzzzzzzzzzzz here";
+    expect(splitWalkyIds(text, held)).toEqual([{ kind: "text", text }]);
+    const parts = splitWalkyIds("wt_k3f9x2m8q1a0 and wt_k3f9x2m8q1a0", held);
+    expect(parts.map((p) => (p.kind === "id" ? p.id : p.text)).join("")).toBe("wt_k3f9x2m8q1a0 and wt_k3f9x2m8q1a0");
+  });
+
+  it("returns no part for an empty text", () => {
+    expect(splitWalkyIds("", held)).toEqual([]);
+  });
+});
+
+describe("resultId", () => {
+  it("reads an id that is the whole first line of a send's output", () => {
+    expect(resultId("wt_k3f9x2m8q1a0\nto local/w6:p3#k3f9, claude, repo#fix\ntyped into the pane")).toBe("wt_k3f9x2m8q1a0");
+    expect(resultId("wt_k3f9x2m8q1a0")).toBe("wt_k3f9x2m8q1a0");
+    expect(resultId("wt_k3f9x2m8q1a0  \r\nrest")).toBe("wt_k3f9x2m8q1a0");
+  });
+
+  it.each([undefined, "", "\nwt_k3f9x2m8q1a0", "sent wt_k3f9x2m8q1a0", "wt_k3f9x2m8q1a0 sent", "wt_SHORT\nrest"])("reads nothing from %j", (output) => {
+    expect(resultId(output)).toBeNull();
+  });
+});
+
+describe("parseWalkyCommand", () => {
+  it("reads the verb of a command that starts with collie walky", () => {
+    expect(parseWalkyCommand('collie walky send local/w6:p3#k3f9 "Tests are green."')).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand('  collie   walky reply wt_k3f9x2m8q1a0 "ok"')).toEqual({ verb: "reply", id: null });
+  });
+
+  it("reads the id an inbox command names", () => {
+    expect(parseWalkyCommand("collie walky inbox wt_k3f9x2m8q1a0")).toEqual({ verb: "inbox", id: "wt_k3f9x2m8q1a0" });
+    expect(parseWalkyCommand("collie walky inbox wt_k3f9x2m8q1a0 --json")).toEqual({ verb: "inbox", id: "wt_k3f9x2m8q1a0" });
+  });
+
+  it("is a walky command without a card for the other forms", () => {
+    expect(parseWalkyCommand("collie walky inbox")).toEqual({ verb: "inbox", id: null });
+    expect(parseWalkyCommand("collie walky inbox --all")).toEqual({ verb: "inbox", id: null });
+    expect(parseWalkyCommand("collie walky inbox wt_short")).toEqual({ verb: "inbox", id: null });
+    expect(parseWalkyCommand("collie walky who")).toEqual({ verb: "other", id: null });
+    expect(parseWalkyCommand("collie walky")).toEqual({ verb: "other", id: null });
+    expect(parseWalkyCommand("collie walky status wt_k3f9x2m8q1a0")).toEqual({ verb: "other", id: null });
+  });
+
+  it("names no id on send or reply, even when the text holds one", () => {
+    expect(parseWalkyCommand("collie walky send wt_k3f9x2m8q1a0 hi")).toEqual({ verb: "send", id: null });
+  });
+
+  it.each([
+    "echo collie walky send x y",
+    "cd x && collie walky send a b",
+    "collie walkyx send a b",
+    "collie walky-send a b",
+    "ls collie",
+    "",
+  ])("is not a walky command: %j", (command) => {
+    expect(parseWalkyCommand(command)).toBeNull();
+  });
+
+  it("does not take the id of a longer word as the inbox id", () => {
+    expect(parseWalkyCommand("collie walky inbox wt_k3f9x2m8q1a0x")).toEqual({ verb: "inbox", id: null });
+  });
+});
+
+describe("shellLineOf", () => {
+  it("reads the command of an execute call and the summary of an unrecognised tool", () => {
+    expect(shellLineOf({ kind: "execute", command: "collie walky who" })).toBe("collie walky who");
+    expect(shellLineOf({ kind: "other", summary: "collie walky send a b\nmore" })).toBe("collie walky send a b");
+  });
+
+  it("reads nothing from any other kind", () => {
+    expect(shellLineOf({ kind: "read" })).toBeNull();
+    expect(shellLineOf({ kind: "search", summary: "collie walky who" })).toBeNull();
+    expect(shellLineOf({ kind: "execute" })).toBeNull();
   });
 });

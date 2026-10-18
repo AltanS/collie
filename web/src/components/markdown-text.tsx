@@ -2,6 +2,8 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
 import { CopyableBlock } from "@/components/ui/copyable-block";
+import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
+import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
@@ -258,6 +260,17 @@ function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
 }
 
 /**
+ * Plain prose, with find hits marked and each walky talky message id the pane's log holds drawn as a chip
+ * that opens the Messages sheet on it (components/walky-id-chip.tsx). Inside a link the text stays text:
+ * a button in an anchor is not a thing. An id the log lacks is the text it was.
+ */
+function ProseHit({ text }: { text: string }) {
+  const inLink = useContext(InLinkContext);
+  if (inLink) return <Hit text={text} />;
+  return <WalkyIds text={text} plain={Hit} />;
+}
+
+/**
  * A run of plain prose. Every path in it that resolves under the Changes root, and that the bridge
  * said exists (ADR 0088), becomes a chip; the rest, and every other path, stays text. Asking the
  * opener is what queues a path for that check. With no opener (History, a Files preview)
@@ -267,18 +280,18 @@ function TextRun({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
   const found = useMemo(() => (open === null || inLink ? [] : findFilePaths(text)), [open, inLink, text]);
-  if (open === null || found.length === 0) return <Hit text={text} />;
+  if (open === null || found.length === 0) return <ProseHit text={text} />;
   const nodes: ReactNode[] = [];
   let at = 0;
   for (const f of found) {
     const target = open(f);
     if (target === null) continue;
-    if (f.start > at) nodes.push(<Hit key={`t${at}`} text={text.slice(at, f.start)} />);
+    if (f.start > at) nodes.push(<ProseHit key={`t${at}`} text={text.slice(at, f.start)} />);
     nodes.push(<PathChip key={`p${f.start}`} target={target} text={text.slice(f.start, f.end)} />);
     at = f.end;
   }
-  if (nodes.length === 0) return <Hit text={text} />;
-  if (at < text.length) nodes.push(<Hit key={`t${at}`} text={text.slice(at)} />);
+  if (nodes.length === 0) return <ProseHit text={text} />;
+  if (at < text.length) nodes.push(<ProseHit key={`t${at}`} text={text.slice(at)} />);
   return <>{nodes}</>;
 }
 
@@ -286,6 +299,9 @@ function TextRun({ text }: { text: string }) {
 function CodeSpan({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
+  const chips = useWalkyChips();
+  // A span that is one message id the log holds is the id chip; a span that holds more than an id stays the code chip.
+  if (chips !== null && !inLink && chips.holds(text.trim())) return <WalkyIdChip id={text.trim()} onOpen={chips.open} />;
   const found = open === null || inLink ? null : codeSpanPath(text);
   const target = found === null || open === null ? null : open(found);
   if (target !== null) return <PathChip target={target} text={text} />;

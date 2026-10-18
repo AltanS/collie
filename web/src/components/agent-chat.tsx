@@ -85,6 +85,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
+import { WalkyOpenProvider } from "@/components/walky-log";
 import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -406,6 +407,13 @@ export function AgentChat({
     setDrawer(null);
     setPull(0);
   };
+  // The walky talky message the Messages sheet opens on: a tapped Chat card, or an id chip. The pane menu's
+  // own row clears it, so that way in shows the list from the top.
+  const [walkyFocus, setWalkyFocus] = useState<string | null>(null);
+  const openWalkyMessage = useCallback((id: string) => {
+    setWalkyFocus(id);
+    setDrawer("messages");
+  }, []);
   // Pane settings' Rename row opens the ⋮ sheet on its rename view (one rename flow, not two). A
   // flag and not a drawer value, because the drawer is which sheet and this is how it opens. It
   // lasts until the ⋮ sheet is no longer the open one, so a later ⋮ tap opens the list as ever.
@@ -2449,6 +2457,7 @@ export function AgentChat({
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
             {chatShown ? (
+              <WalkyOpenProvider open={agent && isLead(scope) ? openWalkyMessage : null}>
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
                   feed={chatFeed}
@@ -2499,6 +2508,7 @@ export function AgentChat({
                   }
                 />
               </CardWaitingCtx.Provider>
+              </WalkyOpenProvider>
             ) : (
             <ChatMessageList
               ref={listRef}
@@ -3150,7 +3160,14 @@ export function AgentChat({
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
           // The pane's walky talky messages (M62), a read row with the others. The lead's own panes
           // only: it reads no member's list in 1.23.0, so the sheet there could only say something untrue.
-          onMessages={agent && isLead(scope) ? () => setDrawer("messages") : undefined}
+          onMessages={
+            agent && isLead(scope)
+              ? () => {
+                  setWalkyFocus(null);
+                  setDrawer("messages");
+                }
+              : undefined
+          }
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
@@ -3176,6 +3193,7 @@ export function AgentChat({
           open={drawer === "messages"}
           onClose={closeDrawer}
           canReply={!readOnly && !savedCopyWrites && hostBlock === undefined && !gone}
+          focusId={walkyFocus}
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;

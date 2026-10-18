@@ -2656,6 +2656,14 @@ export const en = {
   "walky.card.title": "Message from {label}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "no log record on this machine",
+  // Screen-reader words after the card's text: the card is one button that opens the Messages sheet on it.
+  "walky.card.open": "Open in Messages",
+  // The small word on a tool card that ran `collie walky`. The product's name; it claims nothing about a message.
+  "walky.tool.badge": "walky talky",
+  // A message id in text, when the log holds it: a chip that opens the sheet on that message.
+  "walky.chip.aria": "Open message {id}",
+  // In the Messages sheet, before the id a message answers.
+  "walky.sheet.inReplyTo": "In reply to",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.

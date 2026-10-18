@@ -54,11 +54,21 @@ describe("the mirror's walky row", () => {
     expect(tagged(mirror("none").container)).toHaveLength(0);
   });
 
-  it("does not tag prose that quotes a header mid-row, but does tag an indented header row whose id the log holds", () => {
-    const text = `The header looks like ${HEADER} in the log\n  ${HEADER}`;
+  it("tags an indented header row whose id the log holds, and a row of prose that prints the same id", () => {
+    const text = `The header looks like ${HEADER} in the log\n  ${HEADER}\nno id on this row`;
     const { container } = mirror([fixtureWalkyAgent], text);
-    // The second row opens with two spaces, which the prompt-prefix rule accepts (a body line the
-    // bridge escaped with one space reads the same way); the prose row has words before the bracket.
-    expect(tagged(container).map((el) => el.textContent)).toEqual([`  ${HEADER}`]);
+    // The rule is the id: any row that prints an id the log holds is tagged, whatever else is on it.
+    expect(tagged(container).map((el) => el.textContent)).toEqual([`The header looks like ${HEADER} in the log`, `  ${HEADER}`]);
+  });
+
+  it("tags the agent's own send output, one row for each id the log holds", () => {
+    const text = ["$ collie walky send bluefin/w1:p1 hi", "wt_k3f9x2m8q1a0", "to bluefin/w1:p1, claude, repo#x", "typed into the pane"].join("\n");
+    const { container } = mirror([fixtureWalkyAgent], text);
+    expect(tagged(container).map((el) => el.textContent)).toEqual(["wt_k3f9x2m8q1a0"]);
+  });
+
+  it("tags no row whose id the log lacks, even when it is printed like a send's output", () => {
+    const { container } = mirror([fixtureWalkyAgent], "wt_zzzzzzzzzzzz\nwt_k3f9x2m8q1a0b");
+    expect(tagged(container)).toHaveLength(0);
   });
 });

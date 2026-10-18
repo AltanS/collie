@@ -197,6 +197,93 @@ export function mirrorHeaderId(row: string): string | null {
   return MIRROR_HEADER.exec(row)?.[1] ?? null;
 }
 
+// ── IDS IN TEXT, AND THE AGENT'S OWN COMMANDS ─────────────────────────────────
+// Everything below is a CLAIM too: an id in prose, a `collie walky` line in a tool card and the first
+// line of its output are all text an agent can print. They only choose WHERE to look; what a screen
+// then draws comes from the log row (`standingOf`), and an id the log does not hold stays plain text.
+
+/**
+ * A message id inside running text. The lookarounds keep it from matching inside a longer word or
+ * inside an id of another length (`wt_` and exactly 12 characters, no letter, digit or `_` either
+ * side). Global: scan with {@link findWalkyIds}, not with `exec` on this object.
+ */
+export const WALKY_ID_IN_TEXT = /(?<![A-Za-z0-9_])wt_[a-z0-9]{12}(?![A-Za-z0-9_])/g;
+
+/** One id found in a text, with where it sits. */
+export interface WalkyIdHit {
+  id: string;
+  start: number;
+  end: number;
+}
+
+/** Every message id in `text`, in order. The cheap test first: this runs for each text of a thread. */
+export function findWalkyIds(text: string): WalkyIdHit[] {
+  if (!text.includes("wt_")) return [];
+  return [...text.matchAll(WALKY_ID_IN_TEXT)].map((m) => ({ id: m[0], start: m.index, end: m.index + m[0].length }));
+}
+
+/** A piece of a text: plain, or an id the caller asked about. */
+export type WalkyTextPart = { kind: "text"; text: string } | { kind: "id"; id: string };
+
+/**
+ * `text` cut at the ids that `held` accepts. An id `held` refuses stays inside the text around it, so a
+ * run with no held id comes back as one `text` part. Joining the parts gives `text` back, always.
+ */
+export function splitWalkyIds(text: string, held: (id: string) => boolean): WalkyTextPart[] {
+  const parts: WalkyTextPart[] = [];
+  let at = 0;
+  for (const hit of findWalkyIds(text)) {
+    if (!held(hit.id)) continue;
+    if (hit.start > at) parts.push({ kind: "text", text: text.slice(at, hit.start) });
+    parts.push({ kind: "id", id: hit.id });
+    at = hit.end;
+  }
+  if (at < text.length) parts.push({ kind: "text", text: text.slice(at) });
+  return parts;
+}
+
+/** `collie walky send` and `reply` print the id on a line of its own, first. */
+const RESULT_ID_LINE = /^(wt_[a-z0-9]{12})[ \t]*$/;
+
+/** The id a tool result opens with (its first line is exactly an id), or null. */
+export function resultId(output: string | undefined): string | null {
+  if (output === undefined) return null;
+  return RESULT_ID_LINE.exec(firstLine(output))?.[1] ?? null;
+}
+
+/**
+ * A shell line that runs the walky talky CLI: it STARTS with `collie walky` (leading space allowed),
+ * then the verb. `inbox <id>` carries the id it names.
+ */
+const WALKY_COMMAND = /^\s*collie\s+walky(?=\s|$)(?:\s+(send|reply|inbox)(?=\s|$))?(?:\s+(wt_[a-z0-9]{12})(?![A-Za-z0-9_]))?/;
+
+export interface WalkyCommand {
+  /** The verb, or `other` for any other (`who`, `status`, a bare `collie walky`). */
+  verb: "send" | "reply" | "inbox" | "other";
+  /** For `inbox` only: the id the command names. */
+  id: string | null;
+}
+
+/** The walky command a shell line runs, or null when it is not one. */
+export function parseWalkyCommand(command: string): WalkyCommand | null {
+  const m = WALKY_COMMAND.exec(command);
+  if (m === null) return null;
+  const verb = m[1];
+  if (verb !== "send" && verb !== "reply" && verb !== "inbox") return { verb: "other", id: null };
+  return { verb, id: verb === "inbox" ? (m[2] ?? null) : null };
+}
+
+/**
+ * The shell line of a tool call, in the shapes the chat model has: a command run (`execute`), or a
+ * tool the adapter did not recognise (`other`), whose one-line summary is what it ran. Any other kind
+ * runs no command.
+ */
+export function shellLineOf(call: { kind: string; command?: string; summary?: string }): string | null {
+  if (call.kind === "execute") return call.command ?? null;
+  if (call.kind === "other" && call.summary !== undefined) return firstLine(call.summary);
+  return null;
+}
+
 // ── THE CROSS-CHECK ───────────────────────────────────────────────────────────
 
 /**
