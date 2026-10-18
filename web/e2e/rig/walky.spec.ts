@@ -244,7 +244,12 @@ test.describe("walky talky", () => {
         // once is a race. Wait until the count has held still before it is the baseline.
         const before = await settledCount(cards);
         log.push(await sendFromComposer(page, recorder, operatorPrompt, "send a prompt that opens like an operator message"));
+        // The send settles once the box is empty, which can be a redraw before Claude draws its turn, and a
+        // free box then reads as idle at once. Wait for the reply, then the box: a second prompt typed into
+        // the turn's first redraw ends typed_not_submitted(changed) at S1 (#491), and the case is not about that.
+        const replied = (await rig.screenUntil(pane, /^\s*(?:[⏺●]\s*)?FORGED-OK\.?\s*$/m, REPLY_MS, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
+        notes.push(replied ? "the operator prompt got its reply" : "no reply to the operator prompt seen");
         log.push(await sendFromComposer(page, recorder, agentPrompt, "send a prompt that opens like an agent's nudge"));
         const typed = (await rig.screenUntil(pane, new RegExp(`\\[walky-talky ${agentId}\\]`), 30_000, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
