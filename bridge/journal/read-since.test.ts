@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { NO_CURSOR } from "./cursor.ts";
 import { FIRST_TAIL_BYTES, readSinceFile } from "./files.ts";
-import { buildJournalRegistry, KNOWN_HARNESS_NAMES } from "./registry.ts";
+import { buildJournalRegistry, KNOWN_HARNESS_NAMES, NO_PROCESS_IDENTITY } from "./registry.ts";
 
 // The live read of a log FILE, shared by claude, codex, pi and grok. Real files in a temp directory,
 // like every other source test here: the behaviour under test is byte counting against a file that
@@ -161,6 +161,7 @@ describe("readSinceFile", () => {
     await f.clean();
   });
 
+
   test("a cursor left more than one window behind resets instead of reading the gap", async () => {
     const f = await lab();
     await f.write(`${row(1)}\n`);
@@ -303,11 +304,12 @@ describe("every harness answers a live read", () => {
     hermes: ["/nope/hermes"],
     muse: ["/nope/muse"],
     openclaw: ["/nope/openclaw"],
-  });
+    kiro: ["/nope/kiro"],
+  }, NO_PROCESS_IDENTITY);
 
-  test("the eight this build ships are the eight under test", () => {
+  test("every journal this build ships is under test", () => {
     expect(Object.keys(registry).toSorted()).toEqual([...KNOWN_HARNESS_NAMES].toSorted());
-    expect(KNOWN_HARNESS_NAMES).toHaveLength(8);
+    expect(KNOWN_HARNESS_NAMES).toHaveLength(9);
   });
 
   test.each(Object.keys(registry))("%s reports nothing new for a key it cannot serve", async (agent) => {

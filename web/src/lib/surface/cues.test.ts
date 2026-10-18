@@ -1,8 +1,9 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, readCues } from "./cues";
+import { lineText, type StyledLine } from "../blocks";
+import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, readCues, runningSign } from "./cues";
 import { findInputFrame, plainRows } from "./frame";
 import { requireProfile } from "./profile";
 import { isFree } from "./surface";
@@ -250,5 +251,48 @@ describe("overlay shapes in the no-frame cluster", () => {
     expect(read.frame).not.toBeNull();
     expect(read.cues?.strength).toBe("none");
     expect(isFree(read.surface)).toBe(true);
+  });
+});
+
+describe("running signs and the prompt row", () => {
+  // The prompt row holds the operator's draft. A profile's running rows are not read there, so a draft
+  // that types a harness's own interrupt hint is still a draft; only `runningPrompt` reads that row.
+  const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+  const cases = [
+    { fixture: "grok--draft-single.txt", harness: "grok", phrase: "Esc:cancel" },
+    { fixture: "oc--draft-single.txt", harness: "opencode", phrase: "esc interrupt" },
+  ];
+  for (const { fixture, harness, phrase } of cases) {
+    it(`running: a ${harness} draft that types \`${phrase}\` is not a running turn`, () => {
+      // Given: the captured draft with its text replaced by the harness's own running hint.
+      const idle = requireProfile(harness).idle;
+      const rows = fixtureRows(fixture);
+      const captured = findInputFrame(rows, idle)!;
+      const prompt = captured.interior.prompt;
+      const typed = lineText(rows[prompt]!).replace(captured.interior.text, phrase.padEnd(captured.interior.text.length));
+      const screen = rows.map((row, i) => (i === prompt ? plain(typed) : row));
+      // When: the frame is found again and its turn read.
+      const frame = findInputFrame(screen, idle)!;
+      // Then: the box holds the phrase, the profile's pattern would match that row, and the turn is idle.
+      expect(frame.interior.text).toBe(phrase);
+      expect(idle.runningRows!.some((source) => new RegExp(source, "u").test(typed.trimEnd()))).toBe(true);
+      expect(runningSign(screen, frame, idle)).toBe(false);
+      expect(readScreen(screen, harness, idle).surface.turn).toBe("idle");
+    });
+  }
+
+  it("running: Kiro's busy prompt row reads running, also with one more row under the box", () => {
+    // Given: the captured running Kiro screen, whose busy line stands on the prompt row, and the same
+    // screen with one more row under the box, so the prompt row is no longer the box's last row.
+    const idle = requireProfile("kiro").idle;
+    const rows = fixtureRows("kiro--v3-running-w120.txt");
+    const grown = perturbations(rows).find((p) => p.name === "one more status row at the bottom")!.rows;
+    // When: both screens' frames are found.
+    const frame = findInputFrame(rows, idle)!;
+    const grownFrame = findInputFrame(grown, idle)!;
+    // Then: both read running, and on the grown screen only the prompt sign carries it.
+    expect(runningSign(rows, frame, idle)).toBe(true);
+    expect(runningSign(grown, grownFrame, idle)).toBe(true);
+    expect(runningSign(grown, grownFrame, { runningRows: idle.runningRows })).toBe(false);
   });
 });

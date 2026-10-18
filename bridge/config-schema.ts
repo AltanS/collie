@@ -638,6 +638,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "journalRoots",
   },
   {
+    key: "kiro_root",
+    env: "COLLIE_KIRO_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where Kiro V3 keeps its sessions. Empty follows KIRO_HOME, else ~/.kiro/sessions.",
+    configField: "journalRoots",
+  },
+  {
     key: "muse_root",
     env: "COLLIE_MUSE_ROOT",
     section: "journal",

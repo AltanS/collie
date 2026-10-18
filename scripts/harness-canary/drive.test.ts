@@ -4,10 +4,12 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { claude } from "./agents/claude";
 import { CODEX_ARGS, codex } from "./agents/codex";
+import { kiro } from "./agents/kiro";
 import { muse } from "./agents/muse";
 import { opencode } from "./agents/opencode";
 import { backspaceSweep, launchedThrough, launchLine } from "./agents/profile";
 import { DEFAULT_AGENTS, parseArgs } from "./args";
+import { buildRecipe } from "../../bridge/launcher-recipes";
 import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
@@ -116,6 +118,13 @@ describe("startup answers", () => {
   test("OpenCode starts without its update dialog, whose Confirm would update the install", () => {
     expect(opencode.launch(null)).toBe("clear; OPENCODE_DISABLE_AUTOUPDATE=1 opencode");
     expect(launchedThrough(opencode, "/opt/launchers/opencode").launch(null)).toBe("clear; OPENCODE_DISABLE_AUTOUPDATE=1 /opt/launchers/opencode");
+  });
+
+  test("Kiro starts the New sheet's program on V3, whatever the host's Kiro setting says", () => {
+    const built = buildRecipe("kiro", []);
+    if (!built.ok) throw new Error(built.reason);
+    expect(kiro.launch(null)).toBe(`clear; ${built.command} chat --v3`);
+    expect(launchedThrough(kiro, "/opt/launchers/kiro").launch(null)).toBe("clear; /opt/launchers/kiro chat --v3");
   });
 
   test("Codex is never cleared with Ctrl+C", () => {

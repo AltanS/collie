@@ -7,7 +7,7 @@ import { DurableLogs, logFileName } from "../durable/log.ts";
 import type { DurableAsk, DurableEvent } from "../mux/durable/protocol.ts";
 import { chatParams, LiveWindows } from "./live.ts";
 import { createDurableReducer, DECIDED_IN_PROGRAM_TEXT, durableJournal, parseDurableLog, STOPPED_TEXT, TIMED_OUT_TEXT } from "./durable.ts";
-import { adapterFor, buildJournalRegistry, KNOWN_HARNESS_NAMES } from "./registry.ts";
+import { adapterFor, buildJournalRegistry, KNOWN_HARNESS_NAMES, NO_PROCESS_IDENTITY } from "./registry.ts";
 import { describeUnknowns, parseWith, unknownCount } from "./reduce.ts";
 import { TranscriptStore } from "./store.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./types.ts";
@@ -459,15 +459,15 @@ describe("the reducer", () => {
 });
 
 describe("the journal registry", () => {
-  const roots = { claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [] };
+  const roots = { claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] };
 
   test("durable is registered when a log root is named, under the agent name a durable pane reports", () => {
-    const registry = buildJournalRegistry({ ...roots, durable: ["/state/durable"] });
+    const registry = buildJournalRegistry({ ...roots, durable: ["/state/durable"] }, NO_PROCESS_IDENTITY);
     expect(adapterFor(registry, "durable")?.agent).toBe("durable");
   });
 
   test("without a log root there is no durable adapter, and it is never a harness name", () => {
-    expect(adapterFor(buildJournalRegistry(roots), "durable")).toBeUndefined();
+    expect(adapterFor(buildJournalRegistry(roots, NO_PROCESS_IDENTITY), "durable")).toBeUndefined();
     expect(KNOWN_HARNESS_NAMES).not.toContain("durable");
   });
 });

@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
 import type { ColumnRange } from "../column-range";
+import { loadLabels } from "../../test/surface-corpus";
 import { buildBlocks } from "./index";
+import { adapterFor } from "./registry";
 import { detectMultiSelect } from "./claude/multi-select";
 import { detectPreviewSelect } from "./claude/preview-select";
 import { detectPromptSelect } from "./claude/prompt-select";
@@ -103,6 +105,12 @@ function adapterRegion(lines: StyledLine[], agent: string): FoundRegion | null {
   return found;
 }
 
+/**
+ * Harnesses whose own adapter regions are all pinned, so the completeness gate reads their panes
+ * with that adapter. Adding a harness here means pinning every region its adapter lifts.
+ */
+const ADAPTER_PINNED: ReadonlySet<string> = new Set(["kiro"]);
+
 describe("client/bridge binding contract", () => {
   it("covers every dialog detector", () => {
     expect([...new Set(REGIONS.map((r) => r.detector))].toSorted()).toEqual([
@@ -137,9 +145,18 @@ describe("client/bridge binding contract", () => {
   // an unpinned write path, which is exactly what this pair of tests exists to prevent.
   it("pins every fixture that any detector recognises", () => {
     const pinned = new Set(REGIONS.map((r) => r.fixture));
+    const { fixtures: labels } = loadLabels();
     const unpinned = readdirSync(PANES_DIR)
       .filter((n) => n.endsWith(".txt"))
-      .filter((n) => !pinned.has(n) && detectRegion(fixtureLines(n)) !== null);
+      .filter((n) => !pinned.has(n))
+      .filter((n) => {
+        const lines = fixtureLines(n);
+        // A pane of a harness in ADAPTER_PINNED is read by that harness's own adapter, as the app
+        // reads it; every other pane still goes through Claude's detectors.
+        const harness = labels[n]?.harness;
+        const ownAdapter = harness !== undefined && ADAPTER_PINNED.has(harness) && adapterFor(harness) !== undefined;
+        return (ownAdapter ? adapterRegion(lines, harness) : detectRegion(lines)) !== null;
+      });
     expect(unpinned).toEqual([]);
   });
 });

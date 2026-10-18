@@ -1008,7 +1008,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401) and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT` and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -1035,6 +1035,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_HERDR_DIAL",
       "COLLIE_HERMES_ROOT",
       "COLLIE_HOST",
+      "COLLIE_KIRO_ROOT",
       "COLLIE_MAX_UPLOAD_MB",
       "COLLIE_MULTI_SESSION",
       "COLLIE_MUSE_ROOT",

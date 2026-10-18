@@ -119,6 +119,28 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--trust-prompt.txt", "pi--trust-prompt-moved.txt"],
   // gentle-pi 4.2.0's ask_user_choice (pi 1.3.0): unnumbered rows, the second capture after a real Down.
   ["pi", "pi--v130-gentle-choice.txt", "pi--v130-gentle-choice-moved.txt"],
+  // Kiro V3 2.32.0: the same shell request with Allow, Always allow and Deny pointed.
+  ["kiro", "kiro--v3-approval-allow-w120.txt", "kiro--v3-approval-deny-w120.txt"],
+  ["kiro", "kiro--v3-approval-always-w120.txt", "kiro--v3-approval-deny-w120.txt"],
+  ["kiro", "kiro--v3-approval-allow-w60.txt", "kiro--v3-approval-deny-w60.txt"],
+  ["kiro", "kiro--v3-approval-denied-request-allow-w120.txt", "kiro--v3-approval-denied-request-deny-w120.txt"],
+  // Installed V3 file tools: Allow and Deny with the complete read/diff preview unchanged.
+  ["kiro", "kiro--v3-read-allow-w120.txt", "kiro--v3-read-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-allow-w60.txt", "kiro--v3-read-deny-w60.txt"],
+  ["kiro", "kiro--v3-read-denied-request-allow-w120.txt", "kiro--v3-read-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-allow-w120.txt", "kiro--v3-write-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-allow-w60.txt", "kiro--v3-write-deny-w60.txt"],
+  ["kiro", "kiro--v3-write-lines-allow-w120.txt", "kiro--v3-write-lines-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-denied-request-allow-w120.txt", "kiro--v3-write-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-allow-w120.txt", "kiro--v3-replace-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-allow-w60.txt", "kiro--v3-replace-deny-w60.txt"],
+  ["kiro", "kiro--v3-replace-denied-request-allow-w120.txt", "kiro--v3-replace-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-wrapped-allow-w120.txt", "kiro--v3-read-wrapped-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-wrapped-allow-w60.txt", "kiro--v3-read-wrapped-deny-w60.txt"],
+  // Kiro V3 2.32.0 with tools trusted: write and replace panels also offer Always allow.
+  ["kiro", "kiro--v3-write-trusted-allow-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-trusted-always-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-trusted-allow-w120.txt", "kiro--v3-replace-trusted-deny-w120.txt"],
 ];
 
 /**

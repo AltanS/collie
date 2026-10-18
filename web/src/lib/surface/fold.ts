@@ -222,7 +222,7 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // A dialog drawn in the box's place (`idle.dialogsInBox`) hides the box: the screen makes no claim about it.
   const frame = idle?.dialogsInBox === true && cues.strength === "strong" ? null : found;
 
-  const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle.runningRows) ? "running" : "idle";
+  const turn: SurfaceTurn = frame === null || idle === null ? "unknown" : runningSign(rows, frame, idle) ? "running" : "idle";
 
   let modal: SurfaceModal;
   if (input.ask !== null) modal = { ask: input.ask };

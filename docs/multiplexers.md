@@ -564,6 +564,7 @@ An agent with no profile still works. Collie types into it with stricter generic
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
+| Kiro (`kiro-cli`) | Steers the turn | Enter | Short texts and sends into a turn | 2.32.0 |
 
 A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
 Collie checks that the character lands in the box, then removes it.
@@ -608,6 +609,13 @@ Collie checks that the character lands in the box, then removes it.
   A command palette that opens under the box shows as your draft.
   The list of background tasks under the box reads as unknown, and a send needs your tap.
   A running turn shows a row with a timer and `esc to interrupt`.
+
+- **Kiro** draws its box under a rule: a status bar, the folder, a blank row and a `›` prompt row.
+  Collie types only when that whole frame is on screen.
+  A newline goes in as Ctrl+J.
+  While a turn runs, the prompt row reads `Kiro is working`, and Enter steers the text into that turn.
+  Ctrl+S switches Kiro between steering and queueing, so Collie names no queue key.
+  Its profile was checked on Herdr only, not on tmux or zellij.
 
 Grok, Antigravity and Muse are not installed on the build host.
 Their profiles rest on saved screens of each agent.

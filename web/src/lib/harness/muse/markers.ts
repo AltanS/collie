@@ -10,18 +10,14 @@
 // adapter (no chrome, no detectors), so detectors can share the tail locator
 // without an import cycle. Types + pure functions.
 
-import { isBlank, lineText, type StyledLine } from "../../blocks";
+import { isBlank, lastNonBlankIndex, lineText, type StyledLine } from "../../blocks";
+
+// Re-exported so the Muse grammars keep their single import site.
+export { lastNonBlankIndex };
 
 /** Trailing pad off. Muse pads every row to the terminal width. */
 export function rstrip(s: string): string {
   return s.replace(/\s+$/, "");
-}
-
-/** Index of the last non-blank row, or -1 when the buffer holds nothing. */
-export function lastNonBlankIndex(texts: string[]): number {
-  let i = texts.length - 1;
-  while (i >= 0 && isBlank(texts[i]!)) i--;
-  return i;
 }
 
 // A full-width rule of box-drawing horizontals. The composer's bottom rule spans

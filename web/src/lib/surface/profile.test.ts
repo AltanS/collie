@@ -434,7 +434,64 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "steers",
     queueKey: "alt+Enter",
   },
+  {
+    id: "kiro",
+    binary: "kiro-cli",
+    versionOutput: "kiro-cli 2.32.0\n",
+    version: "2.32.0",
+    above: "2.32.1",
+    takes: [
+      { anchor: "top", row: "─".repeat(60) },
+      { anchor: "prompt", row: "› ask a question or describe a task ↵", draft: "ask a question or describe a task ↵" },
+      { anchor: "prompt", row: "› collie normal draft probe", draft: "collie normal draft probe" },
+      { anchor: "prompt", row: "›" },
+      { anchor: "bottom", row: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: "──── hello" },
+      { anchor: "prompt", row: "  collie normal draft probe" },
+      { anchor: "prompt", row: "❯ collie normal draft probe" },
+    ],
+    collapse: { text: "40 lines ▸", group: "lines", value: "40" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "steers",
+  },
 ];
+
+describe("idle.runningPrompt", () => {
+  function rawKiro(): JsonObject {
+    const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "kiro.json"), "utf8"));
+    if (raw === undefined) throw new Error("kiro.json is not a JSON object");
+    return raw;
+  }
+
+  it("kiro: the busy prompt row is a prompt sign, and the hint and queued rows stay running rows", () => {
+    // Given: Kiro's profile as shipped.
+    const { runningRows = [], runningPrompt = [] } = parseProfile(rawKiro()).idle;
+    // When: each kind of sign is compiled.
+    const prompt = runningPrompt.map((source) => new RegExp(source, "u"));
+    const rows = runningRows.map((source) => new RegExp(source, "u"));
+    // Then: the busy line is read on the prompt row only, and a draft that names it later does not match.
+    expect(prompt.some((sign) => sign.test("›  Kiro is working · 1s · Type to steer · Ctrl+S to queue"))).toBe(true);
+    expect(prompt.some((sign) => sign.test("› ask why Kiro is working · so slowly"))).toBe(false);
+    expect(rows.some((sign) => sign.test("›  Kiro is working · 1s · Type to steer · Ctrl+S to queue"))).toBe(false);
+    expect(rows.some((sign) => sign.test("ᗥ Thinking... (esc to cancel)"))).toBe(true);
+    expect(rows.some((sign) => sign.test("  ◇ 1 message queued"))).toBe(true);
+  });
+
+  it("a profile without the field has none", () => {
+    expect(parseProfile(rawCodex()).idle.runningPrompt).toBeUndefined();
+  });
+
+  it("kiro: a prompt sign that is no expression names its path", () => {
+    expect(failure(change(rawKiro(), ["idle", "runningPrompt", 0], "[unclosed")).path).toBe("idle.runningPrompt[0]");
+  });
+
+  it("kiro: prompt signs that are no list name their path", () => {
+    expect(failure(change(rawKiro(), ["idle", "runningPrompt"], "^› Kiro is working")).path).toBe("idle.runningPrompt");
+  });
+});
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
   const profile = (): Profile => loadProfiles().get(c.id)!;

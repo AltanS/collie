@@ -53,8 +53,8 @@
 // bridge's own state folder and its config folder are refused on top. A new reader may reuse this
 // function; it may not become a fourth place without an ADR that says why and names its bound.
 
-import { realpath as realpathNativeCb } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
+import { constants, realpath as realpathNativeCb } from "node:fs";
+import { open, realpath, stat } from "node:fs/promises";
 
 import { HOST, type Host, isInside } from "../host.ts";
 
@@ -159,6 +159,40 @@ export async function head(path: string, bytes = 64 * 1024): Promise<string> {
 }
 
 /**
+ * Flags for opening a file that must be read as itself: O_NOFOLLOW makes a final symlink fail the
+ * open, and O_NONBLOCK keeps a FIFO swapped in from hanging the reader. Both exist on POSIX only;
+ * Windows reads them as 0 (no flag).
+ */
+export const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * The whole text of a small regular file, or null when it cannot be opened with {@link OPEN_FLAGS},
+ * is not a regular file, or holds more than `limit` bytes. A longer file is refused, never cut.
+ *
+ * The size `stat` reports is not trusted: `/proc` files report 0 and still hold text, and a file can
+ * grow between the stat and the read. So the read runs until the file ends or passes `limit`.
+ */
+export async function readSmallFile(path: string, limit: number): Promise<string | null> {
+  const file = await open(path, OPEN_FLAGS).catch(() => null);
+  if (file === null) return null;
+  try {
+    if (!(await file.stat()).isFile()) return null;
+    const bytes = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await file.read(bytes, length, bytes.length - length, null);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    return length > limit ? null : bytes.subarray(0, length).toString("utf8");
+  } catch {
+    return null;
+  } finally {
+    await file.close().catch(() => {});
+  }
+}
+
+/**
  * Tail-read a log under the byte cap. Shared by every adapter's `load` — the cap and the "keep the
  * newest end" policy are properties of the journal, not of any one harness.
  *
@@ -230,9 +264,9 @@ export const FIRST_TAIL_ROWS = 400;
 /**
  * What is new in a log since `cursor` — the live read, beside {@link loadTail}'s whole-window one.
  *
- * Shared by every harness that writes a FILE (claude, codex, pi, grok, muse), which is why it lives here:
- * the byte counting, the bound and the torn-line rule are properties of reading a log, not of any
- * one grammar. The two SQLite harnesses answer the same question in their own language and share
+ * Shared by every harness that writes a FILE (claude, codex, pi, grok, muse, kiro), which is why it
+ * lives here: the byte counting, the bound and the torn-line rule are properties of reading a log,
+ * not of any one grammar. The two SQLite harnesses answer the same question in their own language and share
  * nothing with this but the {@link Cursor} codec.
  *
  * THE OFFSET ONLY EVER ADVANCES TO A ROW BOUNDARY. That one rule is what holds a torn final line

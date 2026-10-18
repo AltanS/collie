@@ -15,11 +15,18 @@ import { codexJournal } from "./codex.ts";
 import { durableJournal } from "./durable.ts";
 import { grokJournal } from "./grok.ts";
 import { hermesJournal } from "./hermes.ts";
+import { kiroJournal } from "./kiro.ts";
 import { museJournal } from "./muse.ts";
 import { openclawJournal } from "./openclaw.ts";
 import { opencodeJournal } from "./opencode.ts";
 import { piJournal } from "./pi.ts";
-import type { JournalAdapter } from "./types.ts";
+import type { JournalAdapter, ProcessIdentityProbe } from "./types.ts";
+
+/**
+ * The process probe for a caller that cannot or should not look at processes (tests, scripts, a
+ * registry built only for its names): every answer is null.
+ */
+export const NO_PROCESS_IDENTITY: ProcessIdentityProbe = { identify: () => Promise.resolve(null) };
 
 /**
  * Where each harness keeps its logs. Every path is a containment root, never a request input.
@@ -44,6 +51,8 @@ export interface JournalRoots {
   grok: readonly string[];
   /** Hermes' SessionDB directory — `state.db` lives at its top level. */
   hermes: readonly string[];
+  /** Kiro V3's `$KIRO_HOME/sessions`, defaulting to `~/.kiro/sessions`. */
+  kiro: readonly string[];
   /** Muse's `sessions` directory — `YYYY/MM/DD/<uuid>/session.jsonl` lives under it. */
   muse: readonly string[];
   /**
@@ -62,8 +71,15 @@ export interface JournalRoots {
  *
  * The map is built FROM each adapter's own `agent` field (not a hand-written literal), so a key can
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
+ *
+ * `processes` is how Kiro discovery asks the OS about a pane's foreground pid. bridge/index.ts
+ * passes the /proc probe from bridge/proc-identity.ts. With {@link NO_PROCESS_IDENTITY} nothing can
+ * be learned about a process, so Kiro discovery finds nothing; every reported session still resolves.
  */
-export function buildJournalRegistry(roots: JournalRoots): Record<string, JournalAdapter> {
+export function buildJournalRegistry(
+  roots: JournalRoots,
+  processes: ProcessIdentityProbe,
+): Record<string, JournalAdapter> {
   const adapters: JournalAdapter[] = [
     claudeJournal(roots.claude),
     codexJournal(roots.codex),
@@ -71,6 +87,7 @@ export function buildJournalRegistry(roots: JournalRoots): Record<string, Journa
     opencodeJournal(roots.opencode),
     grokJournal(roots.grok),
     hermesJournal(roots.hermes),
+    kiroJournal(roots.kiro, processes),
     museJournal(roots.muse),
     openclawJournal(roots.openclaw),
   ];
@@ -88,7 +105,7 @@ export function buildJournalRegistry(roots: JournalRoots): Record<string, Journa
  * COULD have a transcript (registry.test.ts fails when the two drift).
  *
  * An alias never adds an adapter, so it is absent from {@link KNOWN_HARNESS_NAMES}: that list
- * answers "which adapters does this build have", and the answer is still eight.
+ * answers "which adapters does this build have", and an alias does not change the count.
  */
 export const AGENT_ALIASES = { omp: "pi" } as const;
 
@@ -130,12 +147,13 @@ export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
  * Herdr reports a session only for agents with an integration; Muse has none, so its panes never
  * carry a ref and the adapter discovers the log by cwd instead (`JournalAdapter.discover`). OpenClaw
  * reports through a source of its own, which Herdr drops (#401), so its adapter reads the session
- * off the pane's footer. The
+ * off the pane's footer. Herdr names no session for a Kiro pane either (kiro-cli 2.32.0, Herdr
+ * 0.9.5), so its adapter matches the pane's foreground TUI to the lock it holds. The
  * name list exists for the one consumer that works from names alone: `collie doctor`, whose
  * history section must not advise `herdr integration install` for an agent no hook could ever
  * report. Pinned against the adapters themselves in registry.test.ts, so the two cannot drift.
  */
-export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["muse", "openclaw"];
+export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["muse", "openclaw", "kiro"];
 
 /**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
@@ -180,5 +198,5 @@ export function journalAgents(registry: Record<string, JournalAdapter>): string[
  * identity off a match against it — see `bridge/mux/types.ts` § `MuxPane.agent`.
  */
 export const KNOWN_HARNESS_NAMES: readonly string[] = journalAgents(
-  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [] }),
+  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }, NO_PROCESS_IDENTITY),
 );

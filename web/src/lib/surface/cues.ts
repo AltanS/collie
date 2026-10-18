@@ -267,21 +267,28 @@ function signPatterns(sources: readonly string[]): readonly RegExp[] {
   return compiled;
 }
 
+/** The running signs a profile declares: `runningRows` read on the volatile rows and edges, and
+ *  `runningPrompt` read on the prompt row only. */
+export type RunningSigns = Pick<IdleProfile, "runningRows" | "runningPrompt">;
+
 /**
- * Whether a found frame's volatile rows show a running sign. `profileSigns` are the profile's own
- * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge and the top
- * edge included, for a harness that marks a turn there (a spinner frame on its status row, a hint only
- * a turn shows, a label in the top rule).
+ * Whether a found frame's volatile rows show a running sign. `signs.runningRows` are the profile's own
+ * running rows: patterns read on the volatile rows, the bottom edge and the top edge included, for a
+ * harness that marks a turn there (a spinner frame on its status row, a hint only a turn shows, a label
+ * in the top rule). `signs.runningPrompt` are read on the prompt row and nowhere else, for a harness
+ * that draws its busy line where a draft sits; they must be anchored so a typed draft cannot match.
  */
-export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSigns: readonly string[] = []): boolean {
+export function runningSign(rows: readonly FrameRow[], frame: Frame, signs: RunningSigns = {}): boolean {
   const texts = rows.map(rowText);
   if (volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!))) return true;
-  if (profileSigns.length === 0) return false;
-  const patterns = signPatterns(profileSigns);
-  return [...volatileRows(texts, frame), frame.bottom, frame.top].some((i) => {
+  const matches = (i: number, sources: readonly string[]): boolean => {
     const text = texts[i]!.trimEnd();
-    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
-  });
+    return text.length > 0 && signPatterns(sources).some((pattern) => pattern.test(text));
+  };
+  const { runningRows = [], runningPrompt = [] } = signs;
+  if (runningPrompt.length > 0 && matches(frame.interior.prompt, runningPrompt)) return true;
+  if (runningRows.length === 0) return false;
+  return [...volatileRows(texts, frame), frame.bottom, frame.top].some((i) => matches(i, runningRows));
 }
 
 interface ClusterCues {

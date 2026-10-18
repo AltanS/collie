@@ -217,6 +217,14 @@ export interface Profile {
      */
     readonly runningRows?: readonly string[];
     /**
+     * Prompt rows that mean a turn runs, as regular expression sources, read on the frame's prompt row
+     * and no other (cues.ts `runningSign`). For a harness that replaces the prompt row with a busy line
+     * while a turn runs. The prompt row holds the operator's draft, so each pattern must be anchored on
+     * the prompt glyph and the busy line's own words: an unanchored phrase would read a draft that
+     * quotes it as a running turn. Optional.
+     */
+    readonly runningPrompt?: readonly string[];
+    /**
      * Rows that mean a dialog is drawn over the screen above a live box, as regular expression
      * sources, read on every row above the box. A harness that draws its pickers and notices over
      * the transcript and leaves the box on screen needs them: the box looks free under a dialog.
@@ -613,7 +621,12 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.runningRows === undefined
       ? undefined
       : list(idleNode.runningRows, "idle.runningRows").map((item, i) => pattern(item, `idle.runningRows[${String(i)}]`).source);
-  const withRunning: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const runningPrompt =
+    idleNode.runningPrompt === undefined
+      ? undefined
+      : list(idleNode.runningPrompt, "idle.runningPrompt").map((item, i) => pattern(item, `idle.runningPrompt[${String(i)}]`).source);
+  const withRunningRows: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const withRunning: Profile["idle"] = runningPrompt === undefined ? withRunningRows : { ...withRunningRows, runningPrompt };
   const overlayRows =
     idleNode.overlayRows === undefined
       ? undefined

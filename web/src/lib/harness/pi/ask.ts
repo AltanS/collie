@@ -54,6 +54,7 @@
 // Pure functions over StyledLine[], tail-anchored, fail closed.
 
 import { lineText, type StyledLine } from "../../blocks";
+import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import type { WizardAnswer, WizardModel, WizardStepChip } from "../wizard-model";
@@ -70,8 +71,6 @@ const MAX_FOOTER_ROWS = 3;
 const MAX_BODY_ROWS = 200;
 /** OmO's status line under its options (`Submit (0/1 answered) — Enter advances`). */
 const MAX_TRAILER_ROWS = 2;
-/** The bridge's cap on a bound region less a margin, as omp/ask.ts. */
-const MAX_REGION_CHARS = 32_000;
 const POINTERS = new Set([">", "→"]);
 /** The free-text row's label: `Type something.` (stock, PR 397), `Type your own answer...` (OmO). The
  *  `✎` follows it while its inline editor is open. */

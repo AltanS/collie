@@ -275,6 +275,19 @@ const GROK: readonly AgentCommand[] = [
   { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// Kiro V3: each command is in the `/` menu of kiro-cli 2.32.0 --v3.
+// These commands are built in. No workflow-, profile- or plugin-specific commands are copied here.
+// `/model` and `/agent` open pickers the Kiro adapter does not lift: the phone shows them on the raw
+// mirror, to be driven with the keys pad and closed with Escape. So, as for omp, `common: false`.
+const KIRO: readonly AgentCommand[] = [
+  { command: "/help", description: "Show the available commands", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/model", description: "Choose the model", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/agent", description: "Choose the agent", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/compact", description: "Summarize the conversation to free up context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/clear", description: "Start a new session", takesArg: false, argHint: "", common: false, dangerous: true },
+  { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -285,6 +298,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["opencode", OPENCODE],
   ["omp", OMP],
   ["grok", GROK],
+  ["kiro", KIRO],
   // Herdr reports this agent under both names, and canonicalAgent() folds neither onto the other,
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],

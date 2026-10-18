@@ -76,7 +76,7 @@
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import { isRunningRow, readCues, readCuesFor, runningSign, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { isRunningRow, readCues, readCuesFor, runningSign, type Cue, type RunningSigns } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -376,6 +376,12 @@ const SPINNER_VERB_ROW = /^(\s*)[^\p{L}\p{N}\s]{1,2}(\s+\p{L}[^()]*?(?:…|\.\.\
 /** A bracketed run on a running row: where its timer and its token count stand. */
 const BRACKET = /\([^()]*\)/gu;
 
+/** A profile's running rows and running prompt rows together, for the reads that test every row of a
+ *  screen rather than a found frame's own rows. */
+function anyRowSigns(signs: RunningSigns): RegExp[] {
+  return [...(signs.runningRows ?? []), ...(signs.runningPrompt ?? [])].map((source) => new RegExp(source, "u"));
+}
+
 /**
  * A row's plain text as the compares of a pane with no frame see it. A spinner row (SPINNER_VERB_ROW)
  * reads as its verb behind a fixed glyph mark, its bracket group dropped, so the row before and after
@@ -388,7 +394,7 @@ const BRACKET = /\([^()]*\)/gu;
  * words, or stops being a running row, still changes every compare.
  */
 export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
-  // A row the profile names as a running row (idle.runningRows) shows its spinner glyph as a fixed mark.
+  // A row the profile names as a running row (idle.runningRows or idle.runningPrompt) shows its spinner glyph as a fixed mark.
   if (signs.some((sign) => sign.test(row.trimEnd()))) return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
   // A spinner row with or without its bracket group reads as the glyph mark and the verb alone.
   const verb = SPINNER_VERB_ROW.exec(row);
@@ -2181,7 +2187,7 @@ export class SendProtocol {
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const profile = state.match?.profile;
     if (profile === undefined || profile.keys.enterWhileRunning === "queues" || state.request.mode === "discard") return;
-    const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const signs = anyRowSigns(profile.idle);
     const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
     if (!runs) return;
     if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
@@ -2306,7 +2312,7 @@ export class SendProtocol {
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
     const plainRaw = rows.map(plainOf);
-    const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const signs = anyRowSigns(idle ?? {});
     const plain = plainRaw.map((row) => steadyRow(row, signs));
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
@@ -2680,7 +2686,7 @@ export class SendProtocol {
         // evidence that the harness took it.
         if (queued) return boxText(snap.frame).length === 0 ? "pass" : "wait";
         if (command && !wsFree(boxText(snap.frame)).includes(wsFree(withoutLead(lines).join("")))) return "pass";
-        return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame, state.match?.profile.idle.runningRows) ? "pass" : "wait";
+        return boxText(snap.frame).length === 0 || runningSign(snap.rows, snap.frame, state.match?.profile.idle) ? "pass" : "wait";
       }
       if (landing === null) return "wait";
       if (command) return flat(snap.plain).includes(flat([landing.probed.slice(0, landing.index) + lines.join("") + afterProbe(landing)])) ? "wait" : "pass";

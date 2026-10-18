@@ -1,0 +1,13 @@
+↓ echo_harmless_printable_message_for_wrapped_approval_title
+    ╰ message=collie long echo with harmless printable words across narrow approval argument rows
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ echo_harmless_printable_message_for_wrapped_approval_title requires approval
+ mcp → collie_echo/echo_harmless_printable_message_for_wrapped_approval_title
+ 
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mAllow      [0m
+   Deny       
+   Always deny
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                                                                                       

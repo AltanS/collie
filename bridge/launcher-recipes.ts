@@ -151,6 +151,8 @@ const NO_PROMPT_FLAGS: ReadonlySet<string> = new Set([
   "--dangerously-bypass-approvals-and-sandbox",
   "--yolo",
   "--ask-for-approval=never",
+  // Kiro CLI
+  "--trust-all-tools",
 ]);
 
 /** Flags whose VALUE decides it, written as two words: `--permission-mode bypassPermissions`. */
@@ -178,6 +180,7 @@ export function scanNoPrompts(line: string): boolean {
     if (first === "codex" && word === "-a" && next === "never") return true;
     if (first === "opencode" && word === "--auto") return true;
     if (first === "grok" && word === "--always-approve") return true;
+    if (first === "kiro-cli" && word === "-a") return true;
   }
   return false;
 }

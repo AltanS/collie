@@ -23,6 +23,7 @@ import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget, type HookTargetRegistration } from "./beacon-io.ts";
+import { procProcessIdentity } from "./proc-identity.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
@@ -739,9 +740,13 @@ await activity.load();
 // How long each pane's prompt cache stays warm (bridge/cache/tracker.ts). The registry is built HERE,
 // once, and handed to both the tracker and the server, so the probe and the history route share the
 // adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
-// every pane then reads exactly as it did before this feature existed.
+// every pane then reads exactly as it did before this feature existed. Kiro discovery asks the OS
+// about a pane's foreground pid through the /proc probe, read with this host's facts and clock.
 const journals = cfg.transcript
-  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] })
+  ? buildJournalRegistry(
+      { ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] },
+      procProcessIdentity(HOST, process.arch, () => Date.now()),
+    )
   : null;
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =

@@ -1,14 +1,10 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 import type { PaneChatResponse, SnapshotResponse } from "@/lib/types";
 import { fixtureAgents, fixtureOmpAskBatchChat, fixtureOmpAskSingleChat, fixtureSnapshot } from "@/test/handlers";
 
-import { installApiStub, pinLocale } from "./fixtures/api";
+import { installApiStub, installPaneWorld, paneCapture, pinLocale, type PaneStep, type SentKeys } from "./fixtures/api";
 
 // Replay captured OMP Ask screens through Chat with a key-driven pane stub.
 // History stays read-only; live answers use walk/verify/commit. Live proof: ASK_NOTES.md.
@@ -20,13 +16,7 @@ test.use({ serviceWorkers: "block" });
 
 const PANE_ID = fixtureAgents[0]!.paneId;
 const PANE_URL = `/pane/${encodeURIComponent(PANE_ID)}`;
-const PANE_ROUTE = new RegExp(`/api/pane/${encodeURIComponent(PANE_ID)}(?:\\?.*)?$`);
-const CHAT_ROUTE = new RegExp(`/api/pane/${encodeURIComponent(PANE_ID)}/chat(?:\\?.*)?$`);
-const KEYS_PATH = `/api/pane/${encodeURIComponent(PANE_ID)}/keys`;
 
-/** A pane screen, from the corpus the unit layer reads. */
-const PANES_DIR = fileURLToPath(new URL("../src/fixtures/panes", import.meta.url));
-const screenOf = (name: string): string => readFileSync(join(PANES_DIR, `${name}.txt`), "utf8");
 const POINTER = "❯ ";
 const GAP = "  ";
 
@@ -49,56 +39,12 @@ const SNAPSHOT_OMP: SnapshotResponse = {
   agents: [Object.assign({}, fixtureAgents[0]!, { agent: "omp", hasSession: true })],
 };
 
-interface SentKeys {
-  readonly keys: readonly string[];
-  readonly expected_prompt?: string;
-}
-
-/** A terminal transition driven by the app's emitted keys. */
-interface Step {
-  readonly on: string;
-  readonly keys: readonly string[];
-  readonly to: string;
-}
-
-/** A static pane would reject a guarded walk: each read must show where its arrows landed. */
-async function installPaneWorld(
+/** The OMP pane: its snapshot and Ask journal, with screens that follow the app's keys. */
+async function ompWorld(
   page: Page,
-  world: {
-    readonly chat: PaneChatResponse;
-    readonly screens: Readonly<Record<string, string>>;
-    readonly start: string;
-    readonly script: readonly Step[];
-  },
+  world: { chat: PaneChatResponse; screens: Readonly<Record<string, string>>; start: string; script: readonly PaneStep[] },
 ): Promise<SentKeys[]> {
-  const sent: SentKeys[] = [];
-  let showing = world.start;
-
-  await page.route(
-    (url) => url.pathname === "/api/snapshot",
-    (route) => route.fulfill({ json: SNAPSHOT_OMP }),
-  );
-  await page.route(CHAT_ROUTE, (route) => route.fulfill({ json: world.chat }));
-  await page.route(
-    (url) => url.pathname === KEYS_PATH,
-    async (route) => {
-      // SAFETY: the body is the app's own — `lib/api.ts`'s `sendKeys` is the only caller of this
-      // endpoint, and it posts exactly `{ keys, expected_prompt?, expected_styled? }`.
-      const body = route.request().postDataJSON() as SentKeys;
-      sent.push(body);
-      const step = world.script.find(
-        (s) => s.on === showing && s.keys.join("+") === body.keys.join("+"),
-      );
-      if (step) showing = step.to;
-      await route.fulfill({ json: { ok: true } });
-    },
-  );
-  await page.route(PANE_ROUTE, (route) =>
-    route.fulfill({
-      json: { paneId: PANE_ID, text: world.screens[showing], truncated: false, revision: 1 },
-    }),
-  );
-  return sent;
+  return (await installPaneWorld(page, { paneId: PANE_ID, snapshot: SNAPSHOT_OMP, ...world })).sent;
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -123,10 +69,10 @@ const QUESTION = "Pick a colour";
 const ANSWER = "Blue";
 
 function singleWorld(page: Page): Promise<SentKeys[]> {
-  const asking = screenOf("omp--v18-10-ask-single");
-  return installPaneWorld(page, {
+  const asking = paneCapture("omp--v18-10-ask-single");
+  return ompWorld(page, {
     chat: fixtureOmpAskSingleChat,
-    screens: { asking, answering: pointerOn(asking, ANSWER), answered: screenOf("omp--v18-10-draft-blank-line") },
+    screens: { asking, answering: pointerOn(asking, ANSWER), answered: paneCapture("omp--v18-10-draft-blank-line") },
     start: "asking",
     script: [
       { on: "asking", keys: ["Down"], to: "answering" },
@@ -170,17 +116,17 @@ test("the dock answers it: tapping Blue walks the pointer, verifies, then commit
 
 // Question/review screens are real captures; only the third pointer move is derived.
 function batchWorld(page: Page): Promise<SentKeys[]> {
-  const q3 = screenOf("omp--v18-10-ask-batch-third");
-  return installPaneWorld(page, {
+  const q3 = paneCapture("omp--v18-10-ask-batch-third");
+  return ompWorld(page, {
     chat: fixtureOmpAskBatchChat,
     screens: {
-      q1: screenOf("omp--v18-10-ask-batch"),
-      "q1-below": screenOf("omp--v18-10-ask-batch-moved"),
-      q2: screenOf("omp--v18-10-ask-batch-second"),
+      q1: paneCapture("omp--v18-10-ask-batch"),
+      "q1-below": paneCapture("omp--v18-10-ask-batch-moved"),
+      q2: paneCapture("omp--v18-10-ask-batch-second"),
       q3,
       "q3-separate": pointerOn(q3, "Separate"),
-      review: screenOf("omp--v18-10-ask-batch-review"),
-      answered: screenOf("omp--v18-10-draft-blank-line"),
+      review: paneCapture("omp--v18-10-ask-batch-review"),
+      answered: paneCapture("omp--v18-10-draft-blank-line"),
     },
     start: "q1",
     script: [

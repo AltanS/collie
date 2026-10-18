@@ -7,7 +7,7 @@ import { identityOf } from "./beacon/decorate.ts";
 import { fakeBeaconReader, type FakeBeacon } from "./beacon/fake.ts";
 import { readBeacons } from "./beacon/reader.ts";
 import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconReading, type BeaconRecord } from "./beacon/types.ts";
-import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import { adapterFor, buildJournalRegistry, NO_PROCESS_IDENTITY } from "./journal/registry.ts";
 import { journalAgentOf } from "./types.ts";
 import type { AgentView } from "./types.ts";
 import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
@@ -153,7 +153,7 @@ async function fixture() {
   await Bun.write(`${base}/outside/secrets.jsonl`, piRows(PI_SESSION, "not yours to read"));
   const escape = `${pi}/-repo-/escape.jsonl`;
   await symlink(`${base}/outside/secrets.jsonl`, escape);
-  const registry = buildJournalRegistry({ claude: [claude], codex: [], pi: [pi], opencode: [], grok: [], hermes: [], muse: [], openclaw: [] });
+  const registry = buildJournalRegistry({ claude: [claude], codex: [], pi: [pi], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }, NO_PROCESS_IDENTITY);
   return { base, claude, pi, piLog, escape, outside: `${base}/outside/secrets.jsonl`, registry };
 }
 

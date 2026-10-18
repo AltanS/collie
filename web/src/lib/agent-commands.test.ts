@@ -28,6 +28,15 @@ describe("commandsFor", () => {
     expect(cmds.some((c) => c.command === "/branch")).toBe(false); // in Claude's and omp's, not here
   });
 
+  it("offers only the verified Kiro V3 built-ins and confirms disruptive commands", () => {
+    const commands = commandsFor("kiro");
+    expect(commands.map((c) => c.command)).toEqual(["/help", "/model", "/agent", "/compact", "/clear", "/quit"]);
+    expect(commands.filter((c) => c.dangerous).map((c) => c.command)).toEqual(["/clear", "/quit"]);
+    // The pickers the adapter does not lift are not surfaced first.
+    expect(commands.filter((c) => c.common).map((c) => c.command)).toEqual(["/compact"]);
+    expect(commandsFor("kiro-cli")).toEqual([]);
+  });
+
   it("returns the Grok catalog for 'grok'", () => {
     const cmds = commandsFor("grok");
     expect(cmds.length).toBeGreaterThan(0);

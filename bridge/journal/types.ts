@@ -189,7 +189,8 @@ export interface ForegroundProcess {
   readonly argv: readonly string[];
   /**
    * The process id, when the multiplexer reports it (Herdr does). The hook edges (M56 spec 11) use it
-   * to check that the pid an edge names is in the pane's foreground. Absent means "not reported".
+   * to check that the pid an edge names is in the pane's foreground, and `discover` may match it to
+   * the harness's own record of which process owns a session. Absent means "not reported".
    */
   readonly pid?: number;
 }
@@ -205,6 +206,27 @@ export interface DiscoverHints {
   screen?: PaneScreen;
   /** The pane's foreground argv ({@link ForegroundProcess}). */
   processes?: readonly ForegroundProcess[];
+}
+
+/** One process as the OS describes it at the moment of asking. */
+export interface ProcessIdentity {
+  /** Changes when the pid is reused, so two equal tokens name one process. */
+  readonly token: string;
+  /** When the process started, in epoch milliseconds. */
+  readonly startedAt: number;
+  /** When the probe looked, in epoch milliseconds, on the caller's clock. */
+  readonly observedAt: number;
+  /** The process's argv as the OS reports it now. */
+  readonly argv: readonly string[];
+}
+
+/**
+ * What a `discover` asks the OS about a pid from {@link ForegroundProcess}: the multiplexer's list is
+ * a past look, and this says what runs under that pid now. Null means "cannot say", which counts as
+ * no owner.
+ */
+export interface ProcessIdentityProbe {
+  identify(pid: number): Promise<ProcessIdentity | null>;
 }
 
 /**
@@ -243,9 +265,10 @@ export interface JournalAdapter {
    * OPTIONAL, and absent everywhere but the harnesses whose panes carry no `agentSession`:
    * custom-source session reports never surface in the pane record (Herdr keeps a session only
    * from its own integrations), Muse has no integration of its own (journal/muse.ts), and OpenClaw
-   * reports through a source Herdr drops (journal/openclaw.ts). The history and chat routes call
-   * this when the pane names no session, and `toPaneWire` offers the History affordance on its
-   * presence, so a discoverable pane reads exactly like a reporting one.
+   * reports through a source Herdr drops (journal/openclaw.ts), and Herdr names none for a Kiro
+   * pane (journal/kiro-discovery.ts). The history and chat routes call this when the pane names no session, and
+   * `toPaneWire` offers the History affordance on its presence, so a discoverable pane reads
+   * exactly like a reporting one.
    *
    * Two clues, and an adapter takes the one its harness gives. `cwd` is the pane's folder, which is
    * enough where a folder holds one session (Muse). `screen` is the pane's visible text, for a
@@ -259,8 +282,8 @@ export interface JournalAdapter {
    * `processes` is the pane's own foreground argv, when the multiplexer can say: several live
    * sessions may share one `cwd` (two tabs in one workspace), and newest-wins across them shows
    * every pane the same transcript. An adapter that can read its session out of argv answers
-   * exactly; one that cannot — or a multiplexer that offers none — falls back to the cwd walk.
-   * Absent is always a legal answer to ignore, never an error.
+   * exactly; one that cannot can use a cwd walk only where its harness makes that unambiguous,
+   * and must refuse where it does not. Absent is always a legal answer to ignore, never an error.
    *
    * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and
    * caching as a reported one, so discovery widens WHICH panes answer, never how an answer is

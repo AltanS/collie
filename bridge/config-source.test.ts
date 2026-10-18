@@ -145,6 +145,22 @@ describe("the file's shape", () => {
     expect(layer.env.COLLIE_TRANSCRIPT_ROOT).toBe(join(HOME, ".claude", "projects"));
   });
 
+  test("journal.kiro_root expands home paths and accepts an ordered root list", async () => {
+    const layer = await read({
+      [HOME_FILE]: '[journal]\nkiro_root = ["~/.kiro/sessions", "/srv/kiro/sessions"]\n',
+    });
+    expect(layer.problems).toEqual([]);
+    expect(layer.env.COLLIE_KIRO_ROOT).toBe(`${join(HOME, ".kiro", "sessions")},/srv/kiro/sessions`);
+  });
+
+  test("journal.kiro_root rejects non-string lists and entries with commas", async () => {
+    for (const value of ['["/srv/kiro", 2]', '["/srv/a,/srv/b"]']) {
+      const layer = await read({ [HOME_FILE]: `[journal]\nkiro_root = ${value}\n` });
+      expect(layer.problems).toHaveLength(1);
+      expect(layer.env.COLLIE_KIRO_ROOT).toBeUndefined();
+    }
+  });
+
   test("a bool reaches the env in the spelling envBool already reads", async () => {
     const layer = await read({ [HOME_FILE]: "[bridge]\ntranscript = false\nmulti_session = true\n" });
     expect(layer.env.COLLIE_TRANSCRIPT).toBe("0");

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { resolveJournalRoots } from "../bridge/config.ts";
 import { hostFor } from "../bridge/host.ts";
+import { adapterFor, buildJournalRegistry, DISCOVERS_OWN_SESSIONS, NO_PROCESS_IDENTITY } from "../bridge/journal/registry.ts";
+import { toPaneWire, type AgentView } from "../bridge/types.ts";
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
 import {
@@ -162,6 +165,26 @@ const HEALTHY_STATUS = JOURNAL_AGENTS.map((a) => `${a}: installed (/home/pat/.${
 /** A snapshot body with the given panes, as `/api/snapshot` serialises them. */
 const snapshotOf = (agents: { paneId: string; agent: string; hasSession?: boolean }[]): string =>
   JSON.stringify({ bridge: "connected", agents: agents.map((a) => ({ ...a, kind: "agent" })) });
+
+/**
+ * A snapshot body whose `hasSession` is decided the way `bridge/server.ts` decides it: through
+ * `toPaneWire`, asking the shipped registry both whether the agent has a journal and whether its
+ * adapter discovers sessions. Use it for an agent whose flag the bridge sets without a Herdr ref.
+ */
+function wireSnapshotOf(panes: { paneId: string; agent: string; agentSession?: AgentView["agentSession"] }[]): string {
+  const registry = buildJournalRegistry(resolveJournalRoots({}, HOME), NO_PROCESS_IDENTITY);
+  const hasJournal = (agent: string): boolean => adapterFor(registry, agent) !== undefined;
+  const discoversSessions = (agent: string): boolean => adapterFor(registry, agent)?.discover !== undefined;
+  const agents = panes.map(({ paneId, agent, agentSession }) => {
+    const view: AgentView = {
+      paneId, workspaceId: "w1", workspaceLabel: "repo", workspaceNumber: 1, tabId: "w1:t1",
+      agent, status: "idle", cwd: "/home/pat/repo", focused: false, kind: "agent",
+    };
+    if (agentSession !== undefined) view.agentSession = agentSession;
+    return toPaneWire(view, hasJournal, discoversSessions);
+  });
+  return JSON.stringify({ bridge: "connected", agents });
+}
 
 async function run(
   over: {
@@ -334,14 +357,37 @@ describe("the history section", () => {
   test("`herdr integration status` that says nothing leaves every agent skipped, never ok", async () => {
     const byCheck = await run({ status: "" });
     for (const agent of JOURNAL_AGENT_NAMES) {
-      // The exception proves the rule: Muse and OpenClaw need no hook at all: their ok does not
-      // come from Herdr's answer, so Herdr's silence cannot take it away.
-      if (agent === "muse" || agent === "openclaw") {
+      // The exception proves the rule: an adapter that discovers its own sessions needs no hook, so
+      // its ok does not come from Herdr's answer and Herdr's silence cannot take it away.
+      if (DISCOVERS_OWN_SESSIONS.includes(agent)) {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("ok");
       } else {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("skipped");
       }
     }
+  });
+
+  test("a Kiro pane with no Herdr session ref still offers History, so doctor advises no hook", async () => {
+    // Given: Herdr lists no Kiro hook and reports no session for the Kiro pane, as the bridge sends it.
+    const findings = await run({ status: "", snapshot: wireSnapshotOf([{ paneId: "w1:p1", agent: "kiro" }]) });
+    // When: doctor reads the integration and the pane.
+    const integration = findings.get("integration-kiro");
+    // Then: Kiro gets the discovering adapters' ok line, and nothing asks for a Kiro hook.
+    expect(integration?.status).toBe("ok");
+    expect(integration?.detail).toBe("no hook — the adapter finds the session log itself");
+    expect(findings.get("agent-sessions")?.status).toBe("ok");
+    for (const finding of findings.values()) expect(finding.remedy ?? "").not.toContain("install kiro");
+  });
+
+  test("a Kiro pane beside a hook-backed pane with no session is not counted as a fault", async () => {
+    // Given: a Kiro pane and a Claude pane, neither with a Herdr session ref.
+    const snapshot = wireSnapshotOf([{ paneId: "w1:p1", agent: "kiro" }, { paneId: "w2:p1", agent: "claude" }]);
+    // When: doctor reads the panes.
+    const sessions = (await run({ snapshot })).get("agent-sessions");
+    // Then: only the Claude pane is named, because only its History link is hidden.
+    expect(sessions?.status).toBe("error");
+    expect(sessions?.detail).toContain("1 report NO session: w2:p1");
+    expect(sessions?.detail).not.toContain("w1:p1");
   });
 
   test("no python3 is an error: the hook needs it and exits silently without it", async () => {
@@ -358,8 +404,8 @@ describe("the history section", () => {
   test("no journal root on disk warns, and a present-but-unlistable one says which", async () => {
     const none = await run({ files: {} });
     expect(none.get("journal-roots")?.status).toBe("warn");
-    // NINE, not eight: eight agents, and pi has two roots (the omp home and pi's own).
-    expect(none.get("journal-roots")?.detail).toContain("none of the 9 journal roots is there");
+    // pi has two default roots; every other harness has one.
+    expect(none.get("journal-roots")?.detail).toContain("none of the 10 journal roots is there");
 
     // `list` answers `[]` for a directory this user cannot read AND for an empty one; the finding
     // says both, because the seam cannot tell them apart and a doctor may not guess.

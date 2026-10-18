@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.0.0",
+  "dataModelVersion": 1,
+  "id": "sess_198f9ae1-2659-40ed-a197-ab9575b5823f",
+  "title": "lab_plain_answer",
+  "agentMode": "vibe",
+  "workspacePaths": [
+    "/home/operator/project"
+  ],
+  "rootPaths": [
+    "/home/operator/project"
+  ],
+  "createdAt": "2026-10-18T06:32:57.631Z",
+  "lastModifiedAt": "2026-10-18T06:37:11.784Z",
+  "modelId": "qwen3-coder-next",
+  "autopilot": true,
+  "contextSnapshotModelDisplay": {
+    "modelId": "qwen3-coder-next",
+    "display": "qwen3-coder-next"
+  },
+  "semanticReviewEnabled": true,
+  "disableAutoCompaction": false,
+  "ftaEnabled": false,
+  "workflowsEnabled": false,
+  "specPlanEnabled": false,
+  "specWorkflow": "quick",
+  "specSkipClarificationEnabled": true,
+  "memoryConfig": {
+    "mode": "read_write",
+    "reflection": true
+  },
+  "memoryConfigSource": "explicit",
+  "status": "idle",
+  "_meta": {
+    "kiro": {
+      "settings": {
+        "workflows": {
+          "enabled": false
+        },
+        "goal": {
+          "enabled": false
+        },
+        "codeIntelligence": {
+          "enabled": true
+        },
+        "knowledge": {
+          "enabled": true
+        },
+        "thinking": {
+          "enabled": true
+        },
+        "largeToolOutputHandler": {
+          "enabled": true
+        },
+        "infraSafetyMonitor": {
+          "enabled": true
+        },
+        "workflowNotifications": {
+          "enabled": false,
+          "delivery": "steer"
+        },
+        "memory": {
+          "mode": "read_write",
+          "reflection": true
+        },
+        "memoryEnable": {
+          "enabled": true
+        }
+      },
+      "executionTarget": {
+        "kind": "local"
+      }
+    }
+  }
+}
