@@ -71,7 +71,7 @@ export function useWalkyComposer({
       }
       const label = aim?.label ?? t("walky.composer.toThisPane");
       if (body.length > WALKY_BODY_MAX) {
-        setNote({ tone: "danger", text: t("walky.composer.failed", { error: t("composer.draft.tooLong") }) });
+        setNote({ tone: "danger", text: t("walky.composer.failed", { error: t("walky.composer.tooLong") }) });
         return false;
       }
       setFollowed(null);

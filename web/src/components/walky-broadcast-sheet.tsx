@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useId, useRef, useState, type Ref } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import { fetchWalkyWho } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
+  isReachable,
   stateWord,
+  targetWord,
   verifiedWord,
   WALKY_BODY_MAX,
   wasTaken,
@@ -40,10 +42,10 @@ import {
 
 const ALL = "all";
 
-/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else the address. */
-function labelOf(reachable: readonly WalkyTarget[] | null, address: string): string {
-  const known = reachable?.find((r) => r.address === address);
-  return known === undefined ? address : `${known.label} (${address})`;
+/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else its {@link targetWord}. */
+function labelOf(listed: readonly WalkyTarget[] | null, address: string): string {
+  const known = listed?.find((r) => r.address === address);
+  return known === undefined ? targetWord(address) : `${known.label} (${address})`;
 }
 
 /** `reason count` pairs joined by ", ": the reasons are the bridge's own words, in its order, never translated. */
@@ -116,30 +118,37 @@ export function WalkyBroadcastSheet({
   const [target, setTarget] = useState(ALL);
   const [receipts, setReceipts] = useState<WalkyReceipt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reachable, setReachable] = useState<WalkyTarget[] | null>(null);
+  const [listed, setListed] = useState<WalkyTarget[] | null>(null);
   const [skipped, setSkipped] = useState<WalkySkipped[]>([]);
   const [refusals, setRefusals] = useState<WalkyRefusals | null>(null);
   const [confirming, setConfirming] = useState(false);
   const backRef = useRef<HTMLButtonElement>(null);
+  // Where focus goes once the question is gone. Its two buttons leave the DOM with it, and a focused
+  // node that leaves drops focus to the page behind the sheet, so the keyboard path would fall out:
+  // Back hands focus to "Send message", and an answered Send to what came of it.
+  const sendRef = useRef<HTMLButtonElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const receiptsRef = useRef<HTMLDivElement>(null);
+  const [focusNext, setFocusNext] = useState<"send" | "outcome" | null>(null);
 
   // A fresh look every time the sheet opens, and nothing carried over from the last message.
   useEffect(() => {
     if (!open) return;
     setReceipts(null);
     setError(null);
-    setReachable(null);
+    setListed(null);
     setSkipped([]);
     setRefusals(null);
     setConfirming(false);
     const abort = new AbortController();
     fetchWalkyWho(abort.signal).then(
       (who) => {
-        setReachable(who.targets);
+        setListed(who.targets);
         setSkipped(who.skipped);
         setRefusals(who.refusals);
         return who;
       },
-      () => setReachable(null),
+      () => setListed(null),
     );
     return () => abort.abort();
   }, [open]);
@@ -149,8 +158,28 @@ export function WalkyBroadcastSheet({
     if (confirming) backRef.current?.focus();
   }, [confirming]);
 
+  useEffect(() => {
+    if (focusNext === null) return;
+    const node = focusNext === "send" ? sendRef.current : error !== null ? errorRef.current : receiptsRef.current;
+    node?.focus({ preventScroll: true });
+    setFocusNext(null);
+  }, [focusNext, error]);
+
+  // A chosen machine that has left the crew (it is no longer in `members`) is not a target any more:
+  // the picker has no row for it, and an armed question about it is put away, so it cannot be answered
+  // for a target the picker no longer shows. The choice goes back to every machine, whose own count
+  // the next question names.
+  const gone = target !== ALL && !members.some((m) => m.id === target);
+  useEffect(() => {
+    if (!gone) return;
+    setTarget(ALL);
+    setConfirming(false);
+  }, [gone]);
+
   const covers = (memberId: string) => target === ALL || memberId === target;
-  const covered = reachable === null ? null : reachable.filter((r) => covers(r.memberId));
+  // The count and the question name only the panes a message can reach now: a lead keeps an
+  // unreachable member's last panes in `who`, and those do not take a message until it is back.
+  const covered = listed === null ? null : listed.filter((r) => covers(r.memberId) && isReachable(r));
   const reach = covered === null ? null : covered.length;
   const coveredSkipped = skipped.filter((s) => covers(s.memberId));
   const refused = refusalList(refusals);
@@ -158,6 +187,7 @@ export function WalkyBroadcastSheet({
   const body = text.trim();
   const tooLong = body.length > WALKY_BODY_MAX;
   const to = target === ALL ? ALL : `${target}/${ALL}`;
+  const tooLongId = useId();
 
   async function submit() {
     if (body === "" || tooLong || sending) return;
@@ -165,6 +195,7 @@ export function WalkyBroadcastSheet({
     setError(null);
     const result = await send(to, body);
     if (result === null) return;
+    setFocusNext("outcome");
     if (!result.ok) {
       setError(result.error);
       return;
@@ -186,10 +217,18 @@ export function WalkyBroadcastSheet({
               setConfirming(false);
             }}
             placeholder={t("walky.crew.textPlaceholder")}
+            aria-describedby={tooLong ? tooLongId : undefined}
             rows={4}
             className="min-h-24 w-full resize-none rounded-lg border border-border bg-background p-3 text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </label>
+        {/* Why Send is off: a disabled button says nothing by itself on a phone. Outside the label, so
+            it describes the field and does not become part of its name. */}
+        {tooLong && (
+          <p id={tooLongId} className="text-xs text-status-blocked">
+            {t("walky.composer.tooLong")}
+          </p>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.target")}</span>
           <Select
@@ -215,11 +254,14 @@ export function WalkyBroadcastSheet({
           <WalkyConfirm
             question={confirmQuestion(covered)}
             backRef={backRef}
-            onBack={() => setConfirming(false)}
+            onBack={() => {
+              setConfirming(false);
+              setFocusNext("send");
+            }}
             onSend={submit}
           />
         ) : (
-          <Button className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
+          <Button ref={sendRef} className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
             {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             {sending ? t("walky.crew.sending") : t("walky.crew.send")}
           </Button>
@@ -242,12 +284,22 @@ export function WalkyBroadcastSheet({
           </p>
         )}
         {error !== null && (
-          <p role="alert" className="text-sm text-status-blocked">
+          <p
+            ref={errorRef}
+            role="alert"
+            tabIndex={-1}
+            className="text-sm text-status-blocked outline-none"
+          >
             {t("walky.crew.failed", { error })}
           </p>
         )}
         {receipts !== null && (
-          <div data-slot="walky-receipts" className="flex flex-col gap-1">
+          <div
+            ref={receiptsRef}
+            data-slot="walky-receipts"
+            tabIndex={-1}
+            className="flex flex-col gap-1 outline-none"
+          >
             <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.receipts")}</span>
             {receipts.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("walky.crew.noReceipts")}</p>
@@ -256,7 +308,7 @@ export function WalkyBroadcastSheet({
                 {receipts.map((r, i) => (
                   <li key={`${r.target}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
                     {/* The target's own label (repo#branch) when the who list knows it, then its address. */}
-                    <span className="min-w-0 truncate font-medium">{labelOf(reachable, r.target)}</span>
+                    <span className="min-w-0 truncate font-medium">{labelOf(listed, r.target)}</span>
                     <span className={cn("text-xs first-letter:uppercase", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
                       {`${stateWord(r)} · ${verifiedWord(r)}`}
                     </span>

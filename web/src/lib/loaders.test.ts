@@ -1489,6 +1489,41 @@ describe("paneLoader and the walky talky list (M62)", () => {
     expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
 
+  it("asks no list for a pane on a crew member, which the lead answers only with a 400 in 1.23.0", async () => {
+    const asked: string[] = [];
+    server.use(http.get(/\/api\/pane\/[^/]+\/walky/, ({ request }) => (asked.push(request.url), HttpResponse.json({ messages: [fixtureWalkyAgent] }))));
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: new Request("http://localhost/pane/w1%3Ap1?h=badger") });
+    expect(asked).toEqual([]);
+    expect(data.walky).toBeNull();
+    // The lead's own pane still reads it.
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(asked).toHaveLength(1);
+  });
+
+  it("keeps the last list and its read count when the MIRROR read fails, so a card does not turn back into text", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const first = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(first.walky).toEqual([fixtureWalkyAgent]);
+    failPane();
+    const degraded = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(degraded.error).toBe(true);
+    expect(degraded.walky).toEqual([fixtureWalkyAgent]);
+    expect(degraded.walkyReads).toBeGreaterThanOrEqual(first.walkyReads ?? 0);
+  });
+
+  it("shows a device refused for want of pairing no kept message when the mirror read fails", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    (await import("./pairing")).markNotPaired();
+    failPane();
+    const refused = await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    expect(refused.error).toBe(true);
+    expect(refused.walky).toBeNull();
+  });
+
   it("counts each answered read, keeps the list's identity across a quiet poll, and does not count a failed one", async () => {
     setWalkyRows([fixtureWalkyAgent]);
     const { paneLoader } = await import("./loaders");

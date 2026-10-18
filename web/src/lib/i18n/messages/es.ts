@@ -2438,11 +2438,9 @@ export const es: Dictionary = {
   "walky.sheet.unavailable": "This machine does not keep messages yet.",
   "walky.sheet.reply": "Reply",
   "walky.sheet.replyAria": "Reply to {label}",
-  "walky.sheet.from": "{kind}: {label}",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Send options",
   "walky.composer.sendAsMessage": "Send as message",
-  "walky.composer.to": "Message to {label}",
   "walky.composer.toThisPane": "this pane",
   "walky.composer.replyTo": "Reply to {label}",
   "walky.composer.cancel": "Send as a plain reply again",
@@ -2451,6 +2449,7 @@ export const es: Dictionary = {
   "walky.composer.outcome": "Message to {label}: {state}",
   "walky.composer.dismiss": "Dismiss",
   "walky.composer.empty": "Write the message first.",
+  "walky.composer.tooLong": "A message holds at most 4,000 characters.",
   // The Crew page's broadcast.
   "walky.crew.open": "Message all agents",
   "walky.crew.title": "Message all agents",
@@ -2462,6 +2461,7 @@ export const es: Dictionary = {
   "walky.crew.send": "Send message",
   "walky.crew.sending": "Sending",
   "walky.crew.receipts": "Receipts",
+  "walky.crew.receiptAll": "every machine",
   "walky.crew.noReceipts": "The bridge answered with no receipts.",
   "walky.crew.failed": "Message not sent: {error}",
   "walky.crew.readOnly": "This device may not send messages.",

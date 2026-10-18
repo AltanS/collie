@@ -651,6 +651,11 @@ async function stalePane(paneId: string, scope: Scope, lines: number, outage = f
     lastSeenAt,
     stale,
     savedPane,
+    // The walky list the pane last had (M62), so a failed mirror read does not turn every card and
+    // tagged row back into plain text for one poll. The count stays too: nothing was read again. A
+    // device refused for want of pairing is shown no kept message, as it is shown no kept text.
+    walky: refused ? null : (lastWalky.get(key) ?? null),
+    walkyReads: walkyReadCounts.get(key) ?? 0,
   };
 }
 
@@ -698,6 +703,11 @@ const walkyReadCounts = new Map<string, number>();
  * route) stays `null`.
  */
 async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | undefined): Promise<WalkyRow[] | null> {
+  // A pane on a crew member: the lead reads this machine's lists only in 1.23.0 and answers `?host=`
+  // with a 400 (bridge/server.ts, WALKY_LOCAL_TEXT), so asking costs a request every poll and can
+  // only claim nothing. The phone is served by the lead, so a lead that learns to forward ships the
+  // web side of it in the same build.
+  if (scope.host !== undefined && scope.host !== "") return null;
   const key = paneKey(paneId, scope);
   try {
     const fresh = await fetchPaneWalky(paneId, scope, signal);

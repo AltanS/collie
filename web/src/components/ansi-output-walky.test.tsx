@@ -54,10 +54,11 @@ describe("the mirror's walky row", () => {
     expect(tagged(mirror("none").container)).toHaveLength(0);
   });
 
-  it("does not tag a body row that quotes a header, or an agent's own prose about one", () => {
+  it("does not tag prose that quotes a header mid-row, but does tag an indented header row whose id the log holds", () => {
     const text = `The header looks like ${HEADER} in the log\n  ${HEADER}`;
     const { container } = mirror([fixtureWalkyAgent], text);
-    // The second row has two leading spaces, which the prompt-prefix rule accepts; the prose row it does not.
+    // The second row opens with two spaces, which the prompt-prefix rule accepts (a body line the
+    // bridge escaped with one space reads the same way); the prose row has words before the bracket.
     expect(tagged(container).map((el) => el.textContent)).toEqual([`  ${HEADER}`]);
   });
 });

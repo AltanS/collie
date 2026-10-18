@@ -5,7 +5,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { CrewProvider } from "@/components/crew-provider";
 import { asJsonString, parseJsonObject } from "@/lib/json";
-import { type CrewData } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type CrewData, type HomeData } from "@/lib/loaders";
+import { markNotPaired } from "@/lib/pairing";
 import { fixtureCrewStatus, fixtureServers, recordedWalkyPosts } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
@@ -164,6 +165,44 @@ describe("Message all agents", () => {
       expect(recordedWalkyPosts()).toHaveLength(0);
     });
 
+    it("Back hands focus to Send message, so the keyboard path does not fall out of the sheet", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      await user.click(await within(dialog).findByRole("button", { name: "Back" }));
+      expect(within(dialog).getByRole("button", { name: "Send message" })).toHaveFocus();
+    });
+
+    it("hands focus to the receipts once Send is answered, inside the sheet", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await sendAndConfirm(user, dialog);
+      await within(dialog).findAllByRole("listitem");
+      const receipts = dialog.querySelector('[data-slot="walky-receipts"]');
+      await waitFor(() => expect(receipts).toHaveFocus());
+    });
+
+    it("hands focus to the error when no answer came", async () => {
+      whoWith();
+      server.use(http.post("/api/walky", () => HttpResponse.error()));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await sendAndConfirm(user, dialog);
+      const alert = await within(dialog).findByRole("alert");
+      await waitFor(() => expect(alert).toHaveFocus());
+    });
+
     it("posts once on Send", async () => {
       whoWith();
       const user = userEvent.setup();
@@ -175,6 +214,19 @@ describe("Message all agents", () => {
       await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
       expect(recordedWalkyPosts()[0]).toMatchObject({ to: "all", body: "Pause" });
       expect(within(dialog).queryByText(/^Message \d+ agents?/)).toBeNull();
+    });
+
+    it("leaves out the panes of a machine the lead cannot reach right now, from the count and the question", async () => {
+      // The lead's who keeps an unreachable member's last panes, each with the state `unreachable`.
+      const targets = WHO_TARGETS.map((target) => (target.memberId === "workshop" ? { ...target, state: "unreachable" } : target));
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets })));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      expect(await within(dialog).findByText("Agents reached: 1")).toBeInTheDocument();
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 1 agent on 1 machine?")).toBeInTheDocument();
     });
 
     it("says the count is not known when the who list could not be read, and still asks", async () => {
@@ -254,6 +306,69 @@ describe("Message all agents", () => {
     await sendAndConfirm(user, dialog);
     await waitFor(() => expect(ids).toHaveLength(2));
     expect(ids[1]).toBe(ids[0]);
+  });
+
+  describe("a device that may not send", () => {
+    /** The Crew page under a root route whose device the bridge does not let write. */
+    function renderReadOnlyCrew() {
+      const root: HomeData = {
+        bridge: "connected",
+        device: { enforced: true, device: "kiosk", authorized: false },
+        agents: [],
+        shellPanes: [],
+        workspaces: [],
+        tabs: [],
+        sessions: [],
+        servers: [],
+        ts: 0,
+        scope: {},
+        viewAll: false,
+        snoozedUntil: null,
+        update: undefined,
+        error: false,
+        authError: false,
+      };
+      const router = createMemoryRouter(
+        [
+          {
+            id: ROOT_ROUTE_ID,
+            path: "/",
+            loader: () => root,
+            children: [
+              {
+                path: "crew",
+                loader: () => ({ status: fixtureCrewStatus, error: false }),
+                element: withHeaderHost(<CrewProvider servers={fixtureServers}><CrewRoute /></CrewProvider>),
+              },
+            ],
+          },
+        ],
+        { initialEntries: ["/crew"] },
+      );
+      render(<RouterProvider router={router} />);
+    }
+
+    it("shows why the button is off in words a touch screen can read, not only in a tooltip", async () => {
+      renderReadOnlyCrew();
+      const button = await screen.findByRole("button", { name: "Message all agents" });
+      expect(button).toBeDisabled();
+      expect(screen.getByText("This device may not send messages.")).toBeVisible();
+      expect(button).toHaveAccessibleDescription("This device may not send messages.");
+    });
+
+    it("treats a device the bridge refused for want of pairing the same way", async () => {
+      markNotPaired();
+      renderCrew();
+      const button = await screen.findByRole("button", { name: "Message all agents" });
+      expect(button).toBeDisabled();
+      expect(screen.getByText("This device may not send messages.")).toBeVisible();
+    });
+
+    it("says nothing about it on a device that may send", async () => {
+      renderCrew();
+      expect(await screen.findByRole("button", { name: "Message all agents" })).toBeEnabled();
+      expect(screen.queryByText("This device may not send messages.")).toBeNull();
+    });
   });
 
   it("is not offered on a solo install, where the page has no crew to message", async () => {

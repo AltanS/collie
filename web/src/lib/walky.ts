@@ -87,6 +87,17 @@ export interface WalkyTarget {
   state: string;
 }
 
+/**
+ * The `state` a lead's `who` gives each pane of a member it cannot reach right now: the member keeps
+ * its last panes in the list, but a message to them does not arrive now (bridge/walky/crew.ts).
+ */
+export const WALKY_UNREACHABLE = "unreachable";
+
+/** Whether a message sent now could reach this target: every target but an unreachable member's. */
+export function isReachable(target: Pick<WalkyTarget, "state">): boolean {
+  return target.state !== WALKY_UNREACHABLE;
+}
+
 /** A shell pane the bridge never sends a message to (`GET /api/walky/who`, `skipped`). */
 export interface WalkySkipped {
   address: string;
@@ -187,24 +198,36 @@ export function mirrorHeaderId(row: string): string | null {
 
 // ── THE CROSS-CHECK ───────────────────────────────────────────────────────────
 
+/**
+ * How many messages the phone asks a pane's list for (`GET /api/pane/:id/walky?limit=`). The bridge
+ * answers the newest ones only, so a list this long may have older messages cut off.
+ */
+export const WALKY_LIST_LIMIT = 50;
+
 /** The pane's walky list, indexed. `null` where the list could not be read (an older bridge, a failed read). */
 export interface WalkyLog {
   rows: readonly WalkyRow[];
   byId: ReadonlyMap<string, WalkyRow>;
+  /**
+   * Whether the list is the pane's whole log. False when the bridge answered as many rows as were asked
+   * for: an older message may sit past the cut, so an id the list lacks proves nothing.
+   */
+  complete: boolean;
 }
 
 /** Index a list. Newest first stays the order of `rows`. */
-export function walkyLog(rows: readonly WalkyRow[]): WalkyLog {
+export function walkyLog(rows: readonly WalkyRow[], limit = WALKY_LIST_LIMIT): WalkyLog {
   const byId = new Map<string, WalkyRow>();
   for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row);
-  return { rows, byId };
+  return { rows, byId, complete: rows.length < limit };
 }
 
 /**
  * What the log says about an id a screen printed:
  * - `held`: the log holds it, so the card (or the row style) is earned and draws from `row`;
- * - `absent`: the list was read and does not hold it, so the text is only text, marked quietly;
- * - `unchecked`: the list could not be read, so nothing is claimed either way.
+ * - `absent`: the list was read whole and does not hold it, so the text is only text, marked quietly;
+ * - `unchecked`: the list could not be read, or was cut at the limit and lacks the id, so nothing is
+ *   claimed either way. A real message older than the newest {@link WALKY_LIST_LIMIT} is not marked.
  */
 export type Standing =
   | { standing: "held"; row: WalkyRow }
@@ -214,7 +237,8 @@ export type Standing =
 export function standingOf(log: WalkyLog | null, id: string): Standing {
   if (log === null) return { standing: "unchecked" };
   const row = log.byId.get(id);
-  return row === undefined ? { standing: "absent" } : { standing: "held", row };
+  if (row !== undefined) return { standing: "held", row };
+  return log.complete ? { standing: "absent" } : { standing: "unchecked" };
 }
 
 // ── ADDRESSING AND IDS ────────────────────────────────────────────────────────
@@ -281,6 +305,15 @@ export function verifiedWord(receipt: WalkyReceipt, signer?: string | null): str
 /** The machine that signed a message, as a row names it: its signer, else the sender's member id. */
 export function signerOf(row: Pick<WalkyMessage, "signer" | "from">): string | null {
   return row.signer ?? row.from.memberId;
+}
+
+/**
+ * A receipt's target as a row names it when no pane is known for it. The bare `all` is the line a
+ * broadcast writes for the crew leg before the members answer (bridge/walky/deliver.ts), and reads
+ * as "every machine"; any other address is shown as it is.
+ */
+export function targetWord(address: string): string {
+  return address === "all" ? t("walky.crew.receiptAll") : address;
 }
 
 /** Where a message stands, in words, with the bridge's reason when there is one. */
