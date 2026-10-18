@@ -25,7 +25,8 @@ describe("sunPathLimit", () => {
   });
 });
 
-describe("herdrSocketPaths", () => {
+// POSIX paths, like the shortXdgHome block below: the rig's Herdr runs on Linux and macOS only.
+describe.skipIf(process.platform === "win32")("herdrSocketPaths", () => {
   test("Herdr binds the API socket and the client socket in the session folder under the config home", () => {
     expect(herdrSocketPaths("/cfg", SESSION)).toEqual([
       "/cfg/herdr/sessions/collie-rig/herdr.sock",
