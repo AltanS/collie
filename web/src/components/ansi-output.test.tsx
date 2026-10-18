@@ -472,6 +472,45 @@ describe("mirror line wrapping", () => {
   });
 });
 
+// With wrapping off the screen is a grid. A CJK glyph falls back to a face whose advance is not two
+// cells (components/painted-cells.tsx), so outside tables too each one is held to two cells, or
+// every wall to its right drifts. Wrapping prose keeps its natural advances.
+describe("fixed-column terminal text", () => {
+  const text = `${ESC}[35m→ 1. 커피${ESC}[0m   │ details\n  2. 차      │ https://example.com\n`;
+
+  it("holds Hangul to two cells outside tables when wrapping is off", () => {
+    const { container } = render(<AnsiOutput text={text} wrap={false} query="커피" />);
+    const pre = container.querySelector("pre")!;
+    const cells = [...pre.querySelectorAll('[class~="w-[2ch]"]')];
+
+    expect(cells.map((cell) => cell.textContent).join("")).toBe("커피차");
+    expect(pre.textContent).toBe("→ 1. 커피   │ details\n  2. 차      │ https://example.com\n");
+    expect(pre.querySelector("[data-find-match]")!.textContent).toBe("커피");
+    expect(pre.querySelector("a")!.textContent).toBe("https://example.com");
+  });
+
+  it("keeps the underline on the wide Hangul inside a link", () => {
+    const { container } = render(
+      <AnsiOutput text="open https://example.com/커피 now" wrap={false} />,
+    );
+    const link = container.querySelector("a")!;
+    const cells = [...link.querySelectorAll<HTMLElement>('[class~="w-[2ch]"]')];
+
+    expect(link.textContent).toBe("https://example.com/커피");
+    expect(cells.map((cell) => cell.textContent)).toEqual(["커", "피"]);
+    // An underline does not propagate into an inline-block child, so each wide piece draws the
+    // link's decoration itself.
+    expect(link.className).toContain("underline");
+    for (const cell of cells) expect(cell.className).toContain("[text-decoration:inherit]");
+  });
+
+  it("keeps wrapping prose free of fixed-width cells", () => {
+    const { container } = render(<AnsiOutput text="한글 설명입니다." />);
+    expect(container.querySelector('[class~="w-[2ch]"]')).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toBe("한글 설명입니다.");
+  });
+});
+
 // Wrap is right for prose and wrong for a table, whose meaning is the column a character sits in
 // (lib/table-run.ts). So a table run pans inside its own scroller while everything around it keeps
 // wrapping. What a refactor would break silently is not the scroller — it is the mirror text around
