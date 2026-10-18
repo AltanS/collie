@@ -614,9 +614,66 @@ git ls-remote --tags --refs https://github.com/AltanS/collie | \
   sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 ```
 
+### Release lines
+
+Each machine is on one of two release lines. The default is **Stable**.
+
+- **Stable** takes final releases only, for example `1.23.0`.
+- **Edge** also takes Edge builds, for example `1.23.0-edge.2`. An Edge build is a GitHub
+  pre-release, cut from the same tree a few days before the final release. It reaches volunteers
+  first, so a regression is found before it reaches everybody.
+
+Set the line on the phone: **Settings → Updates → Release line**. The switch installs nothing. It
+saves the line and shows a receipt. The Updates card then offers what the new line offers, through
+the normal update screen.
+
+- On Edge, the offer is the newest build above the one you run, Edge builds and final releases
+  together, in the same major. A final release replaces its own Edge builds on both lines.
+- A build this machine rolled back from is never offered again, on either line.
+- On Edge, the push about a new build goes out at the next check, not in the next digest. It still
+  waits until 09:00 local time. Stable keeps the digest windows.
+
+**Back to Stable.** Switch to Stable on a machine that runs an Edge build, and the page shows one of
+three cases:
+
+1. A final release at or above your build is out. The Updates card offers it as a normal update.
+2. Your Edge build is ahead of every final release. The page offers two choices:
+   - **Go back now** installs the newest final release below your build, behind a confirm. It uses
+     the Stable build this machine kept, when there is one, and downloads it when there is not. If a
+     state file in your build cannot be read by that release, the page names the file before the
+     button.
+   - **Wait for Stable** keeps your build. No more Edge builds are offered, and the next final
+     release is offered the day it is out.
+3. You already run a final release. There is nothing to do.
+
+**Kept builds.** While a machine is on Edge, it keeps the live build, the previous build, and the
+last Stable build. The last Stable build is not pruned until the machine is back on Stable, so
+"Go back now" is a switch and not a download.
+
+**Roll back.** A rollback off an Edge build puts the machine on Stable and marks that build as
+rolled back from. This is true for **Roll back** on the phone and for `collie update --rollback`.
+
+**The crew follows the lead.** The lead's line is the crew's line. A member follows its lead to an
+Edge build when the lead is on Edge, and takes the lead's line for its own. A member steps down only
+when the lead rolled back or went back to Stable. Those are the only two cases where a member
+installs a lower version. The Crew page shows the line the members follow.
+
+**From the terminal.** The phone is where the line is set. Two flags exist for one run each:
+
+```bash
+collie update --line edge                     # resolve this one run on Edge; the saved line stays
+collie update --to-tag v1.22.6 --downgrade    # go down to a lower final release
+```
+
+`--to-tag` never takes a lower tag without `--downgrade`. It takes a higher Edge tag only on a
+machine on Edge. On a Herdr-managed install, both lines and the way back go through the same
+in-place update: the updater checks out the tag and writes the Edge suffix into the version files
+itself.
+
 ### Prereleases
 
-Stable installs do not receive prereleases. Opting into a prerelease tracks that major's prereleases
+Stable installs do not receive prereleases. Edge builds are the exception, on the Edge line (see
+[Release lines](#release-lines)). Opting into a prerelease tracks that major's prereleases
 until the final release arrives
 ([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md)):
 
