@@ -201,14 +201,15 @@ machine", or "not verified".
 
 The card appears only when the bridge's own log holds that message. A header that an agent merely
 prints stays plain text, with the quiet mark "no log record on this machine"
-([Troubleshooting](troubleshooting.md#walky-talky)). A message from another agent shows its body
-only once the pane read it with `collie walky inbox <id>`.
+([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from the bridge's log
+at once, also for a message from another agent that its pane has not read yet.
 
 Each receipt state shows the words in the table above, with the reason after "not sent" and
 "waiting in the inbox, not typed".
 
-- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. Each one
-  has a "Reply" button. An empty sheet says "No messages for this pane yet." A machine that cannot
+- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. A message
+  from an agent has a "Reply" button. A pane of a member has no Messages row, only the lead's own
+  panes have one. An empty sheet says "No messages for this pane yet." A machine that cannot
   keep messages says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".
   The text goes to this pane as a message from you. A line under the box shows "Message to" the pane
@@ -216,10 +217,11 @@ Each receipt state shows the words in the table above, with the reason after "no
   final word. Tap "Dismiss" to clear the line. A plain tap on Send still sends the text as before.
 - **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
-  "Message 5 agents on 2 machines?" with the count for that choice. Tap "Send" to send, or "Back".
-  The sheet lists the shell panes it skips. It shows "Agents reached" and one receipt per target.
-  A line "Not sent on this machine" counts the recent refusals per reason. A device that may not
-  send shows "This device may not send messages."
+  "Message 5 agents on 2 machines?" with the count for that choice. The count leaves out machines
+  the lead cannot reach. Tap "Send" to send, or "Back". The sheet lists the shell panes it skips.
+  It shows "Agents reached" and one receipt per target. The receipt for the whole broadcast reads
+  "every machine". A line "Not sent on this machine" counts the recent refusals per reason. A
+  device that may not send sees "This device may not send messages." under the button.
 
 ## Install the skill
 
