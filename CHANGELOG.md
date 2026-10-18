@@ -36,11 +36,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **Claude Code 2.1.302 is verified for the screen reader.** The harness lab walked its slash menu, read the Surface on 22 screens, made one probed send and one ask answer, and passed on 2026-10-17. The browser leg on the 1.22.6 release commit ran on 2.1.302 as well and passed all fifteen cases on the first tap. The journal reader stays verified on 2.1.296.
+- **Codex 0.163.0, omp 18.6.1 and OpenCode 1.19.3 are verified for the screen reader.** The harness lab ran each one through its slash walk, the Surface, one probed send and one ask answer, and all three passed on 2026-10-18. omp 18.10.4 and later stay provisional: their approval dialog adds a row for this session, and the card falls back to the raw view there. The journal readers stay on their earlier versions.
 
 ### Fixed
 
 - **The phone offers an update only once its release is published.** The release check reads each release's `collie-release.json`, and a tag whose file answers 404 is not offered yet, so the banner, the update sheet and the push wait until the release is out. `collie update` in that window says the release is not published yet, and the phone shows the same reason instead of a generic one. A slow or failed read still offers the update. Thanks @viniciosrab (#503).
 - **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
+- **The harness lab runs Codex, OpenCode and omp to the end.** Codex 0.163.0 no longer stops at once on a missing `CODEX_HOME`: the lab makes the folder, copies an API key login and trusts its one project. Codex, OpenCode and omp may now spend the send and ask turns, each run presses its own decline button, and omp gets a lab spec that signs in with an OpenRouter key from the environment.
+- **A lab pass commits when the profile already reaches the version.** The pass moves the verified-versions row alone then, and keeps the date a person wrote. A pass that cannot commit removes its branch and worktree, so the next try is not refused with "exists already".
 
 ## [1.22.6] - 2026-10-18
 

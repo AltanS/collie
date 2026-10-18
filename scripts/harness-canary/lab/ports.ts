@@ -16,7 +16,7 @@ import { loadKnownGaps } from "../known-gaps";
 import { beltCommands, operatorBelt, PHONE_TURN_CAP, runPhoneLeg, shippedBeltFromDisk, writeBeaconHooks, type PhoneFacts } from "./phone";
 import { ScratchBridge } from "./phone-bridge";
 import { PhoneClient } from "./phone-client";
-import { LabDeferred, LabInfraError, seedClaude, type SeedSource } from "./seed";
+import { LabDeferred, LabInfraError, loginEnv, prepareRun, seedClaude, type CodexSource, type SeedSource } from "./seed";
 import { realLiveness } from "./sweep";
 import { LabTmux, paneCommand } from "./tmux";
 import { isDialogScreen, SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact, type WalkFact } from "./verdict";
@@ -59,6 +59,7 @@ export function makeProject(dir: string): void {
 
 export interface RealOptions {
   readonly seedSource?: SeedSource;
+  readonly codexSource?: CodexSource;
   readonly minLoginMinutes?: number;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -196,8 +197,9 @@ export function realPorts(options: RealOptions = {}): LabPorts {
       if (Bun.which("npm") === null) throw new LabDeferred("no npm on PATH");
       if (Bun.which("git") === null) throw new LabDeferred("no git on PATH");
       makeProject(dirs.project);
-      // The login is checked here, before the claim: a token that is too old defers the run and costs nothing.
-      if (spec.seedsLogin) seedClaude(dirs.config, dirs.project, options.seedSource, options.minLoginMinutes);
+      // The folders, the config files and the login are made here, before the claim: a login that is not
+      // usable (a Claude token that is too old, no Codex API key, no OpenRouter key) defers the run and costs nothing.
+      prepareRun(spec, dirs, { seedSource: options.seedSource, minLoginMinutes: options.minLoginMinutes, codexSource: options.codexSource, env });
     },
 
     async install(spec, dirs, version, log): Promise<string> {
@@ -226,7 +228,8 @@ export function realPorts(options: RealOptions = {}): LabPorts {
       const counters = new LabCounters();
       try {
         const command = legs === "all" ? paneCommand(spec.env(dirs), binaryPath(dirs, spec), spec.startArgs(dirs)) : "exec sleep 86400";
-        await tmux.start(dirs.project, command, serverEnv(env));
+        // A key a harness signs in with goes into the tmux server's environment, never onto the command line.
+        await tmux.start(dirs.project, command, { ...serverEnv(env), ...loginEnv(spec, env) });
         log(`tmux server ${tmux.socket} started`);
         const runPhone = async (): Promise<{ phone?: PhoneFacts | null; phoneNote?: string }> => {
           if (!spec.phone || phonePlan === null) return {};
@@ -257,7 +260,7 @@ export function realPorts(options: RealOptions = {}): LabPorts {
         let sendNote = freeDialog ? "skipped: a dialog read free during the walk" : undefined;
         let askNote = sendNote;
         if (labProfile(spec.id, version, log) !== null && walkClean) {
-          const leg: LegEnv = { harness: spec.id, version, mux, pane, sendsDir: dirs.sends, project: dirs.project, counters, turns, log };
+          const leg: LegEnv = { harness: spec.id, version, mux, pane, sendsDir: dirs.sends, project: dirs.project, counters, turns, decline: spec.decline, log };
           const sent = await runSendLeg(leg);
           send = sent.fact;
           sendNote = sent.note;

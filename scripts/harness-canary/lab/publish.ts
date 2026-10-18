@@ -3,7 +3,9 @@
 // PASS: one commit on a branch `harness-lab/<harness>-<version>` in a scratch worktree the script
 // makes under `<lab root>/worktrees/`, from the repo path it is given. The commit touches two files and
 // no other: `web/src/lib/harness/verified-versions.json` (the harness's row) and the harness's profile
-// (the verified range, `verifiedThrough` and `verifiedOn`). The commit body is the run log. THE SCRIPT
+// (the verified range, `verifiedThrough` and `verifiedOn`). When the profile's range already reaches the
+// version, because a person moved it by hand before the lab ran, the commit moves the row alone.
+// The commit body is the run log. THE SCRIPT
 // NEVER PUSHES. A person reads the branch and merges it.
 //
 // FAIL: an issue written as files (a JSON file with the title, the label and the body, and the same
@@ -11,7 +13,7 @@
 // verdicts and the counters. `gh issue create` runs only when the caller passes `openIssue`, which the
 // ritual never does: a public issue is posted by a person, after Altan has seen the draft.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { asJsonObject, asJsonString, parseJson } from "../../../web/src/lib/json";
 import { withRecord } from "../ledger";
@@ -60,8 +62,9 @@ function once(text: string, from: string, to: string, what: string): string {
 /**
  * The profile text with its one verified range moved to `version` on `date`: the upper end of the
  * range (unless it is `*`), `verifiedThrough` and `verifiedOn`. Only those three strings change; the
- * layout of the file is kept. Throws when the profile has no single verified range or the version is
- * not newer than the one it holds.
+ * layout of the file is kept. A version the range already reaches (equal to `verifiedThrough`) leaves
+ * the text as it is: a person verified it by hand, and moving `verifiedOn` would rewrite their date.
+ * Throws when the profile has no single verified range or the version is older than the one it holds.
  */
 export function moveProfile(text: string, version: string, date: string): string {
   const root = asJsonObject(parseJson(text));
@@ -72,7 +75,8 @@ export function moveProfile(text: string, version: string, date: string): string
   const through = asJsonString(verified[0].verifiedThrough);
   const on = asJsonString(verified[0].verifiedOn);
   if (range === undefined || through === undefined || on === undefined) throw new Error("profile: the verified range is missing a field");
-  if (!newer(version, through)) throw new Error(`profile: ${version} is not newer than verifiedThrough ${through}`);
+  if (version === through) return text;
+  if (!newer(version, through)) throw new Error(`profile: ${version} is older than verifiedThrough ${through}`);
   const [low, high] = range.split(" - ");
   let out = text;
   if (high !== "*") out = once(out, `"range": "${range}"`, `"range": "${low ?? ""} - ${version}"`, "the range");
@@ -107,7 +111,7 @@ export interface PassResult {
 export const branchFor = (harness: string, version: string): string => `harness-lab/${harness}-${version}`;
 export const BODY_LINES = 160;
 
-export function commitMessage(input: PassInput): string {
+export function commitMessage(input: PassInput, profileMoved = true): string {
   const lines = input.log.split("\n");
   const body = lines.length > BODY_LINES ? [...lines.slice(0, BODY_LINES), `... ${String(lines.length - BODY_LINES)} more lines in the run log`] : lines;
   return [
@@ -115,7 +119,7 @@ export function commitMessage(input: PassInput): string {
     "",
     `The nightly harness lab ran ${input.harness} ${input.version} on ${input.date}.`,
     `Result: ${input.evidence}.`,
-    "This commit moves two files: the verified-versions row and the profile range.",
+    profileMoved ? "This commit moves two files: the verified-versions row and the profile range." : "This commit moves one file: the verified-versions row. The profile range already reaches this version.",
     "",
     "Run log:",
     "",
@@ -127,24 +131,39 @@ export function commitMessage(input: PassInput): string {
 export function publishPass(input: PassInput, git: Git = realGit): PassResult {
   const branch = branchFor(input.harness, input.version);
   const worktree = join(input.labRoot, "worktrees", `${input.harness}-${input.version}`);
-  const files = [LEDGER_REL, profileRel(input.harness)];
   must(git(input.repo, ["rev-parse", "--verify", "HEAD"]), "rev-parse HEAD");
   if (git(input.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).code === 0) throw new Error(`the branch ${branch} exists already`);
   if (existsSync(worktree)) throw new Error(`the worktree ${worktree} exists already`);
   mkdirSync(join(input.labRoot, "worktrees"), { recursive: true });
   must(git(input.repo, ["worktree", "add", "-b", branch, worktree, "HEAD"]), "worktree add");
 
+  try {
+    return commitPass(input, git, branch, worktree);
+  } catch (err) {
+    // A pass that cannot commit leaves no branch and no worktree: they would make the next try refuse with "exists already".
+    git(input.repo, ["worktree", "remove", "--force", worktree]);
+    git(input.repo, ["branch", "-D", branch]);
+    rmSync(worktree, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+function commitPass(input: PassInput, git: Git, branch: string, worktree: string): PassResult {
   const ledgerPath = join(worktree, LEDGER_REL);
-  const profilePath = join(worktree, files[1]!);
+  const profilePath = join(worktree, profileRel(input.harness));
   writeFileSync(ledgerPath, withRecord(readFileSync(ledgerPath, "utf8"), { agent: input.harness, version: input.version, verified: input.date, adapter: true, evidence: input.evidence }));
-  writeFileSync(profilePath, moveProfile(readFileSync(profilePath, "utf8"), input.version, input.date));
+  const profileBefore = readFileSync(profilePath, "utf8");
+  const profileAfter = moveProfile(profileBefore, input.version, input.date);
+  const profileMoved = profileAfter !== profileBefore;
+  if (profileMoved) writeFileSync(profilePath, profileAfter);
+  const files = profileMoved ? [LEDGER_REL, profileRel(input.harness)] : [LEDGER_REL];
 
   must(git(worktree, ["add", "--", ...files]), "add");
   const staged = must(git(worktree, ["diff", "--cached", "--name-only"]), "diff --cached").split("\n").filter((line) => line.length > 0);
   if (staged.length !== files.length || !files.every((file) => staged.includes(file))) throw new Error(`the pass commit must touch only ${files.join(" and ")}, and it staged: ${staged.join(", ")}`);
 
   const messageFile = join(input.labRoot, "worktrees", `${input.harness}-${input.version}.message`);
-  writeFileSync(messageFile, commitMessage(input));
+  writeFileSync(messageFile, commitMessage(input, profileMoved));
   // A data-only commit: the version guard of the pre-commit hook asks for a CHANGELOG bullet on a
   // functional change, and this one moves a ledger row and a range. The lint guard still runs.
   must(

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LabDeferred, runState, seedClaude, withoutRefresh, type SeedSource } from "./seed";
+import { harnessSpec, runDirs } from "./harnesses";
+import { codexLoginText, LabDeferred, loginEnv, openrouterKey, prepareRun, runState, seedClaude, seedCodex, withoutRefresh, type SeedSource } from "./seed";
 
 let dirs: string[] = [];
 afterEach(() => {
@@ -67,5 +68,86 @@ describe("the Claude login copy", () => {
     expect(state.projects["/lab/project"].hasTrustDialogAccepted).toBe(true);
     expect(state.fullscreenUpsellSeenCount).toBe(3);
     expect(state.theme).toBeUndefined();
+  });
+});
+
+const apiKeyLogin = JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: "sk-test-not-real" });
+const chatgptLogin = JSON.stringify({ auth_mode: "chatgpt", OPENAI_API_KEY: null, tokens: { id_token: "i", access_token: "a", refresh_token: "r" } });
+
+function codexSource(text: string | null) {
+  const authFile = join(temp(), "auth.json");
+  if (text !== null) writeFileSync(authFile, text);
+  return { authFile };
+}
+
+describe("the Codex login copy", () => {
+  test("an API key login is copied as it is", () => {
+    expect(codexLoginText(apiKeyLogin)).toBe(apiKeyLogin);
+  });
+
+  test("a ChatGPT login is refused, because a refresh in the lab would turn the real refresh token over", () => {
+    expect(() => codexLoginText(chatgptLogin)).toThrow(LabDeferred);
+    expect(() => codexLoginText(chatgptLogin)).toThrow(/refresh token/);
+  });
+
+  test("a login file that holds a token beside a key is refused too", () => {
+    expect(() => codexLoginText(JSON.stringify({ OPENAI_API_KEY: "sk-test-not-real", tokens: { refresh_token: "r" } }))).toThrow(LabDeferred);
+  });
+
+  test("a file that is not JSON, an empty key and a missing file defer the run", () => {
+    expect(() => codexLoginText("not json")).toThrow(LabDeferred);
+    expect(() => codexLoginText(JSON.stringify({ OPENAI_API_KEY: "" }))).toThrow(LabDeferred);
+    expect(() => seedCodex(join(temp(), "home"), codexSource(null))).toThrow(/no Codex login/);
+  });
+
+  test("the copy lands in CODEX_HOME, and a refused login writes nothing", () => {
+    const home = join(temp(), "home");
+    expect(() => seedCodex(home, codexSource(chatgptLogin))).toThrow(LabDeferred);
+    expect(existsSync(join(home, "auth.json"))).toBe(false);
+    seedCodex(home, codexSource(apiKeyLogin));
+    expect(readFileSync(join(home, "auth.json"), "utf8")).toBe(apiKeyLogin);
+    // POSIX only, as an inline check: Windows has no file modes, and a new skip would break its budget.
+    if (process.platform !== "win32") expect(statSync(join(home, "auth.json")).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("the OpenRouter key of an omp run", () => {
+  const dotenv = (text: string): string => {
+    const file = join(temp(), ".env");
+    writeFileSync(file, text);
+    return file;
+  };
+
+  test("the lab's own environment wins", () => {
+    expect(openrouterKey({ OPENROUTER_API_KEY: "sk-or-v1-from-env", COLLIE_RIG_KEY_FILE: dotenv("OPENROUTER_API_KEY=sk-or-v1-from-file\n") })).toBe("sk-or-v1-from-env");
+  });
+
+  test("the dotenv file named by COLLIE_RIG_KEY_FILE gives the key, with or without export and quotes", () => {
+    expect(openrouterKey({ COLLIE_RIG_KEY_FILE: dotenv("OTHER=1\nOPENROUTER_API_KEY=sk-or-v1-plain\n") })).toBe("sk-or-v1-plain");
+    expect(openrouterKey({ COLLIE_RIG_KEY_FILE: dotenv('export OPENROUTER_API_KEY="sk-or-v1-quoted"\n') })).toBe("sk-or-v1-quoted");
+  });
+
+  test("no key, a missing file and a file without the name each defer the run", () => {
+    expect(() => openrouterKey({})).toThrow(LabDeferred);
+    expect(() => openrouterKey({ COLLIE_RIG_KEY_FILE: join(temp(), "nope") })).toThrow(/does not exist/);
+    expect(() => openrouterKey({ COLLIE_RIG_KEY_FILE: dotenv("OTHER=1\n") })).toThrow(/no OPENROUTER_API_KEY/);
+  });
+
+  test("only an omp run signs in through the environment", () => {
+    const env = { OPENROUTER_API_KEY: "sk-or-v1-from-env" };
+    expect(loginEnv(harnessSpec("omp"), env)).toEqual({ OPENROUTER_API_KEY: "sk-or-v1-from-env" });
+    for (const id of ["claude", "codex", "opencode", "pi"]) expect(loginEnv(harnessSpec(id), env)).toEqual({});
+  });
+});
+
+describe("prepareRun", () => {
+  test("a run that cannot sign in defers before anything is spent", () => {
+    const run = runDirs(join(temp(), "codex-0.163.0"));
+    expect(() => prepareRun(harnessSpec("codex"), run, { codexSource: codexSource(null) })).toThrow(LabDeferred);
+    expect(() => prepareRun(harnessSpec("omp"), runDirs(join(temp(), "omp-18.12.1")), { env: {} })).toThrow(LabDeferred);
+  });
+
+  test("a harness with no login and no folder needs nothing", () => {
+    expect(() => prepareRun(harnessSpec("pi"), runDirs(join(temp(), "pi-1.3.0")))).not.toThrow();
   });
 });

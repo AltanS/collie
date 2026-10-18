@@ -153,13 +153,26 @@ bun scripts/harness-canary/watch.ts              # the same lab, for an installe
 ```
 
 **The feeds.** Claude Code and Codex use the npm dist-tag `latest`. pi and opencode use the latest GitHub release.
-A feed is a plain HTTPS GET with no token.
+A feed is a plain HTTPS GET with no token. omp has a lab spec but no feed, so the nightly run never picks it.
+Name its version by hand: `--version omp=18.12.1`. `watch.ts` runs it for an installed omp that is newer than the ledger.
 
 **One run.** The lab installs the binary at that version with `npm install` into its own folder, never global.
 It starts a throwaway tmux server with `tmux -f /dev/null -L harness-lab-<pid>`. The person's tmux server is never touched.
 Claude gets an isolated `CLAUDE_CONFIG_DIR` under `~/.cache/collie-lab/harness-lab/<harness>-<version>/`.
 Claude starts with `--strict-mcp-config` and an empty MCP config, so no MCP server of the person runs.
+Every other harness gets a `HOME` of its own in that folder. The lab makes the folders it names before the start:
+Codex 0.163.0 stops at once, with status 1, when `CODEX_HOME` points at a folder that does not exist.
 The lab deletes that folder at the end.
+
+| harness  | what the lab writes before the start                                          | how it signs in                                                   | how a command asks first                           | the button it presses |
+| -------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------- | --------------------- |
+| claude   | the login copy, `.claude.json`, an empty MCP config                           | the OAuth file, with no refresh token                             | `--permission-mode default`                        | No                    |
+| codex    | `CODEX_HOME`, `auth.json`, `config.toml` that trusts the one project folder   | a copy of `~/.codex/auth.json`, only when it is an API key login | `-a on-request -s read-only`, the person reviews   | No                    |
+| opencode | `opencode-ask.json` with `permission` ask for bash and edit                   | none: its default model is free                                   | `OPENCODE_CONFIG` names that file                  | Reject                |
+| omp      | `config.yml` with `setupVersion` and the update check off                     | `OPENROUTER_API_KEY` in the tmux server's environment, never on a command line or in a file | `--approval-mode always-ask` | Deny                  |
+
+The omp key comes from the lab's own `OPENROUTER_API_KEY`, or from the dotenv file `COLLIE_RIG_KEY_FILE` names, as the browser rig reads it.
+A login that is missing or unusable defers the run before the claim: nothing was spent and no row is written.
 
 1. The walk. The lab types `/` and reads the whole slash menu.
    It takes each command on the safe list in `slash-commands.json` and types it.
@@ -195,6 +208,8 @@ The lab refuses a `--repo` under `~/apps` and a checkout with a detached HEAD.
 **What a pass leaves.** One commit on the branch `harness-lab/<harness>-<version>`, in the lab clone.
 A scratch worktree sits under `~/.cache/collie-lab/harness-lab/worktrees/`.
 The commit touches two files: `web/src/lib/harness/verified-versions.json` and the profile's verified range.
+When a person already moved the profile's range to that version, it touches the first file alone.
+A pass that cannot commit removes its branch and its scratch worktree, and settles the row as `failed`.
 The run log is the commit body, and the body states the real send and ask results.
 The script never pushes. A person reads the branch and merges it.
 A pass whose commit fails writes a `failed` row with the reason, not a `pass` row.
@@ -272,7 +287,9 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
 - Time: about one minute of machine time. The first live run on Claude 2.1.301 took 49 seconds.
   It did an npm install, read 98 menu commands, sent 19 safe commands and made three model turns.
   The phone leg adds about two minutes.
-- Model turns: at most four, on the person's Claude subscription. The plan uses three: the send, the ask request and what Claude does after a No.
+- Model turns: at most four. The plan uses three: the send, the ask request and what the harness does after a No.
+  Claude spends them on the person's subscription, Codex on the person's OpenAI API key, omp on the OpenRouter key.
+  OpenCode spends none that cost money: its default model is free.
   A harness without a profile uses none. The phone leg adds at most 14 more. A scenario that would pass that cap is `not-reached`. The ritual's own `claude -p` session is extra: Sonnet, at most 25 turns.
 - Keys: the lab presses about 150 keys. Most of them are Down presses that read the menu.
 - Network: the feed reads, and one npm install of about 250 MB.
@@ -292,6 +309,10 @@ The lab copies `~/.claude/.credentials.json` into the isolated folder with the r
 A refresh inside the lab would rotate the person's real refresh token and could log them out.
 The copy has only the access token. The lab refuses to start when that token has less than 25 minutes left.
 A live Claude session refreshes it.
+
+Codex gets a copy of `~/.codex/auth.json` only when it is an API key login. A ChatGPT login holds a refresh token, and the lab
+refuses it for the same reason: the run is deferred and costs nothing. The key has nothing to turn over.
+The omp key never touches the disk of the run. It sits in the environment of the lab's tmux server.
 
 The copy must never outlive the run. A SIGTERM, a SIGINT or an uncaught error deletes the run folder first.
 Then it stops the tmux server and writes a `failed` row. A SIGKILL that follows finds no copy.

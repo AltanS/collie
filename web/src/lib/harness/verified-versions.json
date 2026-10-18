@@ -15,11 +15,11 @@
       }
     },
     "codex": {
-      "version": "0.159.2",
-      "verified": "2026-10-01",
+      "version": "0.163.0",
+      "verified": "2026-10-18",
       "how": "canary",
       "adapter": true,
-      "evidence": "canary run 20261001T135013Z: idle, drafts, sends, journal, narrow pass",
+      "evidence": "harness lab 2026-10-18 on codex 0.163.0: walk, Surface on 4 screens, one probed send (sent), one ask answer (sent, declined file made: false); 3 model turns",
       "journal": {
         "version": "0.159.2",
         "verified": "2026-10-01",
@@ -41,11 +41,11 @@
       }
     },
     "omp": {
-      "version": "18.4.10",
-      "verified": "2026-10-02",
-      "how": "capture",
+      "version": "18.6.1",
+      "verified": "2026-10-18",
+      "how": "canary",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"OMP 18.4.10 modal corpus (captured 2026-10-02, oh-my-pi `omp` v18.4.10)\", the boxed `/resume` picker in four states plus its no-match screen, `/model`, `/settings`, `/tree` and an idle composer; the Ask tool and tool-approval dialogs on 18.4.10 (`omp--v18-4-ask-*.txt`, `omp--v18-4-approval-*.txt`, probed live 2026-10-02); the compact `/switch` model picker in 23 states (`omp--v18-4-switch*.txt`, walks probed live without Enter 2026-10-02) and, for the older text-keycap forms, 17.2.12 (§ \"omp corpus\") and 18.1.17 (§ \"OMP tool-approval corpus\")",
+      "evidence": "harness lab 2026-10-18 on omp 18.6.1: walk, Surface on 4 screens, one probed send (sent), one ask answer (sent, declined file made: false); 2 model turns",
       "journal": {
         "version": "18.1.19",
         "verified": "2026-09-30",
@@ -81,11 +81,11 @@
       }
     },
     "opencode": {
-      "version": "1.18.33",
-      "verified": "2026-09-30",
+      "version": "1.19.3",
+      "verified": "2026-10-18",
       "how": "canary",
       "adapter": true,
-      "evidence": "canary run 20260930T135314Z: idle, drafts, sends, journal, narrow, start-exit pass",
+      "evidence": "harness lab 2026-10-18 on opencode 1.19.3: walk, Surface on 4 screens, one probed send (sent), one ask answer (sent, declined file made: false); 3 model turns",
       "journal": {
         "version": "1.18.33",
         "verified": "2026-09-30",

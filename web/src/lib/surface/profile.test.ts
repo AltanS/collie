@@ -368,7 +368,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     binary: "opencode",
     versionOutput: "1.19.2",
     version: "1.19.2",
-    above: "1.19.2",
+    above: "1.19.4",
     takes: [
       { anchor: "top", row: "  ┃" },
       { anchor: "prompt", row: "  ┃  hello there", draft: "hello there" },
