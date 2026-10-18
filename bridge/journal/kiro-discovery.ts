@@ -12,32 +12,36 @@
 // What has to agree before a session is returned:
 //  - exactly one foreground process looks like the Kiro TUI, by its argv;
 //  - the OS (the injected probe) says that pid is alive now with the same argv shape;
-//  - exactly one lock in a complete walk names that pid, taken after the process started;
+//  - exactly one lock under the roots names that pid, taken after the process started, in a scan
+//    that saw every session folder;
 //  - the source's own resolve lands on that very log;
 //  - the lock and the process are unchanged when checked again after resolve.
-// The walk itself is KiroSessionTree's (kiro-sessions.ts), shared with resolution.
 
+import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord } from "./cache-probe.ts";
 import { containedRealpath, readSmallFile } from "./files.ts";
-import { KIRO_LOG_NAME, type KiroSessionTree } from "./kiro-sessions.ts";
+import { isKiroSessionId, KIRO_LOG_NAME } from "./kiro-sessions.ts";
 import type { AgentSessionRef, DiscoverHints, ProcessIdentity, ProcessIdentityProbe, TranscriptSource } from "./types.ts";
 
 const MAX_PID = 4194304;
 const MAX_HINT_PROCESSES = 64;
 const MAX_LOCK_BYTES = 4096;
 const CLOCK_MARGIN_MS = 2000;
+/** Folder entries one lock scan may list, across every root and bucket. A scan cut short finds nothing. */
+const MAX_SCAN_ENTRIES = 8192;
 
 interface Lock {
   pid: number;
   startedAt: number;
 }
 
-/** A session folder whose lock names the pane's TUI. */
+/** A session folder whose lock names the pane's TUI, with the root it was found under. */
 interface Candidate {
   readonly id: string;
   readonly path: string;
+  readonly root: string;
   readonly lock: Lock;
 }
 
@@ -59,13 +63,10 @@ function kiroArgv(argv: readonly string[]): boolean {
   return /(?:^|[/\\])kiro-cli[/\\]tui\.js$/.test(argv[at] ?? "");
 }
 
-/**
- * The lock in a session folder, or null. The folder came from the walk, which found a regular
- * `.lock` there; the read itself refuses a link, a non-file and an oversized file.
- */
-async function readLock(session: string): Promise<Lock | null> {
-  const path = join(session, ".lock");
-  if ((await containedRealpath(path, session)) !== path) return null;
+/** The lock in a session folder under `root`, or null when there is none or it is not a lock. */
+async function readLock(session: string, root: string): Promise<Lock | null> {
+  const path = await containedRealpath(join(session, ".lock"), root);
+  if (path === null) return null;
   const content = await readSmallFile(path, MAX_LOCK_BYTES);
   if (content === null) return null;
   let raw: JsonObject | null;
@@ -99,29 +100,38 @@ async function liveTui(processes: ProcessIdentityProbe, pid: number): Promise<Pr
   return found !== null && kiroArgv(found.argv) ? found : null;
 }
 
-/** The one session whose lock `pid` holds, or null when there is none, several, or the walk was cut short. */
-async function onlyLockOf(tree: KiroSessionTree, pid: number, live: ProcessIdentity): Promise<Candidate | null> {
-  const walk = tree.walk();
+/**
+ * The one session whose lock `pid` holds, or null when there is none, several, or the scan reached
+ * its entry limit. Every session is scanned, never only a --resume-id in the TUI's argv: the argv
+ * keeps the session it started with after a /sessions switch moves the lock.
+ */
+async function onlyLockOf(roots: readonly string[], pid: number, live: ProcessIdentity): Promise<Candidate | null> {
+  let left = MAX_SCAN_ENTRIES;
   let found: Candidate | null = null;
-  for await (const bucket of walk.buckets()) {
-    // Every session is scanned, never only a --resume-id in the TUI's argv: the argv keeps the
-    // session it started with after a /sessions switch moves the lock.
-    for await (const session of walk.lockedSessions(bucket)) {
-      const lock = await readLock(session.path);
-      if (lock?.pid !== pid || !current(lock, live)) continue;
-      if (found !== null) return null;
-      found = { id: session.id, path: session.path, lock };
+  for (const root of roots) {
+    for (const bucket of await readdir(root).catch(() => [])) {
+      const sessions = await readdir(join(root, bucket)).catch(() => []);
+      left -= 1 + sessions.length;
+      if (left < 0) return null;
+      for (const id of sessions) {
+        if (!isKiroSessionId(id)) continue;
+        const path = join(root, bucket, id);
+        const lock = await readLock(path, root);
+        if (lock?.pid !== pid || !current(lock, live)) continue;
+        if (found !== null) return null;
+        found = { id, path, root, lock };
+      }
     }
   }
-  return walk.complete ? found : null;
+  return found;
 }
 
 /**
- * Discovery for one Kiro journal. `tree` is the same walker the source resolves through, and
- * `processes` is how the OS is asked about a pid (bridge/proc-identity.ts on Linux).
+ * Discovery for one Kiro journal: it scans `roots`, the source's own, and checks its answer through
+ * the source's resolve. `processes` is how the OS is asked about a pid (bridge/proc-identity.ts on Linux).
  */
 export function createKiroDiscovery(
-  tree: KiroSessionTree,
+  roots: readonly string[],
   source: TranscriptSource,
   processes: ProcessIdentityProbe,
 ): (cwd: string, hints?: DiscoverHints) => Promise<AgentSessionRef | null> {
@@ -139,19 +149,19 @@ export function createKiroDiscovery(
     const live = await liveTui(processes, pid);
     if (live === null) return null;
     try {
-      const candidate = await onlyLockOf(tree, pid, live);
+      const candidate = await onlyLockOf(roots, pid, live);
       if (candidate === null) return null;
       const ref: AgentSessionRef = { kind: "id", value: candidate.id };
       // The same ID in another bucket or root must not resolve to some other transcript
       // through the source's cache or its root order.
-      if ((await source.resolve(ref)) !== join(candidate.path, KIRO_LOG_NAME)) return null;
-      const again = await readLock(candidate.path);
+      const log = await containedRealpath(join(candidate.path, KIRO_LOG_NAME), candidate.root);
+      if (log === null || (await source.resolve(ref)) !== log) return null;
+      const again = await readLock(candidate.path, candidate.root);
       const alive = await liveTui(processes, pid);
       if (again === null || alive === null || alive.token !== live.token || again.pid !== pid ||
           again.startedAt !== candidate.lock.startedAt || !current(again, alive)) return null;
       return ref;
     } catch {
-      // An incomplete walk cannot establish uniqueness, even if a match was seen.
       return null;
     }
   };

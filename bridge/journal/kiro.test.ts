@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { appendFile, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createKiroReducer, kiroJournal, parseKiroTranscript } from "./kiro.ts";
-import { KiroSessionTree } from "./kiro-sessions.ts";
 import { KIRO_BUCKET, KIRO_FIXTURES, kiroSandbox, NO_PROCESS_IDENTITY, readKiroFixture, removeKiroSandboxes, writeKiroSession } from "./kiro-fixtures.ts";
 import { parseWith, unknownCount } from "./reduce.ts";
 import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
@@ -209,17 +208,15 @@ describe("Kiro contained filesystem source", () => {
     expect(found).toBeNull();
   });
 
-  test("newline-ended IDs and bucket names are refused even when matching directories exist", async () => {
-    // Given: real directories that a regular expression's dollar anchor can match before a newline.
+  test("a newline-ended ID is refused even when a matching folder exists", async () => {
+    // Given: a real session folder whose name a regular expression's dollar anchor can match before a newline.
     const base = await kiroSandbox();
     const root = join(base, "sessions");
     await writeKiroSession(root, `${say("u", "Sample.")}\n`, "id\n");
-    await writeKiroSession(root, `${say("u", "Sample.")}\n`, ID, `${KIRO_BUCKET}\n`);
-    const source = journal([root]).source;
-    // When: resolution encounters those names.
-    expect(await source.resolve({ kind: "id", value: "id\n" })).toBeNull();
-    // Then: neither shape is admitted as a safe filesystem segment.
-    expect(await source.resolve({ kind: "id", value: ID })).toBeNull();
+    // When: resolution is asked for that name.
+    const found = await journal([root]).source.resolve({ kind: "id", value: "id\n" });
+    // Then: it is not admitted as a safe path component.
+    expect(found).toBeNull();
   });
 
   test("a path ref never resolves; only an opaque ID names a Kiro session", async () => {
@@ -233,57 +230,15 @@ describe("Kiro contained filesystem source", () => {
     expect(found).toBeNull();
   });
 
-  test("missing metadata, a wrong identity or a malformed folder list do not resolve", async () => {
-    // Given: a log with a malformed or mismatched existence marker.
-    const base = await kiroSandbox();
-    const root = join(base, "sessions");
-    await writeKiroSession(root, `${say("u", "Sample.")}\n`, ID);
-    const metadata = join(root, KIRO_BUCKET, ID, "session.json");
-    const source = journal([root]).source;
-    // When: the marker cannot establish the session's identity.
-    const broken = ["{partial", JSON.stringify({ id: OTHER_ID, workspacePaths: [] }), JSON.stringify({ id: ID, workspacePaths: [1] }), JSON.stringify({ id: ID })];
-    for (const data of broken) {
-      await writeFile(metadata, data);
-      expect(await source.resolve({ kind: "id", value: ID })).toBeNull();
-    }
-    await rm(metadata);
-    // Then: messages.jsonl alone is not a session.
-    expect(await source.resolve({ kind: "id", value: ID })).toBeNull();
-  });
-
-  test("an unknown schemaVersion still resolves and is logged once", async () => {
-    // Given: two sessions whose metadata carries a schema version this reader has not seen.
-    const base = await kiroSandbox();
-    const root = join(base, "sessions");
-    const path = await writeKiroSession(root, `${say("u", "Sample.")}\n`, ID);
-    const other = await writeKiroSession(root, `${say("v", "Other.")}\n`, OTHER_ID);
-    for (const id of [ID, OTHER_ID]) {
-      await writeFile(join(root, KIRO_BUCKET, id, "session.json"), JSON.stringify({ id, schemaVersion: "9.0.0", workspacePaths: [] }));
-    }
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      // When: one source resolves both sessions.
-      const source = journal([root]).source;
-      const first = await source.resolve({ kind: "id", value: ID });
-      const second = await source.resolve({ kind: "id", value: OTHER_ID });
-      // Then: both logs are read, and the new version is named in one log line.
-      expect(first).toBe(path);
-      expect(second).toBe(other);
-      expect(warn.mock.calls.filter(([line]) => String(line).includes('"9.0.0"'))).toHaveLength(1);
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  test.each(["bucket", "session", "metadata", "log"])("refuses an escaping %s symlink", async (level) => {
+  test.each(["bucket", "session", "log"])("refuses an escaping %s symlink", async (level) => {
     // Given: one session tree symlinked outside its configured root.
     const base = await kiroSandbox();
     const root = join(base, "sessions");
     const outside = join(base, "outside");
     const original = await writeKiroSession(root, `${say("u", "Inside.")}\n`, ID);
     const external = await writeKiroSession(outside, `${say("u", "Outside.")}\n`, ID);
-    const local = level === "bucket" ? join(root, KIRO_BUCKET) : level === "session" ? join(root, KIRO_BUCKET, ID) : level === "metadata" ? join(root, KIRO_BUCKET, ID, "session.json") : original;
-    const target = level === "bucket" ? join(outside, KIRO_BUCKET) : level === "session" ? join(outside, KIRO_BUCKET, ID) : level === "metadata" ? join(outside, KIRO_BUCKET, ID, "session.json") : external;
+    const local = level === "bucket" ? join(root, KIRO_BUCKET) : level === "session" ? join(root, KIRO_BUCKET, ID) : original;
+    const target = level === "bucket" ? join(outside, KIRO_BUCKET) : level === "session" ? join(outside, KIRO_BUCKET, ID) : external;
     // The real entry moves out of the root, since any plain folder name is a candidate bucket.
     await rename(local, join(base, "saved"));
     await symlink(target, local);
@@ -321,18 +276,6 @@ describe("Kiro contained filesystem source", () => {
     expect(await source.resolve({ kind: "id", value: ID })).toBeNull();
   });
 
-  test("a log symlink into a sibling session is refused even inside the configured root", async () => {
-    // Given: two sessions inside one root.
-    const { root, path } = await sourceFixture(`${say("u", "First.")}\n`);
-    const sibling = await writeKiroSession(root, `${say("u", "Sibling.")}\n`, OTHER_ID);
-    await rename(path, `${path}-saved`);
-    await symlink(sibling, path);
-    // When: the original pane resolves its ID.
-    const found = await journal([root]).source.resolve({ kind: "id", value: ID });
-    // Then: parent-root containment alone does not cross-wire sibling content.
-    expect(found).toBeNull();
-  });
-
   test("a sub-agent's own history is never read with the parent's or resolved as a session", async () => {
     // Given: a parent and a sub-agent history in its sub-executions folder.
     const { source, root, path } = await sourceFixture(`${say("parent", "Parent speech.")}\n`);
@@ -363,78 +306,6 @@ describe("Kiro contained filesystem source", () => {
       for (const line of read.lines) entries.push(...reducer.push(line).added);
       // Then: every live snapshot agrees with the same bounded whole-log reducer.
       expect(entries).toEqual(adapter.parse((await source.load(path)).text));
-    }
-  });
-});
-
-describe("KiroSessionTree roots", () => {
-  /** Every bucket one walk of `tree` yields, and whether the walk finished. */
-  async function walkBuckets(tree: KiroSessionTree): Promise<{ buckets: { root: string; path: string }[]; complete: boolean }> {
-    const walk = tree.walk();
-    const buckets: { root: string; path: string }[] = [];
-    for await (const bucket of walk.buckets()) {
-      buckets.push({ root: bucket.root, path: bucket.path });
-      for await (const _session of walk.lockedSessions(bucket)) continue;
-    }
-    return { buckets, complete: walk.complete };
-  }
-
-  test("only the first 32 configured roots are walked", async () => {
-    // Given: a bucket in the 32nd configured root and another in the 33rd.
-    const base = await kiroSandbox();
-    const absent = Array.from({ length: 31 }, (_v, i) => join(base, `absent-${i}`));
-    const thirtySecond = join(base, "thirty-second");
-    const later = join(base, "later");
-    await mkdir(join(thirtySecond, KIRO_BUCKET), { recursive: true });
-    await mkdir(join(later, KIRO_BUCKET), { recursive: true });
-    // When: one walk runs over all 33.
-    const { buckets } = await walkBuckets(new KiroSessionTree([...absent, thirtySecond, later]));
-    // Then: the 32nd root is walked and the 33rd is not.
-    expect(buckets).toEqual([{ root: thirtySecond, path: join(thirtySecond, KIRO_BUCKET) }]);
-  });
-
-  test.each(["the root itself", "a folder above the root"])("a configured root reached through a symlink at %s is walked at its real path", async (where) => {
-    // Given: the operator's sessions root, or the KIRO_HOME above it, is a link to the real folder.
-    const base = await kiroSandbox();
-    const real = join(base, "relocated", "sessions");
-    await mkdir(join(real, KIRO_BUCKET), { recursive: true });
-    const configured = where === "the root itself" ? join(base, "sessions") : join(base, "home", "sessions");
-    await symlink(where === "the root itself" ? real : join(base, "relocated"), where === "the root itself" ? configured : join(base, "home"));
-    // When: the tree walks the configured root.
-    const { buckets } = await walkBuckets(new KiroSessionTree([configured]));
-    // Then: the bucket and its root are named by their real paths.
-    expect(buckets).toEqual([{ root: real, path: join(real, KIRO_BUCKET) }]);
-  });
-
-  test.each(["missing", "file"])("a %s root is skipped and the next root is still walked", async (kind) => {
-    // Given: the first configured root cannot be walked; the second holds a bucket.
-    const base = await kiroSandbox();
-    const bad = join(base, "bad");
-    if (kind === "file") await writeFile(bad, "");
-    const good = join(base, "good");
-    await mkdir(join(good, KIRO_BUCKET), { recursive: true });
-    // When: one walk runs over both.
-    const walked = await walkBuckets(new KiroSessionTree([bad, good]));
-    // Then: the bad root costs nothing but itself, and the walk still counts as complete.
-    expect(walked).toEqual({ buckets: [{ root: good, path: join(good, KIRO_BUCKET) }], complete: true });
-  });
-
-  test("a walk past its entry budget is incomplete, and the limit is logged once", async () => {
-    // Given: a bucket holding more entries than one walk may list.
-    const base = await kiroSandbox();
-    await mkdir(join(base, KIRO_BUCKET));
-    for (let i = 0; i < 8193; i++) await writeFile(join(base, KIRO_BUCKET, `noise-${i}`), "");
-    const tree = new KiroSessionTree([base]);
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      // When: the same tree is walked twice.
-      const first = await walkBuckets(tree);
-      const second = await walkBuckets(tree);
-      // Then: neither walk claims to be complete, and the warning is not repeated.
-      expect([first.complete, second.complete]).toEqual([false, false]);
-      expect(warn.mock.calls.filter(([line]) => String(line).includes("8192 entries"))).toHaveLength(1);
-    } finally {
-      warn.mockRestore();
     }
   });
 });

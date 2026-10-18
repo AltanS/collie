@@ -6,7 +6,6 @@ These files were written by kiro-cli 2.32.0 (Linux, V3 engine, default agent) on
 | --- | --- |
 | `messages.jsonl` | One whole session, 82 rows: a plain reply, a shell call, a denied `fs_write`, a failed `read_file`, an allowed `str_replace`, a long reply steered while it ran, `/compact`, and one turn after it |
 | `subagent.jsonl` | The last turn of a second session, from its user row on: a failed first try at a sub-agent, then an `introspect` sub-agent that answered |
-| `session.json` | The metadata file beside the first session's `messages.jsonl` |
 
 Changes made before checking in:
 

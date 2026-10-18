@@ -15,7 +15,7 @@ import { asRecord, asText } from "./cache-probe.ts";
 import { HOST } from "../host.ts";
 import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
-import { KiroSessionTree, KiroTranscriptSource } from "./kiro-sessions.ts";
+import { KiroTranscriptSource } from "./kiro-sessions.ts";
 import { createUnknownCounter, NO_CHANGE, noQueue, parseWith, reduction, rememberPending, type KnownTypes, type PendingTool, type Reduction, type RowReducer } from "./reduce.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -200,12 +200,11 @@ export function kiroJournal(
   roots: string | readonly string[],
   processes: ProcessIdentityProbe = procProcessIdentity(HOST, process.arch, () => Date.now()),
 ): JournalAdapter {
-  const tree = new KiroSessionTree(roots);
-  const source = new KiroTranscriptSource(tree);
+  const source = new KiroTranscriptSource(roots);
   return {
     agent: "kiro",
     source,
-    discover: createKiroDiscovery(tree, source, processes),
+    discover: createKiroDiscovery(source.roots, source, processes),
     parse: parseKiroTranscript,
     reducer: createKiroReducer,
   };

@@ -7,7 +7,6 @@ import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
 import { KIRO_BUCKET, kiroSandbox, NO_PROCESS_IDENTITY, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./kiro-fixtures.ts";
 import { kiroJournal } from "./kiro.ts";
-import { KiroSessionTree } from "./kiro-sessions.ts";
 import type { DiscoverHints, ForegroundProcess, JournalAdapter, ProcessIdentity, ProcessIdentityProbe, TranscriptSource } from "./types.ts";
 
 const NOW = Date.parse("2026-10-01T12:00:00.000Z");
@@ -237,7 +236,7 @@ describe("Kiro V3 process-owned discovery", () => {
     expect(result).toBeNull();
   });
 
-  test.each(["bucket", "session", ".lock", "session.json", "messages.jsonl"])("symlinked %s is refused even into a separate sessions root", async (kind) => {
+  test.each(["bucket", "session", ".lock", "messages.jsonl"])("symlinked %s is refused even into a separate sessions root", async (kind) => {
     // Given: a valid lock reachable through a link to a separate root.
     const root = await kiroSandbox();
     const second = await kiroSandbox();
@@ -256,26 +255,15 @@ describe("Kiro V3 process-owned discovery", () => {
     expect(result).toBeNull();
   });
 
-  test.each([".lock", "session.json", "messages.jsonl"])("directory in place of %s refuses", async (name) => {
-    // Given: a special non-file at a required read path.
+  test("a directory in place of .lock refuses", async () => {
+    // Given: a folder where the session's lock file belongs.
     const root = await kiroSandbox();
     const dir = await session(root);
-    await rm(join(dir, name));
-    await mkdir(join(dir, name));
+    await rm(join(dir, ".lock"));
+    await mkdir(join(dir, ".lock"));
     // When: discovery checks the session.
     const result = await discover([root])("/shared", hints());
-    // Then: no non-regular metadata or log is read.
-    expect(result).toBeNull();
-  });
-
-  test("discovery must pass existing source metadata validation", async () => {
-    // Given: a matching lock with a different ID in its session metadata.
-    const root = await kiroSandbox();
-    const dir = await session(root);
-    await writeFile(join(dir, "session.json"), JSON.stringify({ id: OTHER, schemaVersion: "1.0.0", workspacePaths: ["/shared"] }));
-    // When: the candidate goes through normal opaque-ID resolution.
-    const result = await discover([root])("/shared", hints());
-    // Then: a lock cannot bypass the source's identity checks.
+    // Then: only a regular file is read as a lock.
     expect(result).toBeNull();
   });
 
@@ -303,7 +291,7 @@ describe("Kiro V3 process-owned discovery", () => {
       stat: (path) => real.stat(path), load: (path) => real.load(path), readSince: (path, cursor) => real.readSince(path, cursor),
     };
     // When: discovery finishes its final lock recheck.
-    const result = await createKiroDiscovery(new KiroSessionTree([root]), source, probe)("/shared", hints());
+    const result = await createKiroDiscovery([root], source, probe)("/shared", hints());
     // Then: the historical match is not cached as current authority.
     expect(result).toBeNull();
   });
@@ -345,7 +333,7 @@ describe("Kiro V3 process-owned discovery", () => {
     // When: the directory becomes a symlink to a different root.
     const otherRoot = await kiroSandbox();
     const otherDir = await session(otherRoot);
-    await rename(dir, `${dir}-old`);
+    await rename(dir, `${root}-saved`);
     await symlink(otherDir, dir);
     // Then: discovery checks the new filesystem state rather than returning the old cache.
     expect(await find("/shared", hints())).toBeNull();

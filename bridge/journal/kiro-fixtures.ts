@@ -6,15 +6,13 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { JsonObject, JsonValue } from "../json.ts";
 import { pluginRoot } from "../root.ts";
-import { asRecord } from "./cache-probe.ts";
 import type { ProcessIdentityProbe } from "./types.ts";
 
 /** A process probe that can say nothing about any pid, so Kiro discovery finds nothing. */
 export const NO_PROCESS_IDENTITY: ProcessIdentityProbe = { identify: () => Promise.resolve(null) };
 
-/** The checked-in sessions kiro-cli 2.32.0 saved: session.json, messages.jsonl and subagent.jsonl (README.md). */
+/** The checked-in sessions kiro-cli 2.32.0 saved: messages.jsonl and subagent.jsonl (README.md). */
 export const KIRO_FIXTURES = join(pluginRoot(), "bridge", "journal", "fixtures", "kiro");
 
 /** A bucket folder name in the 16-hex shape kiro-cli 2.32.0 writes. */
@@ -39,16 +37,10 @@ export function readKiroFixture(name: string): Promise<string> {
   return readFile(join(KIRO_FIXTURES, name), "utf8");
 }
 
-/**
- * Write the session folder `<root>/<bucket>/<id>`: the checked-in session.json with its `id` set to
- * `id`, and a messages.jsonl holding `log`. Returns the log's path.
- */
+/** Write the session folder `<root>/<bucket>/<id>` with a messages.jsonl holding `log`. Returns the log's path. */
 export async function writeKiroSession(root: string, log: string, id: string, bucket = KIRO_BUCKET): Promise<string> {
   const dir = join(root, bucket, id);
   await mkdir(dir, { recursive: true });
-  // SAFETY: JSON.parse returns JSON values; asRecord checks the object boundary.
-  const metadata: JsonObject = { ...asRecord(JSON.parse(await readKiroFixture("session.json")) as JsonValue), id };
-  await writeFile(join(dir, "session.json"), JSON.stringify(metadata));
   const path = join(dir, "messages.jsonl");
   await writeFile(path, log);
   return path;
