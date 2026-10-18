@@ -420,6 +420,14 @@ export const en = {
   "composer.held.discard": "Discard",
   "composer.held.discardAria": "Discard the text in the box",
   "composer.held.wentOut": "It already went out.",
+  // The held-send card (composer-held.tsx) with two or more rows: the head says how many wait, and Show
+  // all opens the list. "Show less" is `chat.card.diff.less`. Only two or more reach the count, so the
+  // `.one` form never shows in English; the pair exists because `tn()` asks for it by suffix.
+  "composer.held.count.one": "{count} queued. Sends when the turn ends.",
+  "composer.held.count.other": "{count} queued. Sends when the turn ends.",
+  "composer.held.showAll": "Show all",
+  "composer.held.showAllAria": "Show all queued messages",
+  "composer.held.showLessAria": "Show less of the queue",
   "composer.protocol.discarded": "The text was removed from the box. Your draft is still here.",
   "composer.protocol.draft": "The box already holds a draft. Add to it, replace it, or cancel.",
   "composer.protocol.typed": "Your text is in the box, but Enter was not pressed. Submit it or discard it.",

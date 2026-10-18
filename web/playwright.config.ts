@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
 
 // The browser tier (M26). Vitest keeps every unit test that jsdom can run; this config owns the ONE
 // runner that opens the app in a real browser engine, and its specs are the ones that need an engine
@@ -23,6 +23,16 @@ import { defineConfig, devices } from "@playwright/test";
 // inside an Ubuntu distrobox for exactly that host. In CI the runner IS Ubuntu, so it is on, except
 // in the per-push job in `ci.yml`, which sets `E2E_WEBKIT=0` and runs Chromium only. WebKit runs
 // nightly and at a release tag, in `.github/workflows/webkit.yml`.
+//
+// Two SETS of specs, picked by `E2E_SET` (2026-10-17). Unset runs everything, so a developer's
+// `bun run e2e` and `webkit.yml` are unchanged. `ci.yml` splits the per-push browser job in two:
+// `E2E_SET=rest` runs every spec but the two swap-server ones, `E2E_SET=swap` runs only
+// `service-worker.spec.ts` and `update-screen.spec.ts`. Those two move one shared pointer
+// (`holdSwapServer`, `e2e/fixtures/builds.ts`), so they run one case at a time and were the
+// critical path of the single job: about 3.3 min alone, about 6.7 min when a flake re-ran the
+// whole serial chain. Apart, the rest of the tier (about 280 s of test time) no longer waits behind
+// them. The sets also decide which `webServer` entries start: only the swap set needs 4174 (it
+// builds two extra bundles), and only the rest set needs 4173 and 4175.
 
 /** The phone. 390x844 is the iPhone 14/15 CSS size. */
 const PHONE = { width: 390, height: 844 } as const;
@@ -58,6 +68,26 @@ const WEBKIT =
     ? false
     : Boolean(process.env.CI) || process.env.COLLIE_E2E_WEBKIT === "1";
 
+/** The two specs that deploy bundles under a running browser, through the lock in
+ *  `e2e/fixtures/builds.ts`. Both use `SWAP_BASE_URL` (4174) and no other server. */
+const SWAP_SPECS = ["**/service-worker.spec.ts", "**/update-screen.spec.ts"];
+
+/** Which specs this run collects: `swap`, `rest`, or (unset) both. Anything else is a typo, and a
+ *  typo that silently ran nothing would read as a green run. */
+const E2E_SET = process.env.E2E_SET;
+if (E2E_SET !== undefined && E2E_SET !== "" && E2E_SET !== "swap" && E2E_SET !== "rest") {
+  throw new Error(`E2E_SET must be "swap", "rest" or unset, got "${E2E_SET}"`);
+}
+const RUN_SWAP = E2E_SET !== "rest";
+const RUN_REST = E2E_SET !== "swap";
+
+/** The spec selection every project shares: never the tier-2 specs, plus the set filter. */
+const SPECS = RUN_REST
+  ? { testIgnore: RUN_SWAP ? LIVE_TEST_IGNORE : [...LIVE_TEST_IGNORE, ...SWAP_SPECS] }
+  : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
+
+type WebServer = Exclude<PlaywrightTestConfig["webServer"], unknown[] | undefined>;
+
 export default defineConfig({
   // Outside `src/`, so `vitest.config.ts:30` (`include: ["src/**/*.{test,spec}.{ts,tsx}"]`) collects
   // none of these and neither runner ever sees the other's files.
@@ -84,12 +114,12 @@ export default defineConfig({
     {
       name: "app-phone",
       use: { browserName: "chromium", viewport: PHONE, hasTouch: true, deviceScaleFactor: 2 },
-      testIgnore: LIVE_TEST_IGNORE,
+      ...SPECS,
     },
     {
       name: "app-tablet",
       use: { browserName: "chromium", viewport: TABLET, hasTouch: true, deviceScaleFactor: 2 },
-      testIgnore: LIVE_TEST_IGNORE,
+      ...SPECS,
     },
     // The Safari engine, same specs as `app-phone`. Spread so the project is simply absent, not
     // skipped, when it is off: an absent project never asks for a browser that is not there.
@@ -105,55 +135,64 @@ export default defineConfig({
           {
             name: "app-phone-webkit",
             use: { ...devices["iPhone 13"], viewport: PHONE },
-            testIgnore: LIVE_TEST_IGNORE,
+            ...SPECS,
           },
         ]
       : []),
   ],
+  // Each entry starts only for the set that has a client; see the note on `E2E_SET` at the top.
   webServer: [
-    {
-      // The SHIPPED bundle off disk, not `vite dev`: the service worker exists only in a real build
-      // (`vite.config.ts` sets `devOptions: { enabled: false }`), so a dev server would test a
-      // different app. `bun run e2e` runs `vite build` before this starts.
-      command: `bunx vite preview --host 127.0.0.1 --port ${APP_PORT} --strictPort`,
-      // THE PROXY POINTS NOWHERE. `vite preview` inherits `server.proxy` (Vite resolves
-      // `preview.proxy ?? server.proxy`), so an `/api/*` request the fixture never sees goes to
-      // `COLLIE_DEV_TARGET`, 127.0.0.1:8787 by default: on the workspace host that is the LIVE
-      // release lane. The fixture misses a request when a service worker has claimed the page (the
-      // cases that do not need one run with `serviceWorkers: "block"`) and, under WebKit, when a poll
-      // is still in flight as the page closes. On 2026-09-27 the first kind read the release lane's
-      // real snapshot and pane list in a composer case. Port 9 has no listener, so a missed request gets Vite's own
-      // 502 here, the same answer CI gives, and never reaches a bridge.
-      env: { COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
-      url: APP_BASE_URL,
-      reuseExistingServer: !process.env.CI,
-      stdout: "ignore",
-      stderr: "pipe",
-      timeout: 60_000,
-    },
-    {
-      // M57, the MOUNTED bundle server on 4175: `web/dist` through the bridge's own `serveStatic`
-      // under `COLLIE_BASE_PATH=/collie/`. `e2e/theme-first-paint.spec.ts` is its one client. No
-      // API at all; a case that needs one belongs on 4173.
-      command: "bun e2e/serve-mount.ts",
-      url: "http://127.0.0.1:4175/collie/",
-      reuseExistingServer: !process.env.CI,
-      stdout: "ignore",
-      stderr: "pipe",
-      timeout: 60_000,
-    },
-    {
-      // M26/04, the SWAPPABLE bundle server on 4174. It builds `e2e/.builds/a` and `e2e/.builds/b`
-      // before it listens (hence the long timeout) and serves whichever of the two
-      // `e2e/.builds/serving` names, so `e2e/service-worker.spec.ts` can deploy a new bundle under a
-      // browser that is already running one. Its own port because a service worker's scope is an
-      // ORIGIN: a swap on 4173 would be a spooky action on every other case.
-      command: "bun e2e/serve-builds.ts",
-      url: "http://127.0.0.1:4174/",
-      reuseExistingServer: !process.env.CI,
-      stdout: "pipe",
-      stderr: "pipe",
-      timeout: 180_000,
-    },
+    ...(RUN_REST
+      ? [
+        {
+          // The SHIPPED bundle off disk, not `vite dev`: the service worker exists only in a real build
+          // (`vite.config.ts` sets `devOptions: { enabled: false }`), so a dev server would test a
+          // different app. `bun run e2e` runs `vite build` before this starts.
+          command: `bunx vite preview --host 127.0.0.1 --port ${APP_PORT} --strictPort`,
+          // THE PROXY POINTS NOWHERE. `vite preview` inherits `server.proxy` (Vite resolves
+          // `preview.proxy ?? server.proxy`), so an `/api/*` request the fixture never sees goes to
+          // `COLLIE_DEV_TARGET`, 127.0.0.1:8787 by default: on the workspace host that is the LIVE
+          // release lane. The fixture misses a request when a service worker has claimed the page (the
+          // cases that do not need one run with `serviceWorkers: "block"`) and, under WebKit, when a poll
+          // is still in flight as the page closes. On 2026-09-27 the first kind read the release lane's
+          // real snapshot and pane list in a composer case. Port 9 has no listener, so a missed request gets Vite's own
+          // 502 here, the same answer CI gives, and never reaches a bridge.
+          env: { COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
+          url: APP_BASE_URL,
+          reuseExistingServer: !process.env.CI,
+          stdout: "ignore",
+          stderr: "pipe",
+          timeout: 60_000,
+        },
+        {
+          // M57, the MOUNTED bundle server on 4175: `web/dist` through the bridge's own `serveStatic`
+          // under `COLLIE_BASE_PATH=/collie/`. `e2e/theme-first-paint.spec.ts` is its one client. No
+          // API at all; a case that needs one belongs on 4173.
+          command: "bun e2e/serve-mount.ts",
+          url: "http://127.0.0.1:4175/collie/",
+          reuseExistingServer: !process.env.CI,
+          stdout: "ignore",
+          stderr: "pipe",
+          timeout: 60_000,
+        },
+      ] satisfies WebServer[]
+      : []),
+    ...(RUN_SWAP
+      ? [
+        {
+          // M26/04, the SWAPPABLE bundle server on 4174. It builds `e2e/.builds/a` and `e2e/.builds/b`
+          // before it listens (hence the long timeout) and serves whichever of the two
+          // `e2e/.builds/serving` names, so `e2e/service-worker.spec.ts` can deploy a new bundle under a
+          // browser that is already running one. Its own port because a service worker's scope is an
+          // ORIGIN: a swap on 4173 would be a spooky action on every other case.
+          command: "bun e2e/serve-builds.ts",
+          url: "http://127.0.0.1:4174/",
+          reuseExistingServer: !process.env.CI,
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: 180_000,
+        },
+      ] satisfies WebServer[]
+      : []),
   ],
 });

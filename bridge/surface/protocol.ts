@@ -82,12 +82,13 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
+import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
 import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
-import type { OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
+import type { CommandListRows, OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -861,10 +862,12 @@ function labelFromWitness(match: ProfileMatch | null): boolean {
 }
 
 /**
- * Why a request may not go into a running turn, or null when it may: the harness must queue; nothing
- * may be open at the box (a popup above or under it that the frame walks past, read by the frameless
- * cues); and what the box would hold once Enter goes out must not be a command (a request in mode
- * command, or a box text plus the new text that starts with a reserved lead). Discard always may.
+ * Why a request may not go into a running turn, or null when it may: a command the profile never lets
+ * wait (`keys.neverHeld`) is refused first, on any harness, so that no later refusal can turn it into a
+ * held send; the harness must queue; nothing may be open at the box (a popup above or under it that
+ * the frame walks past, read by the frameless cues); and what the box would hold once Enter goes out
+ * must not be a command (a request in mode command, or a box text plus the new text that starts with
+ * a reserved lead). Discard always may, and is never a never-held command.
  *
  * `cues` says which frameless read stands for "open at the box". At S0 it is the whole screen
  * (`bareCues`). After the text is typed it is the rows under the box only (`belowCues`): the turn's
@@ -875,18 +878,20 @@ function labelFromWitness(match: ProfileMatch | null): boolean {
 function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "below" = "screen"): Ended | null {
   const { surface } = s0;
   const { request } = state;
-  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
-  if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
-  if (request.mode === "discard") return null;
   const text = sendLines(request.text).join("");
   const box = boxText(frame);
   const goesOut = request.mode === "append" ? box + text : request.mode === "submit" ? box : text;
   const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
   const isCommand = request.mode === "command" || state.command || reservedLead(goesOut, leads) !== null || (request.mode === "submit" && reservedLead(text, leads) !== null);
-  if (isCommand && neverHeldEntry(goesOut, state.match) !== null) {
+  // A command the profile never lets wait is refused before anything else, so that the refusal that
+  // follows on a harness that takes nothing in a turn cannot turn it into a held send.
+  if (request.mode !== "discard" && isCommand && neverHeldEntry(goesOut, state.match) !== null) {
     state.neverHold = true;
     return new Ended("refused", "turn_running", { surface, detail: NEVER_HELD });
   }
+  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+  if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
+  if (request.mode === "discard") return null;
   if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
   return null;
 }
@@ -973,14 +978,14 @@ const LIST_ELSEWHERE = "The command list at the box pointed at another command, 
 /**
  * Whether a read shows a command typed into the box while the harness's command list under it points
  * at another command ({@link commandListAt}): Enter picks the highlighted entry, so it would run
- * that one. A list whose pointer rests on the typed command is its own typeahead and passes; a list
- * with no pointer is left to the cue read.
+ * that one. A list whose pointer rests on the typed command ({@link pointsAt}, the profile's `rows`) is
+ * its own typeahead and passes; a list with no pointer is left to the cue read.
  */
-function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
-  const pointed = snap.commandList?.pointed ?? null;
-  if (pointed === null || snap.frame === null) return false;
+function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null, rows: CommandListRows | undefined): boolean {
+  const list = snap.commandList;
+  if (list === null || list.pointed === null || snap.frame === null) return false;
   if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
-  return pointed !== (prefix + lines.join("")).trim();
+  return !pointsAt(list, prefix + lines.join(""), rows);
 }
 
 /** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
@@ -2564,9 +2569,10 @@ export class SendProtocol {
 
   /**
    * The manual path on a harness whose Enter does not queue (it steers the turn, or no lab run measured
-   * it): S0 found no box to read the turn from, so any running sign on the screen counts. Then the send
-   * takes the queue key, or is refused when the profile names none (or the turn holds a command). Enter
-   * never steers a turn by accident.
+   * it): S0 found no box to read the turn from, so any running sign on the screen counts. Then a command
+   * the profile never lets wait is refused first, and otherwise the send takes the queue key, or is
+   * refused when the profile names none (or the turn holds a command). Enter never steers a turn by
+   * accident.
    */
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const profile = state.match?.profile;
@@ -2574,13 +2580,14 @@ export class SendProtocol {
     const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
     if (!runs) return;
-    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
     const leads = profile.reservedLeads;
     const isCommand = state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null;
+    // The never-held check comes first, as in turnRefusal: the refusal after it would be held.
     if (isCommand && neverHeldEntry(state.request.text, state.match) !== null) {
       state.neverHold = true;
       throw new Ended("refused", "turn_running", { surface: s0.surface, detail: NEVER_HELD });
     }
+    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
     if (isCommand && !commandQueues(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
     state.queued = true;
   }
@@ -3011,7 +3018,7 @@ export class SendProtocol {
       }
       // A command whose list under the box points at another command: Enter would run that one. The list
       // may still be catching up with the paste, so the read waits; when no read passes, the text stays.
-      elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse);
+      elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse, state.match?.profile.idle.volatile.below.commandList);
       if (elsewhere) {
         why = "modal_cue";
         return "wait";

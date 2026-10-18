@@ -27,7 +27,7 @@ import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { HeldRows, type HeldAction } from "@/components/composer-held";
+import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
@@ -75,6 +75,7 @@ import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
+import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
@@ -190,10 +191,11 @@ interface ComposerProps {
   };
 
   /**
-   * Where the terminal-draft notice floats (ADR 0061): an absolutely positioned box the pane view
-   * keeps at the bottom edge of the mirror, above the card dock and the belt. The notice is portalled
-   * into it, so it covers terminal text and never takes a row of the composer's own flow. Absent
-   * (a composer mounted alone, as in its tests), the notice floats above the composer itself.
+   * Where the floating cards go (ADR 0061): an absolutely positioned box the pane view keeps at the
+   * bottom edge of the mirror, above the card dock and the belt. The terminal-draft notice (or the
+   * offline note) and the held-send card are portalled into it, so they cover terminal text and never
+   * take a row of the composer's own flow. Absent (a composer mounted alone, as in its tests), they
+   * float above the composer itself.
    */
   draftNoticeSlot?: HTMLElement | null;
 
@@ -649,17 +651,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const fileRef = useRef<HTMLInputElement>(null);
   // The camera-roll half of the picker. See the two inputs below.
   const photoRef = useRef<HTMLInputElement>(null);
+  // The idle cover leaves this composer mounted. Its inert wrapper blocks new DOM input, but
+  // cannot revoke keys already waiting in direct mode's sender; the mode must disarm explicitly.
+  const idleLocked = useLocked();
+  const catchingUp = useCatchingUp();
+  const directSuspended = locked || idleLocked || catchingUp;
   const direct = useDirectTyping({
     paneKey: `${scopeId}\0${paneId}`,
     inputRef,
     // The ref, not `input`: the password-prompt handoff clears the draft and arms in one tick.
     replyDraft: () => inputValueRef.current,
-    canActivate: () => !(locked || sending || uploading),
-    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
-    // deliberately not added here: the mode already disarms on a failed batch, which is the same
-    // event observed directly rather than inferred from a timer, and it fires whether or not any
-    // banner has decided the connection counts as lost yet.
-    suspended: locked,
+    canActivate: () => !(directSuspended || sending || uploading),
+    // Field locks and the idle cover both revoke direct mode. A LOST CONNECTION is deliberately
+    // not added here: the mode already disarms on a failed batch, the same event observed directly
+    // rather than inferred from a timer, whether or not a banner has declared the connection lost.
+    suspended: directSuspended,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
@@ -968,17 +974,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // The floating notice (ADR 0061). The wrapper passes touches through (`pointer-events-none`) and
   // the notice takes them back, so the mirror under the empty part of the slot still scrolls.
-  // Portalled into the pane view's slot when there is one; otherwise it floats above this
-  // composer's own top edge.
+  // `floating` below puts it in the pane view's slot when there is one; otherwise it floats above
+  // this composer's own top edge.
   const draftNotice =
     showPreview && !previewDismissed && effectiveRaw !== null ? (
-      <div
-        data-slot="terminal-draft-notice"
-        className={cn(
-          "pointer-events-none",
-          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
-        )}
-      >
+      <div data-slot="terminal-draft-notice" className="pointer-events-none">
         <TerminalDraftPreview
           text={effectiveRaw}
           // No Take over when the line is only the harness's own opaque token (Claude's
@@ -990,21 +990,51 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       </div>
     ) : null;
 
-  // The offline draft note shares that slot, and the slot holds one notice: when both are due, the
+  // The offline draft note shares that place, and it holds one notice: when both are due, the
   // terminal draft wins and the note waits (still `shown`) until that notice is gone or dismissed.
   const offlineNote =
     draftNotice === null && draftNote === "shown" && offline ? (
-      <div
-        data-slot="offline-draft-note"
-        className={cn(
-          "pointer-events-none",
-          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
-        )}
-      >
+      <div data-slot="offline-draft-note" className="pointer-events-none">
         <OfflineDraftNote onDismiss={() => setDraftNote("spent")} />
       </div>
     ) : null;
   const floatingNotice = draftNotice ?? offlineNote;
+
+  // The sends the bridge holds for this pane (M56 spec 15) float in the same place as ONE card, so a
+  // held send moves nothing (ADR 0061, amended 2026-10-18). It is keyed by pane: the card's Show all
+  // is per pane and in memory, and a pane switch starts it collapsed. Rendered only while there is a
+  // row, so an empty queue leaves nothing in the slot.
+  const heldCard =
+    heldRows !== undefined && heldRows.length > 0 ? (
+      <HeldCard
+        key={`${scopeId}|${paneId}`}
+        paneId={paneId}
+        scope={scope}
+        rows={heldRows}
+        canAct={isLead(scope) && !locked}
+        sending={sending}
+        onSend={resendHeld}
+        onChanged={onSent}
+      />
+    ) : null;
+
+  // The place both float in: a column, the held card on top and the draft or offline notice nearest
+  // the belt, with a small gap. Pass-through wrapper (`pointer-events-none`); each card takes touches
+  // back. In the pane view's slot the slot does the positioning; alone, the column floats above this
+  // composer's own top edge. No `Collapse`: it is absolute, so it holds no space at all.
+  const floating =
+    heldCard !== null || floatingNotice !== null ? (
+      <div
+        data-slot="floating-cards"
+        className={cn(
+          "pointer-events-none flex flex-col gap-1.5",
+          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
+        )}
+      >
+        {heldCard}
+        {floatingNotice}
+      </div>
+    ) : null;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
@@ -1842,9 +1872,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The terminal-draft notice is NOT one of these strips any more (ADR 0061). It floats over
             the mirror's bottom edge, out of this flow, so a draft stranding or clearing on the host
             never moves the belt or the field. The offline draft note left this flow for the same
-            reason and shares that slot, one notice at a time. See `floatingNotice` above; it renders
-            here. */}
-        {draftNoticeSlot ? createPortal(floatingNotice, draftNoticeSlot) : floatingNotice}
+            reason and shares that place, one notice at a time, and so does the held-send card
+            (amended 2026-10-18), above the notice. See `floating` above; it renders here. */}
+        {draftNoticeSlot ? createPortal(floating, draftNoticeSlot) : floating}
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
@@ -2026,8 +2056,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
-        {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
-        <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onSend={resendHeld} onChanged={onSent} />
         <div
           data-slot="composer-box"
           className={cn(

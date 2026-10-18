@@ -5,19 +5,23 @@
 // ISOLATION, IN ONE PLACE.
 //   - Everything lives under STATE_ROOT, on disk (`~/.cache/collie-lab/browser-leg-state`). Not /tmp:
 //     bluefin's /tmp is tmpfs, and an out-of-memory crash wiped a /tmp lab on 2026-10-12.
-//   - Herdr: its own server under its own XDG_CONFIG_HOME (STATE_ROOT/rig/xdg). Every herdr call
-//     below goes through `herdrEnv()`, which drops every inherited HERDR_* name (the operator's agent
-//     session sets HERDR_SOCKET_PATH and HERDR_PANE_ID) and points XDG_CONFIG_HOME at the rig's home.
-//     The operator's own Herdr server and its panes are never named, read or written.
+//   - Herdr: its own server under its own XDG_CONFIG_HOME. Every herdr call below goes through
+//     `herdrEnv()`, which drops every inherited HERDR_* name (the operator's agent session sets
+//     HERDR_SOCKET_PATH and HERDR_PANE_ID) and points XDG_CONFIG_HOME at the rig's home. The operator's
+//     own Herdr server and its panes are never named, read or written. That one folder is the only
+//     part of the rig outside STATE_ROOT: Herdr binds its sockets under XDG_CONFIG_HOME and a socket
+//     path holds at most 107 bytes, so the folder is a short one in $XDG_RUNTIME_DIR or /tmp, named
+//     from a hash of STATE_ROOT (sock-path.ts). `rig.ts up` checks the length; `down` removes it.
 //   - The bridge: `bun bridge/index.ts` from this checkout on 127.0.0.1:18700-18799, with fresh state
 //     and config dirs and every inherited COLLIE_* name dropped. No `collie` verb is ever run.
 //   - Every kill is by a pid the rig recorded, after /proc/<pid>/cmdline matched. No pkill.
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../src/lib/json";
+import { XDG_HOME_NAME, shortXdgHome } from "./sock-path";
 
 /** The leg's own folder on disk. The guard below refuses any path outside it. */
 export const STATE_ROOT = resolve(process.env.COLLIE_RIG_STATE ?? join(homedir(), ".cache", "collie-lab", "browser-leg-state"));
@@ -34,11 +38,12 @@ export const PORT_LO = 18700;
 export const PORT_HI = 18799;
 
 const RIG = join(STATE_ROOT, "rig");
+const RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
 export const P = {
   rig: RIG,
   state: join(RIG, "state"), // COLLIE_STATE_DIR
   config: join(RIG, "config"), // HERDR_PLUGIN_CONFIG_DIR
-  xdg: join(RIG, "xdg"), // XDG_CONFIG_HOME for herdr only
+  xdg: shortXdgHome(STATE_ROOT, SESSION, RUNTIME_DIR !== undefined && existsSync(RUNTIME_DIR) ? RUNTIME_DIR : undefined), // XDG_CONFIG_HOME for herdr only; short, so its sockets fit sun_path
   xdgState: join(RIG, "xdg-state"), // XDG_STATE_HOME for herdr only (its agent-detection status file)
   logs: join(RIG, "logs"),
   work: join(RIG, "work"), // cwd of the view workspace
@@ -67,6 +72,32 @@ export function assertUnderRoot(path: string): string {
   const full = resolve(path);
   if (full !== STATE_ROOT && !full.startsWith(`${STATE_ROOT}/`)) throw new Error(`refusing a path outside ${STATE_ROOT}: ${full}`);
   return full;
+}
+
+/** A socket path Herdr reported must sit in the rig's own Herdr home. */
+export function assertUnderXdg(path: string): string {
+  const full = resolve(path);
+  if (!full.startsWith(`${P.xdg}/`)) throw new Error(`refusing a socket outside ${P.xdg}: ${full}`);
+  return full;
+}
+
+/** The Herdr home may sit in /tmp: use it only when it is a real directory of this user that nobody else can enter. */
+export function assertPrivateDir(dir: string): void {
+  const st = lstatSync(dir);
+  const uid = process.getuid?.();
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) {
+    throw new Error(`refusing ${dir}: it is not a directory of this user with mode 0700`);
+  }
+}
+
+/**
+ * Remove the rig's Herdr home once its session has no running server. It refuses any folder that does
+ * not carry the rig's own name, and leaves the folder alone while Herdr could still use it.
+ */
+export function retireXdgHome(): void {
+  if (!XDG_HOME_NAME.test(basename(P.xdg))) throw new Error(`refusing to remove ${P.xdg}: not a rig Herdr home`);
+  if (!existsSync(P.xdg) || sessionRunning()) return;
+  rmSync(P.xdg, { recursive: true, force: true });
 }
 
 export function readRun(): Run | null {
@@ -176,6 +207,16 @@ export function herdr(args: readonly string[], opts: { session?: boolean } = {})
   const argv = opts.session === false ? [...args] : ["--session", SESSION, ...args];
   const r = spawnSync("herdr", argv, { env: herdrEnv(), encoding: "utf8", timeout: 30_000 });
   return { code: r.status ?? 1, out: r.stdout ?? "", err: r.stderr ?? "" };
+}
+
+/** True while the rig's Herdr session has a running server. */
+function sessionRunning(): boolean {
+  try {
+    const doc: { sessions: { name: string; running: boolean }[] } = JSON.parse(herdr(["session", "list", "--json"], { session: false }).out);
+    return doc.sessions.some((s) => s.name === SESSION && s.running);
+  } catch {
+    return false;
+  }
 }
 
 export function herdrJson(args: readonly string[]): JsonObject {

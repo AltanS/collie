@@ -7,7 +7,7 @@ import { lineText, splitLines, type StyledLine } from "../blocks";
 import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_AUTOCOMPLETE_LINES } from "../harness/claude/autocomplete";
 import { displayWidth } from "../text-width";
-import { findInputFrame, frameAt, plainRows, type Frame } from "./frame";
+import { findInputFrame, frameAt, plainRows, type Frame, type FrameRow, type FrameRun } from "./frame";
 import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
@@ -713,5 +713,88 @@ describe("frame alternates (M56 spec 14)", () => {
 
   it("finds no box in a plain transcript", () => {
     expect(findInputFrame(lines("a", "   indented", "b"), OMP)).toBeNull();
+  });
+});
+
+// Issue 497 (omp 18.11.3, the box composer, captured 2026-10-18): the box draws its right border on
+// every draft row, a wrapped row ends in `│` or `─╯` with fewer than eight spaces before it, and the
+// word completion paints a ghost suffix after the cursor. The draft reads as typed all the same.
+describe("omp 18.11's box composer (issue 497)", () => {
+  const OMP = requireProfile("omp").idle;
+  const squeeze = (text: string): string => text.replace(/\s+/gu, "");
+  const WRAP =
+    "Collie wrap probe: the quick brown fox jumps over the lazy dog while the phone sends a long single line that must wrap " +
+    "across two rows of the omp box at one hundred and thirty columns wide, ending here.";
+  const TWO = "First line of a two-line draft. Second line of the same draft.";
+  const PATH =
+    "look at /tmp/c497/uploads/w1-mx7k2p-1a2b3c4d-and-a-long-tail-so-the-path-fills-the-row-to-the-right-border-" +
+    "0123456789abcdef0123456789abcdef.png please";
+  const DRAFTS = [
+    { fixture: "omp--v18-11-nerd-box-wrapped--w130.txt", typed: WRAP },
+    { fixture: "omp--v18-11-nerd-box-wrapped--w80.txt", typed: WRAP },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w130.txt", typed: TWO },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w80.txt", typed: TWO },
+    { fixture: "omp--v18-11-nerd-box-path-text--w130.txt", typed: PATH },
+    { fixture: "omp--v18-11-nerd-box-path-text--w80.txt", typed: PATH },
+    { fixture: "omp--v18-11-nerd-ghost-word--w130.txt", typed: "please push" },
+    { fixture: "omp--v18-11-nerd-ghost-word--w80.txt", typed: "please push" },
+    { fixture: "omp--v18-11-ghost-word--w130.txt", typed: "please push" },
+  ];
+
+  it.each(DRAFTS)("$fixture: the draft reads as typed, no right border and no ghost word in it", ({ fixture, typed }) => {
+    const frame = findInputFrame(fixtureRows(fixture), OMP);
+    expect(frame).not.toBeNull();
+    expect(frame!.placeholder).toBe(false);
+    expect(squeeze(frame!.interior.text)).toBe(squeeze(typed));
+  });
+
+  // The ghost rule, on one prompt row built as omp paints it: `╰─ `, the draft in the text colour, the
+  // word completion in the titanium theme's `dim` (#6b7280), padding, and the border in the accent.
+  const TEXT = "rgb(229,229,231)";
+  const GHOST = "rgb(107,114,128)";
+  const BORDER = "rgb(0,180,255)";
+  const TOP: FrameRow = { segments: [{ text: "╭── π > ◒ Haiku 4.5 ▶────────────────────────╮", fg: BORDER }] };
+  const box = (...runs: FrameRun[]): FrameRow[] => [
+    { segments: [{ text: "an answer" }] },
+    { segments: [] },
+    TOP,
+    { segments: [{ text: "╰─ ", fg: BORDER }, ...runs, { text: "        " }, { text: "─╯", fg: BORDER }] },
+  ];
+  const read = (rows: FrameRow[], idle = OMP): string | undefined => findInputFrame(rows, idle)?.interior.text;
+
+  it("cuts the word completion after the draft: the profile's colour, letters only, straight after a draft letter", () => {
+    expect(read(box({ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }))).toBe("please push");
+    expect(read(box({ text: "please push" }, { text: "ed", fg: GHOST }))).toBe("please push");
+  });
+
+  it("keeps a run that misses any test, so the box reads more than was typed and the send stops", () => {
+    const kept: [string, FrameRun[], string][] = [
+      ["another colour (an older theme's dim)", [{ text: "please push", fg: TEXT }, { text: "ed", fg: "rgb(111,115,119)" }], "please pushed"],
+      ["the colour with the dim attribute", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST, dim: true }], "please pushed"],
+      ["the colour in italics", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST, italic: true }], "please pushed"],
+      ["a run with punctuation", [{ text: "please push", fg: TEXT }, { text: "ed!", fg: GHOST }], "please pushed!"],
+      ["a run with a space in it", [{ text: "please push", fg: TEXT }, { text: "ed now", fg: GHOST }], "please pushed now"],
+      ["a run after a space", [{ text: "please ", fg: TEXT }, { text: "push", fg: GHOST }], "please push"],
+      ["a run in the draft's own style", [{ text: "please push", fg: GHOST }, { text: "ed", fg: GHOST }], "please pushed"],
+      ["a run with text after it", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }, { text: " now", fg: TEXT }], "please pushed now"],
+      ["the whole draft", [{ text: "pushed", fg: GHOST }], "pushed"],
+    ];
+    for (const [name, runs, text] of kept) expect(read(box(...runs)), name).toBe(text);
+  });
+
+  it("keeps a run in the colour that ends a row the draft goes on past", () => {
+    const rows: FrameRow[] = [
+      { segments: [{ text: "an answer" }] },
+      TOP,
+      { segments: [{ text: "│  ", fg: BORDER }, { text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }, { text: "     " }, { text: "│", fg: BORDER }] },
+      { segments: [{ text: "╰─ ", fg: BORDER }, { text: "the branch", fg: TEXT }, { text: "     " }, { text: "─╯", fg: BORDER }] },
+    ];
+    expect(read(rows)).toBe("please pushed the branch");
+  });
+
+  it("keeps the run on a profile that names no ghost colour", () => {
+    const { inlineHint, ...bare } = OMP;
+    void inlineHint;
+    expect(read(box({ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }), bare)).toBe("please pushed");
   });
 });

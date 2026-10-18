@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues } from "./cues";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign } from "./cues";
 import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText } from "./frame";
 import { requireProfile } from "./profile";
@@ -380,7 +380,13 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     const rows = fixtureRows("claude--v2302-slash-model-list-above--w119.txt");
     const frame = findInputFrame(rows, IDLE)!;
     expect(frame.volatile.status).not.toBeNull();
-    expect(commandListAt(texts(rows), frame, LIST)).toEqual({ pointed: "/model", side: "above", first: frame.top - 4, last: frame.top - 1 });
+    expect(commandListAt(texts(rows), frame, LIST)).toEqual({
+      pointed: "/model",
+      side: "above",
+      first: frame.top - 4,
+      last: frame.top - 1,
+      entries: ["/model", "/auto-mode-setup", "/typescript:structure-module"],
+    });
     expect(ownCommandList(texts(rows), frame, IDLE)).not.toBeNull();
     const read = readScreen(rows, "claude", IDLE);
     expect(read.cues?.strength).toBe("none");
@@ -476,4 +482,41 @@ describe("a list that leaves the lead off, under the box only, over the harness'
     const rows = screen("/model", [], FOOTER, ["→ model          <provider/model> — Select model"]);
     expect(read(rows)).toMatchObject({ list: null, own: false });
   });
+});
+
+// Issue 497 (omp 18.11.3, captured 2026-10-18): with a tool running, stock omp names the tool's intent
+// on its working row (`󱊷 Running sleep and echo command`) instead of `Working…`, and the Nerd Font
+// preset draws no braille there. The box's top edge carries the turn's spinner and timer
+// (`╭── ⠋ 13s  󰪣 Haiku 4.5 …`, pi-tui status-line/segments.ts), and the timer reads `1m` past a minute.
+describe("omp 18.11's running turn (issue 497)", () => {
+  const OMP = requireProfile("omp").idle;
+  const RUNNING = [
+    "omp--v18-11-nerd-running-tool--w130.txt",
+    "omp--v18-11-nerd-running-tool--w80.txt",
+    "omp--v18-11-nerd-running-tool-minute--w130.txt",
+    "omp--v18-11-nerd-running-tool-minute--w80.txt",
+  ];
+
+  it.each(RUNNING)("%s: the top edge's spinner and timer are a running sign, and the Surface reads a turn", (name) => {
+    const rows = fixtureRows(name);
+    const frame = findInputFrame(rows, OMP)!;
+    expect(frame.interior.text).toBe("");
+    expect(runningSign(rows, frame, OMP.runningRows)).toBe(true);
+    expect(readScreen(rows, "omp", OMP).surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("an idle box's top edge, with no spinner, is no running sign", () => {
+    const rows = fixtureRows("omp--v18-11-nerd-ghost-word--w130.txt");
+    expect(runningSign(rows, findInputFrame(rows, OMP)!, OMP.runningRows)).toBe(false);
+  });
+
+  it.each(["omp--v18-11-nerd-skill-pointed--w80.txt", "omp--v18-11-skill-pointed--w130.txt", "omp--v18-11-nerd-slash-model--w130.txt"])(
+    "%s: the list is the typed command's own, so the Surface reads the box free",
+    (name) => {
+      const rows = fixtureRows(name);
+      const frame = findInputFrame(rows, OMP);
+      expect(ownCommandList(rows.map(rowText), frame, OMP)).not.toBeNull();
+      expect(readScreen(rows, "omp", OMP).surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    },
+  );
 });

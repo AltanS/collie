@@ -21,8 +21,9 @@ import { CLAUDE_IDLE } from "./markers";
 
 /**
  * The bridge binds a tap only to a region that ends inside the last this-many non-blank rows of its
- * fresh read (`DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts). A card whose region could not
- * bind there would only ever be refused, so it does not lift.
+ * fresh read (`DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts), the footer run the profile
+ * names under the box (`Frame.volatile.named`) not counted. A card whose region could not bind there
+ * would only ever be refused, so it does not lift.
  */
 const BRIDGE_TAIL_ROWS = 6;
 
@@ -50,7 +51,10 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   if (notice === null) return null;
   // A dialog stacked over the notice holds the keys (the bridge reads the screen `unreadable`): no card.
   if (readCuesFor(lines, frame, CLAUDE_IDLE).strength === "strong") return null;
-  const rowsUnder = texts.slice(frame.bottom + 1).filter((text) => text.trim().length > 0).length;
+  // The footer run the profile names (Claude Code's agents panel) is not counted, from its first named
+  // row down, as the bridge cuts it. A generic footer, any short run after a blank row, is counted.
+  const underEnd = frame.volatile.named[0]?.row ?? texts.length;
+  const rowsUnder = texts.slice(frame.bottom + 1, underEnd).filter((text) => text.trim().length > 0).length;
   if (rowsUnder >= BRIDGE_TAIL_ROWS) return null;
   return {
     startLine: notice.first,

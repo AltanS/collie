@@ -319,17 +319,11 @@ describe("the leg's environment", () => {
 });
 
 describe("the command line", () => {
+  // Every path goes through `resolve`, which on Windows adds the drive and turns the separators.
   test("defaults, flags and the environment names", () => {
-    // parseOptions resolves every path, so on Windows "/h" becomes "C:\h": expect what `resolve` and `join` give.
-    const home = "/h";
-    expect(parseOptions([], {}, home)).toEqual({
-      plan: false,
-      stateDir: resolve(join(home, ".local", "state", "collie-browser-leg")),
-      root: resolve(join(home, ".cache", "collie-lab", "browser-leg-nightly")),
-      repo: "https://github.com/AltanS/collie.git",
-    });
-    expect(parseOptions(["--plan", "--state-dir", "/s", "--root", "/r", "--repo", "/repo"], {}, home)).toEqual({ plan: true, stateDir: resolve("/s"), root: resolve("/r"), repo: "/repo" });
-    expect(parseOptions([], { COLLIE_BROWSER_LEG_STATE_DIR: "/e" }, home)).toMatchObject({ stateDir: resolve("/e") });
+    expect(parseOptions([], {}, "/h")).toEqual({ plan: false, stateDir: resolve("/h/.local/state/collie-browser-leg"), root: resolve("/h/.cache/collie-lab/browser-leg-nightly"), repo: "https://github.com/AltanS/collie.git" });
+    expect(parseOptions(["--plan", "--state-dir", "/s", "--root", "/r", "--repo", "/repo"], {}, "/h")).toEqual({ plan: true, stateDir: resolve("/s"), root: resolve("/r"), repo: "/repo" });
+    expect(parseOptions([], { COLLIE_BROWSER_LEG_STATE_DIR: "/e" }, "/h")).toMatchObject({ stateDir: resolve("/e") });
     expect(parseOptions(["-h"], {}, "/h")).toBe("help");
   });
 

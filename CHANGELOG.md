@@ -32,6 +32,21 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A walky talky skill, installed and kept current.** `collie skill install <claude|codex|opencode|pi|gemini|all>` writes a short skill that teaches an agent the `collie walky` verbs, how to read a header and when to stay quiet. It says that no message can approve a destructive action, not even one from the operator. It says to answer through `reply`, never into the agent's own output, and not to resend a message that may have arrived. Claude Code gets its own skill file in each profile, the one `CLAUDE_CONFIG_DIR` names included. The other harnesses get a managed block in their global instruction file, and everything else in that file stays. `collie skill status` reports each target as installed, stale, absent or refused, and `--check` exits 3 on a stale copy. `collie doctor` warns on a stale copy, and `collie update` prints one note when the new build carries a newer skill. Line endings never make a copy stale, because Collie reads a Windows CRLF copy as LF. Nothing is written unless you run the install.
 - **The browser leg covers walky talky.** Six cases tap real agents: an operator message on pi and omp, pi to Claude and back through the skill, a message over an open dialog and over a draft, a broadcast to every pane, and two forged headers that stay plain.
 
+## [1.22.6] - 2026-10-18
+
+### Changed
+
+- **A queued send no longer moves the layout.** The sends Collie holds until a turn ends now float over the bottom of the terminal view as one card, in the place of the terminal draft notice, so the box and the mirror stay where they are. Two or more collapse to a count and the next message, with Show all. ([3a4e4c4](https://github.com/AltanS/collie/commit/3a4e4c4))
+
+### Fixed
+
+- **Korean reads more naturally across the app.** Settings, pane actions, alerts, uploads and refusal messages have better wording, and instructions name the buttons as the screen shows them. Thanks @mud-the-developer (#498). ([dba7062](https://github.com/AltanS/collie/commit/dba7062))
+- **Direct typing leaves composition keys to the keyboard.** While a Korean, Japanese or Chinese keyboard composes a word, Enter, Backspace, the arrows, Escape and Tab stay with it, and a blur ends a composition that never finished. Keys still waiting on a slow link when you stop typing are dropped. Thanks @mud-the-developer (#500). ([5c93d9f](https://github.com/AltanS/collie/commit/5c93d9f))
+- **Korean, Chinese and Japanese text keeps its columns in the terminal view.** With wrap off, the pane mirror and a dialog card's raw view hold each wide character to two cells, so dividers and tables line up, and a link keeps its underline. Thanks @mud-the-developer (#499). ([1bf9088](https://github.com/AltanS/collie/commit/1bf9088))
+- **The Heads up card shows while background agents are listed.** With three or more agents in Claude Code's panel under the box, the card was withheld and its tap refused. Only the panel's own named rows are skipped, so plain output under a box still counts. Thanks @leftos (#493). ([cb5cbf5](https://github.com/AltanS/collie/commit/cb5cbf5))
+- **A command that must never wait for a turn is no longer held and typed after it.** When the bridge could not read the agent's version, a `/clear`, `/new`, `/exit` or `!` shell line sent during a turn was kept and typed when the turn ended. It is refused again. Thanks @mikebenner (#491). ([18eb3e2](https://github.com/AltanS/collie/commit/18eb3e2))
+- **omp's box composer sends again with Nerd Font symbols and its own word hint.** A wrapped or two-line draft, an image chip, a slash or skill command, omp's grey word guess after the cursor and a send during a tool turn no longer end as typed but not sent. Thanks @christensenjames (#497). ([a66c570](https://github.com/AltanS/collie/commit/a66c570))
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with an extension footer refuses every send, and a Claude picker or Heads up notice can block taps.

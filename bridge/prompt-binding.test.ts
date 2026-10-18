@@ -17,6 +17,8 @@ import {
 import { cropRawColumns, type ColumnRange } from "../web/src/lib/column-range.ts";
 import { parseAnsi } from "../web/src/lib/ansi.ts";
 import { splitLines } from "../web/src/lib/blocks.ts";
+import { findInputFrame } from "../web/src/lib/surface/frame.ts";
+import { requireProfile } from "../web/src/lib/surface/profile.ts";
 import { detectQuestion as detectMuseQuestion } from "../web/src/lib/harness/muse/question.ts";
 import { detectCheckbox as detectMuseCheckbox } from "../web/src/lib/harness/muse/checkbox.ts";
 
@@ -710,5 +712,78 @@ describe("a notice card above a live box", () => {
     const drafted = raw.replace("❯ ", "❯ half a thought");
     expect(drafted).not.toBe(raw);
     expect(verifyPromptBinding(drafted, region).ok).toBe(false);
+  });
+
+  test("refuses the region with six plain status rows more under the box", () => {
+    const taller = [raw, ...Array.from({ length: 6 }, () => statusRow)].join("\n");
+    expect(verifyPromptBinding(taller, region)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+
+  // Claude Code's agents panel, listing three background agents under the statusline, is the footer
+  // run the input frame names: it is not counted against the tail.
+  test("binds with the agents panel under the box", () => {
+    const panel = readFileSync(join(FIXTURE_DIR, "claude--v2302-notice-over-agents-panel--w69.txt"), "utf8");
+    const rows = panel.split(/\r?\n/u);
+    expect(rows[59]).toContain("You should know · ");
+    expect(rows[66]).toMatch(/^\S*─+/u);
+    expect(verifyPromptBinding(panel, rows.slice(59, 67).join("\n"))).toEqual({ ok: true });
+  });
+
+  // A Claude frame left on screen with plain output under it, a blank row between (a shell under a
+  // Claude that has exited): the frame walk takes those rows for a generic footer, which is no named
+  // run, so nothing is cut and a stale digit tap is refused.
+  test("refuses the region with a blank row and four to eight plain output rows under the box", () => {
+    for (let count = 4; count <= 8; count++) {
+      const output = Array.from({ length: count }, (_, i) => `notes-${String(i)}.txt`);
+      expect(verifyPromptBinding([raw, "", ...output].join("\n"), region), `${String(count)} rows`).toEqual({
+        ok: false,
+        reason: "not_in_tail",
+      });
+    }
+  });
+});
+
+// The read is cut only at the footer run a profile names under its input box (ADR 0109): Claude
+// Code's agents panel, whose rows claude.json lists (`idle.volatile.below.footerRows`). The cut may
+// turn a `not_in_tail` refusal into a binding, and changes no other verdict.
+describe("the cut at the agents panel", () => {
+  const PANEL = "claude--v2302-notice-over-agents-panel--w69.txt";
+  const rows = readFileSync(join(FIXTURE_DIR, PANEL), "utf8").split(/\r?\n/u);
+  const region = rows.slice(59, 67).join("\n");
+  const namedRows = (read: string): number =>
+    findInputFrame(splitLines(parseAnsi(read)), requireProfile("claude").idle)?.volatile.named.length ?? 0;
+  /** The capture with `extra` more status rows over the blank row that sets the panel apart. */
+  const withStatusRows = (extra: number): string =>
+    [...rows.slice(0, 69), ...Array.from({ length: extra }, () => rows[67]!), ...rows.slice(69)].join("\n");
+
+  test("counts the rows between the box and the panel: five bind, six or more refuse", () => {
+    expect(verifyPromptBinding(withStatusRows(3), region)).toEqual({ ok: true });
+    for (const extra of [4, 6]) {
+      const read = withStatusRows(extra);
+      expect(namedRows(read), `${String(extra)} extra: the panel is named, so the cut runs`).toBe(4);
+      expect(verifyPromptBinding(read, region), `${String(extra)} extra`).toEqual({ ok: false, reason: "not_in_tail" });
+    }
+  });
+
+  // A region inside the run: the read cut above the run no longer holds it (`not_found`), and the
+  // uncut refusal stands, as it did for agy--slash-exact.txt's region inside its slash popup when a
+  // generic footer was cut.
+  test("keeps the uncut refusal when the cut leaves the region out", () => {
+    const agent = rows[71]!;
+    const read = [...rows.slice(0, 74), agent, agent, agent].join("\n");
+    expect(namedRows(read)).toBe(7);
+    expect(verifyPromptBinding(read, rows[70]!)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+
+  // agy.json names no footer rows, so its frame names no run and nothing is cut: its slash popup's
+  // region binds where it stands, and output pushing it out of the tail refuses it.
+  test("cuts nothing on agy--slash-exact.txt", () => {
+    const AGY = "agy--slash-exact.txt";
+    const raw = readFileSync(join(FIXTURE_DIR, AGY), "utf8");
+    const { region: popup } = REGIONS.find((row) => row.fixture === AGY)!;
+    expect(findInputFrame(splitLines(parseAnsi(raw)), requireProfile("agy").idle)?.volatile.named).toEqual([]);
+    expect(verifyPromptBinding(raw, popup)).toEqual({ ok: true });
+    const pushed = [raw.trimEnd(), ...Array.from({ length: 6 }, (_, i) => `output row ${String(i)}`)].join("\n");
+    expect(verifyPromptBinding(pushed, popup)).toEqual({ ok: false, reason: "not_in_tail" });
   });
 });

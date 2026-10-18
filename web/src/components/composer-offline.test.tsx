@@ -173,12 +173,14 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
     expect(screen.queryByText(NOTE)).toBeNull();
     await user.type(box, "h");
     expect(screen.getByText(NOTE)).toBeInTheDocument();
-    // An overlay, never a row of the composer: absolutely placed above the composer's top edge,
-    // with no Collapse around it, so nothing in the flow moves when it comes or goes.
+    // An overlay, never a row of the composer: the floating column is absolutely placed above the
+    // composer's top edge, with no Collapse around it, so nothing in the flow moves when it comes or goes.
     const wrapper = screen.getByText(NOTE).closest('[data-slot="offline-draft-note"]')!;
-    expect(wrapper.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
-    expect(wrapper.className).toMatch(/(?:^|\s)bottom-full(?=\s|$)/);
     expect(wrapper.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    const column = wrapper.closest('[data-slot="floating-cards"]')!;
+    expect(column.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)bottom-full(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
     expect(wrapper.closest('[data-slot="collapse"]')).toBeNull();
     // Live again: gone, and once per pane view, so the next outage does not repeat it.
     act(() => markLive("w1:p1"));

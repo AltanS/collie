@@ -32,7 +32,7 @@
 //
 // Pure: the same rows always give the same answer.
 
-import { commandListNear, type CommandListRead } from "./command-list";
+import { commandListNear, pointsAt, type CommandListRead } from "./command-list";
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
@@ -414,15 +414,16 @@ export function commandListAt(texts: readonly string[], frame: Frame, list: Comm
 
 /**
  * The typeahead of the command the box holds, or null: the profile's command list on either side of
- * a found frame, its pointer on an entry whose command is exactly the box's text (`/model` is pointed
- * at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed, so the
- * list is no dialog and its rows are read for no cue. A list that points at another command, or at
- * none, is read as before.
+ * a found frame, its pointer on an entry whose command is the box's text ({@link pointsAt}: `/model` is
+ * pointed at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed,
+ * so the list is no dialog and its rows are read for no cue. A list that points at another command, or
+ * at none, is read as before.
  */
 export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): CommandListRead | null {
   if (frame === null || idle === null || frame.placeholder) return null;
-  const list = commandListAt(texts, frame, idle.volatile.below.commandList);
-  return list !== null && list.pointed !== null && list.pointed === frame.interior.text.trim() ? list : null;
+  const rows = idle.volatile.below.commandList;
+  const list = commandListAt(texts, frame, rows);
+  return list !== null && pointsAt(list, frame.interior.text, rows) ? list : null;
 }
 
 /** The rows with the rows `first` to `last` read as blank. */
