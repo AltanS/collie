@@ -203,6 +203,7 @@ import {
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
+import { diskWriter, lineReading, readUpdateLineSync, type ReleaseLine, writeUpdateLine } from "./update-line.ts";
 import {
   FreshPreflightGate,
   launchUpdateRunner,
@@ -988,6 +989,9 @@ const updateMonitor = new UpdateMonitor({
   // What this version changed (1.21.1), from the CHANGELOG.md that ships beside package.json in every
   // checkout and payload. Read on the first Updates page open, once; no network.
   currentNotes: currentNotesReader(rootDir, currentVersion, githubReleaseUrl(updateRepo, currentVersion)),
+  // This machine's release line (M60 spec 01), read off disk on every resolve so a switch through
+  // `POST /api/update/line` is seen at once. A missing file is Stable with nothing rejected.
+  lineOffer: (tags, installed) => lineReading(readUpdateLineSync(cfg.stateDir), tags, installed),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions, linkChange, urgent) =>
     void push.send({
@@ -1081,12 +1085,21 @@ const preflightCache = new PreflightCache({
  * a binary install checks the release manifest and this platform's `sha256`, and on a checkout
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
-const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string | null; rollback?: boolean }) => {
+const startDetachedUpdate = (a: {
+  major: boolean;
+  runId: string;
+  toTag?: string | null;
+  rollback?: boolean;
+  downgrade?: boolean;
+  line?: ReleaseLine | null;
+}) => {
   const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
     major: a.major,
     rollback: a.rollback === true,
+    downgrade: a.downgrade === true,
+    line: a.line ?? null,
     stamp: String(Date.now()),
     hasSystemdRun: Bun.which("systemd-run") !== null,
     hasSetsid: Bun.which("setsid") !== null,
@@ -1121,6 +1134,9 @@ const updateAction = canRunUpdate
       start: startDetachedUpdate,
       // The phone's rollback (M60 spec 01): the same spawn, verb `update --rollback --run-id`.
       rollback: (a: { runId: string }) => startDetachedUpdate({ major: false, runId: a.runId, rollback: true }),
+      // "Go back now" (M60 spec 01): the one person-started downgrade, to the monitor's Stable target.
+      back: (a: { runId: string; to: string }) =>
+        startDetachedUpdate({ major: false, runId: a.runId, toTag: `v${a.to}`, downgrade: true }),
       beginCrewRun: (a: { runId: string; to: string }) => {
         updateTurns.begin(a.runId, a.to, Date.now());
         // §20's FIRST immediate sweep: the operator has confirmed, so the first turn goes out on a
@@ -2684,6 +2700,12 @@ const server = startServer({
   // The preflight and the handoff, or undefined on an install with no compiled binary to run —
   // where the route answers 503 and the phone says so (M15/05).
   updateAction,
+  // The release line record (M60 spec 01): `update-line.json` in the state dir, read per request.
+  updateLine: {
+    read: () => readUpdateLineSync(cfg.stateDir),
+    write: (record) => writeUpdateLine(diskWriter, cfg.stateDir, record),
+    now: Date.now,
+  },
   // The bare `<semver>+<sha>` this process answers `/api/health` and `/crew/v1/hello` with — one
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).

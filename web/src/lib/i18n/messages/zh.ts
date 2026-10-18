@@ -1603,8 +1603,10 @@ export const zh: Dictionary = {
   "apiError.update.peers_packaged": "{name} 是包管理器安装的。它的更新来自它自己的包管理器。",
   "apiError.update.packaged": "更新由系统的包管理器提供。Collie 不会替换当前安装的文件。",
   "apiError.update.start_failed": "无法启动更新：{reason}",
-  "apiError.update.request_id_required": "回滚需要请求 ID，未启动任何操作。",
+  "apiError.update.request_id_required": "此操作需要请求 ID，未启动任何操作。",
   "apiError.update.rollback_unavailable": "这台机器上没有可回滚的旧版本。",
+  "apiError.update.back_unavailable": "此构建版本没有可回退到的 Stable 版本。",
+  "apiError.update.line_invalid": "发布分支必须是 Stable 或 Edge，未更改任何内容。",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",
   "settings.updateCard.running": "当前运行 {current}",

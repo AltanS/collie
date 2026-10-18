@@ -1613,8 +1613,10 @@ export const ko: Dictionary = {
   "apiError.update.peers_packaged": "{name}은(는) 패키지 설치본입니다. 업데이트는 해당 머신의 패키지 관리자에서 받습니다.",
   "apiError.update.packaged": "업데이트는 패키지 관리자를 통해 제공됩니다. Collie는 이 설치본의 파일을 덮어쓰지 않습니다.",
   "apiError.update.start_failed": "업데이트를 시작하지 못했습니다: {reason}",
-  "apiError.update.request_id_required": "롤백에는 요청 ID가 필요합니다. 아무것도 시작되지 않았습니다.",
+  "apiError.update.request_id_required": "이 작업에는 요청 ID가 필요합니다. 아무것도 시작되지 않았습니다.",
   "apiError.update.rollback_unavailable": "이 머신에는 롤백할 이전 빌드가 없습니다.",
+  "apiError.update.back_unavailable": "이 빌드에서는 돌아갈 Stable 릴리스가 없습니다.",
+  "apiError.update.line_invalid": "릴리스 라인은 Stable 또는 Edge여야 합니다. 아무것도 변경되지 않았습니다.",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie 업데이트",
   "settings.updateCard.running": "현재 버전: {current}",

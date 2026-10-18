@@ -19,6 +19,12 @@
 # (scripts/release-version.ts --stamp), so the payload reports the build it is. This gate accepts that
 # stamped shape in one place only: where GITHUB_REF_NAME is that very tag. There the CHANGELOG still
 # answers with the base `X.Y.Z` heading. Anywhere else a stamped file fails, so it cannot be committed.
+#
+# A CHECKOUT INSTALL STAMPS TOO (cli/update.ts `stampCheckout`): it builds an Edge tag on the
+# operator's own machine, so it stamps the same three files after it checks the tag out, and marks
+# them `assume-unchanged` so the tree reads clean. That is the second place the stamp is accepted:
+# HEAD is the commit tag `vX.Y.Z-edge.N` names, and the manifest carries that mark. A stamp a person
+# typed by hand carries no mark, and `git commit -a` never picks up a marked file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,7 +38,16 @@ log_v="$(sed -n 's/^##[[:space:]]*\[\([0-9][^]]*\)\].*/\1/p' "$ROOT/CHANGELOG.md
 base_v="$toml_v"
 if [[ "$toml_v" =~ ^[0-9]+\.[0-9]+\.[0-9]+-edge\.(0|[1-9][0-9]*)$ ]]; then
   base_v="${toml_v%-edge.*}"
-  if [ "${GITHUB_REF_NAME:-}" != "v$toml_v" ]; then
+  stamped_here=0
+  if [ "${GITHUB_REF_NAME:-}" = "v$toml_v" ]; then
+    stamped_here=1
+  elif command -v git >/dev/null 2>&1; then
+    head_c="$(git -C "$ROOT" rev-parse -q --verify HEAD 2>/dev/null || true)"
+    tag_c="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/v$toml_v^{commit}" 2>/dev/null || true)"
+    mark="$( (git -C "$ROOT" ls-files -v -- herdr-plugin.toml 2>/dev/null || true) | cut -c1)"
+    if [ -n "$head_c" ] && [ "$head_c" = "$tag_c" ] && [ "$mark" = "h" ]; then stamped_here=1; fi
+  fi
+  if [ "$stamped_here" -ne 1 ]; then
     echo "✗ herdr-plugin.toml says $toml_v, and an -edge.N suffix belongs in the tag only." >&2
     echo "  The files in git keep plain $base_v; the release job stamps the suffix into its own copy" >&2
     echo "  while it builds tag v$toml_v (scripts/release-version.ts). Set the three files back to $base_v." >&2

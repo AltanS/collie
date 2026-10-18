@@ -1155,6 +1155,18 @@ export interface UpdateStatus {
    */
   newerVersions?: string[];
   /**
+   * This machine's release line (M60 spec 01, ADR 0110): `stable`, ADR 0020's strict releases, or
+   * `edge`, which adds the `-edge.N` pre-releases. Absent on an older bridge, which is Stable.
+   */
+  line?: "stable" | "edge";
+  /**
+   * BACK TO STABLE, case 2 (M60 spec 01): this machine is on Stable, runs an Edge build, and no
+   * Stable release is at or above it. `to` is the newest Stable below it, the target of "Go back
+   * now". `exceptions` names every state file that build cannot read (ADR 0110; empty by rule), which
+   * the page shows before the button. Absent in every other case.
+   */
+  back?: { to: string; exceptions: string[] };
+  /**
    * The detached updater's run record (`<state dir>/update.json`, M15/04) — read from disk on every
    * snapshot, so a bridge that has just been restarted BY an update reports the run it is part of
    * instead of coming up with nothing to say. Absent when this install has never updated through the

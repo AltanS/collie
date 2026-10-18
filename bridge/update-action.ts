@@ -1011,6 +1011,69 @@ export function rollbackVerdict(req: RollbackRequest, state: RollbackState): Rol
   return { kind: "start", from: back.from, to: back.to, runId: req.requestId };
 }
 
+// ── GO BACK NOW: THE SWITCH BACK TO STABLE (M60 spec 01) ─────────────────────
+
+/** What the back verdict is decided from. `back` is the monitor's case-2 target, or null. */
+export interface BackState extends RollbackState {
+  /** The version this machine runs, which the run leaves. */
+  readonly current: string;
+  readonly line: "stable" | "edge" | null;
+  readonly back: string | null;
+}
+
+/**
+ * Whether `POST /api/update/back` starts "Go back now", and if not, exactly why not. It takes the
+ * rollback route's body and the rollback route's order, with the one question that differs:
+ *
+ *  1. **No confirm**, **no request id**: refused, as for a rollback.
+ *  2. **The same id again** answers its receipt.
+ *  3. **A run is going**, or this lead's crew run is open: the double-tap refusal.
+ *  4. **A packaged install** takes its versions from its package manager.
+ *  5. **No way back to offer**: the line is not Stable, or no Stable release is below an Edge build
+ *     that is ahead of every Stable one. The monitor's `back` is the only target this route takes.
+ *  6. **A stale sheet**: the version it named is not the target now.
+ *  7. **A red preflight**: the machine cannot download or build the target right now.
+ */
+export function backVerdict(req: RollbackRequest, state: BackState): RollbackVerdict {
+  if (!req.confirm) return refused(400, "update.confirm_required");
+  if (req.requestId === null) return refused(400, "update.request_id_required");
+  const { run } = state;
+  if (run !== null && run.runId === req.requestId) {
+    return { kind: "replay", from: run.from, to: run.to, runId: req.requestId };
+  }
+  if ((run !== null && inFlight(run.state)) || state.lockHeld) {
+    return refused(409, "update.in_progress", { state: run?.state ?? "staging" });
+  }
+  if (state.crewRunOpen === true) return refused(409, "update.in_progress", { state: "levelling the crew" });
+  if (state.installKind === "packaged") return refused(409, "update.packaged");
+  if (state.line !== "stable" || state.back === null) return refused(409, "update.back_unavailable");
+  if (req.target !== null && req.target !== state.back) {
+    return refused(409, "update.target_mismatch", { asked: req.target, would: state.back });
+  }
+  if (state.preflight === null) return refused(503, "update.preflight_unavailable");
+  const red = firstRed(state.preflight);
+  if (red !== null) return refused(409, "update.preflight_red", { check: red.id, reason: red.reason });
+  return { kind: "start", from: state.current, to: state.back, runId: req.requestId };
+}
+
+// ── THE RELEASE LINE SWITCH (M60 spec 01) ────────────────────────────────────
+
+/** The body `POST /api/update/line` accepts, after parsing. */
+export interface LineRequest {
+  readonly line: "stable" | "edge" | null;
+  readonly requestId: string | null;
+}
+
+/** Parse an untrusted body. `null` when it is not an object — the caller answers 400. */
+export function parseLineRequest(body: JsonValue): LineRequest | null {
+  const rec = asRecord(body);
+  if (rec === null) return null;
+  return {
+    line: rec.line === "stable" || rec.line === "edge" ? rec.line : null,
+    requestId: isRequestId(rec.requestId) ? rec.requestId : null,
+  };
+}
+
 // ── IS THERE ANYTHING FOR A CREW RUN TO DO? THE ONE RULE ─────────────────────
 // The phone decides whether to OFFER "Update crew" / "Retry crew update" and this bridge decides
 // whether to ACCEPT the peers-only start that button sends. Two answers to one question is how the
@@ -1146,9 +1209,19 @@ export function updateStartCommand(a: {
    * and are dropped.
    */
   readonly rollback?: boolean;
+  /**
+   * The way DOWN (M60 spec 01): `--downgrade` beside `--to-tag`, for "Go back now" and for a crew
+   * member following its lead's rollback or switch. Never the default, and meaningless without a tag.
+   */
+  readonly downgrade?: boolean;
+  /** `--line <line>`: the line this one run resolves on, the lead's for a crew member (ADR 0110). */
+  readonly line?: "stable" | "edge" | null;
 }): UpdateStartPlan {
   const verb = a.rollback === true ? ["update", "--rollback"] : a.major ? ["update", "--major"] : ["update"];
-  if (a.rollback !== true && a.toTag !== undefined && a.toTag !== null) verb.push("--to-tag", a.toTag);
+  const pinned = a.rollback !== true && a.toTag !== undefined && a.toTag !== null;
+  if (pinned) verb.push("--to-tag", a.toTag ?? "");
+  if (pinned && a.downgrade === true) verb.push("--downgrade");
+  if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
     const setenv = a.mirror === undefined || a.mirror === null ? [] : [`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`];

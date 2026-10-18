@@ -1621,8 +1621,10 @@ export const ja: Dictionary = {
   "apiError.update.peers_packaged": "{name} はパッケージ版です。更新はそのマシンのパッケージマネージャーから提供されます。",
   "apiError.update.packaged": "更新はパッケージマネージャーから行われます。Collie はこのインストールのファイルを置換しません。",
   "apiError.update.start_failed": "更新を開始できませんでした: {reason}",
-  "apiError.update.request_id_required": "ロールバックにはリクエストIDが必要です。何も開始されませんでした。",
+  "apiError.update.request_id_required": "この操作にはリクエストIDが必要です。何も開始されませんでした。",
   "apiError.update.rollback_unavailable": "このマシンにはロールバック先の以前のビルドがありません。",
+  "apiError.update.back_unavailable": "このビルドから戻れるStableリリースはありません。",
+  "apiError.update.line_invalid": "リリースラインはStableまたはEdgeである必要があります。何も変更されませんでした。",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie を更新",
   "settings.updateCard.running": "実行中: {current}",

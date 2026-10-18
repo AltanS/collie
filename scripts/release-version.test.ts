@@ -204,6 +204,45 @@ describe("the script, as the release job runs it", () => {
 		expect(r.stderr.toString()).toContain("version mismatch");
 	});
 
+	/** `tree`, as a git repository with one commit tagged `tag`. */
+	function repo(version: string, tag: string): string {
+		const dir = tree(version);
+		const git = (...args: string[]) =>
+			Bun.spawnSync(["git", "-C", dir, "-c", "user.email=t@example.invalid", "-c", "user.name=t", ...args]);
+		git("init", "-q");
+		git("add", "-A");
+		git("commit", "-qm", "release");
+		git("tag", tag);
+		return dir;
+	}
+	const gitStatus = (dir: string) => Bun.spawnSync(["git", "-C", dir, "status", "--porcelain"]).stdout.toString();
+
+	test("a stamp keeps the tree clean, so the web build is not marked -dirty", () => {
+		const dir = repo("1.23.0", "v1.23.0-edge.1");
+		expect(stamp(dir, "v1.23.0-edge.1").exitCode).toBe(0);
+		expect(tomlVersion(readFileSync(join(dir, "herdr-plugin.toml"), "utf8"))).toBe("1.23.0-edge.1");
+		expect(gitStatus(dir)).toBe("");
+	});
+
+	test("a checkout install's stamp is accepted at the tag's own commit, and nowhere else", () => {
+		const dir = repo("1.23.0", "v1.23.0-edge.1");
+		stamp(dir, "v1.23.0-edge.1");
+		// No GITHUB_REF_NAME: HEAD is the tag, and the manifest carries the stamp's mark.
+		const ok = checkVersion(dir);
+		expect(ok.exitCode).toBe(0);
+		expect(ok.stdout.toString()).toContain("(Edge build of 1.23.0)");
+		// A stamp typed by hand carries no mark, and is refused at the same commit.
+		Bun.spawnSync(["git", "-C", dir, "update-index", "--no-assume-unchanged", "--", "herdr-plugin.toml"]);
+		expect(checkVersion(dir).exitCode).toBe(1);
+	});
+
+	test("a marked stamp on a commit the tag does not name is refused", () => {
+		const dir = repo("1.23.0", "v1.23.0-edge.1");
+		stamp(dir, "v1.23.0-edge.1");
+		Bun.spawnSync(["git", "-C", dir, "tag", "-d", "v1.23.0-edge.1"]);
+		expect(checkVersion(dir).exitCode).toBe(1);
+	});
+
 	test("check-version on this repository is untouched by any of it", () => {
 		expect(Bun.spawnSync(["bash", join(ROOT, "scripts", "check-version.sh")]).exitCode).toBe(0);
 	});

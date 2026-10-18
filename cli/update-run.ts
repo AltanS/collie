@@ -9,6 +9,7 @@ import {
   UPDATE_RUN_SCHEMA,
   updateLockPath,
   updateRunPath,
+  type RunAction,
   type UpdateLock,
   type UpdateRun,
   type UpdateRunState,
@@ -54,8 +55,9 @@ export type RunEvent =
        * from a terminal, which is a run with no id, never a run with a blank one.
        */
       readonly runId?: string | null;
-      /** `rollback` for a run that goes back to a build on disk (M60 spec 01). Absent on an update. */
-      readonly action?: "rollback";
+      /** `rollback` for a run that goes back to a build on disk, `switch` for "Go back now" (M60 spec
+       *  01). Absent on an update. */
+      readonly action?: RunAction;
     }
   /** Preflight passed; the new version is being built or laid down. */
   | { readonly kind: "stage" }
@@ -143,7 +145,7 @@ export function reduce(run: UpdateRun, event: RunEvent, now: number): UpdateRun 
       // whose value is `undefined`, or it would serialise as a key the reader has to guess about.
       const id = event.runId ?? null;
       const named = id === null || id === "" ? begun : { ...begun, runId: id };
-      return event.action === "rollback" ? { ...named, action: "rollback" } : named;
+      return event.action === undefined ? named : { ...named, action: event.action };
     }
     case "stage":
       expect(run, event.kind, ["preflight"]);

@@ -1727,8 +1727,10 @@ export const en = {
   "apiError.update.peers_packaged": "{name} is a packaged install. Its updates come from its own package manager.",
   "apiError.update.packaged": "Updates come from your package manager. Collie won't replace this install's files.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
-  "apiError.update.request_id_required": "A rollback needs a request ID. Nothing was started.",
+  "apiError.update.request_id_required": "This action needs a request ID. Nothing was started.",
   "apiError.update.rollback_unavailable": "There's no previous build on this machine to roll back to.",
+  "apiError.update.back_unavailable": "There's no Stable release to go back to from this build.",
+  "apiError.update.line_invalid": "The release line must be Stable or Edge. Nothing was changed.",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Update Collie",
   "settings.updateCard.running": "Running {current}",

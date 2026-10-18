@@ -1631,8 +1631,10 @@ export const es: Dictionary = {
   "apiError.update.peers_packaged": "{name} es una instalación por paquete. Sus actualizaciones vienen de su propio gestor de paquetes.",
   "apiError.update.packaged": "Las actualizaciones se gestionan con tu gestor de paquetes. Collie no reemplazará los archivos de esta instalación.",
   "apiError.update.start_failed": "No se pudo iniciar la actualización: {reason}",
-  "apiError.update.request_id_required": "Una reversión necesita un ID de solicitud. No se inició nada.",
+  "apiError.update.request_id_required": "Esta acción necesita un ID de solicitud. No se inició nada.",
   "apiError.update.rollback_unavailable": "No hay una compilación anterior en esta máquina a la cual revertir.",
+  "apiError.update.back_unavailable": "No hay ninguna versión Stable a la que volver desde esta compilación.",
+  "apiError.update.line_invalid": "La línea de versión debe ser Stable o Edge. No se modificó nada.",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Actualizar Collie",
   "settings.updateCard.running": "Ejecutando {current}",

@@ -136,12 +136,15 @@ import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts
 import type { UpdateMonitor } from "./update.ts";
 import { readStagingLog } from "./staging-log.ts";
 import {
+  backVerdict,
+  parseLineRequest,
   parseRollbackRequest,
   parseUpdateStartRequest,
   rollbackVerdict,
   updateStartVerdict,
   type PreflightReport,
 } from "./update-action.ts";
+import { type UpdateLineRecord, withLine } from "./update-line.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { readClaudeSubagent } from "./journal/claude.ts";
@@ -1030,6 +1033,22 @@ export interface UpdateActionDeps {
    * `POST /api/update/rollback`, which then answers 503 like the update route without its deps.
    */
   rollback?: (a: { runId: string }) => { ok: true } | { ok: false; reason: string };
+  /**
+   * Start "Go back now" (M60 spec 01): `collie update --to-tag v<to> --downgrade --run-id <id>`,
+   * detached. Undefined disables `POST /api/update/back`, which then answers 503.
+   */
+  back?: (a: { runId: string; to: string }) => { ok: true } | { ok: false; reason: string };
+}
+
+/**
+ * This machine's release line record (`update-line.json`, M60 spec 01), read and written by
+ * `GET`/`POST /api/update/line`. A seam for the reason {@link UpdateActionDeps} is one: the file is
+ * index.ts's, and a test holds the route by this interface. Undefined answers 503.
+ */
+export interface UpdateLineDeps {
+  read: () => UpdateLineRecord;
+  write: (record: UpdateLineRecord) => void;
+  now: () => number;
 }
 
 export function startServer(opts: {
@@ -1050,6 +1069,8 @@ export function startServer(opts: {
    * tapping a button that quietly does nothing.
    */
   updateAction?: UpdateActionDeps;
+  /** The release line record (M60 spec 01). See {@link UpdateLineDeps}. */
+  updateLine?: UpdateLineDeps;
   /**
    * The BARE version string this process answers with (`bridge/version.ts`'s `collieVersionBare`) —
    * `<semver>` or `<semver>+<short sha>`. Resolved once in index.ts, never re-read here: it is the
@@ -3303,7 +3324,8 @@ export function startServer(opts: {
             req.headers.get("accept-encoding"),
           );
         }
-        // No crew run: a rollback levels nobody (ADR 0016; `crewTurnStart` refuses it too).
+        // No crew run opens here. The crew levels DOWN once this lead's own rollback is done: the
+        // settle gate reads the record and `crewTurnStart` marks the run as one that goes down.
         audit.record({
           action: "update.rollback",
           device: whois(req).device,
@@ -3316,6 +3338,131 @@ export function startServer(opts: {
           req.headers.get("accept-encoding"),
           202,
         );
+      }
+
+      if (pathname === "/api/update/back" && req.method === "POST") {
+        // ── GO BACK NOW: FROM EDGE TO STABLE (M60 spec 01) ──────────────────
+        // The one person-started downgrade. The rollback route's gate, body and receipt; the target is
+        // the monitor's `back`, the newest Stable release below an Edge build that is ahead of Stable.
+        // The CLI flips to the kept Stable build when this machine has one, and takes the tag the
+        // ordinary way when it does not (`collie update --to-tag v<to> --downgrade`).
+        const denied = browserGate("write");
+        if (denied) return denied;
+        const action = opts.updateAction;
+        if (!action?.back) return text("go back action unavailable", 503);
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and
+          // `parseRollbackRequest` re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parseRollbackRequest(body);
+        if (parsed === null) {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const report = await action.preflight(true);
+        const status = updateMonitor.status();
+        const verdict = backVerdict(parsed, {
+          run: status.run ?? null,
+          lockHeld: action.lockHeld(),
+          preflight: report,
+          installKind: status.installKind,
+          crewRunOpen: opts.crewLead?.updateRunOpen() ?? false,
+          current: status.current,
+          line: status.line ?? null,
+          back: status.back?.to ?? null,
+        });
+        if (verdict.kind === "refuse") {
+          return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
+        }
+        if (verdict.kind === "replay") {
+          return json(
+            { ok: true, from: verdict.from, to: verdict.to, run: status.run ?? null, runId: verdict.runId, replay: true },
+            req.headers.get("accept-encoding"),
+            202,
+          );
+        }
+        const started = action.back({ runId: verdict.runId, to: verdict.to });
+        if (!started.ok) {
+          return jsonError(
+            apiError("update.start_failed", { reason: started.reason }),
+            500,
+            req.headers.get("accept-encoding"),
+          );
+        }
+        // No crew run opens here either: the crew follows the lead's switch DOWN once it is done.
+        audit.record({
+          action: "update.back",
+          device: whois(req).device,
+          detail: { from: verdict.from, to: verdict.to, requestId: verdict.runId },
+        });
+        return json(
+          { ok: true, from: verdict.from, to: verdict.to, run: status.run ?? null, runId: verdict.runId },
+          req.headers.get("accept-encoding"),
+          202,
+        );
+      }
+
+      if (pathname === "/api/update/line" && (req.method === "GET" || req.method === "POST")) {
+        // ── THE RELEASE LINE: STABLE OR EDGE (M60 spec 01, ADR 0110) ────────
+        // One setting per machine. The GET is a read like the update card's own; the POST is a
+        // write, and it installs NOTHING: it changes what the next check offers, and the install is
+        // the ordinary update sheet. The receipt is the record as written, with the request id, and
+        // the same id again answers it unchanged.
+        const lineStore = opts.updateLine;
+        if (!lineStore) return text("release line unavailable", 503);
+        if (req.method === "GET") {
+          const denied = guard(req, cfg, "read", pairingGate);
+          if (denied) return denied;
+          const record = lineStore.read();
+          return json(
+            { line: record.line, rejected: record.rejected, changedAt: record.changedAt },
+            req.headers.get("accept-encoding"),
+          );
+        }
+        const denied = browserGate("write");
+        if (denied) return denied;
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and `parseLineRequest`
+          // re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return jsonError(apiError("update.line_invalid"), 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parseLineRequest(body);
+        if (parsed === null || parsed.line === null) {
+          return jsonError(apiError("update.line_invalid"), 400, req.headers.get("accept-encoding"));
+        }
+        if (parsed.requestId === null) {
+          return jsonError(apiError("update.request_id_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const before = lineStore.read();
+        const replay = before.requestId === parsed.requestId && before.line === parsed.line;
+        const record = replay ? before : withLine(before, parsed.line, lineStore.now(), parsed.requestId);
+        if (!replay) {
+          lineStore.write(record);
+          audit.record({
+            action: "update.line",
+            device: whois(req).device,
+            detail: { from: before.line, to: record.line, requestId: parsed.requestId },
+          });
+          // What the new line offers, from the tags the last check found, at once; then a check, so
+          // anything newly offered has its sidecar read.
+          updateMonitor.lineChanged();
+          void updateMonitor.checkRelease();
+        }
+        const receipt: JsonObject = {
+          ok: true,
+          line: record.line,
+          rejected: [...record.rejected],
+          changedAt: record.changedAt,
+          requestId: parsed.requestId,
+        };
+        if (replay) receipt.replay = true;
+        return json(receipt, req.headers.get("accept-encoding"));
       }
 
       // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────

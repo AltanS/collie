@@ -1599,8 +1599,10 @@ export const zhTW: Dictionary = {
   "apiError.update.peers_packaged": "{name} 是套件管理員安裝的。它的更新來自它自己的套件管理員。",
   "apiError.update.packaged": "更新由系統的套件管理工具提供。Collie 不會取代目前安裝的檔案。",
   "apiError.update.start_failed": "無法啟動更新：{reason}",
-  "apiError.update.request_id_required": "復原需要請求 ID，未啟動任何操作。",
+  "apiError.update.request_id_required": "此操作需要請求 ID，未啟動任何操作。",
   "apiError.update.rollback_unavailable": "這台機器上沒有可復原的舊版本。",
+  "apiError.update.back_unavailable": "此組建沒有可返回的 Stable 版本。",
+  "apiError.update.line_invalid": "發布版本系列必須是 Stable 或 Edge。未變更任何項目。",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",
   "settings.updateCard.running": "目前執行 {current}",

@@ -18,9 +18,10 @@
 // `scripts/check-version.sh` accepts the stamped shape only where `GITHUB_REF_NAME` is that very
 // tag, so a stamped file committed by mistake fails every other check.
 //
-// No dependency beyond `node:fs`: the payload job runs this before `bun install`.
+// No dependency beyond Node's own modules: the payload job runs this before `bun install`.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** `vX.Y.Z` with an optional `-<tail>`: the same anchor `bridge/update.ts` reads remote tags with. */
@@ -144,6 +145,13 @@ function main(argv: readonly string[]): number {
 		writeFileSync(files.toml, stampToml(text.toml, stamp));
 		writeFileSync(files.pkg, stampPackageJson(text.pkg, stamp));
 		writeFileSync(files.web, stampPackageJson(text.web, stamp));
+		// THE TREE STAYS CLEAN. A stamped file is a change `git status` reports, and the web build
+		// marks a build from a changed tree `-dirty`, which the health gate reads as "not that commit"
+		// and rolls back. `assume-unchanged` keeps the stamp out of `git status`, here and in a
+		// checkout install that stamps the same way (`cli/update.ts`).
+		if (existsSync(join(root, ".git"))) {
+			spawnSync("git", ["-C", root, "update-index", "--assume-unchanged", "--", "herdr-plugin.toml", "package.json", join("web", "package.json")]);
+		}
 		console.error(`stamped ${stamp} into herdr-plugin.toml, package.json and web/package.json (this checkout only)`);
 	}
 	process.stdout.write(`version=${reading.version}\nbase=${reading.base}\nline=${reading.line}\n`);

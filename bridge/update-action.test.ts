@@ -18,6 +18,9 @@ import {
   parseCrewRows,
   parsePeerPreflight,
   parsePreflightReport,
+  backVerdict,
+  type BackState,
+  parseLineRequest,
   parseRollbackRequest,
   parseUpdateStartRequest,
   peerPreflightWire,
@@ -1089,5 +1092,75 @@ describe("POST api/update/rollback — the rollback verdict (M60 spec 01)", () =
       "--run-id",
       ID,
     ]);
+  });
+});
+
+describe("POST api/update/back and api/update/line — the two release lines (M60 spec 01)", () => {
+  const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const backState = (over: Partial<BackState> = {}): BackState => ({
+    run: null,
+    lockHeld: false,
+    preflight: GREEN,
+    current: "1.23.0-edge.2",
+    line: "stable",
+    back: "1.22.6",
+    ...over,
+  });
+  const askBack = (over: JsonObject = {}) => {
+    const parsed = parseRollbackRequest({ confirm: true, requestId: ID, ...over });
+    if (parsed === null) throw new Error("not an object");
+    return parsed;
+  };
+
+  test("Go back now starts to the monitor's Stable target, with the request id as the run id", () => {
+    expect(backVerdict(askBack(), backState())).toEqual({ kind: "start", from: "1.23.0-edge.2", to: "1.22.6", runId: ID });
+    expect(backVerdict(askBack({ target: "1.22.6" }), backState())).toMatchObject({ kind: "start" });
+  });
+
+  test("refusals, in order: confirm, id, replay, a run going, packaged, nothing to go back to, a stale sheet, red", () => {
+    expect(backVerdict(askBack({ confirm: false }), backState())).toMatchObject({ status: 400, body: { code: "update.confirm_required" } });
+    expect(backVerdict(askBack({ requestId: "nope" }), backState())).toMatchObject({ status: 400, body: { code: "update.request_id_required" } });
+    const run: UpdateRun = { ...runAt("done"), runId: ID, from: "v1.23.0-edge.2", to: "v1.22.6" };
+    expect(backVerdict(askBack(), backState({ run }))).toEqual({ kind: "replay", from: "v1.23.0-edge.2", to: "v1.22.6", runId: ID });
+    expect(backVerdict(askBack(), backState({ lockHeld: true }))).toMatchObject({ status: 409, body: { code: "update.in_progress" } });
+    expect(backVerdict(askBack(), backState({ crewRunOpen: true }))).toMatchObject({ status: 409, body: { code: "update.in_progress" } });
+    expect(backVerdict(askBack(), backState({ installKind: "packaged" }))).toMatchObject({ status: 409, body: { code: "update.packaged" } });
+    expect(backVerdict(askBack(), backState({ line: "edge" }))).toMatchObject({ status: 409, body: { code: "update.back_unavailable" } });
+    expect(backVerdict(askBack(), backState({ back: null }))).toMatchObject({ status: 409, body: { code: "update.back_unavailable" } });
+    expect(backVerdict(askBack({ target: "1.22.5" }), backState())).toMatchObject({ status: 409, body: { code: "update.target_mismatch" } });
+    expect(backVerdict(askBack(), backState({ preflight: null }))).toMatchObject({ status: 503 });
+    const red = REPORT("red", [{ id: "disk", verdict: "red", reason: "0.1 GB free" }]);
+    expect(backVerdict(askBack(), backState({ preflight: red }))).toMatchObject({ status: 409, body: { code: "update.preflight_red" } });
+  });
+
+  test("the spawn is `update --to-tag v<to> --downgrade --run-id`, and --line rides only when asked", () => {
+    const base = { platform: "linux", binary: "/c", stamp: "1", hasSystemdRun: false, hasSetsid: false, major: false };
+    expect(updateStartCommand({ ...base, runId: ID, toTag: "v1.22.6", downgrade: true }).command).toEqual([
+      "/c",
+      "update",
+      "--to-tag",
+      "v1.22.6",
+      "--downgrade",
+      "--run-id",
+      ID,
+    ]);
+    expect(updateStartCommand({ ...base, runId: ID, toTag: "v1.23.0-edge.2", line: "edge" }).command).toEqual([
+      "/c",
+      "update",
+      "--to-tag",
+      "v1.23.0-edge.2",
+      "--line",
+      "edge",
+      "--run-id",
+      ID,
+    ]);
+    // `--downgrade` without a tag means nothing and is never sent.
+    expect(updateStartCommand({ ...base, runId: ID, downgrade: true }).command).toEqual(["/c", "update", "--run-id", ID]);
+  });
+
+  test("the line switch body: a line word and a UUID, nothing else believed", () => {
+    expect(parseLineRequest({ line: "edge", requestId: ID })).toEqual({ line: "edge", requestId: ID });
+    expect(parseLineRequest({ line: "nightly", requestId: "x" })).toEqual({ line: null, requestId: null });
+    expect(parseLineRequest("edge")).toBeNull();
   });
 });

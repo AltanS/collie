@@ -322,9 +322,16 @@ export const ERROR_CODES = {
    * A rollback POST without a request id (M60 spec 01). The id is the run's id and the receipt a
    * retry is answered with, so a body without one could start a second rollback on a dropped answer.
    */
-  "update.request_id_required": "a rollback needs a request id; nothing was started",
+  "update.request_id_required": "this action needs a request id; nothing was started",
   /** This install keeps no previous build on disk, so there is nothing to roll back to (M60 spec 01). */
   "update.rollback_unavailable": "there is no previous build on this machine to roll back to",
+  /**
+   * "Go back now" with nothing to go back to (M60 spec 01): the line is not Stable, or this machine
+   * runs no Edge build ahead of every Stable release, or no Stable release is below it.
+   */
+  "update.back_unavailable": "there is no Stable release to go back to from this build",
+  /** A release line switch whose body named no line (M60 spec 01). */
+  "update.line_invalid": "the release line must be stable or edge; nothing was changed",
 
   // ── A durable program's history: POST /api/durable/conversation/:id/reopen (M53 spec 11) ───
   /** The program would not show the conversation again (unknown, refused, or it takes no reopen). */

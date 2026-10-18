@@ -6,7 +6,6 @@ import type { JsonValue } from "../bridge/json.ts";
 import {
   type ApiTag,
   compareSemver,
-  followsTrain,
   githubCredential,
   githubTagsUrl,
   isGithubApiUrl,
@@ -20,7 +19,24 @@ import {
   parseReleaseManifest,
   readAllTags,
 } from "../bridge/update.ts";
-import { STALE_AFTER_MS, inFlight, updateLockPath, type UpdateLock, type UpdateRun } from "../bridge/update-run.ts";
+import {
+  STALE_AFTER_MS,
+  inFlight,
+  type RunAction,
+  updateLockPath,
+  type UpdateLock,
+  type UpdateRun,
+} from "../bridge/update-run.ts";
+import {
+  afterRollback,
+  isEdgeBuild,
+  isStrictRelease,
+  lineOffer,
+  readUpdateLine,
+  type ReleaseLine,
+  writeUpdateLine,
+} from "../bridge/update-line.ts";
+import { readReleaseTag, stampPackageJson, stampToml } from "../scripts/release-version.ts";
 import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
@@ -299,6 +315,10 @@ export function planUpdate(a: {
   head: string;
   /** `--major` was passed: the operator consents to one crossing. */
   crossMajor: boolean;
+  /** This machine's release line (`update-line.json`, or `--line`). Absent reads as Stable. */
+  line?: ReleaseLine;
+  /** Builds this machine rolled back from. Never a target. */
+  rejected?: readonly string[];
 }): UpdatePlan {
   const major = a.installed === null ? null : majorOf(a.installed);
   if (major === null || a.installed === null) {
@@ -310,12 +330,17 @@ export function planUpdate(a: {
       ? { kind: "no-higher-major", major }
       : { kind: "advance", target: higher, crossesMajor: true, higher };
   }
-  // Prerelease-following is decided by the INSTALLED version, never by a flag — and the rule itself
-  // lives in ONE place, `followsTrain`, which the banner reads too. A stable install is offered
-  // strict releases only (unchanged, byte for byte). A prerelease install PREFERS strict releases as
-  // well, and drops to its major's train only when no strict release there is newer than it.
-  const strict = releaseInMajor(a.tags, major);
-  const best = followsTrain(a.installed, strict?.version ?? null) ? trainInMajor(a.tags, major) : strict;
+  // WHAT THE LINE OFFERS (M60 spec 01, ADR 0110), decided in ONE place, `lineOffer`, which the
+  // banner reads too. Stable is ADR 0020 unchanged: strict releases, plus the legacy prerelease train
+  // for an install that is itself on an old beta (`followsTrain`). Edge adds the `-edge.N` builds of
+  // the same major. A build this machine rolled back from is never a target on either line.
+  const offer = lineOffer({
+    tags: a.tags.map((t) => t.tag),
+    installed: a.installed,
+    line: a.line ?? "stable",
+    rejected: a.rejected ?? [],
+  });
+  const best = offer.latest === null ? null : (a.tags.find((t) => t.version === offer.latest) ?? null);
   if (best === null) return { kind: "no-release", major, higher };
   // Already there — by commit (the usual case) or by version (a rebuilt tag, a rolled-forward
   // manifest). Either answer means there is nothing in this major left to take.
@@ -390,17 +415,27 @@ export type ToTagPlan =
   | { readonly kind: "refused"; readonly reason: string };
 
 /**
- * Resolve `--to-tag` against the remote's tags and the installed version — the FOUR refusals, in one
- * pure function so every install kind refuses identically.
+ * Resolve `--to-tag` against the remote's tags and the installed version — the refusals, in one pure
+ * function so every install kind refuses identically.
  *
- * There is no downgrade path here and there will not be one. A flag that could move an install
- * backwards is a flag that could move it anywhere, and the caller that reads it on a peer takes its
- * target from a header its lead sent.
+ * TWO LINES, ONE WAY DOWN (M60 spec 01, ADR 0110). An `-edge.N` tag is a target only on a machine
+ * whose line is Edge. A LOWER tag is a target only with `downgrade`, the explicit flag
+ * (`--downgrade`) the bridge passes for the two runs that go down: the person-started switch back to
+ * Stable, and a crew member following its lead's rollback or switch. It is never the default: the
+ * terminal's `collie update` and `--to-tag` without it refuse every downgrade, as they always did.
+ * With it, the lower target must be a Stable release or an Edge build, never an old beta, and never
+ * across a major.
  */
 export function planToTag(a: {
   tags: readonly ReleaseTag[];
   installed: string | null;
   wanted: string;
+  /** This machine's release line. Absent reads as Stable. */
+  line?: ReleaseLine;
+  /** Builds this machine rolled back from. Refused, except as the target of a step down. */
+  rejected?: readonly string[];
+  /** `--downgrade`: a lower target is allowed. */
+  downgrade?: boolean;
 }): ToTagPlan {
   const wanted = a.wanted.trim();
   const bare = wanted.startsWith("v") ? wanted.slice(1) : wanted;
@@ -408,10 +443,11 @@ export function planToTag(a: {
   if (target === undefined) {
     return { kind: "refused", reason: `no release tag \`${wanted}\` upstream — there is nothing to take` };
   }
-  if (target.prerelease !== null) {
+  const edge = isEdgeBuild(target.version);
+  if (target.prerelease !== null && !edge) {
     return {
       kind: "refused",
-      reason: `\`${target.tag}\` is a prerelease — \`--to-tag\` takes strict releases only`,
+      reason: `\`${target.tag}\` is a prerelease — \`--to-tag\` takes strict releases and Edge builds only`,
     };
   }
   if (a.installed === null) {
@@ -420,10 +456,27 @@ export function planToTag(a: {
       reason: "this install names no version, so there is nothing to compare `--to-tag` against",
     };
   }
-  if (compareSemver(target.version, a.installed) <= 0) {
+  const order = compareSemver(target.version, a.installed);
+  const down = a.downgrade === true && order < 0;
+  if (order <= 0 && !down) {
     return {
       kind: "refused",
-      reason: `\`${target.tag}\` is not higher than the installed ${a.installed} — \`--to-tag\` never downgrades`,
+      reason:
+        order === 0
+          ? `\`${target.tag}\` is the installed ${a.installed} — there is nothing to take`
+          : `\`${target.tag}\` is lower than the installed ${a.installed} — \`--to-tag\` never downgrades without \`--downgrade\``,
+    };
+  }
+  if (edge && !down && a.line !== "edge") {
+    return {
+      kind: "refused",
+      reason: `\`${target.tag}\` is an Edge build, and this machine is on the Stable line`,
+    };
+  }
+  if (!down && (a.rejected ?? []).includes(target.version)) {
+    return {
+      kind: "refused",
+      reason: `\`${target.tag}\` is a build this machine rolled back from, and it is not offered again`,
     };
   }
   const major = majorOf(a.installed);
@@ -450,10 +503,17 @@ const advanceTo = (target: ReleaseTag): UpdatePlan => ({
  */
 export function pinPlan(
   plan: UpdatePlan,
-  a: { tags: readonly ReleaseTag[]; installed: string | null; wanted: string | null },
+  a: {
+    tags: readonly ReleaseTag[];
+    installed: string | null;
+    wanted: string | null;
+    line?: ReleaseLine;
+    rejected?: readonly string[];
+    downgrade?: boolean;
+  },
 ): { readonly ok: true; readonly plan: UpdatePlan } | { readonly ok: false; readonly reason: string } {
   if (a.wanted === null) return { ok: true, plan };
-  const pinned = planToTag({ tags: a.tags, installed: a.installed, wanted: a.wanted });
+  const pinned = planToTag({ ...a, wanted: a.wanted });
   if (pinned.kind === "refused") return { ok: false, reason: pinned.reason };
   return { ok: true, plan: advanceTo(pinned.target) };
 }
@@ -500,6 +560,102 @@ function assertOrigin(deps: UpdateDeps, root: string = deps.ctx.root): boolean {
 /** The version in the checkout's own `herdr-plugin.toml` — the installed major is read from here. */
 function installedVersion(deps: UpdateDeps): string | null {
   return manifestVersionFrom(deps.files.read(join(deps.ctx.root, "herdr-plugin.toml")));
+}
+
+/**
+ * `--line edge|stable` — PLUMBING, like `--to-tag`: the line ONE run resolves on, over the one this
+ * machine keeps in `update-line.json`. A crew member following its lead passes the lead's line here
+ * (ADR 0110). Anything but the two words reads as absent.
+ */
+export function wantsLine(args: readonly string[]): ReleaseLine | null {
+  const v = namedValue(args, "--line");
+  return v === "edge" || v === "stable" ? v : null;
+}
+
+/**
+ * `--downgrade` — the one way down (M60 spec 01). With `--to-tag`, a LOWER release is a target. The
+ * bridge passes it for the person-started switch back to Stable ("Go back now") and for a crew member
+ * following its lead's rollback or switch. Nothing passes it by default, and without it every update
+ * path refuses a downgrade, as it always did.
+ */
+export function wantsDowngrade(args: readonly string[]): boolean {
+  return args.includes("--downgrade");
+}
+
+/** What one run resolves its target on: the line, the builds never offered again, the way down. */
+export interface LineChoice {
+  readonly line: ReleaseLine;
+  readonly rejected: readonly string[];
+  readonly downgrade: boolean;
+}
+
+/** This machine's {@link LineChoice}: `update-line.json` (absent reads Stable), then the flags. */
+export function lineChoice(deps: Pick<UpdateDeps, "files" | "ctx">, args: readonly string[]): LineChoice {
+  const record = readUpdateLine((p) => deps.files.read(p), deps.ctx.stateDir);
+  return { line: wantsLine(args) ?? record.line, rejected: record.rejected, downgrade: wantsDowngrade(args) };
+}
+
+/**
+ * A rollback off an Edge build puts this machine back on Stable and marks the build it left as
+ * rejected, so neither line offers it again (M60 spec 01). A rollback off a Stable build changes
+ * nothing. Best-effort and said out loud: the rollback itself must not fail because a note did.
+ */
+function noteRollback(deps: UpdateDeps, fromVersion: string): void {
+  if (!isEdgeBuild(fromVersion)) return;
+  try {
+    const record = readUpdateLine((p) => deps.files.read(p), deps.ctx.stateDir);
+    writeUpdateLine(deps.files, deps.ctx.stateDir, afterRollback(record, fromVersion, deps.now()));
+    deps.io.out(`  ${fromVersion} is marked as rolled back from; this machine is on the Stable line again.`);
+  } catch (err) {
+    deps.io.err(`warning: could not mark ${fromVersion} as rolled back from (${String(err)}).`);
+  }
+}
+
+/**
+ * The three files a release stamps (`scripts/release-version.ts`), relative to a checkout root, in
+ * git's own spelling: `git update-index` takes `/` on every host, and a checkout is never Windows.
+ */
+const VERSION_FILES = ["herdr-plugin.toml", "package.json", "web/package.json"] as const;
+
+/**
+ * Give an Edge tag's checkout the version it is (M60 spec 01): the files in git say plain `X.Y.Z`,
+ * and the release job stamps `X.Y.Z-edge.N` into its own copy before it builds. A checkout install
+ * builds on this machine, so it stamps the same way, from the tag it just checked out, and the health
+ * gate then compares like with like. A Stable tag stamps nothing.
+ *
+ * The stamped files are marked `assume-unchanged` in that checkout's index, so `git status` stays
+ * clean: the build stamp carries no `-dirty`, and `scripts/check-version.sh` accepts the stamp there
+ * because HEAD is the tag. {@link unstampCheckout} lifts the mark before the next checkout.
+ */
+export function stampCheckout(
+  deps: Pick<UpdateDeps, "files" | "exec" | "io" | "host">,
+  dir: string,
+  tag: string,
+): boolean {
+  const reading = readReleaseTag(tag);
+  if (reading === null || reading.line !== "edge") return true;
+  const [toml, pkg, web] = [
+    deps.host.path.join(dir, "herdr-plugin.toml"),
+    deps.host.path.join(dir, "package.json"),
+    deps.host.path.join(dir, "web", "package.json"),
+  ];
+  if (toml === undefined || pkg === undefined || web === undefined) return false;
+  const text = { toml: deps.files.read(toml), pkg: deps.files.read(pkg), web: deps.files.read(web) };
+  if (text.toml === null || text.pkg === null || text.web === null) {
+    deps.io.err(`error: ${tag} is an Edge build, and its version files could not be read to stamp it.`);
+    return false;
+  }
+  deps.files.write(toml, stampToml(text.toml, reading.version));
+  deps.files.write(pkg, stampPackageJson(text.pkg, reading.version));
+  deps.files.write(web, stampPackageJson(text.web, reading.version));
+  deps.exec.capture("git", gitArgs(dir, ["update-index", "--assume-unchanged", "--", ...VERSION_FILES]));
+  deps.io.out(`  stamped ${reading.version} into this checkout's version files (an Edge build)`);
+  return true;
+}
+
+/** Lift {@link stampCheckout}'s mark, so a `checkout --force` may replace the stamped files. */
+function unstampCheckout(deps: Pick<UpdateDeps, "exec">, dir: string): void {
+  deps.exec.capture("git", gitArgs(dir, ["update-index", "--no-assume-unchanged", "--", ...VERSION_FILES]));
 }
 
 // The sentences a "nothing to take" verdict prints. They live here, once, because BOTH update paths
@@ -579,7 +735,7 @@ export interface CheckoutOutcome {
  */
 export function updateCheckout(
   deps: UpdateDeps,
-  opts: { crossMajor: boolean; toTag?: string | null } = { crossMajor: false },
+  opts: { crossMajor: boolean; toTag?: string | null; args?: readonly string[] } = { crossMajor: false },
 ): CheckoutOutcome {
   const root = deps.ctx.root;
   const git = (args: readonly string[]): number => {
@@ -603,7 +759,7 @@ export function updateCheckout(
   const installed = installedVersion(deps);
   const toTag = opts.toTag ?? null;
   return isManagedCheckout(deps.exec, root)
-    ? updateManaged(deps, git, installed, opts.crossMajor, toTag)
+    ? updateManaged(deps, git, installed, opts.crossMajor, toTag, lineChoice(deps, opts.args ?? []))
     : updateLinked(deps, git, installed, opts.crossMajor, toTag);
 }
 
@@ -674,6 +830,7 @@ function updateManaged(
   installed: string | null,
   crossMajor: boolean,
   toTag: string | null,
+  choice: LineChoice,
 ): CheckoutOutcome {
   const root = deps.ctx.root;
   const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", tagRemote(deps.exec, root)]));
@@ -683,11 +840,10 @@ function updateManaged(
   }
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
   const managedTags = parseRemoteTags(ls.stdout);
-  const asked = pinPlan(planUpdate({ tags: managedTags, installed, head, crossMajor }), {
-    tags: managedTags,
-    installed,
-    wanted: toTag,
-  });
+  const asked = pinPlan(
+    planUpdate({ tags: managedTags, installed, head, crossMajor, line: choice.line, rejected: choice.rejected }),
+    { tags: managedTags, installed, wanted: toTag, ...choice },
+  );
   if (!asked.ok) {
     deps.io.err(`error: ${asked.reason}.`);
     return { code: EXIT.FAIL, moved: false, to: null, higher: null };
@@ -790,10 +946,13 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
   // checkout wholesale. `-q` because otherwise checkout warns "you are leaving 1 commit behind" on
   // every single update: true, alarming, and useless — the commit we leave is the release we just
   // replaced.
+  //
+  // An Edge build's stamp is lifted first: `assume-unchanged` files refuse even a forced checkout.
+  unstampCheckout(deps, root);
   if (git(["checkout", "-q", "--detach", "--force", "FETCH_HEAD"]) !== EXIT.OK) return EXIT.FAIL;
   const head = deps.exec.capture("git", gitArgs(root, ["log", "-1", "--format=%h %s"]));
   deps.io.out(`→ now at ${head.stdout.trim()}`);
-  return EXIT.OK;
+  return stampCheckout(deps, root, tag) ? EXIT.OK : EXIT.FAIL;
 }
 
 /**
@@ -1000,6 +1159,7 @@ function recordInPlaceRun(
   from: string | null,
   to: string | null,
   startedAt: number,
+  action?: "switch",
 ): void {
   // TWO clocks, not one. `begin` carries the real start, taken before the advance; everything after
   // it carries now. A single `now` for all five would have written `startedAt === updatedAt` on a run
@@ -1007,7 +1167,8 @@ function recordInPlaceRun(
   const now = deps.now();
   const events: RunEvent[] = [{ kind: "stage" }, { kind: "restart" }, { kind: "verify" }, { kind: "pass" }];
   try {
-    const begun = reduce(idleRun(startedAt), { kind: "begin", from, to, pid: deps.pid, runId }, startedAt);
+    const begin: RunEvent = { kind: "begin", from, to, pid: deps.pid, runId };
+    const begun = reduce(idleRun(startedAt), action === undefined ? begin : { ...begin, action }, startedAt);
     writeRun(deps.files, deps.ctx.stateDir, events.reduce((run, event) => reduce(run, event, now), begun));
     // Only when a crew is actually waiting on it. A run with no id was started from a terminal by
     // someone who never asked for one, and a line about peers there would be noise about nothing.
@@ -1113,6 +1274,14 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // what makes the second runner exit at once instead of building beside the first.
   const busy = refuseIfUpdateRunning(deps);
   if (busy !== null) return busy;
+  // THE WAY DOWN THROUGH A KEPT BUILD (M60 spec 01): `--downgrade --to-tag` names a build this
+  // machine may still hold, and flipping to it beats downloading it again. No kept build falls
+  // through to the ordinary paths below, which take the same target the slow way.
+  const downTag = wantsDowngrade(args) ? wantsToTag(args) : null;
+  if (downTag !== null && (install.kind === "binary" || (staged && layout !== null))) {
+    const kept = keptStepDown(deps, install.kind === "binary" ? "binary" : "checkout", downTag, wantsRunId(args));
+    if (kept !== null) return kept;
+  }
   if (install.kind === "binary") return await withStagingRecord(deps, () => updateBinary(deps, args));
   if (staged && layout !== null) return await withStagingRecord(deps, () => updateStagedCheckout(deps, layout, args));
   // The in-place path holds the lock for its whole run, because nothing else on this path writes
@@ -1180,7 +1349,7 @@ async function updateInPlace(deps: UpdateDeps, args: readonly string[]): Promise
   // The run's real start, for the record written at the end of it. Everything below this line is
   // the run: the fetch, the advance, the build, the restart.
   const startedAt = deps.now();
-  const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args), toTag: wantsToTag(args) });
+  const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args), toTag: wantsToTag(args), args });
   if (advanced.code !== EXIT.OK) return advanced.code;
   // Nothing was taken AND what is on disk is whole: stop here. This used to fall through, so
   // "already current" and "nothing to cross to" were each followed by two installs, two typechecks,
@@ -1208,7 +1377,10 @@ async function updateInPlace(deps: UpdateDeps, args: readonly string[]): Promise
     dirname(bun.path),
   );
   if (!r.found || r.code !== 0) return EXIT.FAIL;
-  recordInPlaceRun(deps, wantsRunId(args), from, advanced.to, startedAt);
+  // A step DOWN to a lower release is the switch back to Stable, or a member following its lead
+  // down; the record says so, so a lead's crew levels down after it (`crewTurnStart`).
+  const down = from !== null && advanced.to !== null && compareSemver(advanced.to, from) < 0;
+  recordInPlaceRun(deps, wantsRunId(args), from, advanced.to, startedAt, down ? "switch" : undefined);
   // `_apply-update` ran as a child with our own stdio, so its `✓ update complete` is already on the
   // screen. This lands after it — the last line of the transcript.
   closeWithMajor(deps, advanced.higher);
@@ -1663,11 +1835,11 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // `--to-tag` pins this to ONE release (M16/04). It is applied to the plan rather than replacing it,
   // so a refusal is the same sentence on every install kind and the four bad cases are decided in
   // one pure function.
-  const pinnedBinary = pinPlan(planUpdate({ tags, installed, head: "", crossMajor: wantsMajor(args) }), {
-    tags,
-    installed,
-    wanted: wantsToTag(args),
-  });
+  const choice = lineChoice(deps, args);
+  const pinnedBinary = pinPlan(
+    planUpdate({ tags, installed, head: "", crossMajor: wantsMajor(args), line: choice.line, rejected: choice.rejected }),
+    { tags, installed, wanted: wantsToTag(args), ...choice },
+  );
   if (!pinnedBinary.ok) {
     deps.io.err(`error: ${pinnedBinary.reason}.`);
     return EXIT.FAIL;
@@ -1875,12 +2047,42 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const handed = handOff(
     deps,
     layout,
-    { to: target.version, from: previous, version: target.version, commit: target.commit, kind: "binary" },
+    {
+      to: target.version,
+      from: previous,
+      version: target.version,
+      commit: target.commit,
+      kind: "binary",
+      // A LOWER target is the way down (`--downgrade`): the switch back to Stable, recorded as such.
+      switch: installed !== null && compareSemver(target.version, installed) < 0,
+    },
     wantsRunId(args),
   );
   if (handed !== EXIT.OK) return handed;
   closeWithMajor(deps, higher);
   return EXIT.OK;
+}
+
+/**
+ * The directory of the last Stable build to keep beside the live one, or null (M60 spec 01).
+ *
+ * WHILE A MACHINE IS ON EDGE, which is its line in `update-line.json` or an Edge build live, the kept
+ * builds are the live one, the previous one AND the newest complete Stable build below the live one.
+ * That last one is never pruned until the machine is back on Stable, so "Go back now" flips to it.
+ * Back on Stable, with a Stable build live, this answers null and pruning is what it always was.
+ */
+function lastStableKept(
+  deps: Pick<UpdateDeps, "files" | "ctx">,
+  live: string,
+  kept: readonly { readonly dir: string; readonly version: string }[],
+): string | null {
+  const onEdge = isEdgeBuild(live) || readUpdateLine((p) => deps.files.read(p), deps.ctx.stateDir).line === "edge";
+  if (!onEdge) return null;
+  const stable = kept
+    .filter((v) => isStrictRelease(v.version) && compareSemver(v.version, live) < 0)
+    .toSorted((a, b) => compareSemver(a.version, b.version))
+    .at(-1);
+  return stable?.dir ?? null;
 }
 
 /**
@@ -1898,7 +2100,15 @@ function collectOldVersions(deps: UpdateDeps, layout: BinaryLayout, keepVersion:
     .filter((v) => v !== keepVersion)
     .toReversed();
   const guards = new Set([keepVersion, layout.version, currentVersionDir(deps, layout) ?? keepVersion]);
-  const doomed = candidates.slice(Math.max(0, keep - 1)).filter((v) => !guards.has(v));
+  // THE LAST STABLE BUILD, while on Edge (M60 spec 01): kept beside the live and previous builds,
+  // and never counted against `keep`, so "Go back now" is a flip and not a download.
+  const lastStable = lastStableKept(
+    deps,
+    keepVersion,
+    listVersions(deps, layout, "binary").filter((v) => v.complete).map((v) => ({ dir: v.dir, version: v.version })),
+  );
+  const counted = candidates.filter((v) => v !== lastStable);
+  const doomed = counted.slice(Math.max(0, keep - 1)).filter((v) => !guards.has(v));
   for (const v of doomed) {
     try {
       toTrash(deps, layout, v);
@@ -1939,6 +2149,7 @@ async function rollbackBinary(deps: UpdateDeps): Promise<number> {
     return EXIT.FAIL;
   }
   deps.io.out(`✓ rolled back to ${target}`);
+  noteRollback(deps, at);
   return EXIT.OK;
 }
 
@@ -1981,9 +2192,7 @@ export function rollbackTarget(
     const older = listVersions(deps, layout, "binary").filter((v) => v.complete && compareSemver(v.version, at) < 0);
     const target = older[older.length - 1];
     if (target === undefined) return { kind: "none", reason: `${at} is the only version installed` };
-    const stamp = readBuildInfo(deps.files.read(deps.host.path.join(layout.versionsDir, target.dir, "web", "dist", "build-info.json")));
-    const plus = stamp?.indexOf("+") ?? -1;
-    const commit = stamp === null || plus < 0 ? "" : stamp.slice(plus + 1);
+    const commit = keptCommit(deps, layout, "binary", target.dir);
     return { kind: "ready", layout: "binary", from: at, to: target.dir, fromVersion: at, toVersion: target.version, commit };
   }
   const isCheckout = kind === "linked-clone" || kind === "detached-checkout";
@@ -1996,7 +2205,6 @@ export function rollbackTarget(
   const older = stagedVersions(deps, layout).filter((v) => v.complete && compareSemver(v.version, at.version) < 0);
   const target = older[older.length - 1];
   if (target === undefined) return { kind: "none", reason: `${at.dir} is the only complete version this checkout kept` };
-  const marker = readBuildMarker(deps, deps.host.path.join(layout.versionsDir, target.dir));
   return {
     kind: "ready",
     layout: "checkout",
@@ -2004,7 +2212,7 @@ export function rollbackTarget(
     to: target.dir,
     fromVersion: at.version,
     toVersion: target.version,
-    commit: marker?.commit ?? "",
+    commit: keptCommit(deps, layout, "checkout", target.dir),
   };
 }
 
@@ -2024,12 +2232,56 @@ function rollbackDetached(deps: UpdateDeps, kind: InstallKind["kind"], runId: st
   const layout =
     target.layout === "binary" ? binaryLayout(deps.ctx.root, deps.host) : layoutForCheckout(deps.ctx.root, deps.host);
   deps.io.out(`rolling back ${target.fromVersion} → ${target.toVersion}…`);
+  noteRollback(deps, target.fromVersion);
   return handOff(
     deps,
     layout,
     { to: target.to, from: target.from, version: target.toVersion, commit: target.commit, kind: target.layout, rollback: true },
     runId,
   );
+}
+
+/**
+ * The way DOWN through a build this machine KEPT (M60 spec 01): "Go back now" to the last Stable
+ * build, which an Edge machine keeps beside its live and previous builds, or a crew member following
+ * its lead down to a build it still has. Instant: no download, no build, only the runner's flip,
+ * restart and health gate, recorded as `action: "switch"`.
+ *
+ * `null` when no complete kept build has that version, or it is not lower than the live one, or it
+ * crosses a major: the caller then takes the ordinary path, which downloads or stages the target and
+ * refuses what `planToTag` refuses.
+ */
+function keptStepDown(deps: UpdateDeps, kind: "binary" | "checkout", wanted: string, runId: string | null): number | null {
+  const version = wanted.startsWith("v") ? wanted.slice(1) : wanted;
+  const layout = kind === "binary" ? binaryLayout(deps.ctx.root, deps.host) : layoutForCheckout(deps.ctx.root, deps.host);
+  const live =
+    kind === "binary"
+      ? { dir: currentVersionDir(deps, layout) ?? layout.version, version: currentVersionDir(deps, layout) ?? layout.version }
+      : stagedCurrent(deps, layout);
+  if (live === null) return null;
+  if (compareSemver(version, live.version) >= 0 || majorOf(version) !== majorOf(live.version)) return null;
+  const kept = listVersions(deps, layout, kind).find((v) => v.complete && v.version === version && v.dir !== live.dir);
+  if (kept === undefined) return null;
+  deps.io.out(`going back ${live.version} → ${version} through the build this machine kept…`);
+  return handOff(
+    deps,
+    layout,
+    { to: kept.dir, from: live.dir, version, commit: keptCommit(deps, layout, kind, kept.dir), kind, switch: true },
+    runId,
+  );
+}
+
+/** The commit a kept build was made from: a staged checkout's marker, a payload's own build stamp. */
+function keptCommit(
+  deps: { readonly files: Files; readonly host: Host },
+  layout: BinaryLayout,
+  kind: "binary" | "checkout",
+  dir: string,
+): string {
+  if (kind === "checkout") return readBuildMarker(deps, deps.host.path.join(layout.versionsDir, dir))?.commit ?? "";
+  const stamp = readBuildInfo(deps.files.read(deps.host.path.join(layout.versionsDir, dir, "web", "dist", "build-info.json")));
+  const plus = stamp?.indexOf("+") ?? -1;
+  return stamp === null || plus < 0 ? "" : stamp.slice(plus + 1);
 }
 
 // ── The staged checkout path (M15/02) ────────────────────────────────────────
@@ -2238,7 +2490,11 @@ export function pruneVersions(
   const newestFirst = stagedVersions(deps, layout).toReversed();
   // `current` is retained by definition and counts against `keep`, so it is taken out of the
   // ordering first and the survivors are the newest `keep - 1` of what is left.
-  const others = newestFirst.filter((v) => v.dir !== at);
+  // The last Stable build is kept while on Edge, outside the count (M60 spec 01).
+  const live = newestFirst.find((v) => v.dir === at)?.version ?? null;
+  const lastStable =
+    live === null ? null : lastStableKept(deps, live, newestFirst.filter((v) => v.complete && v.dir !== at));
+  const others = newestFirst.filter((v) => v.dir !== at && v.dir !== lastStable);
   const doomed = at === null ? others.slice(keep) : others.slice(Math.max(0, keep - 1));
   const removed: string[] = [];
   for (const v of doomed) {
@@ -2342,11 +2598,11 @@ async function updateStagedCheckout(
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
   const stagedTags = parseRemoteTags(ls.stdout);
   // The same pin, the same four refusals — see `updateBinary` above.
-  const pinnedStaged = pinPlan(planUpdate({ tags: stagedTags, installed, head, crossMajor: wantsMajor(args) }), {
-    tags: stagedTags,
-    installed,
-    wanted: wantsToTag(args),
-  });
+  const choice = lineChoice(deps, args);
+  const pinnedStaged = pinPlan(
+    planUpdate({ tags: stagedTags, installed, head, crossMajor: wantsMajor(args), line: choice.line, rejected: choice.rejected }),
+    { tags: stagedTags, installed, wanted: wantsToTag(args), ...choice },
+  );
   if (!pinnedStaged.ok) {
     deps.io.err(`error: ${pinnedStaged.reason}.`);
     return EXIT.FAIL;
@@ -2447,6 +2703,11 @@ async function updateStagedCheckout(
     worktreePrune(deps, git);
     return EXIT.FAIL;
   }
+  // An Edge tag's worktree names the build it is before it builds (M60 spec 01).
+  if (!stampCheckout(deps, at, target.tag)) {
+    removeStagedVersion(deps, layout, dir, git);
+    return EXIT.FAIL;
+  }
 
   // 3. The build, INSIDE the worktree and from the NEW source — the same handoff reason the in-place
   //    path re-execs for: the build logic that must run is the one that was just fetched.
@@ -2482,6 +2743,7 @@ async function updateStagedCheckout(
       version: target.version,
       commit: target.commit,
       kind: "checkout",
+      switch: installed !== null && compareSemver(target.version, installed) < 0,
     },
     wantsRunId(args),
   );
@@ -2535,6 +2797,7 @@ async function rollbackCheckout(deps: UpdateDeps, layout: BinaryLayout): Promise
   }
   refreshRegistry(deps, layout.currentLink);
   deps.io.out(`✓ rolled back to ${target.version}`);
+  noteRollback(deps, at.version);
   return EXIT.OK;
 }
 
@@ -2584,6 +2847,11 @@ export interface ApplyArgs {
    * runner prunes nothing after it, and its record says `action: "rollback"`. Absent on an update.
    */
   readonly rollback?: boolean;
+  /**
+   * A step DOWN that is not a rollback (M60 spec 01, `--switch`): "Go back now" to Stable, or a crew
+   * member following its lead down. Pruned like a rollback (nothing), recorded as `action: "switch"`.
+   */
+  readonly switch?: boolean;
 }
 
 const flagValue = (args: readonly string[], name: string): string | null => {
@@ -2607,8 +2875,9 @@ export function parseApplyArgs(args: readonly string[]): ApplyArgs | null {
     kind: flagValue(args, "--kind") === "binary" ? "binary" : "checkout",
     handoff: Number.parseInt(flagValue(args, "--handoff") ?? "", 10) || 0,
   };
-  // An update's argv carries no `--rollback`, and its parse carries no such key.
-  return args.includes("--rollback") ? { ...parsed, rollback: true } : parsed;
+  // An update's argv carries neither `--rollback` nor `--switch`, and its parse carries no such key.
+  if (args.includes("--rollback")) return { ...parsed, rollback: true };
+  return args.includes("--switch") ? { ...parsed, switch: true } : parsed;
 }
 
 /** {@link ApplyArgs} back as argv — one spelling, so the handoff and the parser can never drift. */
@@ -2627,6 +2896,7 @@ export function applyArgv(a: ApplyArgs): string[] {
     "--handoff",
     String(a.handoff),
     ...(a.rollback === true ? ["--rollback"] : []),
+    ...(a.switch === true ? ["--switch"] : []),
   ];
 }
 
@@ -2826,6 +3096,12 @@ function serviceCgroup(files: Files): string | null {
  * the thing it just started is going to kill this process's own service — and on a Herdr action or
  * an `/api/update` call, quite possibly this process's own parent.
  */
+/** The record's `action` for a runner's argv: `rollback`, `switch`, or absent on an update. */
+function runActionOf(a: Pick<ApplyArgs, "rollback" | "switch">): RunAction | undefined {
+  if (a.rollback === true) return "rollback";
+  return a.switch === true ? "switch" : undefined;
+}
+
 function handOff(
   deps: UpdateDeps,
   layout: BinaryLayout,
@@ -2843,10 +3119,9 @@ function handOff(
   takeLock(deps.files, deps.ctx.stateDir, deps.pid, now);
   // The run id rides the RECORD, not the runner's argv: `runApply` picks the staging record up off
   // disk and keeps driving it, so the id reaches every later state without `--to` growing a sibling.
-  const begin: RunEvent =
-    a.rollback === true
-      ? { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId, action: "rollback" }
-      : { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId };
+  const plain: RunEvent = { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId };
+  const action = runActionOf(a);
+  const begin: RunEvent = action === undefined ? plain : { ...plain, action };
   const staging = reduce(reduce(idleRun(now), begin, now), { kind: "stage" }, now);
   writeRun(deps.files, deps.ctx.stateDir, staging);
 
@@ -2981,15 +3256,16 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
   takeLock(deps.files, stateDir, deps.pid, deps.now());
 
   const onDisk = currentRun(deps);
+  const action = runActionOf(a);
   const start: UpdateRun =
     onDisk !== null && onDisk.state === "staging"
       ? { ...onDisk, pid: deps.pid }
       : reduce(
           reduce(
             idleRun(deps.now()),
-            a.rollback === true
-              ? { kind: "begin", from: a.from, to: a.to, pid: deps.pid, action: "rollback" }
-              : { kind: "begin", from: a.from, to: a.to, pid: deps.pid },
+            action === undefined
+              ? { kind: "begin", from: a.from, to: a.to, pid: deps.pid }
+              : { kind: "begin", from: a.from, to: a.to, pid: deps.pid, action },
             deps.now(),
           ),
           { kind: "stage" },
@@ -3030,8 +3306,9 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
         }),
       ),
       prune: () => {
-        // A rollback prunes nothing: the version it left is the one most likely wanted back.
-        if (a.rollback === true) return;
+        // A rollback prunes nothing: the version it left is the one most likely wanted back. A
+        // switch down neither: the Edge build it left is the one a volunteer may want again.
+        if (runActionOf(a) !== undefined) return;
         if (a.kind === "binary") collectOldVersions(deps, layout, a.to);
         else pruneVersions(deps, layout);
       },
@@ -3056,7 +3333,8 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
       }
       refreshRegistry(deps, layout.currentLink);
     }
-    deps.io.out(`✓ ${a.rollback === true ? "rolled back" : "updated"} to ${a.version === "" ? a.to : a.version}`);
+    const verb = a.rollback === true ? "rolled back" : a.switch === true ? "went back" : "updated";
+    deps.io.out(`✓ ${verb} to ${a.version === "" ? a.to : a.version}`);
     nudgeHooks(deps, collieBinary(layout.currentLink, deps.host));
     nudgeSkill(deps, collieBinary(layout.currentLink, deps.host));
     return EXIT.OK;

@@ -46,6 +46,7 @@ import {
   UpdateStateStore,
   type UpdateStore,
 } from "./update.ts";
+import { DEFAULT_UPDATE_LINE, lineReading, type UpdateLineRecord } from "./update-line.ts";
 
 describe("compareSemver", () => {
   it("orders by major, then minor, then patch", () => {
@@ -1774,5 +1775,80 @@ describe("the tag list past one page (counsel: about 92 tags, and GitHub pages a
     });
     expect(n).toBe(TAG_PAGES_MAX);
     expect(endless.ok && endless.tags).toHaveLength(TAG_PAGE_SIZE * TAG_PAGES_MAX);
+  });
+});
+
+describe("UpdateMonitor on a release line (M60 spec 01)", () => {
+  const lineSeam = (record: () => UpdateLineRecord) => (tags: readonly string[], installed: string) =>
+    lineReading(record(), tags, installed);
+
+  it("Edge offers the newest Edge build; the snapshot names the line", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => apiTags("v1.22.6", "v1.23.0-edge.1", "v1.23.0-edge.2"),
+      lineOffer: lineSeam(() => ({ ...DEFAULT_UPDATE_LINE, line: "edge" })),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({
+      latest: "1.23.0-edge.2",
+      releaseAvailable: true,
+      newerVersions: ["1.23.0-edge.1", "1.23.0-edge.2"],
+      line: "edge",
+    });
+    expect(monitor.status().back).toBeUndefined();
+  });
+
+  it("a switch re-resolves from the tags in hand, with no request, and names the way back", async () => {
+    let record: UpdateLineRecord = { ...DEFAULT_UPDATE_LINE, line: "edge" };
+    let fetches = 0;
+    const { monitor } = makeMonitor({
+      current: "1.23.0-edge.2",
+      fetchTags: async () => {
+        fetches++;
+        return apiTags("v1.22.6", "v1.23.0-edge.1", "v1.23.0-edge.2");
+      },
+      lineOffer: lineSeam(() => record),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.23.0-edge.2", releaseAvailable: false, line: "edge" });
+    record = { ...record, line: "stable" };
+    monitor.lineChanged();
+    expect(fetches).toBe(1);
+    expect(monitor.status()).toMatchObject({ line: "stable", releaseAvailable: false, back: { to: "1.22.6", exceptions: [] } });
+  });
+
+  it("a monitor with no line seam reports no line, and resolves as it always did", async () => {
+    const { monitor } = makeMonitor({ current: "1.22.6", fetchTags: async () => apiTags("v1.22.6", "v1.23.0-edge.1") });
+    await monitor.checkRelease();
+    expect(monitor.status().line).toBeUndefined();
+    expect(monitor.status().releaseAvailable).toBe(false);
+  });
+
+  it("an unpublished Edge tag is not offered (#503 holds on Edge too)", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => apiTags("v1.22.6", "v1.23.0-edge.1", "v1.23.0-edge.2"),
+      fetchReleaseReading: async (v) => (v === "1.23.0-edge.2" ? "absent" : null),
+      lineOffer: lineSeam(() => ({ ...DEFAULT_UPDATE_LINE, line: "edge" })),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().latest).toBe("1.23.0-edge.1");
+  });
+
+  it("Edge nudges at once: no window holds the push back; Stable keeps the window", () => {
+    const base = {
+      current: "1.22.6",
+      latest: "1.23.0-edge.2",
+      newerVersions: ["1.23.0-edge.2"],
+      lastNotified: "1.23.0-edge.1",
+      lastPushedAt: hoursAgo(AT_10AM, 2),
+      now: AT_10AM,
+    };
+    expect(shouldNotify(base)).toEqual({ send: false });
+    expect(shouldNotify({ ...base, edge: true })).toEqual({ send: true, versions: ["1.23.0-edge.2"] });
+    // The 09:00 floor still holds on Edge.
+    const early = new Date(AT_10AM.getTime());
+    early.setHours(6);
+    expect(shouldNotify({ ...base, edge: true, now: early })).toEqual({ send: false });
   });
 });

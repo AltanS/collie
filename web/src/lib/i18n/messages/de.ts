@@ -1635,8 +1635,10 @@ export const de: Dictionary = {
   "apiError.update.peers_packaged": "{name} ist eine Paket-Installation. Deine Updates kommen vom eigenen Paketmanager.",
   "apiError.update.packaged": "Updates erfolgen über deine Paketverwaltung. Collie ersetzt keine Dateien dieser Installation.",
   "apiError.update.start_failed": "Update konnte nicht gestartet werden: {reason}",
-  "apiError.update.request_id_required": "Für ein Rollback ist eine Anforderungs-ID erforderlich. Es wurde nichts gestartet.",
+  "apiError.update.request_id_required": "Diese Aktion erfordert eine Anforderungs-ID. Es wurde nichts gestartet.",
   "apiError.update.rollback_unavailable": "Auf diesem Rechner ist kein vorheriger Build vorhanden, auf den zurückgesetzt werden kann.",
+  "apiError.update.back_unavailable": "Für diesen Build gibt es keine Stable-Version, zu der zurückgekehrt werden kann.",
+  "apiError.update.line_invalid": "Die Releaselinie muss Stable oder Edge sein. Es wurde nichts geändert.",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie aktualisieren",
   "settings.updateCard.running": "Aktiv: {current}",

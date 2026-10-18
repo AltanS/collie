@@ -196,9 +196,14 @@ describe("a rollback run (M60 spec 01)", () => {
     expect("action" in (parseUpdateRun(JSON.stringify({ ...record(), action: "downgrade" })) ?? {})).toBe(false);
   });
 
-  test("a done rollback with a run id starts no crew levelling run; the same update does", () => {
+  test("a done rollback or switch levels the crew DOWN; the same update levels it up", () => {
     const done = record({ state: "done", to: "0.9.0", runId: "r-1", updatedAt: NOW });
-    expect(crewTurnStart(done)).toEqual({ runId: "r-1", to: "0.9.0", at: NOW });
-    expect(crewTurnStart({ ...done, action: "rollback" })).toBeNull();
+    expect(crewTurnStart(done)).toEqual({ runId: "r-1", to: "0.9.0", at: NOW, down: false });
+    expect(crewTurnStart({ ...done, action: "rollback" })).toEqual({ runId: "r-1", to: "0.9.0", at: NOW, down: true });
+    expect(crewTurnStart({ ...done, action: "switch" })).toEqual({ runId: "r-1", to: "0.9.0", at: NOW, down: true });
+  });
+
+  test("reads `switch` as an action, and nothing else new", () => {
+    expect(parseUpdateRun(JSON.stringify({ ...record(), action: "switch" }))?.action).toBe("switch");
   });
 });
