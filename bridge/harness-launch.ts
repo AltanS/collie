@@ -54,10 +54,12 @@ export const HARNESS_LAUNCHES: readonly HarnessLaunch[] = [
  * Contract names the sheet does not offer, each with its reason. `antigravity` is the desktop app's
  * name; the agent that runs in a terminal is `agy`, listed above. `openclaw` is read (its history,
  * #401) but not started: its TUI is a client of a gateway the operator runs, not one binary to call.
+ * `cursor` has an input profile and no launch entry.
  */
 export const NOT_STARTED = {
   antigravity: "the desktop app; its terminal agent is agy",
   openclaw: "its TUI is a client of the operator's gateway; Collie reads its history only",
+  cursor: "Collie reads its input box through a profile only; the New sheet does not start the Cursor CLI (cursor-agent)",
 } as const satisfies Readonly<Record<string, string>>;
 
 /** The launch for `id`, or `undefined` for a name Collie does not start. Exact match only. */

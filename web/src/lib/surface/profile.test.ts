@@ -539,6 +539,32 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     probeStatus: "provisional",
     enterWhileRunning: "steers",
   },
+  {
+    id: "cursor",
+    binary: "cursor-agent",
+    versionOutput: "2026.10.16-e3cb207\n",
+    version: "2026.10.16",
+    above: "2026.10.20",
+    takes: [
+      { anchor: "top", row: ` ${"▄".repeat(40)}` },
+      { anchor: "prompt", row: "  → hello there", draft: "hello there" },
+      { anchor: "prompt", row: `  → Add a follow-up${" ".repeat(60)}ctrl+c to stop`, draft: "Add a follow-up" },
+      { anchor: "prompt", row: "  ! echo hi", draft: "echo hi" },
+      { anchor: "bottom", row: ` ${"▀".repeat(40)}` },
+    ],
+    refuses: [
+      { anchor: "prompt", row: "  !important" },
+      { anchor: "prompt", row: "    → a wrapped row" },
+      { anchor: "prompt", row: "   → /model [filter]           Select model (Tab to edit)" },
+      { anchor: "top", row: ` ${"▀".repeat(40)}` },
+      { anchor: "bottom", row: ` ${"▄".repeat(40)}` },
+    ],
+    collapse: { text: "[Pasted text #1 +301 lines]", group: "lines", value: "301" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "queues",
+    rangeStatus: "provisional",
+  },
 ];
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
@@ -580,12 +606,13 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
 
   it(`${c.id}: verified through the ledger row, provisional above it`, () => {
     // SAFETY: the ledger is this repo's own committed JSON; every agent row has a version and a verified date, and the key is a harness id from this table.
-    const row = (ledgerJson.agents as Record<string, { version: string; verified: string }>)[c.id]!;
+    const row = (ledgerJson.agents as Record<string, { version: string; verified: string } | undefined>)[c.id];
     if (c.rangeStatus === "provisional") {
       expect(profile().versions.map((range) => range.status)).toEqual(["provisional"]);
-      expect(profileFor(c.id, row.version, { log: () => {} })?.status).toBe("provisional");
+      expect(profileFor(c.id, row?.version ?? c.version, { log: () => {} })?.status).toBe("provisional");
       return;
     }
+    if (row === undefined) throw new Error(`${c.id} has a verified range and no ledger row`);
     const verified = profile().versions.filter((range) => range.status === "verified");
     expect(verified).toHaveLength(1);
     expect(verified[0]!.verifiedThrough).toBe(row.version);

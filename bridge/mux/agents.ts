@@ -9,14 +9,24 @@
 //
 // The rule: an agent name is `shell` or one of the names below. An adapter translates its own ids
 // into these, and an agent Collie has no harness for reads as a shell. The list is the union of the
-// two registries plus the journal's aliases, and `agents.test.ts` fails when it drifts from them.
+// two registries plus the journal's aliases, plus the names in MUX_PROFILE_ONLY_AGENT_NAMES, and
+// `agents.test.ts` fails when it drifts from them.
 
-/** Every agent name a harness reader of Collie's answers to, sorted. */
+/**
+ * Agent names that have an input profile (web/src/lib/surface/profiles) and no screen or journal
+ * reader. The Send Protocol looks the profile up by the pane's agent name, so the name must pass the
+ * rule, but nothing renders or reads history for the pane. `agents.test.ts` checks both halves.
+ * `cursor` is the Cursor CLI (binary `cursor-agent`), under the name Herdr gives its integration.
+ */
+export const MUX_PROFILE_ONLY_AGENT_NAMES: readonly string[] = ["cursor"];
+
+/** Every agent name a harness reader or an input profile of Collie's answers to, sorted. */
 export const MUX_AGENT_NAMES: readonly string[] = [
   "agy",
   "antigravity",
   "claude",
   "codex",
+  "cursor",
   "grok",
   "hermes",
   "muse",

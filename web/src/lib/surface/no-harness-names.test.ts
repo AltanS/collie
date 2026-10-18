@@ -162,6 +162,18 @@ export function namesIn(source: string, ids: readonly string[]): string[] {
   return found;
 }
 
+/**
+ * Profile ids that are also an ordinary word the walky talky wire uses: `cursor` is the report's ack
+ * cursor (`walky: { receipts, cursor }`, `readWalkyCursor`), not the Cursor CLI. The ban skips these
+ * ids in the walky folder only; the surface folders keep the full ban.
+ */
+const WALKY_WIRE_WORDS: ReadonlySet<string> = new Set(["cursor"]);
+
+/** The ids to ban in one scanned folder. */
+function idsFor(dir: string, ids: readonly string[]): readonly string[] {
+  return dir === SURFACE_DIRS[2] ? ids.filter((id) => !WALKY_WIRE_WORDS.has(id)) : ids;
+}
+
 describe("no harness names in the surface code", () => {
   it("finds profile ids by directory", () => {
     expect(profileIds()).toContain("claude");
@@ -195,7 +207,7 @@ describe("no harness names in the surface code", () => {
   });
 
   it("the M56 spec 14 profiles join the ban by directory, and no surface file names them", () => {
-    const added = ["opencode", "pi", "omp", "grok", "agy", "muse", "hermes"];
+    const added = ["opencode", "pi", "omp", "grok", "agy", "muse", "hermes", "cursor"];
     for (const id of added) {
       expect(profileIds()).toContain(id);
       expect(namesIn(`const key = ${id}Profile.keys;`, [id])).toHaveLength(1);
@@ -203,7 +215,7 @@ describe("no harness names in the surface code", () => {
     }
     const hits: string[] = [];
     for (const dir of SURFACE_DIRS) {
-      for (const file of sourceFiles(dir)) for (const hit of namesIn(readFileSync(file, "utf8"), added)) hits.push(`${file}: ${hit}`);
+      for (const file of sourceFiles(dir)) for (const hit of namesIn(readFileSync(file, "utf8"), idsFor(dir, added))) hits.push(`${file}: ${hit}`);
     }
     expect(hits).toEqual([]);
   });
@@ -213,7 +225,7 @@ describe("no harness names in the surface code", () => {
     const hits: string[] = [];
     for (const dir of SURFACE_DIRS) {
       for (const file of sourceFiles(dir)) {
-        for (const hit of namesIn(readFileSync(file, "utf8"), ids)) hits.push(`${file}: ${hit}`);
+        for (const hit of namesIn(readFileSync(file, "utf8"), idsFor(dir, ids))) hits.push(`${file}: ${hit}`);
       }
     }
     expect(hits).toEqual([]);
