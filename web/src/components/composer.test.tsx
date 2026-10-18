@@ -4476,7 +4476,7 @@ describe("Composer command suggestions (#458)", () => {
     expect(document.querySelector('[data-slot="command-suggestions"]')).toBeNull();
 
     await user.type(box, "/co");
-    const list = await screen.findByRole("list", { name: "Agent commands" });
+    const list = await screen.findByRole("group", { name: "Agent commands" });
     expect(within(list).getByText("/compact")).toBeInTheDocument();
     expect(within(list).getByText("/context")).toBeInTheDocument();
     expect(within(list).getByText("/cost")).toBeInTheDocument();
@@ -4485,7 +4485,7 @@ describe("Composer command suggestions (#458)", () => {
     await user.click(within(list).getByText("/compact"));
     expect(box).toHaveValue("/compact ");
     expect(recordedSends()).toEqual([]);
-    expectLeaving(screen.queryByRole("list", { name: "Agent commands" }));
+    expectLeaving(screen.queryByRole("group", { name: "Agent commands" }));
   });
 
   it("uses the operator's command list when one addresses the pane, and hides suggestions in Type mode", async () => {
@@ -4509,13 +4509,13 @@ describe("Composer command suggestions (#458)", () => {
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "/");
-    const list = await screen.findByRole("list", { name: "Agent commands" });
+    const list = await screen.findByRole("group", { name: "Agent commands" });
     expect(within(list).getByText("/deploy-staging")).toBeInTheDocument();
     expect(within(list).queryByText("/compact")).toBeNull();
 
     // Clearing the draft closes the list, and typing `/` in Type mode never opens it.
     await user.clear(box);
-    expectLeaving(screen.queryByRole("list", { name: "Agent commands" }));
+    expectLeaving(screen.queryByRole("group", { name: "Agent commands" }));
     await user.click(screen.getByRole("button", { name: /^type into terminal$/i }));
     await user.type(box, "/de");
     expect(

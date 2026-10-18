@@ -75,51 +75,6 @@ export function useClaudeCommands(
   return !hasOperatorRows && state.key === targetKey ? state.rows : [];
 }
 
-interface CommandSuggestionsProps {
-  commands: readonly AgentCommand[];
-  onSelect: (command: AgentCommand) => void;
-}
-
-export function CommandSuggestions({ commands, onSelect }: CommandSuggestionsProps) {
-  useLocale();
-  return (
-    <ul
-      data-slot="command-suggestions"
-      aria-label={t("commands.title")}
-      className="mb-2 max-h-44 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-card"
-    >
-      {commands.map((c) => (
-        <li key={c.command}>
-          <button
-            type="button"
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => onSelect(c)}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-accent"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    "font-mono text-xs font-semibold",
-                    c.dangerous ? "text-destructive" : "text-foreground",
-                  )}
-                >
-                  {c.command}
-                </span>
-                {c.takesArg && (
-                  <span className="font-mono text-[11px] text-muted-foreground">{c.argHint}</span>
-                )}
-              </div>
-              <p className="truncate text-xs text-muted-foreground">{c.description}</p>
-            </div>
-            <Pencil aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function CommandPalette({
   open,
   onClose,

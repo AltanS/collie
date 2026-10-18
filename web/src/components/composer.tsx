@@ -22,9 +22,9 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette, CommandSuggestions, useClaudeCommands } from "@/components/command-palette";
+import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
 import { SentSheet } from "@/components/sent-sheet";
-import { SentSuggestions } from "@/components/sent-suggestions";
+import { SuggestionStrip } from "@/components/suggestion-strip";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
@@ -2156,25 +2156,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
-        {/* SENT SUGGESTIONS (M61): lines sent before, on a shell pane, directly above the box and only
-            while the box has focus. Not with "Type into terminal" armed (the box is not where the
-            words go), a dialog card up, a locked composer or a chip in the box. */}
-        {suggestionsOn && (
-          <SentSuggestions
-            open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
-            lines={suggestions.lines}
+        {/* THE SUGGESTION STRIP, directly above the box: one row, one look, one source per pane.
+            A shell pane offers lines sent before (M61), only while the box has focus and the Settings
+            switch is on; not with "Type into terminal" armed (the box is not where the words go), a
+            dialog card up, a locked composer or a chip in the box. An agent pane offers its own
+            commands for a typed `/` or `$` token (#475), whatever that switch says; a tap fills and
+            never sends. */}
+        {isShell ? (
+          suggestionsOn && (
+            <SuggestionStrip
+              open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
+              typed={input}
+              source={{ kind: "sent", lines: suggestions.lines, onPick: pickSent, onAll: () => setSentOpen(true) }}
+            />
+          )
+        ) : (
+          <SuggestionStrip
+            open={commandSuggestions.length > 0}
             typed={input}
-            onPick={pickSent}
-            onAll={() => setSentOpen(true)}
+            source={{ kind: "commands", commands: commandSuggestions, onPick: selectSuggestion }}
           />
         )}
-        {/* Inline `/` and `$` command suggestions (#458): fed from the same catalog + operator
-            list as the Agent sheet, with a tap that fills and never sends. */}
-        <Collapse open={commandSuggestions.length > 0}>
-          {commandSuggestions.length > 0 && (
-            <CommandSuggestions commands={commandSuggestions} onSelect={selectSuggestion} />
-          )}
-        </Collapse>
         <div
           data-slot="composer-box"
           className={cn(
