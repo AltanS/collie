@@ -5,7 +5,8 @@
 //                        rewritten with its newest 1,500 lines (oldest dropped on rotate).
 //   inbox/<key>.json     the unacknowledged messages of one pane, at most 200, oldest dropped. The key
 //                        is a hash of the session and the pane id: no value a client sent ever
-//                        becomes a path.
+//                        becomes a path. A file whose newest message is past the 7 days goes on the
+//                        log's rotate, so the inbox of a pane that closed does not stay forever.
 //
 // A message to `all` has one message line and one receipt per target pane, all under one id. The
 // receipt is written before any key is typed (decision 7), and the same id to the same target
@@ -146,6 +147,25 @@ export class WalkyLog {
     }
     this.records.clear();
     for (const line of this.lines) this.index(line);
+    this.pruneInboxes(floor);
+  }
+
+  /**
+   * Drop every inbox file whose newest message is older than the log's 7 days, or that holds no
+   * message at all: past that the log no longer has the record, and nothing else ever deletes an
+   * inbox of a pane that closed. A read of a pruned inbox is empty. Only files named as this log
+   * names them (a 32-character hash) are touched.
+   */
+  private pruneInboxes(floor: number): void {
+    if (!existsSync(this.inboxDir)) return;
+    for (const name of readdirSync(this.inboxDir)) {
+      if (!/^[0-9a-f]{32}\.json$/u.test(name)) continue;
+      const path = join(this.inboxDir, name);
+      const row = parseJsonObject(readFileSync(path, "utf8"));
+      const messages = row !== undefined && Array.isArray(row.messages) ? row.messages.flatMap((entry) => readMessage(asJsonObject(entry)) ?? []) : [];
+      const newest = Math.max(-Infinity, ...messages.map((message) => message.at));
+      if (newest < floor) unlinkSync(path);
+    }
   }
 
   private index(line: LogLine): void {

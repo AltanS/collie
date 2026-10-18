@@ -67,7 +67,8 @@ Your own message, from the phone, types the header and the body:
 Stop and report what you changed.
 ```
 
-The body is at most 4,000 characters, with control bytes and direction marks removed. A body line
+The body is at most 4,000 characters, with control bytes and direction marks removed. A longer
+body is never cut: the send is refused `body over 4,000 characters`, and you shorten it. A body line
 that starts with `[walky-talky` gets one leading space, so a body can never pose as a second
 message.
 
@@ -120,7 +121,9 @@ collie walky status wt_n2d8s1v7c4b9
   `--all` prints the last 50 that reached the pane. Outside a pane, `inbox --all` lists every
   message on the machine.
 - `status <id>` prints the id, then one line per pane: the state in words, and how this machine
-  knew the sender ("signed by" a machine, "relayed by the lead", or "this machine").
+  knew the sender ("signed by" a machine, "relayed by the lead", or "this machine"). A machine that
+  refused a whole broadcast, for example with walky talky off, has one line for all its panes,
+  `<member>/all`.
 
 Every verb takes `--json` for a script.
 
@@ -137,6 +140,9 @@ checks that its lead passed the message on.
   with its next crew update. On a member, a message to another machine shows
   `queued (outcome known on the lead)`, and `send` does not wait for more. Run
   `collie walky status <id>` on the lead, or open the pane on the phone, to see "typed into the pane".
+- **A slow machine does not hold up a broadcast.** The lead gives each machine 8 seconds. A machine
+  that takes longer shows `may have arrived, will not be sent again (member slow)`, and its next
+  crew update fills in the outcome.
 - **An older machine refuses.** A message to a member whose reported version predates walky talky
   gives `not sent: older member` at once, with no dial. A member under an older lead gives
   `not sent: older lead`. Update the crew to fix it.
@@ -278,6 +284,7 @@ What walky talky refuses, and how to turn it off.
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
 | 6 messages in 10 minutes between the same two panes, either direction | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
+| A body over 4,000 characters, after control bytes are removed | `body over 4,000 characters` |
 | A reply chain deeper than 4 replies | `thread depth` |
 | An agent's message to `all` or `<member>/all`. Only you may broadcast | `only the operator may broadcast` |
 | A message to the sender's own pane | `that is your own pane` |

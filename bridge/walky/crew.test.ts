@@ -154,6 +154,13 @@ describe("the lead's check of a member's message", () => {
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { body: "a\u0007b" }), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "local/w1:p1"), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
   });
+
+  test("a body over 4,000 characters is a 400 on both hops, never cut", () => {
+    const long = signed("wt_aaaaaaaaaaa1", "laptop", "other/w1:p1", { body: "x".repeat(4001) });
+    expect(memberCheck(long, laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
+    const attest = attestFor(long, material("desk").keyPem, CREW.crewId, "other");
+    expect(leadCheck({ message: long, attest }, "w1:p1", member({ memberId: "desk", role: "lead" }), CREW.crewId, "other")).toMatchObject({ ok: false, answer: { status: 400 } });
+  });
 });
 
 describe("the one shape check both crew hops share", () => {
@@ -370,6 +377,55 @@ describe("the lead takes a member's message", () => {
   });
 });
 
+describe("a member's answer, as the lead believes it", () => {
+  test("a member's refusal of a broadcast is that member's leg, never the whole broadcast", async () => {
+    // A real member, with walky talky off: its refusal names the message's own `to`, `all`.
+    const laptop = service("laptop", [pane("w1:p8")], undefined, { enabled: () => false });
+    const laptopCrew = new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT });
+    const lead = service("desk", [pane("w1:p1")], async (memberId, segment, payload) => {
+      if (memberId === "laptop") {
+        // SAFETY: the route posts the JSON it built itself.
+        const answer = await laptopCrew.fromLead(segment, JSON.parse(payload) as JsonValue, "desk");
+        return { kind: "answer", status: answer.status, body: wire(answer.body) };
+      }
+      return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: "other/w2:p1", state: "accepted", verified: "lead", at: AT, by: "other" }] } };
+    });
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(answer).toMatchObject({ ok: true });
+    const receipts = answer.ok ? answer.receipts : [];
+    expect(receipts.map((receipt) => `${receipt.target} ${receipt.state}`)).toEqual(["desk/w1:p1 accepted", "laptop/all refused", "other/w2:p1 accepted"]);
+    expect(receipts.find((receipt) => receipt.target === "all")).toBeUndefined();
+    // The lead's own `all` line is untouched, and `status` keeps the member's refusal.
+    expect(lead.log.get("wt_aaaaaaaaaaa1", "all")?.receipt.state).toBe("accepted");
+    await lead.service.deliverer.settled();
+    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => `${receipt.target} ${receipt.state} ${receipt.reason ?? "-"}`)).toEqual([
+      "desk/w1:p1 delivered -",
+      "laptop/all refused off",
+      "other/w2:p1 accepted -",
+    ]);
+  });
+
+  test("a receipt a member writes in another machine's name is dropped", async () => {
+    const lead = service("desk", [], async () => ({
+      kind: "answer",
+      status: 200,
+      body: {
+        receipts: [
+          { id: "wt_aaaaaaaaaaa1", target: "other/w2:p1", state: "delivered", verified: "lead", at: AT, by: "laptop" },
+          { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "other" },
+          // In the lead's own name: it would count as a refusal this lead wrote.
+          { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "refused", reason: "constructor", verified: "lead", at: AT, by: "desk" },
+        ],
+      },
+    }));
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w1:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    // Neither forged line is believed: the leg reads as dialled and not yet answered.
+    expect(answer).toMatchObject({ ok: true, receipts: [{ target: "laptop/w1:p9", state: "accepted", by: "desk" }] });
+    expect(lead.log.get("wt_aaaaaaaaaaa1", "other/w2:p1")).toBeNull();
+    expect(lead.service.refusals().counts).toEqual({});
+  });
+});
+
 describe("a member takes its lead's delivery", () => {
   test("verifies the attestation, delivers as `lead`, and fans `<member>/all` out to its agent panes", async () => {
     const peer = service("laptop", [pane("w1:p8"), pane("w1:p9"), pane("w1:p7", { agent: false, harness: null })]);
@@ -468,6 +524,43 @@ describe("the outcome report", () => {
     expect(mergeReport(lead.log, "laptop", [...forged, delivered])).toBe(1);
     expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered", target: "laptop/w9:p9" }]);
     expect(mergeReport(lead.log, "laptop", [delivered])).toBe(0);
+  });
+});
+
+describe("a member that never answers", () => {
+  test("its leg is the lead's own `unknown: member slow` at the leg cap, the rest answer at once, and its report still lands", async () => {
+    const routeRemote = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop", "other"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      legMs: 40,
+      now: () => AT,
+      post: async (memberId) => {
+        if (memberId === "laptop") return new Promise<CrewDialAnswer>(() => undefined);
+        return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: "other/w2:p1", state: "accepted", verified: "lead", at: AT, by: "other" }] } };
+      },
+    });
+    const lead = service("desk", [pane("w1:p1")], undefined, { routeRemote });
+    const started = performance.now();
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(performance.now() - started).toBeLessThan(1000);
+    const receipts = answer.ok ? answer.receipts : [];
+    expect(receipts.map((receipt) => `${receipt.target} ${receipt.state} ${receipt.reason ?? "-"}`)).toEqual([
+      "desk/w1:p1 accepted -",
+      "laptop/all unknown member slow",
+      "other/w2:p1 accepted -",
+    ]);
+    // The member delivered after all: its snapshot report names the pane, and the lead takes it.
+    const late: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p8", state: "delivered", verified: "lead", at: AT + 9000, by: "laptop" };
+    expect(mergeReport(lead.log, "laptop", [late])).toBe(1);
+    await lead.service.deliverer.settled();
+    const shown = lead.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => `${receipt.target} ${receipt.state}`);
+    expect(shown).toContain("laptop/w1:p8 delivered");
+    // The pane answers for the leg: `laptop/all: unknown` is gone from `status` and from the phone's
+    // retry of the same id.
+    expect(shown.some((line) => line.startsWith("laptop/all"))).toBe(false);
+    const retry = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect((retry.ok ? retry.receipts : []).map((receipt) => receipt.target).toSorted()).toEqual(["all", "desk/w1:p1", "laptop/w1:p8", "other/w2:p1"]);
   });
 });
 

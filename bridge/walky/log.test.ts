@@ -112,6 +112,23 @@ describe("the inbox", () => {
     expect(held[0]!.id).toBe(message(5).id);
   });
 
+  test("an inbox whose newest message is past the 7 days goes on the log's rotate, and then reads empty", () => {
+    const dir = fresh();
+    let now = 1000;
+    const log = new WalkyLog(dir, () => now);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    log.inboxAdd("main", "w1:p1", message(1));
+    now = 1000 + LOG_KEEP_MS + 1;
+    log.inboxAdd("main", "w1:p2", message(2, now));
+    // The next line ages the first one out: the rotate runs, and with it the inbox sweep.
+    log.record(message(2, now), "local/w1:p2", here, receipt(message(2, now), "accepted", now));
+    expect(readdirSync(join(dir, "inbox"))).toEqual([`${inboxKey("main", "w1:p2")}.json`]);
+    expect(log.inbox("main", "w1:p1")).toEqual([]);
+    expect(log.inbox("main", "w1:p2").map((m) => m.id)).toEqual([message(2).id]);
+    // A restart sweeps too.
+    expect(new WalkyLog(dir, () => now).inboxCount()).toBe(1);
+  });
+
   test("a session and a pane are one inbox: another session's same pane id is another", () => {
     const log = new WalkyLog(fresh(), () => 1000);
     log.inboxAdd("main", "%1", message(1));

@@ -9,8 +9,8 @@
 
 import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
-import { cleanBody } from "./clean.ts";
-import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
+import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
+import { isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import type { RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
@@ -136,6 +136,8 @@ export class WalkyService {
       to = parent.message.from.address;
     }
     if (to === null) return { ok: false, error: "bad request" };
+    // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
+    if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId } : null;
@@ -225,9 +227,12 @@ export class WalkyService {
   status(id: string): WalkyStatus {
     const records = this.deps.log.all(id);
     // A fan-out's own line (`all`, `<member>/all`) is the receipt written before the crew was asked;
-    // once the panes it reached have receipts of their own, those are the answer.
-    const panes = records.filter((record) => !isFanOut(record.target));
-    const shown = (panes.length > 0 ? panes : records).map((record) => record.receipt);
+    // once the panes it reached have receipts of their own, those are the answer. A fan-out line that
+    // left `accepted` is an answer of its own (a member that refused the whole leg, a crew leg that
+    // ended `unknown`), so it stays.
+    const panes = records.filter((record) => !isFanOut(record.target) || record.receipt.state !== "accepted");
+    // A `<member>/all` leg whose panes answer for it (a slow member's report) is not shown twice.
+    const shown = withoutAnsweredLegs((panes.length > 0 ? panes : records).map((record) => record.receipt));
     const self = this.deps.memberId;
     const elsewhere =
       this.deps.outcomesOnLead === true

@@ -295,7 +295,34 @@ export interface LeadRouteDeps {
    * nothing. Absent: every member is dialled.
    */
   readonly older?: (memberId: string) => boolean;
+  /** How long one member's leg may take before it is `unknown: member slow`. Default {@link WALKY_LEG_MS}. */
+  readonly legMs?: number;
   readonly now?: () => number;
+}
+
+/**
+ * The most one member's leg may take, all of it: the dial, the answer's headers and its body. The
+ * forward's own write budget bounds the dial to the headers only, and the phone gives up at 20 s, so a
+ * broadcast must answer well inside that whatever a member does. Past it the leg is the lead's own
+ * `unknown` (the member may still deliver, and its report then updates the leg), never `refused`.
+ */
+export const WALKY_LEG_MS = 8000;
+
+/** The reason a leg that ran out of {@link WALKY_LEG_MS} carries. */
+export const MEMBER_SLOW = "member slow";
+
+/** The work, or null once `ms` passed. The timer never keeps the process alive. */
+async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The first release that carries walky talky (CREW_PROTOCOL §21). */
@@ -334,12 +361,35 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
-        const answer = await deps.post(memberId, segment, JSON.stringify({ message, attest }));
-        return receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
+        // Every member is dialled at once, and each leg is cut at WALKY_LEG_MS.
+        const answer = await within(deps.post(memberId, segment, JSON.stringify({ message, attest })), deps.legMs ?? WALKY_LEG_MS);
+        if (answer === null) return [ownReceipt(message, target, "unknown", deps.self, now(), MEMBER_SLOW)];
+        const receipts = receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
+        // Only a 200 carries the member's own receipts; every other answer is this lead's word.
+        if (answer.kind !== "answer" || answer.status !== 200) return receipts;
+        const scoped = scopedToMember(receipts, memberId, target);
+        return scoped.length > 0 ? scoped : [ownReceipt(message, target, "accepted", deps.self, now())];
       }),
     );
     return lists.flat();
   };
+}
+
+/**
+ * A member's answer, as the lead may believe it: a member speaks for its own panes only. A receipt it
+ * wrote for one of them keeps its target. One it wrote for the message as a whole (a refusal names the
+ * message's own `to`, which for a broadcast is `all`) stands for the leg the lead dialled, so it takes
+ * that leg's target: without this, one member's `off` would overwrite the lead's own `all` line and
+ * read as the whole broadcast refused. A receipt in another machine's name (this lead's included), or
+ * for a pane on another machine, is dropped.
+ */
+function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string): WalkyReceipt[] {
+  return receipts.flatMap((receipt) => {
+    if (receipt.by !== memberId) return [];
+    const address = parseAddress(receipt.target);
+    if (address?.kind === "pane") return address.memberId === memberId ? [receipt] : [];
+    return [{ ...receipt, target }];
+  });
 }
 
 export interface MemberRouteDeps {
@@ -467,7 +517,16 @@ export function mergeReport(log: WalkyLog, memberId: string, receipts: readonly 
     const address = parseAddress(receipt.target);
     if (address === null || address.kind !== "pane" || address.memberId !== memberId) continue;
     const held = log.get(receipt.id, receipt.target);
-    if (held === null) continue;
+    if (held === null) {
+      // A pane of a leg this lead routed as a whole (`<member>/all`, or `all`) that never answered
+      // pane by pane (a slow member, a lost answer): the report names the pane, and it is logged as a
+      // target of its own under the leg's message.
+      const leg = log.get(receipt.id, `${memberId}/all`) ?? log.get(receipt.id, "all");
+      if (leg === null) continue;
+      log.record(leg.message, receipt.target, { session: null, paneId: null }, receipt);
+      written += 1;
+      continue;
+    }
     if (held.receipt.state === receipt.state && held.receipt.at >= receipt.at) continue;
     log.update(receipt);
     written += 1;

@@ -17,6 +17,16 @@ function dir(): string {
 }
 
 describe("the refusal counter", () => {
+  test("a reason that names an Object property counts like any other", () => {
+    const counter = new RefusalCounter(null, () => 1000);
+    for (const reason of ["constructor", "toString", "__proto__", "constructor"]) counter.count(reason);
+    // Entries, not an object literal: `{ __proto__: 1 }` in a literal sets a prototype, not a key.
+    const entries = (counts: Readonly<Record<string, number>>) => Object.entries(counts).toSorted(([a], [b]) => a.localeCompare(b));
+    expect(entries(counter.current().counts)).toEqual([["__proto__", 1], ["constructor", 2], ["toString", 1]]);
+    expect(entries(readRefusals('{"v":1,"since":1,"counts":{"constructor":3,"__proto__":2}}').counts)).toEqual([["__proto__", 2], ["constructor", 3]]);
+  });
+
+
   test("counts per reason, keeps the first time, and survives a restart in a 0600 file with no body", () => {
     const at = dir();
     const counter = new RefusalCounter(at, () => 1000);

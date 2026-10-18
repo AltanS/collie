@@ -119,6 +119,23 @@ export function isFanOut(target: string): boolean {
   return target === "all" || target.endsWith("/all");
 }
 
+/**
+ * The receipts with every `<member>/all` leg left out once a pane on that member has a receipt of its
+ * own: the panes answer for the leg (a slow member's report, crew.ts `mergeReport`). A leg with no
+ * pane receipt stays, whatever its state.
+ */
+export function withoutAnsweredLegs<T extends Pick<WalkyReceipt, "target">>(receipts: readonly T[]): T[] {
+  const answered = new Set<string>();
+  for (const receipt of receipts) {
+    const address = parseAddress(receipt.target);
+    if (address?.kind === "pane") answered.add(address.memberId);
+  }
+  return receipts.filter((receipt) => {
+    const address = parseAddress(receipt.target);
+    return address?.kind !== "member-all" || !answered.has(address.memberId);
+  });
+}
+
 /** Who sent a message, as delivery needs it: the pane it came from, if any. */
 export interface SenderPane {
   readonly session: string;
@@ -315,7 +332,7 @@ export class WalkyDeliverer {
     const fresh = targets.filter((pane) => !done.has(`${self}/${pane.paneId}`));
     const routes = address.kind === "all" && this.deps.routeRemote !== undefined && options.localOnly !== true;
     const routesOn = routes && !done.has("all");
-    if (done.size > 0 && fresh.length === 0 && !routesOn) return [...done.values()];
+    if (done.size > 0 && fresh.length === 0 && !routesOn) return withoutAnsweredLegs([...done.values()]);
     const capped = this.capped(message, fresh.length + (routesOn ? 1 : 0), options);
     if (capped !== null) return capped;
     const receipts: WalkyReceipt[] = [...refusedTargets];
@@ -337,7 +354,7 @@ export class WalkyDeliverer {
     // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
     if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
     else if (routes) receipts.push(...[...done].filter(([target]) => !targets.some((pane) => `${self}/${pane.paneId}` === target)).map(([, receipt]) => receipt));
-    return receipts;
+    return withoutAnsweredLegs(receipts);
   }
 
   /**
