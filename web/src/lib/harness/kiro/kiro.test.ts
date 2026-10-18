@@ -192,9 +192,8 @@ describe("normal composer and unsupported Kiro panels", () => {
   });
 
   it("fails closed on a shell or torn composer frame", () => {
-    // Given: a shell, an echoed draft, an idle frame missing its context gauge, and a one-row bar without a cwd.
-    const oneRow = raw("kiro--v3-idle-oneline-w120.txt");
-    for (const text of ["tester@host $", "› copied text", raw("kiro--v3-idle-w120.txt").replace("◔", "?"), oneRow.replace("/tmp/kiro-fixture/demo", "tmp-kiro-fixture-demo/")]) {
+    // Given: a shell, an echoed draft, and an idle frame missing its context gauge.
+    for (const text of ["tester@host $", "› copied text", raw("kiro--v3-idle-w120.txt").replace("◔", "?")]) {
       // When: readiness and positive modal evidence run.
       const lines = linesOf(text);
       // Then: none authorizes a text send or invents a cancel card.

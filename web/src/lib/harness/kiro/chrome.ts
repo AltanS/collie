@@ -12,7 +12,7 @@ const CONTEXT_GAUGE = /(?:^| · )[◷◔◑◕] \d{1,3}%(?: · | {2,}|$)/;
 /**
  * The input box, found by the profile's frame, with Kiro's status bar checked on top. The frame alone
  * also matches an echoed `›` draft under any divider and the approval editor's `›` field; only the
- * normal composer draws the bar with its context gauge and cwd between the divider and the prompt.
+ * normal composer draws the bar with its context gauge between the divider and the prompt.
  */
 function locateComposer(lines: StyledLine[]): Frame | null {
   const rows = frameRows(lines);
@@ -23,17 +23,10 @@ function locateComposer(lines: StyledLine[]): Frame | null {
   if (rows[interior.prompt - 1]?.trim() !== "") return null;
   const status = rows.slice(top + 1, interior.prompt - 1);
   if (status.length > MAX_STATUS_ROWS || status.some((text) => text.trim() === "")) return null;
-  const [bar = "", cwdRow] = status;
-  // Kiro's status bar names the agent/model, its context gauge, and the cwd. The cwd starts its own
-  // row, or is right-aligned on the bar's row when it fits there. A right-aligned cwd can still wrap
-  // mid-path onto the row below when the bar grows.
-  const cwd = / {2,}(?:\/|~\/)\S/.test(bar) || /^(?:\/|~\/)/.test(cwdRow ?? "");
   // No status row is one of the box's own edges, or starts with the pointer a panel menu draws.
   const edgeInside = status.some((text) => frameEdge(text, KIRO_IDLE) !== null || text.startsWith("❯"));
-  if (!bar.includes(" · ") || !CONTEXT_GAUGE.test(bar) || !cwd || edgeInside) {
-    return null;
-  }
-  return frame;
+  // The context gauge on the bar's first row is what only the normal composer draws.
+  return !edgeInside && CONTEXT_GAUGE.test(status[0] ?? "") ? frame : null;
 }
 
 /** Only a complete normal composer frame authorizes typing. A panel or unknown tail fails closed. */

@@ -30,7 +30,7 @@ Wide and narrow captures include selected-row pairs, wrapped file paths, complet
 
 ## Composer frame
 
-Collie types into the composer only when the whole status bar frame is on screen: the divider, a bar holding `·`-separated fields and the context gauge, the cwd, a blank row and the `›` prompt. The cwd takes one of three layouts. It is right-aligned on the bar's row when both fit, on its own row below the bar when they do not, or starts on the bar's row and wraps mid-path onto the next one. The third appeared live when the expiry field grew by one character (`12h 47m`) and pushed `/tmp/kiro-fixture/demo` past 120 columns.
+Collie types into the composer only when the whole status bar frame is on screen: the divider, the status rows with the context gauge on the first, a blank row and the `›` prompt. The gauge is what tells the composer from an echoed `›` line or a panel's editor. The cwd is not checked, because its layout changes with the bar's width: it is right-aligned on the bar's row when both fit, on its own row below the bar when they do not, or starts on the bar's row and wraps mid-path onto the next one. The third appeared live when the expiry field grew by one character (`12h 47m`) and pushed `/tmp/kiro-fixture/demo` past 120 columns.
 
 The footer is `/sessions to resume · /copy to clipboard` on V3 and `/copy to clipboard` alone on the V2 engine (`kiro-cli chat --v2`). It disappears while a draft is typed.
 
