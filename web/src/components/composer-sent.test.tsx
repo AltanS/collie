@@ -332,6 +332,25 @@ describe("Composer: one strip, two sources (#475)", () => {
     expect(chips).toEqual(ranked.slice(0, SUGGEST_LIMIT));
   });
 
+  it("never offers the skill and command files the Agent palette found on disk", async () => {
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () =>
+        HttpResponse.json({ commands: [{ command: "/to-spec", description: "Write the spec", argHint: "" }] }),
+      ),
+    );
+    renderComposer({ isShell: false, agent: "claude" });
+    // The palette reads the files and lists them...
+    await userEvent.click(screen.getByRole("button", { name: "Agent" }));
+    await userEvent.type(await screen.findByPlaceholderText(/Search \d+ commands/), "to-spec");
+    expect(await screen.findByText("/to-spec")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // ...and the strip still offers the agent's own list only.
+    await userEvent.type(box(), "/to");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    expect(screen.queryByRole("button", { name: "/to-spec" })).toBeNull();
+  });
+
   it("offers Sent rows on a shell pane, and no commands", async () => {
     serveSent(["/codex-wrap"], ["/codex-wrap", "git status"]);
     renderComposer();
