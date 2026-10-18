@@ -10,10 +10,10 @@
   },
   "versions": [
     {
-      "range": "18.4.0 - 18.4.10",
+      "range": "18.4.0 - 18.6.1",
       "status": "verified",
-      "verifiedThrough": "18.4.10",
-      "verifiedOn": "2026-10-02"
+      "verifiedThrough": "18.6.1",
+      "verifiedOn": "2026-10-18"
     }
   ],
   "idle": {
