@@ -16,14 +16,20 @@ const MAX = 32;
 
 const CLAUDE_ID = /^claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/i;
 
+/** Text off a file on disk, with ANSI sequences removed whole and then any control character left. */
+function withoutControls(raw: string): string {
+  return (
+    raw
+      // oxlint-disable-next-line no-control-regex -- removing control characters is the point.
+      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+      .replace(/\p{Cc}/gu, "")
+  );
+}
+
 /** The short label for a pane's model, or null when there is nothing to show. */
 export function modelLabel(raw: string | undefined): string | null {
   if (raw === undefined) return null;
-  let name = raw
-    // ANSI sequences first, whole, then any control character left over.
-    // oxlint-disable-next-line no-control-regex -- removing control characters is the point.
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\p{Cc}/gu, "")
+  let name = withoutControls(raw)
     .replace(/\[[^\]]*\]/g, "")
     .replace(/\([^)]*\)/g, "")
     .trim();
@@ -37,6 +43,21 @@ export function modelLabel(raw: string | undefined): string | null {
     name = claude[3] === undefined ? `${word} ${claude[2] ?? ""}` : `${word} ${claude[2] ?? ""}.${claude[3]}`;
   }
   return name.length > MAX ? `${name.slice(0, MAX - 1)}…` : name;
+}
+
+/** Longest effort word drawn. A real one is under 10 (`minimal`, `xhigh`); this bounds a strange file. */
+const EFFORT_MAX = 16;
+
+/**
+ * The effort beside the model, in the harness's own word (`high`, `xhigh`, `max`), or null when there
+ * is nothing to show. Printed as the harness wrote it, with the same text-only treatment as the model:
+ * control characters removed, the result capped (#463).
+ */
+export function effortLabel(raw: string | undefined): string | null {
+  if (raw === undefined) return null;
+  const word = withoutControls(raw).trim();
+  if (word === "") return null;
+  return word.length > EFFORT_MAX ? `${word.slice(0, EFFORT_MAX - 1)}…` : word;
 }
 
 // DOES THE SCREEN ALREADY SAY IT? Claude Code's statusline, Codex's footer and pi's footer print the

@@ -176,6 +176,12 @@ export interface AgentView {
    */
   model?: string;
   /**
+   * The effort this pane's agent runs at, in the harness's own word (`high`, `xhigh`). Mirrors
+   * `PaneWire.effort` in bridge/types.ts. **Absent, never a placeholder**, and text only: read it
+   * through `effortLabel` (lib/model-label.ts). Drawn only after a model.
+   */
+  effort?: string;
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,

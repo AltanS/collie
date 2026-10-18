@@ -347,6 +347,30 @@ describe("the Claude probe, end to end", () => {
     expect(probe?.selectedModel).toBe("Fable 5.1");
   });
 
+  test("carries the turn's effort, and an /effort set after it wins", async () => {
+    const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5", { effort: "medium" })]);
+    const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
+    expect(probe?.effort).toBe("medium");
+
+    await Bun.write(
+      `${dir}/-home-you-repo/${SESSION}.jsonl`,
+      `${[
+        turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5", { effort: "medium" }),
+        JSON.stringify(stdout("Set effort level to max (this session only).", "2026-09-17T09:02:00Z")),
+      ].join("\n")}\n`,
+    );
+    const after = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
+    await rm(dir, { recursive: true, force: true });
+    expect(after?.effort).toBe("max");
+  });
+
+  test("a turn that names no effort reports none", async () => {
+    const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5")]);
+    const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
+    await rm(dir, { recursive: true, force: true });
+    expect(probe?.effort).toBeUndefined();
+  });
+
   test("a session with no action since its last turn reports no resets at all", async () => {
     const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5")]);
     const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
