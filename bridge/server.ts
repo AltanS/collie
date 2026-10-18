@@ -159,6 +159,7 @@ import {
   maskPaneRead,
   maskSnapshotTitles,
   maskTerminalTitle,
+  maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import { redactAnsi } from "./redact.ts";
@@ -1506,7 +1507,9 @@ export function startServer(opts: {
       // The model label rides beside it, from the same probe's memo (bridge/cache/tracker.ts).
       const model = key === undefined ? undefined : cache?.model?.(key);
       const withCache = model === undefined ? read : { ...read, model };
-      const todos = opts.todos?.get(p);
+      // The tasks are words the agent wrote, so they take the mirror's mask like the title above.
+      const readTodos = opts.todos?.get(p);
+      const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
       const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
