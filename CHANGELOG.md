@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Korean reads more naturally across the app.** Settings, pane actions, alerts, uploads and refusal messages have better wording, and instructions name the buttons as the screen shows them. Thanks @mud-the-developer (#498).
+- **Direct typing leaves composition keys to the keyboard.** While a Korean, Japanese or Chinese keyboard composes a word, Enter, Backspace, the arrows, Escape and Tab stay with it, and a blur ends a composition that never finished. Keys still waiting on a slow link when you stop typing are dropped. Thanks @mud-the-developer (#500).
+- **Korean, Chinese and Japanese text keeps its columns in the terminal view.** With wrap off, the pane mirror and a dialog card's raw view hold each wide character to two cells, so dividers and tables line up, and a link keeps its underline. Thanks @mud-the-developer (#499).
+- **The Heads up card shows while background agents are listed.** With three or more agents in Claude Code's panel under the box, the card was withheld and its tap refused. Only the panel's own named rows are skipped, so plain output under a box still counts. Thanks @leftos (#493).
+- **A command that must never wait for a turn is no longer held and typed after it.** When the bridge could not read the agent's version, a `/clear`, `/new`, `/exit` or `!` shell line sent during a turn was kept and typed when the turn ended. It is refused again. Thanks @mikebenner (#491).
+
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with an extension footer refuses every send, and a Claude picker or Heads up notice can block taps.
