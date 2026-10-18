@@ -225,8 +225,10 @@ export class WalkyService {
   status(id: string): WalkyStatus {
     const records = this.deps.log.all(id);
     // A fan-out's own line (`all`, `<member>/all`) is the receipt written before the crew was asked;
-    // once the panes it reached have receipts of their own, those are the answer.
-    const panes = records.filter((record) => !isFanOut(record.target));
+    // once the panes it reached have receipts of their own, those are the answer. A fan-out line that
+    // left `accepted` is an answer of its own (a member that refused the whole leg, a crew leg that
+    // ended `unknown`), so it stays.
+    const panes = records.filter((record) => !isFanOut(record.target) || record.receipt.state !== "accepted");
     const shown = (panes.length > 0 ? panes : records).map((record) => record.receipt);
     const self = this.deps.memberId;
     const elsewhere =

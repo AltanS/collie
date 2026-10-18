@@ -120,7 +120,9 @@ collie walky status wt_n2d8s1v7c4b9
   `--all` prints the last 50 that reached the pane. Outside a pane, `inbox --all` lists every
   message on the machine.
 - `status <id>` prints the id, then one line per pane: the state in words, and how this machine
-  knew the sender ("signed by" a machine, "relayed by the lead", or "this machine").
+  knew the sender ("signed by" a machine, "relayed by the lead", or "this machine"). A machine that
+  refused a whole broadcast, for example with walky talky off, has one line for all its panes,
+  `<member>/all`.
 
 Every verb takes `--json` for a script.
 

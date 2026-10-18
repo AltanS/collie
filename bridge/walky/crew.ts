@@ -335,11 +335,30 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
         const answer = await deps.post(memberId, segment, JSON.stringify({ message, attest }));
-        return receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
+        const scoped = scopedToMember(receiptsOfAnswer(message, target, answer, deps.self, now(), "older member"), memberId, target, deps.self);
+        return scoped.length > 0 ? scoped : [ownReceipt(message, target, "accepted", deps.self, now())];
       }),
     );
     return lists.flat();
   };
+}
+
+/**
+ * A member's answer, as the lead may believe it: a member speaks for its own panes only. A receipt it
+ * wrote for one of them keeps its target. One it wrote for the message as a whole (a refusal names the
+ * message's own `to`, which for a broadcast is `all`) stands for the leg the lead dialled, so it takes
+ * that leg's target: without this, one member's `off` would overwrite the lead's own `all` line and
+ * read as the whole broadcast refused. A receipt in another machine's name, or for a pane on another
+ * machine, is dropped.
+ */
+function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string, self: string): WalkyReceipt[] {
+  return receipts.flatMap((receipt) => {
+    if (receipt.by === self) return [receipt];
+    if (receipt.by !== memberId) return [];
+    const address = parseAddress(receipt.target);
+    if (address?.kind === "pane") return address.memberId === memberId ? [receipt] : [];
+    return [{ ...receipt, target }];
+  });
 }
 
 export interface MemberRouteDeps {
