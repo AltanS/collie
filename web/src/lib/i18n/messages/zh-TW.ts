@@ -2441,6 +2441,11 @@ export const zhTW: Dictionary = {
   "walky.card.title": "Message from {label}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "本機無日誌記錄",
+  "walky.card.open": "在 {sheet} 中開啟",
+  "walky.tool.badge": "walky talky",
+  "walky.chip.aria": "開啟訊息 {id}",
+  "walky.sheet.inReplyTo": "回覆對象",
+  "walky.sheet.sentTo": "傳給 {target}",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.

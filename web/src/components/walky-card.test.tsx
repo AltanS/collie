@@ -1,9 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { ItemView } from "@/components/chat-cards";
-import { WalkyLogProvider } from "@/components/walky-log";
+import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
 import type { ChatItem } from "@/lib/chat-items";
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
 
 // The Chat card for a walky talky message (M62 spec 05). The turn only claims to be one; the card is
@@ -196,5 +197,83 @@ describe("an ordinary user turn", () => {
     inLog([fixtureWalkyAgent], { id: "u2", kind: "user", text: "fix the tests" });
     expect(screen.getByText("You")).toBeInTheDocument();
     expect(screen.queryByText(NOT_IN_LOG)).toBeNull();
+  });
+});
+
+describe("a walky card that opens the Messages sheet", () => {
+  const TURN = () => turn(`${HEADER_AGENT}\nbody`, fixtureWalkyAgent.id);
+
+  function withOpener(open: ((id: string) => void) | null) {
+    return render(
+      <WalkyLogProvider rows={[fixtureWalkyAgent]}>
+        <WalkyOpenProvider open={open}>
+          <ItemView item={TURN()} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+  }
+
+  it("is one button over the whole card, and a tap hands the message id to the opener", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    withOpener(open);
+    const card = theCard();
+    expect(card.tagName).toBe("BUTTON");
+    expect(card).toHaveAttribute("type", "button");
+    // A tap on the body text, not on a control: the whole card answers.
+    await user.click(within(card).getByText("Tests are green on fix-465. You can merge."));
+    expect(open).toHaveBeenCalledExactlyOnceWith(fixtureWalkyAgent.id);
+  });
+
+  it("keeps the 44px floor as the box's own height, names its act in words, and holds no nested control", () => {
+    withOpener(vi.fn());
+    const card = theCard();
+    expect(card.className).toContain("min-h-11");
+    expect(within(card).getByText("Open in Messages")).toHaveClass("sr-only");
+    expect(card).toHaveAccessibleName(/Message from collie-workspace#fix-465.*Open in Messages/);
+    expect(card.querySelector("button, a, input")).toBeNull();
+  });
+
+  it("is a plain box with no opener: nothing is promised where there is no sheet", () => {
+    withOpener(null);
+    const card = theCard();
+    expect(card.tagName).toBe("DIV");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText("Open in Messages")).toBeNull();
+  });
+
+  it("still carries the log's kind, tone and verified word as a button", () => {
+    withOpener(vi.fn());
+    const card = theCard();
+    expect(card).toHaveAttribute("data-kind", "agent");
+    expect(card).toHaveAttribute("data-verified", "origin");
+    expect(card).toHaveAttribute("data-id", fixtureWalkyAgent.id);
+  });
+});
+
+describe("a header that borrows an id this pane sent", () => {
+  it("stays the plain turn: the card is for messages that reached the pane", () => {
+    render(
+      <WalkyLogProvider rows={[fixtureWalkySent]} reads={1}>
+        <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+          <ItemView item={turn("[walky-talky wt_s3ntaaaa0001] from agent bluefin/w6:p3 (claude, x)\nhi", fixtureWalkySent.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(document.querySelector('[data-slot="walky-card"]')).toBeNull();
+    expect(screen.getByText("You")).toBeInTheDocument();
+  });
+});
+
+describe("the card's screen-reader words", () => {
+  it("name the sheet by its own title, so the two never disagree", () => {
+    render(
+      <WalkyLogProvider rows={[fixtureWalkyAgent]}>
+        <WalkyOpenProvider open={() => {}}>
+          <ItemView item={turn(`${HEADER_AGENT}\nbody`, fixtureWalkyAgent.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(screen.getByText("Open in Messages")).toBeInTheDocument();
   });
 });

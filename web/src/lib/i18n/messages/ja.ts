@@ -2466,6 +2466,11 @@ export const ja: Dictionary = {
   "walky.card.title": "Message from {label}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "このマシンのログに記録なし",
+  "walky.card.open": "{sheet}で開く",
+  "walky.tool.badge": "walky talky",
+  "walky.chip.aria": "メッセージ {id} を開く",
+  "walky.sheet.inReplyTo": "返信先",
+  "walky.sheet.sentTo": "宛先: {target}",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.

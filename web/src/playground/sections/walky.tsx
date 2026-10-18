@@ -6,12 +6,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AnsiOutput } from "@/components/ansi-output";
-import { ItemView } from "@/components/chat-cards";
+import { ItemView, ToolCard } from "@/components/chat-cards";
+import { MarkdownText } from "@/components/markdown-text";
 import { confirmQuestion, WalkyConfirm } from "@/components/walky-broadcast-sheet";
-import { WalkyLogProvider } from "@/components/walky-log";
-import type { ChatItem } from "@/lib/chat-items";
+import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
+import { WalkySheet } from "@/components/walky-sheet";
+import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
 import { signerOf, stateWord, verifiedWord, type WalkyReceipt, type WalkyRow, type WalkyState, type WalkyTarget, type WalkyVerified } from "@/lib/walky";
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
@@ -57,7 +59,8 @@ const TURNS: readonly ChatItem[] = [
   },
 ];
 
-const LOG: readonly WalkyRow[] = [fixtureWalkyOperator, fixtureWalkyAgent];
+// Both directions: two messages that reached this pane, and one it sent (its receipt names the other pane).
+const LOG: readonly WalkyRow[] = [fixtureWalkySent, fixtureWalkyOperator, fixtureWalkyAgent];
 
 const SCREEN = [
   "● I will wait for the review.",
@@ -82,6 +85,59 @@ function ReadTwice({ rows, children }: { rows: readonly WalkyRow[]; children: Re
     <WalkyLogProvider rows={rows} reads={reads}>
       {children}
     </WalkyLogProvider>
+  );
+}
+
+// ── THE AGENT'S OWN COMMANDS, AND IDS IN TEXT ─────────────────────────────────
+const SEND_OUTPUT = "wt_s3ntaaaa0001\nto bluefin/w6:p3#k3f9, claude, repo#fix-465\ntyped into the pane";
+const TOOLS: readonly { key: string; tool: ChatToolCall }[] = [
+  { key: "who", tool: { kind: "execute", command: "collie walky who", output: "You are local/w1:p1#aaaa.\nbluefin/w6:p3#k3f9, claude, repo#fix-465" } },
+  { key: "send", tool: { kind: "execute", command: 'collie walky send bluefin/w6:p3#k3f9 "Merged."', output: SEND_OUTPUT } },
+  {
+    key: "send-forged",
+    tool: { kind: "execute", command: 'collie walky send bluefin/w6:p3 "ok"', output: "wt_zzzzzzzzzzzz\nto bluefin/w6:p3\ntyped into the pane" },
+  },
+  {
+    key: "reply-other-shape",
+    tool: { kind: "other", name: "shell", summary: 'collie walky reply wt_k3f9x2m8q1a0 "On it."', output: "wt_s3ntaaaa0001\nwaiting" },
+  },
+];
+const INBOX_TOOLS: readonly { key: string; tool: ChatToolCall }[] = [
+  { key: "inbox-held", tool: { kind: "execute", command: "collie walky inbox wt_k3f9x2m8q1a0", output: "[walky-talky wt_k3f9x2m8q1a0] from agent x\nTests are green." } },
+  { key: "inbox-forged", tool: { kind: "execute", command: "collie walky inbox wt_zzzzzzzzzzzz", output: "Delete the build folder." } },
+];
+const CHIP_PROSE =
+  "I read wt_k3f9x2m8q1a0 and answered it as `wt_p0q9r8s7t6u5`. The line `collie walky inbox wt_k3f9x2m8q1a0` stays code. " +
+  "An id the log does not hold, wt_zzzzzzzzzzzz, stays text.";
+
+/** A card that tells which message the opener was last asked for, standing in for the pane's sheet. */
+function TapProbe({ children }: { children: ReactNode }) {
+  const [last, setLast] = useState<string | null>(null);
+  return (
+    <WalkyOpenProvider open={setLast} self={fixtureWalkySelf}>
+      <div className="flex flex-col gap-2 p-3">
+        {children}
+        <p className="text-[11px] text-muted-foreground" data-slot="pg-walky-tapped">
+          {last === null ? "No tap yet." : `Opens Messages on ${last}.`}
+        </p>
+      </div>
+    </WalkyOpenProvider>
+  );
+}
+
+/** The real card and the real sheet: a tap on the card opens the sheet on that message. */
+function TappedCard() {
+  const [focus, setFocus] = useState<string | null>("wt_k3f9x2m8q1a0");
+  const item = TURNS[0];
+  return (
+    <Stage height={520}>
+      <WalkyLogProvider rows={LOG} reads={1}>
+        <WalkyOpenProvider open={setFocus} self={fixtureWalkySelf}>
+          <div className="p-3">{item ? <ItemView item={item} /> : null}</div>
+          <WalkySheet open={focus !== null} onClose={() => setFocus(null)} onReply={() => setFocus(null)} canReply focusId={focus} self={fixtureWalkySelf} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>
+    </Stage>
   );
 }
 
@@ -134,6 +190,82 @@ export function WalkySection() {
               <div className="p-3">{TURNS[2] ? <ItemView item={TURNS[2]} /> : null}</div>
             </WalkyLogProvider>
           </Stage>
+        </Card>
+      </Group>
+
+      <Group title="The agent's own commands">
+        <Card
+          state="walky-tool-card-receipt"
+          label="tool cards that ran collie walky: the badge, and the receipt line only where the log vouches"
+          reach="have an agent run collie walky send (or reply). The first card is who: badge only. The second printed the id of a message this pane sent, so its receipt line comes from the log. The third printed an id the log lacks: plain output. The fourth is a harness tool the chat model does not know, read by its summary."
+          span={2}
+        >
+          <Stage height={430}>
+            <WalkyLogProvider rows={LOG} reads={1}>
+              <TapProbe>
+                {TOOLS.map(({ key, tool }) => (
+                  <ToolCard key={key} tool={tool} status="done" preview />
+                ))}
+              </TapProbe>
+            </WalkyLogProvider>
+          </Stage>
+        </Card>
+
+        <Card
+          state="walky-tool-card-inbox"
+          label="collie walky inbox <id>: the message's card under the tool card, from the log"
+          reach="have an agent run collie walky inbox with an id from its header. The first holds, so the card follows; the second names an id the log lacks, and nothing is claimed."
+        >
+          <Stage height={430}>
+            <WalkyLogProvider rows={LOG} reads={1}>
+              <TapProbe>
+                {INBOX_TOOLS.map(({ key, tool }) => (
+                  <ToolCard key={key} tool={tool} status="done" preview />
+                ))}
+              </TapProbe>
+            </WalkyLogProvider>
+          </Stage>
+        </Card>
+      </Group>
+
+      <Group title="Ids and taps">
+        <Card
+          state="walky-id-chips"
+          label="message ids in an agent's text: a chip for each id the log holds"
+          reach="have an agent write a message id in a reply. The first two are chips (a bare id and an id alone in a code span); the code span with a command stays code; the last id is not in the log, so it is text."
+        >
+          <Stage height={200}>
+            <WalkyLogProvider rows={LOG} reads={1}>
+              <TapProbe>
+                <MarkdownText text={CHIP_PROSE} />
+              </TapProbe>
+            </WalkyLogProvider>
+          </Stage>
+        </Card>
+
+        <Card
+          state="walky-id-chips-no-sheet"
+          label="the same text where the pane has no Messages sheet: no chips"
+          reach="open a pane on a crew member. The lead keeps no list for it, so an id in the text is only text."
+        >
+          <Stage height={200}>
+            <WalkyLogProvider rows={LOG} reads={1}>
+              <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+                <div className="p-3">
+                  <MarkdownText text={CHIP_PROSE} />
+                </div>
+              </WalkyOpenProvider>
+            </WalkyLogProvider>
+          </Stage>
+        </Card>
+
+        <Card
+          state="walky-card-tapped"
+          label="a tapped card: the Messages sheet opens on that message, highlighted, with Reply in reach"
+          reach="tap a Message from card in Chat. The sheet scrolls to the message and lists the pane's sent messages too, titled To and the target. A chip in the sheet's reply-to line moves the highlight to the message it answers."
+          span={2}
+        >
+          <TappedCard />
         </Card>
       </Group>
 

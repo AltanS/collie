@@ -58,3 +58,66 @@ export function useWalkyReads(): number {
 export function useWalkyLog(): WalkyLog | null {
   return useContext(WalkyLogCtx);
 }
+
+// ── WHERE A TAP ON A MESSAGE GOES ─────────────────────────────────────────────
+// The Messages sheet belongs to the pane screen (components/agent-chat.tsx), and the things that want
+// to open it sit far below it: a Chat card, an id chip in a reply or in a tool's output. A context,
+// for the same reason as the log above. `null` is a mount with no sheet to open (History, a Files
+// preview, the Crew page, a member's pane), and then nothing is tappable: a chip or a card that
+// opened nowhere would be a control that does nothing.
+const WalkyOpenCtx = createContext<((id: string) => void) | null>(null);
+
+// The address of the pane the list belongs to, so a row can be told apart as sent or received
+// (`directionOf` in lib/walky.ts). Undefined where the mount cannot name its pane.
+const WalkySelfCtx = createContext<string | undefined>(undefined);
+
+/**
+ * Provides the opener: called with a message id, it shows the Messages sheet focused on that message.
+ * `self` is this pane's address; with it, a Chat card and a tool card never draw a message this pane sent as
+ * one it received.
+ */
+export function WalkyOpenProvider({
+  open,
+  self,
+  children,
+}: {
+  open: ((id: string) => void) | null;
+  self?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <WalkyOpenCtx.Provider value={open}>
+      <WalkySelfCtx.Provider value={self}>{children}</WalkySelfCtx.Provider>
+    </WalkyOpenCtx.Provider>
+  );
+}
+
+/** This pane's address, or undefined where the mount gave none. */
+export function useWalkySelf(): string | undefined {
+  return useContext(WalkySelfCtx);
+}
+
+/** The opener, or null where there is no Messages sheet to open. */
+export function useWalkyOpen(): ((id: string) => void) | null {
+  return useContext(WalkyOpenCtx);
+}
+
+/** What an id chip needs: whether the log holds an id, and how to open it. */
+export interface WalkyChips {
+  holds: (id: string) => boolean;
+  open: (id: string) => void;
+}
+
+/**
+ * The chip rule's one input, or null when no chip can be drawn: no opener, or a log that could not be
+ * read or holds nothing. An id is a chip only when the log HOLDS it (`byId`): an `absent` and an
+ * `unchecked` id are both plain text, since a chip is a claim that the message exists.
+ */
+export function useWalkyChips(): WalkyChips | null {
+  const log = useWalkyLog();
+  const open = useWalkyOpen();
+  return useMemo(() => {
+    if (log === null || open === null || log.byId.size === 0) return null;
+    return { holds: (id) => log.byId.has(id), open };
+  }, [log, open]);
+}

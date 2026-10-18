@@ -35,7 +35,7 @@ import { findLinks, type LinkMatch } from "@/lib/links";
 import { findFilePaths } from "@/lib/file-paths";
 import { isPlainClick, useFileLinks, type FileLinkOpener } from "@/components/file-links";
 import { useWalkyLog } from "@/components/walky-log";
-import { mirrorHeaderId } from "@/lib/walky";
+import { findWalkyIds } from "@/lib/walky";
 
 /**
  * A link in the mirror: an autolinked URL (opens a new tab), or a path the agent printed that
@@ -180,8 +180,8 @@ const NO_BLOCK_RUNS: readonly (readonly TableRun[])[] = Object.freeze([]);
 //      and win inline hit-testing, so a tap on visible text goes to the text. Only empty space
 //      beside a link can bleed to the anchor.
 // Don't convert it to a px value, and don't "fix" it to fit the line box — that would undo (1).
-// A walky talky envelope header row (M62), once the pane's log has vouched for its id: a muted tone and a
-// mark at its left edge, for the header line only. The mark is an OUTSET box-shadow in `currentColor`,
+// A walky talky row (M62), the envelope's header or any row that prints an id, once the pane's log has vouched for it: a muted tone and a
+// mark at its left edge, for that line only. The mark is an OUTSET box-shadow in `currentColor`,
 // so it takes no width, no padding and no border and the row's text does not move by a pixel (DESIGN.md
 // §2); it is drawn on an inline wrapper, so it adds no text node and no find or link offset. There is no
 // `dark:` variant anywhere in it: the colour is whatever the mirror's text already is, and the mirror's
@@ -573,9 +573,12 @@ export const AnsiOutput = memo(function AnsiOutput({
       segNodes
     );
     // A tagged row is the SAME nodes inside one wrapper span; a row of no message is returned as it was.
-    const walkyId = walkyLog === null || walkyLog.byId.size === 0 ? null : mirrorHeaderId(lineText(line));
+    // The header row, and any other row that prints an id the log holds (the agent's own `collie walky send`
+    // output, a reply line): the same tag. The id is looked up, never trusted.
+    const tagged =
+      walkyLog !== null && walkyLog.byId.size > 0 && findWalkyIds(lineText(line)).some((hit) => walkyLog.byId.has(hit.id));
     const content =
-      walkyId !== null && walkyLog?.byId.has(walkyId) === true ? (
+      tagged ? (
         <span data-slot="walky-row" className={WALKY_ROW_CLASS}>
           {clipped}
         </span>

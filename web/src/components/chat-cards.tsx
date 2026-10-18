@@ -58,7 +58,8 @@ import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
 import { WalkyCard } from "@/components/walky-card";
-import { useWalkyLog, useWalkyReads } from "@/components/walky-log";
+import { WalkyIds } from "@/components/walky-id-chip";
+import { useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -71,7 +72,18 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
-import { standingOf, type EnvelopeHeader } from "@/lib/walky";
+import {
+  directionOf,
+  parseWalkyCommand,
+  resultId,
+  shellLineOf,
+  stateWord,
+  standingOf,
+  targetWord,
+  type EnvelopeHeader,
+  type WalkyCommand,
+  type WalkyRow,
+} from "@/lib/walky";
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
@@ -500,6 +512,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
  */
 function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header: EnvelopeHeader }) {
   const standing = standingOf(useWalkyLog(), header.id);
+  const self = useWalkySelf();
   const reads = useWalkyReads();
   const absent = standing.standing === "absent";
   // The read count at which this turn first found itself absent, or null while it is not. Set while
@@ -508,7 +521,8 @@ function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header:
   const [absentSince, setAbsentSince] = useState<number | null>(null);
   if (absent && absentSince === null) setAbsentSince(reads);
   else if (!absent && absentSince !== null) setAbsentSince(null);
-  if (standing.standing === "held") return <WalkyCard row={standing.row} />;
+  // A held id that this pane SENT is not a message it received: a header that borrows it stays the plain turn.
+  if (standing.standing === "held" && directionOf(standing.row, self) === "received") return <WalkyCard row={standing.row} />;
   return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 
@@ -602,6 +616,7 @@ const KIND_ICON = {
 function ToolHead({
   icon: Icon,
   label,
+  badge,
   children,
   trailing,
   status,
@@ -609,6 +624,8 @@ function ToolHead({
 }: {
   icon: LucideIcon;
   label: string;
+  /** A small word after the tool's name (the walky talky badge). */
+  badge?: ReactNode;
   children?: ReactNode;
   trailing?: ReactNode;
   status: ChatToolStatus;
@@ -618,6 +635,7 @@ function ToolHead({
     <div className="flex min-h-9 min-w-0 items-center gap-2 px-3 py-1.5 text-xs">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 font-medium">{label}</span>
+      {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       {trailing}
       <StatusSlot status={status} exitCode={exitCode} />
@@ -684,7 +702,7 @@ function PathText({ text }: { text: string }) {
         if (target === null) continue;
         const start = base + f.start;
         const end = base + f.end;
-        if (start > at) out.push(text.slice(at, start));
+        if (start > at) out.push(<WalkyIds key={`w${at}`} text={text.slice(at, start)} />);
         out.push(
           <a
             key={start}
@@ -704,10 +722,10 @@ function PathText({ text }: { text: string }) {
       base += row.length + 1;
     }
     if (out.length === 0) return null;
-    if (at < text.length) out.push(text.slice(at));
+    if (at < text.length) out.push(<WalkyIds key={`w${at}`} text={text.slice(at)} />);
     return out;
   }, [open, text]);
-  return <>{nodes ?? text}</>;
+  return <>{nodes ?? <WalkyIds text={text} />}</>;
 }
 
 /**
@@ -740,17 +758,93 @@ function WaitingArea({ waiting, line }: { waiting?: CardWaiting; line?: boolean 
   );
 }
 
-export function ToolCard({
-  tool,
-  status,
-  waiting,
-  preview,
-}: {
+interface ToolCardProps {
   tool: ChatToolCall;
   status: ChatToolStatus;
   waiting?: CardWaiting;
   preview?: boolean;
-}) {
+}
+
+/** What the walky talky layer adds to a tool card: the badge is always there, the receipt line only when the log vouches for it. */
+interface ToolWalky {
+  receipt: string | null;
+}
+
+/**
+ * The small "walky talky" word beside a tool's name, on a card that ran the walky talky CLI. It claims
+ * nothing about any message: it says which command this is.
+ */
+function WalkyBadge() {
+  return (
+    <Badge variant="outline" data-slot="walky-tool-badge" className="px-1.5 py-0 text-[10px] font-medium">
+      {t("walky.tool.badge")}
+    </Badge>
+  );
+}
+
+/** The one line a send or reply card shows, drawn from the LOG's row and in the words the composer's strip uses. */
+function WalkyReceiptLine({ text, className }: { text: string; className: string }) {
+  return (
+    <p data-slot="walky-receipt" className={cn("text-xs text-muted-foreground", className)}>
+      {text}
+    </p>
+  );
+}
+
+/**
+ * A tool card that ran `collie walky` (the shell line STARTS with it). Everything the card says about a
+ * message comes from the pane's log, never from the command's own text or its output:
+ * - `send` / `reply`: the output's first line is the new message's id. If the log holds it, one receipt
+ *   line: "Message to <the log's target>: <state>";
+ * - `inbox <id>`: if the log holds the id, the message's card under the tool card;
+ * - any other case, or an id the log lacks or could not vouch for: the plain card, plus the badge.
+ */
+function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCommand }) {
+  useLocale();
+  const log = useWalkyLog();
+  const self = useWalkySelf();
+  const output = "output" in props.tool ? props.tool.output : undefined;
+  let receipt: string | null = null;
+  let inbox: WalkyRow | null = null;
+  if (command.verb === "send" || command.verb === "reply") {
+    const id = resultId(output);
+    const standing = id === null ? null : standingOf(log, id);
+    // A line "Message to <target>" is about a message this pane sent: a row that reached this pane is not one.
+    if (standing?.standing === "held" && directionOf(standing.row, self) === "sent") {
+      receipt = t("walky.composer.outcome", {
+        label: targetWord(standing.row.receipt.target),
+        state: stateWord(standing.row.receipt),
+      });
+    }
+  } else if (command.verb === "inbox" && command.id !== null) {
+    const standing = standingOf(log, command.id);
+    // `inbox` reads a message that came in; a row this pane sent has no card to show here.
+    if (standing.standing === "held" && directionOf(standing.row, self) === "received") inbox = standing.row;
+  }
+  const card = <ToolCardBody {...props} walky={{ receipt }} />;
+  if (inbox === null) return card;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {card}
+      <WalkyCard row={inbox} />
+    </div>
+  );
+}
+
+export function ToolCard(props: ToolCardProps) {
+  const line = shellLineOf(props.tool);
+  const command = line === null ? null : parseWalkyCommand(line);
+  if (command === null) return <ToolCardBody {...props} />;
+  return <WalkyToolCard {...props} command={command} />;
+}
+
+function ToolCardBody({
+  tool,
+  status,
+  waiting,
+  preview,
+  walky,
+}: ToolCardProps & { walky?: ToolWalky }) {
   useLocale();
   const subagentSheet = useContext(SubagentSheetCtx);
   // `data-waiting` lets a host find the card of the thing it is waiting on (scroll to it, see if it
@@ -806,11 +900,18 @@ export function ToolCard({
     case "execute":
       return (
         <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
-          <ToolHead icon={SquareTerminal} label={t("chat.card.run")} status={status} exitCode={tool.exitCode}>
+          <ToolHead
+            icon={SquareTerminal}
+            label={t("chat.card.run")}
+            badge={walky && <WalkyBadge />}
+            status={status}
+            exitCode={tool.exitCode}
+          >
             {tool.description && (
               <span className="font-content min-w-0 truncate text-muted-foreground">{tool.description}</span>
             )}
           </ToolHead>
+          {walky?.receipt != null && <WalkyReceiptLine text={walky.receipt} className="px-3 pb-1.5" />}
           <CommandBlock command={tool.command} output={tool.output} preview={preview} />
           <WaitingArea waiting={waiting} />
         </Card>
@@ -898,6 +999,8 @@ export function ToolCard({
           body={body}
           waiting={waiting}
           onTap={onTap}
+          badge={walky && <WalkyBadge />}
+          note={walky?.receipt}
         >
           {subject}
         </LineTool>
@@ -1051,6 +1154,8 @@ function LineTool({
   body,
   waiting,
   onTap,
+  badge,
+  note,
   children,
 }: {
   anchor?: string;
@@ -1061,6 +1166,10 @@ function LineTool({
   body?: string | null;
   waiting?: CardWaiting;
   onTap?: () => void;
+  /** A small word after the label (the walky talky badge). */
+  badge?: ReactNode;
+  /** One quiet line under the row (the walky talky receipt). */
+  note?: string | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -1069,6 +1178,7 @@ function LineTool({
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 font-medium text-muted-foreground">{label}</span>
+      {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       <StatusSlot status={status} />
       {interactive && (
@@ -1099,6 +1209,7 @@ function LineTool({
         <div className="flex min-h-7 min-w-0 items-center gap-2 px-2 text-xs">{row}</div>
       )}
       {body && <p className="font-content whitespace-pre-wrap break-words px-2 pb-1.5 text-sm">{body}</p>}
+      {note != null && <WalkyReceiptLine text={note} className="px-2 pb-1.5" />}
       {onTap === undefined && open && output !== undefined && (
         <pre className="mx-2 mb-2 max-h-80 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] whitespace-pre-wrap break-words">
           <PathText text={output} />
@@ -1134,7 +1245,9 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
         </CopyableBlock>
         {open && lines.length > 0 && (
           <CopyableBlock text={output ?? ""} label={t("copyable.output")}>
-            <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>{shown.join("\n")}</pre>
+            <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>
+              <WalkyIds text={shown.join("\n")} onDark />
+            </pre>
           </CopyableBlock>
         )}
       </div>

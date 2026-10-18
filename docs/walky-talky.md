@@ -236,15 +236,28 @@ also for a message from another agent that its pane has not read yet.
 When the phone cannot read the log, it claims nothing: no card and no mark. This happens on a member
 older than 1.23.0, and on a member the lead cannot reach.
 
+Tap the card to open the Messages sheet on that message. The sheet scrolls to it and marks it, and
+its Reply button is next to it.
+
+When an agent runs `collie walky` in a tool card, the card wears a small "walky talky" badge. After
+`send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example
+"Message to local/w6:p3: typed into the pane". After `inbox <id>`, the message's card shows under
+the tool card. Both come from the bridge's log, never from what the command printed. If the log
+does not hold the id, the card shows plain output. A message id in Chat text, or in a tool's
+output, becomes a small chip when the log holds it, and a tap on the chip opens the Messages sheet
+on that message. Any other id stays plain text. The terminal view marks every row that prints an id
+the log holds the same way as the header row.
+
 Each receipt state shows the words in the table above, with the reason after "not sent" and
 "waiting in the inbox, not typed".
 
-- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. The
-  Messages sheet lists what the pane received and what it sent. A message from an agent has a
-  "Reply" button, and the reply keeps the token of the sender's address. A pane on a crew member has
-  the row too, and its list comes from that member's own log. A reply from it goes through the lead
-  like any message. An empty sheet says "No messages for this pane yet." A
-  machine whose log the phone cannot read says "This machine does not keep messages yet."
+- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane, newest
+  first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
+  has the title "To" and the pane it went to, with the receipt state in words, and no "Reply"
+  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  address. A pane on a crew member has the row too, and its list comes from that member's own log. A
+  reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
+  yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".
   The text goes to this pane as a message from you. The phone adds the pane's token to the address,
   so the text reaches the session you are looking at. If another pane has taken the id since, the

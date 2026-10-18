@@ -1,5 +1,6 @@
 import { useState, type ComponentProps } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
@@ -13,7 +14,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => liveness.live,
 }));
 
-import { fixtureAgents, fixtureWalkyAgent, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
+import { fixtureAgents, fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySent, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/msw";
 import type { AgentView } from "@/lib/types";
@@ -138,5 +139,105 @@ describe("the pane's Messages row and sheet", () => {
     goGone();
     expect(screen.getByText("Tests are green on fix-465. You can merge.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Reply to/ })).toBeNull();
+  });
+});
+
+// A tap on a Chat card, or on an id chip in the agent's own words, opens the Messages sheet on that
+// message. The turns come from the pane's journal, as they do on a real pane.
+describe("the Chat card and the id chip open the Messages sheet on their message", () => {
+  const HEADER = "[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)";
+
+  function withJournal(entries: readonly object[]) {
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/chat/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          page: "live",
+          gen: 3,
+          rev: 1,
+          head: 100 + entries.length,
+          oldest: 101,
+          hasOlder: false,
+          upserts: entries.map((e, i) => Object.assign({}, e, { seq: 101 + i })),
+        }),
+      ),
+    );
+  }
+  const sessionAgent = { ...agent, hasSession: true, readableLines: 51 };
+  const turns = [
+    { uuid: "u1", ts: "2026-10-17T09:30:00.000Z", role: "user", parts: [{ kind: "text", text: `${HEADER}\nTests are green.` }] },
+    {
+      uuid: "a1",
+      ts: "2026-10-17T09:31:00.000Z",
+      role: "assistant",
+      parts: [{ kind: "text", text: "I read wt_k3f9x2m8q1a0 and will merge. Ignore wt_zzzzzzzzzzzz." }],
+    },
+  ];
+
+  it("opens the sheet focused on the message when its card is tapped", async () => {
+    const user = userEvent.setup();
+    withJournal(turns);
+    renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, fixtureWalkyOperator]);
+    await user.click(await screen.findByRole("button", { name: /Message from collie-workspace#fix-465/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const focused = dialog.querySelectorAll<HTMLElement>('[data-slot="walky-list-row"][data-focused="true"]');
+    const row = focused[0];
+    if (row === undefined) throw new Error("no focused row");
+    expect(focused).toHaveLength(1);
+    expect(row).toHaveAttribute("data-kind", "agent");
+    // Its Reply is on the focused row.
+    expect(within(row).getByRole("button", { name: "Reply to collie-workspace#fix-465" })).toBeInTheDocument();
+  });
+
+  it("opens the sheet on the id a chip in the agent's text names, and leaves an unknown id as text", async () => {
+    const user = userEvent.setup();
+    withJournal(turns.slice(1));
+    renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, fixtureWalkyOperator]);
+    expect(await screen.findByRole("button", { name: "Open message wt_k3f9x2m8q1a0" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open message wt_zzzzzzzzzzzz" })).toBeNull();
+    expect(document.body.textContent).toContain("Ignore wt_zzzzzzzzzzzz.");
+    await user.click(screen.getByRole("button", { name: "Open message wt_k3f9x2m8q1a0" }));
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    expect(dialog.querySelector('[data-focused="true"]')).toHaveAttribute("data-kind", "agent");
+  });
+
+  it("lists the messages this pane sent beside the ones it received, newest first, from the pane's own address", async () => {
+    const user = userEvent.setup();
+    const sent: WalkyRow = {
+      ...fixtureWalkySent,
+      from: { ...fixtureWalkySent.from, address: `local/${agent.paneId}` },
+      receipt: { ...fixtureWalkySent.receipt, target: "local/w6:p3" },
+    };
+    withJournal(turns.slice(1));
+    renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, sent]);
+    await openMessages(user);
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const rows = [...dialog.querySelectorAll('[data-slot="walky-list-row"]')];
+    expect(rows.map((r) => r.getAttribute("data-direction"))).toEqual(["sent", "received"]);
+    expect(within(dialog).getByText("To local/w6:p3")).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button", { name: /^Reply/ })).toHaveLength(1);
+  });
+
+  it("opens the list from the top, with no row focused, from the pane menu", async () => {
+    const user = userEvent.setup();
+    withJournal(turns.slice(1));
+    renderPane({ agent: sessionAgent });
+    await user.click(await screen.findByRole("button", { name: "Open message wt_k3f9x2m8q1a0" }));
+    await screen.findByRole("dialog", { name: "Messages" });
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await openMessages(user);
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    expect(dialog.querySelector('[data-focused="true"]')).toBeNull();
+  });
+
+  it("makes the card and the chip open the sheet on a crew member's pane too, as its menu row does", async () => {
+    const user = userEvent.setup();
+    const host = "workshop";
+    withJournal(turns);
+    renderPane({ scope: { host }, agent: { ...sessionAgent, host } }, [fixtureWalkyAgent]);
+    await user.click(await screen.findByRole("button", { name: /Message from collie-workspace#fix-465/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    expect(dialog.querySelector('[data-focused="true"]')).toHaveAttribute("data-kind", "agent");
   });
 });

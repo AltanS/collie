@@ -197,6 +197,141 @@ export function mirrorHeaderId(row: string): string | null {
   return MIRROR_HEADER.exec(row)?.[1] ?? null;
 }
 
+// ── IDS IN TEXT, AND THE AGENT'S OWN COMMANDS ─────────────────────────────────
+// Everything below is a CLAIM too: an id in prose, a `collie walky` line in a tool card and the first
+// line of its output are all text an agent can print. They only choose WHERE to look; what a screen
+// then draws comes from the log row (`standingOf`), and an id the log does not hold stays plain text.
+
+/**
+ * A message id inside running text. The lookarounds keep it from matching inside a longer word or
+ * inside an id of another length (`wt_` and exactly 12 characters, no letter, digit or `_` either
+ * side). Global: scan with {@link findWalkyIds}, not with `exec` on this object.
+ */
+export const WALKY_ID_IN_TEXT = /(?<![A-Za-z0-9_])wt_[a-z0-9]{12}(?![A-Za-z0-9_])/g;
+
+/** One id found in a text, with where it sits. */
+export interface WalkyIdHit {
+  id: string;
+  start: number;
+  end: number;
+}
+
+/** Every message id in `text`, in order. The cheap test first: this runs for each text of a thread. */
+export function findWalkyIds(text: string): WalkyIdHit[] {
+  if (!text.includes("wt_")) return [];
+  return [...text.matchAll(WALKY_ID_IN_TEXT)].map((m) => ({ id: m[0], start: m.index, end: m.index + m[0].length }));
+}
+
+/** A piece of a text: plain, or an id the caller asked about. */
+export type WalkyTextPart = { kind: "text"; text: string } | { kind: "id"; id: string };
+
+/**
+ * `text` cut at the ids that `held` accepts. An id `held` refuses stays inside the text around it, so a
+ * run with no held id comes back as one `text` part. Joining the parts gives `text` back, always.
+ */
+export function splitWalkyIds(text: string, held: (id: string) => boolean): WalkyTextPart[] {
+  const parts: WalkyTextPart[] = [];
+  let at = 0;
+  for (const hit of findWalkyIds(text)) {
+    if (!held(hit.id)) continue;
+    if (hit.start > at) parts.push({ kind: "text", text: text.slice(at, hit.start) });
+    parts.push({ kind: "id", id: hit.id });
+    at = hit.end;
+  }
+  if (at < text.length) parts.push({ kind: "text", text: text.slice(at) });
+  return parts;
+}
+
+/** `collie walky send` and `reply` print the id on a line of its own, first. */
+const RESULT_ID_LINE = /^(wt_[a-z0-9]{12})[ \t]*$/;
+
+/** The id a tool result opens with (its first line is exactly an id), or null. */
+export function resultId(output: string | undefined): string | null {
+  if (output === undefined) return null;
+  return RESULT_ID_LINE.exec(firstLine(output))?.[1] ?? null;
+}
+
+/**
+ * The walky talky CLI as the first words of one command segment: `collie walky`, where `collie` may carry
+ * a path in front (`/home/me/.local/bin/collie`, `~/.local/bin/collie`, `C:\\tools\\collie.exe`). The installed
+ * skill names the binary by its absolute path, so a bare `collie` is only one of the shapes.
+ */
+const WALKY_BINARY = /^(?:[^\s;&|]*[\\/])?collie(?:\.exe)?\s+walky(?=\s|$)/;
+/** After the binary: the verb, and for `inbox` the id it names. */
+const WALKY_VERB = /^(?:\s+(send|reply|inbox)(?=\s|$))?(?:\s+(wt_[a-z0-9]{12})(?![A-Za-z0-9_]))?/;
+/** Words that may stand before the command in a segment: `env`, and `NAME=value` assignments. */
+const SEGMENT_LEAD = /^(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)*/;
+
+/**
+ * A command line cut into its segments at `;`, `&&`, `||`, `|`, `&`, an opening `(` or `{`, and a line
+ * break, outside quotes. `cd x && git log | collie walky send a` is three segments. A quote hides its
+ * separators, so `echo "a; collie walky send"` stays one segment that starts with `echo`.
+ */
+function shellSegments(command: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command.charAt(i);
+    if (quote !== null) {
+      cur += c;
+      if (c === "\\" && quote === '"') cur += command.charAt(++i);
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      cur += c;
+    } else if (c === "\\") {
+      cur += c + command.charAt(++i);
+    } else if (c === ";" || c === "&" || c === "|" || c === "(" || c === "{" || c === "\n") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+export interface WalkyCommand {
+  /** The verb, or `other` for any other (`who`, `status`, a bare `collie walky`). */
+  verb: "send" | "reply" | "inbox" | "other";
+  /** For `inbox` only: the id the command names. */
+  id: string | null;
+}
+
+/**
+ * The walky command a shell line runs, or null when it is not one. The CLI must be the first words of a
+ * segment of the line (after `env` and `NAME=value` words), so a `cd x &&` or `export X=1;` before it, a
+ * path in front of `collie`, and a pipe into it (`git log | collie walky send a`) all match, while
+ * `echo collie walky send` and `ls collie` do not. The first segment that is a walky command wins.
+ */
+export function parseWalkyCommand(command: string): WalkyCommand | null {
+  for (const segment of shellSegments(command)) {
+    const words = segment.trimStart().replace(SEGMENT_LEAD, "");
+    const bin = WALKY_BINARY.exec(words);
+    if (bin === null) continue;
+    const m = WALKY_VERB.exec(words.slice(bin[0].length));
+    const verb = m?.[1];
+    if (verb !== "send" && verb !== "reply" && verb !== "inbox") return { verb: "other", id: null };
+    return { verb, id: verb === "inbox" ? (m?.[2] ?? null) : null };
+  }
+  return null;
+}
+
+/**
+ * The shell line of a tool call, in the shapes the chat model has: a command run (`execute`), or a
+ * tool the adapter did not recognise (`other`), whose one-line summary is what it ran. Any other kind
+ * runs no command.
+ */
+export function shellLineOf(call: { kind: string; command?: string; summary?: string }): string | null {
+  if (call.kind === "execute") return call.command ?? null;
+  if (call.kind === "other" && call.summary !== undefined) return firstLine(call.summary);
+  return null;
+}
+
 // ── THE CROSS-CHECK ───────────────────────────────────────────────────────────
 
 /**
@@ -275,6 +410,23 @@ export function paneAddress(
 export function bareAddress(address: string): string {
   const at = address.indexOf("#");
   return at === -1 ? address : address.slice(0, at);
+}
+
+export type WalkyDirection = "received" | "sent";
+
+/**
+ * Which way a row of a pane's list went, for the pane at address `self` (see {@link paneAddress}). The list
+ * holds both the messages that reached the pane and the ones it sent (each with its receipt), and the row
+ * has no field for the direction: it is read off the addresses. A row is SENT when its sender is this pane
+ * and its receipt's target is another one; every other row is received, including a pane's message to
+ * itself. With no `self` (a mount that cannot name its pane) every row reads as received, as it did before
+ * the list held sent rows. Tokens are ignored on both sides ({@link bareAddress}).
+ */
+export function directionOf(row: Pick<WalkyRow, "from" | "receipt">, self: string | undefined): WalkyDirection {
+  if (self === undefined || row.from.address === null) return "received";
+  const me = bareAddress(self);
+  if (bareAddress(row.receipt.target) === me) return "received";
+  return bareAddress(row.from.address) === me ? "sent" : "received";
 }
 
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
