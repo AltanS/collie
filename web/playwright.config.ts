@@ -83,7 +83,7 @@ const RUN_REST = E2E_SET !== "swap";
 
 /** The spec selection every project shares: never the tier-2 specs, plus the set filter. */
 const SPECS = RUN_REST
-  ? { testIgnore: RUN_SWAP ? LIVE_TEST_IGNORE : [LIVE_TEST_IGNORE, ...SWAP_SPECS] }
+  ? { testIgnore: RUN_SWAP ? LIVE_TEST_IGNORE : [...LIVE_TEST_IGNORE, ...SWAP_SPECS] }
   : { testIgnore: LIVE_TEST_IGNORE, testMatch: SWAP_SPECS };
 
 type WebServer = Exclude<PlaywrightTestConfig["webServer"], unknown[] | undefined>;
