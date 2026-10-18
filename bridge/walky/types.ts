@@ -55,6 +55,55 @@ export interface WalkyMessage {
 export const RECEIPT_STATES = ["accepted", "delivered", "inbox-only", "refused", "expired", "unknown"] as const;
 export type WalkyReceiptState = (typeof RECEIPT_STATES)[number];
 
+/**
+ * How far a receipt has come: `accepted`, then `unknown`, then a finished state (`delivered`,
+ * `inbox-only`, `refused`, `expired`). A finished state is never replaced (CREW_PROTOCOL §21, added
+ * 2026-10-18), so a late answer or a slow leg cannot move an outcome backwards.
+ */
+export function stateRank(state: WalkyReceiptState): 0 | 1 | 2 {
+  if (state === "accepted") return 0;
+  return state === "unknown" ? 1 : 2;
+}
+
+/**
+ * Whether `next` may replace `held` when it comes from another machine (a member's report, the lead's
+ * push): never over a finished state, never backwards, and a repeat of the same state only when newer.
+ */
+export function movesForward(held: WalkyReceipt, next: WalkyReceipt): boolean {
+  const from = stateRank(held.state);
+  const to = stateRank(next.state);
+  if (from === 2 || to < from) return false;
+  return next.state !== held.state || next.at > held.at;
+}
+
+/** The longest receipt `reason` read or written (CREW_PROTOCOL §21, added 2026-10-18). */
+export const RECEIPT_REASON_MAX = 120;
+
+/** A Send Protocol request id as `sendIdOf` (deliver.ts) makes one: the message id and 8 hex characters. */
+export const SEND_ID = /^wt_[a-z0-9]{12}-[0-9a-f]{8}$/u;
+
+/** Whether every character is printable ASCII, 0x20 to 0x7e: no escape, no line break, no tab. */
+export function isPrintableAscii(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code > 0x7e) return false;
+  }
+  return true;
+}
+
+/**
+ * A reason this bridge writes, in the form every reader keeps: each character outside printable ASCII
+ * becomes a space, runs of spaces become one, and the text is cut to {@link RECEIPT_REASON_MAX}.
+ * Undefined when nothing is left. An error text from a dial or another machine goes through here.
+ */
+export function receiptReason(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  let out = "";
+  for (const ch of raw) out += isPrintableAscii(ch) ? ch : " ";
+  const clean = out.replace(/ {2,}/gu, " ").trim().slice(0, RECEIPT_REASON_MAX).trimEnd();
+  return clean === "" ? undefined : clean;
+}
+
 export type WalkyVerified = "origin" | "lead" | "local" | "none";
 
 export interface WalkyReceipt {

@@ -3475,6 +3475,25 @@ The lead writes each reported receipt into its own log, and only when the member
 pane on that member, for a message the lead routed there. The same receipt reported again is skipped
 (same state, not newer), so a resend is harmless.
 
+**An outcome only moves forward** (added 2026-10-18). The states rank `accepted`, then `unknown`, then
+the finished ones: `delivered`, `inbox-only`, `refused` and `expired`. A reported or pushed receipt is
+taken only when it ranks higher than the one held, or is the same state and newer; a finished state is
+never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
+refusal) replaces only `accepted`, so a slow leg never goes over the outcome a report already brought.
+
+**A pane under a leg sent as a whole** (added 2026-10-18). A report may name a pane the lead holds no
+record for when the lead routed `<member>/all` or `all` there. The lead then logs it as a new target
+under that leg's message, with three limits: never for the reporting member's own broadcast, only for a
+target that is already bare and trimmed (no instance token, no blanks), and at most 50 pane targets per
+message on one member.
+
+**A receipt's text fields** (added 2026-10-18). Every receipt read off the wire (an answer, a report,
+a push) and off the log keeps `reason` only when it is printable ASCII (0x20 to 0x7e) of at most 120
+characters, and `sendId` only in the form `<message id>-<8 lowercase hex>`; else the field is dropped.
+`by` must be a member id or the log's own `-`, or the receipt is malformed. A bridge cleans the reasons
+it writes to the same form, and `collie walky` prints every string from another machine with its
+control characters shown as `?`.
+
 ### What the sender learns
 
 The lead learns every outcome first: from its own panes, and from each member's report. When the
@@ -3507,12 +3526,14 @@ the outbox is not empty.
 The member registers the route only when it has a lead, and the admitted caller must be that lead (the
 dial attestation covers it like every lead → peer dial, §8.6). It writes a pushed receipt only when its
 own log holds a record for that id and target whose message has `from.memberId` equal to this member,
-and only when the receipt is newer or another state (the `mergeReport` rule). A receipt for one of the
+and only when the receipt moves it forward (the rule above). For a pane under a leg this member sent
+as a whole, it adds the pane as a new target under the same limits as the lead's report (added
+2026-10-18), so a broadcast whose leg was slow still learns each pane. A receipt for one of the
 member's own panes is never taken: that outcome is its own word. It answers `{ written }`, the count.
 A pushed outcome is never reported back up: the member's report skips every message from itself.
 
 An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed outcome does not write
-`accepted` over it.
+over it: neither its `accepted` nor, since 2026-10-18, the `unknown` of a dial that timed out.
 
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
 holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line

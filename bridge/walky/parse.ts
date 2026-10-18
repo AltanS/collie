@@ -6,9 +6,13 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { readMarkers } from "../beacon/parse.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { parseAddress } from "./address.ts";
 import {
+  isPrintableAscii,
+  RECEIPT_REASON_MAX,
   RECEIPT_STATES,
+  SEND_ID,
   WALKY_ID,
   type WalkyKind,
   type WalkyMessage,
@@ -84,10 +88,16 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
   const verified = VERIFIED.find((candidate) => candidate === verifiedText);
   const at = asJsonNumber(row.at);
   const by = text(row, "by");
+  // `by` names a member (or `solo`), or is the log's own `-` for a line it rebuilt (log.ts).
   if (!isWalkyId(id) || target === null || state === undefined || verified === undefined || at === undefined || by === null) return null;
+  if (by !== "-" && !MEMBER_ID_RE.test(by)) return null;
   const receipt: WalkyReceipt = { id, target, state, verified, at, by };
-  const reason = text(row, "reason");
-  const sendId = text(row, "sendId");
+  // A receipt crosses machines and is printed into an agent's terminal: a reason that is not short
+  // printable ASCII, or a send id not in `sendIdOf`'s form, is dropped, and the receipt still reads.
+  const rawReason = text(row, "reason");
+  const reason = rawReason !== null && rawReason !== "" && rawReason.length <= RECEIPT_REASON_MAX && isPrintableAscii(rawReason) ? rawReason : null;
+  const rawSendId = text(row, "sendId");
+  const sendId = rawSendId !== null && SEND_ID.test(rawSendId) ? rawSendId : null;
   const withReason = reason === null ? receipt : { ...receipt, reason };
   return sendId === null ? withReason : { ...withReason, sendId };
 }

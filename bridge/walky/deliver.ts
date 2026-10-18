@@ -29,7 +29,7 @@ import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
 import { RefusalCounter, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
-import { formatEnvelope, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
+import { formatEnvelope, receiptReason, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
 
 /** How long a held send may wait before the message is left in the inbox only. */
 export const HELD_LIMIT_MS = 10 * 60 * 1000;
@@ -238,7 +238,9 @@ export class WalkyDeliverer {
   /** Every receipt this bridge writes. Its target never carries an instance token (address.ts `bareAddress`). */
   private receipt(id: string, target: string, state: WalkyReceiptState, extra: ReceiptExtra = {}): WalkyReceipt {
     const base: WalkyReceipt = { id, target: bareAddress(target), state, verified: extra.verified ?? "local", at: this.now(), by: this.by };
-    const withReason = extra.reason === undefined ? base : { ...base, reason: extra.reason };
+    // Cleaned to the form every reader keeps (types.ts `receiptReason`): an error text can be anything.
+    const reason = receiptReason(extra.reason);
+    const withReason = reason === undefined ? base : { ...base, reason };
     return extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
   }
 
@@ -478,14 +480,15 @@ export class WalkyDeliverer {
         if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
         const held = this.deps.log.get(message.id, receipt.target);
         if (held === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
-        // The lead may push the outcome before this answer is written (CREW_PROTOCOL §21): an
-        // `accepted` never goes over a receipt that already left it.
-        else if (receipt.state !== "accepted" || held.receipt.state === "accepted") this.deps.log.update(receipt);
+        // The answer of this dial replaces only `accepted` (CREW_PROTOCOL §21): while it was on its
+        // way, a member's report or the lead's push may have written the real outcome, and a slow
+        // leg's `unknown` or a late `accepted` must not go over it.
+        else if (held.receipt.state === "accepted") this.deps.log.update(receipt);
       }
       return receipts.length === 0 ? [accepted] : receipts;
     } catch (err) {
       const failed = this.receipt(message.id, accepted.target, "unknown", { reason: `crew: ${err instanceof Error ? err.message : String(err)}` });
-      this.deps.log.update(failed);
+      if (this.deps.log.get(message.id, accepted.target)?.receipt.state === "accepted") this.deps.log.update(failed);
       return [failed];
     }
   }
