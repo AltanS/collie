@@ -5,10 +5,9 @@ import { HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
 import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
-import { KIRO_BUCKET, kiroSandbox, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./kiro-fixtures.ts";
+import { KIRO_BUCKET, kiroSandbox, NO_PROCESS_IDENTITY, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./kiro-fixtures.ts";
 import { kiroJournal } from "./kiro.ts";
 import { KiroSessionTree } from "./kiro-sessions.ts";
-import { adapterFor, buildJournalRegistry, NO_PROCESS_IDENTITY } from "./registry.ts";
 import type { DiscoverHints, ForegroundProcess, JournalAdapter, ProcessIdentity, ProcessIdentityProbe, TranscriptSource } from "./types.ts";
 
 const NOW = Date.parse("2026-10-01T12:00:00.000Z");
@@ -383,16 +382,5 @@ describe("Kiro V3 process-owned discovery", () => {
     const result = await discover([root], real)("/shared", hints(process.pid));
     // Then: off Linux the probe answers nothing, and on Linux this process's own argv refuses.
     expect(result).toBeNull();
-  });
-
-  test("the registry builder hands its process probe to Kiro discovery", async () => {
-    // Given: a registry built with a probe that knows the pane's TUI.
-    const root = await kiroSandbox();
-    await session(root);
-    const registry = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [root] }, probe);
-    // When: the registered Kiro adapter discovers for that pane.
-    const result = await adapterFor(registry, "kiro")?.discover?.("/shared", hints());
-    // Then: the probe the caller passed is the one asked.
-    expect(result).toEqual({ kind: "id", value: ID });
   });
 });

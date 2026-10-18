@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { loadConfig } from "../config.ts";
 import { LiveWindows, type ChatWindowBody } from "../journal/live.ts";
-import { adapterFor, buildJournalRegistry, NO_PROCESS_IDENTITY } from "../journal/registry.ts";
+import { adapterFor, buildJournalRegistry } from "../journal/registry.ts";
 import { TranscriptStore } from "../journal/store.ts";
 import { DurableMux } from "../mux/durable/adapter.ts";
 import { FakeDurableProgram, type FakeEvent } from "../mux/durable/fixture.ts";
@@ -57,7 +57,7 @@ async function world() {
 
   const cfg = loadConfig({ COLLIE_STATE_DIR: state, HOME: state });
   const roots = { ...cfg.journalRoots, durable: [durableLogDir(state)] };
-  const journals = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+  const journals = buildJournalRegistry(roots);
   const live = new LiveWindows(new TranscriptStore());
 
   engine.start();

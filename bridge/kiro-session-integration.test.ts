@@ -7,6 +7,7 @@ import { loadConfig } from "./config.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { kiroSandbox, readKiroFixture, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./journal/kiro-fixtures.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./journal/live.ts";
+import { kiroJournal } from "./journal/kiro.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { ProcessIdentityProbe, TranscriptEntry } from "./journal/types.ts";
@@ -59,7 +60,7 @@ async function world(agents: AgentView[] = [pane("w1:p1", A), pane("w1:p2", B)])
       ? { token: `${pid}:start`, startedAt: NOW - 60_000, observedAt: NOW, argv: ["bun", "/synthetic/kiro-cli/tui.js", "chat"] }
       : null),
   };
-  const journals = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [root] }, probe);
+  const journals = { ...buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }), kiro: kiroJournal([root], probe) };
   const adapter = adapterFor(journals, "kiro");
   if (adapter === undefined) throw new Error("Kiro must be registered");
   const partial: Partial<StateEngine> = {

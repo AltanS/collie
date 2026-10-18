@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { NO_CURSOR } from "./cursor.ts";
 import { FIRST_TAIL_BYTES, readSinceFile } from "./files.ts";
-import { buildJournalRegistry, KNOWN_HARNESS_NAMES, NO_PROCESS_IDENTITY } from "./registry.ts";
+import { buildJournalRegistry, KNOWN_HARNESS_NAMES } from "./registry.ts";
 
 // The live read of a log FILE, shared by claude, codex, pi and grok. Real files in a temp directory,
 // like every other source test here: the behaviour under test is byte counting against a file that
@@ -305,7 +305,7 @@ describe("every harness answers a live read", () => {
     muse: ["/nope/muse"],
     openclaw: ["/nope/openclaw"],
     kiro: ["/nope/kiro"],
-  }, NO_PROCESS_IDENTITY);
+  });
 
   test("every journal this build ships is under test", () => {
     expect(Object.keys(registry).toSorted()).toEqual([...KNOWN_HARNESS_NAMES].toSorted());

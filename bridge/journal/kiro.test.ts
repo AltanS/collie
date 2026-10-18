@@ -3,8 +3,7 @@ import { appendFile, mkdir, rename, rm, symlink, writeFile } from "node:fs/promi
 import { join } from "node:path";
 import { createKiroReducer, kiroJournal, parseKiroTranscript } from "./kiro.ts";
 import { KiroSessionTree } from "./kiro-sessions.ts";
-import { KIRO_BUCKET, KIRO_FIXTURES, kiroSandbox, readKiroFixture, removeKiroSandboxes, writeKiroSession } from "./kiro-fixtures.ts";
-import { NO_PROCESS_IDENTITY } from "./registry.ts";
+import { KIRO_BUCKET, KIRO_FIXTURES, kiroSandbox, NO_PROCESS_IDENTITY, readKiroFixture, removeKiroSandboxes, writeKiroSession } from "./kiro-fixtures.ts";
 import { parseWith, unknownCount } from "./reduce.ts";
 import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
 import type { JsonObject } from "../json.ts";

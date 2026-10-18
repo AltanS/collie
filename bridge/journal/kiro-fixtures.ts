@@ -9,6 +9,10 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { pluginRoot } from "../root.ts";
 import { asRecord } from "./cache-probe.ts";
+import type { ProcessIdentityProbe } from "./types.ts";
+
+/** A process probe that can say nothing about any pid, so Kiro discovery finds nothing. */
+export const NO_PROCESS_IDENTITY: ProcessIdentityProbe = { identify: () => Promise.resolve(null) };
 
 /** The checked-in sessions kiro-cli 2.32.0 saved: session.json, messages.jsonl and subagent.jsonl (README.md). */
 export const KIRO_FIXTURES = join(pluginRoot(), "bridge", "journal", "fixtures", "kiro");

@@ -8,7 +8,6 @@ import {
   DRAWS_IMAGES_OFF_GRID,
   journalAgents,
   KNOWN_HARNESS_NAMES,
-  NO_PROCESS_IDENTITY,
   REPORTS_SESSION_ON_FIRST_PROMPT,
 } from "./registry.ts";
 
@@ -30,7 +29,7 @@ const roots = {
 
 describe("buildJournalRegistry", () => {
   test("serves the registered harnesses", () => {
-    expect(journalAgents(buildJournalRegistry(roots, NO_PROCESS_IDENTITY))).toEqual([
+    expect(journalAgents(buildJournalRegistry(roots))).toEqual([
       "claude",
       "codex",
       "grok",
@@ -44,7 +43,7 @@ describe("buildJournalRegistry", () => {
   });
 
   test("every key IS its adapter's own agent string — the map can't drift from the adapters", () => {
-    const registry = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+    const registry = buildJournalRegistry(roots);
     for (const [key, adapter] of Object.entries(registry)) expect(adapter.agent).toBe(key);
   });
 });
@@ -52,7 +51,7 @@ describe("buildJournalRegistry", () => {
 describe("sendQueuedNow", () => {
   test("Claude Code declares Ctrl+Enter and no other harness declares anything", async () => {
     const { canonicalMuxKey } = await import("../mux/keys.ts");
-    const registry = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+    const registry = buildJournalRegistry(roots);
     expect(registry.claude!.sendQueuedNow).toEqual(["ctrl+Enter"]);
     // A declared key must be a valid neutral spelling, in its canonical form.
     for (const key of registry.claude!.sendQueuedNow ?? []) expect(canonicalMuxKey(key)).toBe(key);
@@ -63,7 +62,7 @@ describe("sendQueuedNow", () => {
 });
 
 describe("adapterFor", () => {
-  const registry = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+  const registry = buildJournalRegistry(roots);
 
   test.each(["claude", "codex", "pi", "opencode", "grok", "hermes", "kiro", "muse", "openclaw"])("resolves %s", (agent) => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
@@ -130,7 +129,7 @@ describe("the frontend mirror", () => {
     const listed = [...(literal ?? "").matchAll(/"([a-z][a-z0-9-]*)"/g)].map((m) => m[1]);
     expect(listed.toSorted()).toEqual([...DRAWS_IMAGES_OFF_GRID].toSorted());
     // Each one has a journal to read the picture out of, by its own name or as an alias.
-    const registry = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+    const registry = buildJournalRegistry(roots);
     for (const agent of DRAWS_IMAGES_OFF_GRID) expect(adapterFor(registry, agent)).toBeDefined();
   });
 });
@@ -139,7 +138,7 @@ describe("the frontend mirror", () => {
 // adapters themselves, so neither side can drift. `collie doctor` reads the list; the routes read
 // the capability.
 test("DISCOVERS_OWN_SESSIONS names exactly the discovering adapters", () => {
-  const registry = buildJournalRegistry(roots, NO_PROCESS_IDENTITY);
+  const registry = buildJournalRegistry(roots);
   const discovering = Object.entries(registry)
     .filter(([, adapter]) => adapter.discover !== undefined)
     .map(([agent]) => agent)

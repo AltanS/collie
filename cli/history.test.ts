@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { resolveJournalRoots } from "../bridge/config.ts";
 import { hostFor } from "../bridge/host.ts";
-import { adapterFor, buildJournalRegistry, DISCOVERS_OWN_SESSIONS, NO_PROCESS_IDENTITY } from "../bridge/journal/registry.ts";
+import { adapterFor, buildJournalRegistry, DISCOVERS_OWN_SESSIONS } from "../bridge/journal/registry.ts";
 import { toPaneWire, type AgentView } from "../bridge/types.ts";
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
@@ -172,7 +172,7 @@ const snapshotOf = (agents: { paneId: string; agent: string; hasSession?: boolea
  * adapter discovers sessions. Use it for an agent whose flag the bridge sets without a Herdr ref.
  */
 function wireSnapshotOf(panes: { paneId: string; agent: string; agentSession?: AgentView["agentSession"] }[]): string {
-  const registry = buildJournalRegistry(resolveJournalRoots({}, HOME), NO_PROCESS_IDENTITY);
+  const registry = buildJournalRegistry(resolveJournalRoots({}, HOME));
   const hasJournal = (agent: string): boolean => adapterFor(registry, agent) !== undefined;
   const discoversSessions = (agent: string): boolean => adapterFor(registry, agent)?.discover !== undefined;
   const agents = panes.map(({ paneId, agent, agentSession }) => {

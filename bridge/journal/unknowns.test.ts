@@ -15,7 +15,7 @@ import {
   unknownCount,
   type RowReducer,
 } from "./reduce.ts";
-import { buildJournalRegistry, journalAgents, NO_PROCESS_IDENTITY } from "./registry.ts";
+import { buildJournalRegistry, journalAgents } from "./registry.ts";
 
 // ── THE GATE FOR "WHAT THIS READER DID NOT RECOGNISE" ───────────────────────────────────────────
 //
@@ -487,7 +487,7 @@ describe("the counter itself", () => {
 // A new adapter cannot land without a tally: the canary's gate reads every registered adapter's
 // reducer, and one that answered nothing would be an agent whose drift nobody is watching.
 test("every registered journal adapter's reducer answers a tally", () => {
-  const registry = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }, NO_PROCESS_IDENTITY);
+  const registry = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] });
   expect(journalAgents(registry)).toHaveLength(9);
   for (const [agent, adapter] of Object.entries(registry)) {
     const tally = adapter.reducer().unknowns();

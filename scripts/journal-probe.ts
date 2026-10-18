@@ -30,7 +30,7 @@ import { readBeacons } from "../bridge/beacon/reader.ts";
 import { loadConfig } from "../bridge/config.ts";
 import { isGrokSessionId } from "../bridge/journal/grok.ts";
 import { kiroSessionIdOf } from "../bridge/journal/kiro-sessions.ts";
-import { adapterFor, buildJournalRegistry, NO_PROCESS_IDENTITY } from "../bridge/journal/registry.ts";
+import { adapterFor, buildJournalRegistry } from "../bridge/journal/registry.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "../bridge/journal/types.ts";
 
 /**
@@ -379,7 +379,7 @@ async function probeBeacons(registry: Record<string, JournalAdapter>, stateDir: 
 // `bun test ./bridge ./cli ./scripts` run mid-suite before it ever printed a summary.
 if (import.meta.main) {
   const cfg = loadConfig();
-  const registry = buildJournalRegistry(cfg.journalRoots, NO_PROCESS_IDENTITY);
+  const registry = buildJournalRegistry(cfg.journalRoots);
   // Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
   // should be a type error here until its root is wired), so widen it explicitly.
   const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));

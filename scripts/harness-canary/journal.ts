@@ -23,7 +23,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveJournalRoots } from "../../bridge/config";
-import { buildJournalRegistry, NO_PROCESS_IDENTITY, type JournalRoots } from "../../bridge/journal/registry";
+import { buildJournalRegistry, type JournalRoots } from "../../bridge/journal/registry";
 import { describeUnknowns, parseWith, unknownCount, type UnknownTally } from "../../bridge/journal/reduce";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "../../bridge/journal/types";
 import { failCase, notReachedCase, passCase, type CaseResult } from "./verdict";
@@ -47,7 +47,7 @@ export function canaryJournalRoots(env: NodeJS.ProcessEnv = process.env, home: s
 
 /** The registry the journal scenario reads through: one per run, built from this host's own roots. */
 export function canaryJournals(): Record<string, JournalAdapter> {
-  return buildJournalRegistry(canaryJournalRoots(), NO_PROCESS_IDENTITY);
+  return buildJournalRegistry(canaryJournalRoots());
 }
 
 /** One harness's own session, as its adapter read it. */

@@ -20,13 +20,7 @@ import { museJournal } from "./muse.ts";
 import { openclawJournal } from "./openclaw.ts";
 import { opencodeJournal } from "./opencode.ts";
 import { piJournal } from "./pi.ts";
-import type { JournalAdapter, ProcessIdentityProbe } from "./types.ts";
-
-/**
- * The process probe for a caller that cannot or should not look at processes (tests, scripts, a
- * registry built only for its names): every answer is null.
- */
-export const NO_PROCESS_IDENTITY: ProcessIdentityProbe = { identify: () => Promise.resolve(null) };
+import type { JournalAdapter } from "./types.ts";
 
 /**
  * Where each harness keeps its logs. Every path is a containment root, never a request input.
@@ -71,15 +65,8 @@ export interface JournalRoots {
  *
  * The map is built FROM each adapter's own `agent` field (not a hand-written literal), so a key can
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
- *
- * `processes` is how Kiro discovery asks the OS about a pane's foreground pid. bridge/index.ts
- * passes the /proc probe from bridge/proc-identity.ts. With {@link NO_PROCESS_IDENTITY} nothing can
- * be learned about a process, so Kiro discovery finds nothing; every reported session still resolves.
  */
-export function buildJournalRegistry(
-  roots: JournalRoots,
-  processes: ProcessIdentityProbe,
-): Record<string, JournalAdapter> {
+export function buildJournalRegistry(roots: JournalRoots): Record<string, JournalAdapter> {
   const adapters: JournalAdapter[] = [
     claudeJournal(roots.claude),
     codexJournal(roots.codex),
@@ -87,7 +74,7 @@ export function buildJournalRegistry(
     opencodeJournal(roots.opencode),
     grokJournal(roots.grok),
     hermesJournal(roots.hermes),
-    kiroJournal(roots.kiro, processes),
+    kiroJournal(roots.kiro),
     museJournal(roots.muse),
     openclawJournal(roots.openclaw),
   ];
@@ -198,5 +185,5 @@ export function journalAgents(registry: Record<string, JournalAdapter>): string[
  * identity off a match against it — see `bridge/mux/types.ts` § `MuxPane.agent`.
  */
 export const KNOWN_HARNESS_NAMES: readonly string[] = journalAgents(
-  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }, NO_PROCESS_IDENTITY),
+  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }),
 );

@@ -13,6 +13,8 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText } from "./cache-probe.ts";
 import { MAX_TRANSCRIPT_BYTES } from "./files.ts";
+import { HOST } from "../host.ts";
+import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
 import { KiroSessionTree, KiroTranscriptSource } from "./kiro-sessions.ts";
 import { createUnknownCounter, NO_CHANGE, noQueue, parseWith, reduction, rememberPending, type KnownTypes, type PendingTool, type Reduction, type RowReducer } from "./reduce.ts";
@@ -215,12 +217,15 @@ export function parseKiroTranscript(log: string): TranscriptEntry[] {
 /**
  * Read-only Kiro V3 journal over the configured sessions roots, normally ~/.kiro/sessions.
  *
- * `processes` answers discovery's questions about a pane's foreground process; bridge/index.ts
- * passes the /proc probe from bridge/proc-identity.ts. Pass NO_PROCESS_IDENTITY (registry.ts) where
- * no process can be seen: discovery then finds nothing, and a session the pane names still
- * resolves.
+ * `processes` answers discovery's questions about a pane's foreground pid. It defaults to this
+ * host's /proc probe (bridge/proc-identity.ts), as grok.ts defaults its own pid check; a test passes
+ * a fake. Off Linux the probe answers nothing, so discovery finds nothing and only a session the pane
+ * names resolves.
  */
-export function kiroJournal(roots: string | readonly string[], processes: ProcessIdentityProbe): JournalAdapter {
+export function kiroJournal(
+  roots: string | readonly string[],
+  processes: ProcessIdentityProbe = procProcessIdentity(HOST, process.arch, () => Date.now()),
+): JournalAdapter {
   const tree = new KiroSessionTree(roots);
   const source = new KiroTranscriptSource(tree);
   return {
