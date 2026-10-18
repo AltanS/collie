@@ -9,7 +9,11 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket } from "../cli/walky.ts";
+import { asJsonString } from "../web/src/lib/json.ts";
+import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
+import { readReceiptsAnswer } from "../bridge/walky/parse.ts";
+import { NUDGE_MARK, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 import { cmdDevicesRevoke } from "../cli/pairing.ts";
 import {
   cmdJoin,
@@ -27,9 +31,9 @@ import type { Exec, ExecResult } from "../cli/sys.ts";
 import { realFiles } from "../cli/sys.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
-import { startFakeHerdr, type FakeHerdr } from "../bridge/crew/fake-herdr.ts";
+import { startFakeHerdr, type FakeHerdr, type PaneWrite } from "../bridge/crew/fake-herdr.ts";
 import { mintIdentity, randomToken } from "../bridge/crew/identity.ts";
-import { CREW_HELLO_PATH, CREW_LEAVE_PATH, CREW_PREFIX, CREW_SNAPSHOT_PATH } from "../bridge/crew/router.ts";
+import { CREW_HELLO_PATH, CREW_LEAVE_PATH, CREW_PREFIX, CREW_SNAPSHOT_PATH, CREW_WALKY_PATH } from "../bridge/crew/router.ts";
 import { parseStandbyDevices } from "../bridge/crew/standby-devices.ts";
 import { TAKEOVER_RESTART_EXIT } from "../bridge/crew/takeover.ts";
 import { parseMarker, crewRuntimePath } from "../bridge/crew/staleness.ts";
@@ -2185,4 +2189,454 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
       "the new lead never cleared the old lead's pending re-pin",
     );
   }, 90_000);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WALKY TALKY ACROSS A CREW OF FOUR, ON THE REAL WIRE (CREW_PROTOCOL §21, M62 hardening B, D, E, F, I).
+//
+// `bridge/walky/crew.test.ts` proves each half with mocks. This is the only place the whole route is
+// proven: real child bridges, real pinned mutual TLS, the real §8.6 request signature, the real lead
+// attestation and the real Send Protocol writing into a fake Herdr. The two-instance block near the top
+// covers one hop each way; what it cannot cover is a message between TWO MEMBERS (a member pins only its
+// lead, so the lead is the only road), a member the lead knows to be too old, and a hand-built request
+// that no honest bridge would send.
+//
+// Four instances, so that every route has its own: `wl` leads, `wa` and `wb` are ordinary members, and
+// `wo` reports a version that predates walky talky. It is its OWN crew on its own ports, so it neither
+// depends on nor disturbs the two instances the rest of this file drives.
+//
+// WHAT THE FAKE PANE CAN PROVE. `fake-herdr.ts` records every `pane.send_text` it receives in `writes`,
+// and the pane's text never changes. So a write proves the bridge TYPED a line into that pane (and which
+// line); it cannot prove the Send Protocol saw the line arrive. The receipt state therefore settles on
+// whatever the Send Protocol makes of a screen that never shows the text, and these tests assert on the
+// writes and on the receipt's `verified`/`by`, not on `delivered`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("walky talky in a crew of four, on the real wire", () => {
+  let wl: Instance;
+  let wa: Instance;
+  let wb: Instance;
+  let wo: Instance;
+  let oldRoot = "";
+
+  /**
+   * A Claude Code screen drawn from what Herdr was told to write into the pane, the way
+   * `bridge/surface/protocol.test.ts` draws one: a rule, the box (`❯`, the dim placeholder while it is
+   * empty), a rule, the status row. `fake-herdr.ts` answers every `pane.read` with a fixed text, and the
+   * Send Protocol will not type a message into a screen it cannot read (`inbox-only: unconfirmed`, no
+   * write) nor trust a screen that never reacts to its probe character (`probe failed`). So the pane's
+   * text is a getter over the fake's own `writes`: typed text lands in the box, Backspace takes a
+   * character back, Enter moves the box into the transcript. Wrapped at the unit fake's width so a long
+   * nudge line is a box of several rows, as a real one is.
+   */
+  function claudeScreen(writes: readonly PaneWrite[]): string {
+    const width = 38;
+    const transcript: string[] = [];
+    let box = "";
+    for (const write of writes) {
+      if (write.method === "pane.send_text") box += asJsonString(write.params.text) ?? "";
+      const sent = write.params.keys;
+      const keys = write.method === "pane.send_keys" && Array.isArray(sent) ? sent : [];
+      for (const key of keys) {
+        if (key === "Backspace") box = [...box].slice(0, -1).join("");
+        if (key === "Enter" && box !== "") {
+          transcript.push(`> ${box}`);
+          box = "";
+        }
+      }
+    }
+    const rows = box === "" ? [`❯ \u001b[2mTry "fix the failing tests"\u001b[0m`] : (box.match(new RegExp(`.{1,${String(width)}}`, "gu")) ?? [""]).map((chunk, i) => (i === 0 ? `❯ ${chunk}` : `  ${chunk}`));
+    return [...transcript, "", "─".repeat(40), ...rows, "─".repeat(40), "  sonnet · project · main"].join("\n");
+  }
+
+  /** `startHerdr` for an instance whose pane is {@link claudeScreen}: the fake's `text` is read per `pane.read`. */
+  function startLiveHerdr(at: Instance): void {
+    at.herdr = startFakeHerdr({
+      socketPath: at.socketPath,
+      workspaceLabel: at.name,
+      panes: [
+        {
+          paneId: at.paneId,
+          tabId: "t1",
+          workspaceId: "w1",
+          label: at.name,
+          get text() {
+            return claudeScreen(at.herdr?.writes ?? []);
+          },
+        },
+      ],
+    });
+  }
+
+  const idOf = (i: Instance): string => i.store()!.self.memberId;
+  const paneOf = (i: Instance): string => `${idOf(i)}/${i.paneId}`;
+
+  /** The harness's own copy of the standby block's `enrol`: invite, join, and the lead's restart. */
+  async function enrol(leadInstance: Instance, memberInstance: Instance): Promise<void> {
+    const invited = await verb(leadInstance, (d) => cmdCrewInvite(d, ["--label", memberInstance.name]));
+    expect(invited.code).toBe(EXIT.OK);
+    const token = invited.out.split("\n")[0]!.trim();
+    const joined = await verb(memberInstance, (d) =>
+      cmdJoin(d, [`http://127.0.0.1:${leadInstance.port}`, token, "--insecure", "--address", `127.0.0.1:${memberInstance.port}`]),
+    );
+    expect(joined.err).not.toContain("certificate minting is not wired");
+    expect(joined.code).toBe(EXIT.OK);
+    // Nothing restarts the LEAD after an enrollment lands (§8.2's note): the operator's step, here the harness's.
+    await leadInstance.restart();
+  }
+
+  /** One request over an instance's walky socket. Markers default to none: the CLI outside any pane. */
+  async function walky(at: Instance, request: Record<string, JsonValue>): Promise<JsonValue> {
+    const answer = await askSocket(walkySocketPath(at.stateDir), `${JSON.stringify({ v: 1, markers: [], ...request })}\n`, 5000);
+    expect(answer).not.toBeNull();
+    // SAFETY: the bridge writes one JSON line, and the assertions below read it field by field.
+    return JSON.parse(answer!) as JsonValue;
+  }
+
+  /** The markers a CLI inside `at`'s pane reads from its environment, as the existing walky block builds them. */
+  const markersOf = (at: Instance): JsonValue[] => [
+    { namespace: "herdr", scope: at.socketPath, pane: at.paneId, schemaVersion: 1, harness: "claude" },
+  ];
+
+  /** An agent's send from `from`'s pane over `from`'s own walky socket, the way `collie walky send` does it. */
+  const agentSend = (from: Instance, id: string, to: string, body: string): Promise<JsonValue> =>
+    walky(from, { op: "send", id, to, body, replyTo: null, markers: markersOf(from) });
+
+  /** Every line the bridge typed into `at`'s pane, whole, in order. */
+  const typedLines = (at: Instance): string[] =>
+    at.herdr!.writes.filter((w) => w.method === "pane.send_text").flatMap((w) => asJsonString(w.params.text) ?? []);
+
+  /** The lines typed into `at`'s pane that name message `id`. */
+  const typedFor = (at: Instance, id: string): string[] => typedLines(at).filter((line) => line.includes(id));
+
+  /** The audit lines of `at` that carry `action`, whole (the trail is one compact JSON object per line). */
+  const auditOf = (at: Instance, action: string): string[] => {
+    try {
+      return readFileSync(join(at.stateDir, "audit.log"), "utf8").split("\n").filter((line) => line.includes(`"action":"${action}"`));
+    } catch {
+      return [];
+    }
+  };
+
+  /** Wait until `at`'s own log holds a `delivered` receipt for `id`: the nudge is typed and submitted. */
+  const settled = (at: Instance, id: string): Promise<void> =>
+    waitFor(
+      async () => readReceiptsAnswer(await walky(at, { op: "status", id })).some((r) => r.state === "delivered"),
+      15_000,
+      async () => `${at.name} never delivered ${id}: ${JSON.stringify(await walky(at, { op: "status", id }))}`,
+    );
+
+  /** `/api/crew` on the lead: the version it holds for each member. */
+  async function versionsOnLead(): Promise<Record<string, string | undefined>> {
+    const res = await wl.api("/api/crew");
+    // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/crew`).
+    const body = (await res.json()) as CrewStatusResponse;
+    return Object.fromEntries(body.members.map((m) => [m.id, m.version]));
+  }
+
+  /**
+   * A member's message sent straight at the lead's `/crew/v1/walky`, hand-built, signed with the
+   * member's REAL key from its trust store and carrying §8.6's request signature over the exact bytes.
+   * Nothing an honest bridge would send is needed to make it: that is how a stale or replayed message
+   * is produced at all, because the member's own bridge stamps `at` with its own clock and signs once.
+   */
+  let lastStamp = 0;
+  async function postAsMember(
+    member: Instance,
+    fields: { id: string; to: string; body: string; at: number; address?: string },
+  ): Promise<{ status: number; body: JsonValue }> {
+    const store = member.store()!;
+    const memberId = store.self.memberId;
+    const unsigned: WalkyMessage = {
+      v: 1,
+      id: fields.id,
+      kind: "agent",
+      from: { memberId, address: fields.address ?? `${memberId}/${member.paneId}`, harness: "claude", label: "drill" },
+      to: fields.to,
+      replyTo: null,
+      at: fields.at,
+      body: fields.body,
+      signer: null,
+      signature: null,
+    };
+    const payload = JSON.stringify(signMessage(unsigned, store.self.keyPem, memberId));
+    // Strictly increasing, so the request-signature monotonicity rule (§8.6) cannot refuse two probes in one millisecond.
+    lastStamp = Math.max(Date.now(), lastStamp + 1);
+    const res = await fetch(`${wl.origin()}${CREW_WALKY_PATH}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${store.crew!.secret}`,
+        "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+        "x-crew-member": memberId,
+        [TIMESTAMP_HEADER]: String(lastStamp),
+        [SIGNATURE_HEADER]: signRequest(store.self.keyPem, { method: "POST", path: CREW_WALKY_PATH, body: payload, timestamp: lastStamp }),
+      },
+      body: payload,
+    });
+    // SAFETY: the route answers JSON (`{ receipts }`, or `{ error }`), read field by field below.
+    return { status: res.status, body: (await res.json().catch(() => null)) as JsonValue };
+  }
+
+  beforeAll(async () => {
+    // A checkout that holds a manifest naming a release from before walky talky. The bridge reads its
+    // own version off `<root>/herdr-plugin.toml` (bridge/version.ts), and a member reports that string
+    // to its lead, so this is the honest way to be an old member: the lead is told, over the wire,
+    // exactly what a real old build would tell it. `COLLIE_PLUGIN_ROOT` (bridge/root.ts) points the
+    // child at it. The bridge also reads `package.json` from that root at boot (bridge/index.ts), so
+    // the dir holds that one field too, and nothing else: the code still runs from this checkout.
+    oldRoot = mkdtempSync(join(root, "old-checkout-"));
+    writeFileSync(join(oldRoot, "herdr-plugin.toml"), 'version = "1.0.0"\n');
+    writeFileSync(join(oldRoot, "package.json"), '{ "name": "collie", "version": "1.0.0" }\n');
+    wl = new Instance("wlead", "w1:p1", "");
+    wa = new Instance("wa", "w1:p2", "");
+    wb = new Instance("wb", "w1:p3", "");
+    wo = new Instance("wold", "w1:p4", "", { COLLIE_PLUGIN_ROOT: oldRoot });
+    for (const i of [wl, wa, wb, wo]) startLiveHerdr(i);
+    await Promise.all([wl.start(), wa.start(), wb.start(), wo.start()]);
+    await enrol(wl, wa);
+    await enrol(wl, wb);
+    await enrol(wl, wo);
+  }, 180_000);
+
+  afterAll(async () => {
+    if (process.env.COLLIE_HARNESS_DEBUG === "1") {
+      for (const i of [wl, wa, wb, wo]) console.log(`\n──── ${i?.name} ────\n${i?.log}`);
+    }
+    await Promise.all([wl?.stop(), wa?.stop(), wb?.stop(), wo?.stop()]);
+    for (const i of [wl, wa, wb, wo]) i?.herdr?.stop();
+  });
+
+  test("`who` on the lead lists every member's pane, and each member names the command to run on the lead", async () => {
+    await waitFor(
+      async () => {
+        const listed = JSON.stringify(await walky(wl, { op: "who" }));
+        return [wa, wb, wo].every((m) => listed.includes(`"${paneOf(m)}"`));
+      },
+      20_000,
+      async () => `the lead's who never listed all three members: ${JSON.stringify(await walky(wl, { op: "who" }))}`,
+    );
+    // The lead's own pane first, then each member's: five addresses on one machine and three on others.
+    const listed = JSON.stringify(await walky(wl, { op: "who" }));
+    for (const m of [wl, wa, wb, wo]) expect(listed).toContain(`"address":"${paneOf(m)}"`);
+    // A member lists its own pane only: the roster is the lead's, and the note says which command reaches it.
+    for (const m of [wa, wb]) {
+      const own = await walky(m, { op: "who" });
+      expect(own).toMatchObject({ ok: true, targets: [{ address: paneOf(m) }], note: expect.stringContaining(`run \`collie walky who\` on the lead (${idOf(wl)})`) });
+    }
+  }, 60_000);
+
+  test("a member's agent reaches another member's pane through the lead, and the receiver knows the sender only by the lead's word", async () => {
+    const id = "wt_a2bpane00001";
+    const body = "from member a to member b, through the lead";
+    const sent = await agentSend(wa, id, paneOf(wb), body);
+    // The lead routed it and B answered: the receipt is B's own, written on B, and it says how B knew the sender.
+    expect(sent).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wb), state: "accepted", by: idOf(wb), verified: "lead" }] });
+
+    // B's log: the lead's attestation, NOT the origin (B pins only its lead and cannot check A's signature).
+    expect(await walky(wb, { op: "status", id })).toMatchObject({
+      ok: true,
+      receipts: [{ target: paneOf(wb), by: idOf(wb), verified: "lead" }],
+      message: { id, kind: "agent", signer: idOf(wa), from: { memberId: idOf(wa), address: paneOf(wa) } },
+    });
+    // The lead logged the message it routed, from A's pane to B's.
+    expect(await walky(wl, { op: "status", id })).toMatchObject({
+      ok: true,
+      receipts: [{ target: paneOf(wb), by: idOf(wb) }],
+      message: { id, from: { address: paneOf(wa) }, to: paneOf(wb) },
+    });
+    // A keeps `accepted` and is told where the outcome lives; it never learns B's.
+    expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, elsewhere: [paneOf(wb)] });
+
+    // The fake pane saw ONE typed line: the header and the nudge, an agent's message, no body.
+    await waitFor(async () => typedFor(wb, id).length > 0, 15_000, async () => `B's pane never got the line; writes: ${JSON.stringify(wb.herdr!.writes)}`);
+    const lines = typedFor(wb, id);
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line).toContain(`[walky-talky ${id}] from agent ${paneOf(wa)} (claude, `);
+    expect(line).toContain(NUDGE_MARK);
+    expect(line).toContain(`collie walky inbox ${id}`);
+    expect(line).not.toContain(body);
+    expect(line).not.toContain("\n");
+    // The sender's pane and the lead's were typed into by nobody.
+    expect(typedFor(wa, id)).toEqual([]);
+    expect(typedFor(wl, id)).toEqual([]);
+
+    // The lead audited the hop in and the hop out; B audited the delivery it took from the lead.
+    await waitFor(
+      async () =>
+        auditOf(wl, "walky.send").some((l) => l.includes(idOf(wa))) &&
+        auditOf(wl, "walky.deliver").some((l) => l.includes(`"host":"${idOf(wb)}"`)) &&
+        auditOf(wb, "walky.deliver").some((l) => l.includes(`"from":"${idOf(wl)}"`) && l.includes('"verified":"lead"')),
+      10_000,
+      async () => `lead audit: ${auditOf(wl, "walky.send").join(" | ")} ${auditOf(wl, "walky.deliver").join(" | ")}; B audit: ${auditOf(wb, "walky.deliver").join(" | ")}`,
+    );
+  }, 60_000);
+
+  test("the lead's agent reaches a member's pane signed by the lead, so the member verifies the ORIGIN, and the pane gets one nudge line with no body", async () => {
+    const id = "wt_l2apane00001";
+    const body = "from the lead's own agent to member a";
+    const sent = await agentSend(wl, id, paneOf(wa), body);
+    expect(sent).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wa), by: idOf(wa), verified: "origin" }] });
+    expect(await walky(wa, { op: "status", id })).toMatchObject({
+      ok: true,
+      receipts: [{ target: paneOf(wa), by: idOf(wa), verified: "origin" }],
+      message: { kind: "agent", signer: idOf(wl) },
+    });
+
+    await waitFor(async () => typedFor(wa, id).length > 0, 15_000, async () => `A's pane never got the line; writes: ${JSON.stringify(wa.herdr!.writes)}`);
+    const lines = typedFor(wa, id);
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    // Hardening A: ONE line, the header and the nudge. The body reaches the agent as `collie walky inbox <id>`.
+    expect(line).toContain(`[walky-talky ${id}] from agent ${paneOf(wl)} (claude, `);
+    expect(line).toContain(`${NUDGE_MARK} Read it: collie walky inbox ${id}. Reply: collie walky reply ${id} "<text>"`);
+    expect(line).not.toContain(body);
+    expect(line).not.toContain("\n");
+    expect(JSON.stringify(wa.herdr!.writes)).not.toContain(body);
+    // …and the body IS there to read, on the member, where the agent will ask for it.
+    expect(await walky(wa, { op: "inbox", all: true, markers: markersOf(wa) })).toMatchObject({
+      ok: true,
+      messages: expect.arrayContaining([expect.objectContaining({ id, body })]),
+    });
+  }, 60_000);
+
+  test("the member's outcome reaches the lead on the next snapshot answer, past `accepted`, written by the member", async () => {
+    // Two routes, one report: a message the lead routed from member A to B, and one the lead sent itself to A.
+    // The send answered at `accepted` (asserted above), so only the member's report can move the lead's copy.
+    for (const [id, member] of [
+      ["wt_a2bpane00001", wb],
+      ["wt_l2apane00001", wa],
+    ] as const) {
+      const target = paneOf(member);
+      const onLead = async (): Promise<WalkyReceipt[]> => readReceiptsAnswer(await walky(wl, { op: "status", id }));
+      await waitFor(
+        async () => (await onLead()).some((r) => r.target === target && r.state !== "accepted"),
+        20_000,
+        async () => `the lead still holds ${JSON.stringify(await onLead())} (the member holds ${JSON.stringify(await walky(member, { op: "status", id }))})`,
+      );
+      const [held] = await onLead();
+      expect(held).toMatchObject({ id, target, by: idOf(member), state: "delivered" });
+      // The same receipt the member wrote itself: the report carried it, nothing on the lead invented it.
+      const [own] = readReceiptsAnswer(await walky(member, { op: "status", id }));
+      expect(held!.state).toBe(own!.state);
+      expect(held!.verified).toBe(own!.verified);
+    }
+  }, 60_000);
+
+  test("a member the lead knows to be older is refused `older member` BEFORE any dial", async () => {
+    // The member reports 1.0.0 on its hello and its sweep answers; the lead's `older` check reads it.
+    await waitFor(async () => (await versionsOnLead())[idOf(wo)] === "1.0.0", 20_000, async () => `the lead holds ${JSON.stringify(await versionsOnLead())}`);
+    const id = "wt_oldmember001";
+    const before = { writes: wo.herdr!.writes.length, dials: auditOf(wl, "walky.deliver").length, deliveries: auditOf(wo, "walky.deliver").length };
+    const sent = await agentSend(wa, id, paneOf(wo), "for a member that predates walky talky");
+    // The lead wrote the refusal itself: `by` the lead and `verified: local`, as a receipt only the routing side writes.
+    expect(sent).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wo), state: "refused", reason: "older member", by: idOf(wl), verified: "local" }] });
+    expect(await walky(wl, { op: "status", id })).toMatchObject({ ok: true, receipts: [{ target: paneOf(wo), state: "refused", reason: "older member", by: idOf(wl) }] });
+
+    // ── HOW "NO DIAL" IS PROVED ───────────────────────────────────────────────
+    // `wold` runs THIS checkout's code and only REPORTS 1.0.0, so a dial would have been taken: it would
+    // have verified the lead's attestation, logged the message, audited `walky.deliver` and typed the
+    // nudge. A 404 from a build without the route (the backstop `receiptsOfAnswer` names) would have
+    // looked the same as the pre-dial refusal in the receipt, which is why the receipt is not the proof.
+    // The proof is what a dial leaves behind, on both ends, none of which is there:
+    //   - the member's fake Herdr saw no write, and its walky log holds nothing under the id;
+    //   - the member's audit trail has no new `walky.deliver` (written for every verified crew delivery);
+    //   - the lead's audit trail has no new forwarded `walky.deliver` and none that names the member.
+    // The control is the earlier test: the same route to `wb` DID leave all three.
+    expect(wo.herdr!.writes).toHaveLength(before.writes);
+    expect(await walky(wo, { op: "status", id })).toMatchObject({ ok: true, receipts: [], message: null });
+    expect(auditOf(wo, "walky.deliver")).toHaveLength(before.deliveries);
+    expect(auditOf(wl, "walky.deliver")).toHaveLength(before.dials);
+    expect(auditOf(wl, "walky.deliver").some((line) => line.includes(`"host":"${idOf(wo)}"`))).toBe(false);
+    // Nor does the child's own account of itself mention the message.
+    expect(wo.log).not.toContain(id);
+  }, 60_000);
+
+  test("a message more than ten minutes off the lead's clock is refused `stale`, and a fresh one through the same helper is taken", async () => {
+    const to = paneOf(wl);
+    const minute = 60 * 1000;
+    // THE CONTROL: the helper builds a well-formed, really signed, really request-signed message, and
+    // the lead takes it. Without this, every refusal below could be a malformed request in disguise.
+    const control = await postAsMember(wa, { id: "wt_stalectrl001", to, body: "a fresh message, signed by hand", at: Date.now() });
+    expect(control).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_stalectrl001", target: to, state: "accepted", verified: "origin", by: idOf(wl) }] } });
+    // One message at a time into a pane: a second send that finds the first still typing is held back
+    // as `inbox-only: dialog open` (the box is not free), which would hide what this test is about.
+    await settled(wl, "wt_stalectrl001");
+    // Nine minutes old is inside the window (the rule is ten), so it is taken too.
+    const aging = await postAsMember(wa, { id: "wt_staleedge001", to, body: "nine minutes old, still inside the window", at: Date.now() - 9 * minute });
+    expect(aging).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_staleedge001", state: "accepted", verified: "origin" }] } });
+
+    const stale = await postAsMember(wa, { id: "wt_stale0000001", to, body: "a day-old replay would look like this", at: Date.now() - 11 * minute });
+    expect(stale).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_stale0000001", target: to, state: "refused", reason: "stale", by: idOf(wl) }] } });
+    // A sender whose clock runs ahead is as stale as one that runs behind.
+    const future = await postAsMember(wa, { id: "wt_future000001", to, body: "from a clock in the future", at: Date.now() + 11 * minute });
+    expect(future).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_future000001", target: to, state: "refused", reason: "stale", by: idOf(wl) }] } });
+
+    // The lead's pane typed the two it took and nothing for the two it refused. The refusal is answered
+    // before delivery starts, so the wait is on the LAST accepted message: a refused one that had slipped
+    // through would have been typed in that same run, right beside it.
+    await settled(wl, "wt_staleedge001");
+    expect(typedFor(wl, "wt_stalectrl001")).toHaveLength(1);
+    expect(typedFor(wl, "wt_staleedge001")).toHaveLength(1);
+    expect(typedFor(wl, "wt_stale0000001")).toEqual([]);
+    expect(typedFor(wl, "wt_future000001")).toEqual([]);
+    // Nothing is logged for a refusal of this kind (hardening I): the count is all that is kept.
+    expect(await walky(wl, { op: "status", id: "wt_stale0000001" })).toMatchObject({ ok: true, receipts: [], message: null });
+    expect(await walky(wl, { op: "status", id: "wt_future000001" })).toMatchObject({ ok: true, receipts: [], message: null });
+  }, 60_000);
+
+  test("a replayed id is answered from the stored receipt and typed once, at the lead's pane and through the lead at a member", async () => {
+    // At the lead's pane, over the sender's own socket: the second send never leaves the sender.
+    const idLead = "wt_replaylead01";
+    const bodyLead = "sent twice to a pane on the lead";
+    const first = await agentSend(wa, idLead, paneOf(wl), bodyLead);
+    expect(first).toMatchObject({ ok: true, receipts: [{ id: idLead, target: paneOf(wl), state: "accepted", by: idOf(wl), verified: "origin" }] });
+    const second = await agentSend(wa, idLead, paneOf(wl), bodyLead);
+    expect(second).toMatchObject({ ok: true, receipts: [{ id: idLead, target: paneOf(wl), by: idOf(wl) }] });
+    expect(readReceiptsAnswer(second)).toEqual(readReceiptsAnswer(first));
+    // The same message again straight at the lead (a retry the sender's log did not stop): the LEAD
+    // answers from its own record and types nothing.
+    const wire = await postAsMember(wa, { id: idLead, to: paneOf(wl), body: bodyLead, at: Date.now() });
+    expect(wire).toMatchObject({ status: 200, body: { receipts: [{ id: idLead, target: paneOf(wl), by: idOf(wl) }] } });
+    await settled(wl, idLead);
+    expect(typedFor(wl, idLead)).toHaveLength(1);
+
+    // Through the lead at another member: the member's pane is written once however often the lead is asked.
+    const idMember = "wt_replaymem001";
+    const bodyMember = "sent twice to a pane on another member";
+    expect(await agentSend(wa, idMember, paneOf(wb), bodyMember)).toMatchObject({ ok: true, receipts: [{ id: idMember, target: paneOf(wb), by: idOf(wb), verified: "lead" }] });
+    await settled(wb, idMember);
+    const deliveries = auditOf(wb, "walky.deliver").length;
+    const again = await postAsMember(wa, { id: idMember, to: paneOf(wb), body: bodyMember, at: Date.now() });
+    expect(again).toMatchObject({ status: 200, body: { receipts: [{ id: idMember, target: paneOf(wb), by: idOf(wb) }] } });
+    // The lead answered from its record and never dialled the member a second time: the member's pane
+    // holds the one line, and the member audited no second delivery.
+    expect(typedFor(wb, idMember)).toHaveLength(1);
+    expect(auditOf(wb, "walky.deliver")).toHaveLength(deliveries);
+
+    // The same id with another body is another message wearing a taken id: refused, by the sender's own
+    // bridge and by the lead, and nothing it says is typed.
+    const reusedAtSender = await agentSend(wa, idLead, paneOf(wl), "another body under the same id");
+    expect(reusedAtSender).toMatchObject({ ok: true, receipts: [{ id: idLead, state: "refused", reason: "id reused" }] });
+    const reusedAtLead = await postAsMember(wa, { id: idLead, to: paneOf(wl), body: "another body under the same id", at: Date.now() });
+    expect(reusedAtLead).toMatchObject({ status: 200, body: { receipts: [{ id: idLead, state: "refused", reason: "id reused", by: idOf(wl) }] } });
+    expect(JSON.stringify(wl.herdr!.writes)).not.toContain("another body");
+    expect(typedFor(wl, idLead)).toHaveLength(1);
+  }, 60_000);
+
+  test("an agent may not broadcast and may not message its own pane, at its own bridge and at the lead", async () => {
+    // At the sender's bridge, over its socket.
+    expect(await agentSend(wa, "wt_broadcast001", "all", "to everyone")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "only the operator may broadcast" }] });
+    expect(await agentSend(wa, "wt_broadcast002", `${idOf(wb)}/all`, "to one machine")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "only the operator may broadcast" }] });
+    expect(await agentSend(wa, "wt_ownpane00001", paneOf(wa), "to myself")).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "that is your own pane" }] });
+    // At the lead, for a sender that skipped its own checks: the refusal does not depend on the sender's honesty.
+    const wire = await postAsMember(wa, { id: "wt_broadcast003", to: "all", body: "to everyone, by hand", at: Date.now() });
+    expect(wire).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_broadcast003", state: "refused", reason: "only the operator may broadcast", by: idOf(wl), verified: "origin" }] } });
+    const own = await postAsMember(wa, { id: "wt_ownpane00002", to: paneOf(wa), body: "to myself, by hand", at: Date.now() });
+    expect(own).toMatchObject({ status: 200, body: { receipts: [{ id: "wt_ownpane00002", state: "refused", reason: "that is your own pane", by: idOf(wl) }] } });
+    for (const id of ["wt_broadcast001", "wt_broadcast002", "wt_broadcast003", "wt_ownpane00001", "wt_ownpane00002"]) {
+      for (const at of [wl, wa, wb, wo]) expect(typedFor(at, id)).toEqual([]);
+    }
+  }, 60_000);
 });
