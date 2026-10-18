@@ -12,6 +12,8 @@ import { server } from "@/test/setup";
 import { recordedSends } from "@/test/handlers";
 import { entry } from "@/test/sent-fixtures";
 import type { SentAnswer, SentEntry } from "@/lib/types";
+import { commandsFor, suggestCommands } from "@/lib/agent-commands";
+import { SUGGEST_LIMIT } from "@/lib/sent-suggest";
 import { Composer } from "./composer";
 
 // Sent in the composer of a shell pane (M61 spec 02): the belt's button and the suggestion strip above
@@ -292,6 +294,91 @@ describe("Composer: the suggestion strip", () => {
       await userEvent.type(box(), " git");
       expect(chips()).toEqual(["All"]);
     });
+  });
+});
+
+describe("Composer: one strip, two sources (#475)", () => {
+  const SENT = { name: "Suggestions from Sent" };
+  const COMMANDS = { name: "Agent commands" };
+  const OFF = { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system" as const, rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false, sentSuggestions: false };
+
+  /** Whether a strip of that name is on screen and open (not absent, not still leaving). */
+  function isOpen(name: { name: string }): boolean {
+    const strip = screen.queryByRole("group", name);
+    return strip?.closest('[data-slot="collapse"]')?.getAttribute("data-state") === "open";
+  }
+
+  it("offers the agent's commands on an agent pane, and no Sent rows", async () => {
+    const asked = serveSent(["/codex-wrap"], ["/codex-wrap", "git status"]);
+    renderComposer({ isShell: false, agent: "claude" });
+    await userEvent.type(box(), "/co");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    const strip = screen.getByRole("group", COMMANDS);
+    expect(strip).toHaveClass("h-11");
+    expect(screen.getByRole("button", { name: "/compact" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "/codex-wrap" })).toBeNull();
+    expect(screen.queryByRole("group", SENT)).toBeNull();
+    expect(screen.queryByRole("button", { name: "All sent lines" })).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it("caps the commands at Sent's twelve chips, best matches first, so a bare `/` shows the first twelve", async () => {
+    renderComposer({ isShell: false, agent: "claude" });
+    await userEvent.type(box(), "/");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    const ranked = suggestCommands("/", commandsFor("claude")).map((c) => c.command);
+    expect(ranked.length).toBeGreaterThan(SUGGEST_LIMIT);
+    const chips = Array.from(screen.getByRole("group", COMMANDS).querySelectorAll("button")).map((b) => b.textContent);
+    expect(chips).toEqual(ranked.slice(0, SUGGEST_LIMIT));
+  });
+
+  it("never offers the skill and command files the Agent palette found on disk", async () => {
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () =>
+        HttpResponse.json({ commands: [{ command: "/to-spec", description: "Write the spec", argHint: "" }] }),
+      ),
+    );
+    renderComposer({ isShell: false, agent: "claude" });
+    // The palette reads the files and lists them...
+    await userEvent.click(screen.getByRole("button", { name: "Agent" }));
+    await userEvent.type(await screen.findByPlaceholderText(/Search \d+ commands/), "to-spec");
+    expect(await screen.findByText("/to-spec")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // ...and the strip still offers the agent's own list only.
+    await userEvent.type(box(), "/to");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    expect(screen.queryByRole("button", { name: "/to-spec" })).toBeNull();
+  });
+
+  it("offers Sent rows on a shell pane, and no commands", async () => {
+    serveSent(["/codex-wrap"], ["/codex-wrap", "git status"]);
+    renderComposer();
+    await userEvent.click(box());
+    await waitFor(() => expect(isOpen(SENT)).toBe(true));
+    await userEvent.type(box(), "/co");
+    expect(screen.getByRole("button", { name: "/codex-wrap" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "/compact" })).toBeNull();
+    expect(screen.queryByRole("group", COMMANDS)).toBeNull();
+  });
+
+  it("with the Sent switch off, hides Sent rows on a shell pane and still offers commands on an agent pane", async () => {
+    const asked = serveSent(["/codex-wrap"], ["/codex-wrap", "git status"]);
+    renderComposer({ prefs: OFF });
+    await userEvent.click(box());
+    await userEvent.type(box(), "/co");
+    expect(screen.queryByRole("group", SENT)).toBeNull();
+    expect(screen.queryByRole("group", COMMANDS)).toBeNull();
+    cleanup();
+
+    renderComposer({ isShell: false, agent: "claude", prefs: OFF });
+    // The same pane id: the shell render's draft came back with it.
+    await userEvent.clear(box());
+    await userEvent.type(box(), "/co");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    expect(screen.getByRole("button", { name: "/compact" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", SENT)).toBeNull();
+    expect(asked).toEqual([]);
   });
 });
 
