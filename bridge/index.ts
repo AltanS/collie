@@ -117,7 +117,14 @@ import {
   WRITE_BUDGET_MS,
 } from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
-import { leadReleaseHeader, LEG_WALL_CLOCK_MS, CrewFollower, UpdateTurns } from "./crew/follow.ts";
+import {
+  leadLineHeader,
+  leadReleaseHeader,
+  LEG_WALL_CLOCK_MS,
+  CrewFollower,
+  type LeadStep,
+  UpdateTurns,
+} from "./crew/follow.ts";
 import { createCrewRouter, type CrewRouterDeps } from "./crew/router.ts";
 import {
   checkpointMarker,
@@ -203,7 +210,15 @@ import {
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
-import { diskWriter, lineReading, readUpdateLineSync, type ReleaseLine, writeUpdateLine } from "./update-line.ts";
+import {
+  afterRollback,
+  diskWriter,
+  lineReading,
+  readUpdateLineSync,
+  type ReleaseLine,
+  withLine,
+  writeUpdateLine,
+} from "./update-line.ts";
 import {
   FreshPreflightGate,
   launchUpdateRunner,
@@ -1198,10 +1213,49 @@ const crewFollower =
         // ONE subprocess answers guards 6 and 8: `--to-tag` turns the `upstream` check into "does
         // this exact release resolve here, and may this install take it", resolved through
         // `listTags()` / `anonymousTagUrl()` over anonymous HTTPS with no credential.
-        preflight: async (tag) => parsePreflightReport((await runPreflight([...preflightCommand(collieBinary), "--to-tag", tag])).stdout),
-        start: ({ tag, runId }) => startDetachedUpdate({ major: false, runId, toTag: tag }),
+        preflight: async (tag, how) =>
+          parsePreflightReport(
+            (
+              await runPreflight([
+                ...preflightCommand(collieBinary),
+                "--to-tag",
+                tag,
+                ...(how?.down === true ? ["--downgrade"] : []),
+                ...(how?.line === undefined ? [] : ["--line", how.line]),
+              ])
+            ).stdout,
+          ),
+        start: (a) => {
+          followLeadLine(a);
+          return startDetachedUpdate({
+            major: false,
+            runId: a.runId,
+            toTag: a.tag,
+            downgrade: a.down === true,
+            line: a.line ?? null,
+          });
+        },
       })
     : undefined;
+
+/**
+ * THE CREW FOLLOWS THE LEAD ON BOTH LINES (M60 spec 01, ADR 0110). A member that follows takes its
+ * lead's line for its own, so its own Updates page and its next follow agree with the crew. A step
+ * after the lead's rollback also marks the Edge build this member leaves as rejected, as the lead's
+ * own rollback did. A lead older than the line header sends none, and nothing is written.
+ * Best-effort: a failed write must not stop the follow.
+ */
+function followLeadLine(a: { readonly line?: ReleaseLine; readonly step?: LeadStep }): void {
+  if (a.line === undefined) return;
+  try {
+    const before = readUpdateLineSync(cfg.stateDir);
+    const moved = withLine(before, a.line, Date.now());
+    const record = a.step === "rollback" ? afterRollback(moved, crewVersion, Date.now()) : moved;
+    if (record !== before) writeUpdateLine(diskWriter, cfg.stateDir, record);
+  } catch (err) {
+    console.warn(`[crew] follow: could not take the lead's release line (${String(err)})`);
+  }
+}
 
 /**
  * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
@@ -1214,7 +1268,7 @@ const oldLead = crew.mode === "peer" && runsPrograms ? new OldLeadNotice() : und
 const onFollow =
   crewFollower === undefined && oldLead === undefined
     ? undefined
-    : (a: { readonly leadRelease: string | null; readonly turn: string | null }): void => {
+    : (a: { readonly leadRelease: string | null; readonly turn: string | null; readonly leadLine?: string | null }): void => {
         oldLead?.observe(a.leadRelease);
         crewFollower?.observe(a);
       };
@@ -2059,6 +2113,13 @@ const crewLead = (() => {
     // mid-life, and the roster changes under a running bridge.
     follow: {
       leadRelease: () => leadReleaseHeader({ version: crewVersion, run: readUpdateRun(cfg.stateDir) }),
+      // The lead's line, and its step after a rollback or a switch back to Stable (M60 spec 01).
+      leadLine: () =>
+        leadLineHeader({
+          version: crewVersion,
+          run: readUpdateRun(cfg.stateDir),
+          line: readUpdateLineSync(cfg.stateDir).line,
+        }),
       leadRun: () => readUpdateRun(cfg.stateDir),
       turns: updateTurns,
       enrolledAt: (memberId) =>
@@ -2321,7 +2382,7 @@ function settleUpdateGate(): void {
   // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
   // a trace left nowhere. Once per run id per process, so a poll tick cannot make it a stream.
   console.log(`[crew] update ${start.runId}: levelling peers to ${start.to}`);
-  updateTurns.begin(start.runId, start.to, Date.now());
+  updateTurns.begin(start.runId, start.to, Date.now(), start.down);
   crewLead?.resweep();
 }
 

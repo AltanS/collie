@@ -489,7 +489,8 @@ Every request on a crew link, and every response:
 | `X-Crew-Member: <member-id>` | both | Who is speaking. On a request, the lead's id; on a response, the peer's. Informational — identity is proven by the pinned certificate, never by this header. |
 | `X-Crew-Device: <device-id>` | request | The operator's device identity, forwarded for the peer's audit trail (§12). Absent when the lead's device gate is off. Printable ASCII as itself, any other id in RFC 8187 form (§12). |
 | `X-Crew-Preflight: fresh` | request | **Optional**, added 2026-09-04 (§19). On `GET /crew/v1/snapshot` only: a REQUEST that the answering member re-run its own `collie update --check --local` before it answers. `fresh` is the only value with meaning; anything else reads as absent. A member that ignores it is a **correct member** — its answer is then simply older, and `asOf` says so. Honoured at most once per `PREFLIGHT_TTL_MS` per member. |
-| `X-Crew-Lead-Release: <x.y.z>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: the bare version the LEAD is itself running, sent only while that version is a strict release and the lead's own health gate has settled it. Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the receiving member does nothing. It is a statement about the sender and carries no ref, no URL and no command. |
+| `X-Crew-Lead-Release: <x.y.z>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: the bare version the LEAD is itself running, sent only while that version is a strict release and the lead's own health gate has settled it. Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the receiving member does nothing. It is a statement about the sender and carries no ref, no URL and no command. *(Amended 2026-10-18, ADR 0110: an Edge build `x.y.z-edge.N` is stated too; see §20, "Two release lines".)* |
+| `X-Crew-Lead-Line: <line>[;<step>]` | request | **Optional**, added 2026-10-18 (§20, ADR 0110). On `GET /crew/v1/snapshot` only, and only beside `X-Crew-Lead-Release`: the lead's release line, `stable` or `edge`, and, when the release it states is where its last run landed, that run's step, `rollback` or `switch`. Absent means `stable` with no step. It carries no ref, no URL and no command. |
 | `X-Crew-Update-Turn: <member-name>;<run-id>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: who may take that release now, and the id of the `UpdateRun` the operator confirmed on the lead. Sent to **at most one member at a time**. A member ignores a turn that does not name itself. Absent means it is not this member's turn. |
 | `X-Crew-Received-At` | response | Omitted deliberately. **A peer's clock is never trusted for freshness** — the lead stamps its own receipt time (§10). |
 
@@ -3151,11 +3152,12 @@ member**, and every guard below is evaluated on the member's own side.
 
 Each is a refusal with a recorded reason, and each is on the member:
 
-1. **Release builds only.** Its own version must be a strict release. A `-dev+` build never
-   self-levels, full stop.
+1. **Release builds only.** Its own version must be a strict release (or, since 2026-10-18, an Edge
+   build). A `-dev+` build never self-levels, full stop.
 2. The header must be **present and a strict release**.
-3. **Strictly higher**, by semver. Equal is nothing; lower is nothing, ever. There is no downgrade
-   path on this link and there will not be one.
+3. **Strictly higher**, by semver. Equal is nothing; lower is nothing. *(Amended 2026-10-18, ADR
+   0110: lower is taken in exactly two cases, the lead's rollback and the lead's line switch back to
+   Stable, both named by `X-Crew-Lead-Line`. See "Two release lines" below.)*
 4. **Not a major crossing.** ADR 0020's consent is a named operator choice and a header is not one.
 5. **Not a tag it already rolled back from in this run** — keyed by **(tag, run id)** in its own
    `<state dir>/update.json`. A new run id, which only a fresh operator confirm produces, permits
@@ -3261,6 +3263,54 @@ a member down: there is no downgrade path, and there will not be one — a lead 
 member backwards is a lead that could move it anywhere, which is the credential ADR 0016 refuses.
 §7.1 makes the resulting skew harmless, and the remedy is `collie crew update <member>` from the
 lead, which pushes the lead's own commit over the operator's SSH.
+
+*(Amended 2026-10-18, ADR 0110.)* The gap narrows to one case. A lead's rollback through the
+updater (`collie update --rollback`, or Roll back on the phone) and a lead's switch back to Stable
+now step the members down with it, under the rules in "Two release lines". A lead whose files were
+put back by hand, outside the updater, writes no run with a step, so its members still stay ahead,
+and the remedy above still applies. The step is still not a credential: it names one of two
+versions the lead has itself just landed on, the member checks the tag upstream and behind its own
+preflight, and the member never takes a version its lead does not run.
+
+### Two release lines *(added 2026-10-18, ADR 0110)*
+
+A machine is on one of two release lines. **Stable** takes strict releases only, as before.
+**Edge** also takes `x.y.z-edge.N` builds, which are GitHub pre-releases cut from the same tree. The
+lead's line is the crew's line.
+
+**What the lead sends.** `X-Crew-Lead-Release` now states an Edge build as well as a strict release,
+under the same settled rule. Beside it, and never without it, the lead sends `X-Crew-Lead-Line`:
+
+| Value | Meaning |
+|---|---|
+| `stable` | the lead is on Stable; the member takes strict releases only |
+| `edge` | the lead is on Edge; the member may take an Edge build |
+| `stable;rollback`, `edge;rollback` | the lead's last run was a rollback and it landed on the stated release |
+| `stable;switch` | the lead's last run was a switch back to Stable and it landed on the stated release |
+
+The step rides only while the release the lead states is where that run landed: the run is `done`
+and its `to` is that release. Any later run on the lead clears it.
+
+**What the member decides.** The guards above hold, with three changes, all on the member:
+
+1. A stated Edge build is taken only when the header says `edge`. Without the header, or with
+   `stable`, an Edge build is refused as `lead-states-nothing`.
+2. A lower stated release is taken only when the header names a step. Without a step it is refused
+   as `not-higher`, as before. Equal is still nothing.
+3. A step down with a run id the member has not stepped for yet skips the hourly limit once. The
+   same run id never skips it twice.
+
+The member takes the lead's line for its own, in its own `update-line.json`. On a `rollback` step
+off an Edge build, it also marks its own Edge build as rolled back from, so that build is not
+offered again on that machine.
+
+**On the lead.** A run with a step opens the crew run like any other, and a leg is done once the
+member is at or below the target. A down run has no lead-side hourly limit.
+
+**Compatibility.** A member older than this amendment ignores `X-Crew-Lead-Line` and refuses an
+Edge build in `X-Crew-Lead-Release` as not a strict release. It never steps down. Both are the
+closed readings. A lead older than this amendment sends no line, which a new member reads as
+`stable` with no step. The protocol integer does not move (§7.1).
 
 ### Compatibility
 
