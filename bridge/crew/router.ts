@@ -65,8 +65,8 @@ import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantRe
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
 import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
-import { WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
-import type { WalkyReceipt } from "../walky/types.ts";
+import { WALKY_ACK_HEADER, WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
+import type { WalkyReportBody } from "../walky/parse.ts";
 
 // The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
@@ -175,6 +175,12 @@ export const CREW_PAIRING_PATH = "/crew/v1/pairing";
  * §8.6, because it travels peer → lead, and answered only by a collie that leads.
  */
 export const CREW_WALKY_PATH = "/crew/v1/walky";
+/**
+ * `POST` — the lead hands a member the outcomes of the messages that member sent to other machines
+ * (§21, added 2026-10-18). Lead → peer, so it rides the pinned handshake and the dial attestation like
+ * every such call, and it is answered only by a collie that has a lead, to that lead.
+ */
+export const CREW_WALKY_OUTCOMES_PATH = "/crew/v1/walky/outcomes";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -514,13 +520,16 @@ export interface CrewRouterDeps {
   readonly onFollow?: (a: { readonly leadRelease: string | null; readonly turn: string | null }) => void;
   /**
    * Walky talky across the crew (§21). `fromMember` answers `POST /crew/v1/walky` on a LEAD, for the
-   * member §8.6's signature named; `report` is a MEMBER's outcome report, drained into the `walky`
-   * sibling of each snapshot answer. Absent ⇒ the route 404s and the snapshot carries no report,
-   * which is what a build before §21 does.
+   * member §8.6's signature named. `report` is a MEMBER's outcome report for the `walky` sibling of
+   * each snapshot answer, handed the lead's `X-Crew-Walky-Ack` first (null when absent), so what the
+   * lead already read is gone before the report is built. `outcomes` answers the lead's
+   * `POST /crew/v1/walky/outcomes` on a MEMBER. Absent ⇒ the route 404s and the snapshot carries no
+   * report, which is what a build before §21 does.
    */
   readonly walky?: {
     readonly fromMember?: (body: JsonValue | undefined, member: TrustedMember) => Promise<CrewAnswer>;
-    readonly report?: () => readonly WalkyReceipt[];
+    readonly report?: (ack: string | null) => WalkyReportBody | null;
+    readonly outcomes?: (body: JsonValue | undefined, from: string) => CrewAnswer;
   };
   readonly now?: () => number;
   readonly random?: RandomSource;
@@ -1045,6 +1054,21 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       if (answer.status === 401) return refuse(pathname, "certificate");
       return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
     }
+    if (
+      pathname === CREW_WALKY_OUTCOMES_PATH &&
+      req.method === "POST" &&
+      deps.walky?.outcomes !== undefined &&
+      data !== null &&
+      data.lead !== null &&
+      data.lead.status === "enrolled"
+    ) {
+      // §21 (added 2026-10-18): only a collie that HAS a lead takes the push, and only from that lead.
+      // The caller rode the pinned handshake and the dial attestation; anyone else is the uniform 401.
+      if (verdict.member.memberId !== data.lead.memberId) return refuse(pathname, "certificate");
+      const answer = deps.walky.outcomes(await readJson(req, signedBody), verdict.member.memberId);
+      if (answer.status === 401) return refuse(pathname, "certificate");
+      return new Response(JSON.stringify(answer.body), { status: answer.status, headers: crewResponseHeaders(verdict.self) });
+    }
     if (pathname === CREW_LEAVE_PATH && req.method === "POST") {
       // The caller drops ITSELF, and can drop nothing else — the member id is the admitted one, never
       // a body field. Removal is idempotent: a second `leave` from a member already gone answers 200
@@ -1130,11 +1154,12 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // one, which the lead reads as "not reported", never as an idle machine (§7.1).
       const load = deps.machineStats?.() ?? null;
       const withLoad = load === null ? withVersion : { ...withVersion, [CREW_MACHINE_FIELD]: load };
-      // §21: the receipts this member wrote since the last answer for messages from elsewhere, in that
-      // same seat. Drained by this answer, and omitted when there are none, which the lead reads as
-      // "nothing to report" (§7.1). A report on the exchange, never a stored state (§18.5).
-      const walkyReceipts = deps.walky?.report?.() ?? [];
-      const withWalky = walkyReceipts.length === 0 ? withLoad : { ...withLoad, [WALKY_REPORT_FIELD]: { receipts: walkyReceipts } };
+      // §21: the receipts this member wrote for messages from elsewhere that its lead has not acked,
+      // in that same seat, with the cursor of the newest. The lead's ack (a REQUEST header, lower-case
+      // lookup) is applied first, so what it already read is gone. Omitted when nothing is held, which
+      // the lead reads as "nothing to report" (§7.1). A report on the exchange, never a stored state.
+      const walkyReport = deps.walky?.report?.(headerValue(req, WALKY_ACK_HEADER.toLowerCase())) ?? null;
+      const withWalky = walkyReport === null ? withLoad : { ...withLoad, [WALKY_REPORT_FIELD]: walkyReport };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never

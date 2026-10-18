@@ -891,13 +891,26 @@ describe("walky talky across the crew (CREW_PROTOCOL §21)", () => {
     expect(await walky(peer, { op: "status", id: "wt_crewdown0001" })).toMatchObject({ ok: true, receipts: [{ target: `${peerId}/${peer.paneId}`, verified: "origin" }] });
 
     // The member to the lead, from the member's agent pane over its socket (a member takes no phone:
-    // its listener admits only the lead). The lead checks the member's signature and writes `origin`;
-    // the member keeps `accepted` and is told where the outcome lives.
+    // its listener admits only the lead). The lead checks the member's signature and writes `origin`.
     const marker = { namespace: "herdr", scope: peer.socketPath, pane: peer.paneId, schemaVersion: 1, harness: "claude" };
-    const up = await walky(peer, { op: "send", id: "wt_crewup000001", to: `${leadId}/${lead.paneId}`, body: "from the member", replyTo: null, markers: [marker] });
-    expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: `${leadId}/${lead.paneId}`, by: leadId }] });
-    expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target: `${leadId}/${lead.paneId}`, verified: "origin" }] });
-    expect(await walky(peer, { op: "status", id: "wt_crewup000001" })).toMatchObject({ elsewhere: [`${leadId}/${lead.paneId}`] });
+    const target = `${leadId}/${lead.paneId}`;
+    const up = await walky(peer, { op: "send", id: "wt_crewup000001", to: target, body: "from the member", replyTo: null, markers: [marker] });
+    expect(up).toMatchObject({ ok: true, receipts: [{ state: "accepted", target, by: leadId }] });
+    expect(await walky(lead, { op: "status", id: "wt_crewup000001" })).toMatchObject({ ok: true, receipts: [{ target, verified: "origin" }] });
+    // Once the lead's own pane settles, the lead pushes that outcome back (§21, added 2026-10-18): the
+    // member's copy leaves `accepted` and reads what the lead wrote, and nothing is left "on the lead".
+    const onLead = async (): Promise<WalkyReceipt[]> => readReceiptsAnswer(await walky(lead, { op: "status", id: "wt_crewup000001" }));
+    const onMember = async (): Promise<JsonValue> => walky(peer, { op: "status", id: "wt_crewup000001" });
+    await waitFor(
+      async () => {
+        const [held] = await onLead();
+        const [own] = readReceiptsAnswer(await onMember());
+        return held !== undefined && held.state !== "accepted" && own?.state === held.state;
+      },
+      20_000,
+      async () => `the lead holds ${JSON.stringify(await onLead())}, the member ${JSON.stringify(await onMember())}`,
+    );
+    expect(await onMember()).toMatchObject({ ok: true, receipts: [{ target, by: leadId }], elsewhere: [] });
   }, 60_000);
 });
 
@@ -2446,8 +2459,9 @@ describe("walky talky in a crew of four, on the real wire", () => {
       receipts: [{ target: paneOf(wb), by: idOf(wb) }],
       message: { id, from: { address: paneOf(wa) }, to: paneOf(wb) },
     });
-    // A keeps `accepted` and is told where the outcome lives; it never learns B's.
-    expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, elsewhere: [paneOf(wb)] });
+    // A learns B's outcome once the lead pushes it back (§21, added 2026-10-18).
+    await waitFor(async () => readReceiptsAnswer(await walky(wa, { op: "status", id }))[0]?.state === "delivered", 20_000, () => "A never learned B's outcome");
+    expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, receipts: [{ target: paneOf(wb), state: "delivered", by: idOf(wb) }], elsewhere: [] });
 
     // The fake pane saw ONE typed line: the header and the nudge, an agent's message, no body.
     await waitFor(async () => typedFor(wb, id).length > 0, 15_000, async () => `B's pane never got the line; writes: ${JSON.stringify(wb.herdr!.writes)}`);

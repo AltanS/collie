@@ -6,21 +6,28 @@
 //                   signature, so the lead knows which member dialled. The lead then checks the
 //                   message's own signature against that member's pinned certificate, and that the
 //                   message names that member as its sender and signer.
-//   lead → member   `POST /crew/v1/pane/<pane | all>/walky`, body `{ message, attest }`. `attest` is
-//                   the lead's signature over `attestationString` (canonical.ts): it binds the message,
-//                   the crew and the receiving member. The member checks it against its pinned lead.
+//   lead → member   `POST /crew/v1/pane/<pane | all>/walky`, body `{ message, attest, sender? }`.
+//                   `attest` is the lead's signature over `attestationString` (canonical.ts): it binds
+//                   the message, the crew and the receiving member. The member checks it against its
+//                   pinned lead. `sender` (added 2026-10-18) is the sending member's certificate and
+//                   the lead's voucher for it, on a message from another member of the roster.
+//   lead → member   `POST /crew/v1/walky/outcomes`, body `{ receipts }` (added 2026-10-18): how the
+//                   messages that member sent to other machines ended.
 //
-// Trust, in one line: a member verifies its lead's attestation; only the lead verifies the origin.
-// A member can verify the origin too when the lead itself sent the message, because that is the one
-// certificate it pins: `verified` is then `origin`, and `lead` otherwise.
+// Trust, in one line: a member verifies its lead's attestation, and the origin through a certificate
+// its lead vouched for. A member pins only its lead, so it checks the sender's own signature when the
+// lead itself sent the message, or when the lead sent the sender's certificate with a voucher for it:
+// `verified` is then `origin`, and `lead` otherwise.
 //
 // The outcome comes back on the sweep: a member reports the receipts it wrote for messages from
-// elsewhere on its next `/crew/v1/snapshot` answer (`walky: { receipts }`), and the lead writes them
-// into its own log. The lead has no path to tell a member, so a member that sent to a third machine
-// sees `accepted` and the words "outcome known on the lead".
+// elsewhere on its `/crew/v1/snapshot` answers (`walky: { receipts, cursor }`) until the lead acks
+// the cursor, and the lead writes them into its own log. The lead then pushes each outcome of a
+// member's own message back to that member (`WalkyLeadSide`), so the sender learns it too.
 //
 // Every verification failure is the uniform 401 (§8.1); a malformed body from an admitted caller is
 // a 400 that may say why (§8.5).
+
+import { randomBytes } from "node:crypto";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { fingerprintOfCert } from "../crew/identity.ts";
@@ -32,7 +39,7 @@ import { attestationString, verifyMessage, voucherString } from "./canonical.ts"
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
-import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer, type CrewSenderBlock } from "./parse.ts";
+import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
@@ -44,11 +51,20 @@ export const WALKY_ALL_SEGMENT = "all";
 export const WALKY_REPORT_FIELD = "walky";
 /** The most receipts one report holds. The oldest goes first. */
 export const WALKY_REPORT_MAX = 100;
+/**
+ * The request header the lead's sweep carries to ack a member's report (§21, added 2026-10-18): the
+ * cursor of the last report it read from that member. Absent: nothing is acked, as before.
+ */
+export const WALKY_ACK_HEADER = "X-Crew-Walky-Ack";
+/** The lead-to-member route of the outcomes push, under the crew prefix: `POST /crew/v1/walky/outcomes`. */
+export const WALKY_OUTCOMES_ROUTE = "walky/outcomes";
+/** The most receipts the lead holds for one member's outbox. The oldest goes first. */
+export const WALKY_OUTBOX_MAX = 100;
 
 /** One answer of a crew route: a status and a JSON body. The router and the dispatch frame it. */
 export interface CrewAnswer {
   readonly status: number;
-  readonly body: { readonly error: string } | { readonly receipts: readonly WalkyReceipt[] };
+  readonly body: { readonly error: string } | { readonly receipts: readonly WalkyReceipt[] } | { readonly written: number };
 }
 
 const UNAUTHORIZED: CrewAnswer = { status: 401, body: { error: "unauthorized" } };
@@ -274,6 +290,41 @@ export class WalkyCrew {
     // This machine's panes only: a message a crew hop brought is never routed on.
     return { status: 200, body: { receipts: await this.deps.service.receive(message, verified, true) } };
   }
+
+  /**
+   * `POST /crew/v1/walky/outcomes` on a member (§21, added 2026-10-18). `from` is the admitted caller,
+   * and only this member's own lead may push: anyone else is the uniform 401. Answers how many
+   * receipts were written (`writeOutcomes` decides which).
+   */
+  outcomes(body: JsonValue | undefined, from: string): CrewAnswer {
+    const data = this.deps.trust();
+    const lead = data?.lead ?? null;
+    if (data === null || lead === null || lead.status !== "enrolled" || lead.memberId !== from) return UNAUTHORIZED;
+    const receipts = readOutcomesPush(body);
+    if (receipts === null) return badRequest("an outcomes push needs a `receipts` list");
+    return { status: 200, body: { written: writeOutcomes(this.deps.service.log, data.self.memberId, receipts) } };
+  }
+}
+
+/**
+ * The member's half of the outcomes push: write each receipt its lead sent for a message THIS member
+ * sent to another machine. A receipt is written only when this member's log holds a record for that
+ * id and target whose message names this member as its sender, and only when it is newer or another
+ * state (the `mergeReport` rule, so a resent receipt is skipped). A receipt for a pane on this
+ * machine is never taken: this member's own outcome is its own word. Answers how many were written.
+ */
+export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly WalkyReceipt[]): number {
+  let written = 0;
+  for (const receipt of receipts) {
+    const address = parseAddress(receipt.target);
+    if (address === null || (address.kind !== "all" && address.memberId === self)) continue;
+    const held = log.get(receipt.id, receipt.target);
+    if (held === null || held.message.from.memberId !== self) continue;
+    if (held.receipt.state === receipt.state && held.receipt.at >= receipt.at) continue;
+    log.update(receipt);
+    written += 1;
+  }
+  return written;
 }
 
 // ── Sending: the two RouteRemote seams ───────────────────────────────────────────────────────────
@@ -508,40 +559,85 @@ export function crewSkipped(members: readonly CrewMemberView[], titles: boolean)
 
 // ── The outcome report ───────────────────────────────────────────────────────────────────────────
 
+/** A random 8-hex epoch, minted once per bridge process: a restarted member never matches an old ack. */
+export function mintEpoch(): string {
+  return randomBytes(4).toString("hex");
+}
+
+interface HeldReceipt {
+  readonly receipt: WalkyReceipt;
+  readonly seq: number;
+  /** This bridge's clock when the receipt was held. Past {@link STALE_MS} it goes. */
+  readonly heldAt: number;
+}
+
+export interface WalkyReportOptions {
+  /** At most this many held, oldest dropped. Default {@link WALKY_REPORT_MAX}. */
+  readonly max?: number;
+  /** The cursor epoch. Default: a fresh one ({@link mintEpoch}). */
+  readonly epoch?: string;
+  readonly now?: () => number;
+}
+
 /**
  * A member's report to its lead: the receipts it wrote, for its own panes, for messages that came
- * from another machine. Filled as the log writes them and emptied by each `/crew/v1/snapshot`
- * answer. In memory only, at most {@link WALKY_REPORT_MAX}, oldest dropped: it is a report on the
- * exchange, never a stored state (§18.5), so an answer the lead never read loses those lines and
- * the lead keeps `accepted`.
+ * from another machine, past `accepted`. Filled as the log writes them. Each held receipt gets a
+ * sequence number, and the report rides every `/crew/v1/snapshot` answer with the cursor of its
+ * newest receipt (`<epoch>.<seq>`) until the lead acks that cursor on a later sweep (§21, added
+ * 2026-10-18). In memory only: at most {@link WALKY_REPORT_MAX}, oldest dropped, and a receipt goes
+ * {@link STALE_MS} after it was held, acked or not. It is a report on the exchange, never a stored
+ * state (§18.5). An older lead never acks, so it reads the same receipts for up to 10 minutes;
+ * `mergeReport` skips a receipt it already holds.
  */
 export class WalkyReport {
-  private held: WalkyReceipt[] = [];
+  private held: HeldReceipt[] = [];
+  private seq = 0;
+  readonly epoch: string;
+  private readonly max: number;
+  private readonly now: () => number;
 
   constructor(
     private readonly self: string,
-    private readonly max = WALKY_REPORT_MAX,
-  ) {}
+    options: WalkyReportOptions = {},
+  ) {
+    this.max = options.max ?? WALKY_REPORT_MAX;
+    this.epoch = options.epoch ?? mintEpoch();
+    this.now = options.now ?? Date.now;
+  }
 
   /** Listen on a log: every receipt for a message from elsewhere, placed on a pane here, past `accepted`. */
   listen(log: WalkyLog): void {
     log.onReceipt((record) => this.note(record));
   }
 
-  /** Hold one record's newest receipt when it belongs in the report. */
+  /** Hold one record's newest receipt when it belongs in the report. A newer state replaces the older. */
   note(record: LogRecord): void {
     if (record.session === null || record.message.from.memberId === this.self) return;
     if (record.receipt.state === "accepted") return;
-    this.held = this.held.filter((held) => !(held.id === record.receipt.id && held.target === record.receipt.target));
-    this.held.push(record.receipt);
+    this.held = this.held.filter((held) => !(held.receipt.id === record.receipt.id && held.receipt.target === record.receipt.target));
+    this.seq += 1;
+    this.held.push({ receipt: record.receipt, seq: this.seq, heldAt: this.now() });
     if (this.held.length > this.max) this.held = this.held.slice(this.held.length - this.max);
   }
 
-  /** The report for one snapshot answer, and an empty one after it. */
-  drain(): WalkyReceipt[] {
-    const out = this.held;
-    this.held = [];
-    return out;
+  /**
+   * The lead's ack, as its `X-Crew-Walky-Ack` header carried it: every receipt held at or below the
+   * acked seq goes. A cursor of another epoch (a lead acking what this member's previous run sent)
+   * or one that is not a cursor acks nothing.
+   */
+  ack(cursor: string | null): void {
+    const read = readWalkyCursor(cursor);
+    if (read === null || read.epoch !== this.epoch) return;
+    this.held = this.held.filter((held) => held.seq > read.seq);
+  }
+
+  /** The report for one snapshot answer, or null when nothing is held. It does not empty: only an ack does. */
+  report(): WalkyReportBody | null {
+    const floor = this.now() - STALE_MS;
+    this.held = this.held.filter((held) => held.heldAt >= floor);
+    const newest = this.held.at(-1);
+    if (newest === undefined) return null;
+    return { receipts: this.held.map((held) => held.receipt), cursor: `${this.epoch}.${String(newest.seq)}` };
   }
 }
 
@@ -572,4 +668,188 @@ export function mergeReport(log: WalkyLog, memberId: string, receipts: readonly 
     written += 1;
   }
   return written;
+}
+
+// ── The lead's side of the exchange (§21, added 2026-10-18) ─────────────────────────────────────
+
+export interface WalkyLeadSideDeps {
+  /** This lead's member id. Its own messages are never pushed: their outcome is on this machine. */
+  readonly self: string;
+  /** The lead's walky log. A member's report is merged into it. */
+  readonly log: WalkyLog;
+  /** POST one `{ receipts }` body to `/crew/v1/walky/outcomes` on one member. */
+  readonly push: (memberId: string, payload: string) => Promise<CrewDialAnswer>;
+  /** At most this many receipts per member's outbox, oldest dropped. Default {@link WALKY_OUTBOX_MAX}. */
+  readonly max?: number;
+  readonly now?: () => number;
+  /** How a push is put off the current tick, so one burst of receipts goes as one POST. Default: a 0 ms timer. */
+  readonly later?: (work: () => void) => void;
+}
+
+/** A batch the lead sent, keyed as the outbox keys it, so a newer receipt for the same key survives. */
+type Batch = ReadonlyMap<string, HeldReceipt>;
+
+function outboxKey(receipt: Pick<WalkyReceipt, "id" | "target">): string {
+  return `${receipt.id}\u0000${receipt.target}`;
+}
+
+/**
+ * The lead's half of the walky exchange with each member, in memory only.
+ *
+ *   The ack. The cursor of the last report it read from each member, sent back on the next sweep
+ *   dial of that member's snapshot as `X-Crew-Walky-Ack`. A lead restart starts with none, and the
+ *   member's resend is harmless.
+ *
+ *   The outbox. Every receipt this lead's log writes, past `accepted`, for a message a member sent
+ *   to another machine (this lead's own deliveries, and the lines `mergeReport` writes), held for that
+ *   member: at most {@link WALKY_OUTBOX_MAX}, and {@link STALE_MS} each. It is pushed with
+ *   `POST /crew/v1/walky/outcomes` at once, and again on each sweep while it is not empty. A 200
+ *   empties what was sent. A 404 (a member before the push) drops the batch, and the member is pushed
+ *   again only when a new receipt settles. A refused or unknown outcome keeps it for the next sweep.
+ */
+export class WalkyLeadSide {
+  private readonly cursors = new Map<string, string>();
+  private readonly boxes = new Map<string, Map<string, HeldReceipt>>();
+  /** Members that answered the push 404: pushed again only when a new receipt settles. */
+  private readonly parked = new Set<string>();
+  /** Members with a push on the wire, and those with a push asked for meanwhile. */
+  private readonly flying = new Set<string>();
+  private readonly again = new Set<string>();
+  private readonly scheduled = new Set<string>();
+  private seq = 0;
+  private readonly now: () => number;
+  private readonly later: (work: () => void) => void;
+  private readonly max: number;
+
+  constructor(private readonly deps: WalkyLeadSideDeps) {
+    this.now = deps.now ?? Date.now;
+    this.max = deps.max ?? WALKY_OUTBOX_MAX;
+    this.later =
+      deps.later ??
+      ((work) => {
+        const timer = setTimeout(work, 0);
+        timer.unref?.();
+      });
+  }
+
+  /** Listen on the lead's log: every receipt it writes may belong in a member's outbox. */
+  listen(): void {
+    this.deps.log.onReceipt((record) => this.note(record));
+  }
+
+  // ── The ack ──
+
+  /** A member's report, off its snapshot answer: merged into the log, and its cursor kept for the ack. */
+  report(memberId: string, receipts: readonly WalkyReceipt[], cursor: string | null): number {
+    const written = mergeReport(this.deps.log, memberId, receipts);
+    if (cursor !== null) this.cursors.set(memberId, cursor);
+    return written;
+  }
+
+  /** The cursor to ack on the next snapshot dial of a member, or null. */
+  ackFor(memberId: string): string | null {
+    return this.cursors.get(memberId) ?? null;
+  }
+
+  // ── The outbox ──
+
+  /** Hold a record's newest receipt for its sender's machine, when it belongs there, and push at once. */
+  note(record: LogRecord): void {
+    const memberId = record.message.from.memberId;
+    if (memberId === null || memberId === this.deps.self || record.receipt.state === "accepted") return;
+    const address = parseAddress(record.target);
+    // Only for a target on another machine: the sender's own panes are the sender's word.
+    if (address === null || (address.kind !== "all" && address.memberId === memberId)) return;
+    const box = this.boxes.get(memberId) ?? new Map<string, HeldReceipt>();
+    const key = outboxKey(record.receipt);
+    box.delete(key);
+    this.seq += 1;
+    box.set(key, { receipt: record.receipt, seq: this.seq, heldAt: this.now() });
+    while (box.size > this.max) {
+      const oldest = box.keys().next().value;
+      if (oldest === undefined) break;
+      box.delete(oldest);
+    }
+    this.boxes.set(memberId, box);
+    // A new receipt settled: a member that answered 404 is asked again.
+    this.parked.delete(memberId);
+    this.schedule(memberId);
+  }
+
+  /** The receipts held for one member, oldest first. */
+  pending(memberId: string): WalkyReceipt[] {
+    this.prune(memberId);
+    return [...(this.boxes.get(memberId)?.values() ?? [])].map((held) => held.receipt);
+  }
+
+  /** The sweep answered: push every listed member whose outbox is not empty, and not parked. */
+  swept(memberIds: readonly string[]): void {
+    for (const memberId of memberIds) {
+      if (this.parked.has(memberId) || this.pending(memberId).length === 0) continue;
+      void this.flush(memberId);
+    }
+  }
+
+  /** A member left the roster: its cursor and its outbox go. */
+  forget(memberId: string): void {
+    this.cursors.delete(memberId);
+    this.boxes.delete(memberId);
+    this.parked.delete(memberId);
+  }
+
+  private schedule(memberId: string): void {
+    if (this.scheduled.has(memberId)) return;
+    this.scheduled.add(memberId);
+    this.later(() => {
+      this.scheduled.delete(memberId);
+      void this.flush(memberId);
+    });
+  }
+
+  private prune(memberId: string): void {
+    const box = this.boxes.get(memberId);
+    if (box === undefined) return;
+    const floor = this.now() - STALE_MS;
+    for (const [key, held] of box) if (held.heldAt < floor) box.delete(key);
+    if (box.size === 0) this.boxes.delete(memberId);
+  }
+
+  /** Drop what a batch sent, unless a newer receipt for the same key arrived meanwhile. */
+  private drop(memberId: string, batch: Batch): void {
+    const box = this.boxes.get(memberId);
+    if (box === undefined) return;
+    for (const [key, held] of batch) if (box.get(key) === held) box.delete(key);
+    if (box.size === 0) this.boxes.delete(memberId);
+  }
+
+  /** One push of a member's outbox. Resolves when its answer is handled. Never rejects. */
+  async flush(memberId: string): Promise<void> {
+    if (this.flying.has(memberId)) {
+      this.again.add(memberId);
+      return;
+    }
+    this.prune(memberId);
+    const box = this.boxes.get(memberId);
+    if (box === undefined || box.size === 0) return;
+    const batch: Batch = new Map(box);
+    this.flying.add(memberId);
+    let answer: CrewDialAnswer;
+    try {
+      answer = await this.deps.push(memberId, JSON.stringify({ receipts: [...batch.values()].map((held) => held.receipt) }));
+    } catch (err) {
+      answer = { kind: "unknown", reason: err instanceof Error ? err.message : String(err) };
+    } finally {
+      this.flying.delete(memberId);
+    }
+    if (answer.kind === "answer" && answer.status === 200) this.drop(memberId, batch);
+    else if (answer.kind === "answer" && answer.status === 404) {
+      // A member before the push: this batch goes, and the member waits for the next receipt.
+      this.drop(memberId, batch);
+      this.parked.add(memberId);
+    }
+    // Any other answer keeps the batch for the next sweep: the member writes a receipt once, so a
+    // push that did land and is sent again changes nothing there.
+    // A receipt that settled while this push was on the wire is a new receipt: it goes now, 404 or not.
+    if (this.again.delete(memberId)) await this.flush(memberId);
+  }
 }

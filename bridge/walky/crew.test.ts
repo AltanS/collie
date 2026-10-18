@@ -22,8 +22,11 @@ import {
   receiptsOfAnswer,
   senderBlockFor,
   WalkyCrew,
+  WalkyLeadSide,
   WalkyReport,
+  WALKY_OUTBOX_MAX,
   WALKY_REPORT_MAX,
+  writeOutcomes,
   type CrewDialAnswer,
 } from "./crew.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
@@ -548,9 +551,14 @@ describe("what an answer from the other side stands for", () => {
 });
 
 describe("the outcome report", () => {
-  test("holds receipts for messages from elsewhere past `accepted`, at most 100, and empties on each answer", async () => {
+  /** A delivered receipt for a message from `desk` to this member's pane, as the log hands it to the report. */
+  function record(id: string, state: WalkyReceipt["state"] = "delivered", at = AT) {
+    return { session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state, verified: "lead" as const, at, by: "laptop" }, sender: null };
+  }
+
+  test("holds receipts for messages from elsewhere past `accepted`, and reports them until the lead acks the cursor", async () => {
     const peer = service("laptop", [pane("w1:p9")]);
-    const report = new WalkyReport("laptop");
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
     report.listen(peer.log);
     const crew = new WalkyCrew({ service: peer.service, trust: () => peerStore(), now: () => AT });
     const message = signed("wt_aaaaaaaaaaa1", "desk", "laptop/w1:p9");
@@ -559,22 +567,66 @@ describe("the outcome report", () => {
     // Its own message is never reported: the lead heard of it when it routed it.
     await peer.service.send({ id: "wt_aaaaaaaaaaa2", to: "laptop/w1:p9", body: "mine", replyTo: null }, { kind: "operator", label: "cli" });
     await peer.service.deliverer.settled();
-    expect(report.drain()).toMatchObject([{ id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered" }]);
-    expect(report.drain()).toEqual([]);
-    const small = new WalkyReport("laptop", 3);
-    for (let n = 0; n < 5; n += 1) {
-      const id = `wt_${String(n).padStart(12, "b")}`;
-      small.note({ session: "main", paneId: "w1:p9", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" }, sender: null });
-    }
-    expect(small.drain().map((receipt) => receipt.id)).toEqual(["wt_bbbbbbbbbbb2", "wt_bbbbbbbbbbb3", "wt_bbbbbbbbbbb4"]);
-    expect(WALKY_REPORT_MAX).toBe(100);
+    const first = report.report();
+    expect(first).toMatchObject({ receipts: [{ id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered" }] });
+    expect(first?.cursor).toMatch(/^0a1b2c3d\.\d+$/u);
+    // An answer the lead never read loses nothing: the next one carries the same receipts.
+    expect(report.report()).toEqual(first);
+    report.ack(first!.cursor);
+    expect(report.report()).toBeNull();
   });
 
-  test("the snapshot sibling reads as receipts; absent or malformed is no report", () => {
+  test("an ack drops every receipt at or below its seq, and a receipt held after the answer survives it", () => {
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
+    report.note(record("wt_bbbbbbbbbbb1"));
+    report.note(record("wt_bbbbbbbbbbb2"));
+    const read = report.report();
+    expect(read?.cursor).toBe("0a1b2c3d.2");
+    report.note(record("wt_bbbbbbbbbbb3"));
+    report.ack(read!.cursor);
+    expect(report.report()).toEqual({ receipts: [expect.objectContaining({ id: "wt_bbbbbbbbbbb3" })], cursor: "0a1b2c3d.3" });
+  });
+
+  test("a newer state is a new receipt: an ack of the older one keeps it", () => {
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
+    report.note(record("wt_bbbbbbbbbbb1", "inbox-only"));
+    const read = report.report();
+    report.note(record("wt_bbbbbbbbbbb1", "delivered", AT + 1));
+    report.ack(read!.cursor);
+    expect(report.report()).toEqual({ receipts: [expect.objectContaining({ id: "wt_bbbbbbbbbbb1", state: "delivered" })], cursor: "0a1b2c3d.2" });
+  });
+
+  test("an ack of another epoch, or one that is not a cursor, acks nothing", () => {
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
+    report.note(record("wt_bbbbbbbbbbb1"));
+    for (const ack of ["ffffffff.9", "0a1b2c3d", "0A1B2C3D.1", "0a1b2c3d.-1", "", null]) {
+      report.ack(ack);
+      expect(report.report()?.receipts).toHaveLength(1);
+    }
+    // A fresh epoch per bridge process, eight hex characters.
+    expect(new WalkyReport("laptop").epoch).toMatch(/^[0-9a-f]{8}$/u);
+  });
+
+  test("holds at most 100, oldest dropped, and drops a receipt 10 minutes after it was held", () => {
+    let now = AT;
+    const small = new WalkyReport("laptop", { max: 3, now: () => now });
+    for (let n = 0; n < 5; n += 1) small.note(record(`wt_${String(n).padStart(12, "b")}`));
+    expect(small.report()?.receipts.map((receipt) => receipt.id)).toEqual(["wt_bbbbbbbbbbb2", "wt_bbbbbbbbbbb3", "wt_bbbbbbbbbbb4"]);
+    expect(WALKY_REPORT_MAX).toBe(100);
+    now = AT + 10 * 60 * 1000;
+    expect(small.report()?.receipts).toHaveLength(3);
+    now += 1;
+    expect(small.report()).toBeNull();
+  });
+
+  test("the snapshot sibling reads as receipts and a cursor; absent or malformed is no report", () => {
     const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "laptop" };
-    expect(readWalkyReport(wire({ agents: [], walky: { receipts: [receipt, { bad: 1 }] } }), "walky")).toEqual([receipt]);
-    expect(readWalkyReport({ agents: [] }, "walky")).toEqual([]);
-    expect(readWalkyReport({ walky: "nope" }, "walky")).toEqual([]);
+    expect(readWalkyReport(wire({ agents: [], walky: { receipts: [receipt, { bad: 1 }], cursor: "0a1b2c3d.7" } }), "walky")).toEqual({ receipts: [receipt], cursor: "0a1b2c3d.7" });
+    // A member before the ack sends no cursor: the receipts still read, and nothing is acked.
+    expect(readWalkyReport(wire({ walky: { receipts: [receipt] } }), "walky")).toEqual({ receipts: [receipt], cursor: null });
+    expect(readWalkyReport(wire({ walky: { receipts: [receipt], cursor: "not a cursor" } }), "walky")).toEqual({ receipts: [receipt], cursor: null });
+    expect(readWalkyReport({ agents: [] }, "walky")).toEqual({ receipts: [], cursor: null });
+    expect(readWalkyReport({ walky: "nope" }, "walky")).toEqual({ receipts: [], cursor: null });
   });
 
   test("the lead writes a member's report into its log, for that member's own panes only", async () => {
@@ -708,5 +760,272 @@ describe("the skipped list on a lead", () => {
       { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main" },
       { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main" },
     ]);
+  });
+});
+
+describe("the outcome comes back to the sender's machine (§21, added 2026-10-18)", () => {
+  /** A member whose lead answers every message for elsewhere with its own `accepted`. */
+  function sender() {
+    return service("laptop", [pane("w1:p8")], undefined, {
+      outcomesOnLead: true,
+      routeRemote: async (message) => [{ id: message.id, target: message.to, state: "accepted", verified: "local", at: AT, by: "desk" }],
+    });
+  }
+  const delivered: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "other/w1:p9", state: "delivered", verified: "origin", at: AT + 5, by: "other" };
+
+  test("a member writes its lead's push for its own message, newer or another state only, and answers the count", async () => {
+    const laptop = sender();
+    await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "other/w1:p9", body: "hi", replyTo: null }, { kind: "agent", pane: pane("w1:p8") });
+    expect(laptop.service.status("wt_aaaaaaaaaaa1")).toMatchObject({ receipts: [{ state: "accepted" }], elsewhere: ["other/w1:p9"] });
+    // A message this member did not send, held for a target elsewhere: never written.
+    laptop.log.record(signed("wt_ccccccccccc1", "desk", "other/w1:p9"), "other/w1:p9", { session: null, paneId: null }, { ...delivered, id: "wt_ccccccccccc1", state: "accepted" });
+    const crew = new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT });
+    const push = {
+      receipts: [
+        delivered,
+        { bad: 1 },
+        { ...delivered, id: "wt_bbbbbbbbbbb1" },
+        { ...delivered, id: "wt_ccccccccccc1" },
+        // This member's own pane is its own word, whatever the lead says.
+        { ...delivered, target: "laptop/w1:p8", by: "laptop" },
+      ],
+    };
+    expect(crew.outcomes(wire(push), "desk")).toEqual({ status: 200, body: { written: 1 } });
+    expect(laptop.service.status("wt_aaaaaaaaaaa1")).toMatchObject({ receipts: [{ target: "other/w1:p9", state: "delivered", by: "other", verified: "origin" }], elsewhere: [] });
+    expect(laptop.log.get("wt_ccccccccccc1", "other/w1:p9")?.receipt.state).toBe("accepted");
+    // The same push again writes nothing; an older one of the same state neither.
+    expect(crew.outcomes(wire(push), "desk")).toEqual({ status: 200, body: { written: 0 } });
+    expect(writeOutcomes(laptop.log, "laptop", [{ ...delivered, at: AT }])).toBe(0);
+    expect(writeOutcomes(laptop.log, "laptop", [{ ...delivered, state: "inbox-only", at: AT + 1 }])).toBe(1);
+  });
+
+  test("only its own lead may push, and a body with no receipts list is a 400", async () => {
+    const laptop = sender();
+    const crew = new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT });
+    expect(crew.outcomes(wire({ receipts: [delivered] }), "other")).toMatchObject({ status: 401 });
+    const lost = new WalkyCrew({ service: laptop.service, trust: () => peerStore({ lead: null }), now: () => AT });
+    expect(lost.outcomes(wire({ receipts: [delivered] }), "desk")).toMatchObject({ status: 401 });
+    expect(crew.outcomes(wire({}), "desk")).toMatchObject({ status: 400 });
+    expect(crew.outcomes(wire({ receipts: "all" }), "desk")).toMatchObject({ status: 400 });
+  });
+
+  test("an `accepted` answer that lands after the pushed outcome never writes over it", async () => {
+    let laptop: Rig | null = null;
+    laptop = service("laptop", [pane("w1:p8")], undefined, {
+      outcomesOnLead: true,
+      routeRemote: async (message) => {
+        // The lead's push arrives while the member still waits for the lead's answer.
+        writeOutcomes(laptop!.log, "laptop", [delivered]);
+        return [{ id: message.id, target: message.to, state: "accepted", verified: "local", at: AT, by: "desk" }];
+      },
+    });
+    await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "other/w1:p9", body: "hi", replyTo: null }, { kind: "agent", pane: pane("w1:p8") });
+    expect(laptop.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered" }]);
+  });
+});
+
+describe("the lead's side of the exchange (§21, added 2026-10-18)", () => {
+  interface Pushed {
+    readonly memberId: string;
+    readonly receipts: readonly WalkyReceipt[];
+  }
+
+  /** A lead side whose pushes are recorded and answered from `answers`, and whose "at once" runs on `run()`. */
+  function rig(answers: CrewDialAnswer[] = [], over: { max?: number; now?: () => number } = {}) {
+    const lead = service("desk", [pane("w1:p1")], async (memberId) => ({
+      kind: "answer",
+      status: 200,
+      body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "origin", at: AT, by: memberId }] },
+    }));
+    const pushed: Pushed[] = [];
+    const queue: (() => void)[] = [];
+    const side = new WalkyLeadSide({
+      self: "desk",
+      log: lead.log,
+      push: async (memberId, payload) => {
+        // SAFETY: the side posts the JSON it built itself.
+        pushed.push({ memberId, receipts: (JSON.parse(payload) as { receipts: WalkyReceipt[] }).receipts });
+        return answers.shift() ?? { kind: "answer", status: 200, body: { written: 1 } };
+      },
+      later: (work) => queue.push(work),
+      ...over,
+    });
+    side.listen();
+    const run = async (): Promise<void> => {
+      for (const work of queue.splice(0)) work();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    return { lead, side, pushed, run };
+  }
+
+  /** A log record of a message `from` sent to `target`, with its receipt at `state`. */
+  function record(from: string, target: string, state: WalkyReceipt["state"] = "delivered", id = "wt_aaaaaaaaaaa1", at = AT) {
+    return { session: null, paneId: null, target, message: signed(id, from, target), receipt: { id, target, state, verified: "origin" as const, at, by: target.split("/")[0]! }, sender: null };
+  }
+
+  test("a member's report is merged into the log, and its cursor is what the next dial acks", async () => {
+    const { lead, side } = rig();
+    await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "other/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(side.ackFor("other")).toBeNull();
+    const delivered: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "other/w9:p9", state: "delivered", verified: "origin", at: AT + 5, by: "other" };
+    expect(side.report("other", [delivered], "0a1b2c3d.4")).toBe(1);
+    expect(side.ackFor("other")).toBe("0a1b2c3d.4");
+    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered" }]);
+    // A report with no cursor (a member before the ack) leaves the last one in place; a member gone takes it.
+    side.report("other", [delivered], null);
+    expect(side.ackFor("other")).toBe("0a1b2c3d.4");
+    side.forget("other");
+    expect(side.ackFor("other")).toBeNull();
+  });
+
+  test("a member's message to another member: the outcome goes back to the sender in one push, and a 200 empties it", async () => {
+    const { lead, side, pushed, run } = rig();
+    const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    // From laptop's agent: one to this lead's own pane, one routed on to `other`.
+    await fromMemberOf(crew, signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1"), member({ memberId: "laptop" }));
+    await fromMemberOf(crew, signed("wt_aaaaaaaaaaa2", "laptop", "other/w9:p9"), member({ memberId: "laptop" }));
+    await lead.service.deliverer.settled();
+    side.report("other", [{ id: "wt_aaaaaaaaaaa2", target: "other/w9:p9", state: "delivered", verified: "lead", at: AT + 5, by: "other" }], null);
+    // The lead's own message, and an `accepted`, are never held for anyone.
+    await lead.service.send({ id: "wt_aaaaaaaaaaa3", to: "other/w9:p9", body: "mine", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(side.pending("laptop").map((receipt) => `${receipt.id} ${receipt.target} ${receipt.state}`)).toEqual([
+      "wt_aaaaaaaaaaa1 desk/w1:p1 delivered",
+      "wt_aaaaaaaaaaa2 other/w9:p9 delivered",
+    ]);
+    expect(side.pending("desk")).toEqual([]);
+    expect(pushed).toEqual([]);
+    await run();
+    expect(pushed.map((push) => `${push.memberId} ${String(push.receipts.length)}`)).toEqual(["laptop 2"]);
+    expect(side.pending("laptop")).toEqual([]);
+  });
+
+  test("a receipt for a target on the sender's own machine is never pushed: that outcome is the sender's word", () => {
+    const { side } = rig();
+    side.note(record("laptop", "laptop/w1:p8"));
+    side.note(record("laptop", "laptop/all"));
+    side.note(record("laptop", "other/w1:p9", "accepted"));
+    expect(side.pending("laptop")).toEqual([]);
+    side.note(record("laptop", "all"));
+    expect(side.pending("laptop")).toHaveLength(1);
+  });
+
+  test("a refused or unknown push keeps the batch for the next sweep; a 404 drops it until a new receipt settles", async () => {
+    const { side, pushed, run } = rig([
+      { kind: "refused", reason: "laptop is unreachable" },
+      { kind: "unknown", reason: "crew: timed out" },
+      { kind: "answer", status: 200, body: { written: 1 } },
+      { kind: "answer", status: 404, body: { error: "not found" } },
+    ]);
+    side.note(record("laptop", "other/w1:p9"));
+    await run();
+    expect(side.pending("laptop")).toHaveLength(1);
+    // A sweep that did not reach laptop pushes nothing.
+    side.swept(["other"]);
+    await run();
+    expect(pushed).toHaveLength(1);
+    side.swept(["laptop"]);
+    await run();
+    expect(side.pending("laptop")).toHaveLength(1);
+    side.swept(["laptop"]);
+    await run();
+    expect(side.pending("laptop")).toEqual([]);
+    expect(pushed).toHaveLength(3);
+    // Then the member answers 404: an older member. The batch goes, and the sweeps after it push nothing.
+    side.note(record("laptop", "other/w1:p9", "delivered", "wt_aaaaaaaaaaa2"));
+    await run();
+    expect(pushed).toHaveLength(4);
+    expect(side.pending("laptop")).toEqual([]);
+    side.swept(["laptop"]);
+    await run();
+    expect(pushed).toHaveLength(4);
+    // A new receipt settles: that one is pushed, once.
+    side.note(record("laptop", "other/w1:p9", "delivered", "wt_aaaaaaaaaaa3"));
+    await run();
+    expect(pushed.map((push) => push.receipts.map((receipt) => receipt.id))).toEqual([
+      ["wt_aaaaaaaaaaa1"],
+      ["wt_aaaaaaaaaaa1"],
+      ["wt_aaaaaaaaaaa1"],
+      ["wt_aaaaaaaaaaa2"],
+      ["wt_aaaaaaaaaaa3"],
+    ]);
+  });
+
+  test("a newer receipt that settles while a push is on the wire survives it, and goes in the next push", async () => {
+    let answer: (value: CrewDialAnswer) => void = () => undefined;
+    const pushed: WalkyReceipt[][] = [];
+    const lead = service("desk", []);
+    const side = new WalkyLeadSide({
+      self: "desk",
+      log: lead.log,
+      push: (_memberId, payload) => {
+        // SAFETY: the side posts the JSON it built itself.
+        pushed.push((JSON.parse(payload) as { receipts: WalkyReceipt[] }).receipts);
+        return new Promise((resolve) => (answer = resolve));
+      },
+      later: (work) => work(),
+    });
+    side.note(record("laptop", "other/w1:p9", "inbox-only"));
+    expect(pushed).toHaveLength(1);
+    side.note(record("laptop", "other/w1:p9", "delivered", "wt_aaaaaaaaaaa1", AT + 1));
+    expect(pushed).toHaveLength(1);
+    answer({ kind: "answer", status: 200, body: { written: 1 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pushed.map((batch) => batch.map((receipt) => receipt.state))).toEqual([["inbox-only"], ["delivered"]]);
+    answer({ kind: "answer", status: 200, body: { written: 1 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(side.pending("laptop")).toEqual([]);
+  });
+
+  test("holds at most 100 per member, oldest dropped, and 10 minutes each", () => {
+    let now = AT;
+    const { side } = rig([], { max: 2, now: () => now });
+    for (const id of ["wt_aaaaaaaaaaa1", "wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa3"]) side.note(record("laptop", "other/w1:p9", "delivered", id));
+    expect(side.pending("laptop").map((receipt) => receipt.id)).toEqual(["wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa3"]);
+    expect(WALKY_OUTBOX_MAX).toBe(100);
+    now = AT + 10 * 60 * 1000 + 1;
+    expect(side.pending("laptop")).toEqual([]);
+  });
+
+  test("the whole loop: a member's agent sees the outcome the lead learned from the receiving member", async () => {
+    const lead = service("desk", [], async (memberId) => ({
+      kind: "answer",
+      status: 200,
+      body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "origin", at: AT, by: memberId }] },
+    }));
+    const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    let laptopCrew: WalkyCrew | null = null;
+    const queue: (() => void)[] = [];
+    const side = new WalkyLeadSide({
+      self: "desk",
+      log: lead.log,
+      push: async (_memberId, payload) => {
+        // SAFETY: the side posts the JSON it built itself.
+        const answer = laptopCrew!.outcomes(JSON.parse(payload) as JsonValue, "desk");
+        return { kind: "answer", status: answer.status, body: wire(answer.body) };
+      },
+      later: (work) => queue.push(work),
+    });
+    side.listen();
+    const laptop = service("laptop", [pane("w1:p8")], undefined, {
+      outcomesOnLead: true,
+      routeRemote: memberRouteRemote({
+        self: "laptop",
+        post: async (payload) => {
+          // SAFETY: the member posts the JSON it built itself.
+          const answer = await leadCrew.fromMember(JSON.parse(payload) as JsonValue, member({ memberId: "laptop" }));
+          return { kind: "answer", status: answer.status, body: wire(answer.body) };
+        },
+        now: () => AT,
+      }),
+    });
+    laptopCrew = new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT });
+    await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "other/w9:p9", body: "hi", replyTo: null }, { kind: "agent", pane: pane("w1:p8") });
+    expect(laptop.service.status("wt_aaaaaaaaaaa1")).toMatchObject({ receipts: [{ state: "accepted", by: "other" }], elsewhere: ["other/w9:p9"] });
+    // `other` reports on the lead's next sweep, and the lead pushes the outcome back.
+    side.report("other", [{ id: "wt_aaaaaaaaaaa1", target: "other/w9:p9", state: "delivered", verified: "origin", at: AT + 5, by: "other" }], "0a1b2c3d.1");
+    for (const work of queue.splice(0)) work();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(laptop.service.status("wt_aaaaaaaaaaa1")).toMatchObject({ receipts: [{ state: "delivered", by: "other", verified: "origin" }], elsewhere: [] });
+    expect(side.pending("laptop")).toEqual([]);
   });
 });

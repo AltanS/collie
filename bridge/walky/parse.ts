@@ -189,6 +189,16 @@ export function readReceiptsAnswer(value: JsonValue | undefined): WalkyReceipt[]
   return readReceiptList(asJsonObject(value)?.receipts);
 }
 
+/**
+ * The lead's outcomes push, `{ receipts }` (§21, added 2026-10-18): the receipts, bad entries
+ * dropped, or null when the body is not an object with a `receipts` list.
+ */
+export function readOutcomesPush(value: JsonValue | undefined): WalkyReceipt[] | null {
+  const row = asJsonObject(value);
+  if (row === undefined || !Array.isArray(row.receipts)) return null;
+  return readReceiptList(row.receipts);
+}
+
 /** The longest `sender.certPem` a delivery may carry. A P-256 certificate is well under 1,000. */
 export const SENDER_CERT_MAX = 4096;
 /** The longest `attest` or `sender.voucher` a delivery may carry. A base64 P-256 signature is under 100. */
@@ -231,12 +241,38 @@ export function readCrewDelivery(value: JsonValue | undefined): CrewDelivery | n
   return { message, attest, sender: { certPem, voucher } };
 }
 
+// ── The report's ack cursor (§21, added 2026-10-18) ─────────────────────────────────────────────
+
+/** A report cursor: `<epoch>.<seq>`, the epoch 8 lowercase hex characters, the seq a whole number. */
+const CURSOR = /^([0-9a-f]{8})\.(\d{1,15})$/u;
+
+/** A cursor read apart, or null for anything that is not one. */
+export function readWalkyCursor(value: string | null | undefined): { readonly epoch: string; readonly seq: number } | null {
+  if (value === null || value === undefined) return null;
+  const match = CURSOR.exec(value.trim());
+  if (match === null) return null;
+  const seq = Number(match[2]);
+  return Number.isSafeInteger(seq) ? { epoch: match[1]!, seq } : null;
+}
+
+/** What a member's report carries: its receipts and the cursor of the newest one. */
+export interface WalkyReportBody {
+  readonly receipts: WalkyReceipt[];
+  /** `<epoch>.<seq>`, or null when the report named none (a member before the ack, §7.1). */
+  readonly cursor: string | null;
+}
+
 /**
  * A member's walky report off its `/crew/v1/snapshot` answer: the `walky` sibling of the body,
- * `{ receipts }`. Absent or malformed reads as no report (§7.1's absent-means-closed).
+ * `{ receipts, cursor }`. Absent or malformed reads as no report (§7.1's absent-means-closed); a
+ * cursor that is not one reads as none, and the lead then acks nothing.
  */
-export function readWalkyReport(answer: JsonValue | undefined, field: string): WalkyReceipt[] {
-  return readReceiptsAnswer(asJsonObject(answer)?.[field]);
+export function readWalkyReport(answer: JsonValue | undefined, field: string): WalkyReportBody {
+  const row = asJsonObject(asJsonObject(answer)?.[field]);
+  const receipts = readReceiptList(row?.receipts);
+  const raw = asJsonString(row?.cursor);
+  const cursor = raw !== undefined && readWalkyCursor(raw) !== null ? raw.trim() : null;
+  return { receipts, cursor };
 }
 
 /** The English `error` of a refusal body, or null. */

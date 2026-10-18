@@ -126,10 +126,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 139 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 140 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([79, 35, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([79, 36, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the 4 hold socket tests, the 4 walky mode and socket tests, the 30
     // durable example tests and the 36 durable socket tests; the comment names them all.
@@ -147,9 +147,9 @@ describe("the Windows check runs the flake's Bun", () => {
     for (const name of walkySkips) expect(script).toContain(name);
     expect(budget("Bridge")).toBe(posixOnly.length + 1 + holdSocket.length + walkySkips.length + 30 + 36);
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
-    // 18 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
+    // 19 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
     const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
-    expect(walkySocketTests).toHaveLength(18);
+    expect(walkySocketTests).toHaveLength(19);
     expect(budget("Cli")).toBe(2 + 12 + 3 + walkySocketTests.length);
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");

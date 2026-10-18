@@ -11,7 +11,8 @@ import { CrewRegistry } from "./registry.ts";
 
 // Walky talky's half of the crew wire (CREW_PROTOCOL.md §21): the lead's message to a member is a
 // forwardable write on `pane/<id>/walky`, and a member's report rides its `/crew/v1/snapshot` answer
-// as the additive-optional sibling `walky: { receipts }`. Absent or malformed is "nothing to report".
+// as the additive-optional sibling `walky: { receipts, cursor }`. Absent or malformed is "nothing to
+// report". The lead acks the cursor on its next dial of that member (`X-Crew-Walky-Ack`, 2026-10-18).
 
 const NOW = 1_754_000_000_000;
 
@@ -39,8 +40,10 @@ describe("the lead's message to a member is a forwarded WRITE on `pane/<id>/walk
 });
 
 describe("the sweep hands a member's walky report to the lead", () => {
-  function sweepWith(answer: PeerOutcome<unknown>) {
-    const seen: { memberId: string; receipts: readonly WalkyReceipt[] }[] = [];
+  function sweepWith(answer: PeerOutcome<unknown>, acks: Record<string, string> = {}) {
+    const seen: { memberId: string; receipts: readonly WalkyReceipt[]; cursor: string | null }[] = [];
+    const dialled: (string | null | undefined)[] = [];
+    const swept: (readonly string[])[] = [];
     const l = new CrewLead({
       log: () => {},
       registry: new CrewRegistry({
@@ -48,22 +51,38 @@ describe("the sweep hands a member's walky report to the lead", () => {
         self: "desk",
         members: () => [member({ memberId: "laptop" })],
       }),
-      snapshot: async () => answer,
+      snapshot: async (_link, _view, _fresh, follow) => {
+        dialled.push(follow?.walkyAck);
+        return answer;
+      },
       proxy: neverProxy,
       self: { id: "desk", name: "desk" },
       maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
-      onWalkyReceipts: (memberId, receipts) => seen.push({ memberId, receipts }),
+      onWalkyReceipts: (memberId, receipts, cursor) => seen.push({ memberId, receipts, cursor }),
+      walkyAck: (memberId) => acks[memberId] ?? null,
+      onWalkySwept: (memberIds) => swept.push(memberIds),
     });
-    return { l, seen };
+    return { l, seen, dialled, swept };
   }
 
   const ok = (value: JsonValue): PeerOutcome<unknown> => ({ ok: true, value, status: 200, member: null, receivedAt: NOW, date: null });
 
-  test("a carried report reaches the lead, its bad entries dropped", async () => {
-    const { l, seen } = sweepWith(ok({ ...body, walky: { receipts: [{ ...receipt }, { id: "nope" }] } }));
+  test("a carried report reaches the lead with its cursor, its bad entries dropped", async () => {
+    const { l, seen } = sweepWith(ok({ ...body, walky: { receipts: [{ ...receipt }, { id: "nope" }], cursor: "0a1b2c3d.3" } }));
     await l.sweep();
-    expect(seen).toEqual([{ memberId: "laptop", receipts: [receipt] }]);
+    expect(seen).toEqual([{ memberId: "laptop", receipts: [receipt], cursor: "0a1b2c3d.3" }]);
+  });
+
+  test("each dial carries the cursor the lead owes that member, and the members that answered are handed on", async () => {
+    const { l, dialled, swept } = sweepWith(ok(body), { laptop: "0a1b2c3d.3" });
+    await l.sweep();
+    expect(dialled).toEqual(["0a1b2c3d.3"]);
+    expect(swept).toEqual([["laptop"]]);
+    const down = sweepWith({ ok: false, state: "unreachable", reason: "down", receivedAt: NOW });
+    await down.l.sweep();
+    expect(down.dialled).toEqual([null]);
+    expect(down.swept).toEqual([[]]);
   });
 
   test("an older member, an empty report, a malformed one and a failed dial call nothing", async () => {

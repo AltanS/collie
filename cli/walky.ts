@@ -290,8 +290,9 @@ async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string |
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const until = now() + SEND_WAIT_MS;
-  // A receipt whose outcome only the lead learns stays `accepted` here: waiting on it would only wait.
-  while (receipts.some((receipt) => receipt.state === "accepted" && !elsewhere.has(receipt.target)) && now() < until) {
+  // A receipt for another machine waits the same way: on a member, the lead pushes its outcome back
+  // (CREW_PROTOCOL §21). Past the bound it prints as queued, with where to look later.
+  while (receipts.some((receipt) => receipt.state === "accepted") && now() < until) {
     await sleep(SEND_POLL_MS);
     const status = await request(deps, { op: "status", id }, answer.path);
     if (!status.ok) break;

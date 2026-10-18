@@ -47,8 +47,9 @@ export interface WalkyServiceDeps extends DelivererDeps {
   readonly remoteTargets?: () => readonly WalkyTarget[];
   /**
    * True on a crew member that is not the lead. Such a bridge hands a message for another machine to
-   * its lead and never learns how it ended there: the lead keeps that outcome (CREW_PROTOCOL §21).
-   * `status` then names those targets, and `who` says the other machines are the lead's to list.
+   * its lead, and learns how it ended there only when the lead pushes the outcome back (CREW_PROTOCOL
+   * §21). Until then `status` names those targets, and `who` says the other machines are the lead's
+   * to list.
    */
   readonly outcomesOnLead?: boolean;
   /** On a member: its lead's member id, named in the `who` note. */
@@ -68,7 +69,8 @@ export interface WalkyStatus {
   readonly message: WalkyMessage | null;
   /**
    * The targets among `receipts` that are still `accepted` on another machine, on a member whose lead
-   * keeps their outcome ({@link WalkyServiceDeps.outcomesOnLead}). Empty everywhere else.
+   * holds their outcome until it pushes it back ({@link WalkyServiceDeps.outcomesOnLead}). Empty
+   * everywhere else.
    */
   readonly elsewhere: string[];
 }

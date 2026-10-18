@@ -188,7 +188,7 @@ export interface CrewLeadDeps {
     link: CrewLink,
     view: SnapshotView,
     freshPreflight?: boolean,
-    follow?: { readonly leadRelease?: string | null; readonly turn?: string | null },
+    follow?: { readonly leadRelease?: string | null; readonly turn?: string | null; readonly walkyAck?: string | null },
   ) => Promise<PeerOutcome<unknown>>;
   /**
    * §20's half of the sweep (M16/04): what this lead may state about ITSELF, and the queue that
@@ -239,11 +239,22 @@ export interface CrewLeadDeps {
   readonly onMachineStats?: (memberId: string, sample: MachineSample, at: number) => void;
   /**
    * A member's walky talky report, read off the answer this sweep just parsed (CREW_PROTOCOL §21):
-   * the receipts it wrote since its last answer for messages from elsewhere. Called only when the
-   * answer carried at least one, so a member with nothing to say costs nothing. The receiver decides
-   * which of them it believes (`bridge/walky/crew.ts` → `mergeReport`).
+   * the receipts it holds for messages from elsewhere that this lead has not acked, and the report's
+   * cursor (null from a member before the ack). Called only when the answer carried at least one
+   * receipt, so a member with nothing to say costs nothing. The receiver decides which of them it
+   * believes (`bridge/walky/crew.ts` → `mergeReport`) and keeps the cursor for {@link walkyAck}.
    */
-  readonly onWalkyReceipts?: (memberId: string, receipts: readonly WalkyReceipt[]) => void;
+  readonly onWalkyReceipts?: (memberId: string, receipts: readonly WalkyReceipt[], cursor: string | null) => void;
+  /**
+   * The cursor this lead acks on its next snapshot dial of a member (§21, added 2026-10-18): sent
+   * as `X-Crew-Walky-Ack`, read per dial. Absent, or null: no header, and the member keeps its report.
+   */
+  readonly walkyAck?: (memberId: string) => string | null;
+  /**
+   * The members whose snapshot answered on this sweep, after their answers are banked (§21, added
+   * 2026-10-18): walky talky pushes a member's outcomes again from here. Never awaited.
+   */
+  readonly onWalkySwept?: (memberIds: readonly string[]) => void;
   /**
    * A member answered §18.10's named `lead_conflict`: **it follows somebody else now.**
    *
@@ -536,6 +547,7 @@ export class CrewLead {
         this.deps.snapshot(link, SWEEP_VIEW, opts.freshPreflight === true || this.verdictMissing(link.memberId, follow), {
           leadRelease,
           turn: follow?.turns.turnFor(link.memberId) ?? null,
+          walkyAck: this.deps.walkyAck?.(link.memberId) ?? null,
         }),
       );
       // Every member whose answer survived the fence. The dropped ones are removed from `outcomes`
@@ -598,8 +610,8 @@ export class CrewLead {
           const load = this.deps.onMachineStats === undefined ? null : parsePeerMachineStats(outcome.value as JsonValue);
           if (load !== null) this.deps.onMachineStats?.(memberId, load, this.now());
           // §21: that member's walky report, off the same answer. SAFETY: the same cast and reason.
-          const walky = this.deps.onWalkyReceipts === undefined ? [] : readWalkyReport(outcome.value as JsonValue, WALKY_REPORT_FIELD);
-          if (walky.length > 0) this.deps.onWalkyReceipts?.(memberId, walky);
+          const walky = this.deps.onWalkyReceipts === undefined ? null : readWalkyReport(outcome.value as JsonValue, WALKY_REPORT_FIELD);
+          if (walky !== null && walky.receipts.length > 0) this.deps.onWalkyReceipts?.(memberId, walky.receipts, walky.cursor);
         }
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());
@@ -616,6 +628,8 @@ export class CrewLead {
           this.deps.onPeerSnapshot?.(memberId, next.body);
         }
       }
+      // §21: every member that answered may take its walky outcomes now. Handed over, never awaited.
+      this.deps.onWalkySwept?.(folded.filter((link) => outcomes.get(link.memberId)?.ok === true).map((link) => link.memberId));
       // §20's fold, after every member's answer is banked: who is behind, who is moving, who fell
       // back, and who has now missed three sweeps. A turn RELEASED here earns an immediate re-sweep
       // — the third of the three triggers — so the next member starts within one sweep of its turn
