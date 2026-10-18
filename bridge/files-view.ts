@@ -54,7 +54,7 @@
 // Pure where it can be (the path grammar, the order, the decoding); the disk half takes its file
 // calls through {@link FilesFs}, so a test can stand one in.
 
-import type { Dirent } from "node:fs";
+import { constants, type Dirent } from "node:fs";
 import { lstat, open, opendir, readlink, stat } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
@@ -62,7 +62,7 @@ import { isStateSecretName } from "./acl-policy.ts";
 import { discoverRepos, gitBinary, looksBinary, MAX_FILE_READ_BYTES, runGit } from "./changes.ts";
 import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
 import { HOST, type Host, isInside, splitPath } from "./host.ts";
-import { containedRealpath, OPEN_FLAGS, realpathOf } from "./journal/files.ts";
+import { containedRealpath, realpathOf } from "./journal/files.ts";
 import type { FileEntry, FileReadAnswer, FilesListing } from "./types.ts";
 
 // ── Limits ──────────────────────────────────────────────────────────────────────────────────────
@@ -213,6 +213,9 @@ export interface FilesFs {
   /** The real path containment, `containedRealpath` in production. */
   contained(candidate: string, root: string, host: Host): Promise<string | null>;
 }
+
+/** O_NOFOLLOW and O_NONBLOCK exist on POSIX only; Windows reads them as 0 (no flag). */
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 /**
  * The kernel's name for an open descriptor, on Linux, or null. `/proc/self/fd/<fd>` is a link the

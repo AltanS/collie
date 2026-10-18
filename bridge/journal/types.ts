@@ -208,27 +208,6 @@ export interface DiscoverHints {
   processes?: readonly ForegroundProcess[];
 }
 
-/** One process as the OS describes it at the moment of asking. */
-export interface ProcessIdentity {
-  /** Changes when the pid is reused, so two equal tokens name one process. */
-  readonly token: string;
-  /** When the process started, in epoch milliseconds. */
-  readonly startedAt: number;
-  /** When the probe looked, in epoch milliseconds, on the caller's clock. */
-  readonly observedAt: number;
-  /** The process's argv as the OS reports it now. */
-  readonly argv: readonly string[];
-}
-
-/**
- * What a `discover` asks the OS about a pid from {@link ForegroundProcess}: the multiplexer's list is
- * a past look, and this says what runs under that pid now. Null means "cannot say", which counts as
- * no owner.
- */
-export interface ProcessIdentityProbe {
-  identify(pid: number): Promise<ProcessIdentity | null>;
-}
-
 /**
  * One harness's journal support: how to find its log, and how to read its grammar.
  *

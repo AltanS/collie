@@ -164,7 +164,7 @@ cat ~/.kiro/sessions/*/*/.lock
 ```
 
 Herdr names no session for a Kiro pane, so Collie finds it by the lock the running Kiro holds. That
-works only on Linux, and only when exactly one Kiro process runs in the pane's foreground. Otherwise History says the pane has no agent session.
+works only on Herdr, the one multiplexer that lists a pane's foreground processes, and only when exactly one Kiro process runs there. Otherwise History says the pane has no agent session.
 
 Collie reads Kiro V3 sessions, started with `--v3` or `--agent-engine v3`, or with V3 set as the
 engine in Kiro's own settings, so start Kiro again that way in that pane. Kiro has no Herdr hook to

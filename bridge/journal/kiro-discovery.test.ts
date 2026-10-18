@@ -1,29 +1,18 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
-import { procProcessIdentity } from "../proc-identity.ts";
-import { createKiroDiscovery } from "./kiro-discovery.ts";
-import { KIRO_BUCKET, kiroSandbox, NO_PROCESS_IDENTITY, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./kiro-fixtures.ts";
+import { KIRO_BUCKET, kiroSandbox, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./kiro-fixtures.ts";
 import { kiroJournal } from "./kiro.ts";
-import type { DiscoverHints, ForegroundProcess, JournalAdapter, ProcessIdentity, ProcessIdentityProbe, TranscriptSource } from "./types.ts";
+import type { DiscoverHints, ForegroundProcess, JournalAdapter } from "./types.ts";
 
 const NOW = Date.parse("2026-10-01T12:00:00.000Z");
-const START = NOW - 60_000;
 const BUCKET = KIRO_BUCKET;
 const PID = 6867;
 const ID = "sess_current";
 const OTHER = "sess_other";
 
 const TUI_ARGV = ["/home/operator/.local/share/kiro-cli/bun", "--no-env-file", "--config=/home/operator/.local/share/kiro-cli/bunfig.toml", "/home/operator/.local/share/kiro-cli/tui.js", "chat"];
-
-/** The OS answer for a live Kiro TUI that started a minute before NOW. */
-function tuiProcess(pid: number, token = `${pid}:start`): ProcessIdentity {
-  return { token, startedAt: START, observedAt: NOW, argv: TUI_ARGV };
-}
-
-const probe: ProcessIdentityProbe = { identify: (pid) => Promise.resolve(tuiProcess(pid)) };
 
 function foreground(pid = PID, extra: readonly string[] = []): ForegroundProcess {
   return { pid, argv: [...TUI_ARGV, ...extra] };
@@ -40,9 +29,9 @@ async function session(root: string, id = ID, pid = PID, bucket = BUCKET): Promi
   return dir;
 }
 
-/** The registered Kiro adapter's own discovery, over the same tree its source resolves through. */
-function discover(roots: readonly string[], processes = probe): NonNullable<JournalAdapter["discover"]> {
-  const found = kiroJournal(roots, processes).discover;
+/** The registered Kiro adapter's own discovery, over the roots its source resolves through. */
+function discover(roots: readonly string[]): NonNullable<JournalAdapter["discover"]> {
+  const found = kiroJournal(roots).discover;
   if (found === undefined) throw new Error("Kiro discovers its own sessions");
   return found;
 }
@@ -75,12 +64,13 @@ describe("Kiro V3 process-owned discovery", () => {
     expect(result).toBeNull();
   });
 
-  test.each([0, -1, 1.5, NaN, Infinity, 4194305])("invalid foreground PID %s is refused before process inspection", async (pid) => {
-    // Given: an untrusted PID and an inspector that must not be reached.
-    const refusing: ProcessIdentityProbe = { identify: () => Promise.reject(new Error("must not inspect")) };
+  test.each([0, -1, 1.5, NaN, Infinity, 4194305])("invalid foreground PID %s is refused", async (pid) => {
+    // Given: a session locked by a valid pid, and a hint naming an invalid one.
+    const root = await kiroSandbox();
+    await session(root);
     // When: discovery receives the process hint.
-    const result = await discover([], refusing)("/shared", hints(pid));
-    // Then: no path to a user-shaped process identifier is opened.
+    const result = await discover([root])("/shared", hints(pid));
+    // Then: no session is chosen.
     expect(result).toBeNull();
   });
 
@@ -174,34 +164,10 @@ describe("Kiro V3 process-owned discovery", () => {
     expect(result).toBeNull();
   });
 
-  test("a dead process cannot authorize an otherwise valid lock", async () => {
-    // Given: the session owner has exited since the foreground snapshot.
-    const root = await kiroSandbox();
-    await session(root);
-    // When: the stale pane asks for its history.
-    const result = await discover([root], NO_PROCESS_IDENTITY)("/shared", hints());
-    // Then: the lock alone cannot establish a live association.
-    expect(result).toBeNull();
-  });
-
-  test.each([START - 3000, NOW + 3000])("lock timestamp outside the process lifetime refuses: %s", async (stamp) => {
-    // Given: a reused PID's old lock, or a future timestamp.
-    const root = await kiroSandbox();
-    const dir = await session(root);
-    await writeKiroLock(dir, PID, stamp);
-    // When: a live foreground process now has that PID.
-    const result = await discover([root])("/shared", hints());
-    // Then: its lifetime cannot support this lock acquisition.
-    expect(result).toBeNull();
-  });
-
   test.each<{ payload: JsonValue }>([
-    null, [], {}, { pid: PID }, { pid: String(PID), started_at: new Date(NOW).toISOString() },
-    { pid: 0, started_at: new Date(NOW).toISOString() }, { pid: PID, started_at: "yesterday" },
-    { pid: PID, started_at: "2026-02-30T12:00:00.000Z" }, { pid: PID, started_at: 123 },
-    { pid: PID, startedAt: new Date(NOW).toISOString() },
-  ].map((payload) => ({ payload })))("malformed lock schema refuses: %j", async ({ payload }) => {
-    // Given: a lock without the writer's exact schema.
+    null, [], {}, { pid: String(PID) }, { pid: 0 }, { pid: PID + 0.5 }, { started_at: new Date(NOW).toISOString() },
+  ].map((payload) => ({ payload })))("a lock without a valid pid refuses: %j", async ({ payload }) => {
+    // Given: a lock that names no usable pid.
     const root = await kiroSandbox();
     const dir = await session(root);
     await writeFile(join(dir, ".lock"), JSON.stringify(payload));
@@ -273,38 +239,11 @@ describe("Kiro V3 process-owned discovery", () => {
     const otherRoot = await kiroSandbox();
     await session(root, ID, PID + 1);
     await session(otherRoot);
-    const journal = kiroJournal([root, otherRoot], probe);
+    const journal = kiroJournal([root, otherRoot]);
     expect(await journal.source.resolve({ kind: "id", value: ID })).toBe(join(root, BUCKET, ID, "messages.jsonl"));
     // When: the foreground owner points at the other copy.
     const result = await journal.discover?.("/shared", hints());
     // Then: a source cache cannot override the location established by the live lock.
-    expect(result).toBeNull();
-  });
-
-  test("a lock removed while source validation runs loses authority", async () => {
-    // Given: normal source validation with a session switch during the await.
-    const root = await kiroSandbox();
-    const dir = await session(root);
-    const real = kiroJournal([root], NO_PROCESS_IDENTITY).source;
-    const source: TranscriptSource = {
-      resolve: async (ref) => { const result = await real.resolve(ref); await rm(join(dir, ".lock")); return result; },
-      stat: (path) => real.stat(path), load: (path) => real.load(path), readSince: (path, cursor) => real.readSince(path, cursor),
-    };
-    // When: discovery finishes its final lock recheck.
-    const result = await createKiroDiscovery([root], source, probe)("/shared", hints());
-    // Then: the historical match is not cached as current authority.
-    expect(result).toBeNull();
-  });
-
-  test("process reuse while scanning invalidates the result", async () => {
-    // Given: the process start identity changes between the two OS inspections.
-    const root = await kiroSandbox();
-    await session(root);
-    let calls = 0;
-    const reused: ProcessIdentityProbe = { identify: (pid) => Promise.resolve(tuiProcess(pid, String(++calls))) };
-    // When: the lock still names the same numeric PID.
-    const result = await discover([root], reused)("/shared", hints());
-    // Then: numeric equality does not hide a different process owner.
     expect(result).toBeNull();
   });
 
@@ -313,15 +252,10 @@ describe("Kiro V3 process-owned discovery", () => {
     const root = await kiroSandbox();
     await session(root);
     for (let i = 0; i < 8193; i++) await writeFile(join(root, BUCKET, `noise-${i}`), "");
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      // When: lookup considers the argv candidate first but cannot finish the ambiguity scan.
-      const result = await discover([root])("/shared", hints(PID, ["--resume-id", ID]));
-      // Then: a partial walk never pretends uniqueness.
-      expect(result).toBeNull();
-    } finally {
-      warn.mockRestore();
-    }
+    // When: lookup considers the argv candidate first but cannot finish the ambiguity scan.
+    const result = await discover([root])("/shared", hints(PID, ["--resume-id", ID]));
+    // Then: a partial scan never pretends uniqueness.
+    expect(result).toBeNull();
   });
 
   test("cached discovery never survives a changed session directory", async () => {
@@ -347,28 +281,6 @@ describe("Kiro V3 process-owned discovery", () => {
     // When: discovery sees the startup argument.
     const result = await discover([root])("/shared", hints(PID, ["--resume-id", ID]));
     // Then: args alone cannot identify the active session after a switch.
-    expect(result).toBeNull();
-  });
-
-  test("a pid whose current argv is not the Kiro TUI's refuses", async () => {
-    // Given: the pane's last snapshot showed Kiro, but the pid now runs something else.
-    const root = await kiroSandbox();
-    await session(root);
-    const reused: ProcessIdentityProbe = { identify: (pid) => Promise.resolve({ ...tuiProcess(pid), argv: ["bun", "/tmp/other.js"] }) };
-    // When: discovery asks the OS about the pid.
-    const result = await discover([root], reused)("/shared", hints());
-    // Then: the OS's current argv, not the stale hint, decides.
-    expect(result).toBeNull();
-  });
-
-  test("the shipped /proc probe rejects a forged Kiro hint for this unrelated test process", async () => {
-    // Given: this test runner is live and owns a lock, but is not a Kiro TUI.
-    const root = await kiroSandbox();
-    await session(root, ID, process.pid);
-    const real = procProcessIdentity(HOST, process.arch, () => Date.now());
-    // When: a misleading foreground hint claims it is Kiro.
-    const result = await discover([root], real)("/shared", hints(process.pid));
-    // Then: off Linux the probe answers nothing, and on Linux this process's own argv refuses.
     expect(result).toBeNull();
   });
 });

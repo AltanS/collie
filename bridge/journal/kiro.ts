@@ -12,14 +12,12 @@
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText } from "./cache-probe.ts";
-import { HOST } from "../host.ts";
-import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
 import { KiroTranscriptSource } from "./kiro-sessions.ts";
 import { createUnknownCounter, NO_CHANGE, noQueue, parseWith, reduction, rememberPending, type KnownTypes, type PendingTool, type Reduction, type RowReducer } from "./reduce.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
-import type { JournalAdapter, ProcessIdentityProbe, TranscriptEntry, TranscriptPart } from "./types.ts";
+import type { JournalAdapter, TranscriptEntry, TranscriptPart } from "./types.ts";
 
 /**
  * Row types kiro-cli 2.32.0 writes that carry nothing a reader shows: lifecycle and usage state,
@@ -188,23 +186,13 @@ export function parseKiroTranscript(log: string): TranscriptEntry[] {
   return parseWith(createKiroReducer(), log);
 }
 
-/**
- * Read-only Kiro V3 journal over the configured sessions roots, normally ~/.kiro/sessions.
- *
- * `processes` answers discovery's questions about a pane's foreground pid. It defaults to this
- * host's /proc probe (bridge/proc-identity.ts), as grok.ts defaults its own pid check; a test passes
- * a fake. Off Linux the probe answers nothing, so discovery finds nothing and only a session the pane
- * names resolves.
- */
-export function kiroJournal(
-  roots: string | readonly string[],
-  processes: ProcessIdentityProbe = procProcessIdentity(HOST, process.arch, () => Date.now()),
-): JournalAdapter {
+/** Read-only Kiro V3 journal over the configured sessions roots, normally ~/.kiro/sessions. */
+export function kiroJournal(roots: string | readonly string[]): JournalAdapter {
   const source = new KiroTranscriptSource(roots);
   return {
     agent: "kiro",
     source,
-    discover: createKiroDiscovery(source.roots, source, processes),
+    discover: createKiroDiscovery(source.roots, source),
     parse: parseKiroTranscript,
     reducer: createKiroReducer,
   };

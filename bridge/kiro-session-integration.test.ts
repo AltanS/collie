@@ -7,10 +7,9 @@ import { loadConfig } from "./config.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { kiroSandbox, readKiroFixture, removeKiroSandboxes, writeKiroLock, writeKiroSession } from "./journal/kiro-fixtures.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./journal/live.ts";
-import { kiroJournal } from "./journal/kiro.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
-import type { ProcessIdentityProbe, TranscriptEntry } from "./journal/types.ts";
+import type { TranscriptEntry } from "./journal/types.ts";
 import { declareCapabilities } from "./mux/capabilities.ts";
 import { muxGone, muxOk } from "./mux/types.ts";
 import { paneChat, paneHistory } from "./server.ts";
@@ -53,14 +52,9 @@ async function world(agents: AgentView[] = [pane("w1:p1", A), pane("w1:p2", B)])
   const aPath = await seed(A, PID_A, source);
   const bPath = await seed(B, PID_B, row("beta", { type: "user", source: "chat", content: "Only session B owns this prompt." }));
   const cfg = loadConfig({ HOME: base, COLLIE_STATE_DIR: join(base, "state"), COLLIE_HOST: "127.0.0.1" });
-  // Only the OS process probe is a fake. The registry, disk source, bounded lock scanner,
-  // reducer, stores and route functions below are the shipped code.
-  const probe: ProcessIdentityProbe = {
-    identify: (pid) => Promise.resolve([PID_A, PID_B].includes(pid)
-      ? { token: `${pid}:start`, startedAt: NOW - 60_000, observedAt: NOW, argv: ["bun", "/synthetic/kiro-cli/tui.js", "chat"] }
-      : null),
-  };
-  const journals = { ...buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }), kiro: kiroJournal([root], probe) };
+  // The registry, disk source, bounded lock scan, reducer, stores and route functions below are the
+  // shipped code; only the multiplexer is a stand-in.
+  const journals = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [root] });
   const adapter = adapterFor(journals, "kiro");
   if (adapter === undefined) throw new Error("Kiro must be registered");
   const partial: Partial<StateEngine> = {

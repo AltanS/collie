@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { appendFile, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createKiroReducer, kiroJournal, parseKiroTranscript } from "./kiro.ts";
-import { KIRO_BUCKET, KIRO_FIXTURES, kiroSandbox, NO_PROCESS_IDENTITY, readKiroFixture, removeKiroSandboxes, writeKiroSession } from "./kiro-fixtures.ts";
+import { KIRO_BUCKET, KIRO_FIXTURES, kiroSandbox, readKiroFixture, removeKiroSandboxes, writeKiroSession } from "./kiro-fixtures.ts";
 import { parseWith, unknownCount } from "./reduce.ts";
 import { MAX_RESULT_CHARS, MAX_TEXT_CHARS } from "./text.ts";
 import type { JsonObject } from "../json.ts";
@@ -40,9 +40,9 @@ function texts(entries: readonly TranscriptEntry[], role: TranscriptEntry["role"
 
 afterEach(removeKiroSandboxes);
 
-/** A Kiro journal over `roots` that cannot see processes, so only reported IDs resolve. */
+/** A Kiro journal over `roots`. */
 function journal(roots: readonly string[]): ReturnType<typeof kiroJournal> {
-  return kiroJournal(roots, NO_PROCESS_IDENTITY);
+  return kiroJournal(roots);
 }
 
 async function sourceFixture(content: string): Promise<{ source: TranscriptSource; path: string; root: string; base: string }> {
