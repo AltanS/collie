@@ -588,18 +588,20 @@
    rounded per channel as the plugin rounds them. The faded form is the open stretches other than
    the one opened last. Dark mixes 45% toward white, as the plugin does. Light mixes only 15% toward
    black: at the plugin's 45% the four hues sit so close to black body text that they barely read
-   as colour, and 15% keeps the clay hue near 4:1 on white where the raw hue is 3:1.
+   as colour. The light values then go darker than the plugin's mix on purpose: an open stretch's
+   added words are prose, so every light value, faded or not, holds 4.5:1 on the background and
+   card of every shipped theme (themes/stretch-contrast.test.ts measures it).
    A block of their own, outside the token block: that one is ADR 0106's closed list, and these
    hues are the plugin's, fixed under every theme. */
 :root {
   --stretch-1: light-dark(#805c1a, #ffdd77);
-  --stretch-1-faded: light-dark(#ad956a, #a6904d);
+  --stretch-1-faded: light-dark(#78684a, #a6904d);
   --stretch-2: light-dark(#7300d9, #d3bdff);
-  --stretch-2-faded: light-dark(#a459e6, #897ba6);
+  --stretch-2-faded: light-dark(#8a4bc1, #897ba6);
   --stretch-3: light-dark(#005757, #9ac5c0);
-  --stretch-3-faded: light-dark(#599292, #64807d);
-  --stretch-4: light-dark(#b7654a, #e9b4a3);
-  --stretch-4-faded: light-dark(#d09b89, #97756a);
+  --stretch-3-faded: light-dark(#457171, #64807d);
+  --stretch-4: light-dark(#91503b, #e9b4a3);
+  --stretch-4-faded: light-dark(#846257, #97756a);
 }
 
 /* Explicit pins. Class-based so theme-init.js can set them before first paint. */
