@@ -8,14 +8,19 @@ import { P, memGuard, readRun } from "./rig-lib";
 
 const WEB = resolve(import.meta.dirname, "..", "..");
 
-export default async function globalSetup(): Promise<void> {
+/** Name the run and bring one leg's rig up: `up` for the solo leg, `up --crew` for the crew leg (crew-setup.ts). */
+export async function startRun(crew: boolean): Promise<void> {
   if (!existsSync(join(WEB, "dist", "index.html"))) {
     throw new Error("no web/dist in this checkout: run `bun run build` in web/ first (the bridge serves that bundle)");
   }
-  memGuard("the rig");
+  memGuard(crew ? "the crew rig" : "the rig");
   const id = new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
   process.env.COLLIE_RIG_RUN_ID = id;
   mkdirSync(join(P.results, id), { recursive: true });
   if (readRun()?.ready === true && process.env.COLLIE_RIG_REUSE === "1") return;
-  execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "up"], { cwd: WEB, stdio: "inherit", timeout: 120_000 });
+  execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "up", ...(crew ? ["--crew"] : [])], { cwd: WEB, stdio: "inherit", timeout: crew ? 300_000 : 120_000 });
+}
+
+export default async function globalSetup(): Promise<void> {
+  await startRun(false);
 }

@@ -23,6 +23,8 @@ export default defineConfig({
   globalTeardown: "./global-teardown.ts",
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
+  // The crew leg's cases need a lead and a member, and run under crew.config.ts only.
+  testIgnore: /walky-crew\.spec\.ts$/,
   // One worker: one bridge, one Herdr, and the harnesses run one after another so a run stays cheap
   // and its memory stays bounded.
   workers: 1,

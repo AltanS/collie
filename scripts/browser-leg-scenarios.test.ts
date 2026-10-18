@@ -1,0 +1,38 @@
+// Pure-logic tests of web/e2e/rig/scenarios.ts: which case runs on which harness in which leg of the
+// browser leg. NO rig, no browser, no Playwright. It sits in scripts/ for the reason
+// browser-leg-nightly.test.ts does: `bun test ./scripts` runs it there.
+//
+// The nightly runner reads the solo leg's table and calls any "not reached" row a failed run, so a
+// crew case that leaked into the solo table would fail every night. These tests hold the split.
+import { describe, expect, test } from "bun:test";
+
+import { HARNESS_IDS, SCENARIOS, legOf, scenarioApplies, type Leg } from "../web/e2e/rig/scenarios";
+
+/** The (harness, case) cells one leg's table prints, in table order. */
+function cells(leg: Leg): string[] {
+  return HARNESS_IDS.flatMap((harness) => SCENARIOS.filter((scenario) => scenarioApplies(scenario, harness, leg)).map((scenario) => `${harness} ${scenario.id}`));
+}
+
+describe("the browser leg's cases per leg", () => {
+  test("the solo leg prints the twenty-two cells it printed before the crew leg", () => {
+    expect(cells("solo")).toHaveLength(22);
+    expect(cells("solo").every((cell) => !cell.includes("walky-crew"))).toBe(true);
+  });
+
+  test("the crew leg prints cases 12 to 14, once each, under Claude", () => {
+    expect(cells("crew")).toEqual(["claude walky-crew-broadcast", "claude walky-crew-agents", "claude walky-crew-unreachable"]);
+  });
+
+  test("no cell is in both legs, and every case is in one", () => {
+    const solo = new Set(cells("solo"));
+    expect(cells("crew").some((cell) => solo.has(cell))).toBe(false);
+    for (const scenario of SCENARIOS) expect(HARNESS_IDS.some((harness) => scenarioApplies(scenario, harness, legOf(scenario)))).toBe(true);
+  });
+
+  test("the leg defaults to solo, as the solo teardown calls it", () => {
+    const crewCase = SCENARIOS.find((scenario) => scenario.id === "walky-crew-broadcast")!;
+    const soloCase = SCENARIOS.find((scenario) => scenario.id === "walky")!;
+    expect(scenarioApplies(crewCase, "claude")).toBe(false);
+    expect(scenarioApplies(soloCase, "claude")).toBe(true);
+  });
+});

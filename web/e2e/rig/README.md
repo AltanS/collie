@@ -13,8 +13,9 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All twenty-two cases (three harnesses with five
-  cases each, and seven walky talky cases) pass on the first tap. A case that fails, or is not reached, holds the tag.
+- **Before every release tag**, on the release head. All twenty-five cases pass on the first tap:
+  twenty-two on the solo leg (three harnesses with five cases each, and seven walky talky cases) and
+  three on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
@@ -74,7 +75,8 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11) run on the harnesses the last column names.
+Each harness runs the same five cases. The walky talky cases (6 to 14) run on the harnesses the last column names.
+Cases 12 to 14 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
 | --- | --- | --- | --- |
@@ -89,14 +91,69 @@ Each harness runs the same five cases. The walky talky cases (6 to 11) run on th
 | 9 | A message the pane cannot take: over an open permission card nothing is typed into the dialog (the Send Protocol holds the message and types it after the answer); over a draft the receipt is `inbox-only` with a reason, the draft is untouched, and the agent's `collie walky inbox` lists the message | claude | `walky.spec.ts` |
 | 10 | A broadcast (`to: all`): one receipt per agent pane, each typed and answered, the shell pane skipped | claude | `walky.spec.ts` |
 | 11 | A forged header: a prompt that opens like an operator message and one that opens like an agent's nudge, both with an id the log lacks, stay plain turns with the "no log record" mark and draw no card | claude | `walky.spec.ts` |
+| 12 | Crew leg. "Message all agents" on the lead's Crew page: the sheet counts 2 agents on 2 machines, Send asks "Message 2 agents on 2 machines?", and Send there posts. Both panes get the header and body, the lead's `collie walky status` shows both receipts `delivered` (the member's through its sweep report), the member's pane opened on the phone through the lead (`?h=`) shows the header line, and both agents answer | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 13 | Crew leg. Claude on the lead runs `collie walky who` and sends to pi's address as `who` printed it. pi's pane gets the one-line nudge, `collie walky inbox <id>` shows the body, pi answers with `collie walky reply`, and Claude's pane shows the reply nudge. The lead's `collie walky status <id>` says `delivered` within 60 s | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 14 | Crew leg. The member's bridge stops: the lead's Crew page names it unreachable, the sheet counts 1 agent on 1 machine, the bridge takes the message for the lead's pane only and answers `rig-member/all` with a refused receipt ("host rig-member is unreachable"), which the sheet draws as a "not sent" row. The member then starts again and is reachable before the case ends | claude (lead) | `walky-crew.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
-runs on (`scenarioApplies` in `leg.ts`). Case 10 posts the request the Crew page's "Message all agents"
-sheet posts, because that page needs a crew and the rig's bridge is solo. Cases 8 and 9 use the
+runs on, and only for the cases of its own leg (`scenarioApplies` in `scenarios.ts`). Case 10 posts
+the request the Crew page's "Message all agents" sheet posts, to prove the fan-out on the solo rig;
+the sheet itself, tapped on the Crew page, is proved on the crew leg (case 12). Cases 8 and 9 use the
 `collie walky` verbs inside the agent: each harness starts with a `collie` first on PATH that runs this
 checkout's CLI (`harnesses.ts`), and with the walky talky skill in its scratch config. Claude's scratch
 settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
+
+## The crew leg
+
+A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14)
+against two machines on this one host:
+
+- **The lead** is the solo rig: Herdr session `collie-rig`, its attached client, and a bridge on a
+  free port in 18700-18799, with the phone paired to it.
+- **The member** is a second Herdr server, session `collie-rig-member`, with its own short XDG home
+  (`$XDG_RUNTIME_DIR/collie-rig-<8 hex>`, hashed from `<state root>/member`, so it is never the
+  lead's), its own attached client, and a second bridge on the next free port. Its state, config,
+  HOME and harness folders sit under `<state root>/rig/member/` and `<state root>/harness/member/`.
+- **The enrolment** runs the real verbs as functions, the way `integration/crew-harness.test.ts`
+  does (`crew-enrol.ts`): `cmdCrewInvite` on the lead, `cmdJoin` on the member with `--insecure
+  --address 127.0.0.1:<member port>`, then a restart of the lead. Every restart is the rig's own:
+  kill the recorded pid, start the bridge again with the same dirs and port. The member comes back in
+  peer mode, with a pinned TLS listener, so the rig reads it only through the lead (`?host=`).
+
+The crew leg has its own state root, `~/.cache/collie-lab/browser-leg-crew-state`, so it never shares
+a rig folder, a Herdr home, a port or a ledger row with the solo leg, and both can run at once.
+
+```sh
+cd web && COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/crew.config.ts
+```
+
+A harness runs on either machine with that machine's own `collie` shim and skill: the shim sets
+`COLLIE_STATE_DIR` to its machine's state dir, so an agent on the member asks the member's bridge.
+Claude runs on the lead and pi on the member. Case 14 waits on the lead's own sweep: the sweep rides
+the lead's poll (`bridge/crew/lead.ts`, CREW_PROTOCOL §10.1), the next dial is refused, and one
+failed call makes the member `unreachable` (`registry.ts` `record`). The idle poll is 12 s, so the
+case allows 90 s. It took 5 to 8 s in the runs of 2026-10-18.
+
+**Cost of one run.** About 1 minute, 4 Claude Haiku turns (the broadcast, the send to pi, the reply
+nudge, the broadcast with the member down) and 2 pi turns on OpenRouter Haiku 4.5 (the broadcast and
+the nudge). Memory: two Herdr servers, two bridges and a browser, under the same 8 GB guard.
+
+**By hand.** Add `--crew` to any command, or the command reaches the solo rig:
+
+```sh
+bun e2e/rig/rig.ts up --crew                       # lead + member, enrolled, phone paired
+bun e2e/rig/rig.ts status --crew                   # both machines' pids and ports
+bun e2e/rig/rig.ts start pi --on member --crew     # a harness on the member (or --on lead)
+bun e2e/rig/rig.ts read <pane> 60 --on member --crew
+bun e2e/rig/rig.ts crew stop-member                # stop the member's bridge by its recorded pid
+bun e2e/rig/rig.ts crew start-member               # start it again, same dirs and port
+bun e2e/rig/rig.ts down --crew
+```
+
+`crew stop-member` and `crew start-member` signal the rig's daemon, which owns every process and is
+the one writer of `rig.json`. The member's Herdr and its agents keep running, as on a machine whose
+Collie stopped.
 
 ## Prerequisites
 
@@ -121,7 +178,8 @@ tap with the bridge's receipt, `table.md` holds the table, and the phone screens
 captures sit beside them.
 
 By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
-After a crash, `bun e2e/rig/rig.ts down` stops what the rig started.
+After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
+"The crew leg" below.
 
 Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
 Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
@@ -174,8 +232,10 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 - The operator's Herdr server and its panes. Every `herdr` call runs with the rig's own
   `XDG_CONFIG_HOME` and drops every inherited `HERDR_*` name (`rig-lib.ts`).
 - Any Collie lane, port 8787-8799, 5198, 5199, or a `collie*.service` unit. The bridge listens on
-  127.0.0.1:18700-18799 with its own HOME, state and config.
-- Any `collie` CLI verb. The rig pairs with the bridge's own pairing module.
+  127.0.0.1:18700-18799 with its own HOME, state and config. The crew leg's two bridges do the same,
+  each with its own.
+- Any `collie` CLI verb. The rig pairs with the bridge's own pairing module, and the crew leg enrols
+  with the verbs' own functions, whose restart, `serve`, `exec` and push are the rig's stand-ins.
 - The operator's bridges, from inside a harness. Each harness starts with `COLLIE_STATE_DIR` set to
   the rig's state dir. So a `collie walky` that an agent runs in a rig pane reaches the rig's bridge
   first. Without it, the CLI looks for bridges in the hook target registry under the real home. The

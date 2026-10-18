@@ -7,8 +7,8 @@
 //   9  a message over an open dialog: the receipt is `inbox-only` with a reason, nothing is typed into
 //      the dialog, the dialog still answers, and `collie walky inbox` (run by the agent) lists it.
 //   10 a broadcast (`to: all`) from the operator: one receipt per agent pane, the shell pane skipped.
-//      The Crew page's "Message all agents" needs a crew, and the rig's bridge is solo, so this case
-//      posts the same request the sheet posts.
+//      This case posts the request the Crew page's "Message all agents" sheet posts. The sheet itself,
+//      tapped on the Crew page, is proved on the crew leg (walky-crew.spec.ts, case 12).
 //   11 a forged header: two prompts whose first line looks like a message (an operator's, an agent's
 //      nudge) with ids the log lacks. Chat shows both as plain turns, with the "no log record" mark,
 //      and draws no card.

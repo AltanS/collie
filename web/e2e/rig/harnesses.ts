@@ -30,10 +30,10 @@ import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
 import { BIN } from "./bins";
-import { P } from "./rig-lib";
+import { machineDirs, type Machine } from "./rig-lib";
+import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
-export type HarnessId = "claude" | "pi" | "omp";
-export const HARNESS_IDS: readonly HarnessId[] = ["claude", "pi", "omp"];
+export { HARNESS_IDS, type HarnessId };
 
 export interface HarnessSetup {
   readonly id: HarnessId;
@@ -87,9 +87,12 @@ export const SETUPS = {
   },
 } satisfies Readonly<Record<HarnessId, HarnessSetup>>;
 
-/** The folders of one harness under STATE_ROOT/harness/<id>/. */
-export function harnessDirs(id: HarnessId) {
-  const root = join(P.harness, id);
+/**
+ * The folders of one harness under STATE_ROOT/harness/<id>/, or STATE_ROOT/harness/member/<id>/ for
+ * a harness that runs on the crew rig's member: each machine's bridge reads its own harnesses' journals.
+ */
+export function harnessDirs(id: HarnessId, machine: Machine = "lead") {
+  const root = join(machineDirs(machine).harness, id);
   return {
     root,
     project: join(root, "project"),
@@ -127,12 +130,14 @@ const BLOCK_END = "<!-- collie:walky-talky v1 end -->";
 /**
  * A `collie` on PATH that runs this checkout's CLI. The rig's agents are started from a shell whose
  * `collie` is the installed release, which may predate the verb under test. The shim runs no verb by
- * itself; the agent's own `collie walky` reaches the rig's bridge through COLLIE_STATE_DIR.
+ * itself; the agent's own `collie walky` reaches its machine's bridge through COLLIE_STATE_DIR, which
+ * the shim sets to that machine's state dir (the lead's or the member's), so an agent on the member
+ * asks the member's bridge and never the lead's.
  */
-function writeCollieShim(root: string): string {
+function writeCollieShim(root: string, stateDir: string): string {
   const dir = join(root, "bin");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  writeFileSync(join(dir, "collie"), `#!/bin/sh\nexec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
+  writeFileSync(join(dir, "collie"), `#!/bin/sh\nCOLLIE_STATE_DIR=${sq(stateDir)}\nexport COLLIE_STATE_DIR\nexec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
   chmodSync(join(dir, "collie"), 0o700);
   return dir;
 }
@@ -161,16 +166,17 @@ export interface PreparedHarness {
 
 /**
  * Write the harness's scratch config and start script, and return the line to type into a fresh
- * shell pane. Each call starts a NEW session: the project folder stays, the agent's history of it
- * is the agent's own business.
+ * shell pane of `machine`'s Herdr. Each call starts a NEW session: the project folder stays, the
+ * agent's history of it is the agent's own business.
  */
-export function prepareHarness(id: HarnessId): PreparedHarness {
-  const d = harnessDirs(id);
+export function prepareHarness(id: HarnessId, machine: Machine = "lead"): PreparedHarness {
+  const d = harnessDirs(id, machine);
+  const stateDir = machineDirs(machine).state;
   for (const dir of [d.root, d.project]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(d.project, "README.md"), "Scratch project of the Collie browser leg. Nothing here matters.\n");
   const env: string[] = [];
   let argv: string[];
-  const bin = writeCollieShim(d.root);
+  const bin = writeCollieShim(d.root, stateDir);
   if (id === "claude") {
     // The OAuth file without its refresh token, `.claude.json` with this project trusted, and an
     // empty MCP file. Throws (LabDeferred) when the access token has under 25 minutes left.
@@ -240,8 +246,8 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
   // `collie walky` inside a harness finds a bridge through its own state dir and the hook target
   // registry under the REAL home (cli/beacon.ts edgeStateDirs). The rig's bridge registers under its
   // own HOME (P.bridgeHome), so without this the CLI never reaches it, and it would ask the
-  // operator's live bridges instead. The rig's state dir is the one bridge a rig agent may talk to.
-  env.push(`COLLIE_STATE_DIR=${sq(P.state)}`);
+  // operator's live bridges instead. Its machine's state dir is the one bridge a rig agent may talk to.
+  env.push(`COLLIE_STATE_DIR=${sq(stateDir)}`);
   // The worktree's own `collie` first on PATH, so an agent's `collie walky` runs the build under test.
   const unset = UNSET.map((name) => `-u ${name}`).join(" ");
   const path = `export PATH=${sq(bin)}:"$PATH"\n`;
