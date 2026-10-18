@@ -335,7 +335,10 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
         const answer = await deps.post(memberId, segment, JSON.stringify({ message, attest }));
-        const scoped = scopedToMember(receiptsOfAnswer(message, target, answer, deps.self, now(), "older member"), memberId, target, deps.self);
+        const receipts = receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
+        // Only a 200 carries the member's own receipts; every other answer is this lead's word.
+        if (answer.kind !== "answer" || answer.status !== 200) return receipts;
+        const scoped = scopedToMember(receipts, memberId, target);
         return scoped.length > 0 ? scoped : [ownReceipt(message, target, "accepted", deps.self, now())];
       }),
     );
@@ -348,12 +351,11 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
  * wrote for one of them keeps its target. One it wrote for the message as a whole (a refusal names the
  * message's own `to`, which for a broadcast is `all`) stands for the leg the lead dialled, so it takes
  * that leg's target: without this, one member's `off` would overwrite the lead's own `all` line and
- * read as the whole broadcast refused. A receipt in another machine's name, or for a pane on another
- * machine, is dropped.
+ * read as the whole broadcast refused. A receipt in another machine's name (this lead's included), or
+ * for a pane on another machine, is dropped.
  */
-function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string, self: string): WalkyReceipt[] {
+function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string): WalkyReceipt[] {
   return receipts.flatMap((receipt) => {
-    if (receipt.by === self) return [receipt];
     if (receipt.by !== memberId) return [];
     const address = parseAddress(receipt.target);
     if (address?.kind === "pane") return address.memberId === memberId ? [receipt] : [];

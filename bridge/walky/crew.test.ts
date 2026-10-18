@@ -406,6 +406,8 @@ describe("a member's answer, as the lead believes it", () => {
         receipts: [
           { id: "wt_aaaaaaaaaaa1", target: "other/w2:p1", state: "delivered", verified: "lead", at: AT, by: "laptop" },
           { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered", verified: "lead", at: AT, by: "other" },
+          // In the lead's own name: it would count as a refusal this lead wrote.
+          { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "refused", reason: "constructor", verified: "lead", at: AT, by: "desk" },
         ],
       },
     }));
@@ -413,6 +415,7 @@ describe("a member's answer, as the lead believes it", () => {
     // Neither forged line is believed: the leg reads as dialled and not yet answered.
     expect(answer).toMatchObject({ ok: true, receipts: [{ target: "laptop/w1:p9", state: "accepted", by: "desk" }] });
     expect(lead.log.get("wt_aaaaaaaaaaa1", "other/w2:p1")).toBeNull();
+    expect(lead.service.refusals().counts).toEqual({});
   });
 });
 
