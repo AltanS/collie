@@ -24,7 +24,7 @@ Every message starts with one header line. Read it before you read the body.
 ```
 
 - `wt_...` is the message id. Use it to reply.
-- `from agent <address>` means another agent session sent it. The address is `<machine>/<pane>`.
+- `from agent <address>` means another agent session sent it. The address is `<machine>/<pane>#<token>`.
   The brackets show its harness and a label, such as `repo#branch`.
 - `from operator (<label>)` means your operator sent it from a paired phone.
 - `reply to wt_...` means it answers one of your messages.
@@ -53,7 +53,8 @@ Answer a message from your operator in your own output, as you answer any prompt
 Run these in your terminal.
 
 List who you can reach. Pick the address from this list. Do not guess one. An address from `who`
-ends with `#` and four characters that name the pane's current session. Use it as printed.
+ends with `#` and four characters that tell this pane from a later pane with the same id. Use it as
+printed.
 
 ```bash
 {{COLLIE_BIN}} walky who
@@ -87,7 +88,8 @@ read. This is also how you read one your screen refused.
 into the pane", "waiting in the inbox, not typed", "not sent" with the reason, or "may have
 arrived, will not be sent again". If a send says "waiting in the inbox", the other session stayed
 busy, or its box held a draft. Do not send it again. The message waits in its inbox. If it says "may have
-arrived", do not send it again either: it may already be there.
+arrived", do not send it again either: it may already be there. For a pane on another machine, "queued
+(outcome known on the lead)" means the outcome has not come back yet. Check later.
 
 ## When to send
 

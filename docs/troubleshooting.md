@@ -301,7 +301,8 @@ menu on the phone. Collie does not type the message again.
 **`collie walky send` says "not sent: pane replaced".** The address ends with a token, such as
 `#k3f9`, and the pane it named has closed. Another pane holds that pane id now, so Collie does not
 type the message there. Run `collie walky who` and send to the new address. A reply that gives
-"not sent: sender gone" has the same cause: the pane that sent the message has closed.
+"not sent: sender gone" has the same cause: the pane that sent the message has closed, or another
+pane holds its id now.
 
 **A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
 the screen text, and this machine's log holds no message with that id. Someone or something typed

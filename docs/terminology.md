@@ -139,7 +139,8 @@ one version today, version 1. It runs over a private socket or over https with a
 
 A short message from one agent session to another, or from you to a session. It works on any
 harness and across a crew, and every message has an id and a [receipt](#receipt). The command is
-`collie walky` ([Walky talky](walky-talky.md)).
+`collie walky` ([Walky talky](walky-talky.md)). Across a crew a message goes through the lead, and the
+lead tells the sender's machine how it ended.
 
 ## Nudge
 
@@ -154,9 +155,11 @@ The messages kept for one pane, on the machine that owns the pane. A message wai
 pane reads it with `collie walky inbox`. It lands there when Collie could not type it, too
 ([Reply, read and check](walky-talky.md#reply-read-and-check)).
 
-## Instance
+## Pane instance
 
-One session in one pane. A terminal gives a closed pane's id to the next pane, so Collie gives each
-pane a token of four characters too. A [walky talky](#walky-talky) address carries it after a `#`,
-for example `local/w6:p3#k3f9`, and reaches that session only. A new session in the same pane id is
-a new instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
+One pane as Collie follows it, from the first time Collie sees it until it has been gone for 30
+seconds. A terminal gives a closed pane's id to the next pane, so Collie gives each pane a token of
+four characters too. A [walky talky](#walky-talky) address carries it after a `#`, for example
+`local/w6:p3#k3f9`, and reaches that pane only. A new pane that takes the same pane id is a new
+pane instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
+It is not a Collie instance: that word means one running bridge ([Collie (an instance)](#collie-an-instance)).

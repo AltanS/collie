@@ -3516,7 +3516,7 @@ An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed 
 
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
 holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
-"other machines: ask the lead".
+"other machines: run `collie walky who` on the lead (<lead>), or use the phone".
 
 ### Pane instances (added 2026-10-18)
 

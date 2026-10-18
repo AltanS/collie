@@ -45,18 +45,21 @@ An address names one pane, one machine's panes, or every pane.
 
 | Address | Who receives it |
 | --- | --- |
-| `<member>/<pane>#<token>` | One pane, while the same session holds it. `who` prints this form, for example `local/w6:p3#k3f9` |
+| `<member>/<pane>#<token>` | One pane, while it stays open. `who` prints this form, for example `local/w6:p3#k3f9` |
 | `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
 | `<member>/all` | Every agent pane on that machine. From the phone only |
 | `all` | Every agent pane you can reach. From the phone only |
 
 A terminal gives a closed pane's id to the next pane: Herdr's `w6:p3`, tmux's `%7`, zellij's
-`terminal_3`. So Collie gives every pane a token, four characters after a `#`. A new pane gets a
-new token, even when it takes an old id. A send to a token whose pane closed is refused
-`pane replaced`, and never reaches the new pane. Run `collie walky who` again for the new address.
+`terminal_3`. So Collie gives every pane a token, four characters after a `#`. The token follows
+the pane: an agent that restarts in the same open pane keeps it. A pane that is gone for 30 seconds
+loses its token, so the next pane that takes its id gets a new one. A send to a token whose pane
+closed is refused `pane replaced`, and never reaches the new pane. Run `collie walky who` again for
+the new address.
 
 An address with no token still works. It means the pane that holds that id now, whatever it is.
-A receipt names the pane without the token, for example `local/w6:p3`.
+The `to` line of `send` shows the pane as `who` lists it. `status` and the receipt name the pane
+without the token, for example `local/w6:p3`.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do. An agent may
 message one pane at a time; only you may broadcast.
@@ -174,7 +177,8 @@ certificate with its own word for it, so the receiving machine checks the sender
   the lead with its crew updates, until the lead confirms it got it. The lead then sends the outcome
   on to the member that sent the message. So `send` on a member waits as it does for a local pane,
   up to 15 seconds, and prints "typed into the pane". `collie walky status <id>` on the member shows
-  the same. Under an older lead, a member still shows `queued (outcome known on the lead)`. Then run
+  the same. Until the outcome arrives, a member shows `queued (outcome known on the lead)`, and
+  `send` adds the `check later` line. Under an older lead it never arrives. Then run
   `collie walky status <id>` on the lead, or open the pane on the phone.
 - **A slow machine does not hold up a broadcast.** The lead gives each machine 8 seconds. A machine
   that takes longer shows `may have arrived, will not be sent again (member slow)`, and its next
@@ -205,7 +209,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | `accepted` | queued | Logged, not typed yet |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
 | `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 10 minutes` (a busy pane or an open dialog outlasted the hold), `draft present`, `box not free`, `pane busy`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
-| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, or walky talky off on that machine |
+| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 10 minutes, or the log lost the record. Collie never sends it again |
 
 The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
@@ -230,12 +234,14 @@ Each receipt state shows the words in the table above, with the reason after "no
 "waiting in the inbox, not typed".
 
 - **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. A message
-  from an agent has a "Reply" button. A pane of a member has no Messages row, only the lead's own
+  from an agent has a "Reply" button, and the reply keeps the token of the sender's address. A pane of a member has no Messages row, only the lead's own
   panes have one. An empty sheet says "No messages for this pane yet." A machine that cannot
   keep messages says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".
-  The text goes to this pane as a message from you. A line under the box shows "Message to" the pane
-  and the receipt state. While it says "queued", the line follows the receipt and changes to the
+  The text goes to this pane as a message from you. The phone adds the pane's token to the address,
+  so the text reaches the session you are looking at. If another pane has taken the id since, the
+  line shows `not sent: pane replaced` and nothing is typed. A pane from a machine older than tokens
+  gets the bare address. A line under the box shows "Message to" the pane and the receipt state. While it says "queued", the line follows the receipt and changes to the
   final word. Tap "Dismiss" to clear the line. A plain tap on Send still sends the text as before.
 - **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
@@ -360,10 +366,10 @@ CLI on that machine still sends. These are the limits that stay on:
 
 ## How it works
 
-A local socket and a log, with no token.
+A local socket and a log, with no password.
 
 The bridge listens on a local socket, `<stateDir>/walky/sock`, mode 0600. The CLI sends one request
-and reads one answer. It carries no token: only your own user can open the socket. The log lives in
+and reads one answer. It carries no password: only your own user can open the socket. The log lives in
 `<stateDir>/walky/`. It keeps 7 days and at most 2,000 lines, with up to 200 unread messages per pane.
 
 Each pane's token lives in `<stateDir>/walky/instances.json`, mode 0600. The bridge looks at its
@@ -373,10 +379,17 @@ bridge restart inside 30 seconds keeps the tokens; a reboot gives every pane a n
 belongs to the pane and its token, so a new session that takes an old pane id never reads the old
 messages.
 
+Across a crew, a message rides the crew link that already exists, through the lead. A member posts
+it to the lead. The lead posts it to the member that owns the pane. The lead then pushes each
+outcome back to the sender's machine, on `POST /crew/v1/walky/outcomes`. A member keeps the
+outcomes it reports in memory until the lead acks them, and drops them after 10 minutes. The routes
+are in [`CREW_PROTOCOL.md` §21](../CREW_PROTOCOL.md).
+
 > **Note.** An agent runs as your user, so it can open the socket and could claim another pane.
 > The receipt and the log protect the phone's card against a header typed on the screen. On a crew,
 > the signature protects a message between machines. Nothing protects you from a local agent that
-> lies about its own pane ([Security](security.md#walky-talky)).
+> lies about its own pane. A pane token tells panes apart and proves nothing: `who` prints it to
+> every agent ([Security](security.md#walky-talky)).
 
 On Windows walky talky is not available yet. The CLI prints
 `walky talky needs a Unix socket on this host`.

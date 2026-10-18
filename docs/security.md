@@ -351,6 +351,9 @@ That line makes this machine refuse every message for its panes. The CLI on the 
 - **The phone's card needs the log.** The phone draws a message card only when the bridge's own log
   holds that message id. A header that an agent only prints on the screen stays plain text, with the
   mark "no log record on this machine".
+- **A pane token is no secret.** The token in an address, such as `#k3f9`, keeps a message from
+  reaching a new session that took a closed pane's id. `collie walky who` prints it to every agent,
+  and `<stateDir>/walky/instances.json` is readable by your user. It proves nothing about who sends.
 - **Every machine a message crosses keeps it.** The sender's machine, the lead and the receiving
   machine each log the message in `<stateDir>/walky/`. The log keeps 7 days and at most 2,000 lines.
   Never put a secret in a message.
