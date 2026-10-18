@@ -18,9 +18,15 @@
 //      the message for one target, the lead's pane, and answers the member with a refused receipt
 //      (`rig-member/all`, "host rig-member is unreachable") that the sheet draws as a "not sent" row.
 //      Then the member starts again and is reachable before the end.
+//   15 the lead's release line is the crew's (M60 spec 01, ADR 0110): on the lead's Updates page the
+//      Release line reads Stable, a tap on Edge shows the receipt and the lead's line record says
+//      `edge` with no run started, the Crew page says the members follow Edge, and a tap on Stable
+//      puts it back. No model turn is spent. The member's own follow needs a published Edge tag
+//      behind a release mirror, which the rig does not serve (README.md, case 15).
 import "./crew-env";
 
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { Browser, Page } from "@playwright/test";
@@ -382,6 +388,65 @@ test.describe("walky talky across a crew", () => {
         }
       } finally {
         startMember();
+      }
+    });
+  });
+  test("15 crew: the lead's release line is the crew's; the switch installs nothing and the Crew page names it", async ({ browser, rig }) => {
+    await runScenario("claude", "crew-release-line", lead, async (_claudePane, trail) => {
+      const notes = trail.notes;
+      const lineOf = async (): Promise<string | null> => asJsonString(asJsonObject(await rig.get("/api/update/line"))?.line) ?? null;
+      const runOf = async (): Promise<string> => JSON.stringify(asJsonObject(await rig.get("/api/update/check"))?.run ?? null);
+      const before = await lineOf();
+      const runBefore = await runOf();
+      notes.push(`the lead's line before: ${before ?? "unreadable"}`);
+      const context = await phoneContext(browser, rig, PHONE);
+      try {
+        const page = await context.newPage();
+        const recorder = new TapRecorder(page);
+        await page.goto("/settings/updates");
+        const group = page.getByRole("radiogroup", { name: message("updates.line.title") });
+        await group.waitFor({ state: "visible", timeout: 20_000 });
+        const stableChecked = await group.getByRole("radio", { name: message("updates.line.stable"), exact: true }).isChecked();
+
+        trail.log.push(await tap(recorder, group.getByRole("radio", { name: message("updates.line.edge"), exact: true }), "Edge"));
+        const edgeReceipt = await page
+          .getByText(message("updates.line.receipt.edge"), { exact: true })
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        const edgeSaved = (await lineOf()) === "edge";
+        const nothingStarted = (await runOf()) === runBefore;
+        notes.push(`Edge: receipt ${edgeReceipt ? "shown" : "NOT shown"}, line record ${edgeSaved ? "edge" : "NOT edge"}, run record ${nothingStarted ? "unchanged" : "MOVED"}`);
+        trail.captures.push(await capture(page, "crew-15-edge"));
+
+        await page.goto("/crew");
+        const crewSays = await page
+          .getByText(message("crew.releaseLine.edge"), { exact: true })
+          .waitFor({ state: "visible", timeout: 20_000 })
+          .then(() => true)
+          .catch(() => false);
+        notes.push(`the Crew page ${crewSays ? "says the members follow Edge" : "does NOT name Edge"}`);
+
+        await page.goto("/settings/updates");
+        const again = page.getByRole("radiogroup", { name: message("updates.line.title") });
+        await again.waitFor({ state: "visible", timeout: 20_000 });
+        trail.log.push(await tap(recorder, again.getByRole("radio", { name: message("updates.line.stable"), exact: true }), "Stable"));
+        const stableReceipt = await page
+          .getByText(message("updates.line.receipt.stable"), { exact: true })
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        const stableSaved = (await lineOf()) === "stable";
+        notes.push(`Stable: receipt ${stableReceipt ? "shown" : "NOT shown"}, line record ${stableSaved ? "stable" : "NOT stable"}`);
+        const verdict =
+          before === "stable" && stableChecked && edgeReceipt && edgeSaved && nothingStarted && crewSays && stableReceipt && stableSaved && trail.log.every((l) => l.worked)
+            ? "pass"
+            : "fail";
+        return { verdict, taps: trail.log.length, minTaps: 2, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        await context.close();
+        // Never leave the rig's lead on Edge for the next case or the next night.
+        if ((await lineOf().catch(() => null)) !== "stable") await rig.post("/api/update/line", { line: "stable", requestId: randomUUID() });
       }
     });
   });

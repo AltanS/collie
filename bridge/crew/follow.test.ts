@@ -16,8 +16,12 @@ import {
   followDecision,
   followGuards,
   formatTurn,
+  formatLeadLine,
+  LEAD_LINE_HEADER,
   LEAD_RELEASE_HEADER,
+  leadLineHeader,
   leadReleaseHeader,
+  parseLeadLine,
   CrewFollower,
   parseTurn,
   TURN_MISSED_SWEEPS,
@@ -1571,5 +1575,161 @@ describe("counsel on the 1.12.0 fix: every crew run ends, and says why", () => {
     expect(turns.peerLegs()[0]).toMatchObject({ state: "unreachable", reason: CREW_RUN_TTL_REASON });
     expect(turns.current()).toBeNull();
     expect(journal.at(-1)).toBe("[crew] update c0ffee00: settled, 0 peer(s) done, 1 unreachable");
+  });
+});
+
+describe("the crew follows the lead on both lines (M60 spec 01, ADR 0110)", () => {
+  const member = (over: Partial<TurnMember> & { memberId: string }): TurnMember => ({
+    enrolledAt: 1,
+    version: "1.22.6",
+    verdict: "green",
+    answered: true,
+    run: null,
+    ...over,
+  });
+
+  test("X-Crew-Lead-Line: the line, and the step after a rollback or a switch", () => {
+    expect(LEAD_LINE_HEADER).toBe("X-Crew-Lead-Line");
+    expect(formatLeadLine({ line: "edge", step: null })).toBe("edge");
+    expect(formatLeadLine({ line: "stable", step: "rollback" })).toBe("stable;rollback");
+    expect(parseLeadLine("stable;switch")).toEqual({ line: "stable", step: "switch" });
+    expect(parseLeadLine("edge")).toEqual({ line: "edge", step: null });
+    for (const bad of [null, "", "nightly", "edge;upgrade", "stable;rollback;x"]) expect(parseLeadLine(bad)).toBeNull();
+  });
+
+  test("a lead states an Edge build, and names the step only where its rollback or switch landed", () => {
+    expect(leadReleaseHeader({ version: "1.23.0-edge.2", run: null })).toBe("1.23.0-edge.2");
+    expect(leadLineHeader({ version: "1.23.0-edge.2", run: null, line: "edge" })).toBe("edge");
+    const rolled = run({ state: "done", from: "v1.23.0-edge.2", to: "v1.23.0-edge.1", action: "rollback" });
+    expect(leadLineHeader({ version: "1.23.0-edge.1", run: rolled, line: "stable" })).toBe("stable;rollback");
+    const switched = run({ state: "done", from: "1.23.0-edge.2", to: "1.22.6", action: "switch" });
+    expect(leadLineHeader({ version: "1.22.6", run: switched, line: "stable" })).toBe("stable;switch");
+    // Mid-run, or a dev build: no release, so no line either.
+    expect(leadLineHeader({ version: "1.22.6", run: run({ state: "staging" }), line: "stable" })).toBeNull();
+    expect(leadLineHeader({ version: "1.4.1-dev+8d57cc8", run: null, line: "edge" })).toBeNull();
+  });
+
+  test("a member on Stable follows an Edge lead up, and takes its line", () => {
+    const d = followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.1", leadLine: "edge" }));
+    expect(d).toEqual({ kind: "follow", tag: "v1.23.0-edge.1", runId: RUN_ID, line: "edge" });
+  });
+
+  test("a member never takes an Edge build it rejected, whatever run asks (its own health gate failed it)", () => {
+    const d = followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.2", leadLine: "edge", rejected: ["1.23.0-edge.2"] }));
+    expect(d).toMatchObject({ kind: "refuse", reason: "build-rejected" });
+    // The next Edge build is a different build, and is taken.
+    expect(followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.3", leadLine: "edge", rejected: ["1.23.0-edge.2"] }))).toMatchObject({
+      kind: "follow",
+      tag: "v1.23.0-edge.3",
+    });
+  });
+
+  test("the follower reads the member's rejected builds on every sweep, and spawns nothing for one", async () => {
+    let rejected: readonly string[] = [];
+    const started: string[] = [];
+    const f = new CrewFollower({
+      installKind: "detached-checkout",
+      self: () => ({ version: "1.22.6", self: "attic" }),
+      run: () => null,
+      rejected: () => rejected,
+      preflight: () => Promise.resolve({ schema: 1, verdict: "green", checks: [] }),
+      start: (a) => {
+        started.push(a.tag);
+        return { ok: true };
+      },
+      now: () => NOW,
+      log: () => {},
+    });
+    rejected = ["1.23.0-edge.2"];
+    f.observe({ leadRelease: "1.23.0-edge.2", leadLine: "edge", turn: formatTurn("attic", RUN_ID) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toEqual([]);
+    expect(f.last()).toMatchObject({ kind: "refuse", reason: "build-rejected" });
+  });
+
+  test("a member on an Edge build follows an Edge lead to the next one", () => {
+    const d = followGuards(facts({ own: "1.23.0-edge.1", leadRelease: "1.23.0-edge.2", leadLine: "edge" }));
+    expect(d).toMatchObject({ kind: "follow", tag: "v1.23.0-edge.2" });
+  });
+
+  test("an Edge build from a lead that is not on Edge, or that sends no line, is not followed up", () => {
+    for (const leadLine of [null, "stable"]) {
+      const d = followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.1", leadLine }));
+      expect(d).toMatchObject({ kind: "refuse", reason: "lead-states-nothing" });
+    }
+  });
+
+  test("a member steps DOWN only for the lead's rollback or switch, and skips its hourly limit once", () => {
+    const recent = run({ state: "done", runId: "r-earlier", startedAt: NOW - 60_000, updatedAt: NOW - 30_000 });
+    const lower = { own: "1.23.0-edge.2", leadRelease: "1.23.0-edge.1", run: recent };
+    expect(followGuards(facts({ ...lower, leadLine: "edge" }))).toMatchObject({ kind: "refuse", reason: "not-higher" });
+    expect(followGuards(facts({ ...lower, leadLine: null }))).toMatchObject({ kind: "refuse", reason: "not-higher" });
+    expect(followGuards(facts({ ...lower, leadLine: "stable;rollback" }))).toEqual({
+      kind: "follow",
+      tag: "v1.23.0-edge.1",
+      runId: RUN_ID,
+      down: true,
+      line: "stable",
+      step: "rollback",
+    });
+    expect(
+      followGuards(facts({ own: "1.23.0-edge.2", leadRelease: "1.22.6", leadLine: "stable;switch", run: recent })),
+    ).toMatchObject({ kind: "follow", tag: "v1.22.6", down: true, step: "switch" });
+    // The SAME run again is no fresh step: the hourly limit holds.
+    const again = run({ state: "done", runId: RUN_ID, to: "v1.23.0-edge.3", startedAt: NOW - 60_000, updatedAt: NOW - 30_000 });
+    expect(followGuards(facts({ ...lower, run: again, leadLine: "stable;rollback" }))).toMatchObject({
+      kind: "refuse",
+      reason: "rate-limited",
+    });
+  });
+
+  test("a step down never crosses a major", () => {
+    const d = followGuards(facts({ own: "2.0.0", leadRelease: "1.22.6", leadLine: "stable;rollback" }));
+    expect(d).toMatchObject({ kind: "refuse", reason: "crosses-a-major" });
+  });
+
+  test("the preflight and the updater are asked with the same flags", async () => {
+    const asked: unknown[] = [];
+    const d = await followDecision(facts({ own: "1.23.0-edge.2", leadRelease: "1.22.6", leadLine: "stable;switch" }), {
+      preflight: (tag, how) => {
+        asked.push({ tag, how });
+        return Promise.resolve(green);
+      },
+    });
+    expect(d).toMatchObject({ kind: "follow", down: true });
+    expect(asked).toEqual([{ tag: "v1.22.6", how: { down: true, line: "stable" } }]);
+  });
+
+  test("a run that goes down is done for members at or below the target, and waits on no limit", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.22.6", NOW, true);
+    const limited: TurnMember["run"] = { runId: "r-old", state: "done", updatedAt: NOW - 60_000, to: "1.23.0-edge.2", reason: null };
+    turns.observe(
+      [
+        member({ memberId: "attic", enrolledAt: 1, version: "1.23.0-edge.2", run: limited }),
+        member({ memberId: "basement", enrolledAt: 2, version: "1.22.6" }),
+        member({ memberId: "cellar", enrolledAt: 3, version: "1.22.5" }),
+      ],
+      NOW,
+      { release: "1.22.6" },
+    );
+    expect(turns.turnFor("attic")).toBe(`attic;${RUN_ID}`);
+    const legs = turns.peerLegs();
+    expect(legs.find((l) => l.name === "basement")?.state).toBe("done");
+    expect(legs.find((l) => l.name === "cellar")?.state).toBe("done");
+    expect(legs.find((l) => l.name === "attic")?.reason).toBeUndefined();
+  });
+
+  test("the same members on an up run: the one ahead is done, the ones behind wait", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.22.6", NOW);
+    turns.observe(
+      [member({ memberId: "attic", version: "1.23.0-edge.2" }), member({ memberId: "cellar", enrolledAt: 3, version: "1.22.5" })],
+      NOW,
+      { release: "1.22.6" },
+    );
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
+    expect(turns.turnFor("cellar")).toBe(`cellar;${RUN_ID}`);
   });
 });

@@ -78,6 +78,10 @@ import type {
   UpdateInfo,
   UpdateRun,
   UpdateStartResponse,
+  RollbackStartResponse,
+  GoBackStartResponse,
+  ReleaseLine,
+  ReleaseLineReceipt,
   UploadResponse,
   WorktreeBaseChoice,
   WorktreeCreateResponse,
@@ -2226,6 +2230,44 @@ export function startUpdate(a: {
   const body: UpdateStartBody = { confirm: true, target: a.target, major: a.major };
   if (a.peersOnly === true) body.peersOnly = true;
   return req<UpdateStartResponse>("/api/update", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * Roll back to the build kept on disk (M60 spec 01): `collie update --rollback`, behind the same
+ * confirm and the same write gate as an update. `target` is the version the confirm sheet named, so a
+ * sheet left open over a prune or a second rollback cannot consent to another build. `requestId` is
+ * a UUID minted per confirm; the bridge makes it the run id, and a retry with the same id gets the
+ * same receipt rather than a second rollback.
+ */
+export function startRollback(a: { target: string; requestId: string }): Promise<RollbackStartResponse> {
+  return req<RollbackStartResponse>("/api/update/rollback", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, target: a.target, requestId: a.requestId }),
+  });
+}
+
+/**
+ * Set this machine's release line (M60 spec 01). The switch installs nothing: the answer is the saved
+ * record, and the next check offers what the new line offers. One request id per tap, so a retried
+ * request answers with the same receipt.
+ */
+export function setReleaseLine(a: { line: ReleaseLine; requestId: string }): Promise<ReleaseLineReceipt> {
+  return req<ReleaseLineReceipt>("/api/update/line", {
+    method: "POST",
+    body: JSON.stringify({ line: a.line, requestId: a.requestId }),
+  });
+}
+
+/**
+ * "Go back now" (M60 spec 01): from an Edge build down to the Stable release the bridge offered as
+ * `back`. The one downgrade a person starts from here besides a rollback. The request id becomes the
+ * run id, as on a rollback.
+ */
+export function startGoBack(a: { target: string; requestId: string }): Promise<GoBackStartResponse> {
+  return req<GoBackStartResponse>("/api/update/back", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, target: a.target, requestId: a.requestId }),
+  });
 }
 
 /** "Remind me next digest" — the card's dismiss. Not a mute: the banner keeps showing. */

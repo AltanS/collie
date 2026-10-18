@@ -1,5 +1,6 @@
 import type { InstallKind } from "../../cli/install-kind.ts";
 import { compareSemver, majorOf, parsePrereleaseTag } from "../update.ts";
+import { isEdgeBuild, type ReleaseLine } from "../update-line.ts";
 import type { PeerRunReport, PreflightReport } from "../update-action.ts";
 import { firstRed } from "../update-action.ts";
 import type { UpdateRun } from "../update-run.ts";
@@ -46,6 +47,42 @@ export const LEAD_RELEASE_HEADER = "X-Crew-Lead-Release";
  */
 export const UPDATE_TURN_HEADER = "X-Crew-Update-Turn";
 
+/**
+ * `X-Crew-Lead-Line: <line>[;<step>]` — the LEAD'S RELEASE LINE, beside the release it states
+ * (§20, M60 spec 01, ADR 0110). `<line>` is `stable` or `edge`; `<step>` is `rollback` or `switch`
+ * when the release the lead states is where its own rollback, or its switch back to Stable, landed.
+ *
+ * It carries no version, no ref and no command, and it is sent only beside
+ * {@link LEAD_RELEASE_HEADER}. It widens what a member MAY accept, never what it must: an Edge build
+ * when the lead's line is Edge, and a LOWER build only for one of the two steps. A peer that ignores
+ * it is a correct peer, and refuses both exactly as it always did.
+ */
+export const LEAD_LINE_HEADER = "X-Crew-Lead-Line";
+
+/** The two runs a member steps DOWN for. */
+export type LeadStep = "rollback" | "switch";
+
+/** What {@link LEAD_LINE_HEADER} says, parsed. */
+export interface LeadLine {
+  readonly line: ReleaseLine;
+  readonly step: LeadStep | null;
+}
+
+/** The value of {@link LEAD_LINE_HEADER}. One spelling, so the parser cannot drift. */
+export function formatLeadLine(a: LeadLine): string {
+  return a.step === null ? a.line : `${a.line}${TURN_SEPARATOR}${a.step}`;
+}
+
+/** The header as a peer reads it, or null for every shape that is not one. Null reads as Stable. */
+export function parseLeadLine(raw: string | null | undefined): LeadLine | null {
+  if (raw === null || raw === undefined) return null;
+  const [line, step, extra] = raw.split(TURN_SEPARATOR).map((part) => part.trim());
+  if (extra !== undefined) return null;
+  if (line !== "stable" && line !== "edge") return null;
+  if (step === undefined) return { line, step: null };
+  return step === "rollback" || step === "switch" ? { line, step } : null;
+}
+
 /** The separator inside {@link UPDATE_TURN_HEADER}'s value. A member id never contains one. */
 const TURN_SEPARATOR = ";";
 
@@ -70,8 +107,10 @@ export function leadReleaseHeader(a: { version: string; run: UpdateRun | null })
   const bare = bareVersion(a.version);
   if (bare === null) return null;
   // A dev or prerelease build states nothing. `parsePrereleaseTag` answers a non-null `prerelease`
-  // for `1.4.1-dev+ab12cd3`, which is exactly the build the dev lane runs.
-  if (!isStrictRelease(bare)) return null;
+  // for `1.4.1-dev+ab12cd3`, which is exactly the build the dev lane runs. An EDGE build is a
+  // release on the Edge line (ADR 0110) and is stated; {@link LEAD_LINE_HEADER} beside it says
+  // whether a member may take it, and a peer older than that header refuses it as not strict.
+  if (!isStrictRelease(bare) && !isEdgeBuild(bare)) return null;
   const run = a.run;
   if (run === null) return bare;
   if (inFlight(run.state)) return null;
@@ -80,6 +119,21 @@ export function leadReleaseHeader(a: { version: string; run: UpdateRun | null })
   // whether it is still moving toward something else.
   if (run.state === "done" && run.to !== null && bareVersion(run.to) !== bare) return null;
   return bare;
+}
+
+/**
+ * The value of {@link LEAD_LINE_HEADER}, or null when the lead states no release.
+ *
+ * The step rides only while the release the lead states is where its last run, a rollback or a
+ * switch, landed: the run is `done` and its `to` is that release. Every other moment states the
+ * line alone, which lets a member move up and never down.
+ */
+export function leadLineHeader(a: { version: string; run: UpdateRun | null; line: ReleaseLine }): string | null {
+  const stated = leadReleaseHeader(a);
+  if (stated === null) return null;
+  const run = a.run;
+  const landed = run !== null && run.state === "done" && run.to !== null && bareVersion(run.to) === stated;
+  return formatLeadLine({ line: a.line, step: landed && run.action !== undefined ? run.action : null });
 }
 
 /** The value of {@link UPDATE_TURN_HEADER} for one member. One spelling, so the parser cannot drift. */
@@ -111,6 +165,7 @@ export type FollowRefusal =
   | "not-higher"
   | "crosses-a-major"
   | "already-rolled-back"
+  | "build-rejected"
   | "rate-limited"
   | "no-turn"
   | "preflight-red"
@@ -119,8 +174,21 @@ export type FollowRefusal =
   | "already-started";
 
 /** What the peer decided, and the sentence that goes in the record beside it. */
+/** A decision to follow: the tag, the run, and how the updater takes it. */
+export interface FollowOrder {
+  readonly kind: "follow";
+  readonly tag: string;
+  readonly runId: string;
+  /** A step DOWN, which the updater takes only with `--downgrade` (M60 spec 01). */
+  readonly down?: boolean;
+  /** The lead's line, which the member takes for its own (ADR 0110). Absent from an older lead. */
+  readonly line?: ReleaseLine;
+  /** The lead's step, when this follow is one. */
+  readonly step?: LeadStep;
+}
+
 export type FollowDecision =
-  | { readonly kind: "follow"; readonly tag: string; readonly runId: string }
+  | FollowOrder
   | { readonly kind: "refuse"; readonly reason: FollowRefusal; readonly detail: string };
 
 const refuse = (reason: FollowRefusal, detail: string): FollowDecision => ({ kind: "refuse", reason, detail });
@@ -144,10 +212,17 @@ export interface FollowFacts {
   readonly self: string;
   /** {@link LEAD_RELEASE_HEADER} as it arrived, or null. */
   readonly leadRelease: string | null;
+  /** {@link LEAD_LINE_HEADER} as it arrived, or null — which reads as Stable with no step. */
+  readonly leadLine?: string | null;
   /** {@link UPDATE_TURN_HEADER} as it arrived, or null. */
   readonly turn: string | null;
   /** This peer's own run record, which is the whole of its memory. There is no second state file. */
   readonly run: UpdateRun | null;
+  /**
+   * The Edge builds this peer rolled back from, by hand or on its own health gate (`update-line.json`,
+   * ADR 0110). Such a build is never taken again, whatever run asks. Absent reads as none.
+   */
+  readonly rejected?: readonly string[];
   readonly now: number;
 }
 
@@ -173,22 +248,33 @@ export function followGuards(f: FollowFacts): FollowDecision {
   // still**: the dev crew's peer is the `~/apps/collie-next` checkout on minibuch, built from a
   // working copy that its operator is editing, and a machine that levelled itself to a published
   // release would silently discard the very build it exists to test.
+  // An EDGE build is a release on the Edge line (ADR 0110): a member on one follows an Edge lead.
   const own = bareVersion(f.own);
-  if (own === null || !isStrictRelease(own)) {
+  if (own === null || !(isStrictRelease(own) || isEdgeBuild(own))) {
     return refuse("own-build-not-a-release", `this build (${f.own}) is not a strict release, so it never self-levels`);
   }
 
-  // ── 2. THE HEADER MUST BE PRESENT AND A STRICT RELEASE ────────────────────
+  // ── 2. THE HEADER MUST BE PRESENT, AND A RELEASE ON A LINE ────────────────
+  // A strict release, or an Edge build. Which of those this member may TAKE is guard 3's question.
   const lead = f.leadRelease === null ? null : bareVersion(f.leadRelease);
-  if (lead === null || !isStrictRelease(lead)) {
+  if (lead === null || !(isStrictRelease(lead) || isEdgeBuild(lead))) {
     return refuse("lead-states-nothing", "the lead states no settled release, so there is nothing to follow");
   }
+  // No line header is a lead older than the lines, which is Stable with no step.
+  const leadLine = parseLeadLine(f.leadLine) ?? { line: "stable" as const, step: null };
 
-  // ── 3. STRICTLY HIGHER, BY SEMVER ─────────────────────────────────────────
-  // Equal is nothing. Lower is nothing, ever: there is no downgrade path here and no flag that makes
-  // one, which is why nothing on this link can ever step a peer down.
-  if (compareSemver(lead, own) <= 0) {
+  // ── 3. HIGHER, OR ONE OF THE TWO STEPS DOWN ───────────────────────────────
+  // Equal is nothing. Higher is a follow, but an Edge build only while the lead's line is Edge. Lower
+  // is nothing, EXCEPT where the lead's own run was a rollback or a switch back to Stable and the
+  // build it states is where that run landed (ADR 0110): those two, and nothing else, step a member
+  // down, and only to the very build its lead now runs.
+  const order = compareSemver(lead, own);
+  if (order === 0 || (order < 0 && leadLine.step === null)) {
     return refuse("not-higher", `the lead runs ${lead}, which is not higher than this machine's ${own}`);
+  }
+  const down = order < 0;
+  if (!down && isEdgeBuild(lead) && leadLine.line !== "edge") {
+    return refuse("lead-states-nothing", `the lead runs the Edge build ${lead} on the Stable line, so there is nothing to follow`);
   }
 
   // ── 4. NOT A MAJOR CROSSING ───────────────────────────────────────────────
@@ -220,6 +306,12 @@ export function followGuards(f: FollowFacts): FollowDecision {
       `this machine already rolled back from ${wanted} in this run; a new confirm on the phone permits one more attempt`,
     );
   }
+  // ── 5b. NOT A BUILD THIS PEER REJECTED (ADR 0110) ──────────────────────────
+  // An Edge build this machine rolled back from, by hand or on its own health gate, is never taken
+  // again, in any run: a new confirm does not make a broken build less broken.
+  if (f.rejected?.includes(lead) === true) {
+    return refuse("build-rejected", `${wanted} failed on this machine before and is not taken again`);
+  }
 
   // A run that is still being driven is a run this must not race. The updater's own lock says the
   // same thing one layer down; saying it here means the refusal has a reason rather than a lock
@@ -243,13 +335,26 @@ export function followGuards(f: FollowFacts): FollowDecision {
   // The loop protection holds: each such step needs a strictly higher version than the last one
   // that succeeded, a rolled-back step never qualifies, and there is no downgrade path, so a lead
   // can walk a member up the published tags at most once each and never round in a circle.
+  // A STEP DOWN skips it once per run: it needs a person's rollback or switch on the lead, and each
+  // of those mints a fresh run id, so a lead cannot cycle a member through it.
   const since = attemptAgeMs(f.run, f.now);
-  if (since !== null && since < FOLLOW_ATTEMPT_INTERVAL_MS && !continuesThisRun(f.run, lead, turn.runId)) {
+  const freshStepDown = down && f.run?.runId !== turn.runId;
+  if (
+    since !== null &&
+    since < FOLLOW_ATTEMPT_INTERVAL_MS &&
+    !continuesThisRun(f.run, lead, turn.runId) &&
+    !freshStepDown
+  ) {
     const minutes = Math.ceil((FOLLOW_ATTEMPT_INTERVAL_MS - since) / 60_000);
     return refuse("rate-limited", `this machine attempted an update ${Math.floor(since / 60_000)} minutes ago; it tries again in ${minutes}`);
   }
 
-  return { kind: "follow", tag: wanted, runId: turn.runId };
+  let follow: FollowOrder = { kind: "follow", tag: wanted, runId: turn.runId };
+  if (down) follow = { ...follow, down: true };
+  // The line rides only from a lead that sent one: an older lead's silence is not a line to take.
+  if (f.leadLine !== null && f.leadLine !== undefined) follow = { ...follow, line: leadLine.line };
+  if (leadLine.step !== null) follow = { ...follow, step: leadLine.step };
+  return follow;
 }
 
 /** The two guards that cost a subprocess, injected so the decision is testable without spawning one. */
@@ -264,7 +369,17 @@ export interface FollowEffects {
    * through `listTags()` and `anonymousTagUrl()` — anonymous HTTPS to a public repository, no
    * credential of any kind. `null` means the check could not be run, which refuses.
    */
-  readonly preflight: (tag: string) => Promise<PreflightReport | null>;
+  readonly preflight: (tag: string, how?: FollowHow) => Promise<PreflightReport | null>;
+}
+
+/**
+ * How a follow takes its tag (M60 spec 01): down with `--downgrade`, on the lead's line with
+ * `--line`. The preflight is asked the same way the updater will be, or it would refuse an Edge tag
+ * or a step down that the updater then takes.
+ */
+export interface FollowHow {
+  readonly down?: boolean;
+  readonly line?: ReleaseLine;
 }
 
 /** The id of the `upstream` check — the one that resolves the tag (`cli/update-check.ts`). */
@@ -282,7 +397,10 @@ export async function followDecision(f: FollowFacts, e: FollowEffects): Promise<
   if (guarded.kind === "refuse") return guarded;
 
   // ── 6. THIS PEER'S OWN PREFLIGHT, RE-RUN NOW ──────────────────────────────
-  const report = await e.preflight(guarded.tag);
+  let how: FollowHow = {};
+  if (guarded.down === true) how = { ...how, down: true };
+  if (guarded.line !== undefined) how = { ...how, line: guarded.line };
+  const report = await e.preflight(guarded.tag, how);
   if (report === null) {
     return refuse("preflight-red", "this machine's own preflight could not be run, which is not the same as green");
   }
@@ -312,6 +430,8 @@ export interface CrewFollowerDeps {
   readonly self: () => { readonly version: string; readonly self: string };
   /** The run record on disk as of now, resolved. Re-read every time — that is the memory. */
   readonly run: () => UpdateRun | null;
+  /** The builds this peer rejected (`update-line.json`), re-read every time. Absent reads as none. */
+  readonly rejected?: () => readonly string[];
   readonly preflight: FollowEffects["preflight"];
   /**
    * Spawn the detached updater with `--to-tag <tag> --run-id <id>`.
@@ -321,7 +441,13 @@ export interface CrewFollowerDeps {
    * detached-updater spawner in this process, and adding a second would be adding a second answer to
    * "what does an update do here".
    */
-  readonly start: (a: { tag: string; runId: string }) => { ok: true } | { ok: false; reason: string };
+  readonly start: (a: {
+    tag: string;
+    runId: string;
+    down?: boolean;
+    line?: ReleaseLine;
+    step?: LeadStep;
+  }) => { ok: true } | { ok: false; reason: string };
   readonly now?: () => number;
   /**
    * Where a `[crew] follow:` line goes — `console.log`, this peer's own journal, unless a caller
@@ -428,7 +554,11 @@ export class CrewFollower {
    * One sweep's worth of headers. Never throws and never awaits on the request path: the router
    * hands the headers over and answers its snapshot, exactly as it does today.
    */
-  observe(headers: { readonly leadRelease: string | null; readonly turn: string | null }): void {
+  observe(headers: {
+    readonly leadRelease: string | null;
+    readonly turn: string | null;
+    readonly leadLine?: string | null;
+  }): void {
     if (this.deciding) return;
     const id = this.deps.self();
     const facts: FollowFacts = {
@@ -436,8 +566,10 @@ export class CrewFollower {
       own: id.version,
       self: id.self,
       leadRelease: headers.leadRelease,
+      leadLine: headers.leadLine ?? null,
       turn: headers.turn,
       run: this.deps.run(),
+      rejected: this.deps.rejected?.() ?? [],
       now: this.now(),
     };
     // Whose turn the lead is stating, read once and handed to `record` — see there for why a
@@ -475,7 +607,8 @@ export class CrewFollower {
       }
       this.record(decision, mine);
       if (decision.kind === "follow") {
-        const started = this.deps.start({ tag: decision.tag, runId: decision.runId });
+        const { kind: _kind, ...asked } = decision;
+        const started = this.deps.start(asked);
         if (started.ok) {
           this.started = { runId: decision.runId, tag: decision.tag, at: this.now() };
         } else {
@@ -600,7 +733,7 @@ export const CREW_RUN_TTL_REASON = "the run did not finish within 2 hours";
  * explainable rather than incidental.
  */
 export class UpdateTurns {
-  private run: { readonly runId: string; readonly target: string } | null = null;
+  private run: { readonly runId: string; readonly target: string; readonly down: boolean } | null = null;
   private held: string | null = null;
   private readonly missed = new Map<string, number>();
   private readonly legs = new Map<string, PeerLeg>();
@@ -706,9 +839,9 @@ export class UpdateTurns {
    * `now` starts the run's own bound ({@link CREW_RUN_TTL_MS}). A caller that passes none starts
    * it on the first sweep instead.
    */
-  begin(runId: string, target: string, now?: number): void {
+  begin(runId: string, target: string, now?: number, down = false): void {
     if (this.run?.runId === runId) return;
-    this.run = { runId, target: bareVersion(target) ?? target };
+    this.run = { runId, target: bareVersion(target) ?? target, down };
     this.beganAt = now ?? null;
     this.leadAwaySince = null;
     this.leadAway = false;
@@ -748,7 +881,7 @@ export class UpdateTurns {
 
   /** The run this lead is currently driving, or null. */
   current(): { readonly runId: string; readonly target: string } | null {
-    return this.run;
+    return this.run === null ? null : { runId: this.run.runId, target: this.run.target };
   }
 
   /**
@@ -840,7 +973,7 @@ export class UpdateTurns {
     for (const m of ordered) {
       const misses = m.answered ? 0 : (this.missed.get(m.memberId) ?? 0) + 1;
       this.missed.set(m.memberId, misses);
-      const fresh = legOf(m, { target, runId, misses, now });
+      const fresh = legOf(m, { target, runId, misses, now, down: this.run.down });
       // A LEG THE WALL CLOCK ALREADY FAILED STAYS FAILED (M20/13). `legOf` reads the member's facts
       // and nothing else, and the facts of a member that answers every sweep and never moves do not
       // change when the clock runs out — so on the very next sweep it minted `waiting` again and
@@ -938,6 +1071,12 @@ export class UpdateTurns {
    * minute is how the lead tells the two apart without reading a version number.
    */
   private limitReason(runId: string, m: TurnMember, leg: PeerLeg, now: number): string | null {
+    // A RUN THAT GOES DOWN waits on no limit: a member skips its hourly limit once for a step down
+    // (`followGuards`), so holding the turn back for it would wait on a refusal that never comes.
+    if (this.run?.down === true) {
+      this.limits.delete(m.memberId);
+      return null;
+    }
     const stamp = leg.state === "waiting" ? (m.run?.updatedAt ?? null) : null;
     const seen = this.limitSeen.get(m.memberId);
     const seenAt = stamp !== null && seen?.updatedAt === stamp ? seen.seenAt : now;
@@ -1175,16 +1314,22 @@ function eligible(
 /** One member's leg, from what the sweep banked. Pure — the fold above owns the state. */
 function legOf(
   m: TurnMember,
-  a: { target: string; runId: string; misses: number; now: number },
+  a: { target: string; runId: string; misses: number; now: number; down?: boolean },
 ): PeerLeg {
   const version = m.version === null ? null : bareVersion(m.version);
   const base = { name: m.memberId, version: m.version };
+  // A RUN THAT GOES DOWN (a rollback or a switch back to Stable on the lead, ADR 0110) is done for a
+  // member AT OR BELOW the target: it has nothing to step down from, and a rollback never moves a
+  // member up.
+  if (a.down === true && version !== null && compareSemver(version, a.target) <= 0) {
+    return { ...base, state: "done", updatedAt: a.now };
+  }
   // Not behind is DONE — equal, and higher too. A member ahead of its lead is not a member to move:
   // there is no downgrade path on this link and there will not be one, so the queue must not spend a
   // turn on it. That leaves the accepted gap intact and visible: a lead rolled back by hand after
   // its peers advanced sits below them, §7.1 makes the skew harmless, and the remedy is
   // `collie crew update <member>` over the operator's own SSH.
-  if (version !== null && compareSemver(version, a.target) >= 0) {
+  if (a.down !== true && version !== null && compareSemver(version, a.target) >= 0) {
     return { ...base, state: "done", updatedAt: a.now };
   }
   if (m.run !== null && m.run.runId === a.runId) {

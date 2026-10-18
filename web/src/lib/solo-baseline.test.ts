@@ -212,6 +212,10 @@ const UPDATE_INFO_KEYS = {
   // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
   // release, so a solo payload is byte-identical to what it was.
   urgent: true,
+  // The release line and the way back to Stable (M60 spec 01). Optional: an older bridge sends
+  // neither, and that reads as Stable with no way back to offer.
+  line: true,
+  back: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no crew dimension", () => {
@@ -297,6 +301,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     ]);
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
     expect(Object.keys(UPDATE_INFO_KEYS).toSorted()).toEqual([
+      // The way back to Stable (M60 spec 01) — optional, sent only in that one case.
+      "back",
       "bridgeStale",
       "checkedAt",
       "current",
@@ -308,6 +314,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "installKind",
       "latest",
       "latestUrl",
+      // The release line (M60 spec 01) — optional; absent reads as Stable.
+      "line",
       // Whether the release ahead changes the crew wire (M27/06) — optional, and absent on a solo
       // install.
       "linkChange",

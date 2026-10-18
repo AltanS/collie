@@ -3573,6 +3573,53 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("202,");
   });
 
+  test("api/update/rollback is a POST through the same write gate, answers 202 and never awaits the runner (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const routes = [...src.matchAll(/pathname === "\/api\/update\/rollback"[^)]*\)/g)].map((m) => m[0]);
+    expect(routes).toEqual(['pathname === "/api/update/rollback" && req.method === "POST")']);
+    const at = src.indexOf('if (pathname === "/api/update/rollback" && req.method === "POST")');
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).not.toContain("guard(req");
+    // Forced preflight, the pure verdict, and a plain call into the spawn.
+    expect(handler).toContain("await action.preflight(true)");
+    expect(handler).toContain("rollbackVerdict(parsed, {");
+    expect(handler).toContain("const started = action.rollback({ runId: verdict.runId });");
+    expect(handler).not.toContain("await action.rollback");
+    // No crew run: a rollback levels nobody.
+    expect(handler).not.toContain("beginCrewRun");
+    expect(handler).toContain("202,");
+  });
+
+  test("api/update/back is the rollback route's shape: write gate, forced preflight, 202, no crew run (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/back" && req.method === "POST")');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("await action.preflight(true)");
+    expect(handler).toContain("backVerdict(parsed, {");
+    expect(handler).toContain("const started = action.back({ runId: verdict.runId, to: verdict.to });");
+    expect(handler).not.toContain("await action.back");
+    expect(handler).not.toContain("beginCrewRun");
+    expect(handler).toContain("202,");
+  });
+
+  test("api/update/line: a read-gated GET, a write-gated POST with a receipt, and the switch installs nothing (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/line" && (req.method === "GET" || req.method === "POST"))');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("parseLineRequest(body)");
+    expect(handler).toContain("requestId: parsed.requestId");
+    expect(handler).toContain("updateMonitor.lineChanged();");
+    // A switch changes what is offered; it never starts the updater.
+    expect(handler).not.toContain("action.start");
+    expect(handler).not.toContain("updateAction");
+  });
+
   test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');

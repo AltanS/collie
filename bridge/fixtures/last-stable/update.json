@@ -1,0 +1,11 @@
+{
+  "schema": 2,
+  "state": "done",
+  "from": "1.22.5",
+  "to": "1.22.6",
+  "startedAt": 1760700000000,
+  "updatedAt": 1760700090000,
+  "pid": 4242,
+  "attempt": 0,
+  "runId": "0f8fad5b-d9cb-469f-a165-70867728950e"
+}

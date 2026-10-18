@@ -11,6 +11,7 @@ import {
   LOOKUP_BACKOFF_MS,
   LOOKUP_TRIES,
   OVERRIDE_VARIABLE,
+  RELEASE_VERSION,
   WINDOWS_ASSET_MANDATORY_FROM,
   windowsFiles,
   windowsNotes,
@@ -171,6 +172,8 @@ describe("the tolerance closes on its own", () => {
     const ignored = [
       line("v1.17.0", zip("1.17.0")),
       line("v1.17.0-rc.1", zip("1.17.0-rc.1"), { prerelease: true }),
+      // An Edge build is a pre-release too (M60 spec 01): its zip never closes the tolerance.
+      line("v1.18.0-edge.1", zip("1.18.0-edge.1"), { prerelease: true }),
       line("v1.18.0", zip("1.18.0"), { draft: true }),
       line("v1.15.0", ["collie-1.15.0-linux-x64.tar.gz", "collie-1.15.0-windows-x64.zip.sha256"]),
       "",
@@ -292,5 +295,40 @@ describe("the script, as the release job runs it", () => {
     expect(r.out).toContain(`Windows asset mandatory: it is ${WINDOWS_ASSET_MANDATORY_FROM}, on or after`);
     expect(r.out).toContain("the Windows asset is no longer optional");
     expect(r.github).toBe("present=false\n");
+  });
+});
+
+describe("an Edge release (M60 spec 01)", () => {
+  test("names its zip with the whole version, and only X.Y.Z or X.Y.Z-edge.N is a release version", () => {
+    expect(windowsFiles("1.23.0-edge.1").zip).toBe("collie-1.23.0-edge.1-windows-x64.zip");
+    for (const ok of ["1.23.0", "1.23.0-edge.1", "1.23.0-edge.0", "10.0.12-edge.40"]) expect(RELEASE_VERSION.test(ok)).toBe(true);
+    for (const bad of ["v1.23.0", "1.23.0-edge.01", "1.23.0-edge", "1.23.0-beta.1", "1.23.0-edge.1/x", ""]) {
+      expect(RELEASE_VERSION.test(bad)).toBe(false);
+    }
+  });
+
+  test("a whole Edge set is present, and a version that is not a release is refused before any file is touched", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-windows-edge-"));
+    try {
+      const f = windowsFiles("1.23.0-edge.1");
+      writeFileSync(join(dir, f.zip), "zip bytes");
+      const digest = new Bun.CryptoHasher("sha256").update("zip bytes").digest("hex");
+      writeFileSync(join(dir, f.sidecar), `${digest}  ${f.zip}\n`);
+      writeFileSync(join(dir, f.entry), JSON.stringify({ name: f.zip, sha256: digest }));
+      const run = (version: string) =>
+        Bun.spawnSync(
+          ["bun", join(import.meta.dir, "windows-asset.ts"), "--dir", dir, "--version", version, "--result", "success", "--now", `${WINDOWS_ASSET_MANDATORY_FROM}T00:00:00Z`],
+          { env: { ...process.env, GITHUB_OUTPUT: join(dir, "out"), GITHUB_STEP_SUMMARY: join(dir, "summary") } },
+        );
+      const good = run("1.23.0-edge.1");
+      expect(good.exitCode).toBe(0);
+      expect(good.stdout.toString()).toContain(`✓ ${f.zip} is here`);
+      const bad = run("1.23.0-rc.1");
+      expect(bad.exitCode).toBe(2);
+      expect(bad.stderr.toString()).toContain("is not a release version");
+      expect(existsSync(join(dir, f.zip))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

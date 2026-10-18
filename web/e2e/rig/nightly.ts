@@ -479,7 +479,7 @@ export interface Decision {
 
 /**
  * One leg's result from its table and exit code. `harnesses` are the ones the leg has cases for: all
- * three for the solo leg, only Claude for the crew leg (cases 12 to 14 run under Claude).
+ * three for the solo leg, only Claude for the crew leg (cases 12 to 15 run under Claude).
  *  - no table, or a harness without a case: `failed`, nothing was proven;
  *  - any `fail`: `fail`;
  *  - no `fail`, but a case `not reached` or `n/a`: `failed`, the case proved nothing;

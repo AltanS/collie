@@ -7,6 +7,14 @@ name: Release
 # `sha256sum -c`. The in-app update banner links here, and
 # `scripts/install.sh` and `collie update`'s binary path both read these assets — over constructed
 # URLs only, so nothing here may ever emit a download URL into a document (M14/01 §2.1).
+#
+# AN EDGE TAG BUILDS THE SAME WAY (M60 spec 01). `vX.Y.Z-edge.N` matches the same glob, runs every
+# job below, and publishes a GitHub PRE-RELEASE with the same assets, the same manifest and the same
+# `collie-release.json`, which then carries `"line": "edge"`. The tag goes on a commit whose version
+# files say plain `X.Y.Z`; each job that builds stamps the suffix into its own working copy first
+# (scripts/release-version.ts --stamp), so every payload reports the build it is. GitHub's "latest"
+# skips a pre-release, and the website and the packaging jobs skip every hyphenated tag, so both stay
+# on Stable.
 on:
   push:
     tags: ["v*.*.*"]
@@ -164,6 +172,12 @@ jobs:
           root="collie-$version-$PLATFORM"
           stage="$RUNNER_TEMP/$root"
           mkdir -p "$stage/bin" "$stage/web"
+
+          # AN EDGE TAG IS STAMPED BEFORE ANYTHING READS A VERSION (M60 spec 01). The files say plain
+          # X.Y.Z; this writes X.Y.Z-edge.N into this runner's copy of the three, so the web build's
+          # stamp and `collie version` name the Edge build. On a Stable tag it only checks that the
+          # tag names the files' version, and writes nothing. It refuses a tag on the wrong commit.
+          bun scripts/release-version.ts --tag "$GITHUB_REF_NAME" --stamp
 
           # The version gate `collie build` runs, run here too: a release whose four version files
           # disagree must not become a downloadable artifact.
@@ -385,6 +399,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the fetched bun.exe does not run" }
           Add-Content -Path $env:GITHUB_PATH -Value $bin
           Write-Output "bun $env:BUN_VERSION (baseline), sha256 $got, as SHASUMS256.txt says"
+      # The stamp the Linux and macOS rows take inside their build body (M60 spec 01): an Edge tag's
+      # suffix goes into this runner's copy of the version files before the build script reads them.
+      # A Stable tag is only checked. Git's bash, the shell the build script runs the version gate in.
+      - name: Reconcile the tag with the version files
+        shell: bash
+        run: bun scripts/release-version.ts --tag "$GITHUB_REF_NAME" --stamp
       # Windows PowerShell 5.1, the shell family the VM uses. -StrictBun: a Bun other than the pinned
       # one fails the build here.
       - name: Build, check and seal the payload
@@ -419,6 +439,11 @@ jobs:
       # The same flake as the payload job, for the same reason: this job builds the `web/dist`
       # asset the demo runs, and reads the manifest back with Bun.
       - uses: DeterminateSystems/nix-installer-action@v22
+
+      # The same stamp the payload jobs take (M60 spec 01), before this job builds the demo's
+      # `web/dist`, so that bundle names the Edge build as well. A Stable tag is only checked.
+      - name: Reconcile the tag with the version files
+        run: nix develop --command bun scripts/release-version.ts --tag "$GITHUB_REF_NAME" --stamp
 
       - uses: actions/download-artifact@v4
         with:
@@ -575,7 +600,11 @@ jobs:
           # *Versioning*), so a heading-derived link would point at a ref that does not exist and
           # 404. `describe` starts at the tagged commit's parent, so it names the tag before this
           # one; an empty answer, which is what the very first release gets, means no compare line.
-          prev="$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          # A Stable page compares against the Stable release before it, never against the Edge builds
+          # that led to it (M60 spec 01); an Edge page compares against whatever tag came before.
+          exclude=()
+          case "$GITHUB_REF_NAME" in *-edge.*) ;; *) exclude=(--exclude '*-edge.*') ;; esac
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${exclude[@]}" "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
           previous=()
           [ -z "$prev" ] || previous=(--previous-tag "$prev")
           echo "compare base: ${prev:-<none>}"
@@ -605,10 +634,11 @@ jobs:
         run: |
           set -euo pipefail
           # GitHub does NOT infer "prerelease" from a semver hyphen — the API defaults to
-          # prerelease:false, which also moves the Latest badge. A `-beta` / `-rc` tag must never take
-          # that badge from the shipped release line, so mark it explicitly.
+          # prerelease:false, which also moves the Latest badge. An `-edge.N` tag (or an old `-beta`)
+          # must never take that badge from the Stable line, so mark it explicitly, and say
+          # `--latest=false` as well rather than leave it to GitHub's own reading of the two flags.
           flags=()
-          case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease) ;; esac
+          case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease --latest=false) ;; esac
           # No `--generate-notes`. GitHub's generated summary only knows merged pull requests, and
           # most of Collie's history lands as direct commits or as cherry-picks that keep the
           # author, so that list showed a handful of entries under a release that moved twenty

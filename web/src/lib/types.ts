@@ -921,7 +921,34 @@ export interface UpdateInfo {
    * release above `current` as their target. `lib/update-screen.ts` is the reader.
    */
   peersTo?: string;
+  /** This machine's release line (M60 spec 01, ADR 0110). Absent on a bridge older than the field,
+   *  which is Stable. */
+  line?: ReleaseLine;
+  /**
+   * The Stable release "Go back now" installs, when this machine is on Stable and runs an Edge build
+   * that is ahead of every Stable release. `exceptions` names the state files that build cannot read
+   * (ADR 0110), which the page shows before the button. Absent otherwise.
+   */
+  back?: { to: string; exceptions: string[] };
 }
+
+/** A machine's release line: Stable takes final releases only, Edge also takes `-edge.N` builds. */
+export type ReleaseLine = "stable" | "edge";
+
+/** The answer of `POST /api/update/line`: the record as saved, with the request id it answers. */
+export interface ReleaseLineReceipt {
+  ok: true;
+  line: ReleaseLine;
+  /** Builds this machine rolled back from, which are never offered again. */
+  rejected: string[];
+  changedAt: number | null;
+  requestId: string;
+  /** The same request id with the same line was seen before; nothing changed this time. */
+  replay?: true;
+}
+
+/** The answer of `POST /api/update/back`: the same shape as a rollback's start. */
+export type GoBackStartResponse = RollbackStartResponse;
 
 /**
  * Where an update run is (mirrors `bridge/update-run.ts`). `done`, `rolled-back`, `stuck` and
@@ -968,6 +995,13 @@ export interface UpdateRun {
    * on a bridge that predates it — both read as "no run to key on", which is the closed case.
    */
   runId?: string;
+  /**
+   * `rollback` when this run goes BACK to a build kept on disk (M60 spec 01): `to` is then the older
+   * version and `from` the one left. `switch` when it goes down to a Stable release after the line
+   * changed ("Go back now", or a member following its lead down). Absent on every update, and on a
+   * bridge older than the field.
+   */
+  action?: "rollback" | "switch";
   /**
    * The peer legs of a crew-wide run (M16/04). Absent on a solo run, and absent on a bridge that
    * predates it — the page then falls back to the census rows, which is the same screen with older
@@ -1077,6 +1111,12 @@ export interface PreflightReport {
   schema: number;
   verdict: "green" | "amber" | "red";
   checks: PreflightCheck[];
+  /**
+   * The build `collie update --rollback` would go back to, when this machine keeps one (M60 spec 01):
+   * the version it runs now and the older one on disk. Absent when there is none, and on a bridge
+   * older than the field. The Updates page offers Roll back only when it is here.
+   */
+  rollback?: { from: string; to: string };
 }
 
 /**
@@ -1140,6 +1180,20 @@ export interface UpdateStartResponse {
    * than the field, which reads as "no id to key on".
    */
   runId?: string;
+}
+
+/** `POST /api/update/rollback` — the 202 (M60 spec 01). The run is followed on the snapshot from here. */
+export interface RollbackStartResponse {
+  ok: true;
+  /** The version this machine leaves, and the older one it goes back to. */
+  from: string | null;
+  to: string | null;
+  /** The record as the bridge read it before the start, as on `POST /api/update`. */
+  run: UpdateRun | null;
+  /** The request id this device sent, which the run record carries as its run id. */
+  runId: string;
+  /** The same request id was seen before: this is that start's receipt, and nothing new started. */
+  replay?: true;
 }
 
 export interface SnapshotResponse {

@@ -17,7 +17,7 @@ import {
   PREFLIGHT_FRESH,
   PREFLIGHT_HEADER,
 } from "./router.ts";
-import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
+import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
@@ -54,6 +54,8 @@ import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
 export interface FollowHeaders {
   /** The lead's own settled release (`X-Crew-Lead-Release`), or null while it may state nothing. */
   readonly leadRelease?: string | null;
+  /** The lead's line and step (`X-Crew-Lead-Line`, M60 spec 01), sent only beside the release. */
+  readonly leadLine?: string | null;
   /** `<member-name>;<run-id>` (`X-Crew-Update-Turn`), for the ONE member holding the turn. */
   readonly turn?: string | null;
   /** The cursor of the last walky report this lead read from this member (`X-Crew-Walky-Ack`, §21). */
@@ -777,6 +779,7 @@ export class PeerClient {
     // become a lead that polls more slowly.
     if (follow.leadRelease !== undefined && follow.leadRelease !== null) {
       headers[LEAD_RELEASE_HEADER] = follow.leadRelease;
+      if (follow.leadLine !== undefined && follow.leadLine !== null) headers[LEAD_LINE_HEADER] = follow.leadLine;
     }
     if (follow.turn !== undefined && follow.turn !== null) headers[UPDATE_TURN_HEADER] = follow.turn;
     // §21's ack, on the same dial and for the same reason: the member drops what this lead has read.

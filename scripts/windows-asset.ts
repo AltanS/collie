@@ -5,7 +5,7 @@ import { join } from "node:path";
 // tested. The Windows set is three files the `payload-windows` job uploads together: the zip, its
 // `.sha256` sidecar and `windows-x64.artifact.json`, the zip's manifest entry. It is all or nothing.
 //
-//   bun scripts/windows-asset.ts --dir <assets> --version <X.Y.Z> --result <payload-windows result> \
+//   bun scripts/windows-asset.ts --dir <assets> --version <X.Y.Z[-edge.N]> --result <payload-windows result> \
 //     --repo <owner/name> [--override <the variable's value>] [--now <ISO date, tests only>]
 //       decides, removes a partial set, prints a GitHub `::warning::` or `::error::`, writes
 //       `present=true|false` to $GITHUB_OUTPUT, and exits 1 only on a failure
@@ -230,6 +230,13 @@ function askOnce(repo: string, currentTag: string, gh: GhRunner): PriorWindowsRe
   return priorWindowsRelease(result.stdout, currentTag);
 }
 
+/**
+ * The versions a release names: `X.Y.Z`, or an Edge build `X.Y.Z-edge.N` (M60 spec 01), whose zip is
+ * `collie-X.Y.Z-edge.N-windows-x64.zip` like every other row's payload. An Edge release is a GitHub
+ * pre-release, so it never closes the tolerance for the next one ({@link priorWindowsRelease}).
+ */
+export const RELEASE_VERSION = /^\d+\.\d+\.\d+(?:-edge\.(?:0|[1-9]\d*))?$/;
+
 /** The three file names of the set for one version. */
 export interface WindowsFileNames {
   readonly zip: string;
@@ -279,8 +286,12 @@ function main(args: readonly string[]): number {
   const now = nowArg === null ? new Date() : new Date(nowArg);
   if (dir === null || version === null || result === null || Number.isNaN(now.getTime())) {
     process.stderr.write(
-      "usage: windows-asset.ts --dir <assets> --version <X.Y.Z> --result <result> --repo <owner/name> [--override <value>] [--now <ISO date>]\n",
+      "usage: windows-asset.ts --dir <assets> --version <X.Y.Z[-edge.N]> --result <result> --repo <owner/name> [--override <value>] [--now <ISO date>]\n",
     );
+    return 2;
+  }
+  if (!RELEASE_VERSION.test(version)) {
+    process.stderr.write(`windows-asset.ts: '${version}' is not a release version (X.Y.Z or X.Y.Z-edge.N)\n`);
     return 2;
   }
   const files = windowsFiles(version);

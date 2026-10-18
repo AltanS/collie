@@ -506,7 +506,7 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
 
   test("a peer reads both follow headers and hands them to its own decision, unchanged", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -521,12 +521,33 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual(ownSnapshot());
-    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7" }]);
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7", leadLine: null }]);
+  });
+
+  test("the lead's release line rides beside the release, verbatim (M60 spec 01)", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    await call(handler, CREW_SNAPSHOT_PATH, {
+      headers: {
+        ...authed,
+        "x-crew-lead-release": "1.23.0-edge.1",
+        "x-crew-lead-line": "stable;rollback",
+        "x-crew-update-turn": "laptop;r-8",
+      },
+    });
+    expect(seen).toEqual([{ leadRelease: "1.23.0-edge.1", turn: "laptop;r-8", leadLine: "stable;rollback" }]);
   });
 
   test("a turn for somebody else reaches the peer verbatim, and its own guards refuse it", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -539,12 +560,12 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     });
     // The ROUTER does not decide whose turn it is — it carries the value, and `follow.ts` refuses a
     // turn that does not name this member. Deciding it here would be a second answer to one question.
-    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "basement;r-7" }]);
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "basement;r-7", leadLine: null }]);
   });
 
   test("an older peer ignores the follow headers: absent, blank and unwired all read the same", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -557,8 +578,8 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
       headers: { ...authed, "x-crew-lead-release": "  ", "x-crew-update-turn": "" },
     });
     expect(seen).toEqual([
-      { leadRelease: null, turn: null },
-      { leadRelease: null, turn: null },
+      { leadRelease: null, turn: null, leadLine: null },
+      { leadRelease: null, turn: null, leadLine: null },
     ]);
 
     // And a build wired with no follower at all answers the identical body: it ignores both headers,

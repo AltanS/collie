@@ -16,6 +16,7 @@ interface Step {
   readonly id?: string;
   readonly uses?: string;
   readonly run?: string;
+  readonly shell?: string;
   readonly with?: Record<string, string>;
   readonly env?: Record<string, string>;
 }
@@ -132,5 +133,59 @@ describe("release.yml: a Windows failure never stops a release", () => {
       expect(job(name).needs).toBe("release");
       expect(job(name).if).toBe("${{ !cancelled() && needs.release.result == 'success' && !contains(github.ref_name, '-') }}");
     }
+  });
+});
+
+describe("release.yml: an Edge tag (M60 spec 01)", () => {
+  const stamp = 'bun scripts/release-version.ts --tag "$GITHUB_REF_NAME" --stamp';
+
+  test("matches the same trigger as a Stable tag", () => {
+    // SAFETY: plain data from Bun's YAML parser, compared against literals below.
+    const on = (Bun.YAML.parse(text) as { on: { push: { tags: string[] } } }).on;
+    expect(on.push.tags).toEqual(["v*.*.*"]);
+    // GitHub's glob: `*` crosses everything but `/`, so `v1.23.0-edge.1` is `v` `1` `.` `23` `.` `0-edge.1`.
+    const glob = new RegExp(`^${on.push.tags[0]?.replaceAll(".", "\\.").replaceAll("*", "[^/]*") ?? ""}$`);
+    expect(glob.test("v1.23.0-edge.1")).toBe(true);
+    expect(glob.test("v1.23.0")).toBe(true);
+  });
+
+  test("every job that builds stamps the tag's version before the version gate reads the files", () => {
+    const build = scripts(job("payload"));
+    expect(build).toContain(stamp);
+    expect(build.indexOf(stamp)).toBeLessThan(build.indexOf("bash scripts/check-version.sh"));
+    expect(build.indexOf(stamp)).toBeLessThan(build.indexOf("bun run build"));
+
+    const windows = job("payload-windows").steps ?? [];
+    const windowsStamp = windows.findIndex((s) => s.run === stamp);
+    const windowsBuild = windows.findIndex((s) => s.run?.includes("scripts\\build-windows-payload.ps1") === true);
+    expect(windowsStamp).toBeGreaterThan(0);
+    expect(windows[windowsStamp]?.shell).toBe("bash");
+    expect(windowsStamp).toBeLessThan(windowsBuild);
+
+    const release = job("release").steps ?? [];
+    const releaseStamp = release.findIndex((s) => s.run === `nix develop --command ${stamp}`);
+    const webDist = release.findIndex((s) => s.name === "Build and package web/dist");
+    expect(releaseStamp).toBeGreaterThan(0);
+    expect(releaseStamp).toBeLessThan(webDist);
+  });
+
+  test("publishes as a pre-release that never takes the Latest badge, and the site and packages stay home", () => {
+    const create = (job("release").steps ?? []).find((s) => s.name === "Create GitHub release");
+    expect(create?.run).toContain("case \"$GITHUB_REF_NAME\" in *-*) flags=(--prerelease --latest=false) ;; esac");
+    // The manifest's `prerelease` follows the same hyphen.
+    expect(scripts(job("release"))).toContain('case "$GITHUB_REF_NAME" in *-*) prerelease=true ;; esac');
+    for (const name of ["notify-website", "refresh-packages"]) expect(job(name).if).toContain("!contains(github.ref_name, '-')");
+  });
+
+  test("the sidecar is the same step for both lines, handed the tag's whole version", () => {
+    const reading = (job("release").steps ?? []).find((s) => s.name === "Write the release reading");
+    expect(reading?.run).toContain('version="${GITHUB_REF_NAME#v}"');
+    expect(reading?.run).toContain('bun scripts/release-reading.ts --version "$version"');
+  });
+
+  test("a Stable page compares against the Stable release before it, never its Edge builds", () => {
+    const notes = (job("release").steps ?? []).find((s) => s.id === "notes");
+    expect(notes?.run).toContain("case \"$GITHUB_REF_NAME\" in *-edge.*) ;; *) exclude=(--exclude '*-edge.*') ;; esac");
+    expect(notes?.run).toContain(`git describe --tags --abbrev=0 --match 'v*' "\${exclude[@]}" "\${GITHUB_REF_NAME}^"`);
   });
 });

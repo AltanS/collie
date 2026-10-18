@@ -7,6 +7,7 @@ import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver, UPDATE_MIRROR_ENV } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
+import { isRequestId } from "./worktree-receipts.ts";
 
 // `POST /api/update` — the phone's one-tap-plus-one-confirm start, and the preflight it is gated on
 // (M15/05).
@@ -55,6 +56,12 @@ export interface PreflightReport {
    */
   readonly installKind?: UpdateStatus["installKind"];
   readonly checks: readonly PreflightCheck[];
+  /**
+   * The build `collie update --rollback` would go back to (M60 spec 01): the version running now and
+   * the older one kept on disk. Absent when this install keeps none, which is what the phone's Roll
+   * back row and {@link rollbackVerdict} both read. A report older than the field has none.
+   */
+  readonly rollback?: { readonly from: string; readonly to: string };
 }
 
 /** The install kinds this build knows. A report naming anything else reads as unknown, never a kind. */
@@ -171,8 +178,19 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
   const topLevel = members === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
   const kind = readInstallKind(rec.installKind);
   // Assigned, never conditionally spread: a report that named no kind must carry NO such key.
-  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
-  return kind === undefined ? report : { ...report, installKind: kind };
+  const base: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
+  const withKind = kind === undefined ? base : { ...base, installKind: kind };
+  const back = readRollback(rec.rollback);
+  return back === null ? withKind : { ...withKind, rollback: back };
+}
+
+/** `{ from, to }`, both non-empty strings, or null. Anything else reads as no rollback offered. */
+function readRollback(value: JsonValue | undefined): { readonly from: string; readonly to: string } | null {
+  const rec = value === undefined ? null : asRecord(value);
+  if (rec === null) return null;
+  const { from, to } = rec;
+  if (typeof from !== "string" || typeof to !== "string" || from === "" || to === "") return null;
+  return { from, to };
 }
 
 /** The first red check in `report`, or null. What the refusal NAMES — "unavailable" is not a reason. */
@@ -901,6 +919,161 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   return { kind: "start", to: would, major: req.major };
 }
 
+// ── The rollback verdict (M60 spec 01) ───────────────────────────────────────
+// `POST /api/update/rollback` — the phone's "Roll back", which is `collie update --rollback` behind
+// a confirm sheet, run by the same detached runner an update takes so its result reads the same.
+//
+// IT IS NOT AN UPDATE, AND IT IS GATED DIFFERENTLY. It installs nothing: the older build is already
+// on disk, complete, and was healthy when it was current. So the preflight's REDS do not gate it (a
+// red disk or an upstream that does not answer is exactly when going back must still work); only
+// the preflight's `rollback` field does, because that is the one answer to "is there a previous
+// build". What still gates it: the confirm, a run already going, a packaged install, and a stale
+// sheet that read about another build than the one on disk now.
+//
+// THE REQUEST ID IS THE RUN ID. The phone mints a UUID per confirm and sends it; the run record
+// carries it. A second POST with the same id (a retry after a dropped answer) is answered with the
+// same receipt and starts nothing, whatever the run's state is by then. A new id while that run is
+// still going is the ordinary double-tap refusal.
+
+const refused = (status: number, code: ErrorCode, detail?: ApiErrorDetail): RollbackVerdict => ({
+  kind: "refuse",
+  status,
+  body: apiError(code, detail),
+});
+
+/** What `POST /api/update/rollback` decided. */
+export type RollbackVerdict =
+  | { readonly kind: "start"; readonly from: string; readonly to: string; readonly runId: string }
+  /** The same request id again: answer the receipt the first POST got, and start nothing. */
+  | { readonly kind: "replay"; readonly from: string | null; readonly to: string | null; readonly runId: string }
+  | { readonly kind: "refuse"; readonly status: number; readonly body: ApiErrorBody };
+
+/** The body this route accepts, after parsing. */
+export interface RollbackRequest {
+  readonly confirm: boolean;
+  /** The phone's UUID for this confirm, or null when the body carried none that is a UUID. */
+  readonly requestId: string | null;
+  /** The version the confirm sheet named, when the client sent one. */
+  readonly target: string | null;
+}
+
+/** Parse an untrusted body. `null` when it is not an object — the caller answers 400. */
+export function parseRollbackRequest(body: JsonValue): RollbackRequest | null {
+  const rec = asRecord(body);
+  if (rec === null) return null;
+  const { requestId, target } = rec;
+  return {
+    confirm: rec.confirm === true,
+    requestId: isRequestId(requestId) ? requestId : null,
+    target: typeof target === "string" && target.trim() !== "" ? target.trim() : null,
+  };
+}
+
+/** What the rollback verdict is decided from — read before the request arrived, or by the handler. */
+export interface RollbackState {
+  readonly run: UpdateRun | null;
+  readonly lockHeld: boolean;
+  readonly preflight: PreflightReport | null;
+  readonly installKind?: UpdateStatus["installKind"];
+  /** Whether this lead's crew run is still open. A rollback while members level to this build waits. */
+  readonly crewRunOpen?: boolean;
+}
+
+/**
+ * Whether this request starts a rollback, and if not, exactly why not. The order:
+ *
+ *  1. **No confirm, no rollback**, and **no request id, no rollback**: the id is the receipt.
+ *  2. **The same id again** answers its receipt, before any refusal a finished run would now make.
+ *  3. **A run is going** (an update, a rollback, or this lead's crew run): the double-tap refusal.
+ *  4. **A packaged install** keeps no previous build of Collie's own; its package manager does.
+ *  5. **The preflight could not run**: "we could not check" is not "there is a build to go back to".
+ *  6. **No previous build** in the report.
+ *  7. **A stale sheet**: the version it named is not the one on disk now.
+ */
+export function rollbackVerdict(req: RollbackRequest, state: RollbackState): RollbackVerdict {
+  if (!req.confirm) return refused(400, "update.confirm_required");
+  if (req.requestId === null) return refused(400, "update.request_id_required");
+  const { run } = state;
+  if (run !== null && run.runId === req.requestId) {
+    return { kind: "replay", from: run.from, to: run.to, runId: req.requestId };
+  }
+  if ((run !== null && inFlight(run.state)) || state.lockHeld) {
+    return refused(409, "update.in_progress", { state: run?.state ?? "staging" });
+  }
+  if (state.crewRunOpen === true) return refused(409, "update.in_progress", { state: "levelling the crew" });
+  if (state.installKind === "packaged") return refused(409, "update.packaged");
+  if (state.preflight === null) return refused(503, "update.preflight_unavailable");
+  const back = state.preflight.rollback;
+  if (back === undefined) return refused(409, "update.rollback_unavailable");
+  if (req.target !== null && req.target !== back.to) {
+    return refused(409, "update.target_mismatch", { asked: req.target, would: back.to });
+  }
+  return { kind: "start", from: back.from, to: back.to, runId: req.requestId };
+}
+
+// ── GO BACK NOW: THE SWITCH BACK TO STABLE (M60 spec 01) ─────────────────────
+
+/** What the back verdict is decided from. `back` is the monitor's case-2 target, or null. */
+export interface BackState extends RollbackState {
+  /** The version this machine runs, which the run leaves. */
+  readonly current: string;
+  readonly line: "stable" | "edge" | null;
+  readonly back: string | null;
+}
+
+/**
+ * Whether `POST /api/update/back` starts "Go back now", and if not, exactly why not. It takes the
+ * rollback route's body and the rollback route's order, with the one question that differs:
+ *
+ *  1. **No confirm**, **no request id**: refused, as for a rollback.
+ *  2. **The same id again** answers its receipt.
+ *  3. **A run is going**, or this lead's crew run is open: the double-tap refusal.
+ *  4. **A packaged install** takes its versions from its package manager.
+ *  5. **No way back to offer**: the line is not Stable, or no Stable release is below an Edge build
+ *     that is ahead of every Stable one. The monitor's `back` is the only target this route takes.
+ *  6. **A stale sheet**: the version it named is not the target now.
+ *  7. **A red preflight**: the machine cannot download or build the target right now.
+ */
+export function backVerdict(req: RollbackRequest, state: BackState): RollbackVerdict {
+  if (!req.confirm) return refused(400, "update.confirm_required");
+  if (req.requestId === null) return refused(400, "update.request_id_required");
+  const { run } = state;
+  if (run !== null && run.runId === req.requestId) {
+    return { kind: "replay", from: run.from, to: run.to, runId: req.requestId };
+  }
+  if ((run !== null && inFlight(run.state)) || state.lockHeld) {
+    return refused(409, "update.in_progress", { state: run?.state ?? "staging" });
+  }
+  if (state.crewRunOpen === true) return refused(409, "update.in_progress", { state: "levelling the crew" });
+  if (state.installKind === "packaged") return refused(409, "update.packaged");
+  if (state.line !== "stable" || state.back === null) return refused(409, "update.back_unavailable");
+  if (req.target !== null && req.target !== state.back) {
+    return refused(409, "update.target_mismatch", { asked: req.target, would: state.back });
+  }
+  if (state.preflight === null) return refused(503, "update.preflight_unavailable");
+  const red = firstRed(state.preflight);
+  if (red !== null) return refused(409, "update.preflight_red", { check: red.id, reason: red.reason });
+  return { kind: "start", from: state.current, to: state.back, runId: req.requestId };
+}
+
+// ── THE RELEASE LINE SWITCH (M60 spec 01) ────────────────────────────────────
+
+/** The body `POST /api/update/line` accepts, after parsing. */
+export interface LineRequest {
+  readonly line: "stable" | "edge" | null;
+  readonly requestId: string | null;
+}
+
+/** Parse an untrusted body. `null` when it is not an object — the caller answers 400. */
+export function parseLineRequest(body: JsonValue): LineRequest | null {
+  const rec = asRecord(body);
+  if (rec === null) return null;
+  return {
+    line: rec.line === "stable" || rec.line === "edge" ? rec.line : null,
+    requestId: isRequestId(rec.requestId) ? rec.requestId : null,
+  };
+}
+
 // ── IS THERE ANYTHING FOR A CREW RUN TO DO? THE ONE RULE ─────────────────────
 // The phone decides whether to OFFER "Update crew" / "Retry crew update" and this bridge decides
 // whether to ACCEPT the peers-only start that button sends. Two answers to one question is how the
@@ -1030,9 +1203,25 @@ export function updateStartCommand(a: {
    * or refuses the same bad value, and never asks GitHub in its place. The other tiers inherit it.
    */
   readonly mirror?: string | null;
+  /**
+   * The phone's rollback (M60 spec 01): `update --rollback --run-id <id>`, which the CLI hands to the
+   * same detached runner as a run with `action: "rollback"`. `major` and `toTag` mean nothing to it
+   * and are dropped.
+   */
+  readonly rollback?: boolean;
+  /**
+   * The way DOWN (M60 spec 01): `--downgrade` beside `--to-tag`, for "Go back now" and for a crew
+   * member following its lead's rollback or switch. Never the default, and meaningless without a tag.
+   */
+  readonly downgrade?: boolean;
+  /** `--line <line>`: the line this one run resolves on, the lead's for a crew member (ADR 0110). */
+  readonly line?: "stable" | "edge" | null;
 }): UpdateStartPlan {
-  const verb = a.major ? ["update", "--major"] : ["update"];
-  if (a.toTag !== undefined && a.toTag !== null) verb.push("--to-tag", a.toTag);
+  const verb = a.rollback === true ? ["update", "--rollback"] : a.major ? ["update", "--major"] : ["update"];
+  const pinned = a.rollback !== true && a.toTag !== undefined && a.toTag !== null;
+  if (pinned) verb.push("--to-tag", a.toTag ?? "");
+  if (pinned && a.downgrade === true) verb.push("--downgrade");
+  if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
     const setenv = a.mirror === undefined || a.mirror === null ? [] : [`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`];

@@ -132,6 +132,13 @@ export function CrewRoute() {
           />
         )}
         {status !== null && (
+          // The lead's line is the crew's line (M60 spec 01, ADR 0110): members take the lead's line
+          // with the version it levels, Edge builds included, and step down with it.
+          <p className="text-xs text-muted-foreground" data-slot="crew-release-line">
+            {root?.update?.line === "edge" ? t("crew.releaseLine.edge") : t("crew.releaseLine.stable")}
+          </p>
+        )}
+        {status !== null && (
           // The reason is a line under the button, not a tooltip: a phone has no hover to show one.
           <div className="flex flex-col gap-1.5">
             <Button

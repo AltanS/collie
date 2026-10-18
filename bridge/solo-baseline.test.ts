@@ -416,6 +416,11 @@ const UPDATE_STATUS_KEYS = {
   // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
   // release — an urgent one is rare by construction, so the golden bodies below carry no such key.
   urgent: true,
+  // The release line and the way back to Stable (M60 spec 01). Optional: the line rides beside a
+  // monitor with the line seam, and `back` only on an Edge build ahead of Stable on the Stable line,
+  // so the golden bodies below carry neither key.
+  line: true,
+  back: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -533,6 +538,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   test("the supporting wire types are unchanged too", () => {
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
     expect(Object.keys(UPDATE_STATUS_KEYS).toSorted()).toEqual([
+      // The way back to Stable (M60 spec 01) — optional, present only on an Edge build ahead of
+      // Stable on the Stable line.
+      "back",
       "bridgeStale",
       "checkedAt",
       "current",
@@ -544,6 +552,8 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "installKind",
       "latest",
       "latestUrl",
+      // The release line (M60 spec 01) — optional, present beside a monitor with the line seam.
+      "line",
       // Whether the release ahead changes the CREW WIRE (M27/06) — optional, and absent on a solo
       // install, which has no link to change.
       "linkChange",
@@ -875,10 +885,20 @@ describe("solo zero-tax — routes", () => {
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
       // (`collie crew update`), never over the link (ADR 0016).
       "/api/update",
+      // "Go back now" from Edge to Stable (M60 spec 01) — solo, no crew sibling, for the rollback
+      // route's reason.
+      "/api/update/back",
       "/api/update/check",
       // Closing the update band (M17/08) — solo, no crew sibling: it writes the lead's own update
       // record, and the band a peer's operator closes is that machine's own decision.
       "/api/update/dismiss",
+      // This machine's release line, Stable or Edge (M60 spec 01) — solo, no crew sibling: a member
+      // takes its lead's line from §20's `X-Crew-Lead-Line`, never over a route.
+      "/api/update/line",
+      // Rolling back from the phone (M60 spec 01) — solo, no crew sibling, for the update route's
+      // reason: it moves this machine's own build. The crew follows the lead's rollback over §20's
+      // headers, never over a route of its own.
+      "/api/update/rollback",
       // The digest's "remind me next digest" dismiss — solo, no crew sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",
@@ -1212,6 +1232,10 @@ const STATE_DIR_ENTRIES = [
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.
+  // This machine's release line and the builds it rolled back from (M60 spec 01, ADR 0110). A NEW
+  // file, absent until the line is switched or an Edge build is rolled back from; absent reads as
+  // Stable with nothing rejected.
+  "update-line.json",
   "update-runner.log",
   "update-state.json",
   // The detached updater's run record and its lock (M15/04). WRITTEN BY THE CLI, never by the

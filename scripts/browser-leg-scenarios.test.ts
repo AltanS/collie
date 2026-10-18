@@ -20,7 +20,7 @@ describe("the browser leg's cases per leg", () => {
   });
 
   test("the crew leg prints cases 12 to 14, once each, under Claude", () => {
-    expect(cells("crew")).toEqual(["claude walky-crew-broadcast", "claude walky-crew-agents", "claude walky-crew-unreachable"]);
+    expect(cells("crew")).toEqual(["claude walky-crew-broadcast", "claude walky-crew-agents", "claude walky-crew-unreachable", "claude crew-release-line"]);
   });
 
   test("no cell is in both legs, and every case is in one", () => {

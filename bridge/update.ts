@@ -8,6 +8,7 @@ import { herdrActionCommand } from "./front-door.ts";
 import type { ReleaseNotes, ReleaseNotesGroup } from "./release-notes.ts";
 import type { CrewMode, UpdateLinkChange, UpdateStatus } from "./types.ts";
 import type { UpdateRun } from "./update-run.ts";
+import type { LineReading, ReleaseLine } from "./update-line.ts";
 
 // Update-availability signal, surfaced on the (access-gated) /api/snapshot as `update`. Two
 // independent questions the running plugin can answer about itself:
@@ -334,6 +335,11 @@ export function shouldNotify(a: {
    * from one this install already pushed, and it is the same object the snapshot shows.
    */
   urgent?: UpdateUrgentReading;
+  /**
+   * This machine is on the Edge line (M60 spec 01): no window is consulted, so a new build is
+   * pushed at the next check. The 09:00 floor still holds, for the reason it holds for urgent.
+   */
+  edge?: boolean;
 }): NotifyVerdict {
   if (!a.latest) return { send: false };
   if (compareSemver(a.latest, a.current) <= 0) return { send: false };
@@ -356,7 +362,7 @@ export function shouldNotify(a: {
   // An urgent delta that has already been announced is a patch train on the DAILY window: the
   // interruption was spent, and what is left is the ordinary cadence for the kind of release it is.
   const window = patchOnly && a.urgent === undefined ? DIGEST_PATCH_WINDOW_MS : DIGEST_WINDOW_MS;
-  if (!unannouncedUrgent && !Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) {
+  if (a.edge !== true && !unannouncedUrgent && !Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) {
     return { send: false };
   }
   // THE FLOOR IS NEVER SKIPPED, not even by an urgent release. "Today" is what urgent asks for, not
@@ -1210,6 +1216,13 @@ export interface UpdateMonitorDeps {
    * without it reports no current notes, which the Updates page shows as no list.
    */
   currentNotes?: () => Promise<ReleaseNotes | null>;
+  /**
+   * What this machine's release line offers from a list of published tags (M60 spec 01, ADR 0110):
+   * `bridge/update-line.ts`'s `lineReading` over `update-line.json`, read on every call so a switch
+   * through the route is seen at once. Optional: a monitor without it resolves on ADR 0020's rules
+   * exactly as before, with no line and no way back.
+   */
+  lineOffer?: (tags: readonly string[], installed: string) => LineReading;
 }
 
 /** What `GET /api/update/check` carries about what releases changed (1.21.1). */
@@ -1220,9 +1233,21 @@ export interface UpdateNotes {
   offered: ReleaseNotes[];
 }
 
+/** What a routine update would take from a tag list: the newest, and every version above this one. */
+interface RoutineOffer {
+  readonly latest: string | null;
+  readonly newer: readonly string[];
+}
+
 export class UpdateMonitor {
   private latest: string | null = null;
   private newerVersions: string[] = [];
+  // THE LINE AND THE WAY BACK (M60 spec 01), from the last resolve. `line` is null on a monitor with
+  // no line seam, which reports none; `back` is the Stable release "Go back now" targets, or null.
+  private line: ReleaseLine | null = null;
+  private back: { readonly to: string; readonly exceptions: readonly string[] } | null = null;
+  // The published tags the last check found, so a switch of line re-resolves without a request.
+  private published: string[] | null = null;
   private majorAvailable: string | null = null;
   private checkedAt: number | null = null;
   // CACHED WITH THE READING, never in a store of its own (M27/06): it is a fact about the release
@@ -1297,11 +1322,9 @@ export class UpdateMonitor {
     // announced. A version we can't parse a major out of (`unknown`) falls back to the old "newest of
     // anything", because an install that can't name its major can't be gated on it either.
     const major = majorOf(this.deps.current);
-    this.latest =
-      major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, this.deps.current);
+    this.published = tags;
+    this.resolve(tags);
     this.majorAvailable = major === null ? null : latestReleaseAboveMajor(tags, major);
-    // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
-    this.newerVersions = updatesNewerThan(tags, this.deps.current);
     this.checkedAt = this.deps.now();
     // ONE SMALL GET INSIDE THIS CHECK'S BUDGET (M27/06), and only when there is a release to ask
     // about. It cannot fail the check: the fetcher answers null for everything that is not the
@@ -1331,10 +1354,61 @@ export class UpdateMonitor {
       lastPushedAt: store.lastPushedAt(),
       now: new Date(this.deps.now()),
       urgent: this.urgent ?? undefined,
+      // EDGE NUDGES AT ONCE (M60 spec 01): a volunteer on Edge asked for the next build the day it
+      // is out. Stable keeps today's windows.
+      edge: this.line === "edge",
     });
     if (!verdict.send) return;
     await store.setLastNotified(verdict.versions[verdict.versions.length - 1] ?? current, this.nowIso());
     this.deps.notify(verdict.versions, this.linkChange, this.urgent);
+  }
+
+  /**
+   * The routine answer from `tags`: `latest` and `newerVersions`, and on a monitor with a line seam,
+   * the line and the way back. One place, so a check and a switch of line resolve alike.
+   *
+   * Two answers, never one (ADR 0020): the newest tag the operator can take on a routine `update`,
+   * which stays inside the running major, and separately whether a MAJOR is out at all (the caller's
+   * `majorAvailable`). A version we can't parse a major out of (`unknown`) falls back to the old
+   * "newest of anything", because an install that can't name its major can't be gated on it either.
+   */
+  private resolve(tags: string[]): void {
+    const { current } = this.deps;
+    const major = majorOf(current);
+    const reading = major === null ? undefined : this.deps.lineOffer?.(tags, current);
+    if (reading !== undefined) {
+      this.latest = reading.latest;
+      this.newerVersions = [...reading.newer];
+      this.line = reading.line;
+      this.back = reading.back === null ? null : { to: reading.back, exceptions: reading.exceptions };
+      return;
+    }
+    this.latest = major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, current);
+    // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
+    this.newerVersions = updatesNewerThan(tags, current);
+    this.line = null;
+    this.back = null;
+  }
+
+  /**
+   * The line changed (M60 spec 01): resolve again from the tags the last check found, with no
+   * request, so the snapshot after a switch already shows what the new line offers. The next check
+   * reads the sidecars of anything newly offered.
+   */
+  lineChanged(): void {
+    if (this.published !== null) this.resolve(this.published);
+  }
+
+  /** The routine offer from `tags`, without touching the cached answer. {@link publishedTags} asks. */
+  private offerOf(tags: string[]): RoutineOffer {
+    const { current } = this.deps;
+    const major = majorOf(current);
+    const reading = major === null ? undefined : this.deps.lineOffer?.(tags, current);
+    if (reading !== undefined) return { latest: reading.latest, newer: [...reading.newer] };
+    return {
+      latest: major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, current),
+      newer: updatesNewerThan(tags, current),
+    };
   }
 
   /**
@@ -1359,10 +1433,11 @@ export class UpdateMonitor {
     let tags = [...names];
     const asked = new Set<string>();
     for (let round = 0; round < UNPUBLISHED_ROUNDS_MAX; round++) {
-      const top = major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, current);
+      const offer = this.offerOf(tags);
+      const top = offer.latest;
       const above = major === null ? null : latestReleaseAboveMajor(tags, major);
       // Only a version NEWER than this install can be an offer, so only those are asked about.
-      const wanted = [...updatesNewerThan(tags, current).slice(-URGENT_READING_CAP), top, above].filter(
+      const wanted = [...offer.newer.slice(-URGENT_READING_CAP), top, above].filter(
         (v): v is string => v !== null && compareSemver(v, current) > 0,
       );
       const next = [...new Set(wanted)].filter((v) => !asked.has(v));
@@ -1554,6 +1629,10 @@ export class UpdateMonitor {
     // the daily cadence, which is every ordinary release and every check that has not run yet.
     if (this.urgent !== null) status.urgent = this.urgent;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
+    // The line and the way back (M60 spec 01), on the same rule: absent on a monitor with no line
+    // seam, and `back` absent in every case but an Edge build ahead of Stable on the Stable line.
+    if (this.line !== null) status.line = this.line;
+    if (this.back !== null) status.back = { to: this.back.to, exceptions: [...this.back.exceptions] };
     if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind, this.deps.instance);
     return status;
   }

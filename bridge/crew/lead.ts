@@ -188,7 +188,12 @@ export interface CrewLeadDeps {
     link: CrewLink,
     view: SnapshotView,
     freshPreflight?: boolean,
-    follow?: { readonly leadRelease?: string | null; readonly turn?: string | null; readonly walkyAck?: string | null },
+    follow?: {
+      readonly leadRelease?: string | null;
+      readonly leadLine?: string | null;
+      readonly turn?: string | null;
+      readonly walkyAck?: string | null;
+    },
   ) => Promise<PeerOutcome<unknown>>;
   /**
    * §20's half of the sweep (M16/04): what this lead may state about ITSELF, and the queue that
@@ -327,6 +332,12 @@ export interface FollowDistribution {
    * boot would keep a whole crew waiting for a restart.
    */
   readonly leadRelease: () => string | null;
+  /**
+   * This lead's release line, and its step when the release it states is where a rollback or a
+   * switch back to Stable landed (`X-Crew-Lead-Line`, M60 spec 01). Sent only beside the release.
+   * Optional: a caller that passes none sends no line, which every member reads as Stable.
+   */
+  readonly leadLine?: () => string | null;
   /**
    * This lead's own run record, resolved, or null. The queue reads it to tell a lead still taking
    * the release from one whose update rolled back and will never state the target (A1). Optional:
@@ -540,12 +551,14 @@ export class CrewLead {
       }
 
       const leadRelease = follow?.leadRelease() ?? null;
+      const leadLine = leadRelease === null ? null : (follow?.leadLine?.() ?? null);
       // The dial each member is about to make, claimed BEFORE the call and carried beside the answer
       // — the link's `runAtStart`. See {@link CrewLead.dialGenerations}.
       const dialled = new Map(due.map((link) => [link.memberId, this.nextDialGeneration(link.memberId)]));
       const outcomes = await sweepPeers(due, (link) =>
         this.deps.snapshot(link, SWEEP_VIEW, opts.freshPreflight === true || this.verdictMissing(link.memberId, follow), {
           leadRelease,
+          leadLine,
           turn: follow?.turns.turnFor(link.memberId) ?? null,
           walkyAck: this.deps.walkyAck?.(link.memberId) ?? null,
         }),

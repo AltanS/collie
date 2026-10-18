@@ -6,6 +6,7 @@ import { __resetUpdateAsk, beginAskedUpdate, type UpdateAsk } from "./update-ask
 import { __resetUpdateRunStore, getUpdateRunSnapshot } from "./update-run-store";
 import { clearUpdateStarted, getUpdateClaim } from "./update-ribbon";
 import type { UpdateRun } from "./types";
+import { asJsonString, parseJsonObject } from "./json";
 
 // THE CONFIRM'S 202, AND WHAT THIS DEVICE KEEPS OF IT (2026-09-26).
 //
@@ -87,5 +88,47 @@ describe("beginAskedUpdate: the 202 of a lead that has updated before", () => {
     await beginAskedUpdate({ kind: "retry", version: "1.13.2", major: false, peersOnly: true, current: "1.13.2" });
     expect(getUpdateClaim()).toMatchObject({ runId: null, peersOnly: true });
     expect(getUpdateRunSnapshot().run).toBeUndefined();
+  });
+});
+
+describe("beginAskedUpdate: a rollback (M60 spec 01)", () => {
+  const ROLLBACK: UpdateAsk = { kind: "rollback", version: "1.13.1", major: false, peersOnly: false, current: "1.13.2" };
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it("posts the confirm, the version the sheet named and a fresh UUID to the rollback route, never to /api/update", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/update", () => HttpResponse.json({ error: "wrong route" }, { status: 500 })),
+      http.post("/api/update/rollback", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        bodies.push(body);
+        const id = asJsonString(body?.requestId) ?? "";
+        return HttpResponse.json({ ok: true, from: "1.13.2", to: "1.13.1", run: LAST, runId: id }, { status: 202 });
+      }),
+    );
+    await beginAskedUpdate(ROLLBACK);
+    await beginAskedUpdate(ROLLBACK);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({ confirm: true, target: "1.13.1" });
+    const ids = bodies.map((b) => asJsonString(parseJsonObject(JSON.stringify(b))?.requestId) ?? "");
+    for (const id of ids) expect(id).toMatch(UUID);
+    // One id per confirm.
+    expect(ids[0]).not.toBe(ids[1]);
+    // The claim keys on the request id, which the run record carries as its run id, and says rollback.
+    expect(getUpdateClaim()).toMatchObject({ runId: ids[1], target: "1.13.1", peersOnly: false, members: [], rollback: true });
+    expect(getUpdateRunSnapshot().run).toBeUndefined();
+  });
+
+  it("a refusal spends the claim and throws the bridge's own code", async () => {
+    server.use(
+      http.post("/api/update/rollback", () =>
+        HttpResponse.json(
+          { ok: false, error: "there is no previous build on this machine to roll back to", code: "update.rollback_unavailable" },
+          { status: 409 },
+        ),
+      ),
+    );
+    await expect(beginAskedUpdate(ROLLBACK)).rejects.toThrow();
+    expect(getUpdateClaim()).toBeNull();
   });
 });

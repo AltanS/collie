@@ -4,6 +4,7 @@ import { RouteHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { UpdateCard } from "@/components/update-card";
 import { UpdateCheckControl } from "@/components/update-check-control";
+import { ReleaseLineCard } from "@/components/release-line-card";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
@@ -18,12 +19,13 @@ import { BandMain } from "@/components/ui/strip-host";
 // theme. Updating is a flow now, with a lead, N peers, progress and a rollback state, so it gets a
 // page and Settings keeps one row that links here.
 //
-// ── TWO THINGS, IN THIS ORDER ────────────────────────────────────────────────
+// ── THREE THINGS, IN THIS ORDER ──────────────────────────────────────────────
 // The check control first: it is what makes the answer below it fresh, so it reads as the question
 // and the card reads as the answer. The card second, and it carries EVERYTHING else — the versions,
 // the preflight, the run progress, the peer lines, and the one action button. Peers are lines
 // inside that card and never a table beside it, because the thing that blocks the confirm has to be
-// readable without moving your eyes to a second surface.
+// readable without moving your eyes to a second surface. The release line third (M60 spec 01): a
+// standing choice, read less often than the offer it decides.
 //
 // ── IT IS ON THE POLL LOOP, AND THAT IS THE POINT ────────────────────────────
 // Same reason the crew census is: a run in progress and a peer going quiet are exactly what this
@@ -67,6 +69,7 @@ export function UpdatesRoute() {
       <BandMain base={16} className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
         <UpdateCheckControl />
         <UpdateCard />
+        <ReleaseLineCard />
       </BandMain>
     </div>
   );

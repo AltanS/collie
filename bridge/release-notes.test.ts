@@ -116,6 +116,14 @@ describe("the running version's notes, from its own CHANGELOG", () => {
     expect(notesFromChangelog("## [1.0.0] - 2026-01-01\n\n- no group\n", "1.0.0")).toBeNull();
   });
 
+  it("an Edge build reads the section of its base version (M60 spec 01)", async () => {
+    expect(notesFromChangelog(CHANGELOG, "1.21.0-edge.2")).toEqual(notesFromChangelog(CHANGELOG, "1.21.0"));
+    const reader = currentNotesReader("/root", "1.21.0-edge.2", "u", async () => CHANGELOG);
+    // The version stays the build's own, so the page names what is running; the notes are the base's.
+    expect((await reader())?.version).toBe("1.21.0-edge.2");
+    expect((await reader())?.groups[0]?.name).toBe("Added");
+  });
+
   it("reads the file once, and a missing file is null", async () => {
     let reads = 0;
     const reader = currentNotesReader("/root", "1.21.0", "https://example.test/v1.21.0", async (path) => {

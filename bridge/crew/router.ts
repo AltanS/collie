@@ -20,7 +20,7 @@ import {
 } from "../update-action.ts";
 import { CREW_MACHINE_FIELD } from "../machine-stats.ts";
 import type { MachineSample } from "../types.ts";
-import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
+import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
@@ -517,7 +517,11 @@ export interface CrewRouterDeps {
    * `onFollow` simply ignores both headers — which is a correct peer. Nothing here awaits it, so a
    * follow decision can never cost this snapshot its answer.
    */
-  readonly onFollow?: (a: { readonly leadRelease: string | null; readonly turn: string | null }) => void;
+  readonly onFollow?: (a: {
+    readonly leadRelease: string | null;
+    readonly turn: string | null;
+    readonly leadLine?: string | null;
+  }) => void;
   /**
    * Walky talky across the crew (§21). `fromMember` answers `POST /crew/v1/walky` on a LEAD, for the
    * member §8.6's signature named. `report` is a MEMBER's outcome report for the `walky` sibling of
@@ -1166,6 +1170,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // awaited — the snapshot this request came for is not the follow's to delay.
       deps.onFollow?.({
         leadRelease: headerValue(req, LEAD_RELEASE_HEADER),
+        leadLine: headerValue(req, LEAD_LINE_HEADER),
         turn: headerValue(req, UPDATE_TURN_HEADER),
       });
       return new Response(JSON.stringify(withWalky), {

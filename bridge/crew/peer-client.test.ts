@@ -286,6 +286,15 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     expect(new Headers(calls[1]!.init.headers).get(PROTOCOL_HEADER)).toBe("2");
   });
 
+  test("X-Crew-Lead-Line rides beside the release, and never without it (M60 spec 01)", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.23.0-edge.1", leadLine: "edge" });
+    expect(new Headers(calls[0]!.init.headers).get("X-Crew-Lead-Line")).toBe("edge");
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: null, leadLine: "edge" });
+    expect(new Headers(calls[1]!.init.headers).get("X-Crew-Lead-Line")).toBeNull();
+  });
+
   test("a lead mid-run states nothing: a null release sends no header at all", async () => {
     const { fetch, calls } = replying({});
     await client(fetch).snapshot(laptop, NARROW_VIEW, false, { leadRelease: null, turn: null });

@@ -103,3 +103,26 @@ describe("the repository's own newest release", () => {
 		expect(read?.notes?.[0]?.leads[0]).toBe(doc.notes?.[0]?.leads[0]);
 	});
 });
+
+describe("an Edge build's document (M60 spec 01)", () => {
+	test("carries the whole version, line edge, and its base version's notes", () => {
+		const doc = buildReleaseReading(ORDINARY, "1.9.0-edge.2", 2);
+		expect(doc).toEqual({
+			version: "1.9.0-edge.2",
+			crewProtocol: 2,
+			line: "edge",
+			notes: [{ name: "Added", leads: ["The crew levels itself."] }],
+		});
+	});
+
+	test("a Stable document carries no line key at all, byte for byte what it was", () => {
+		expect("line" in buildReleaseReading(ORDINARY, "1.9.0", 2)).toBe(false);
+	});
+
+	test("an installed Collie still reads it whole: the extra field is ignored, the version kept", () => {
+		const read = parseReleaseReading(JSON.parse(JSON.stringify(buildReleaseReading(URGENT, "1.9.1-edge.1", 2))));
+		expect(read?.version).toBe("1.9.1-edge.1");
+		expect(read?.crewProtocol).toBe(2);
+		expect(read?.notes?.[0]?.name).toBe("Fixed");
+	});
+});

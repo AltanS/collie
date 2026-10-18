@@ -132,7 +132,24 @@ export interface UpdateRun {
   readonly logTail?: string;
   /** The command the operator runs by hand — carried only by `stuck`. */
   readonly recovery?: string;
+  /**
+   * `rollback` when this run goes BACK to a build already on disk (M60 spec 01, the phone's "Roll
+   * back"): `to` is then the older version and `from` the one being left. Absent on every update.
+   *
+   * Additive within schema 2: a reader older than the field drops it and reads the run as an update
+   * to `to`, which is still a true sentence about where the machine went. The one reader that must
+   * know is {@link crewTurnStart}: a rollback levels the crew DOWN, to the build the lead went back
+   * to (ADR 0110), where an update levels it up.
+   *
+   * `switch` when the operator moved this machine from Edge back to Stable with "Go back now" (M60
+   * spec 01): `to` is the latest Stable release, below the Edge build being left. It levels the crew
+   * down the same way.
+   */
+  readonly action?: RunAction;
 }
+
+/** The two runs that go DOWN a version: a rollback, and the person-started switch back to Stable. */
+export type RunAction = "rollback" | "switch";
 
 /** The lock file's contents: who holds it and since when. */
 export interface UpdateLock {
@@ -175,6 +192,7 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
     reason?: string;
     logTail?: string;
     recovery?: string;
+    action?: string;
   };
   try {
     // SAFETY: `JSON.parse` answers a JSON value, and every field read off it below is either
@@ -212,6 +230,8 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
   if (doc.reason !== undefined) run.reason = doc.reason;
   if (doc.logTail !== undefined) run.logTail = doc.logTail;
   if (doc.recovery !== undefined) run.recovery = doc.recovery;
+  // Only the two words this build knows. Anything else reads as no action, which is an update.
+  if (doc.action === "rollback" || doc.action === "switch") run.action = doc.action;
   return run;
 }
 
@@ -233,6 +253,7 @@ interface DraftRun {
   reason?: string;
   logTail?: string;
   recovery?: string;
+  action?: RunAction;
 }
 
 /** The lock in `text`, or null. Same posture as {@link parseUpdateRun}: half a lock is no lock. */
@@ -338,13 +359,17 @@ export function updateLockHeld(
  */
 export function crewTurnStart(
   run: UpdateRun | null,
-): { readonly runId: string; readonly to: string; readonly at: number } | null {
+): { readonly runId: string; readonly to: string; readonly at: number; readonly down: boolean } | null {
   if (run === null || run.state !== "done") return null;
   if (run.runId === undefined || run.to === null) return null;
   // `updatedAt` is the moment this machine finished, which is the moment the levelling could have
   // begun. A caller that re-derives the queue after a restart ages the run against it, so a record
   // left behind by a crash days ago cannot start a levelling run today (M20/01).
-  return { runId: run.runId, to: run.to, at: run.updatedAt };
+  //
+  // A ROLLBACK AND A SWITCH BACK TO STABLE LEVEL THE CREW DOWN (ADR 0110). Their `to` is the OLDER
+  // build, and those two runs are the only ones a member steps down for (`crew/follow.ts` reads the
+  // step from `X-Crew-Lead-Line`). Every other run levels up, as it always did.
+  return { runId: run.runId, to: run.to, at: run.updatedAt, down: run.action !== undefined };
 }
 
 /**
