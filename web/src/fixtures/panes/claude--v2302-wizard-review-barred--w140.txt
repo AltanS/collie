@@ -1,0 +1,22 @@
+
+❯ Use the AskUserQuestion tool once with THREE questions (a wizard). Make the first question very long: at least 300 characters, so it
+  wraps over several lines. Each question has 2-3 short options, no previews. Do nothing else.
+
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+←  ☒ Draft edits  ☒ Save mode  ☒ Reset [0m[38;2;0;0;0m[48;2;177;185;249m ✔ Submit [0m[38;2;153;153;153m →[0m
+
+[0m[1m[38;2;255;255;255mReview your answers[0m
+
+ [0m[2m│ [0m● When a user opens the settings page with unsaved changes still pending from an earlier visit, perhaps because they closed the tab
+ [0m[2m│[0m   mid-edit, lost their network connection, or the session expired while a form was half-filled, how should the page treat those
+ [0m[2m│[0m   leftover edits so that nothing is silently lost and the user is never surprised by values they did not knowingly choose?
+   [0m[38;2;78;186;101m→ Restore with banner[0m
+ [0m[2m│ [0m● How should changes be saved?
+   [0m[38;2;78;186;101m→ Save button[0m
+ [0m[2m│ [0m● Where should the reset-to-defaults control live?
+   [0m[38;2;78;186;101m→ Page footer[0m
+
+[0m[38;2;153;153;153mReady to submit your answers?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mSubmit answers[0m
+  [0m[38;2;153;153;153m2. [0mCancel

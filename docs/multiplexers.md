@@ -379,7 +379,8 @@ hooks therefore write hook edges only, and no beacon.
 A hook edge never decides on its own that a pane is free. After each edge, Collie reads the screen
 again about 0.7 seconds later. Only the screen can say that the input box is empty and no dialog is
 up. An edge can say that a turn runs or that a dialog is up. Collie then holds the pane as busy until
-the closing edge comes. Three free screen reads over ten seconds also end the hold.
+the closing edge comes. Three free screen reads over ten seconds also end the hold. A tool edge
+from a subagent is not about the pane, so it never changes what Collie reads there.
 
 A send from the phone can show as **Confirmed**. That happens when a prompt edge carries the same
 text soon after the send. The window is 30 seconds, or ten minutes for a send queued behind a turn.
@@ -387,7 +388,11 @@ The edge carries a salted hash of the prompt, never the text itself.
 
 Claude Code and Codex take a message or a command during a turn. Collie types it at once, and the
 harness runs it after the turn. A harness that cannot take a send during its turn gets a held send
-instead. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
+instead. So does a message that finds the input box not free, for example under a popup, or on a
+screen that changes between Collie's two reads, or a probe character that failed and that one
+Backspace took back out of a box Collie read clean again. Such a message goes after five free polls over ten
+seconds, or after a turn Collie sees. A command there is still refused, and so is a send on a
+screen you confirmed with Type here. A send on a pane with no profile is never held. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
 ends." The row shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
@@ -551,10 +556,12 @@ digit answers at once. On the last question it sends all the answers.
 
 ## Harness profiles
 
-Collie sends a message from the phone only when it can read the input box of the agent.
+Collie checks the input box of an agent before it sends a message from the phone.
 A profile file describes that box for one agent. It says where the box starts and ends.
 It says how a draft looks, which key sends, and which text the agent draws for a long paste.
-An agent with no profile still works. Collie types into it with stricter generic rules.
+A plain shell and an agent with no profile still take sends. Collie cannot read their input box,
+so it types the text and presses Enter without a check, one line at a time. Only a password prompt
+on the last rows stops it: Collie types nothing there, and the phone offers Type.
 
 | Agent | Enter during a turn | Send key | Probe | Checked against |
 | ----- | ------------------- | -------- | ----------------- | --------------- |

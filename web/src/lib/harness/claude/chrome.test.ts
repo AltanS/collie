@@ -758,6 +758,8 @@ describe("dialogs are refused by the border and blank checks — not by the row 
     "claude--wizard-q2.txt",
     "claude--wizard-submit-unanswered.txt",
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
   ];
 
   it.each(DIALOG_FIXTURES)("%s surfaces no box, so no chrome is stripped from it", (name) => {
@@ -1016,6 +1018,30 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2301-working-draft--w100", statusRows: 3, draft: "then give it a title", stripped: 7 },
     { fixture: "v2301-working-queued-message--w100", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-working-quiet--w100", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2302-preview-wrapped-rule--w141", statusRows: 0, draft: null, stripped: 0 },
+    // Claude Code 2.1.302's slash list under a box holding `/model` (reconstructed from a masked field
+    // capture, 2026-10-17): the command in the left column, its description in a second column. No
+    // statusline while the list is open; the list is stripped with the box, as in autocomplete-slash-long.
+    { fixture: "v2302-slash-model-list--w119", statusRows: 0, draft: "/model", stripped: 23 },
+    // The same list drawn over the box on a tall pane (captured, lane 8788, 2026-10-17), the statusline under it.
+    { fixture: "v2302-slash-model-list-above--w119", statusRows: 2, draft: "/model", stripped: 5 },
+    // The list under the box on the harness lab's 120 x 40 tmux pane (captured 2026-10-17), the screen scrolled up.
+    { fixture: "v2302-slash-model-list--w120--h40", statusRows: 0, draft: "/model", stripped: 24 },
+    { fixture: "v2302-slash-effort-list--w120--h40", statusRows: 0, draft: "/effort", stripped: 24 },
+    { fixture: "v2302-heads-up-above-box--w142", statusRows: 2, draft: null, stripped: 6 },
+    // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): an empty box on a screen whose rows reach
+    // the bottom, and the same pane with the list under the box, blank rows under the list.
+    { fixture: "v2302-idle-full-screen--w120--h36", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v2302-slash-model-list-padded--w120--h36", statusRows: 0, draft: "/model", stripped: 16 },
+    // A multiSelect step with the pointer on its "Type something" field (sanitised field capture, 2026-10-17).
+    { fixture: "v2302-multiselect-field-focused--w160", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-turn-ended-yn--w119", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2302-turn-ending-stop-hooks--w119", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2302-wizard-long-question--w54", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-wizard-review-barred--w140", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-wizard-review-long-q--w140", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2302-working-agents-panel--w119", statusRows: 3, draft: null, stripped: 11 },
+    { fixture: "v2302-working-list-echo--w119", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-final", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-pointer-next", statusRows: 0, draft: null, stripped: 0 },

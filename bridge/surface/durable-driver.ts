@@ -372,6 +372,9 @@ export class ProgramDriver {
       const row: RowDraft = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
       if (receipt.reason !== undefined) row.reason = receipt.reason;
       if (receipt.queued === true) row.queued = true;
+      // A refusal's line and the Surface words are stored to be read later: the list carries them.
+      if (receipt.detail !== undefined) row.detail = receipt.detail;
+      if (receipt.saw !== undefined) row.saw = receipt.saw;
       rows.push(row);
     }
     return rows;

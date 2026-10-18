@@ -346,6 +346,8 @@ describe("tableRuns — the whole pane corpus", () => {
       "omp--draft-ghost-suggestion.txt 2..20",
       "omp--draft-single.txt 2..20",
       "omp--draft-wrapped.txt 2..20",
+      "omp--fresh-idle-widget-above.txt 2..20",
+      "omp--fresh-idle-widget-below.txt 2..20",
       "omp--fresh-idle.txt 2..20",
       "omp--menu-dismissed.txt 2..20",
       "omp--select-menu-moved.txt 2..20",
@@ -394,6 +396,9 @@ describe("tableRuns — the whole pane corpus", () => {
       // plus U+FE0F) in boxed rows. Herdr draws each one two columns wide, so every wall after them
       // stands where the anchor's junctions do. Scoring them as one column wrapped the table again.
       "shell--box-table-vs16-emoji.txt 2..9",
+      // The Bluefin motd's two-column command table (`│` walls, a `┼` rule under the header) over a
+      // starship prompt, in a plain shell pane on the dev lane, 2026-10-17. A real table.
+      "shell--starship-bluefin-motd--w117.txt 5..10",
     ]);
   });
 });

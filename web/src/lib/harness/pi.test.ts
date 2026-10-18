@@ -37,7 +37,7 @@ describeAdapterConformance(piAdapter, {
 
 describe("pi adapter routing", () => {
   it("lifts every question screen the corpus proves, and no fewer", () => {
-    expect(lifted).toHaveLength(49);
+    expect(lifted).toHaveLength(53);
   });
 
   it.each([
@@ -47,6 +47,7 @@ describe("pi adapter routing", () => {
     ["pi--v0871-nocolor-question.txt", "prompt-select"],
     ["pi--omo-v5130-nocolor-question.txt", "prompt-select"],
     ["pi--v0871-question-single.txt", "prompt-select"],
+    ["pi--v0871-permission-gate.txt", "prompt-select"],
     ["pi--v110-questionnaire-submit-ready.txt", "wizard"],
   ])("lifts %s through the public pi dispatch", (name, kind) => {
     const lines = load(name);

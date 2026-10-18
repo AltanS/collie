@@ -1,0 +1,40 @@
+ 
+  Confirm (y/n)
+ 
+[0m[38;2;153;153;153m✻ Churned for 35s · done 11:45 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mSecond message sent during the turn, reply with the word ACK only.[0m[48;2;55;55;55m                                                   [0m
+
+[0m[38;2;255;255;255m● [0mACK
+
+[0m[38;2;153;153;153m✻ Baked for 1s · done 11:45 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mWrite a numbered list of 120 fruits, one short sentence each. After it print a menu with the lines 1. Apple, 2. [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mPear, 3. Quit, and a last line Confirm (y/n). No tools.[0m[48;2;55;55;55m                                                              [0m
+
+[0m[38;2;255;255;255m● [0m1. Apple: It is crisp and grows on trees in cool climates.
+  2. Pear: It has soft flesh and a sweet, grainy taste.
+  3. Banana: It grows in bunches and has a thick yellow peel.
+  4. Orange: It is a round citrus fruit full of juice.
+  5. Lemon: It tastes very sour and is rich in vitamin C.
+  6. Lime: It is small and green with a sharp, tart flavor.
+  7. Grapefruit: It is large and has a bitter and sweet taste.
+  8. Mandarin: It is a small orange that peels with ease.
+  9. Tangerine: It has a deep orange color and a sweet scent.
+  10. Clementine: It is seedless and very easy to peel.
+  11. Satsuma: It is a soft, loose-skinned citrus from Japan.
+  12. Pomelo: It is the largest citrus fruit and has a thick rind.
+  13. Kumquat: You can eat the whole fruit, skin and all.
+  14. Yuzu: It has a strong aroma and is common in Japanese food.
+  15. Bergamot: Its oil gives Earl Grey tea its flavor.
+  16. Citron: It has a thick peel and very little juice.
+  17. Peach: It has fuzzy skin and a large stone inside.
+  18. Nectarine: It is like a peach but has smooth skin.
+  19.
+
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m4%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m100%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m11%[0m[38;5;246m/0h:12m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;167m85%[0m[38;5;246m/3d:15h[0m
+  [0m[38;5;75m[Sonnet[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m/tmp/collie-queue-test[0m[38;2;153;153;153m [0m[38;5;109mon HEAD[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← 11 agents[0m

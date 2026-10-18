@@ -13,7 +13,7 @@ export type SurfaceReason = "no-match" | "contested" | "stale" | "torn";
  * screen reads as (a cue rule, a fold rule, a lift rule). A profile change is not a reader change: the
  * profile's own version range says which binary it covers.
  */
-export const SURFACE_VERSION = 1;
+export const SURFACE_VERSION = 2;
 
 export type AskKind = "permission" | "question" | "menu";
 /**

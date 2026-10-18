@@ -1187,7 +1187,7 @@ export interface PlanTask {
 
 /**
  * What a tool call did, in the shape the thing it did suggests. Mirrors
- * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0107).
+ * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0110).
  *
  * Every branch's FIRST field is the one a person would name the call by, so a row can be drawn from
  * `kind` plus one field. A tool outside the ten is not an error, it is `other`, which still carries
@@ -1203,7 +1203,7 @@ export type ToolCall =
   | { kind: "delete" | "move"; path: string; to?: string }
   /** `ongoing`: a background sub-agent that has not finished, though its start result is in. */
   | { kind: "task"; agent: string; summary: string; ongoing?: true }
-  /** A task list the agent keeps rewriting (ADR 0107). On pi its updates are folded into the one card. */
+  /** A task list the agent keeps rewriting (ADR 0110). On pi its updates are folded into the one card. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
   | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }

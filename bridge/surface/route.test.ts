@@ -165,6 +165,29 @@ describe("sendRoute", () => {
     }
   });
 
+  test("a bare shell pane (the engine's shell panes, harness \"\") takes a send and a command blind: sent on the first tap (2026-10-17 field case)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane, pokes } = runtime(true, dir);
+      const { audit, lines } = auditLines();
+      const context = { audit, device: "phone", redact: false, acceptEncoding: null };
+      const sent = await (await sendRoute(rt, { id: "route-shell-0001", pane: "%7", text: "claude-danger" }, context)).json();
+      expect(sent.receipt).toMatchObject({ outcome: "sent", harness: "", profileId: null, keys: ["Enter"], saw: { reason: "no-profile" } });
+      expect(sent.offers).toEqual([]);
+      const command = await (await sendRoute(rt, { id: "route-shell-0002", pane: "%7", text: "/usr/bin/true", mode: "command" }, context)).json();
+      expect(command.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.written).toEqual(["claude-danger", "/usr/bin/true"]);
+      expect(lines).toHaveLength(2);
+      for (const line of lines) {
+        expect(line).toContain('"outcome":"sent"');
+        expect(line).toContain('"probed":false');
+      }
+      expect(pokes()).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a malformed body is a 400, an unknown pane a 404, and a screenless pane refuses it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
@@ -261,9 +284,9 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       expect(replySendOf(rt).harnessOf("%9")).toBeNull();
       const { audit } = auditLines();
       expect((await replyThroughProtocol(replySendOf(rt), "%9", "main", { text: "hi", submit: true }, context(audit))).status).toBe(404);
-      // A shell has no profile: the first tap is refused unconfirmed and offers the commit tap.
+      // A shell has no profile: the reply is typed and Entered blind, sent on the first tap.
       const shell = await (await replyThroughProtocol(replySendOf(rt), "%7", "main", { text: "ls -la", submit: true }, context(audit))).json();
-      expect(shell.send).toMatchObject({ receipt: { outcome: "refused", reason: "unconfirmed", profileId: null }, offers: ["commit", "keys"] });
+      expect(shell).toMatchObject({ ok: true, send: { receipt: { outcome: "sent", profileId: null, keys: ["Enter"] }, offers: [] } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -316,6 +339,33 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
       expect(JSON.stringify(body)).not.toMatch(/private/u);
       const other = await sendReceiptsRoute(rt, "%9", null).json();
       expect(other.receipts).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 field case)", () => {
+  test("a refused send lists the detail and saw its answer had; a sent one lists neither", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      await sendRoute(rt, { id: "route-ok-0001", pane: "%1", text: "a private first message" }, context);
+      // Someone typed at the desk: the next send meets a draft and is refused.
+      await pane.typeText("%1", "half a private thought");
+      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "a private second message" }, context);
+      const answer = await res.json();
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+      expect(answer.receipt.detail).toEqual(expect.any(String));
+      expect(answer.receipt.saw).toMatchObject({ composer: "draft" });
+      const listed = await sendReceiptsRoute(rt, "%1", null).json();
+      expect(listed.receipts[0]).toMatchObject({ requestId: "route-no-0001", outcome: "refused", detail: answer.receipt.detail, saw: answer.receipt.saw });
+      expect(listed.receipts[1].requestId).toBe("route-ok-0001");
+      expect(listed.receipts[1].detail).toBeUndefined();
+      expect(listed.receipts[1].saw).toBeUndefined();
+      expect(JSON.stringify(listed)).not.toMatch(/private/u);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

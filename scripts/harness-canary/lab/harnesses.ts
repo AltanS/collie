@@ -42,6 +42,8 @@ export interface HarnessSpec {
   readonly seedsLogin: boolean;
   /** Model turns the lab may spend on this harness in one run. */
   readonly turnCap: number;
+  /** Whether the phone leg runs for this harness (phone.ts). Claude only: the scenarios are Claude's. */
+  readonly phone: boolean;
 }
 
 /** A process environment the lab builds: names to values, nothing else. */
@@ -80,6 +82,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     env: (dirs) => ({ CLAUDE_CONFIG_DIR: dirs.config, DISABLE_AUTOUPDATER: "1", DISABLE_TELEMETRY: "1" }),
     seedsLogin: true,
     turnCap: CLAUDE_TURN_CAP,
+    phone: true,
   },
   codex: {
     id: "codex",
@@ -89,6 +92,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     env: (dirs) => ({ ...homeEnv(dirs), CODEX_HOME: join(dirs.home, ".codex") }),
     seedsLogin: false,
     turnCap: 0,
+    phone: false,
   },
   pi: {
     id: "pi",
@@ -98,6 +102,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     env: (dirs) => ({ ...homeEnv(dirs), PI_CODING_AGENT_DIR: join(dirs.home, ".pi") }),
     seedsLogin: false,
     turnCap: 0,
+    phone: false,
   },
   opencode: {
     id: "opencode",
@@ -107,6 +112,7 @@ export const HARNESSES: Readonly<HarnessTable> = {
     env: (dirs) => ({ ...homeEnv(dirs), OPENCODE_DISABLE_AUTOUPDATE: "1" }),
     seedsLogin: false,
     turnCap: 0,
+    phone: false,
   },
 };
 

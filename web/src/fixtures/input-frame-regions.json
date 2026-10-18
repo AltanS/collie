@@ -1181,6 +1181,196 @@
   }
  },
  {
+  "fixture": "claude--v2302-heads-up-above-box--w142.txt",
+  "frame": {
+   "top": 71,
+   "prompt": 72,
+   "bottom": 73,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 74,
+    "last": 75
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-idle-full-screen--w120--h36.txt",
+  "frame": {
+   "top": 32,
+   "prompt": 33,
+   "bottom": 34,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 35,
+    "last": 35
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-multiselect-field-focused--w160.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-preview-wrapped-rule--w141.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-slash-effort-list--w120--h40.txt",
+  "frame": {
+   "top": 17,
+   "prompt": 18,
+   "bottom": 19,
+   "label": null,
+   "text": "/effort",
+   "placeholder": false,
+   "status": {
+    "first": 20,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-slash-model-list--w119.txt",
+  "frame": {
+   "top": 5,
+   "prompt": 6,
+   "bottom": 7,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-slash-model-list--w120--h40.txt",
+  "frame": {
+   "top": 17,
+   "prompt": 18,
+   "bottom": 19,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-slash-model-list-above--w119.txt",
+  "frame": {
+   "top": 35,
+   "prompt": 36,
+   "bottom": 37,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": {
+    "first": 38,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-slash-model-list-padded--w120--h36.txt",
+  "frame": {
+   "top": 16,
+   "prompt": 17,
+   "bottom": 18,
+   "label": null,
+   "text": "/model",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-turn-ended-yn--w119.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-turn-ending-stop-hooks--w119.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2302-wizard-long-question--w54.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-wizard-review-barred--w140.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-wizard-review-long-q--w140.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2302-working-agents-panel--w119.txt",
+  "frame": {
+   "top": 30,
+   "prompt": 31,
+   "bottom": 32,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 33,
+    "last": 35
+   },
+   "footer": {
+    "first": 37,
+    "last": 39
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2302-working-list-echo--w119.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

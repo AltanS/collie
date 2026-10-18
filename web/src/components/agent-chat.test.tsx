@@ -35,8 +35,11 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
 import type { Ask, Surface } from "@/lib/surface/surface";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { liftDialog, readerBlocks } from "@/lib/surface/lift";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -142,9 +145,9 @@ describe("AgentChat — reply flow", () => {
 // M56 spec 06: the composer reads the pane's Surface, not the mirror. A dialog the mirror draws as a
 // card does not change the Send slot by itself; the bridge's read does.
 describe("AgentChat: the composer reads the pane's Surface", () => {
-  it("an ask on the pane's Surface names the dialog in the placeholder", () => {
+  it("an ask on the pane's Surface leaves the placeholder at the plain reply line", () => {
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    expect(screen.getByPlaceholderText("Permission is waiting")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeInTheDocument();
   });
 
   it("a marked pane the bridge has not read yet keeps Send open", async () => {
@@ -962,17 +965,20 @@ describe("AgentChat: a dialog tap answers the pane's ask", () => {
     const user = userEvent.setup();
     const posted = answerWith(({ id }) => ({ receipt: { askId: id, outcome: "sent", keys: ["s"] } }));
     const picker = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"), "utf8");
+    // The hash the bridge mints for this screen: a menu tap goes out only under an ask of the card's
+    // own dialog (agent-chat-menu-ask.test.tsx has the cases where the two differ).
+    const hash = liftDialog(readerBlocks(splitLines(parseAnsi(picker)), "claude"))!.hash;
     const menuAsk: Ask = {
       id: "ask-0c0c0c0c0c0c0c",
       kind: "menu",
       options: [{ id: "1", label: "Set as default" }, { id: "2", label: "Use this session only" }, { id: "3", label: "Cancel" }],
       channel: "keys",
-      hash: "16977bfbfe0c74",
+      hash,
     };
     renderChat({ text: picker, agent: withAsk(menuAsk) });
     await user.click(await screen.findByRole("button", { name: /Use this session only/ }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash: "16977bfbfe0c74", optionId: "2", origin: "person_tap" } });
+    expect(posted[0]).toEqual({ id: menuAsk.id, body: { pane: fixtureAgents[0]!.paneId, hash, optionId: "2", origin: "person_tap" } });
   });
 
   it("a pane whose Surface carries no ask keeps the guarded key route", async () => {
@@ -1251,7 +1257,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
       }),
     );
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
     const yes = await screen.findByRole("button", { name: "Yes" });
 
     await user.click(yes);
@@ -1265,7 +1271,7 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   it("'Answer the dialog' focuses the card's first button and sends nothing", async () => {
     const user = userEvent.setup();
     renderChat({ text: MENU_TEXT, agent: MENU_AGENT });
-    const box = screen.getByPlaceholderText(/is waiting/i);
+    const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.type(box, "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
@@ -4676,5 +4682,76 @@ describe("AgentChat: the prompt pin under a durable pane's header line", () => {
     expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
     expect(container.querySelector('[data-slot="pane-progress"]')).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
+  });
+});
+
+// ── A PICTURE PI SHOWS REACHES THE LIVE MIRROR (M39, #292) ──────────────────────────────────────────
+// pi draws a picture by direct placement, which leaves no placeholder cell, so the placeholder path
+// never fires for it. The mirror reads the newest finished turn's picture from the journal instead
+// and shows it as one card right after the mirror. The cadence is the hook's (use-mirror-images
+// test); what is pinned here is the card as the pane draws it.
+describe("AgentChat, the newest turn's picture on a pi pane (M39, #292)", () => {
+  // pi's screen: scrollback, the tool row, the rows pi kept for the picture, the reply, pi's box.
+  const PI_SCREEN = [
+    ...Array.from({ length: 80 }, (_, i) => `earlier output, line ${i + 1}`),
+    " read ./dot.png",
+    ...Array.from({ length: 20 }, () => ""),
+    " Here is the screen.",
+    "",
+    "─".repeat(40),
+    "",
+    "─".repeat(40),
+    "/home/you/webapp",
+  ].join("\n");
+  const piAgent = (status: AgentStatus): AgentView => ({
+    ...fixtureAgents[0]!,
+    agent: "pi",
+    hasSession: true,
+    status,
+    lastActiveAt: 1_758_900_000_000,
+  });
+
+  beforeEach(() => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: fixtureTranscriptWithImage,
+          hasMore: false,
+          total: fixtureTranscriptWithImage.length,
+          fileTruncated: false,
+        }),
+      ),
+    );
+  });
+
+  it("shows a finished turn's picture after the mirror, captioned as the agent's own, not matched by order", async () => {
+    const agent = piAgent("done");
+    renderChat({ agent, agents: [agent], text: PI_SCREEN });
+
+    const picture = await screen.findByRole("img", { name: "Terminal graphics" });
+    expect(picture.getAttribute("src")).toMatch(/^blob:/);
+    expect(screen.getByText("the agent's newest picture, from its log")).toBeInTheDocument();
+    // Not the placeholder path's card: no hedge about order, no [Image] badge.
+    expect(screen.queryByText(/matched by order/)).toBeNull();
+    expect(screen.queryByText("[Image]")).toBeNull();
+    // After the mirror, not above it: the reply's row comes first in the document.
+    const reply = screen.getAllByText(/Here is the screen\./)[0]!;
+    expect(reply.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no picture card while pi works on a turn", async () => {
+    const agent = piAgent("working");
+    renderChat({ agent, agents: [agent], text: PI_SCREEN });
+
+    expect((await screen.findAllByText(/Here is the screen\./)).length).toBeGreaterThan(0);
+    // Give a (wrong) journal read every chance to land before asserting nothing is drawn.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.queryByText("the agent's newest picture, from its log")).toBeNull();
+    expect(screen.queryByRole("img", { name: "Terminal graphics" })).toBeNull();
   });
 });

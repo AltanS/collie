@@ -1927,7 +1927,7 @@ export function startServer(opts: {
       // A landed input makes the engine hot for a few polls (§ isPaneInput). On a member this runs
       // through the crew dispatch, so the member that owns the pane is the one that goes hot.
       // A reply that submits text runs this session's Send Protocol (M56 spec 06), on any terminal
-      // pane: an agent's (its string picks the profile) or a bare shell's (no profile, the probed path).
+      // pane: an agent's (its string picks the profile) or a bare shell's (no profile, typed and Entered blind).
       if (action === "reply" && req.method === "POST")
         return afterPaneInput(rt.engine, await replyPane(herdr, cfg, paneId, req, audit_, device, session, replySendOf(rt)));
       if (action === "keys" && req.method === "POST")
@@ -7033,7 +7033,7 @@ export async function sendRoute(
   if (request === null) return text("bad send request", 400);
   const refusal = rawInputRefusal(rt.herdr);
   if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
-  // An agent pane's string picks its profile; a bare shell has none and takes the probed path (M56 spec 06).
+  // An agent pane's string picks its profile; a bare shell, or an agent with no profile, has none and is typed and Entered blind.
   const harness = replySendOf(rt).harnessOf(request.pane);
   if (harness === null) return text("no such terminal pane", 404);
   const { pane: paneId, resendOf, ...asked } = request;

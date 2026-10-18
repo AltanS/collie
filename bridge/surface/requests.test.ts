@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SendReceipt } from "../../web/src/lib/surface/send.ts";
+import { RECEIPT_DETAIL_MAX, type SendReceipt } from "../../web/src/lib/surface/send.ts";
 import { AskAnswerer } from "./ask.ts";
 import { HOST } from "../host.ts";
 import { isOwnerOnly } from "../owner-only.ts";
@@ -133,6 +133,47 @@ describe("phases and receipts", () => {
     const broken = join(dir, `${ID}.json`);
     writeFileSync(broken, readFileSync(broken, "utf8").replace('"queued":true', '"queued":"yes"'));
     expect(new RequestStore(dir).get(ID)).toBeNull();
+  });
+
+  test("a detail and saw survive a restart; a future saw word drops only saw, a long detail is cut, a detail of the wrong type is dropped, and the receipt stays", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const saw = { turn: "idle", modal: "none", composer: "draft" } as const;
+    const receipt: SendReceipt = { ...receiptFor(record, "refused"), reason: "not_free", detail: "The input box is not free.", saw };
+    first.settle(ID, receipt);
+    expect(new RequestStore(dir).get(ID)?.receipt).toEqual(receipt);
+    const file = join(dir, `${ID}.json`);
+    const original = readFileSync(file, "utf8");
+    // A word a later Collie wrote: only `saw` goes, the sentence and the rest of the receipt stay.
+    writeFileSync(file, original.replace('"turn":"idle"', '"turn":"paused"'));
+    const future = new RequestStore(dir).get(ID);
+    expect(future?.phase).toBe("settled");
+    expect(future?.receipt).toEqual({ ...receipt, saw: undefined });
+    expect(future?.receipt?.saw).toBeUndefined();
+    expect(future?.receipt?.detail).toBe("The input box is not free.");
+    expect(new RequestStore(dir).accept(input()).kind).toBe("replay");
+    // A detail past the cap is cut to it.
+    writeFileSync(file, original.replace('"The input box is not free."', JSON.stringify("x".repeat(RECEIPT_DETAIL_MAX + 50))));
+    const cut = new RequestStore(dir).get(ID)?.receipt;
+    expect(cut?.detail).toBe("x".repeat(RECEIPT_DETAIL_MAX));
+    expect(cut?.saw).toEqual(saw);
+    // A detail that is not a string is dropped.
+    writeFileSync(file, original.replace('"The input box is not free."', "42"));
+    const wrong = new RequestStore(dir).get(ID)?.receipt;
+    expect(wrong?.detail).toBeUndefined();
+    expect(wrong?.saw).toEqual(saw);
+    expect(wrong?.outcome).toBe("refused");
+  });
+
+  test("a receipt with neither detail nor saw reads as before", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const receipt = receiptFor(record);
+    first.settle(ID, receipt);
+    const read = new RequestStore(dir).get(ID)?.receipt;
+    expect(read).toEqual(receipt);
+    expect(read && "detail" in read).toBe(false);
+    expect(read && "saw" in read).toBe(false);
   });
 
   test("a program's acknowledged request id survives a restart; one that is not a request id makes the file unreadable (M56 spec 14)", () => {

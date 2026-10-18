@@ -1,0 +1,40 @@
+  115. Water apple: It is a bell-shaped fruit with a light, watery crunch.
+  116. Salmonberry: It is a soft orange berry from the Pacific coast.
+  117. Thimbleberry: It is a soft red berry shaped like a thimble.
+  118. Tayberry: It is a large, sweet cross of a raspberry and blackberry.
+  119. Dewberry: It is a trailing berry that looks like a blackberry.
+  120. Bilberry: It is a European cousin of the blueberry.
+  121. Apple
+  122. Pear
+  123. Quit
+ 
+  Confirm (y/n)
+
+[0m[38;2;153;153;153m✻ Cogitated for 14s · done 11:48 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mThird message while the list streams, reply ACK3 only.[0m[48;2;55;55;55m                                                               [0m
+
+[0m[38;2;255;255;255m● [0mACK3
+
+[0m[38;2;153;153;153m✻ Brewed for 1s · done 11:48 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mStart two subagents with the Agent tool, in parallel, in the background. Each subagent writes a numbered list of 150[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55manimals in its reply and uses no tools. While they run, write a numbered list of 60 colors yourself.[0m[48;2;55;55;55m                 [0m
+
+[0m[38;2;78;186;101m●[0m [0m[1m2[0m background agents launched [0m[38;2;153;153;153m(↓ to manage)[0m
+   [0m[38;2;153;153;153m├ [0m[1mWrite 150 animals list A[0m
+   [0m[38;2;153;153;153m└[0m [0m[1mWrite 150 animals list B[0m
+
+[0m[38;2;215;119;87m✶ Noodling… [0m[38;2;153;153;153m(7s · ↓[0m [0m[38;2;153;153;153m592 tokens)[0m
+[0m[38;2;153;153;153m  ⎿  Tip: For a fast, cheap code review, try [0m[38;2;177;185;249m/code-review low[0m[38;2;153;153;153m. It runs the built-in skill at its lightest effort level.[0m
+
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m4%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m100%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m12%[0m[38;5;246m/0h:06m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;167m85%[0m[38;5;246m/3d:15h[0m
+  [0m[38;5;75m[Sonnet[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m/tmp/collie-queue-test[0m[38;2;153;153;153m [0m[38;5;109mon HEAD[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ← 11 agents[0m
+  
+[0m[1m  ● main[0m
+[0m[38;2;153;153;153m  ◯ general-purpose  Write 150 animals list A                                                       3s · ↑ 188 tokens[0m
+[0m[38;2;153;153;153m  ◯ general-purpose[0m  [0m[38;2;153;153;153mWrite 150 animals list B                                                        1s · ↑ 50 tokens[0m

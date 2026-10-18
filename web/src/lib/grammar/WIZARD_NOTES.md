@@ -80,6 +80,12 @@ Ready to submit your answers?
   anchor (`classifyFooter` on the last line) can never match this state; the wizard grammar anchors
   the review phase on the `1. Submit answers` / `2. Cancel` pair at the tail instead.
 - Digit `1` **or** Enter fires the submit (verified both); `2` cancels.
+- **Claude Code 2.1.302 can bar an echoed question**: a question that wraps (and, on some
+  screens, every question) is drawn with a dim `│` down its left, `│ ● <question>` then
+  `│   <wrapped text>`, while its `→ <answer>` row stays bare. The review loop reads every echoed
+  row through `questionRowText`, the same gutter strip the question step uses, so a barred item
+  opens its answer like a bare one (`claude--v2302-wizard-review-long-q--w140.txt`,
+  `claude--v2302-wizard-review-barred--w140.txt`).
 - Reaching Submit with unanswered questions is allowed: the review shows
   `⚠ You have not answered all questions` (and lists only the answered pairs) but still offers
   `1. Submit answers`.
@@ -119,6 +125,9 @@ Why incremental wins here:
 | `claude--wizard-q1-revisit.txt` | Navigated back to answered Q1: `2. UI ✔` row, pointer on row 1 |
 | `claude--wizard-submit.txt` | Review step, all answered — NO footer, bg chip on `✔ Submit` |
 | `claude--wizard-submit-unanswered.txt` | Review step reached via Right-skips: `⚠ You have not answered all questions` |
+| `claude--v2302-wizard-long-question--w54.txt` | Claude Code 2.1.302 at 54 columns: a nine-row question puts the stepper eleven rows above the first option, so the stepper scan is bounded by the dialog's rule, not a row count (vanilla behaviour). The capture also runs a theme plugin whose two-column gutter beside the dialog makes each full-width rule wrap into a `──` stub row, read as part of the rule above it (`isRuleRow`; theme hardening) |
+| `claude--v2302-wizard-review-long-q--w140.txt` | Claude Code 2.1.302 review step under a theme plugin at 140 columns: the long first question wraps and is barred (`│ ●`), the other two are bare. All three must be listed |
+| `claude--v2302-wizard-review-barred--w140.txt` | Review step with every echoed question barred, one-row questions included. **Derived**: see its row in `fixtures/panes/README.md` |
 
 Plus T2's `claude--select-multi.txt` (a mid-flight question phase) and `claude--select-menu.txt`
 (single-question — must keep detecting as prompt-select, never as wizard).

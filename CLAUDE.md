@@ -109,8 +109,8 @@ release. 1.14.2 was cut this way on 2026-09-28.
    installs, updates and rolls back a Windows build on the test VM, which no CI job can do. It
    resets the VM's disk and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit
    the release first. Read its table: a failed step holds the tag, and so does an unavailable VM.
-   The `windows.yml` run on the release commit must be green as well. Then tag and push (next
-   paragraph).
+   The `windows.yml` run on the release commit must be green as well. Then run the browser leg
+   (step 8), then tag and push (the paragraph after it).
 
    A missing Windows zip stops the release from the first of two moments: once an earlier stable
    release (not a draft, not a prerelease) has carried one, or on 2026-11-15
@@ -119,6 +119,11 @@ release. 1.14.2 was cut this way on 2026-09-28.
    repository variable `COLLIE_WINDOWS_ASSET_OVERRIDE` to `optional` (Settings > Secrets and
    variables > Actions > Variables) before the tag, and delete it right after the release: the run
    warns loudly while it is set. To move the date instead, change that one constant in a commit.
+8. **Run the browser leg on the release head before the tag.** In `web/`, with `COLLIE_RIG_KEY_FILE`
+   set: `bunx playwright test -c e2e/rig/playwright.config.ts` (*Browser tests*; the prerequisites are
+   in `web/e2e/rig/README.md`). It starts a scratch bridge and Herdr with real Claude Code, pi and omp,
+   and takes about 5 minutes. All fifteen cases must pass on the first tap. A failed case holds the
+   tag, and so does a case that was not reached.
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
 line — send the functional commits only. The version is the maintainer's to pick, because it depends
@@ -355,23 +360,28 @@ page to be skimmed.
 
 ## Browser tests (Tiers 1-3)
 
-A real Chromium opens the app. Vitest still covers every unit test; this layer sits above it and
-tests nothing Vitest already covers.
+A real browser engine opens the app. Vitest still covers every unit test; this layer sits above it and
+tests nothing Vitest already covers. A spec lives here only when its claim needs an engine: first paint
+before JS, real layout size or overflow, a service worker, a CSP, real view transitions. A claim jsdom
+can check (a render, a state change, text, a handler, a request body) is a vitest test next to its
+component, not a spec. On 2026-10-17 the specs that did not pass that test moved to vitest.
 
-- **Tier 1** runs in CI, on every push. `cd web && bun run e2e` builds the web bundle, serves it,
-  and drives Chromium at `phone` (390x844) and `tablet` (820x1180), declared as four projects in
-  `web/playwright.config.ts`: `app-phone`, `app-tablet`, `states-phone`, `states-tablet`, plus a
-  fifth, `app-phone-webkit`, the same `app` specs under WebKit, Safari's engine. That one is always
-  on in CI and opt-in elsewhere (`COLLIE_E2E_WEBKIT=1`), because Playwright's WebKit build cannot
-  launch on Fedora; `make e2e-webkit` at the workspace root runs it inside an Ubuntu distrobox
-  there. It exists because Safari disagrees with Chromium on geometry a unit test never sees
-  (`web/e2e/belt.spec.ts` holds the first such case, 2026-09-14). The `app`
-  target serves `web/dist` and answers every `/api/*` request from `web/e2e/fixtures/api.ts`; it
-  never touches a live bridge. The `states` target runs the playground on port 5199, the way `make
-  playground` runs it, and answers no API at all. Cases live under `web/e2e/`: today
-  `smoke.spec.ts` and `handles.spec.ts`, plus the named cases proving a hand check,
-  `web/e2e/issue-180.spec.ts` and `web/e2e/m24-crew.spec.ts`, and `web/e2e/service-worker.spec.ts`,
-  which builds two bundles under `web/e2e/.builds/` to prove an old shell picks up a new one.
+- **Tier 1** runs in CI, on every push, in Chromium. `cd web && bun run e2e` builds the web bundle,
+  serves it, and drives Chromium at `phone` (390x844) and `tablet` (820x1180), declared as two
+  projects in `web/playwright.config.ts`: `app-phone` and `app-tablet`. A third, `app-phone-webkit`,
+  runs the same specs under WebKit, Safari's engine. It is NOT in the per-push job (`ci.yml` sets
+  `E2E_WEBKIT=0`). It runs nightly at 04:00 UTC and at every `v*` tag in
+  `.github/workflows/webkit.yml`, a workflow of its own, so a release never waits on it. Off CI it is
+  opt-in (`COLLIE_E2E_WEBKIT=1`), because Playwright's WebKit build cannot launch on Fedora; `make
+  e2e-webkit` at the workspace root runs it inside an Ubuntu distrobox there. It exists because
+  Safari disagrees with Chromium on geometry a unit test never sees (`web/e2e/belt.spec.ts` holds
+  the first such case, 2026-09-14). The `app` target serves `web/dist` and answers every `/api/*`
+  request from `web/e2e/fixtures/api.ts`; it never touches a live bridge. Cases live under
+  `web/e2e/`: `smoke.spec.ts`, the layout and engine cases (`belt`, `changes`, `pane-glide`,
+  `theme-first-paint`, `update-screen` and the rest), and `web/e2e/service-worker.spec.ts`, which
+  builds two bundles under `web/e2e/.builds/` to prove an old shell picks up a new one. The
+  playground has no browser target any more: its card handles are tested in
+  `web/src/playground/app.test.tsx`.
 - **Tier 2** runs by hand, from the workspace root: `make e2e`. It drives the dev lane's lead,
   instance `next` on port 8788, reads only, and never restarts or rebuilds anything. Its cases live
   under `web/e2e/live/`, sharing the harness in `web/e2e/live/live.ts`. It never runs in CI:
@@ -379,9 +389,19 @@ tests nothing Vitest already covers.
   runner at somebody's machine.
 - **Tier 3** is the VM lab: a real three-machine crew and a real update run. It is named here as the
   end state and is not built.
+- **The browser leg** is a Playwright phone (Pixel 7) that taps a scratch bridge and a scratch Herdr
+  running real Claude Code, pi and omp. It is not a tier of the CI suite and not the VM lab. It lives
+  under `web/e2e/rig/` with its own config (`cd web && bunx playwright test -c
+  e2e/rig/playwright.config.ts`, the provider key file named by `COLLIE_RIG_KEY_FILE`), it spends
+  model turns (about 5 minutes and a few cents a run), and it never runs in CI. It is **the gate before
+  every release tag**, and **the proof for a change to a harness reader, the Surface, the Send
+  Protocol or the ask code**: run it on the branch, and all fifteen cases pass on the first tap. A
+  unit test cannot show that a tap works on a real screen. `web/e2e/rig/nightly.ts` also runs it every
+  night on `origin/main`, once for each main commit and set of agent versions. The README beside it
+  (*When it runs*) has the rules and the cost.
 
 **Fixtures.** Tier 1 imports the same fixture modules the vitest suite already uses,
-`web/src/test/handlers.ts` and `web/src/playground/fixtures.ts`, and feeds them to `page.route`. A
+`web/src/test/handlers.ts`, and feeds them to `page.route`. A
 case never invents its own payload.
 
 **The selector rule.** A case addresses a role and an accessible name, `getByRole` or `getByText`,
@@ -391,15 +411,13 @@ playground: every card carries an explicit `data-state` handle, set by a `state`
 
 **The locale rule.** A case that checks translated text pins the locale before the first
 navigation, by writing the bare locale code into `collie:locale:v1` in `localStorage`
-(`web/src/lib/i18n/index.ts`). There is no URL parameter and no `Accept-Language` path. Assert
-against the string in `web/src/lib/i18n/messages/<code>.ts`, never against English's absence.
+(`web/src/lib/i18n/index.ts`) from an `addInitScript`. There is no URL parameter and no
+`Accept-Language` path. Assert against the string in `web/src/lib/i18n/messages/<code>.ts`, never
+against English's absence.
 
 **Adding a case.**
-- Tier 1, `app` target: add a `.spec.ts` under `web/e2e/`, call `installApiStub(page)` from
+- Tier 1: first ask whether jsdom can check the claim; if so, write a vitest test instead. Otherwise add a `.spec.ts` under `web/e2e/`, call `installApiStub(page)` from
   `web/e2e/fixtures/api.ts` in a `beforeEach`, then `page.goto("/")`.
-- Tier 1, `states` target: add a case to `web/e2e/handles.spec.ts` or a sibling `.spec.ts` matched
-  by `STATES_TEST_MATCH` in `web/playwright.config.ts`, `page.goto("/playground.html")`, and address
-  a card by `[data-state="…"]`.
 - Tier 2: add a `.spec.ts` under `web/e2e/live/`, import `test`/`expect`/`message` from
   `web/e2e/live/live.ts`. Read only: the suite pairs once first through `web/e2e/live/pair.ts`
   (`COLLIE_E2E_DEVICE_TOKEN` or `COLLIE_E2E_PAIR_CODE`), and a case never pairs itself. No "Take

@@ -11,6 +11,7 @@ import {
   isHorizontalRule,
   isInputBoxTopBorder,
   isMultiStepHeader,
+  isRuleRow,
   lineText,
   namesPlanDialog,
   namesTrustDialog,
@@ -43,6 +44,29 @@ describe("isHorizontalRule", () => {
     expect(isHorizontalRule("1. Yes")).toBe(false);
     expect(isHorizontalRule("----")).toBe(false); // ASCII dashes are NOT rules (markdown/code)
     expect(isHorizontalRule("── collie upgrades ──")).toBe(false); // embedded label ⇒ not a pure rule
+  });
+});
+
+describe("isRuleRow", () => {
+  const RULE = `  ${"─".repeat(52)}`;
+
+  it("takes a 1-2 glyph stub under a full rule as part of it (a rule wrapped beside a theme's gutter)", () => {
+    expect(isRuleRow([RULE, "  ──"], 1)).toBe(true);
+    expect(isRuleRow([RULE, "  ─"], 1)).toBe(true);
+  });
+
+  it("refuses a stub with no rule above it", () => {
+    expect(isRuleRow(["  ──"], 0)).toBe(false);
+    expect(isRuleRow(["some text", "  ──"], 1)).toBe(false);
+  });
+
+  it("is a rule wherever isHorizontalRule is one", () => {
+    expect(isRuleRow(["  ───"], 0)).toBe(true);
+    expect(isRuleRow([RULE], 0)).toBe(true);
+  });
+
+  it("refuses a text row under a rule", () => {
+    expect(isRuleRow([RULE, "  Chat about this"], 1)).toBe(false);
   });
 });
 

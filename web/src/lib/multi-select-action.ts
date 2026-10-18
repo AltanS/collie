@@ -6,7 +6,9 @@
 //
 //   - DIGIT mode (Claude): a digit TOGGLES its option on/off (pointer-independent, deterministic).
 //     "Chat about this" aborts the tool. The review screen's 1/2 submit/cancel. Each of these is one
-//     guarded keystroke.
+//     guarded keystroke, except with the pointer on the free-text field (`pointer: "field"`), where
+//     a digit is typed into the field: the toggle, the escape and a step key first move the pointer
+//     off it with one Up and read that back (`offField`).
 //   - POINTER mode (Muse): a digit merely MOVES the pointer (verified target row first) and review
 //     swallows digits entirely, so toggle is digit-jump + verified Enter and review submit/cancel is
 //     a verified pointer walk + a freshly-bound Enter (the irreversible keystroke carries a fresh
@@ -132,17 +134,24 @@ async function dispatchIntent(
     if (args.multi.phase !== "checkbox" || !args.multi.options.some((o) => o.n === intent.n)) {
       return { status: "changed" };
     }
-    if (args.multi.toggle === "pointer") return runToggleMacro(args, intent.n);
-    return guardedKey(args, [String(intent.n)]);
+    const aimed = await offField(args);
+    if (!aimed.ok) return aimed.result;
+    // The recipe of the tapped model: identity compares `toggle`, so the aimed one has the same.
+    if (args.multi.toggle === "pointer") return runToggleMacro(aimed.args, intent.n);
+    return guardedKey(aimed.args, [String(intent.n)]);
   }
   if (intent.kind === "nav") {
     // Only a wizard STEP has anywhere to navigate to; a standalone multiSelect has no siblings.
     if (args.multi.phase !== "checkbox" || !args.multi.steps) return { status: "changed" };
-    return guardedKey(args, intent.keys);
+    const aimed = await offField(args);
+    if (!aimed.ok) return aimed.result;
+    return guardedKey(aimed.args, intent.keys);
   }
   if (intent.kind === "escape") {
     if (args.multi.phase !== "checkbox" || !args.multi.escape) return { status: "changed" };
-    return guardedKey(args, [String(args.multi.escape.n)]);
+    const aimed = await offField(args);
+    if (!aimed.ok) return aimed.result;
+    return guardedKey(aimed.args, [String(args.multi.escape.n)]);
   }
   if (intent.kind === "back") {
     if (args.multi.phase !== "review" || !args.multi.backKeys) return { status: "changed" };
@@ -259,6 +268,43 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   }
   // Never landed on the advance row within the bounded walk — refresh rather than blind-send.
   return { status: "changed" };
+}
+
+// Leaving the field is ONE Up and then reads until the pointer shows it went. A redraw that has not
+// caught up is never a reason for a second Up: that one would move a pointer that did leave.
+const LEAVE_FIELD_MAX_READS = 6;
+
+/**
+ * Aim a digit or a step key off the free-text field: while the pointer stands on it (`field`), a
+ * digit is typed into it and Left/Right move its cursor. With the pointer anywhere else this returns
+ * the arguments untouched and reads nothing. On the field it runs: entry guard → ONE Up, bound to the
+ * entry region (an arrow is never typed into the field) → fresh reads until the pointer is seen off
+ * it. It hands back that read's model, and the caller sends its key through its OWN entry guard
+ * against it. That guard's commit comparison fails on a screen where the field has focus again, so a
+ * pointer that went back in the gap gets no digit. Never sends the caller's key itself.
+ */
+async function offField(
+  args: GuardArgs,
+): Promise<{ ok: true; args: GuardArgs } | { ok: false; result: ActionResult }> {
+  if (args.multi.phase !== "checkbox" || args.multi.pointer !== "field") return { ok: true, args };
+  const guarded = await guardDialog(target(args));
+  if (!guarded.ok) return guarded;
+  const sent = await sendBoundKeys(args, ["Up"], guarded.region);
+  if (sent.status !== "sent") return { ok: false, result: sent };
+
+  const sleep = args.sleep ?? defaultSleep;
+  for (let read = 0; read < LEAVE_FIELD_MAX_READS; read++) {
+    await sleep(NAV_SETTLE_MS);
+    const m = await readMacroDialog(args, sleep);
+    if (!m) continue;
+    // Drift guard: a successor dialog, a flipped box, or the checkbox screen gone — no further key.
+    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") {
+      return { ok: false, result: { status: "changed" } };
+    }
+    if (m.pointer !== "field" && m.pointer !== null) return { ok: true, args: { ...args, multi: m } };
+  }
+  // Never saw the pointer leave the field: refresh rather than type a digit into it.
+  return { ok: false, result: { status: "changed" } };
 }
 
 // The pointer-mode toggle needs no walk (the digit jumps straight there), only retries for a

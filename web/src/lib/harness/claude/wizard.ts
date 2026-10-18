@@ -16,7 +16,7 @@
 // marked only by a background highlight, not by a distinct glyph.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, selectFooterStart, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
+import { classifyFooter, selectFooterStart, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
 import { checkboxState, freeTextRowIndex, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import {
   WIZARD_BACK_KEYS,
@@ -116,13 +116,13 @@ export function parseStepperLine(line: StyledLine): ParsedStepper | null {
 // Detection
 // ---------------------------------------------------------------------------------------------
 
-// Same bounded windows philosophy as prompt-select: options sit against the footer; the stepper
-// sits a few lines above the first option (blank + question lines between).
+// Same bounded windows philosophy as prompt-select: options sit against the footer.
 const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
-const STEPPER_SCAN_LIMIT = 10;
-// The review step lists every answered question (2–3 lines each) between the stepper and the
-// submit rows, so its upward window is more generous.
+// How far above its anchor the stepper is looked for. The review step lists every answered question
+// (2–3 lines each) between the stepper and the submit rows, and a question step's question wraps to
+// as many rows as it needs at a narrow width (nine at 54 columns, Claude Code 2.1.302), so both
+// walks share this floor. The dialog's top rule, not this count, is what stops either walk.
 const REVIEW_SCAN_WINDOW = 48;
 
 const CHAT_ESCAPE = /^chat about this\b/i;
@@ -187,9 +187,10 @@ function detectQuestionPhase(
   const firstOpt = menu[0]!.index;
   if (footerAt - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
-  // The stepper header above the first option — THE wizard discriminator. Stop at a horizontal
-  // rule (the dialog's top border) so the scan can't wander into scrollback.
-  const found = findStepper(lines, texts, firstOpt - 1, firstOpt - STEPPER_SCAN_LIMIT);
+  // The stepper header above the first option — THE wizard discriminator. The stop at a horizontal
+  // rule (the dialog's top border) is what keeps the scan out of scrollback; the floor only bounds
+  // the walk, and sits far enough up for a question that wrapped onto many rows.
+  const found = findStepper(lines, texts, firstOpt - 1, firstOpt - REVIEW_SCAN_WINDOW);
   if (!found) return null;
   const { stepper, index: stepperIdx } = found;
 
@@ -220,7 +221,7 @@ function detectQuestionPhase(
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
-      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t)) continue;
+      if (isBlank(t) || isRuleRow(texts, i) || parseOptionRow(t)) continue;
       desc.push(t.trim());
     }
     const chosen = CHOSEN_SUFFIX.test(row.label);
@@ -275,8 +276,10 @@ function detectReviewPhase(lines: StyledLine[], texts: string[], fi: number): Wi
   const { stepper, index: stepperIdx } = found;
 
   // The echoed answers between the stepper and the prompt: "● <question>" rows each followed by a
-  // "→ <answer>" row; other non-blank lines continue whichever field is open (wrapped text). The
-  // "Review your answers" heading and the ⚠ warning are recognised and skipped.
+  // "→ <answer>" row; other non-blank lines continue whichever field is open (wrapped text). Each row
+  // is read without the `│` bar Claude Code 2.1.302 can draw down an echoed question ("│ ● …",
+  // "│   …"), as on the question step. The "Review your answers" heading and the ⚠ warning are
+  // recognised and skipped.
   const answers: WizardAnswer[] = [];
   let incomplete = false;
   let open: { question: string; answer: string | null } | null = null;
@@ -285,7 +288,7 @@ function detectReviewPhase(lines: StyledLine[], texts: string[], fi: number): Wi
     open = null;
   };
   for (let i = stepperIdx + 1; i < ri; i++) {
-    const t = texts[i]!.trim();
+    const t = questionRowText(texts[i]!);
     if (t.length === 0 || /^review your answers$/i.test(t)) continue;
     if (t.startsWith("⚠")) {
       incomplete = true;
@@ -325,7 +328,7 @@ function findStepper(
   floor: number,
 ): { stepper: ParsedStepper; index: number } | null {
   for (let i = start; i >= 0 && i >= floor; i--) {
-    if (isHorizontalRule(texts[i]!)) return null;
+    if (isRuleRow(texts, i)) return null;
     const stepper = parseStepperLine(lines[i]!);
     if (stepper) return { stepper, index: i };
   }

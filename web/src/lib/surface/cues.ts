@@ -32,8 +32,14 @@
 //
 // Pure: the same rows always give the same answer.
 
+import { commandListNear, type CommandListRead } from "./command-list";
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { isSingleKeyRow } from "./key-row";
+import { readAboveNotice, type AboveNotice } from "./notice";
+import type { CommandListRows } from "./profile";
 import { shortHash } from "./surface";
+
+export type { CommandListRead } from "./command-list";
 
 export type CueKind =
   | "pointer-row"
@@ -119,16 +125,11 @@ const KEY_HINT_SOURCE = `(?:^|[^\\w+])(?:press\\s+)?${KEY}\\s*(?:to\\s+|:\\s*|=\
 const KEY_HINT = new RegExp(KEY_HINT_SOURCE, "iu");
 const KEY_HINTS = new RegExp(KEY_HINT_SOURCE, "giu");
 
-const YES_NO = /[([]\s*y(?:es)?\s*\/\s*n(?:o)?\s*[)\]]/iu;
-const ANY_KEY = /\bpress any key\b/iu;
-const ITEM_SPLIT = /\s{2,}|\s*[|│·•]\s*/u;
-/** A keyed item: a letter key then a colon or a space, or a digit key then a colon or a parenthesis.
- *  A digit and a space is a count ("6 plugins"), not a key. */
-const SINGLE_KEY_ITEM = /^(?:([A-Za-z])(:\s*|\s+)|(\d)([:)]\s*))[A-Za-z]/u;
-
-/** Running signs, read in a frame's volatile rows only. */
+/** Running signs: an interrupt hint, or a spinner row whose ellipsis is followed by a bracketed timer,
+ *  with at most one ` · <words>` segment between them (`Flowing… · tool use (5m 41s …)`). The fold reads
+ *  them in a frame's volatile rows ({@link runningSign}); the bridge also scans whole screens with them. */
 const INTERRUPT_HINT = /(?:^|[·(•|│,]\s*)(?:esc|escape|ctrl\+c|⌃c)\s+to\s+interrupt\s*(?:$|[·)•|│,])/iu;
-const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
+const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)(?:\s+·\s+\p{L}[\p{L} -]{0,30})?\s*\(\s*(?:\d+\s*[hms]\s*)+/u;
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
@@ -143,21 +144,6 @@ function numberOf(text: string): number | null {
   const m = NUMBERED_ITEM.exec(text);
   if (m === null) return null;
   return Number(m[1] ?? m[2] ?? m[3] ?? m[4]);
-}
-
-/** Whether a row is a single-key prompt: `(y/n)`, "press any key", or a row of single-key items. */
-export function isSingleKeyRow(text: string): boolean {
-  if (YES_NO.test(text) || ANY_KEY.test(text)) return true;
-  const items = text
-    .trim()
-    .split(ITEM_SPLIT)
-    .filter((item) => item.length > 0);
-  if (items.length < 2) return false;
-  const keyed = items.map((item) => SINGLE_KEY_ITEM.exec(item)).filter((m) => m !== null);
-  if (keyed.length < 2 || keyed.length * 5 < items.length * 3) return false;
-  // Two prose words separated by a wide gap can look like keyed items. A colon or a digit key says
-  // the row names keys; so do three keyed items.
-  return keyed.length >= 3 || keyed.some((m) => m[3] !== undefined || m[2]!.startsWith(":"));
 }
 
 /** Whether a row holds a key-hint phrase such as "Enter to select" or "Esc:cancel". */
@@ -226,7 +212,8 @@ function tailCluster(texts: readonly string[]): number[] {
   return rows.toReversed();
 }
 
-/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. */
+/** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. A notice the
+ *  profile names is blank by now ({@link readCues}), so the run is the one above it. */
 function aboveRun(texts: readonly string[], frame: Frame): number[] {
   const band = frame.volatile.above;
   if (band === null) return [];
@@ -248,7 +235,8 @@ function belowRows(texts: readonly string[], frame: Frame): number[] {
 }
 
 /** Which rows of a found frame are volatile: the band above, the status and footer runs, and any
- *  rows under the bottom edge. Running signs are read here and nowhere else. */
+ *  rows under the bottom edge. The fold reads running signs here and nowhere else; the bridge's
+ *  whole-screen scans read them too. */
 export function volatileRows(texts: readonly string[], frame: Frame): number[] {
   const rows: number[] = [];
   const { above } = frame.volatile;
@@ -416,16 +404,61 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
 }
 
 /**
+ * The profile's completion list for a slash command (`idle.volatile.below.commandList`) at a frame, on
+ * the sides the profile names ({@link commandListNear}). Null when the profile names no list or neither
+ * side holds one.
+ */
+export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined): CommandListRead | null {
+  return commandListNear(texts, frame.top, frame.bottom, list);
+}
+
+/**
+ * The typeahead of the command the box holds, or null: the profile's command list on either side of
+ * a found frame, its pointer on an entry whose command is exactly the box's text (`/model` is pointed
+ * at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed, so the
+ * list is no dialog and its rows are read for no cue. A list that points at another command, or at
+ * none, is read as before.
+ */
+export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): CommandListRead | null {
+  if (frame === null || idle === null || frame.placeholder) return null;
+  const list = commandListAt(texts, frame, idle.volatile.below.commandList);
+  return list !== null && list.pointed !== null && list.pointed === frame.interior.text.trim() ? list : null;
+}
+
+/** The rows with the rows `first` to `last` read as blank. */
+function withoutSpan(rows: readonly FrameRow[], span: { readonly first: number; readonly last: number } | null): readonly FrameRow[] {
+  if (span === null) return rows;
+  return rows.map((row, i) => (i >= span.first && i <= span.last ? { segments: [] } : row));
+}
+
+/** The rows with a command list's rows read as blank. */
+export function withoutCommandList(rows: readonly FrameRow[], list: CommandListRead | null): readonly FrameRow[] {
+  return withoutSpan(rows, list);
+}
+
+/**
+ * The notice the profile names over a found frame's top edge (`idle.notices`, {@link readAboveNotice}),
+ * or null. Every cue read takes it ({@link readCues}) and leaves its rows out: the box keeps its keys.
+ */
+export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
+  if (frame === null || idle === null) return null;
+  return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
+}
+
+/**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
- * the box rows included.
+ * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
+ * and a notice over the box ({@link noticeOver}) are left out of both.
  */
-export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
-  const plain = readCues(rows, frame);
+export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
+  const texts = allRows.map(rowText);
+  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle));
+  const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   const at = frame.top;
-  const down = readCues(rows.slice(at), null);
+  const down = readCues(rows.slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
@@ -433,9 +466,13 @@ export function readCuesFor(rows: readonly FrameRow[], frame: Frame | null, idle
 
 /**
  * The modal cues on a screen read. `frame` is the input frame the profile found, or null: a screen
- * with no profile, or one whose frame the profile did not find, gets the no-frame cluster.
+ * with no profile, or one whose frame the profile did not find, gets the no-frame cluster. `notice` is
+ * the notice over the box ({@link noticeOver}), indexed as `rows` are, or null when these rows hold
+ * none: its rows down to the box (`first` to `end`, a gap row included) are read as blank, so its key
+ * row is never a single-key prompt.
  */
-export function readCues(rows: readonly FrameRow[], frame: Frame | null): CueRead {
+export function readCues(allRows: readonly FrameRow[], frame: Frame | null, notice: AboveNotice | null): CueRead {
+  const rows = withoutSpan(allRows, notice === null ? null : { first: notice.first, last: notice.end });
   const texts = rows.map(rowText);
   const tail = tailCluster(texts);
   const hash = shortHash(tail.map((i) => texts[i]!.trimEnd()).join("\n"));

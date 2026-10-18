@@ -87,9 +87,6 @@ const NEUTRAL = new Set([
   // agent): no dialog at all, and since the 2026-09-26 addendum to ADR 0053 no unread card either.
   "claude--v2283-shell-before-first-frame.txt",
   "claude--v2283-shell-after-exit.txt",
-  // A multiSelect with the pointer on its "Type something" field: a real dialog the adapter declines
-  // on purpose, because every toggle digit would be typed into the field. The unread card covers it.
-  "claude--v2283-multiselect-type-something-focused.txt",
   // Claude Code 2.1.283 after the `/plugin` Marketplaces tab applied an update: the menu is closed
   // and "✔ Updated 1 marketplace" sits in the chat above an ordinary box. Idle, never a dialog.
   "claude--v2283-plugin-marketplaces-updated--w40.txt",
@@ -126,6 +123,22 @@ const NEUTRAL = new Set([
   "claude--v2301-working-draft--w100.txt",
   "claude--v2301-working-queued-message--w100.txt",
   "claude--v2301-working-quiet--w100.txt",
+  // Claude Code 2.1.302 turns with a list, a menu and a "(y/n)" line in the answer above the box (the
+  // 2026-10-17 field case): the answer streaming with no spinner, and a running turn over the agents
+  // panel. An ordinary box, no dialog: the list is the agent's text, not a picker.
+  "claude--v2302-working-agents-panel--w119.txt",
+  "claude--v2302-working-list-echo--w119.txt",
+  // Claude Code 2.1.302's slash list drawn OVER the box on a tall pane (lane 8788, 2026-10-17): the box
+  // holds `/model` and its statusline stands under it. The autocomplete reader looks under the box only,
+  // so nothing lifts; the Surface reads the list as the command's own typeahead, not a dialog.
+  "claude--v2302-slash-model-list-above--w119.txt",
+  // The last two reads of a turn whose answer ends in a menu and "Confirm (y/n)" (round 3 of the same
+  // field case): the agent's text above an ordinary box, no dialog.
+  "claude--v2302-turn-ending-stop-hooks--w119.txt",
+  "claude--v2302-turn-ended-yn--w119.txt",
+  // A screen whose rows reach the bottom, an empty box under the transcript (the fix rig, 2026-10-17):
+  // the read before a slash command whose list scrolls the whole screen up. An ordinary box, no dialog.
+  "claude--v2302-idle-full-screen--w120--h36.txt",
   // Claude Code 2.1.301's agents panel under a free box while a fork runs (the 2026-10-16 incident
   // on lane 8788): an ordinary box with a footer, no dialog.
   "claude--v2301-fork-running-main-idle.txt",

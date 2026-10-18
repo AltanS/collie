@@ -218,7 +218,7 @@ import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
-import { EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
+import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
@@ -1530,13 +1530,20 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         const { agents, shellPanes } = engine.current();
         return [...agents, ...shellPanes].map((pane) => pane.paneId);
       },
-      deliver: (paneId, edge) => {
-        // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold;
-        // the edge still counts, under its harness with no version, like a dropped one.
-        if (!surface.edge(paneId, edge.kind, edge.at)) surfaceLedger?.edge({ harness: edge.record.harness, version: "-", profileId: "-", status: "-" }, edge.kind);
-        if (edge.kind === "prompt" && edge.record.promptHash !== null) send?.promptEdge(paneId, edge.record.promptHash, edge.record.at);
-        holdBook?.edge(paneId, edge.kind, { tool: edge.record.tool ?? null, agent: edge.record.agent ?? null, at: edge.record.at, inputHash: edge.record.inputHash ?? null });
-      },
+      // A pane the shadow has not read yet (an agent that just started) takes no edge into a fold; the
+      // edge still counts, under its harness with no version, like a dropped one. A subagent's edge
+      // never reaches the fold (deliverEdge), only the hold book.
+      deliver: (paneId, edge) =>
+        deliverEdge(
+          {
+            fold: (pane, kind, at) => surface.edge(pane, kind, at),
+            unfolded: (record, kind) => surfaceLedger?.edge({ harness: record.harness, version: "-", profileId: "-", status: "-" }, kind),
+            promptEdge: (pane, hash, at) => send?.promptEdge(pane, hash, at),
+            hold: (pane, kind, info) => holdBook?.edge(pane, kind, info),
+          },
+          paneId,
+          edge,
+        ),
     };
     const holdTarget: HoldTarget =
       holdBook === undefined

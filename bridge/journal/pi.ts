@@ -309,7 +309,7 @@ function enrichCall(
 /** A pi call waiting for its result, plus each question's `id` by its text when the call asked any. */
 type PiPending = PendingTool & {
   questionIds?: ReadonlyMap<string, string>;
-  /** Set when the call draws no part of its own: its result lands on this card instead (ADR 0107). */
+  /** Set when the call draws no part of its own: its result lands on this card instead (ADR 0110). */
   foldInto?: PendingTool;
 };
 
@@ -498,7 +498,7 @@ export function createPiReducer(): RowReducer {
   const pendingTools = new Map<string, PiPending>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(PI_KNOWN);
-  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0107).
+  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0110).
   let heldPlan: PendingTool | undefined;
   // Subagent task id / background job id → the card that started it, so the end notice (or a
   // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
@@ -762,7 +762,7 @@ export function createPiReducer(): RowReducer {
           call: classifyToolCall(name, b.arguments, summary),
         };
         // A call that folds into an earlier card draws nothing: a `todo` update into the held plan,
-        // a `subagent_result` into the card of its `task_id` (ADR 0107).
+        // a `subagent_result` into the card of its `task_id` (ADR 0110).
         const input = b.arguments !== null && typeof b.arguments === "object" && !Array.isArray(b.arguments) ? b.arguments : {};
         const lower = name.toLowerCase();
         let foldInto: PendingTool | undefined;

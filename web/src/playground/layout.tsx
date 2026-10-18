@@ -142,7 +142,7 @@ export function Section({ def, children }: { def: SectionDef; children: ReactNod
  * render on its own. A section's body is a `space-y-8` column of these, ordered from the everyday
  * state to the rare one, so a tab with a dozen cards can be skimmed by its group titles instead of
  * scrolled blind. `.pg-grid` still wraps exactly the cards inside one group, so every card stays a
- * direct child of a `.pg-grid` — the selector `app.test.tsx` and `handles.spec.ts` both scope their
+ * direct child of a `.pg-grid`, the selector `app.test.tsx` scopes its
  * handle collection to.
  */
 export function Group({ title, children }: { title: string; children: ReactNode }) {

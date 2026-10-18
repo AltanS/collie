@@ -37,9 +37,21 @@
           { "name": "agents-panel-more", "pattern": "^\\s*↓ \\d+ more$" },
           { "name": "agents-panel-manage-hint", "pattern": "^\\s*↓ to manage$" },
           { "name": "tasks-view-hint", "pattern": "^\\s*(?:⏵⏵|⏸|\\?)\\s.*\\s·\\s↓ to view(?:\\s·\\s|$)" }
-        ]
+        ],
+        "otherScreens": [
+          { "name": "agents screen", "pattern": "^\\s*enter to return(?:\\s·\\s|$)" }
+        ],
+        "commandList": {
+          "pointer": "^ {1,4}❯ (?<command>[/…]\\S+)(?: +\\S.*)?$",
+          "entry": "^ {2,6}(?<command>[/…]\\S+)(?: +\\S.*)?$",
+          "wrapped": "^ {8,}\\S"
+        }
       }
-    }
+    },
+    "notices": [
+      { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)" }
+    ],
+    "noticeGaps": ["^ +You've used \\d{1,3}% of your [\\w -]+ limit(?: ·|$)"]
   },
   "keys": {
     "submit": ["Enter"],

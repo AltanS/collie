@@ -11,6 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lint, both typechecks, the backend suite and the corpus checks. The web suite is NOT here any
+  # more (see `web-tests` below). Measured 2026-10-17 on run 39063808818, this job took 644 s and
+  # `Test (web)` alone was 519 s of it (465 files, 31.7k tests on a 4-core runner), so every
+  # developer waited on one runner for a suite that splits cleanly. It was the slowest job of the run.
   check:
     name: typecheck + tests
     runs-on: ubuntu-latest
@@ -43,14 +47,36 @@ jobs:
         run: cd web && bun install --frozen-lockfile
       - name: Typecheck (web)
         run: cd web && bun run typecheck
-      - name: Test (web)
-        run: cd web && bun run test
-      # The corpus rule (M56 spec 10). The web suite above already runs this file. This step gives
-      # the rule its own name in the run log, so a negative trace that reads `free` is easy to find.
+      # The corpus rule (M56 spec 10). The web suite (the `web-tests` shards) already runs this file.
+      # This step gives the rule its own name in the run log, so a negative trace that reads `free`
+      # is easy to find.
       - name: Corpus rule (golden traces, the negative set never reads free)
         run: cd web && bunx vitest run src/lib/surface/traces.test.ts
       - name: Corpus table (every dialog fixture is not free)
         run: bun scripts/surface-corpus.ts
+
+  # The web suite (vitest), in three shards. It left `check` on 2026-10-17: 519 s of that job's 644 s
+  # on run 39063808818 was this one step. `--shard=N/3` splits by file, so the three runners each
+  # take about a third of the 465 files. No `needs`, like every job here, so a failure reports in the
+  # same run as a lint failure. It installs only `web/`: the suite imports a few files from `bridge/`
+  # and reads fixtures from the checkout, but nothing it needs lives in the root `node_modules`.
+  # `fail-fast: false` so one red shard does not cancel the other two and hide a second failure.
+  # The cost is three runners for about a third of the wall clock each; nothing repeats, a re-run is
+  # the operator's call. The corpus rule stays in `check`, which runs `traces.test.ts` on its own.
+  web-tests:
+    name: web tests (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+      - name: Test (web, shard ${{ matrix.shard }}/3)
+        run: cd web && bunx vitest run --shard=${{ matrix.shard }}/3
 
   # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
   # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots
@@ -122,17 +148,28 @@ jobs:
       - name: Pack check (the SDK package)
         run: scripts/sdk-pack-check.sh
 
-  # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
-  # report in one run, so this job starts beside `check` rather than behind it. It installs only
-  # `web/`, because Playwright is a devDependency of `web/` and of nothing else — the root tree
-  # never grows a browser.
+  # The browser tier (M26 spec 01), Chromium only, in TWO jobs since 2026-10-17: this one runs every
+  # spec but two (`E2E_SET=rest`, `web/playwright.config.ts`), and `e2e-swap` below runs those two.
+  # Measured on run 39063808818, this job took 350 to 516 s, and the two swap-server specs were its
+  # critical path. Everything else in it summed to about 280 s of test time. NO `needs`: a lint failure and a browser failure
+  # both have to report in one run, so this job starts beside `check` rather than behind it. It
+  # installs only `web/`, because Playwright is a devDependency of `web/` and of nothing else, so
+  # the root tree never grows a browser.
+  #
+  # WebKit is NOT here. It runs in `webkit.yml`, nightly and at a release tag: the Safari engine
+  # costs a second browser download and a second pass over every spec on every push, and the bugs it
+  # finds are not ones a push introduces by the hour. `E2E_WEBKIT=0` below keeps `app-phone-webkit`
+  # out of the project list even though `CI` is set (`web/playwright.config.ts`).
   #
   # `release.yml` deliberately gains none of this. It carries no lint step for the same class of
   # reason (release.yml:174-176: oxlint's allocator SIGABRTs below roughly 7 GB), and an operator
   # path must never download a browser.
   e2e:
-    name: browser (chromium, webkit)
+    name: browser (chromium)
     runs-on: ubuntu-latest
+    env:
+      E2E_WEBKIT: "0"
+      E2E_SET: rest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -150,29 +187,27 @@ jobs:
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-      # The first cache in this workflow. Chromium plus its headless shell is ~170 MB, WebKit
-      # another ~90 MB, and the download is the slowest thing in this job by an order of magnitude.
-      - name: Cache Chromium and WebKit
+      # Chromium plus its headless shell is ~170 MB, and the download is the slowest thing in this job
+      # by an order of magnitude.
+      - name: Cache Chromium
         id: browser-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-chromium-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: ms-playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
-      # Chromium and WebKit: the Safari engine runs the `app` specs at phone size too
-      # (`web/playwright.config.ts`, `app-phone-webkit`, always on under CI). `--with-deps` pulls the
-      # system libraries the runner image lacks, and it is needed on a cache HIT too: the cache
-      # carries the browsers under $HOME, never the apt packages.
-      - name: Install Chromium and WebKit
+      # `--with-deps` pulls the system libraries the runner image lacks, and it is needed on a cache
+      # HIT too: the cache carries the browsers under $HOME, never the apt packages.
+      - name: Install Chromium
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: cd web && bunx playwright install --with-deps chromium webkit
+        run: cd web && bunx playwright install --with-deps chromium
       - name: Install browser system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
-        run: cd web && bunx playwright install-deps chromium webkit
+        run: cd web && bunx playwright install-deps chromium
 
       # `e2e` runs `vite build` first: the tier serves the SHIPPED bundle off disk, because the
       # service worker exists only in a real build.
-      - name: E2E (tier 1)
+      - name: E2E (tier 1, every spec but the swap server's)
         run: cd web && bun run e2e
 
       - name: Upload the failure artefacts
@@ -180,6 +215,72 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-artefacts
+          path: |
+            web/test-results
+            web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The two swap-server specs of the browser tier (`E2E_SET=swap`): `service-worker.spec.ts` and
+  # `update-screen.spec.ts`. They deploy a new bundle under a running browser and so share one lock,
+  # which makes them serial by design: about 3.3 min alone, about 6.7 min when one flake re-ran the
+  # whole chain (run 39063808818). On their own runner that chain no longer holds up the other specs.
+  # Same rules as `e2e`: NO `needs`, Chromium only, WebKit stays in `webkit.yml`.
+  e2e-swap:
+    name: browser (swap server)
+    runs-on: ubuntu-latest
+    env:
+      E2E_WEBKIT: "0"
+      E2E_SET: swap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+
+      # The version is READ OUT OF THE LOCKFILE, never hard-coded: `web/bunfig.toml` holds a 7-day
+      # supply-chain cooldown, so which Playwright resolves is not something this file can know. A
+      # bumped dependency therefore invalidates the cache on its own.
+      - name: Resolve the Playwright version
+        id: pw
+        run: |
+          version="$(grep -m1 -oE '"@playwright/test@[0-9]+\.[0-9]+\.[0-9]+"' web/bun.lock | tr -d '"' | cut -d@ -f3)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      # Chromium plus its headless shell is ~170 MB, and the download is the slowest thing in this job
+      # by an order of magnitude.
+      - name: Cache Chromium
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # `--with-deps` pulls the system libraries the runner image lacks, and it is needed on a cache
+      # HIT too: the cache carries the browsers under $HOME, never the apt packages.
+      - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: cd web && bunx playwright install --with-deps chromium
+      - name: Install browser system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: cd web && bunx playwright install-deps chromium
+
+      # No `vite build` here, unlike `e2e` above: these two specs serve the two bundles that
+      # `e2e/serve-builds.ts` builds itself into `e2e/.builds/`, and use no other server (4173 and
+      # 4175 do not start in this set). `--workers=1` because `service-worker.spec.ts` and
+      # `update-screen.spec.ts` move one shared pointer behind the `holdSwapServer` lock
+      # (`web/e2e/fixtures/builds.ts`) and run one case at a time anyway. More workers would only
+      # open browsers that wait on that lock.
+      - name: E2E (tier 1, the swap-server specs)
+        run: cd web && bunx playwright test --workers=1
+
+      - name: Upload the failure artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-swap-artefacts
           path: |
             web/test-results
             web/playwright-report

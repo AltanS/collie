@@ -29,7 +29,7 @@ function setup(patch: Partial<CliOptions> = {}): Rig {
   const root = mkdtempSync(join(tmpdir(), "lab-watch-"));
   dirs.push(root);
   const told: string[] = [];
-  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, publish: true, plan: false, maxRuns: 4, fakeVersions: [], ...patch };
+  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, publish: true, plan: false, maxRuns: 4, fakeVersions: [], legs: "all", bridge: null, ...patch };
   return { cli, told, notify: (line) => told.push(line) };
 }
 

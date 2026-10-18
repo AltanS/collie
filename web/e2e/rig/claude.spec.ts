@@ -1,0 +1,375 @@
+// Claude Code in the browser leg: the five scenarios on one session, on Haiku. About 6 model turns.
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { devices, type Locator, type Page } from "@playwright/test";
+
+import { asJsonObject } from "../../src/lib/json";
+import { harnessDirs } from "./harnesses";
+import {
+  NotReached,
+  coldPageHasOlder,
+  PHONE_DEVICE,
+  ScreenWatch,
+  askOn,
+  capture,
+  captureScreen,
+  expect,
+  jsonRows,
+  message,
+  openSession,
+  phoneContext,
+  phoneOn,
+  resetBox,
+  runScenario,
+  sendFromComposer,
+  settledReceipt,
+  spendTurn,
+  tap,
+  tapWords,
+  test,
+  waitIdle,
+  type Rig,
+  type Session,
+  type TapLog,
+  type TapRecorder,
+} from "./leg";
+
+const H = "claude" as const;
+const PHONE = devices[PHONE_DEVICE];
+const session: Session = { paneId: null, startNote: "not started" };
+
+/** How long a reply on Haiku may take before the case gives up on it. */
+const REPLY_MS = 120_000;
+
+test.describe("claude", () => {
+  // Not serial: a failed scenario must not skip the next one. The session survives a worker restart
+  // because openSession keeps its pane id in the run folder.
+  test.describe.configure({ mode: "default" });
+
+  test.beforeAll(async () => {
+    Object.assign(session, await openSession(H));
+  });
+
+  test("1 model picker: the first tap on 'Use this session only' commits", async ({ browser, rig }) => {
+    await runScenario(H, "picker", session, async (pane, trail) => {
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      recorder.watchAsks(pane);
+      const watch = new ScreenWatch(rig, pane).start();
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        // Round A: open, commit at once. The Claude 2.1.302 timed-notice case (dbbcd10e) lives here.
+        const a = await pickerRound(rig, page, recorder, watch, pane, log, false);
+        notes.push(`straight commit: ${a.words}`);
+        // Round B, the scenario as a person does it: a choice (one row up, back down to Haiku), then
+        // the commit. Each move is confirmed on the phone's own card before the next tap.
+        const b = await pickerRound(rig, page, recorder, watch, pane, log, true);
+        notes.push(`choice then commit: ${b.words}`);
+        const shot = await capture(page, "claude-1-picker");
+        const screen = await captureScreen(rig, pane, "claude-1-picker");
+        const verdict = a.taps === 1 && a.confirmed && b.taps === 1 && b.confirmed && log.every((l) => l.worked) ? "pass" : "fail";
+        // Every tap counts: round A is Model + commit, round B is Model + Move up + Move down + commit.
+        return { verdict, taps: log.length, minTaps: 6, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
+      } finally {
+        watch.stop();
+        await context.close();
+      }
+    });
+  });
+
+  test("2 permission card: Yes from the phone runs the command", async ({ browser, rig }) => {
+    await runScenario(H, "permission", session, async (pane, trail) => {
+      spendTurn(H, "permission: touch request");
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      const log = trail.log;
+      const proof = join(harnessDirs(H).project, "phone-said-yes.txt");
+      try {
+        log.push(await sendFromComposer(page, recorder, "Run this exact shell command with the Bash tool and nothing else: touch phone-said-yes.txt", "send the request"));
+        const card = page.getByRole("group", { name: "Do you want to proceed?" });
+        await expect(card, "no permission card on the phone").toBeVisible({ timeout: 60_000 });
+        const { taps, confirmed } = await tapUntil(recorder, card.getByRole("button", { name: "Yes", exact: true }), "Yes", log, async () => (await rig.until(async () => existsSync(proof), (made) => made, 15_000)) === true);
+        await waitIdle(rig, pane, REPLY_MS);
+        const cardGone = !(await card.isVisible());
+        const shot = await capture(page, "claude-2-permission");
+        const verdict = confirmed && taps === 1 && log.every((l) => l.worked) ? "pass" : "fail";
+        trail.notes.push(confirmed ? "the command ran (file made)" : "the file was not made", `card ${cardGone ? "gone" : "still up"}`, ...log.map(tapWords));
+        return { verdict, taps: log.length, minTaps: 2, note: trail.notes.join("; "), taps_log: log, captures: [shot] };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+
+  test("3 pick-many question: toggles, then Submit through 'Type something'", async ({ browser, rig }) => {
+    await runScenario(H, "pick-many", session, async (pane, trail) => {
+      spendTurn(H, "pick-many: AskUserQuestion multiSelect");
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        log.push(await sendFromComposer(page, recorder, 'Use the AskUserQuestion tool exactly once: one question, header Fruits, text "Which fruits do you like?", multiSelect true, options Apple, Banana, Cherry. Do nothing else.', "send the request"));
+        const card = page.getByRole("group", { name: "Which fruits do you like?" });
+        await expect(card, "no pick-many card on the phone").toBeVisible({ timeout: 60_000 });
+        for (const fruit of ["Apple", "Cherry"]) {
+          const box = card.getByRole("checkbox", { name: new RegExp(`^${fruit}\\b`) });
+          const t = await tap(recorder, box, fruit);
+          log.push(t);
+          const ticked = await expect(box)
+            .toBeChecked({ timeout: 8000 })
+            .then(() => true)
+            .catch(() => false);
+          const onScreen = (await rig.screenUntil(pane, new RegExp(`\\[✔\\] ${fruit}`), 8000)) !== null;
+          if (!ticked || !onScreen) notes.push(`${fruit}: phone ${ticked ? "ticked" : "not ticked"}, screen ${onScreen ? "ticked" : "not ticked"}`);
+        }
+        // Submit walks the pointer down past "Type something" to Submit (7c23d9fd), then presses Enter.
+        log.push(await tap(recorder, card.getByRole("button", { name: message("dialog.submitChip"), exact: true }), "Submit"));
+        // A wizard question ends on a review page; a plain one answers at once.
+        const review = page.getByRole("group", { name: "Ready to submit your answers?" });
+        const answered = /Which fruits do you like\?\s*→\s*Apple, Cherry/;
+        const reviewShown = await review
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        if (reviewShown) log.push(await tap(recorder, review.getByRole("button", { name: "Submit answers", exact: true }), "Submit answers"));
+        const done = (await rig.screenUntil(pane, answered, 20_000, 120)) !== null;
+        await waitIdle(rig, pane, REPLY_MS);
+        const shot = await capture(page, "claude-3-pick-many");
+        const screen = await captureScreen(rig, pane, "claude-3-pick-many");
+        const min = reviewShown ? 5 : 4;
+        notes.push(done ? "Claude got Apple, Cherry" : "the answer did not reach Claude");
+        notes.push(log.map(tapWords).join("; "));
+        const verdict = done && log.length === min && log.every((l) => l.worked) ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: min, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+
+  test("4 send while the agent streams a long reply", async ({ browser, rig }) => {
+    await runScenario(H, "stream-send", session, async (pane, trail) => {
+      spendTurn(H, "stream: 120 fruits");
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        // Long enough that Haiku still streams when the note goes out: a list that ends in a few
+        // seconds turns the case into a send at the turn's end.
+        log.push(await sendFromComposer(page, recorder, "List 150 different fruits, one per line, numbered 1 to 150, each with one short sentence about its taste. No other text.", "send the long prompt"));
+        const streaming = await rig.screenUntil(pane, /^\s*(?:⏺|●)?\s*1[0-9]\.\s+\S/m, 60_000, 120);
+        if (streaming === null) throw new NotReached("the long reply never started streaming");
+        const turn = (await rig.pane(pane))?.surface?.turn ?? "?";
+        spendTurn(H, "stream: the note sent mid-stream");
+        const t = await sendFromComposer(page, recorder, "Stream note: reply with only the word PINEAPPLE-OK.", "send while streaming");
+        log.push(t);
+        notes.push(`sent while the Surface read turn=${turn}: ${tapWords(t)}`);
+        let sent = t.answers.find((answer) => answer.path === "/api/send");
+        const submit = page.getByRole("button", { name: message("composer.protocol.submit"), exact: true });
+        if (sent?.outcome === "typed_not_submitted" && (await submit.isVisible().catch(() => false))) {
+          // What a person does next: the phone says Enter was not pressed and offers Submit.
+          const again = await tap(recorder, submit, "Submit (typed, not sent)");
+          log.push(again);
+          notes.push(`the phone offered Submit: ${tapWords(again)}`);
+          sent = again.answers.find((answer) => answer.path === "/api/send") ?? sent;
+        }
+        const held = await page
+          .getByText(message("composer.held.queued"))
+          .isVisible()
+          .catch(() => false);
+        if (held) notes.push("the phone showed the queued line");
+        const settled = sent?.requestId === null || sent?.requestId === undefined ? null : await settledReceipt(rig, pane, sent.requestId, 180_000);
+        notes.push(`receipt settled: ${settled === null ? "no" : `${settled.outcome}${settled.reason === undefined ? "" : ` (${settled.reason})`}`}`);
+        // The note itself carries the word, so only Claude's own reply line counts.
+        const reply = (await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*PINEAPPLE-OK/m, REPLY_MS, 200)) !== null;
+        notes.push(reply ? "Claude answered the note" : "no answer to the note on screen");
+        await waitIdle(rig, pane, REPLY_MS);
+        const shot = await capture(page, "claude-4-stream-send");
+        const screen = await captureScreen(rig, pane, "claude-4-stream-send");
+        const wentIn = settled !== null && (settled.outcome === "sent" || settled.outcome === "effective");
+        // The first tap must do it: a send that needed the Submit offer still fails the case.
+        const verdict = t.worked && wentIn && reply ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+
+  test("5 Load older with an empty phone cache: the pin leaves the row free", async ({ browser, rig }) => {
+    await runScenario(H, "load-older", session, async (pane, trail) => {
+      // History deeper than the first page (40 turns): one prompt, 48 Read calls, one entry each.
+      const project = harnessDirs(H).project;
+      for (let i = 1; i <= 48; i++) writeFileSync(join(project, `note-${String(i).padStart(2, "0")}.txt`), `note ${String(i)}\n`);
+      const deep = await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`).catch(() => null);
+      if (!coldPageHasOlder(asJsonObject(deep))) {
+        spendTurn(H, "load-older: 48 reads");
+        const seed = await phoneOn(browser, rig, pane, PHONE);
+        try {
+          const t = await sendFromComposer(seed.page, seed.recorder, "Use the Read tool on each of the 48 files note-01.txt to note-48.txt, one Read call per file, all in a single message. Then reply with only the word DONE.", "send the history prompt");
+          if (!t.worked) throw new Error(`the history prompt was refused: ${tapWords(t)}`);
+        } finally {
+          await seed.context.close();
+        }
+        await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*DONE\b/m, 240_000, 200);
+        await waitIdle(rig, pane, REPLY_MS);
+      }
+      const cold = asJsonObject(await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`)) ?? {};
+      const upserts = jsonRows(cold.upserts);
+      if (!coldPageHasOlder(cold)) throw new NotReached(`the session holds no more than one page (${String(upserts.length)} turns)`);
+      const lastPrompt = asJsonObject(cold.lastPrompt);
+      const reported = lastPrompt !== undefined && !upserts.some((row) => row.uuid === lastPrompt.uuid);
+      // The fix under test (3f522a27) is about the REPORTED pin: the last prompt sits outside the page.
+      if (!reported) throw new NotReached(`the last prompt sits inside the cold page (${String(upserts.length)} turns), so no reported pin`);
+      // A FRESH context: the phone holds no history of this session, so its thread is the newest page.
+      const context = await phoneContext(browser, rig, PHONE);
+      const page = await context.newPage();
+      const notes: string[] = [`cold page: ${String(upserts.length)} turns, last prompt ${reported ? "outside it (reported pin)" : "inside it"}`];
+      const log = trail.log;
+      try {
+        const olderReads: number[] = [];
+        page.on("response", (response) => {
+          const url = new URL(response.url());
+          if (url.pathname.endsWith("/chat") && url.searchParams.has("before")) olderReads.push(response.status());
+        });
+        await page.goto(`/pane/${encodeURIComponent(pane)}`);
+        const loadOlder = page.getByRole("button", { name: message("chat.scrollback.loadOlder"), exact: true });
+        await expect(loadOlder, "no Load older row in the Chat thread").toBeAttached({ timeout: 20_000 });
+        // The reader at the very top, where the row is.
+        await loadOlder.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(800);
+        const pin = page.getByRole("button", { name: new RegExp(`^${message("chat.pin.label")}:`) });
+        const pinShown = await pin.isVisible().catch(() => false);
+        const row = await loadOlder.boundingBox();
+        const pinBox = pinShown ? await pin.boundingBox() : null;
+        const covered = row !== null && pinBox !== null && pinBox.y < row.y + row.height && row.y < pinBox.y + pinBox.height;
+        const hit =
+          row === null
+            ? "no box"
+            : await page.evaluate(([x, y]) => {
+                const el = document.elementFromPoint(x!, y!);
+                const button = el?.closest("button");
+                return button === null || button === undefined ? (el?.tagName ?? "nothing") : (button.textContent ?? "").trim().slice(0, 40);
+              }, [row.x + row.width / 2, row.y + row.height / 2]);
+        notes.push(`pin ${pinShown ? "shown" : "not shown"}${covered ? ", OVER the Load older row" : ""}; a tap at the row's centre lands on "${hit}"`);
+        const before = await page.locator("[data-block]").count();
+        const shotBefore = await capture(page, "claude-5-load-older-before");
+        const t0 = Date.now();
+        await loadOlder.tap({ timeout: 5000 }).catch((err) => notes.push(`the tap did not land: ${String(err).split("\n")[0]}`));
+        log.push({ label: "Load older", at: new Date(t0).toISOString(), answers: [], worked: true, screenStillMs: null });
+        const grew = await expect
+          .poll(async () => page.locator("[data-block]").count(), { timeout: 15_000 })
+          .toBeGreaterThan(before)
+          .then(() => true)
+          .catch(() => false);
+        const after = await page.locator("[data-block]").count();
+        notes.push(`older read ${olderReads.length === 0 ? "never sent" : `answered ${olderReads.join(",")}`}; thread blocks ${String(before)} -> ${String(after)}`);
+        const shotAfter = await capture(page, "claude-5-load-older-after");
+        const verdict = pinShown && !covered && hit.includes(message("chat.scrollback.loadOlder")) && olderReads.includes(200) && grew ? "pass" : "fail";
+        return { verdict, taps: 1, minTaps: 1, note: notes.join("; "), taps_log: log, captures: [shotBefore, shotAfter] };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+});
+
+// ── helpers ──────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * True when Claude printed "Set model to … for this session only" under the LAST `/model` line and
+ * no picker is open: an earlier round's line further up never counts for this one.
+ */
+function committedAfterLastModel(tail: string): boolean {
+  const rows = tail.split("\n");
+  const last = rows.findLastIndex((row) => /^❯\s*\/model\b/.test(row.trim()));
+  if (last < 0 || rows.slice(last).some((row) => row.includes("Select model"))) return false;
+  return rows.slice(last + 1).some((row) => /Set model to .+ for this session only/.test(row));
+}
+
+/** Tap until `confirmed` says the screen shows the result, at most three times, as a person would. */
+async function tapUntil(recorder: TapRecorder, target: Locator, label: string, log: TapLog[], confirmed: () => Promise<boolean>): Promise<{ taps: number; confirmed: boolean }> {
+  let taps = 0;
+  while (taps < 3) {
+    if (!(await target.isVisible().catch(() => false))) break;
+    taps++;
+    log.push(await tap(recorder, target, `${label} #${String(taps)}`));
+    if (await confirmed()) return { taps, confirmed: true };
+  }
+  return { taps, confirmed: false };
+}
+
+/**
+ * One round of the /model picker from the phone: open it with the Model shortcut, optionally move one
+ * row up and back down, then tap "Use this session only" until the screen confirms (max three taps).
+ */
+async function pickerRound(rig: Rig, page: Page, recorder: TapRecorder, watch: ScreenWatch, pane: string, log: TapLog[], choose: boolean): Promise<{ taps: number; confirmed: boolean; words: string }> {
+  const words: string[] = [];
+  const reset = await resetBox(rig, pane);
+  if (reset !== null) words.push(reset);
+  const open = await tap(recorder, page.getByRole("group", { name: "Harness shortcuts" }).getByRole("button", { name: "Model", exact: true }), "Model shortcut");
+  log.push(open);
+  if (open.answers.some((answer) => answer.outcome === "typed_not_submitted")) {
+    // The phone says "Your text is in the box, but Enter was not pressed" and offers Submit.
+    words.push(`Model shortcut: ${tapWords(open)}, the phone offered Submit`);
+    log.push(await tap(recorder, page.getByRole("button", { name: message("composer.protocol.submit"), exact: true }), "Submit (typed, not sent)"));
+  } else if (!open.worked) {
+    words.push(`Model shortcut: ${tapWords(open)}`);
+  }
+  const card = page.getByRole("group", { name: "Select model" });
+  await expect(card, "the picker card did not show on the phone").toBeVisible({ timeout: 15_000 });
+  await rig.until(() => rig.pane(pane), (p) => askOn(p)?.kind === "menu", 10_000);
+  const notice = /You've used \d+% of your/.test(await rig.tail(pane, 30));
+  words.push(`limit notice ${notice ? "on" : "off"} screen`);
+  const pointer = async () => /❯\s*\d+\.\s+(\S+)/.exec(await card.innerText())?.[1] ?? null;
+  if (choose) {
+    for (const [name, key] of [
+      ["Move up", "dialog.menu.moveUp"],
+      ["Move down", "dialog.menu.moveDown"],
+    ] as const) {
+      const was = await pointer();
+      const t = await tap(recorder, card.getByRole("button", { name: message(key), exact: true }), name, { screenStillMs: watch.stillMs() });
+      log.push(t);
+      const moved = await expect
+        .poll(pointer, { timeout: 8000 })
+        .not.toBe(was)
+        .then(() => true)
+        .catch(() => false);
+      if (!t.worked || !moved) words.push(`${name} ${t.worked ? "accepted" : "refused"}, card ${moved ? "moved" : "did not move"}`);
+    }
+    words.push(`pointer ends on ${(await pointer()) ?? "?"}`);
+  }
+  const commit = card.getByRole("button", { name: "Use this session only", exact: true });
+  let taps = 0;
+  let confirmed = false;
+  while (taps < 3 && !confirmed && (await commit.isVisible().catch(() => false))) {
+    taps++;
+    const still = watch.stillMs();
+    const t = await tap(recorder, commit, `Use this session only #${String(taps)}`, { screenStillMs: still });
+    log.push(t);
+    confirmed = (await rig.until(() => rig.tail(pane, 40), committedAfterLastModel, 6000)) !== null;
+    if (!t.worked) {
+      // Evidence for the report: what the phone showed while the tap was refused.
+      await capture(page, `claude-1-picker-refused-${choose ? "b" : "a"}${String(taps)}`);
+      const held = recorder.askAt(Date.parse(t.at));
+      words.push(
+        `commit tap ${String(taps)} ${tapWords(t)}; the screen was still ${String(still)} ms; the phone held ask ${held?.askId ?? "none"} since ${held === null ? "?" : String(Date.parse(t.at) - held.at)} ms`,
+      );
+    }
+  }
+  words.push(confirmed ? `committed after ${String(taps)} tap(s)` : `not committed after ${String(taps)} tap(s)`);
+  if (confirmed) {
+    // The result in the session: the phone's Chat thread shows Claude's own line.
+    const shown = await page
+      .getByText(/Set model to .+ for this session only/)
+      .last()
+      .isVisible()
+      .catch(() => false);
+    words.push(`phone ${shown ? "shows" : "does not show"} the result`);
+    // Leave the box empty for the next round: the confirmation line clears itself.
+    await rig.until(() => rig.pane(pane), (p) => askOn(p) === null, 8000);
+  } else {
+    await rig.keys(pane, ["Escape"]);
+  }
+  return { taps, confirmed, words: words.join(", ") };
+}

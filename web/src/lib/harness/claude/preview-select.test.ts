@@ -142,6 +142,8 @@ describe("detectPreviewSelect — false-positive / cross-grammar isolation", () 
     "claude--select-menu.txt", // the standard select must stay prompt-select territory
     "claude--wizard-q1.txt", // the standard wizard must stay wizard territory
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
   ]) {
     it(`${name} produces zero preview detections`, () => {
       expect(detectPreviewSelect(fixtureLines(name))).toBeNull();
@@ -384,5 +386,40 @@ describe("detectPreviewSelect — the label column comes from a real option row"
     expect(m).not.toBeNull();
     expect(m!.options).toHaveLength(2);
     expect(m!.options[1]!.label).toBe("Rename now and 3. Backfill later");
+  });
+});
+
+// Theme hardening, captured from Claude Code 2.1.302 running a theme plugin that draws a two-column
+// gutter beside the dialog: Claude Code still draws its rule at the full pane width, so the rule
+// overflows by the gutter's width and wraps into a `──` stub row, above the chip row and above
+// "Chat about this", between the Notes line and the footer.
+describe("detectPreviewSelect — a dialog rule wrapped beside a theme's gutter", () => {
+  const FIXTURE = "claude--v2302-preview-wrapped-rule--w141.txt";
+
+  it("reads past the rule's stub to the Notes line", () => {
+    const m = detectPreviewSelect(fixtureLines(FIXTURE));
+    expect(m).not.toBeNull();
+    expect(m!.options.map((o) => o.label)).toEqual([
+      "B: description, call beneath",
+      "A: description, call dim after",
+      "C: call, description dim after",
+      "D: description replaces argument",
+    ]);
+    expect(m!.options.map((o) => o.n)).toEqual([1, 2, 3, 4]);
+    // The whole question paragraph under the chip row, its `│` gutter off, the wrapped path included.
+    expect(m!.question).toBe(
+      "How should a running call show the description the agent gave it? Mock, section 5: " +
+        "D:\\work\\projects\\docs\\plans\\canvases\\sample-page-demo\\sample-page-demo.html",
+    );
+    expect(m!.options.map((o) => o.pointed)).toEqual([true, false, false, false]);
+    expect(m!.note).toEqual({ state: "none", text: "" });
+    expect(m!.preview.join("\n")).toContain("Show working tree status");
+    expect(m!.preview.join("\n")).not.toContain("description, call"); // labels never leak into the pane
+    expect(m!.steps).toBeNull();
+  });
+
+  it("lifts as a preview-select block through the adapter", () => {
+    const kinds = buildBlocks(fixtureLines(FIXTURE), { agent: "claude" }).map((b) => b.kind);
+    expect(kinds).toContain("preview-select");
   });
 });

@@ -20,6 +20,7 @@ and the live probes.
 | gentle-pi `ask_user_choice`, unnumbered, no status row | `↑↓ navigate • Enter select • Esc cancel` | (a) walk | `pi--v130-gentle-choice.txt`; source below |
 | gentle-pi review consent, numbered, NO rule frame, footer last | `↑↓ choose · Enter confirm · Esc cancel · D details` | (a) walk | `pi--v130-gentle-review-consent.txt`; "A dialog with no rules" below |
 | pi's own selector (`ctx.ui.confirm`, `ctx.ui.select`), unnumbered | `↑↓ navigate  enter select  escape/ctrl+c cancel` | (a) walk | built from source in `ask.test.ts` |
+| pi's own selector with a title of several rows: the stock `permission-gate` example, the command quoted further in | the same | (a) walk | `pi--v0871-permission-gate*`; live taps below |
 
 Raw, with the Escape card: every multi-select (`[ ]` rows, or a footer that gives Space a tick or a
 toggle), a pointer on the free-text row, every inline answer editor (`Enter to submit • Esc to go
@@ -75,6 +76,32 @@ Read from source, not captured:
 
 Unnumbered rows are read at column 1 only, never beside a tab strip, with no trailer row (a label
 long enough to wrap comes back at column 1 and declines), and lift by plan (a) only.
+
+### pi's permission gate: a title of several rows (2026-10-17)
+
+pi's stock example `examples/extensions/permission-gate.ts` (the same file in 0.87.1 and 1.3.0) asks
+before `rm -rf`, `sudo` and `chmod`/`chown 777` with
+`ctx.ui.select("⚠️ Dangerous command:\n\n  <command>\n\nAllow?", ["Yes", "No"])`. The selector draws
+each title line one column in, so the command row is three columns in: ` ⚠️ Dangerous command:`, a
+blank row, `   chmod 777 gate-probe.txt`, a blank row, ` Allow?`, the selector's blank row, then
+` → Yes` and `   No`. Until 1.22.5 the reader took the first row of that shape for the first option:
+the command row, then a blank row ended the list with no pointer in it, and the phone showed the
+unread-dialog card. No release read it: before 1.20.1 pi had no adapter, and 1.20.1 to 1.22.4 all
+show the unread-dialog card on these captures.
+
+The list is now the run that holds the one pointer, read up from it, and it opens on an option row.
+A row indented deeper than one space may stand in the header only when the selector's blank row
+stands right over the list and a row one space in (` Allow?`) stands between the two. Two shapes
+with the same rows still decline: an unpointed option cut off from the list by a blank row (no
+title row between), and a label wrapped back to column 1 right over the pointer (no blank row). A
+quoted row straight over the selector's blank row also declines, so `select("Run?\n\n  cmd", …)`
+stays raw until a capture shows it. The card's question is every header row joined, the command
+included: `⚠️ Dangerous command: chmod 777 gate-probe.txt Allow?`.
+
+**Probed live 2026-10-17** (pi 0.87.1, Herdr 0.9.4, a bridge from the fix's worktree, 120 columns):
+the card read Yes, No and Cancel, and a tap through `POST /api/ask/<id>` sent `Enter` on Yes, and
+`Down`, a read-back with the pointer on No, then `Enter` on No. pi ran the command after Yes (the
+file went from 644 to 777) and printed `Blocked by user` after No.
 `ask_user_question` (`❯` rows, a tab strip) is read from source only and stays raw with the Escape
 card.
 
@@ -298,8 +325,9 @@ to honour `NO_COLOR`, capture it first, then read it.
 - A pi or OmO pane with no colour: neither honours `NO_COLOR` (see "NO_COLOR and monochrome
   panes"), so no such screen has been seen.
 - A picker taller than the pane, which pushes the bottom rule off the screen.
-- A live tap on gentle-pi's `ask_user_choice` or pi's own selector through the phone: the reader is
-  pinned on the captures and the source, and Down was sent by Herdr, but no tap went end to end.
+- A live tap on gentle-pi's `ask_user_choice` through the phone: the reader is pinned on the
+  captures and the source, and Down was sent by Herdr, but no tap went end to end. pi's own selector
+  was tapped end to end on the permission gate (see above).
 - A column-0 dialog between two same-colour rules that ends the screen with an unpainted footer reads
   as a ready composer on a bare-rule editor (PR 450). Every captured pi footer is painted; the
   bridge's send protocol probe is the second line.

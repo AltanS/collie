@@ -292,6 +292,14 @@ describe("the pointed shape (Claude Code 2.1.291)", () => {
     { fixture: "claude-lab--popup-slash-mo--w82.txt", draft: "/mo", entries: 12 },
     { fixture: "claude-lab--popup-slash-model-exact--w82.txt", draft: "/model", entries: 11 },
     { fixture: "claude-lab--working-popup-open--w82.txt", draft: "/ref", entries: 8 },
+    // Claude Code 2.1.302 at 119 columns (reconstructed from a masked field capture, 2026-10-17): the
+    // pointed entry's description fits on its row, so the next entry sits right under it.
+    { fixture: "claude--v2302-slash-model-list--w119.txt", draft: "/model", entries: 11 },
+    // The harness lab's 120 x 40 tmux pane (captured 2026-10-17): the same layout, the screen scrolled up.
+    { fixture: "claude--v2302-slash-model-list--w120--h40.txt", draft: "/model", entries: 7 },
+    { fixture: "claude--v2302-slash-effort-list--w120--h40.txt", draft: "/effort", entries: 2 },
+    // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): the same list, blank rows under it.
+    { fixture: "claude--v2302-slash-model-list-padded--w120--h36.txt", draft: "/model", entries: 7 },
   ];
 
   it.each(POINTED)("$fixture: the box stands and the popup lifts", ({ fixture, draft, entries }) => {

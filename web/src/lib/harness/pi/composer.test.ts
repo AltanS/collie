@@ -316,6 +316,8 @@ describe("pi 1.2.0 composer with editorPaddingX (issue 442)", () => {
       "pi--omo-v5130-picker-model.txt",
       "pi--omo-v5130-picker-resume.txt",
       "pi--omo-v5130-question-banner.txt",
+      // pi 0.87.1's model selector, its rows at column zero between the box's rules (lab, 2026-10-17).
+      "pi--v0871-model-selector-empty--w120.txt",
       "pi--v0871-question-answered.txt",
       "pi--v110-core-selector.txt",
       "pi--v110-question-answered.txt",

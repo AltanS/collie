@@ -314,6 +314,83 @@ describe("Add your own: a recipe", () => {
   });
 });
 
+// Grok and Antigravity, as the bridge's table names them (bridge/launcher-recipes.ts, checked there
+// by launcher-recipes.test.ts): the page draws whatever recipe it is sent, so these pin that the same
+// controls build their lines too.
+describe("Add your own: Grok and Antigravity recipes", () => {
+  const GROK_FULL: Recipe = {
+    harness: "grok",
+    label: "Grok",
+    binary: "grok",
+    options: [
+      { id: "approve", label: "Always approve", args: "--always-approve", noPrompts: true },
+      { id: "continue", label: "Continue last", args: "--continue" },
+    ],
+  };
+  const AGY: Recipe = {
+    harness: "agy",
+    label: "Antigravity",
+    binary: "agy",
+    options: [
+      { id: "skip", label: "Skip permission prompts", args: "--dangerously-skip-permissions", group: "permissions", noPrompts: true },
+      { id: "plan", label: "Plan mode", args: "--mode plan", group: "permissions" },
+      { id: "continue", label: "Continue last", args: "--continue" },
+    ],
+  };
+
+  /** The select is disabled and empty until the launchers answer; pick once its options are here. */
+  async function pickAgent(label: string): Promise<void> {
+    const select = await screen.findByRole("combobox", { name: "Agent" });
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(2));
+    await userEvent.selectOptions(select, label);
+  }
+
+  function serveBoth(): void {
+    server.use(
+      http.get("/api/launchers", () =>
+        HttpResponse.json({
+          launchers: [],
+          home: "/home/op",
+          harnesses: [
+            { id: "grok", label: "Grok", found: true },
+            { id: "agy", label: "Antigravity", found: true },
+          ],
+          items: [],
+          adding: { ...ADDING, count: 0, recipes: [GROK_FULL, AGY] },
+        }),
+      ),
+    );
+  }
+
+  it.each([
+    { agent: "Grok", skip: "Always approve", line: "grok --always-approve", other: "Continue last" },
+    { agent: "Antigravity", skip: "Skip permission prompts", line: "agy --dangerously-skip-permissions", other: "Plan mode" },
+  ])("offers $agent's options and builds its line, with the No prompts badge while the skip is on", async (c) => {
+    serveBoth();
+    mount();
+    await pickAgent(c.agent);
+    const skip = await chip(c.skip);
+    expect(screen.getByRole("button", { name: c.other })).toBeInTheDocument();
+    expect(liveBadges()).toHaveLength(0);
+    await userEvent.click(skip);
+    expect(screen.getByRole("button", { name: c.skip })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("launcher-add-line")).toHaveTextContent(c.line);
+    expect(liveBadges()).toHaveLength(1);
+  });
+
+  it("Antigravity's Plan mode replaces Skip permission prompts, and the badge goes", async () => {
+    serveBoth();
+    mount();
+    await pickAgent("Antigravity");
+    await userEvent.click(await chip("Skip permission prompts"));
+    await userEvent.click(screen.getByRole("button", { name: "Plan mode" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue last" }));
+    expect(screen.getByRole("button", { name: "Skip permission prompts" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("launcher-add-line")).toHaveTextContent("agy --mode plan --continue");
+    expect(liveBadges()).toHaveLength(0);
+  });
+});
+
 describe("Add your own: a retry is a replay", () => {
   it("keeps the request id across a retry of the same ask, and mints a new one when the ask changes", async () => {
     serve();

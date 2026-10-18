@@ -13,6 +13,7 @@ import {
   forwardParams,
   forwardToPeer,
   REPLY_OLD_MEMBER_TEXT,
+  SEND_OLD_MEMBER_DETAIL,
   crewRouteFor,
   proxiedResponse,
   textAnswerOf,
@@ -23,6 +24,7 @@ import {
 import { crewDeviceOf } from "./peer-gate.ts";
 import { crewTimeoutBudget, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { PeerState } from "./registry.ts";
+import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
 
 // The lead's forwarding path (CREW_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
 //
@@ -662,9 +664,26 @@ describe("a text reply to a member that sent no Surface reader version (an older
         error: REPLY_OLD_MEMBER_TEXT,
         code: "reply.send_failed",
         detail: { reason: REPLY_OLD_MEMBER_TEXT },
+        send: { receipt: { outcome: "refused" }, offers: ["keys"], detail: SEND_OLD_MEMBER_DETAIL },
       });
       expect(calls).toHaveLength(0);
     }
+  });
+
+  test("the refusal carries a send answer the phone reads, with the phone's own request id (2026-10-17 field case)", async () => {
+    const { transport, calls } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = post(`${REPLY}&session=main`, `{"text":"/model","submit":true,"id":"phone-req-0001","mode":"command"}`);
+    const audit: unknown[] = [];
+    const res = await forward(req, url, { transport, surfaceVersion: null, audit: (entry) => audit.push(entry) });
+    const body = await res.json();
+    expect(body.send.receipt).toEqual({ outcome: "refused", requestId: "phone-req-0001" });
+    // What the phone makes of it: a refusal, nothing typed, and the bridge's own sentence under it.
+    const reply = readSendReply(body.send);
+    expect(reply).not.toBeNull();
+    expect(readSend(reply!)).toMatchObject({ clear: false, note: "refused", detail: SEND_OLD_MEMBER_DETAIL });
+    // The lead says why no forward followed the tap: one `reply` line naming the member.
+    expect(audit).toEqual([{ action: "reply", host: "laptop", paneId: "w1:p1", session: "main", outcome: "old_member" }]);
+    expect(calls).toHaveLength(0);
   });
 
   test("with a Surface reader version, or with none known to the caller, the same reply is forwarded", async () => {

@@ -110,6 +110,25 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   return props;
 }
 
+function ComposerForReload() {
+  return (
+    <Composer
+      paneId="w1:p1"
+      agent="claude"
+      isShell={false}
+      gone={false}
+      readOnly={false}
+      surface={FREE}
+      text="pane output"
+      terminalDraft={null}
+      rawTerminalDraft={null}
+      prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+      display={{ open: false, onToggle: vi.fn() }}
+      onSent={vi.fn()}
+    />
+  );
+}
+
 function StatusSentinel() {
   const status = useStatus();
   return <div data-testid="status">{status?.text ?? ""}</div>;
@@ -159,6 +178,24 @@ function renderWithContainer(overrides: Partial<ComponentProps<typeof Composer>>
   const props = renderComposerWithStatus(overrides);
   return { props, container: lastContainer! };
 }
+
+describe("Composer: keyboard hints on the field (issue 465)", () => {
+  it("turns correction and spell check off on a shell pane and keeps autoCapitalize none", () => {
+    renderComposer({ isShell: true, agent: undefined });
+    const box = screen.getByPlaceholderText(/shell command/i);
+    expect(box).toHaveAttribute("autocapitalize", "none");
+    expect(box).toHaveAttribute("autocorrect", "off");
+    expect(box).toHaveAttribute("spellcheck", "false");
+  });
+
+  it("leaves correction and spell check at the keyboard default on an agent pane", () => {
+    renderComposer();
+    const box = screen.getByRole("textbox");
+    expect(box).toHaveAttribute("autocapitalize", "none");
+    expect(box).not.toHaveAttribute("autocorrect");
+    expect(box).not.toHaveAttribute("spellcheck");
+  });
+});
 
 describe("Composer — send", () => {
   it("sends non-destructive input on the first tap and clears the draft", async () => {
@@ -320,14 +357,10 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     expect(screen.getByRole("textbox")).toHaveValue("my message");
   });
 
-  it.each([
-    ["menu", "Menu is waiting"],
-    ["permission", "Permission is waiting"],
-    ["question", "Question is waiting"],
-  ] as const)("modal ask (%s): the placeholder names it, the slot is Answer the dialog, and a tap sends nothing", async (kind, placeholder) => {
+  it.each(["menu", "permission", "question"] as const)("modal ask (%s): the placeholder stays the plain reply line, the slot is Answer the dialog, and a tap sends nothing", async (kind) => {
     const onAnswerDialog = vi.fn();
     renderComposerWithStatus({ surface: askOf(kind), onAnswerDialog });
-    const box = screen.getByPlaceholderText(placeholder);
+    const box = screen.getByPlaceholderText("Type a reply…");
     const user = userEvent.setup();
     await user.type(box, "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
@@ -347,7 +380,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     const onAnswerDialog = vi.fn();
     const { container } = renderWithContainer({ surface: UNREADABLE, onAnswerDialog, dialogCard: true });
     // A false overlay hit must never block a send: the field and Send stay as on a free box.
-    expect(screen.getByPlaceholderText(/cannot read what is open/i)).toBeEnabled();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeEnabled();
     const user = await typeAndSend("carry on please");
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
@@ -447,7 +480,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     const user = userEvent.setup();
     renderComposerWithStatus({ surface: askOf("permission") });
 
-    await user.type(screen.getByPlaceholderText("Permission is waiting"), "for after the dialog");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "for after the dialog");
 
     const button = screen.getByRole("button", { name: "Answer the dialog" });
     expect(button).toBeEnabled();
@@ -455,28 +488,23 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
-  it("keeps the empty box's own primary action, with the placeholder carrying the state", () => {
+  it("keeps the empty box's own primary action, and the placeholder stays the plain reply line", () => {
     renderComposerWithStatus({ surface: ASK_MENU });
 
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
-    expect(screen.getByPlaceholderText("Menu is waiting")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/type a reply/i)).toBeNull();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeInTheDocument();
   });
 
-  it.each([
-    ["menu", "Menu is waiting"],
-    ["permission", "Permission is waiting"],
-    ["question", "Question is waiting"],
-  ] as const)("names a %s in the placeholder", (kind, placeholder) => {
+  it.each(["menu", "permission", "question"] as const)("does not name a %s in the placeholder", (kind) => {
     renderComposerWithStatus({ surface: askOf(kind) });
 
-    expect(screen.getByPlaceholderText(placeholder)).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Type a reply…");
   });
 
   it("stays typeable and keeps the draft", async () => {
     const user = userEvent.setup();
     renderComposerWithStatus({ surface: ASK_MENU });
-    const box = screen.getByPlaceholderText("Menu is waiting");
+    const box = screen.getByPlaceholderText("Type a reply…");
 
     await user.type(box, "for after the dialog");
 
@@ -495,7 +523,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     );
     const onAnswerDialog = vi.fn();
     const props = renderComposerWithStatus({ surface: ASK_MENU, onAnswerDialog });
-    const box = screen.getByPlaceholderText("Menu is waiting");
+    const box = screen.getByPlaceholderText("Type a reply…");
 
     await user.type(box, "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
@@ -509,7 +537,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
   it("the keyboard submit is refused at the phone too: nothing reaches the bridge", async () => {
     const user = userEvent.setup();
     renderComposerWithStatus({ surface: ASK_MENU });
-    await user.type(screen.getByPlaceholderText("Menu is waiting"), "please do not approve anything");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "please do not approve anything");
     await user.keyboard("{Control>}{Enter}{/Control}");
     // Told at the Send slot, not in the header (M56 spec 07): the ask has its own word beside the notice.
     expect(await screen.findByText(/dialog is waiting/i)).toBeInTheDocument();
@@ -527,7 +555,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     const onAnswerDialog = vi.fn();
     const { container } = renderWithContainer({ surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" }, onAnswerDialog, dialogCard: true });
 
-    await user.type(screen.getByPlaceholderText(/cannot read what is open/i), "for after the dialog");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
@@ -613,22 +641,24 @@ describe("Composer: a read dialog is refused at the thumb", () => {
   it("draws no refusal notice for a read dialog: its word stands in the Send slot", async () => {
     const user = userEvent.setup();
     const { container } = renderWithContainer({ surface: ASK_MENU });
-    await user.type(screen.getByPlaceholderText("Menu is waiting"), "for after the dialog");
+    await user.type(screen.getByPlaceholderText("Type a reply…"), "for after the dialog");
 
     expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull();
   });
 
-  it("leaves an overlay Collie cannot read on the two-tap Send, and the placeholder names it", () => {
+  it("leaves an overlay Collie cannot read on the two-tap Send, with the plain placeholder", () => {
     renderComposerWithStatus({ surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } });
 
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
-    expect(screen.getByPlaceholderText(/cannot read what is open/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a reply…")).toBeInTheDocument();
   });
 });
 
 // A shell's password prompt never echoes what is typed (#103), so the bridge cannot see a text land
-// there: the first tap is refused (no profile for a bare shell, so the two-tap Send). The composer
-// reads the screen it already shows for the prompt, display only, and says so.
+// there. When the bridge refuses a tap over such a screen (the stub below answers `unconfirmed`), the
+// composer reads the screen it already shows for the prompt, display only, and says so. A bare shell
+// with no profile gets such a refusal only at a password prompt (the bridge runs the same detector);
+// anywhere else the bridge types its text and presses Enter blind.
 describe("Composer: password prompt", () => {
   const SUDO = "$ sudo systemctl restart collie\n[sudo] password for altan:";
   const SHELL: Surface = { revision: 9, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" };
@@ -650,6 +680,25 @@ describe("Composer: password prompt", () => {
     expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
     // The two-tap Send is untouched: a false positive costs a dismissal, not an action.
     expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("the bridge's own password-prompt stop on a bare shell (not_free, the key pad only) raises the same notice and drops the draft", async () => {
+    const user = userEvent.setup();
+    server.use(
+      ...sendHandler((request) =>
+        sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], surface: SHELL, detail: "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it." }),
+      ),
+    );
+    renderComposerWithStatus({ isShell: true, agent: undefined, surface: SHELL, text: SUDO });
+    const box = screen.getByPlaceholderText(/shell command/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
     expect(recordedSends()).toHaveLength(1);
   });
 
@@ -3662,6 +3711,24 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
     expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
   });
 
+  it("clear: a remount (a page reload) finds the box empty, with no Undo window and no X", async () => {
+    const user = userEvent.setup();
+    const first = render(
+      <RouterProvider router={createMemoryRouter([{ path: "/", element: <ComposerForReload /> }])} />,
+    );
+    fireEvent.change(field(), { target: { value: "not this one" } });
+    await user.click(xButton()!);
+    expect(undoButton()).toBeInTheDocument();
+
+    first.unmount();
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <ComposerForReload /> }])} />);
+
+    expect(field()).toHaveValue("");
+    // The Undo window lived in memory only, and a reload ends it.
+    expect(undoButton()).not.toBeInTheDocument();
+    expect(xButton()).not.toBeInTheDocument();
+  });
+
   it("clear keeps the field focused, so the phone keyboard stays up", async () => {
     const user = userEvent.setup();
     renderComposer();
@@ -3937,18 +4004,25 @@ function renderState(state: WayOutState, over: Partial<ComponentProps<typeof Com
 const ACTION_WORDS = /\b(tap|check|try|send again|submit|add|replace|cancel|answer|reconnect|wait|read the screen|open|use)\b/i;
 
 describe("the way out", () => {
-  it("every state names itself in the placeholder, and no two states read alike (offline keeps the ordinary words, as free does)", () => {
-    const seen = new Map<string, WayOutState>();
+  it("the placeholder is the plain reply line in every state but a pane that is gone, a device that may not write and a box out of reach", () => {
+    const expected = (state: WayOutState) =>
+      state === "gone" ? "Pane is gone" : state === "readOnly" ? "Read-only, not authorised" : state === "unreachable" ? "workshop is not answering" : "Type a reply…";
     for (const state of WAY_OUT_STATES) {
       renderState(state);
-      const placeholder = screen.getByRole("textbox").getAttribute("placeholder") ?? "";
-      expect(placeholder, state).not.toBe("");
-      // Offline names its reason on Send and keeps the field's ordinary words, so it reads like free.
-      if (state !== "offline") expect(seen.get(placeholder), `${state} reads like ${seen.get(placeholder) ?? ""}`).toBeUndefined();
-      if (state !== "offline") seen.set(placeholder, state);
+      // A draft, a dialog, a running turn, an unreadable screen, the unknown family and a send in the queue
+      // all read like a free box: no state sentence in the field.
+      expect(screen.getByRole("textbox"), state).toHaveAttribute("placeholder", expected(state));
       cleanup();
     }
-    expect(seen.get("Type a reply…")).toBe("free");
+  });
+
+  it("a shell pane shows the shell line in the same states", () => {
+    for (const state of WAY_OUT_STATES) {
+      if (state === "gone" || state === "readOnly" || state === "unreachable") continue;
+      renderState(state, { isShell: true });
+      expect(screen.getByRole("textbox"), state).toHaveAttribute("placeholder", "Type a shell command…");
+      cleanup();
+    }
   });
 
   it("the Screen pill is one tap away in every state but a pane that is gone", async () => {

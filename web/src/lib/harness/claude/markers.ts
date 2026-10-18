@@ -33,6 +33,39 @@ export function isHorizontalRule(text: string): boolean {
   return compact.length >= 3 && RULE_ONLY.test(compact);
 }
 
+// What a wrapped rule leaves on the row under it when it overflowed by one or two columns: one or two
+// U+2500 glyphs, alone. A stub of three or more glyphs is a horizontal rule on its own (`ruleTop`).
+const RULE_STUB = /^─{1,2}$/;
+
+/**
+ * True when row `i` of `texts` is a horizontal rule, or the stub a wrapped rule leaves under itself.
+ * This is hardening against a user theme, not vanilla Claude Code behaviour: a plugin or theme that
+ * draws a gutter beside a dialog narrows the dialog, while Claude Code still draws the dialog's rule
+ * at the full pane width, so the rule overflows by the gutter's width and its last glyphs land alone
+ * on the next row. The observed case is a theme plugin's question bar, a two-column gutter (a
+ * background-coloured cell, then a blank one), which leaves a `──` stub. The rows are never
+ * rewritten, only read as one rule, so the bridge's binding match (`matchInTail` in
+ * bridge/prompt-binding.ts, over contiguous normalised rows) still finds the phone's region.
+ */
+export function isRuleRow(texts: readonly string[], i: number): boolean {
+  const text = texts[i];
+  if (text === undefined) return false;
+  if (isHorizontalRule(text)) return true;
+  return i > 0 && RULE_STUB.test(text.trim()) && isHorizontalRule(texts[i - 1]!);
+}
+
+/**
+ * The first row of the rule that row `i` (an `isRuleRow` row) belongs to. A rule that wrapped beside a
+ * theme's gutter is its full row plus a stub under it, and a gutter three or more columns wide leaves
+ * a stub that reads as a horizontal rule itself, so the rule's first row is the top of the run of rule
+ * rows that ends at `i`. The walk never goes above row `floor`.
+ */
+export function ruleTop(texts: readonly string[], i: number, floor: number): number {
+  let top = i;
+  while (top - 1 >= floor && isHorizontalRule(texts[top - 1]!)) top--;
+  return top;
+}
+
 // A "bare" input-box border: the ONE glyph Claude actually draws its own input-box rules with — U+2500
 // (─) — repeated, nothing else, with NO interior whitespace stripped first (a real bare border has
 // none). Floor of 8 DISPLAY CELLS (terminal columns, via text-width.ts's `displayWidth`) —
@@ -367,8 +400,10 @@ export function planFooterLeadRow(texts: string[]): number {
   return rows.length === 0 ? -1 : rows[0]! - 1;
 }
 
-// The gutter Claude Code 2.1.283 paints down the left of a question that spans more than one row
-// ("│ Which fruit do you want?" / "│ Pick the one you like best."). It is chrome, not question text.
+// The gutter Claude Code paints down the left of a question: on the question step of a question that
+// spans more than one row (2.1.283: "│ Which fruit do you want?" / "│ Pick the one you like best."),
+// and on the wizard's review step beside an echoed question (2.1.302: "│ ● …" / "│   …"). It is
+// chrome, not question text.
 const QUESTION_GUTTER = /^\s*│\s?/;
 
 /** A question row with its `│` gutter and outer whitespace removed. */

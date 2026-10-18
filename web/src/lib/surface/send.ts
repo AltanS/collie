@@ -7,7 +7,7 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
 import type { ProfileStatus } from "./profile";
-import type { Surface } from "./surface";
+import { modalWord, type Surface, type SurfaceReason } from "./surface";
 
 /**
  * The closed list of outcomes. `effective` needs a matching prompt edge (spec 11); without one a send closes as `sent`.
@@ -182,6 +182,59 @@ export interface SendReceipt {
    * every send into a screen.
    */
   readonly acknowledged?: string;
+  /**
+   * Set on a refusal: the bridge's own line for it, the fixed sentence the phone was shown, cut to
+   * {@link RECEIPT_DETAIL_MAX} characters. Set on a `typed_not_submitted` too: the rule that kept
+   * Enter back (2026-10-17). Never the person's text and never a screen row.
+   */
+  readonly detail?: string;
+  /**
+   * Set on a refusal or a `typed_not_submitted` when the bridge had a read: the Surface it ended on, as
+   * words. No rows. Set on every receipt of a blind send on a pane with no profile, with the reason
+   * `no-profile`: nothing was read.
+   */
+  readonly saw?: SurfaceWords;
+}
+
+/** The longest {@link SendReceipt.detail} a receipt keeps. */
+export const RECEIPT_DETAIL_MAX = 240;
+
+/**
+ * Why a receipt's words say unknown: a Surface's own reason, or `no-profile` on a send that went in
+ * blind on a pane with no profile (a bare shell, a program), where the bridge read nothing.
+ */
+export type SawReason = SurfaceReason | "no-profile";
+
+/** A Surface as four words, for a receipt: what the bridge saw, without an ask's labels. */
+export interface SurfaceWords {
+  readonly turn: Surface["turn"];
+  readonly modal: "none" | "ask" | "unreadable" | "unknown";
+  readonly composer: Surface["composer"];
+  readonly reason?: SawReason;
+}
+
+const WORD_TURNS = ["idle", "running", "unknown"] as const satisfies readonly SurfaceWords["turn"][];
+const WORD_MODALS = ["none", "ask", "unreadable", "unknown"] as const satisfies readonly SurfaceWords["modal"][];
+const WORD_COMPOSERS = ["empty", "draft", "unreachable", "unknown"] as const satisfies readonly SurfaceWords["composer"][];
+const WORD_REASONS = ["no-match", "contested", "stale", "torn", "no-profile"] as const satisfies readonly SawReason[];
+
+/** {@link SurfaceWords} read back from JSON, every word checked; null when it is not one. */
+export function readSurfaceWords(value: JsonValue | undefined): SurfaceWords | null {
+  const node = asJsonObject(value);
+  if (node === undefined) return null;
+  const turn = WORD_TURNS.find((word) => word === node.turn);
+  const modal = WORD_MODALS.find((word) => word === node.modal);
+  const composer = WORD_COMPOSERS.find((word) => word === node.composer);
+  if (turn === undefined || modal === undefined || composer === undefined) return null;
+  if (node.reason === undefined) return { turn, modal, composer };
+  const reason = WORD_REASONS.find((word) => word === node.reason);
+  return reason === undefined ? null : { turn, modal, composer, reason };
+}
+
+/** The words of a Surface (see {@link SurfaceWords}). */
+export function surfaceWords(surface: Surface): SurfaceWords {
+  const words = { turn: surface.turn, modal: modalWord(surface.modal), composer: surface.composer };
+  return surface.reason === undefined ? words : { ...words, reason: surface.reason };
 }
 
 /**
@@ -204,6 +257,10 @@ export interface SendReceiptRow {
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
   readonly queued?: true;
+  /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
+  readonly detail?: string;
+  /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
+  readonly saw?: SurfaceWords;
 }
 
 /** Where a held request stands (M56 spec 15): waiting, going out now, or closed with its text kept. */
@@ -264,7 +321,17 @@ export interface SendAnswer {
   readonly replayed?: boolean;
   /** Set on the `unconfirmed` refusal the cap adds: the commit needs one more confirm (`capAck`). */
   readonly cap?: SendCap;
+  /** Which rule decided the answer, when the reason alone does not say it. Optional: an older phone
+   *  reads the reason and its own sentence for it. */
+  readonly cause?: SendCause;
 }
+
+/**
+ * The rules an answer may name beside its reason. `notice_key`: the send's whole text is one of the
+ * keys a notice above the box printed, which a box holding it alone would answer.
+ */
+export const SEND_CAUSES = ["notice_key"] as const;
+export type SendCause = (typeof SEND_CAUSES)[number];
 
 /** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */
 export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {

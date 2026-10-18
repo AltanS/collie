@@ -149,3 +149,4 @@ answer. The wizard's Submit review step does **not** echo notes.
 | `claude--select-preview-note-attached.txt` | Note attached ("prefer subtle shadows"), input blurred |
 | `claude--wizard-preview-q1.txt` | 2-question wizard, Q1 is a preview step (stepper + preview + hint Notes line) |
 | `claude--wizard-preview-note-attached.txt` | Same step with a note attached ("keep cards compact") |
+| `claude--v2302-preview-wrapped-rule--w141.txt` | Claude Code 2.1.302 beside a theme plugin's two-column gutter (theme hardening, not vanilla behaviour): the gutter narrows the dialog while Claude Code draws the rule between the `Notes:` line and `Chat about this` at the full pane width, so the rule wraps into a `──` stub row, which the Notes scan reads as part of the rule above it (`isRuleRow`) |

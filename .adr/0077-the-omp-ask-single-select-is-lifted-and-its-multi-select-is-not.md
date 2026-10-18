@@ -171,6 +171,6 @@ batch of single-select questions and prints an explicit Enter-to-submit footer.
   Multi-select still needs its own guarded toggle recipe.
 
 Evidence and limits: `ASK_NOTES.md`, the `omp--v18-10-ask-*` captures, parser/guard tests and
-`e2e/omp-ask-chat.spec.ts`. A paired mobile-shaped browser completed a real three-question call
+`src/components/agent-chat-omp-ask.test.tsx`. A paired mobile-shaped browser completed a real three-question call
 including expansion and final Submit; another completed a typed custom answer. The Chat journal
 card stays read-only. No shared model or Chat component changes are needed.

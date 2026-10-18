@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Pre-push guard: typecheck both sides, run the test suites (backend Bun + web Vitest), then say so
-# out loud if the push carries a release that has no tag. Install with: scripts/install-hooks.sh
-# (sets core.hooksPath).
+# Pre-push guard: typecheck both sides, run the test suites (backend Bun + the web Vitest files the
+# push touches), then say so out loud if the push carries a release that has no tag. Install with:
+# scripts/install-hooks.sh (sets core.hooksPath). The web suite is 465 files and 31.7k tests and took
+# 519 s on a CI runner (2026-10-17), so the hook runs only the files whose import graph touches a
+# change against origin/main; CI runs the whole suite, in three shards, on every push.
 # Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests) ·
 # SKIP_TAG_CHECK=1 git push (skip the release-tag warning).
 set -euo pipefail
@@ -70,8 +72,20 @@ EOF
     exit 1
   fi
 
-  echo "pre-push: running web test suite (vitest)…" >&2
-  if ! (cd "$ROOT/web" && bun run test); then
+  # `vitest --changed origin/main` runs the test files whose import graph reaches a file that differs
+  # from origin/main (committed, staged or unstaged). A change to a shared module still pulls in
+  # every test that imports it; CI is the full run. If `origin/main` is not a valid ref in this
+  # checkout (a fresh clone of another branch, a remote with another name), there is nothing to
+  # compare against, so fall back to the full run rather than run nothing. `--passWithNoTests`: a
+  # push that touches no file any test imports is a pass, not an error.
+  if (cd "$ROOT" && git rev-parse --verify --quiet origin/main >/dev/null); then
+    echo "pre-push: running web tests that touch changes since origin/main (vitest --changed origin/main)…" >&2
+    web_test=(bunx vitest run --changed origin/main --passWithNoTests)
+  else
+    echo "pre-push: origin/main not found — running the full web test suite (bun run test)…" >&2
+    web_test=(bun run test)
+  fi
+  if ! (cd "$ROOT/web" && "${web_test[@]}"); then
     cat >&2 <<'EOF'
 ✗ pre-push: web tests failed — push aborted.
   Fix the failing tests, or override once with: SKIP_TESTS=1 git push

@@ -37,7 +37,8 @@
       "continuationIndent": 0,
       "maxDraftRows": 30,
       "maxTailRows": 60,
-      "under": "^(?:[~/…⎇]|\\d[\\d.]*%)"
+      "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)",
+      "underPainted": true
     },
     "placeholders": {
       "texts": [],
@@ -49,7 +50,20 @@
       },
       "below": {
         "maxRows": 4,
-        "footerMaxRows": 4
+        "footerMaxRows": 4,
+        "commandList": {
+          "lead": "/",
+          "sides": [
+            "under"
+          ],
+          "pointer": "^ {0,3}→ (?<command>[^\\s(]\\S*)(?: {2,}\\S.*)?$",
+          "entry": "^ {2,5}(?<command>[^\\s(→]\\S*)(?: {2,}\\S.*)?$",
+          "wrapped": "^ {2,5}\\(\\d+/\\d+\\)$",
+          "footer": {
+            "pattern": "^\\S",
+            "maxRows": 4
+          }
+        }
       }
     },
     "runningRows": [

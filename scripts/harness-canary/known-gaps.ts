@@ -7,11 +7,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json";
+import { isPhoneGapId, type PhoneGapId } from "./lab/phone-verdict";
 import { isScenarioId, type ScenarioId } from "./verdict";
 
 export interface KnownGap {
   readonly agent: string;
-  readonly scenario: ScenarioId;
+  /** A canary scenario, or a scenario of the lab's phone leg as `phone:<id>` (lab/phone-verdict.ts). */
+  readonly scenario: ScenarioId | PhoneGapId;
   /** Why the scenario fails today, in one or two sentences. */
   readonly reason: string;
   /** The issue, spec or ADR that owns the fix, for example `#294` or `M37/03`. */
@@ -35,12 +37,13 @@ export function parseKnownGaps(text: string): KnownGap[] {
   return list.map((raw, i) => {
     const entry = asJsonObject(raw);
     const agent = asJsonString(entry?.agent)?.trim() ?? "";
-    const scenario = asJsonString(entry?.scenario) ?? "";
+    const named = asJsonString(entry?.scenario) ?? "";
     const reason = asJsonString(entry?.reason)?.trim() ?? "";
     const ref = asJsonString(entry?.ref)?.trim() ?? "";
     const where = `known-gaps.json gaps[${i}]`;
     if (agent === "") throw new Error(`${where}: agent is required`);
-    if (!isScenarioId(scenario)) throw new Error(`${where}: unknown scenario "${scenario}"`);
+    if (!isScenarioId(named) && !isPhoneGapId(named)) throw new Error(`${where}: unknown scenario "${named}"`);
+    const scenario: ScenarioId | PhoneGapId = named;
     if (reason === "") throw new Error(`${where}: reason is required`);
     if (!REF.test(ref)) throw new Error(`${where}: ref must name an issue (#123), a spec (M37/03) or an ADR (ADR 0053)`);
     const key = `${agent}/${scenario}`;

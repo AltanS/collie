@@ -28,18 +28,17 @@ import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/e
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
 import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
-import { findProfile, loadProfiles, profileFor, versionFromOutput, type Profile } from "../../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import { askOf, isFree, modalWord, shortHash, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
+import { spawnBinaryVersion } from "./binary-version.ts";
 import type { Block } from "../../web/src/lib/blocks.ts";
 
 /** How many rows of the viewport one shadow read asks for. `viewport` scope never moves a screen. */
 export const SHADOW_READ_LINES = 120;
 /** How long a binary version read is trusted before it is read again. */
 export const VERSION_TTL_MS = 10 * 60_000;
-/** The bound on one version command. */
-const VERSION_TIMEOUT_MS = 5000;
 /** The journal tag of a disagreement line. `journalctl ... | grep surface.shadow.disagree` reads them. */
 export const DISAGREE_TAG = "surface.shadow.disagree";
 /** How often one pane may log one disagreement class again. The counters count every one. */
@@ -141,18 +140,6 @@ interface PaneState {
   logged: Map<string, number>;
 }
 
-/** The version command, run without blocking the poll, bounded by VERSION_TIMEOUT_MS. */
-const spawnVersion: VersionReader = async (profile) => {
-  try {
-    const run = Bun.spawn([...profile.identity.versionCommand], { stdout: "pipe", stderr: "pipe", timeout: VERSION_TIMEOUT_MS });
-    const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
-    await run.exited;
-    return versionFromOutput(profile, `${out} ${err}`);
-  } catch {
-    return null;
-  }
-};
-
 function emptyCounters(): ShadowCounters {
   return { observed: 0, free: 0, unknown: {}, modal: {}, disagreements: 0 };
 }
@@ -188,7 +175,7 @@ export class SurfaceShadow {
   constructor(private readonly options: ShadowOptions) {
     this.log = options.log ?? ((line) => console.log(line));
     this.now = options.now ?? (() => Date.now());
-    this.readVersion = options.version ?? spawnVersion;
+    this.readVersion = options.version ?? spawnBinaryVersion;
   }
 
   /** The newest Surface of a pane, or undefined before its first read. */

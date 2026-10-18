@@ -5,7 +5,9 @@
 //   - `checkbox`: numbered rows carry a `[ ]`/`[✔]` checkbox prefix (THE discriminator vs a single
 //     select), a navigable `Submit` row sits below them, and a single-question stepper
 //     (`←  ☐ Toppings  ✔ Submit  →` — exactly ONE question chip + the Submit chip) anchors the top.
-//     A digit N TOGGLES option N on/off (pointer-independent); Enter activates the POINTED row.
+//     A digit N TOGGLES option N on/off (pointer-independent); Enter activates the POINTED row. The
+//     one exception is the `Type something` field: with the pointer on it a digit is typed into the
+//     field, which the model says as `pointer: "field"`.
 //   - `review`: activating Submit advances here — `Ready to submit your answers?` over
 //     `❯ 1. Submit answers` / `2. Cancel`, with the same single-question stepper. Digit 1 submits,
 //     2 cancels; a `⚠ …not answered all questions` line means `incomplete`.
@@ -16,7 +18,15 @@
 // (web/src/fixtures/panes/claude--select-multiselect-*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, selectFooterStart, isBlank, isHorizontalRule, lineText, questionRowText } from "./markers";
+import {
+  classifyFooter,
+  selectFooterStart,
+  isBlank,
+  isRuleRow,
+  lineText,
+  questionRowText,
+  ruleTop,
+} from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { WizardStepChip } from "../wizard-model";
@@ -39,13 +49,13 @@ export interface MultiSelectRegion {
   startLine: number;
 }
 
-// Same bounded-window philosophy as the sibling grammars: options sit against the footer; the
-// single-question stepper sits a few lines above the first option.
+// Same bounded-window philosophy as the sibling grammars: options sit against the footer.
 const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
-const STEPPER_SCAN_LIMIT = 10;
-// The review screen lists its prompt + warning between the stepper and the submit rows, so the
-// upward window from the "Ready…" prompt to the stepper is more generous.
+// How far above its anchor the stepper is looked for: above the "Ready…" prompt on the review screen
+// (its prompt + warning sit between), and above the first option on the checkbox screen, whose
+// question wraps to as many rows as it needs at a narrow width. The dialog's top rule, not this
+// count, is what stops either walk.
 const REVIEW_SCAN_WINDOW = 48;
 
 const CHAT_ESCAPE = /^chat about this\b/i;
@@ -99,7 +109,7 @@ function findCheckboxStepper(
   floor: number,
 ): { index: number; steps: WizardStepChip[] | null } | null {
   for (let i = start; i >= 0 && i >= floor; i--) {
-    if (isHorizontalRule(texts[i]!)) return null;
+    if (isRuleRow(texts, i)) return null;
     if (isSingleQuestionStepper(lines[i]!)) return { index: i, steps: null };
     const wizardStepper = parseStepperLine(lines[i]!);
     if (wizardStepper) return { index: i, steps: wizardStepper.chips };
@@ -116,7 +126,7 @@ function findSingleStepper(
   floor: number,
 ): number {
   for (let i = start; i >= 0 && i >= floor; i--) {
-    if (isHorizontalRule(texts[i]!)) return -1;
+    if (isRuleRow(texts, i)) return -1;
     if (isSingleQuestionStepper(lines[i]!)) return i;
   }
   return -1;
@@ -142,12 +152,20 @@ function coreSignature(texts: string[], from: number, to: number): string {
 
 /** Classify which row the `❯` pointer sits on across [`from` … `to`] (raw line text — the pointer is
  *  a leading glyph). `null` when no row carries it. */
-function pointerAt(texts: string[], from: number, to: number, advanceIdx: number): MultiPointer {
+function pointerAt(
+  texts: string[],
+  from: number,
+  to: number,
+  advanceIdx: number,
+  fieldIdx: number,
+): MultiPointer {
   for (let i = from; i <= to; i++) {
     if (!/^\s*❯/.test(texts[i]!)) continue;
     const trimmed = texts[i]!.trim();
     // By index: a line that merely READS "Submit"/"Next" is not the advance row (see its location above).
     if (i === advanceIdx) return "advance";
+    // By index too: the field reads "[✔] teal" once someone has typed into it.
+    if (i === fieldIdx) return "field";
     const parsed = parseOptionRow(trimmed);
     if (!parsed) return "other";
     if (CHAT_ESCAPE.test(parsed.label)) return "chat";
@@ -221,11 +239,13 @@ function detectCheckboxPhase(
   // (c) via pointerAt, be reported as the pointer — making the macro press Enter on whatever row the
   // terminal's ❯ is really on, which on "Chat about this" aborts the whole tool call.
   //
-  // No rule below the options means a layout we don't know: bail rather than guess.
+  // No rule below the options means a layout we don't know: bail rather than guess. A rule that
+  // wrapped beside a theme's gutter (`isRuleRow` in markers.ts) is met at its stub first; the rule
+  // itself starts at the top of the run of rule rows the stub ends (`ruleTop`).
   let ruleIdx = -1;
   for (let i = footerAt - 1; i > firstOpt; i--) {
-    if (isHorizontalRule(texts[i]!)) {
-      ruleIdx = i;
+    if (isRuleRow(texts, i)) {
+      ruleIdx = ruleTop(texts, i, firstOpt + 1);
       break;
     }
   }
@@ -241,17 +261,19 @@ function detectCheckboxPhase(
   if (!advanceMatch) return null;
   const advanceLabel = advanceMatch[1]!;
 
-  const stepper = findCheckboxStepper(lines, texts, firstOpt - 1, firstOpt - STEPPER_SCAN_LIMIT);
+  const stepper = findCheckboxStepper(lines, texts, firstOpt - 1, firstOpt - REVIEW_SCAN_WINDOW);
   if (!stepper) return null;
   const stepperIdx = stepper.index;
 
   // The "Type something" text field is the last checkbox row above the advance row, by POSITION: once
   // someone types, the row reads "[✔] teal". While `❯` is on it every digit is typed INTO it (measured
-  // on Claude Code 2.1.283), so a toggle button would write its digit into someone's answer. No
-  // model has a lock for that, so the screen is not claimed; off the field, the typed row toggles
-  // with its digit like any other row (measured) and stays an option.
-  const fieldRow = menu.findLast((row) => row.index < advanceIdx);
-  if (fieldRow !== undefined && /^\s*❯/.test(texts[fieldRow.index]!)) return null;
+  // on Claude Code 2.1.283), so a toggle button would write its digit into someone's answer. The
+  // pointer there reads `field`, which is the lock: the macros move the pointer off with an arrow and
+  // read it back before any digit, and the commit comparison tells a focused field from an unfocused
+  // one. Off the field, the typed row toggles with its digit like any other row (measured) and stays
+  // an option. Until 1.22.5 the screen was not claimed at all while the pointer stood there, and fell
+  // to the unread-dialog card (Claude Code 2.1.302, the field capture of 2026-10-17).
+  const fieldIdx = menu.findLast((row) => row.index < advanceIdx)?.index ?? -1;
 
   // The question: every non-blank line between the stepper and the first option, joined, without the
   // `│` gutter Claude paints down a question of more than one row.
@@ -280,7 +302,7 @@ function detectCheckboxPhase(
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
-      if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t) || i === advanceIdx) continue;
+      if (isBlank(t) || isRuleRow(texts, i) || parseOptionRow(t) || i === advanceIdx) continue;
       desc.push(t.trim());
     }
     options.push({
@@ -300,7 +322,7 @@ function detectCheckboxPhase(
       escape,
       steps: stepper.steps,
       advanceLabel,
-      pointer: pointerAt(texts, firstOpt, fi, advanceIdx),
+      pointer: pointerAt(texts, firstOpt, fi, advanceIdx, fieldIdx),
       pointerRow: null, // digit mode never reads it — the digit toggles pointer-independently
       toggle: "digit",
       // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a

@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { collieBinary, HOST, type Host } from "../bridge/host.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
-import type { Exec, Files } from "./sys.ts";
+import type { EnvOverride, Exec, Files } from "./sys.ts";
 
 // `build` and the lazy `ensure_build`, ported from the pre-shim `collie-ctl.sh`. The five ordered
 // steps and their reasons come along with the code, because every one of them is a production
@@ -299,8 +299,9 @@ function step(
   tool: string,
   args: readonly string[],
   cwd: string,
+  envOverride?: EnvOverride,
 ): boolean {
-  const r = deps.exec.runIn(tool, args, cwd);
+  const r = deps.exec.runIn(tool, args, cwd, undefined, envOverride);
   if (!r.found) {
     deps.io.err(`error: ${tool} not found — cannot ${label}`);
     return false;
@@ -402,6 +403,8 @@ export function compileCliToLive(
   return true;
 }
 
+const PRODUCTION_BUILD = { NODE_ENV: "production" } as const;
+
 export function cmdBuild(deps: BuildDeps): number {
   const root = deps.ctx.root;
   const web = join(root, "web");
@@ -457,7 +460,9 @@ export function cmdBuild(deps: BuildDeps): number {
     return EXIT.FAIL;
   }
 
-  // 5. The web bundle, into staging.
+  // 5. The web bundle, into staging. Always a production bundle: Vite takes NODE_ENV from the
+  // environment, and a shell that exports NODE_ENV=development (a common dotfile line) got React's
+  // development build, a main chunk past Workbox's 2 MiB precache cap, and a failed build.
   const staging = webStaging(root);
   deps.files.removeTree(staging);
   const built = step(
@@ -466,6 +471,7 @@ export function cmdBuild(deps: BuildDeps): number {
     "bun",
     ["run", "build", "--", "--outDir", "dist-staging", "--emptyOutDir"],
     web,
+    PRODUCTION_BUILD,
   );
   if (!built) {
     // Neither artifact has been swapped in: `web/dist` is exactly what it was, and the running

@@ -59,6 +59,14 @@ describe("classifyCommands", () => {
     expect(sorted.skipped).toEqual(["/clear"]);
   });
 
+  test("a removed command is reported as removed: not sent, not unclassified, not missing", () => {
+    const sorted = classifyCommands(["/help", "/agents", "/context"], lists, ["/agents", "/context"]);
+    expect(sorted.send.map((entry) => entry.command)).toEqual(["/help"]);
+    expect(sorted.unclassified).toEqual([]);
+    expect(sorted.missing).toEqual([]);
+    expect(sorted.removed).toEqual(["/agents", "/context"]);
+  });
+
   test("a safe command the agent no longer lists is reported as missing", () => {
     expect(classifyCommands(["/help"], lists).missing).toEqual(["/context"]);
   });
@@ -67,7 +75,12 @@ describe("classifyCommands", () => {
 describe("parseSlashMenu", () => {
   test("reads the names and the pointed row", () => {
     const rows = ["❯ /help          Show help", "  /status        Show status", "  /model         Pick a model", "other row"];
-    expect(parseSlashMenu(rows)).toEqual({ names: ["/help", "/status", "/model"], pointed: "/help" });
+    expect(parseSlashMenu(rows)).toEqual({ names: ["/help", "/status", "/model"], pointed: "/help", removed: [] });
+  });
+
+  test("a row whose description opens with (removed) marks the command removed (Claude 2.1.302)", () => {
+    const rows = ["  ❯ /agents                     (removed) Ask Claude to create/manage subagents, or edit .claude/agents/", "    /list-agents                List subagents, teammates, and other Claude sessions"];
+    expect(parseSlashMenu(rows)).toEqual({ names: ["/agents", "/list-agents"], pointed: "/agents", removed: ["/agents"] });
   });
 
   test("no pointer is null", () => {

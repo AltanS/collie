@@ -285,6 +285,16 @@ describe("ConnectionBanner — the single connection surface", () => {
       expect(announced("alert")).not.toHaveTextContent("workshop");
     });
 
+    it("names the member, not the mux, when the lead has no mux of its own and the member is down", async () => {
+      h.lost = true;
+      renderBanner({ host: "workshop", servers: down("workshop"), bridge: "disconnected", lastSeenAt: 5_000 });
+      await act(async () => {});
+      expect(announced("alert")).toHaveTextContent(/^workshop is unreachable · /);
+      expect(announced("alert")).not.toHaveTextContent("Herdr is down");
+      expect(announced("alert")).not.toHaveTextContent("Can't reach Collie");
+      expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    });
+
     it("never applies to the lead: a down mux there is still the mux", async () => {
       h.lost = true;
       renderBanner({ host: "bluefin", servers: down("workshop"), bridge: "disconnected" });

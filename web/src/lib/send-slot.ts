@@ -9,7 +9,6 @@
 // screen that turned free since the last poll does not cost an extra tap where the slot still lets the
 // tap through.
 
-import type { DialogNoun } from "./harness/dialog-contract";
 import { t } from "./i18n";
 import { takesManualSend } from "./surface/send";
 import { askOf, isFree, type Surface } from "./surface/surface";
@@ -37,7 +36,9 @@ export interface ComposerFacts {
  *   harness queues a message for after the turn (the answer says `queued`), and refuses where it does
  *   not; the key pad is the way to stop the turn.
  * - `manual`: `unknown(no-match)`, a weak cue, or `modal unreadable`; Send takes two taps, prepare
- *   then commit with the hash of the rows the person saw.
+ *   then commit with the hash of the rows the person saw. A pane with no profile (a bare shell) reads
+ *   `unknown(no-match)` too, but the bridge types its text and presses Enter on the first tap,
+ *   unless a password prompt stands on its last rows.
  * - `wait`: `unknown` from a stale, torn or contested read; Send asks the bridge for a fresh read.
  * - `draft`: the box holds a draft at the desk; Send asks the bridge, which offers Add, Replace, Cancel.
  * - `send`: `free`, the fast path.
@@ -69,11 +70,6 @@ export function sendSlot(surface: Surface, facts: ComposerFacts): SendSlot {
 /** Whether the field itself is locked: nothing typed here can ever leave this phone for this pane. */
 export function fieldLocked(slot: SendSlot): boolean {
   return slot === "gone" || slot === "readOnly" || slot === "unreachable";
-}
-
-/** The noun an ask's placeholder names ("Menu is waiting"), or null when the Surface holds no ask. */
-export function askNoun(surface: Surface): DialogNoun | null {
-  return askOf(surface.modal)?.kind ?? null;
 }
 
 /** The composer's Surface for a pane, with the reason when its box is out of reach. */

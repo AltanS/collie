@@ -1,0 +1,35 @@
+# 0109: an above-prompt notice is not a modal
+
+- **Status:** Proposed
+- **Date:** 2026-10-17
+- **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixture `claude--v2302-heads-up-above-box--w142.txt` · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
+
+## Context
+
+Claude Code 2.1.302's built-in `you-should-know` plugin draws a notice above the input box while the box keeps focus: a `✦ Heads up · ` (or `✦ You should know · `) head, its text wrapped onto indented rows, and one row of keys, `1: Learn more   2: Knew this already   0: Dismiss`.
+
+The keys act only when the box's whole value is exactly one valid digit. About 400 ms later the plugin fires and clears the box, with no Enter. Digits are ignored for about 600 ms after the notice appears, and a longer message is left alone.
+
+The single-key cue read the key row as a single-key prompt, so the screen folded `modal: "unreadable"` and every send became the two-tap manual Send. The phone showed no card either, because the row names no `<key> to <verb>` footer.
+
+## Decision
+
+**An above-prompt notice whose keys act only on a one-character box leaves the box free for the Send Protocol.** A profile names the notice by its head row (`idle.notices`). One pure reader, `readAboveNotice`, reads the exact shape: the head, up to three continuation rows indented by two spaces, one key row of `<digit>: <label>` items only, then only blank rows down to the box's top edge.
+
+Anything else returns null, and the modal cues read the rows as before, so a block that is nearly a notice keeps its strong cue. The rating survey over the box (`● How is Claude doing this session?`) is not this shape and stays `unreadable`.
+
+**A one-digit message still goes manual.** A digit answers the notice only when the box is otherwise empty, so the rule runs only where a send would go ahead on an empty box. When S0 shows a notice, the box is empty, and a send's whole text, trimmed, is one of the notice's printed keys, `gateSend` takes the manual Send: the first tap is refused `unconfirmed`, and the commit goes on the same rows hash. The answer carries `cause: "notice_key"`, which the phone shows as its own translated sentence ("That number would answer the notice above the box…"); an older phone shows its generic manual-Send note.
+
+Typed into that box, the digit answers the notice instead of reaching the agent, so the person must see the screen first. Any other text, `10` included, goes on one tap. In a running turn, where Enter would queue the digit after the notice had already taken it, in Replace, which would leave the box holding only the digit, and in an Add to it on a box that is empty by S0, which would do the same, a printed digit is refused with the same cause and the key pad only. With a draft in the box the digit would join the draft, so the ordinary `draft_present` refusal applies. A confirmed notice digit is not counted toward the manual-send cap and adds no line to the lab inbox, since the screen was read, not unreadable; like any probed send that goes out, it still files a sent example.
+
+**The card sends only printed keys.** The notice lifts as a `menu` card with one button per printed key, its label and its digit exactly as printed, in printed order. Its model carries `liveBox`: the card owns no keyboard (`blockOwnsKeyboard` is false), so the composer stays free and no ask is lifted. While the box holds a draft the buttons are off, because a digit would join the draft. A tap sends the digit bound to a region running from the notice's head row down through the input box's bottom border, so the bridge refuses a tap on a notice that has gone and on a box that gained text after the card was drawn; the phone's own fresh-model check refuses a draft too. The card lifts only where that region ends inside the bridge's tail window, so with six or more status rows under the box no card lifts and the pane shows the screen instead.
+
+**The digits are outside ADR 0009's numbered-row ban.** ADR 0009 forbids a digit inferred from a numbered list row, because in the `/model` picker a digit confirms and persists. These digits are the keys the notice's own row prints as `<digit>: <label>`: no key is synthesised. The conformance suite holds a notice card to that: each key is a digit its key row printed, `composerReady` is true, and a row spliced between the key row and the box lifts no card.
+
+**The tail-anchoring check exempts a notice card.** That check appends ordinary output under a fixture and expects no card. Under a live box, the frame walk reads output rows as status rows, so the notice still lifts there. The exemption is safe for two reasons. The card lifts only with Claude's live input box found under it, and only while its bound region ends inside the bridge's tail window, so once output pushes the box out of that window no interactive block lifts at all. And its tap is bound to the notice and box rows by the prompt-binding check, so a tap on a notice that has gone is refused rather than typed.
+
+**The notice's rows are left out of every cue read**, the frameless whole-screen read included, so a turn running under a notice reads `running` with an empty box and a plain send queues on one tap. The band above the box that the cue reads walk is counted up from the notice's first row, so a dialog drawn above a tall notice still reads as a modal, and the phone lifts no notice card on that screen.
+
+## Consequences
+
+A screen with the notice reads free, and sends that are not one of its digits go on one tap. The notice's own answer is one tap on the card. A head the plugin draws in another word, or a key row with any other item, falls back to the strong cue and the manual Send, which fails closed.

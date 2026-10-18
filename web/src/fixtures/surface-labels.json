@@ -1,5 +1,5 @@
 {
- "$comment": "Hand-checked labels for every pane fixture, for the Surface fold (M56 spec 04). harness is the multiplexer agent string the fixture was captured under; version is the harness version the capture was taken on (unversioned for older captures whose name carries none); state is what owns the keyboard: idle (an empty input box, nothing over it, the turn idle), draft (text in the box), running (a turn runs), popup (a completion popup over a live box), dialog (a dialog, picker, menu, rating prompt or search box owns the keyboard), screen (a full-screen view or a shell prompt with no agent box), other (none of these, or not a keyboard question). Labels were drafted from the file names and the block readers on 2026-10-15, then read by hand. Add a row with every new fixture; web/src/lib/surface/fold.test.ts fails on a fixture with no row.",
+ "$comment": "Hand-checked labels for every pane fixture, for the Surface fold (M56 spec 04). harness is the multiplexer agent string the fixture was captured under; version is the harness version the capture was taken on (unversioned for older captures whose name carries none); state is what owns the keyboard: idle (an empty input box, nothing over it, the turn idle), draft (text in the box), running (a turn runs), popup (a completion popup over a live box), dialog (a dialog, picker, menu, rating prompt or search box owns the keyboard), screen (a full-screen view or a shell prompt with no agent box), other (none of these, or not a keyboard question). Labels were drafted from the file names and the block readers on 2026-10-15, then read by hand. Add a row with every new fixture; web/src/lib/surface/fold.corpus.test.ts fails on a fixture with no row.",
  "incidents": {
   "$comment": "The eight incident screens of experiments/reader-stability/NOTE.md (four sends that landed in a dialog, four latent). A fixture list names captured screens; a synthetic entry rebuilds the screen the fix's own test built, from a base fixture: drop removes every row matching a pattern, replaceLast replaces the last matching row, replace rewrites matching text on every row.",
   "526d7a92": {
@@ -139,6 +139,11 @@
   "agy--permission-edit.txt": {
    "harness": "agy",
    "version": "unversioned",
+   "state": "dialog"
+  },
+  "agy--plan-approval-135.txt": {
+   "harness": "agy",
+   "version": "1.3.5",
    "state": "dialog"
   },
   "agy--plan-approval.txt": {
@@ -920,6 +925,86 @@
    "harness": "claude",
    "version": "2.1.301",
    "state": "running"
+  },
+  "claude--v2302-working-agents-panel--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
+  "claude--v2302-working-list-echo--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
+  "claude--v2302-heads-up-above-box--w142.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
+  "claude--v2302-turn-ended-yn--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "idle"
+  },
+  "claude--v2302-turn-ending-stop-hooks--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
+  "claude--v2302-slash-model-list--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-slash-model-list-above--w119.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-wizard-long-question--w54.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-wizard-review-barred--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-wizard-review-long-q--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-preview-wrapped-rule--w141.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-slash-model-list--w120--h40.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-slash-effort-list--w120--h40.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-idle-full-screen--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "idle"
+  },
+  "claude--v2302-slash-model-list-padded--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-multiselect-field-focused--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
   },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
@@ -2666,6 +2751,16 @@
    "version": "unversioned",
    "state": "idle"
   },
+  "omp--fresh-idle-widget-above.txt": {
+   "harness": "omp",
+   "version": "unversioned",
+   "state": "idle"
+  },
+  "omp--fresh-idle-widget-below.txt": {
+   "harness": "omp",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "omp--fresh-idle.txt": {
    "harness": "omp",
    "version": "unversioned",
@@ -2744,7 +2839,7 @@
   "omp--slash-palette--filtered.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--slash-palette.txt": {
    "harness": "omp",
@@ -3109,12 +3204,12 @@
   "omp--v18-8-slash-palette-w48.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-8-slash-palette.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-pi-effort-hint.txt": {
    "harness": "omp",
@@ -3140,6 +3235,41 @@
    "harness": "omp",
    "version": "unversioned",
    "state": "draft"
+  },
+  "omp--v18-6-slash-model-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-model-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-mod-partial--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-model-selector-empty--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-settings-screen--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
   },
   "omp--working.txt": {
    "harness": "omp",
@@ -3361,6 +3491,26 @@
    "version": "0.87.1",
    "state": "dialog"
   },
+  "pi--v0871-permission-gate-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
   "pi--v0871-question-answer-editor-typed.txt": {
    "harness": "pi",
    "version": "0.87.1",
@@ -3457,6 +3607,31 @@
    "state": "dialog"
   },
   "pi--v0871-questionnaire-tabs.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-model-selector-empty--w120.txt": {
    "harness": "pi",
    "version": "0.87.1",
    "state": "dialog"
@@ -3756,12 +3931,47 @@
    "version": "1.3.0",
    "state": "dialog"
   },
-  "pi--v130-gentle-review-consent-moved.txt": {
+  "pi--v130-custom-footer-draft.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-custom-footer-idle.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-mod-partial--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"
   },
-  "pi--v130-gentle-review-consent.txt": {
+  "pi--v130-model-selector-empty--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-settings-screen--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"
@@ -3770,11 +3980,28 @@
    "harness": "shell",
    "version": "unversioned",
    "state": "screen"
+  },
+  "shell--starship-bluefin-motd--w117.txt": {
+   "harness": "shell",
+   "version": "unversioned",
+   "state": "screen"
+  },
+  "pi--v130-gentle-review-consent.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-gentle-review-consent-moved.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
   }
  },
  "knownMismatches": {
-  "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
+  "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.corpus.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
   "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
-  "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it."
+  "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
+  "claude--v2302-turn-ending-stop-hooks--w119.txt": "The last read of a turn on Claude Code 2.1.302: the spinner row carries 'running Stop hooks' before its timer, which the running sign does not take. The turn is ending; a send there goes ahead, and Enter either queues it or starts the next turn.",
+  "claude--v2302-working-list-echo--w119.txt": "Claude Code 2.1.302 draws no spinner while the answer streams: the screen shows a list growing above an empty box, and only the prompt edge can say the turn runs. A send there goes ahead and Claude Code queues it."
  }
 }

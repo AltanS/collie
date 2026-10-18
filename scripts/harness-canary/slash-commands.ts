@@ -91,38 +91,49 @@ export interface Classified {
   readonly skipped: readonly string[];
   /** Safe commands the agent no longer lists. A drift to read: the command moved or went. */
   readonly missing: readonly string[];
+  /** Commands the menu marks "(removed)" (Claude 2.1.302 lists `/agents` so). Reported, never sent, on any list. */
+  readonly removed: readonly string[];
 }
 
-export function classifyCommands(listed: readonly string[], lists: SlashLists): Classified {
-  const known = new Set(listed);
+export function classifyCommands(listed: readonly string[], lists: SlashLists, removed: readonly string[] = []): Classified {
+  const gone = new Set(removed);
+  const known = new Set(listed.filter((command) => !gone.has(command)));
   const safeSet = new Set(lists.safe.map((entry) => entry.command));
   const unsafeSet = new Set(lists.unsafe.map((entry) => entry.command));
   return {
     send: lists.safe.filter((entry) => known.has(entry.command)),
-    unclassified: listed.filter((command) => !safeSet.has(command) && !unsafeSet.has(command)),
-    skipped: listed.filter((command) => unsafeSet.has(command)),
-    missing: lists.safe.filter((entry) => !known.has(entry.command)).map((entry) => entry.command),
+    unclassified: [...known].filter((command) => !safeSet.has(command) && !unsafeSet.has(command)),
+    skipped: [...known].filter((command) => unsafeSet.has(command)),
+    missing: lists.safe.filter((entry) => !known.has(entry.command) && !gone.has(entry.command)).map((entry) => entry.command),
+    removed: listed.filter((command) => gone.has(command)),
   };
 }
 
 /**
  * The commands one screen of the `/` menu shows, in order, and the command the pointer stands on.
- * A row is `  ❯ /name    description` or `    /name    description`.
+ * A row is `  ❯ /name    description` or `    /name    description`. A description that opens with
+ * `(removed)` marks a command the agent still lists but no longer runs.
  */
 export interface SlashMenu {
   readonly names: readonly string[];
   readonly pointed: string | null;
+  readonly removed: readonly string[];
 }
+
+/** The mark Claude Code puts in front of a retired command's description. */
+const REMOVED_MARK = /^\(removed\)/u;
 
 export function parseSlashMenu(rows: readonly string[]): SlashMenu {
   const names: string[] = [];
+  const removed: string[] = [];
   let pointed: string | null = null;
   for (const row of rows) {
-    const hit = /^\s*([❯>])?\s*(\/[A-Za-z][\w:.-]*)\s{2,}\S/u.exec(row);
+    const hit = /^\s*([❯>])?\s*(\/[A-Za-z][\w:.-]*)\s{2,}(\S.*)$/u.exec(row);
     if (hit?.[2] === undefined) continue;
     const name = hit[2];
     names.push(name);
     if (hit[1] !== undefined) pointed = name;
+    if (REMOVED_MARK.test(hit[3] ?? "")) removed.push(name);
   }
-  return { names, pointed };
+  return { names, pointed, removed };
 }

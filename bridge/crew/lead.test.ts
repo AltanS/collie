@@ -16,6 +16,7 @@ import {
   CrewLead,
   type PeerMemory,
 } from "./lead.ts";
+import type { ForwardTransport } from "./forward.ts";
 import type { CrewLink, PeerOutcome } from "./peer-client.ts";
 import { TURN_MISSED_SWEEPS, UpdateTurns } from "./follow.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
@@ -84,8 +85,9 @@ function lead(
   opts: {
     hello?: (
       link: CrewLink,
-    ) => Promise<PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null }>>;
+    ) => Promise<PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null; readonly surfaceVersion?: number }>>;
     turns?: UpdateTurns;
+    proxy?: ForwardTransport;
   } = {},
 ) {
   const roster = [...members];
@@ -104,7 +106,7 @@ function lead(
       calls.push(link.memberId);
       return script(link, calls.filter((c) => c === link.memberId).length);
     },
-    proxy: neverProxy,
+    proxy: opts.proxy ?? neverProxy,
     hello: opts.hello,
     self: { id: "desk", name: "the herd" },
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
@@ -1598,6 +1600,60 @@ describe("a member's capability block rides `hello` and is answered per host (M2
     // variant, the one carrying the link + state pair. The test's proxy would throw on a dial.
     const res = await h.lead.forward(req, url, resolved as ResolvedPeer);
     expect(await res.json()).toMatchObject({ ok: false, textDelivered: false, code: "reply.send_failed" });
+  });
+
+  test("a member updated while the lead is up is asked its hello again on the next sweep, once (2026-10-17 field case)", async () => {
+    // The field sequence: the lead came up at 1.22.1 while its member still ran 1.21.3, so the one hello
+    // it asked had no reader version; the member followed 28 s later, with no failed sweep in between.
+    let running = "1.21.3";
+    let hellos = 0;
+    const reader = (release: string): number | undefined => (release === "1.21.3" ? undefined : 2);
+    const forwarded: string[] = [];
+    const h = lead([member({ memberId: "laptop" })], () => ok({ ...body, version: running }), {
+      hello: () => {
+        hellos += 1;
+        const surfaceVersion = reader(running);
+        const value = surfaceVersion === undefined ? { version: running, mux: null } : { version: running, mux: null, surfaceVersion };
+        return Promise.resolve({ ok: true, value, status: 200, member: "laptop", receivedAt: NOW, date: null });
+      },
+      proxy: async (_link, route) => {
+        forwarded.push(route);
+        return ok(new Response(`{"ok":true,"send":{"offers":[]}}`, { headers: { "content-type": "application/json" } }));
+      },
+    });
+    const submit = async (): Promise<Response> => {
+      const url = new URL("https://lead.example/api/pane/w1:p1/reply?host=laptop");
+      const req = new Request(url, { method: "POST", body: JSON.stringify({ text: "/model", submit: true, id: "phone-req-0001", mode: "command" }) });
+      // SAFETY: "laptop" is the sole enrolled member and is not `self`, so `resolve` returns the `peer` variant.
+      return h.lead.forward(req, url, h.lead.resolve({ kind: "member", id: "laptop" }) as ResolvedPeer);
+    };
+
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect([hellos, h.lead.surfaceVersionFor("laptop")]).toEqual([1, null]);
+    expect((await (await submit()).json()).code).toBe("reply.send_failed");
+    expect(forwarded).toEqual([]);
+
+    // The member restarts on 1.22.1. The next sweep names the new release, and the lead asks once.
+    running = "1.22.1";
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect([hellos, h.lead.surfaceVersionFor("laptop")]).toEqual([2, 2]);
+    expect(h.journal).toContain("[crew] laptop: now runs 1.22.1 (was 1.21.3), asking its hello again");
+    // The same release on the next sweeps asks nothing.
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(hellos).toBe(2);
+    // And the text now goes to the member instead of being refused on the lead.
+    expect(await (await submit()).json()).toEqual({ ok: true, send: { offers: [] } });
+    expect(forwarded).toEqual(["pane/w1:p1/reply"]);
+
+    // A rollback is learned the same way: the reader version goes again.
+    running = "1.21.3";
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect([hellos, h.lead.surfaceVersionFor("laptop")]).toEqual([3, null]);
   });
 
   test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {

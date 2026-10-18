@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { asJsonObject, asJsonString, parseJson } from "../../../web/src/lib/json";
 import { withRecord } from "../ledger";
 import { redact, redactRows, type RedactContext } from "./redact";
+import { phoneLines } from "./phone-verdict";
 import { isDialogScreen, type LabFacts, type ScreenFact, type Verdict } from "./verdict";
 
 export const LEDGER_REL = "web/src/lib/harness/verified-versions.json";
@@ -178,11 +179,18 @@ export function draftIssue(facts: LabFacts, verdict: Verdict, log: string, count
   const out: string[] = [];
   out.push(`The nightly harness lab ran ${facts.harness} ${facts.version} and the run failed.`, "", "## Why it failed", "");
   for (const reason of verdict.reasons) out.push(`- ${redact(reason, context)}`);
-  out.push("", "## Legs", "", `- walk: reached ${String(facts.walk.reached)}, returned to a free box ${String(facts.walk.returned)}, ${String(facts.walk.sent.length)} commands sent`);
-  if (facts.walk.unclassified.length > 0) out.push(`- unclassified commands, not sent: ${facts.walk.unclassified.join(" ")}`);
-  if (facts.walk.missing.length > 0) out.push(`- safe commands the menu no longer lists: ${facts.walk.missing.join(" ")}`);
-  out.push(facts.send === null ? "- send: not made" : `- send: ${facts.send.outcome}${facts.send.reason === undefined ? "" : ` (${facts.send.reason})`}, ${String(facts.send.keys)} keys`);
-  out.push(facts.ask === null ? "- ask: not reached" : `- ask: ${facts.ask.outcome}${facts.ask.reason === undefined ? "" : ` (${facts.ask.reason})`}, declined file made: ${String(facts.ask.fileCreated)}`);
+  out.push("", "## Legs", "");
+  if (facts.legs === "phone") out.push("- walk, send and ask: not run, this was a run of the phone leg alone");
+  else {
+    out.push(`- walk: reached ${String(facts.walk.reached)}, returned to a free box ${String(facts.walk.returned)}, ${String(facts.walk.sent.length)} commands sent`);
+    if (facts.walk.unclassified.length > 0) out.push(`- unclassified commands, not sent: ${facts.walk.unclassified.join(" ")}`);
+    if (facts.walk.missing.length > 0) out.push(`- safe commands the menu no longer lists: ${facts.walk.missing.join(" ")}`);
+    if ((facts.walk.removed ?? []).length > 0) out.push(`- commands the menu marks removed, not sent: ${(facts.walk.removed ?? []).join(" ")}`);
+    out.push(facts.send === null ? "- send: not made" : `- send: ${facts.send.outcome}${facts.send.reason === undefined ? "" : ` (${facts.send.reason})`}, ${String(facts.send.keys)} keys`);
+    out.push(facts.ask === null ? "- ask: not reached" : `- ask: ${facts.ask.outcome}${facts.ask.reason === undefined ? "" : ` (${facts.ask.reason})`}, declined file made: ${String(facts.ask.fileCreated)}`);
+  }
+  if (facts.phone === null) out.push(`- phone: did not run${facts.phoneNote === undefined ? "" : `: ${redact(facts.phoneNote, context)}`}`);
+  else if (facts.phone !== undefined) for (const line of phoneLines(facts.phone.results)) out.push(`- ${redact(line, context)}`);
   out.push(`- profile status at this version: ${facts.profile}`, `- model turns used: ${String(facts.turns)}`);
   out.push("", "## Surface verdict on every screen", "", "| leg | screen | expected | surface | free | cue |", "| --- | --- | --- | --- | --- | --- |");
   for (const screen of facts.screens) out.push(`| ${screen.leg} | ${redact(screen.label, context)} | ${screen.expects} | ${surfaceWord(screen)} | ${String(screen.free)} | ${screen.cue} |`);
