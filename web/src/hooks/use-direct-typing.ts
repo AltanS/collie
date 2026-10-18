@@ -25,6 +25,11 @@ const SPECIAL_KEYS = new Map([
   ["ArrowRight", "Right"],
 ]);
 
+// Safari fires the keydown that confirms an IME candidate (keyCode 229, isComposing false) right
+// AFTER compositionend. Only a 229 keydown inside this window is that echo; ProseMirror uses the
+// same 500 ms. Outside it, 229 is just what some engines report for any key, so it must not decide.
+const IME_CONFIRM_WINDOW_MS = 500;
+
 function keyForInputType(inputType: string): string | null {
   if (inputType === "deleteContentBackward") return "Backspace";
   if (inputType === "insertLineBreak" || inputType === "insertParagraph") return "Enter";
@@ -111,6 +116,8 @@ export function useDirectTyping({
   const activeRef = useRef(false);
   const backgrounded = useRef(false);
   const composing = useRef(false);
+  // When the last composition ended, for the Safari confirm window. -Infinity means none yet.
+  const compositionEndedAt = useRef(Number.NEGATIVE_INFINITY);
   const committedComposition = useRef<string | null>(null);
   const pendingBlur = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Idle watchdog: one 60s one-shot, re-armed on every keystroke (commits
@@ -163,13 +170,16 @@ export function useDirectTyping({
   /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */
   function resetMode() {
     // Disarming revokes the entire armed session, including keys waiting behind a slow batch.
-    // The batch already on the wire cannot be recalled; its late failure must not disarm a re-arm.
+    // That holds for the person's own Stop too: Stop means halt, and a dropped suffix never runs
+    // as a truncated command. The batch already on the wire cannot be recalled; its late failure
+    // must not disarm a re-arm.
     sender.reset();
     cancelIdleTimer();
     activeRef.current = false;
     setActive(false);
     setValue("");
     composing.current = false;
+    compositionEndedAt.current = Number.NEGATIVE_INFINITY;
     committedComposition.current = null;
   }
 
@@ -334,9 +344,15 @@ export function useDirectTyping({
 
   // Android virtual Backspace/Enter can arrive as beforeinput without a useful keydown. A native
   // listener is intentional: React's synthetic beforeinput omits these events on some engines.
+  // Blur rides on the same listener scope: losing focus ends any composition for good, and
+  // `composing` gates Backspace, the arrows, Escape and Tab, so one lost compositionend must not
+  // leave them swallowed. (The idle watchdog and every disarm clear it too.)
   useEffect(() => {
     const inputEl = inputRef.current;
     if (!active || inputEl === null) return;
+    const onBlur = () => {
+      composing.current = false;
+    };
     const onBeforeInput = (event: InputEvent) => {
       if (!activeRef.current) return;
       const key = keyForInputType(event.inputType);
@@ -349,7 +365,11 @@ export function useDirectTyping({
       pokeIdleTimer();
     };
     inputEl.addEventListener("beforeinput", onBeforeInput);
-    return () => inputEl.removeEventListener("beforeinput", onBeforeInput);
+    inputEl.addEventListener("blur", onBlur);
+    return () => {
+      inputEl.removeEventListener("beforeinput", onBeforeInput);
+      inputEl.removeEventListener("blur", onBlur);
+    };
   }, [active, inputRef, enqueueKeys]);
 
   function onChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -392,6 +412,7 @@ export function useDirectTyping({
   function onCompositionEnd(event: ReactCompositionEvent<HTMLTextAreaElement>) {
     if (!activeRef.current) return;
     composing.current = false;
+    compositionEndedAt.current = Date.now();
     const committed = event.currentTarget.value || event.data;
     if (committed.length === 0) return;
     committedComposition.current = committed;
@@ -402,9 +423,16 @@ export function useDirectTyping({
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (!activeRef.current) return;
-    // Candidate editing/confirmation belongs to the IME, not the terminal. Safari may report the
-    // confirming key AFTER compositionend with isComposing false, but still marks it as keyCode 229.
-    if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    // Candidate editing/confirmation belongs to the IME, not the terminal. Safari reports the
+    // confirming key AFTER compositionend with isComposing false, but still as keyCode 229; only
+    // that echo is skipped, so a 229 arrow, Escape or Tab outside the window still reaches the pane.
+    if (composing.current || event.nativeEvent.isComposing) return;
+    if (
+      event.nativeEvent.keyCode === 229 &&
+      Date.now() - compositionEndedAt.current < IME_CONFIRM_WINDOW_MS
+    ) {
+      return;
+    }
     const key = keyForKeyDown(event.key);
     if (key === undefined) return;
     event.preventDefault();

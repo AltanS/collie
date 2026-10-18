@@ -182,4 +182,101 @@ describe("useDirectTyping: physical IME keys belong to the candidate", () => {
     await act(async () => {});
     expect(sendKeys.mock.calls).toEqual([[["한"]], [["Enter"]]]);
   });
+
+  it.each([
+    ["Backspace", 8],
+    ["Enter", 13],
+  ])("sends a real %s (keyCode %i) right after compositionend", async (key, keyCode) => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.compositionStart(box);
+    fireEvent.compositionEnd(box, { data: "한" });
+    expect(fireEvent.keyDown(box, { key, keyCode })).toBe(false);
+    await act(async () => {});
+    expect(sendKeys.mock.calls).toEqual([[["한"]], [[key]]]);
+  });
+
+  it("sends a Backspace beforeinput right after compositionend", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.compositionStart(box);
+    fireEvent.compositionEnd(box, { data: "한" });
+    expect(fireEvent(box, new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "deleteContentBackward",
+    }))).toBe(false);
+    await act(async () => {});
+    expect(sendKeys.mock.calls).toEqual([[["한"]], [["Backspace"]]]);
+  });
+
+  // Android Gboard reports keyCode 229 with key "Unidentified" for every virtual key; none of
+  // those has a wire name, and the real Backspace and Enter arrive as beforeinput instead.
+  it("sends nothing for a keyCode 229 keydown with key Unidentified", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    expect(fireEvent.keyDown(box, { key: "Unidentified", keyCode: 229 })).toBe(true);
+    await act(async () => {});
+    expect(sendKeys).not.toHaveBeenCalled();
+  });
+
+  // Only the echo right after compositionend is the IME's. A 229 keydown that maps to a wire key
+  // later on is a real key, and an unprevented Tab would move focus out of the field.
+  it.each(["ArrowUp", "Escape", "Tab"])(
+    "sends a keyCode 229 %s only after the confirm window closes",
+    async (key) => {
+      vi.useFakeTimers();
+      const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      fireEvent.compositionStart(box);
+      fireEvent.compositionEnd(box, { data: "한" });
+      await act(async () => {});
+      expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["한"]);
+
+      act(() => vi.advanceTimersByTime(499));
+      expect(fireEvent.keyDown(box, { key, keyCode: 229 })).toBe(true);
+      await act(async () => {});
+      expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["한"]);
+
+      act(() => vi.advanceTimersByTime(2));
+      expect(fireEvent.keyDown(box, { key, keyCode: 229 })).toBe(false);
+      await act(async () => {});
+      expect(sendKeys).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("sends a keyCode 229 arrow when no composition ever ended", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    expect(fireEvent.keyDown(box, { key: "ArrowLeft", keyCode: 229 })).toBe(false);
+    await act(async () => {});
+    expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["Left"]);
+  });
+
+  it("lets Backspace and arrows through again after a blur ends a lost composition", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    const backspace = () => fireEvent(box, new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "deleteContentBackward",
+    }));
+    // compositionend never fires: the flag would stay set and swallow these.
+    fireEvent.compositionStart(box);
+    expect(backspace()).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "ArrowUp" })).toBe(true);
+    expect(sendKeys).not.toHaveBeenCalled();
+
+    fireEvent.blur(box);
+    expect(backspace()).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "ArrowUp" })).toBe(false);
+    await act(async () => {});
+    expect(sendKeys.mock.calls).toEqual([[["Backspace"]], [["Up"]]]);
+  });
 });
