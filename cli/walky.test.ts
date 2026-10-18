@@ -319,16 +319,47 @@ describe("on a crew member (CREW_PROTOCOL §21)", () => {
       routeRemote: async (message) => [{ id: message.id, target: message.to, state: "accepted", verified: "origin", at: 1, by: "desk" }],
     });
 
-  socketTest("a message for another machine prints `accepted` and says the lead knows the outcome, without waiting", async () => {
-    const b = await member();
+  /** A clock that moves only when `send` sleeps, so its 15 s bound passes in no real time. */
+  const clocked = (onSleep: (polls: number) => void = () => undefined) => {
+    let at = 0;
     let polls = 0;
-    const d = deps(b, inPane("%1"), { sleep: async () => void (polls += 1) });
+    return {
+      now: () => at,
+      sleep: async (ms: number) => {
+        at += ms;
+        polls += 1;
+        onSleep(polls);
+      },
+      polls: () => polls,
+    };
+  };
+
+  socketTest("a message for another machine waits as a local one does, and past the bound says the lead knows the outcome", async () => {
+    const b = await member();
+    const clock = clocked();
+    const d = deps(b, inPane("%1"), { now: clock.now, sleep: clock.sleep });
     expect(await cmdWalkySend(d, ["desk/w2:p2", "hi"])).toBe(EXIT.OK);
     expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to desk/w2:p2", "queued (outcome known on the lead)", "check later: collie walky status wt_aaaaaaaaaaa1"]);
-    expect(polls).toBe(1);
+    // The same bound as a local send: 15 s, asked every half second.
+    expect(clock.polls()).toBe(30);
     const status = deps(b);
     expect(await cmdWalkyStatus(status, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
     expect(status.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "desk/w2:p2: queued (outcome known on the lead) (signed by laptop)"]);
+  });
+
+  socketTest("the outcome the lead pushes back ends the wait, and `status` shows it", async () => {
+    const b = await member();
+    // The lead's push lands on the third poll, as `POST /crew/v1/walky/outcomes` writes it.
+    const clock = clocked((polls) => {
+      if (polls === 3) b.service?.log.update({ id: "wt_aaaaaaaaaaa1", target: "desk/w2:p2", state: "delivered", verified: "origin", at: 2, by: "desk" });
+    });
+    const d = deps(b, inPane("%1"), { now: clock.now, sleep: clock.sleep });
+    expect(await cmdWalkySend(d, ["desk/w2:p2", "hi"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to desk/w2:p2", "typed into the pane"]);
+    expect(clock.polls()).toBe(3);
+    const status = deps(b);
+    expect(await cmdWalkyStatus(status, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(status.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "desk/w2:p2: typed into the pane (signed by laptop)"]);
   });
 
   socketTest("who lists this machine's panes and says the other machines are the lead's to list", async () => {

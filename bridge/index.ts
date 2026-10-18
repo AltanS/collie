@@ -234,9 +234,9 @@ import {
   CREW_WALKY_ROUTE,
   leadRouteRemote,
   memberRouteRemote,
-  mergeReport,
   olderThanWalky,
   WalkyCrew,
+  WalkyLeadSide,
   WalkyReport,
   type CrewDialAnswer,
 } from "./walky/crew.ts";
@@ -1717,6 +1717,8 @@ const walkyRefusals = new RefusalCounter(join(cfg.stateDir, "walky"));
 // signed; the lead delivers and routes it on with its attestation. The lead's half needs the lead
 // runtime, which is built after the sessions, so it is assigned below and read through this holder.
 let walkyLeadClient: PeerClient | null = null;
+// The lead runtime's own crew client, kept for the outcomes push (§21): assigned where the lead is built.
+let crewLeadClient: PeerClient | null = null;
 let walkyLeadHalf: {
   readonly route: RouteRemote;
   readonly targets: () => ReturnType<typeof crewTargets>;
@@ -1744,9 +1746,15 @@ const walky = new WalkyService({
   leadName: () => trustStore.current()?.lead?.memberId ?? null,
   remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
 });
-// A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes.
+// A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes, until
+// its lead acks them.
 const walkyReport = crew.mode === "peer" && walkyMemberId !== null ? new WalkyReport(walkyMemberId) : null;
 walkyReport?.listen(walkyLog);
+// A lead acks each member's report on its next sweep, and pushes back to each member the outcomes of
+// the messages that member sent to other machines (§21). In memory only.
+const walkyLeadSide =
+  crew.mode === "lead" && walkyMemberId !== null ? new WalkyLeadSide({ self: walkyMemberId, log: walkyLog, push: (memberId, payload) => walkyPushOutcomes(memberId, payload) }) : null;
+walkyLeadSide?.listen();
 const walkyCrew = new WalkyCrew({
   service: walky,
   trust: () => trustStore.current(),
@@ -2007,6 +2015,7 @@ const crewLead = (() => {
     members: () => trustStore.current()?.peers ?? [],
   });
   const client = crewPeerClient(data);
+  crewLeadClient = client;
   return new CrewLead({
     registry: crewRegistry,
     // §13's refuse-before-forward budget: this lead's own cap, not a constant (COLLIE_MAX_UPLOAD_MB).
@@ -2051,12 +2060,16 @@ const crewLead = (() => {
     },
     // ADR 0084: a member's own load, off the answer this sweep already parsed, on this lead's clock.
     onMachineStats: (memberId, sample, at) => machineWatch?.observe(memberId, sample, at),
-    // §21: how a message this lead routed ended on that member, into this lead's own walky log.
-    onWalkyReceipts: (memberId, receipts) => {
-      mergeReport(walkyLog, memberId, receipts);
+    // §21: how a message this lead routed ended on that member, into this lead's own walky log, and
+    // the report's cursor, acked on the next dial of that member. Then the outcomes go back.
+    onWalkyReceipts: (memberId, receipts, cursor) => {
+      walkyLeadSide?.report(memberId, receipts, cursor);
     },
+    walkyAck: (memberId) => walkyLeadSide?.ackFor(memberId) ?? null,
+    onWalkySwept: (memberIds) => walkyLeadSide?.swept(memberIds),
     onPeerGone: (memberId) => {
       peerNotifier?.forget(memberId);
+      walkyLeadSide?.forget(memberId);
       // A member that left takes its last sample and its day of history with it (ADR 0084).
       machineWatch?.forget(memberId);
       // The client remembers one thing that reaches a verdict, how long this member has been
@@ -2167,6 +2180,9 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       // A member whose reported version predates walky talky is refused `older member` without a dial.
       older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      // A message from another member travels with that member's pinned certificate and this lead's
+      // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
+      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && member.status === "enrolled")?.certPem ?? null,
       signing: () => {
         const held = trustStore.current();
         return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
@@ -2429,6 +2445,26 @@ async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
   return { kind: "unknown", reason: `crew: ${outcome.reason}` };
 }
 
+/**
+ * The lead's push of a member's walky outcomes (§21, added 2026-10-18): `POST /crew/v1/walky/outcomes`
+ * on that member, through this lead's own crew client, pinned and attested like every lead → peer dial.
+ */
+async function walkyPushOutcomes(memberId: string, payload: string): Promise<CrewDialAnswer> {
+  const lead = crewLead;
+  const client = crewLeadClient;
+  if (lead === undefined || client === null) return { kind: "refused", reason: "this machine does not lead" };
+  const resolved = lead.resolve({ kind: "member", id: memberId });
+  if (resolved === undefined || resolved.kind !== "peer") return { kind: "refused", reason: "no such member" };
+  const outcome = await client.walkyOutcomes(resolved.link, payload);
+  if (outcome.ok) {
+    const body = await outcome.value.json().catch(() => null);
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; only the status is acted on.
+    return { kind: "answer", status: outcome.status, body: body as JsonValue | null };
+  }
+  if (outcome.state === "unreachable" && outcome.attempted !== false && outcome.authRefused !== true) return { kind: "unknown", reason: `crew: ${outcome.reason}` };
+  return { kind: "refused", reason: outcome.reason };
+}
+
 function takeoverClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
@@ -2683,7 +2719,15 @@ const server = startServer({
             // §21: a lead takes a member's message; a member reports how messages from elsewhere ended.
             walky: {
               fromMember: (body, member) => walkyCrew.fromMember(body, member),
-              report: walkyReport === null ? undefined : () => walkyReport.drain(),
+              report:
+                walkyReport === null
+                  ? undefined
+                  : (ack) => {
+                      walkyReport.ack(ack);
+                      return walkyReport.report();
+                    },
+              // §21 (added 2026-10-18): a member takes its lead's push of how its own messages ended.
+              outcomes: crew.mode === "peer" ? (body, from) => walkyCrew.outcomes(body, from) : undefined,
             },
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation

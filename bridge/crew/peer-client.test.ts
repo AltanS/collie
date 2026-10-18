@@ -309,6 +309,27 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     expect(new Headers(calls[1]!.init.headers).get("X-Crew-Update-Turn")).toBeNull();
   });
 
+  test("X-Crew-Walky-Ack rides the sweep only when the lead owes that member an ack (§21)", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop, NARROW_VIEW, false, { walkyAck: "0a1b2c3d.3" });
+    await c.snapshot(laptop, NARROW_VIEW, false, { walkyAck: null });
+    expect(new Headers(calls[0]!.init.headers).get("X-Crew-Walky-Ack")).toBe("0a1b2c3d.3");
+    expect(new Headers(calls[1]!.init.headers).get("X-Crew-Walky-Ack")).toBeNull();
+  });
+
+  test("the walky outcomes push is a POST to /crew/v1/walky/outcomes on the write budget, and a 404 is an answer", async () => {
+    const { fetch, calls } = replying({ error: "not found" }, { status: 404 });
+    const outcome = await client(fetch, { sign: () => "signed", dialSign: () => "attested" }).walkyOutcomes(laptop, JSON.stringify({ receipts: [] }));
+    expect(calls[0]!.url).toEndWith("/crew/v1/walky/outcomes");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(calls[0]!.init.body).toBe('{"receipts":[]}');
+    // Lead → peer: no §8.6 signature, the pinned handshake and the dial attestation are the factors.
+    expect(new Headers(calls[0]!.init.headers).get("x-crew-signature")).toBeNull();
+    expect(new Headers(calls[0]!.init.headers).get("x-crew-dial")).toBe("attested");
+    expect(outcome).toMatchObject({ ok: true, status: 404 });
+  });
+
   test("the follow headers do not buy the patient budget — only §19's fresh does", async () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);

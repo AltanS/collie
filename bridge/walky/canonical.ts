@@ -15,6 +15,8 @@ import type { WalkyMessage } from "./types.ts";
 export const WALKY_DOMAIN = "collie-walky-v1";
 /** The domain tag of the lead's attestation (spec 03 signs it on the lead-to-peer hop). */
 export const WALKY_ATTEST_DOMAIN = "collie-walky-attest-v1";
+/** The domain tag of the lead's voucher for a sender's certificate (CREW_PROTOCOL §21, added 2026-10-18). */
+export const WALKY_VOUCHER_DOMAIN = "collie-walky-voucher-v1";
 
 function sha256Hex(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
@@ -61,4 +63,15 @@ export function verifyMessage(message: WalkyMessage, certPem: string): boolean {
  */
 export function attestationString(message: SignedFields, crewId: string, receiver: string): string {
   return [WALKY_ATTEST_DOMAIN, message.id, crewId, receiver, sha256Hex(canonicalMessage(message))].join("\n");
+}
+
+/**
+ * The string the lead signs beside a message from another member of its roster: the crew, the
+ * sending member and the SHA-256 fingerprint of the certificate the lead pinned for it (lowercase
+ * hex over the DER, `fingerprintOfCert` in bridge/crew/identity.ts). With it, a member that pins only
+ * its lead can check the sender's own signature: the lead vouches that this certificate is that
+ * member's. It binds the crew, so a voucher is not good in another crew.
+ */
+export function voucherString(crewId: string, memberId: string, fingerprint: string): string {
+  return [WALKY_VOUCHER_DOMAIN, crewId, memberId, fingerprint].join("\n");
 }

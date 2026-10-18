@@ -444,6 +444,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the crew secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/crew/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
 | `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
+| `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
 | `POST` | `/crew/v1/warrant` | the lead | Delivers or refreshes the warrant naming the crew's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `crew status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/crew/v1/lead` is one fact arriving at two kinds of recipient. |
@@ -3275,12 +3276,13 @@ always travels **through the lead**, because that is the only topology the trust
 member pins only its lead, and the lead pins every member (§8.1). A message from member A to member B
 is two hops, A to the lead and the lead to B.
 
-### The two routes
+### The routes
 
 | Method | Path | Sent by | Body | Answer |
 |---|---|---|---|---|
 | `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
-| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest }` | `{ receipts }` |
+| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
+| `POST` | `/crew/v1/walky/outcomes` | the lead, to a member | `{ receipts }` | `{ written }` |
 
 - `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
   collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
@@ -3291,7 +3293,11 @@ is two hops, A to the lead and the lead to B.
   and §10.3's rules: refused before it is attempted when the member is not taking writes, and an
   attempted write whose outcome is unknown is written `unknown` and never sent again. The dial
   attestation rides it like every lead → peer dial (§8.6).
-- Both answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the
+- `/crew/v1/walky/outcomes` is a **membership-table route** (§5) that travels lead → peer, so it rides
+  the pinned handshake and the dial attestation like every lead → peer dial (§8.6), with the write
+  budget. Only a collie that has a lead answers it, and only to that lead: any other caller is the
+  uniform 401, and a lead answers 404. See "The outcome comes back" below. Added 2026-10-18.
+- The first two answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the
   write budget. Neither waits for the typing. (The M62 contract named a single `{ receipt }` for the
   lead → member hop; a `<member>/all` reaches several panes, so the answer is a list, for the reason
   the receipt gained `target` in spec 01.)
@@ -3320,10 +3326,22 @@ The lead's attestation, signed by the lead's key, beside a message it routes to 
 collie-walky-attest-v1\n<id>\n<crewId>\n<receiver memberId>\n<sha256(the message's canonical string) hex>
 ```
 
+The lead's voucher, signed by the lead's key, beside a message from another member of its roster
+(added 2026-10-18):
+
+```
+collie-walky-voucher-v1\n<crewId>\n<memberId>\n<fingerprint>
+```
+
+`fingerprint` is the SHA-256 of the sending member's pinned certificate over its DER, lowercase hex,
+the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
+
 `from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed. The
 attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
-present an attested message at a sibling or in another crew. Both use the primitives §8.6 already has:
-base64 ECDSA-P256-SHA256, with the key behind the signer's pinned certificate.
+present an attested message at a sibling or in another crew. The voucher binds the crew and names the
+member and its certificate; it names no message, so the attestation is still what binds one message
+to one receiver. All three use the primitives §8.6 already has: base64 ECDSA-P256-SHA256, with the key
+behind the signer's pinned certificate.
 
 ### The shape check both hops share
 
@@ -3377,11 +3395,28 @@ shared shape check above. The route's `:id` must name the message's own pane, or
 reaches this machine's agent panes only: a member never routes a message on, so a message cannot loop
 between a member and its lead.
 
-`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation;
-only the lead verifies the origin.** A member pins no other member, so a message from member A reaches
-member B as `verified: "lead"`. The one exception is a message the lead itself sent: the member pins
-that certificate, verifies the origin signature too, and writes `verified: "origin"`, and only when
-`from.memberId` is the signer as well.
+`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation,
+and the origin through a certificate its lead vouched for.** A member pins no other member. When the
+lead routes a message whose signer is an `enrolled` member of its roster other than itself, the body
+carries an optional `sender: { certPem, voucher }` (added 2026-10-18): the certificate the lead pinned
+for that member, and the lead's voucher for it (the canonical strings above). After the attestation
+and the shape check, the member then:
+
+1. recomputes the fingerprint from `certPem`;
+2. verifies `voucher` against its pinned lead, for its own crew id and for `memberId` equal to the
+   message's `signer`;
+3. verifies the message's own signature against `certPem`.
+
+All three good: `verified: "origin"`. Any failure in the sender block is the uniform 401, because it
+is a claim that does not verify. `certPem` is at most 4,096 characters and `voucher` at most 512; a
+longer one, an empty one or a block with a field missing reads as a malformed body, a 400. The member
+pins nothing from the block and stores nothing: the voucher is the lead's word for this one message,
+and a lead that lies about its roster is still believed, as it is for every write it forwards.
+
+Without `sender`, the result is `verified: "lead"`, as before. The one other way to `origin` is a
+message the lead itself sent: the member pins that certificate, verifies the origin signature too, and
+writes `verified: "origin"`, and only when `from.memberId` is the signer as well. The lead never adds a
+sender block to its own message.
 
 ### Dedupe, replay and the time window
 
@@ -3418,26 +3453,66 @@ hardening I).
 The member snapshot gains an optional sibling beside the body, in the seat §19's fields use:
 
 ```json
-{ "...": "the snapshot body", "walky": { "receipts": [ { "id": "wt_…", "target": "laptop/w1:p9", "state": "delivered", "verified": "lead", "at": 1786000000000, "by": "laptop" } ] } }
+{ "...": "the snapshot body", "walky": { "receipts": [ { "id": "wt_…", "target": "laptop/w1:p9", "state": "delivered", "verified": "lead", "at": 1786000000000, "by": "laptop" } ], "cursor": "4f1a09c2.17" } }
 ```
 
-It holds the receipts this member wrote **since its last answer**, for its own panes, for messages
-that came from another machine, past `accepted`. At most 100, the oldest dropped. It is a report on
-the exchange, never a stored state (§18.5): each answer empties it, so an answer the lead never read
-loses those lines and the lead keeps `accepted`. **Absent means "nothing to report"** (§7.1).
+It holds the receipts this member wrote for its own panes, for messages that came from another
+machine, past `accepted`, **that the lead has not acked yet**. At most 100, the oldest dropped, and a
+receipt goes 10 minutes after it was first held, acked or not. It is a report on the exchange, never a
+stored state (§18.5): it lives in memory only. **Absent means "nothing to report"** (§7.1).
+
+**The ack cursor** (added 2026-10-18). Each held receipt gets a sequence number, and a newer state for
+the same id and target is a new receipt with a new number. `cursor` is `<epoch>.<seq>` of the newest
+receipt in the report. `epoch` is 8 random lowercase hex characters, minted when the bridge process
+starts, so a restarted member's cursor space never meets an old ack. The lead keeps the last cursor it
+read from each member, in memory, and sends it on its next sweep dial of that member's snapshot as the
+request header `X-Crew-Walky-Ack: <cursor>`. The member reads the header first: an ack whose epoch
+matches drops every held receipt with a seq at or below the acked one, and then the report is built.
+An ack of another epoch, or a value that is not a cursor, acks nothing. A report no longer empties on
+an answer, so an answer the lead never read loses nothing: the next answer carries the same receipts.
 
 The lead writes each reported receipt into its own log, and only when the member wrote it (`by`), for a
-pane on that member, for a message the lead routed there.
+pane on that member, for a message the lead routed there. The same receipt reported again is skipped
+(same state, not newer), so a resend is harmless.
 
 ### What the sender learns
 
-The lead holds the outcome. When the operator sent from the phone or from the lead, `collie walky
-status <id>` on the lead shows it. **The lead has no path back to a member**, so a member that sent a
-message to a third machine sees `accepted` and the words "outcome known on the lead". The CLI stops
-waiting on such a receipt at once. A message from a member to the lead's own pane is the same: the
-lead's answer carries `accepted`, and the outcome stays on the lead. Nothing here was built to close
-that gap. A later amendment could add a sibling on a lead → member exchange that already happens; it
-would be additive-optional like this one.
+The lead learns every outcome first: from its own panes, and from each member's report. When the
+operator sent from the phone or from the lead, `collie walky status <id>` on the lead shows it. Since
+2026-10-18 the lead also pushes each outcome back to the member whose message it was (the next
+subsection), for a message to a third machine and for a message to the lead's own pane alike. The
+sending member's `collie walky status <id>` then shows the real outcome, and `collie walky send` there
+waits for it the way it waits for a local one: up to 15 seconds, then it prints the queued state and
+`check later: collie walky status <id>`. The words "outcome known on the lead" stay only while the
+receipt is still `accepted` on the member. Under an older lead it stays `accepted`.
+
+### The outcome comes back *(added 2026-10-18)*
+
+The lead keeps an **outbox per member**, in memory only: every receipt its own log writes, past
+`accepted`, for a message whose `from.memberId` is that member and whose target is not on that member.
+Both kinds of line count, the lead's own deliveries and the lines `mergeReport` writes from another
+member's report. At most 100 per member, the oldest dropped, and a receipt goes 10 minutes after the
+lead held it.
+
+The lead pushes the outbox with `POST /crew/v1/walky/outcomes`, body `{ receipts }`, to that member: at
+once when a receipt settles (one push for a burst), and again on each sweep that member answers while
+the outbox is not empty.
+
+| Answer | What the lead does |
+|---|---|
+| 200 `{ written }` | Drops what it sent. A newer receipt for the same id and target that arrived meanwhile stays. |
+| 404 | A member before this route: drops that batch, and pushes again only when a new receipt settles. |
+| refused, unknown, any other status | Keeps the batch for the next sweep. The member writes a receipt once, so a push that landed and is sent again changes nothing. |
+
+The member registers the route only when it has a lead, and the admitted caller must be that lead (the
+dial attestation covers it like every lead → peer dial, §8.6). It writes a pushed receipt only when its
+own log holds a record for that id and target whose message has `from.memberId` equal to this member,
+and only when the receipt is newer or another state (the `mergeReport` rule). A receipt for one of the
+member's own panes is never taken: that outcome is its own word. It answers `{ written }`, the count.
+A pushed outcome is never reported back up: the member's report skips every message from itself.
+
+An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed outcome does not write
+`accepted` over it.
 
 `collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
 holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
@@ -3480,5 +3555,17 @@ Additive inside protocol version 2, and every reading is the closed one (§7.1).
 this section answers 404 on `/crew/v1/pane/:id/walky`, which the lead writes as `refused: older member`
 in the receipt. A lead that predates it answers 404 on `/crew/v1/walky`, which the member writes as
 `refused: older lead`. A member that predates the report omits the `walky` sibling, and the lead keeps
-`accepted`. A solo install mints no key, signs nothing, registers neither route and never sends a
-message off the machine (§11). `CREW_PROTOCOL_VERSION` stays `2`.
+`accepted`.
+
+The additions of 2026-10-18 read the same way. A member before the ack cursor sends no `cursor` and
+ignores `X-Crew-Walky-Ack`; it empties its report on each answer as before. A lead before the ack never
+sends the header, so the member resends each receipt for up to 10 minutes, and the lead's merge skips
+the repeats. A lead restart sends no ack until it has read a report. A member before the outcomes push
+answers 404, and the lead stops pushing to it until a new receipt settles; its operator reads the
+outcome on the lead, as before. A lead before the push never sends one, and the sending member stays at
+`accepted` with the words "outcome known on the lead". A member before the sender block ignores
+`sender` and writes `verified: "lead"`; a lead before it sends none, and the result is `lead` as
+before.
+
+A solo install mints no key, signs nothing, registers none of these routes and never sends a message
+off the machine (§11). `CREW_PROTOCOL_VERSION` stays `2`.

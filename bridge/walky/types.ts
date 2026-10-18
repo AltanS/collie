@@ -81,7 +81,8 @@ export interface WalkyReceipt {
 
 /**
  * What `collie walky status` says of a receipt still `accepted` on another machine, on a crew member:
- * the lead keeps that outcome and has no way to tell the member (CREW_PROTOCOL §21).
+ * the lead holds that outcome until it pushes it back to the member (CREW_PROTOCOL §21). An older
+ * lead never pushes, and the receipt then stays `accepted` here.
  */
 export const OUTCOME_ON_LEAD = "outcome known on the lead";
 

@@ -340,6 +340,14 @@ That line makes this machine refuse every message for its panes. The CLI on the 
   lead checks the signature against the key it pinned for that member, then adds its own signature
   for the machine that receives it. A solo install has no crew key. It signs nothing and sends nothing
   off the machine.
+- **The receiver checks the sender, through the lead's word.** A member pins only its lead. So the
+  lead sends the sender's certificate with the message, and signs a short statement that this
+  certificate belongs to that member of the crew. The receiving machine checks that statement, then
+  checks the sender's signature against the certificate. If any check fails, it refuses the message.
+  It still trusts the lead about who is in the crew.
+- **Only the lead can write an outcome back.** The lead sends a member the outcomes of that member's
+  own messages. The member takes them only from its pinned lead, and only for a message it sent and
+  still logs. Outcomes and the record of what the lead got stay in memory, and go after 10 minutes.
 - **The phone's card needs the log.** The phone draws a message card only when the bridge's own log
   holds that message id. A header that an agent only prints on the screen stays plain text, with the
   mark "no log record on this machine".

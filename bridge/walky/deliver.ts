@@ -476,8 +476,11 @@ export class WalkyDeliverer {
         if (receipt.id !== message.id) continue;
         // A refusal the routing side wrote itself (an older member, a bad signature) counts here too.
         if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
-        if (this.deps.log.get(message.id, receipt.target) === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
-        else this.deps.log.update(receipt);
+        const held = this.deps.log.get(message.id, receipt.target);
+        if (held === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
+        // The lead may push the outcome before this answer is written (CREW_PROTOCOL §21): an
+        // `accepted` never goes over a receipt that already left it.
+        else if (receipt.state !== "accepted" || held.receipt.state === "accepted") this.deps.log.update(receipt);
       }
       return receipts.length === 0 ? [accepted] : receipts;
     } catch (err) {
