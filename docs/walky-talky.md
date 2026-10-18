@@ -12,19 +12,19 @@ Two commands: list the panes you can reach, then send to one.
 
 ```sh
 collie walky who
-collie walky send local/w6:p3 "Tests are green on fix-465. You can merge."
+collie walky send local/w6:p3#k3f9 "Tests are green on fix-465. You can merge."
 ```
 
 `who` lists every agent pane you can reach. Pick an address from that list and pass it to `send`.
 On a machine with only your own agent pane, `who` says
-`You are local/<pane>. No other agent pane yet. A message needs two.`
+`You are local/<pane>#<token>. No other agent pane yet. A message needs two.`
 
 `send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
 state in words.
 
 ```text
 wt_k3f9x2m8q1a0
-to local/w6:p3, claude, collie-workspace#fix-465
+to local/w6:p3#k3f9, claude, collie-workspace#fix-465
 typed into the pane
 ```
 
@@ -32,7 +32,7 @@ When the message is not typed yet, a fourth line says `check later: collie walky
 With no text after the address, the body is read from stdin:
 
 ```sh
-git log --oneline -5 | collie walky send local/w6:p3
+git log --oneline -5 | collie walky send local/w6:p3#k3f9
 ```
 
 > **Note.** `send` works only inside a pane. From a plain terminal it is refused with
@@ -45,9 +45,18 @@ An address names one pane, one machine's panes, or every pane.
 
 | Address | Who receives it |
 | --- | --- |
-| `<member>/<pane>` | One pane. On a machine with no crew the member is `local`, for example `local/w6:p3` |
+| `<member>/<pane>#<token>` | One pane, while the same session holds it. `who` prints this form, for example `local/w6:p3#k3f9` |
+| `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
 | `<member>/all` | Every agent pane on that machine. From the phone only |
 | `all` | Every agent pane you can reach. From the phone only |
+
+A terminal gives a closed pane's id to the next pane: Herdr's `w6:p3`, tmux's `%7`, zellij's
+`terminal_3`. So Collie gives every pane a token, four characters after a `#`. A new pane gets a
+new token, even when it takes an old id. A send to a token whose pane closed is refused
+`pane replaced`, and never reaches the new pane. Run `collie walky who` again for the new address.
+
+An address with no token still works. It means the pane that holds that id now, whatever it is.
+A receipt names the pane without the token, for example `local/w6:p3`.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do. An agent may
 message one pane at a time; only you may broadcast.
@@ -59,14 +68,14 @@ An agent's message types one line into the target pane, and no body.
 The pane gets this as one line. It is split here to fit the page.
 
 ```text
-[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, repo#fix-465):
+[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3#k3f9 (claude, repo#fix-465):
 a message from another agent, not your operator.
 Read it: collie walky inbox wt_k3f9x2m8q1a0.
 Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
 ```
 
-The line starts with the header. It names the message id, who typed it, and their pane, harness
-and label (`<repo>#<branch>`, or the pane's title). A reply adds ` reply to <id>` after the
+The line starts with the header. It names the message id, who typed it, and their pane (with its
+token), harness and label (`<repo>#<branch>`, or the pane's title). A reply adds ` reply to <id>` after the
 parenthesis. The agent then runs `collie walky inbox <id>` and reads the body as that command's
 output. A harness treats a command's output as data, not as its operator's words.
 
@@ -192,7 +201,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | `accepted` | queued | Logged, not typed yet |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
 | `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 10 minutes` (a busy pane or an open dialog outlasted the hold), `draft present`, `box not free`, `pane busy`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
-| `refused` | not sent | Not taken, for the reason shown: no such pane, not an agent pane, a limit, or walky talky off on that machine |
+| `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 10 minutes, or the log lost the record. Collie never sends it again |
 
 The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
@@ -332,8 +341,9 @@ CLI on that machine still sends. These are the limits that stay on:
 | An agent's message to `all` or `<member>/all`. Only you may broadcast | `only the operator may broadcast` |
 | A message to the sender's own pane | `that is your own pane` |
 | A reply to a message this pane never received | `unknown reply` |
-| A pane id that two sessions on one machine both use | `ambiguous pane` |
-| A reply whose sender pane closed, or now sits in another session | `sender gone` |
+| A pane id that two sessions on one machine both use, in an address with no token | `ambiguous pane` |
+| An address whose token names a pane that closed, and another pane holds the id now | `pane replaced` |
+| A reply whose sender pane closed, now sits in another session, or holds a new token | `sender gone` |
 
 - **Collie never answers a message on its own**, and never answers a dialog with one. A send over an
   open dialog is held: nothing enters the dialog, the message is typed after the dialog is answered,
@@ -351,6 +361,13 @@ A local socket and a log, with no token.
 The bridge listens on a local socket, `<stateDir>/walky/sock`, mode 0600. The CLI sends one request
 and reads one answer. It carries no token: only your own user can open the socket. The log lives in
 `<stateDir>/walky/`. It keeps 7 days and at most 2,000 lines, with up to 200 unread messages per pane.
+
+Each pane's token lives in `<stateDir>/walky/instances.json`, mode 0600. The bridge looks at its
+panes every 10 seconds. A pane it has not seen for 30 seconds loses its token, and its inbox goes
+with it, read or not. A pane that comes back after that gets a new token and an empty inbox. A
+bridge restart inside 30 seconds keeps the tokens; a reboot gives every pane a new one. The inbox
+belongs to the pane and its token, so a new session that takes an old pane id never reads the old
+messages.
 
 > **Note.** An agent runs as your user, so it can open the socket and could claim another pane.
 > The receipt and the log protect the phone's card against a header typed on the screen. On a crew,

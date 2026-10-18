@@ -280,7 +280,7 @@ exist. **Try again** sends the same request and never opens a second pane
 
 ## Walky talky
 
-Four symptoms of walky talky come up most. Each one has a command that shows the cause
+Five symptoms of walky talky come up most. Each one has a command that shows the cause
 ([Walky talky](walky-talky.md)).
 
 **`collie walky send` says "run this inside a pane, or send from the phone".** The command ran
@@ -297,6 +297,11 @@ box holds your own text. "box not free" means Collie could not read a free input
 means an earlier message was still being typed there after 2 minutes. "no terminal" and "bridge
 restarted" are the other two. Run `collie walky inbox` in that pane, or open Messages in the pane's
 menu on the phone. Collie does not type the message again.
+
+**`collie walky send` says "not sent: pane replaced".** The address ends with a token, such as
+`#k3f9`, and the pane it named has closed. Another pane holds that pane id now, so Collie does not
+type the message there. Run `collie walky who` and send to the new address. A reply that gives
+"not sent: sender gone" has the same cause: the pane that sent the message has closed.
 
 **A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
 the screen text, and this machine's log holds no message with that id. Someone or something typed

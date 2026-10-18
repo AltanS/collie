@@ -153,3 +153,10 @@ the two commands that read and answer the message, and no body. The agent reads 
 The messages kept for one pane, on the machine that owns the pane. A message waits there until the
 pane reads it with `collie walky inbox`. It lands there when Collie could not type it, too
 ([Reply, read and check](walky-talky.md#reply-read-and-check)).
+
+## Instance
+
+One session in one pane. A terminal gives a closed pane's id to the next pane, so Collie gives each
+pane a token of four characters too. A [walky talky](#walky-talky) address carries it after a `#`,
+for example `local/w6:p3#k3f9`, and reaches that session only. A new session in the same pane id is
+a new instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
