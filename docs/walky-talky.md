@@ -256,24 +256,38 @@ Each receipt state shows the words in the table above, with the reason after "no
 ## Install the skill
 
 An agent uses walky talky only when it knows how. Collie writes the skill that teaches it into
-your agents' own instruction files, and only when you ask.
-
-```sh
-collie skill install all
-```
+your agents' own instruction files.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send. No other command and no bridge start touches those files.
+of a message, and when not to send.
 
-You can also name one harness: `claude`, `codex`, `opencode`, `pi` or `gemini`.
+After each update, Collie installs the skill into every harness it finds on this machine, and
+keeps each copy current. A rollback and a switch of release line do the same with the build they
+go to. Collie finds a harness by its config folder, for example `~/.codex`. For Claude Code, each
+profile folder that exists gets the skill.
+
+Run the same step by hand at any time, for example right after a fresh install:
+
+```sh
+collie skill sync
+```
+
+It prints one line for each file it installed or updated, and one line for each file it refused.
+It prints nothing when every copy is current. `--dry-run` shows the changes and writes nothing.
+`--json` prints the result for a script.
+
+For a harness that Collie did not find, name it. Collie then creates the file:
+`claude`, `codex`, `opencode`, `pi` or `gemini`.
 
 ```sh
 collie skill install claude
 ```
 
-`install all` skips a harness whose config folder does not exist on this machine. Name that
-harness to create the file anyway. A running agent reads its instructions at start, so restart it
-after an install.
+`collie skill install all` installs into every harness whose config folder exists. A running agent
+reads its instructions at start, so restart it after an install.
+
+Only `collie update`, `collie skill install` and `collie skill sync` write those files. The bridge
+never writes them, and no bridge start touches them.
 
 ### Where the skill goes
 
@@ -311,16 +325,19 @@ collie skill status
 Each target is one of these.
 
 - `installed`: the file or block matches this build.
-- `stale`: it differs from this build. Run `collie skill install all` to bring it up to date.
-- `absent`: you did not install it there. This is your choice and is never a problem.
+- `stale`: it differs from this build. The next update brings it up to date, or run
+  `collie skill sync` now.
+- `absent`: the harness is not on this machine, the sync is off, or you uninstalled the skill
+  there. This is never a problem.
 - `refused`: Collie will not touch it, for example because it is a symlink.
 
 `collie skill status --check` prints nothing and exits with code 3 when any installed copy is
 stale. A new Collie version alone does not make a copy stale. Only a change to the skill text, or
 to the path of the `collie` binary it names, does.
 
-`collie doctor` shows the same answer as the `skill-walky-talky` check. `collie update` prints one
-note when the new build carries a newer skill.
+`collie doctor` shows the same answer as the `skill-walky-talky` check. With
+`COLLIE_SKILL_SYNC=off`, `collie update` writes nothing and prints one note when the new build
+carries a newer skill.
 
 ### Take the skill out again
 
@@ -329,6 +346,9 @@ collie skill uninstall all
 ```
 
 This removes the Claude file and cuts out the block. It leaves the rest of each file untouched.
+
+Collie records the uninstall under its state directory, so the next update does not put the skill
+back. `collie skill install <harness>` removes that record again.
 
 ## Limits and switches
 
@@ -340,7 +360,13 @@ COLLIE_WALKY=off
 ```
 
 `COLLIE_WALKY=off` makes this machine refuse every message for its panes, as `not sent: off`. The
-CLI on that machine still sends. These are the limits that stay on:
+CLI on that machine still sends.
+
+`COLLIE_SKILL_SYNC=off` stops `collie update` from writing the skill. The update then only prints a
+note when an installed copy is behind, and `collie skill install` and `collie skill sync` still
+work by hand.
+
+These are the limits that stay on:
 
 | Limit | Refused as |
 | --- | --- |

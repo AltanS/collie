@@ -6,15 +6,19 @@ import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
+import { type SyncResult, syncLines } from "./skill-sync-result.ts";
 import type { Files } from "./sys.ts";
 
-// `collie skill install|uninstall|status [--check]|print` — putting the walky talky skill into the
+// `collie skill install|uninstall|sync|status [--check]|print` — putting the walky talky skill into the
 // agents' own instruction files, and telling when this build's text has moved on from what is there.
 //
 // It is the same shape as `collie hooks install` (cli/hooks.ts), and it borrows that file's guards:
 //
-//  - NOTHING WRITES WITHOUT THE VERB. The operator runs `collie skill install`; no other verb, and no
-//    bridge start, touches a harness file.
+//  - ONLY THE SKILL VERBS AND THE UPDATE WRITE. `collie skill install` and `collie skill sync` write a
+//    harness file, and every successful `collie update` (rollback and switch included) runs `skill
+//    sync` through the new binary (ADR 0111). No bridge start, and no other verb, touches one.
+//    `collie skill uninstall` leaves a marker under the state dir, so the next sync leaves that
+//    target out.
 //  - A SYMLINKED FILE IS REFUSED, an unreadable one too. A rename onto a symlink replaces the link
 //    (home-manager's read-only store profile). A symlinked DIRECTORY resolves, as in hooks.
 //  - ONE `.collie-backup` BEFORE THE FIRST CHANGE, temp file plus rename, and a second install changes
@@ -287,7 +291,7 @@ export function skillIsStale(deps: SkillReadDeps): boolean {
 const backupOf = (path: string): string => `${path}.collie-backup`;
 
 /** Temp file plus rename, with the one-time backup. New files are 0644, an existing file keeps its mode. */
-function writeAtomic(deps: SkillDeps, path: string, previous: string | null, text: string): void {
+function writeAtomic(deps: Pick<SkillReadDeps, "files">, path: string, previous: string | null, text: string): void {
   if (previous !== null && !deps.files.exists(backupOf(path))) deps.files.write(backupOf(path), previous, 0o600);
   const temp = `${path}.collie-tmp`;
   try {
@@ -334,9 +338,116 @@ function overrideNote(deps: SkillReadDeps, file: SkillFile, path: string): strin
   return `note: ${other} exists, and ${file.target.harness} reads it instead of ${path}. Add the skill there by hand.`;
 }
 
+// ── The uninstall marker ─────────────────────────────────────────────────────
+// `collie skill uninstall` is the operator saying no, and the next update must not say yes for them.
+// The marker is the list of target paths they removed, as `skillFiles` spells them, one per line in
+// one small file under this instance's state dir. `skill sync` skips a listed path; `skill install`
+// takes it off.
+
+/** `<stateDir>/skill/uninstalled` — one target path per line. */
+export const uninstalledFile = (stateDir: string): string => join(stateDir, "skill", "uninstalled");
+
+/** The paths the operator uninstalled. A missing or unreadable file is an empty list. */
+export function readUninstalled(files: Files, stateDir: string): Set<string> {
+  const text = files.read(uninstalledFile(stateDir)) ?? "";
+  return new Set(text.split("\n").map((line) => line.trim()).filter((line) => line !== ""));
+}
+
+/** Add or take off paths. Writes only when the list changes; an empty list removes the file. */
+function updateUninstalled(files: Files, stateDir: string, add: readonly string[], drop: readonly string[]): void {
+  const before = readUninstalled(files, stateDir);
+  const next = new Set(before);
+  for (const p of add) next.add(p);
+  for (const p of drop) next.delete(p);
+  if (next.size === before.size && [...next].every((p) => before.has(p))) return;
+  const path = uninstalledFile(stateDir);
+  if (next.size === 0) {
+    files.remove(path);
+    return;
+  }
+  files.write(path, `${[...next].toSorted().join("\n")}\n`, 0o600);
+}
+
+// ── Sync ─────────────────────────────────────────────────────────────────────
+// `collie skill sync` keeps every harness on this machine at this build's text, and `collie update`
+// runs it through the new binary after each successful swap (ADR 0111). Per target:
+//
+//   installed                          nothing
+//   stale                              rewritten in place
+//   absent, harness folder exists      installed (the rule `install all` uses)
+//   absent, no harness folder          skipped: the harness is not on this machine
+//   uninstalled by the operator        skipped, whatever the file says
+//   refused                            reported, nothing written
+//
+// The result's shape and its printed lines live in `cli/skill-sync-result.ts`, which imports nothing:
+// `collie update` reads them, and the update must not pull the embedded docs into its import graph.
+
+/** What `sync` decided and did. `failed` is an unexpected I/O error: the verb exits 1 on it. */
+export function syncSkills(deps: SkillReadDeps, dryRun: boolean): SyncResult & { failed: boolean } {
+  const rendered = renderWalkySkill(deps.ctx, deps.fs);
+  const block = blockOf(rendered);
+  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir);
+  const result: SyncResult & { failed: boolean } = { changed: [], refused: [], skipped: [], failed: false };
+  for (const file of skillFiles(deps.ctx)) {
+    const harness = file.target.harness;
+    if (uninstalled.has(file.path)) {
+      result.skipped.push({ harness, path: file.path, reason: "uninstalled" });
+      continue;
+    }
+    const state = skillState(deps, file, rendered);
+    if (state.kind === "installed") continue;
+    const reading = readFile(deps, file.path);
+    if (state.kind === "refused") {
+      result.refused.push({ harness, path: reading.path, reason: state.reason });
+      continue;
+    }
+    if (state.kind === "absent" && !configDirExists(deps, file, reading.path)) {
+      result.skipped.push({ harness, path: reading.path, reason: "not on this machine" });
+      continue;
+    }
+    const action = state.kind === "stale" ? "updated" : "installed";
+    const parent = dirname(reading.path);
+    if (deps.files.entryType(parent) !== null && deps.files.writable(parent) === false) {
+      result.refused.push({ harness, path: reading.path, reason: `${parent} cannot be written to` });
+      continue;
+    }
+    if (!dryRun) {
+      try {
+        const next = file.target.form === "file" ? rendered : insertBlock(reading.text, block);
+        writeAtomic(deps, reading.path, reading.text, next);
+      } catch (err) {
+        result.refused.push({ harness, path: reading.path, reason: `could not write it: ${err instanceof Error ? err.message : String(err)}` });
+        result.failed = true;
+        continue;
+      }
+    }
+    result.changed.push({ harness, path: reading.path, action });
+  }
+  return result;
+}
+
+/**
+ * `collie skill sync [--json] [--dry-run]` — idempotent: a second run prints nothing. Exit 0 always,
+ * a refusal included, except an unexpected I/O error (exit 1). `--json` prints the whole result.
+ */
+export function cmdSkillSync(deps: SkillDeps, args: readonly string[] = []): number {
+  const dryRun = args.includes("--dry-run");
+  let outcome: ReturnType<typeof syncSkills>;
+  try {
+    outcome = syncSkills(deps, dryRun);
+  } catch (err) {
+    deps.io.err(`error: skill sync stopped — ${err instanceof Error ? err.message : String(err)}`);
+    return EXIT.FAIL;
+  }
+  const { failed, ...result } = outcome;
+  if (args.includes("--json")) deps.io.out(JSON.stringify(result));
+  else for (const line of syncLines(result, dryRun)) deps.io.out(line);
+  return failed ? EXIT.FAIL : EXIT.OK;
+}
+
 // ── The verbs ────────────────────────────────────────────────────────────────
 
-export const SKILL_SUBCOMMANDS = ["install", "uninstall", "status", "print"] as const;
+export const SKILL_SUBCOMMANDS = ["install", "uninstall", "sync", "status", "print"] as const;
 
 export function skillUsage(): string {
   return `usage: collie skill [{${SKILL_SUBCOMMANDS.join("|")}}]`;
@@ -366,6 +477,13 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
   const block = blockOf(rendered);
   let failed = false;
   let wrote = 0;
+  // Asking for a harness by name, or for `all`, takes back an earlier uninstall: sync follows it again.
+  try {
+    updateUninstalled(deps.files, deps.ctx.stateDir, [], skillFiles(deps.ctx, harnesses).map((f) => f.path));
+  } catch (err) {
+    deps.io.err(`error: could not clear the uninstall marker — ${err instanceof Error ? err.message : String(err)}`);
+    failed = true;
+  }
   for (const file of skillFiles(deps.ctx, harnesses)) {
     const reading = readFile(deps, file.path);
     if (reading.refusal !== null) {
@@ -428,6 +546,8 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
   if (harnesses === null) return EXIT.USAGE;
   let failed = false;
   let removed = 0;
+  /** Every target that ends this run without the skill: sync must leave each one out from now on. */
+  const without: string[] = [];
   for (const file of skillFiles(deps.ctx, harnesses)) {
     const reading = readFile(deps, file.path);
     if (reading.refusal !== null) {
@@ -435,9 +555,13 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
       failed = true;
       continue;
     }
-    if (reading.text === null) continue;
+    if (reading.text === null) {
+      without.push(file.path);
+      continue;
+    }
     try {
       if (file.target.form === "file") {
+        // Not ours, so not removed, and not marked: sync would refuse that file anyway.
         if (!reading.text.includes(STAMP_PREFIX)) continue;
         deps.files.remove(reading.path);
         const folder = dirname(reading.path);
@@ -449,7 +573,10 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
           failed = true;
           continue;
         }
-        if (found.kind === "none") continue;
+        if (found.kind === "none") {
+          without.push(file.path);
+          continue;
+        }
         const next = removeBlock(reading.text);
         if (next.trim() === "") deps.files.remove(reading.path);
         else writeAtomic(deps, reading.path, reading.text, next);
@@ -460,16 +587,26 @@ export function cmdSkillUninstall(deps: SkillDeps, args: readonly string[]): num
       continue;
     }
     deps.io.out(`✓ ${file.target.harness}: removed the walky talky skill from ${reading.path}; every other line is untouched.`);
+    without.push(file.path);
     removed += 1;
+  }
+  try {
+    updateUninstalled(deps.files, deps.ctx.stateDir, without, []);
+  } catch (err) {
+    deps.io.err(`error: could not record the uninstall — ${err instanceof Error ? err.message : String(err)}. The next update may put the skill back.`);
+    return EXIT.FAIL;
   }
   if (failed) return EXIT.FAIL;
   if (removed === 0) deps.io.out("nothing to remove: no instruction file here carries the walky talky skill.");
+  if (without.length > 0) {
+    deps.io.out("  `collie update` and `collie skill sync` leave it out from now on. `collie skill install <harness>` brings it back.");
+  }
   return EXIT.OK;
 }
 
 const STATE_WORDS = {
   installed: "installed",
-  stale: "stale — run `collie skill install all` to bring it up to this build",
+  stale: "stale — run `collie skill sync` to bring it up to this build",
   absent: "absent",
   refused: "refused",
 } satisfies Record<SkillState["kind"], string>;
@@ -480,8 +617,14 @@ const STATE_WORDS = {
  */
 export function cmdSkillStatus(deps: SkillDeps, args: readonly string[] = []): number {
   if (args.includes("--check")) return skillIsStale(deps) ? EXIT.STATE : EXIT.OK;
+  const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir);
   for (const { file, state } of skillReport(deps)) {
-    const word = state.kind === "refused" ? `refused — ${state.reason}` : STATE_WORDS[state.kind];
+    const word =
+      state.kind === "refused"
+        ? `refused — ${state.reason}`
+        : state.kind === "absent" && uninstalled.has(file.path)
+          ? "absent — you uninstalled it, so sync leaves it out"
+          : STATE_WORDS[state.kind];
     deps.io.out(`${file.target.harness.padEnd(9)} ${file.path}: ${word}`);
     const note = overrideNote(deps, file, file.path);
     if (note !== null) deps.io.out(`          ${note}`);
@@ -519,13 +662,15 @@ export function cmdSkillPrint(deps: SkillDeps, args: readonly string[]): number 
   return EXIT.OK;
 }
 
-/** The four sub-verbs. A bare `collie skill` is not here: it prints the general brief (`cli/docs.ts`). */
+/** The five sub-verbs. A bare `collie skill` is not here: it prints the general brief (`cli/docs.ts`). */
 export function cmdSkillVerb(deps: SkillDeps, sub: string, rest: readonly string[]): number {
   switch (sub) {
     case "install":
       return cmdSkillInstall(deps, rest);
     case "uninstall":
       return cmdSkillUninstall(deps, rest);
+    case "sync":
+      return cmdSkillSync(deps, rest);
     case "status":
       return cmdSkillStatus(deps, rest);
     case "print":
@@ -536,6 +681,7 @@ export function cmdSkillVerb(deps: SkillDeps, sub: string, rest: readonly string
       deps.io.err("  (no argument)  print the general brief on Collie");
       deps.io.err("  install        write the walky talky skill: `skill install <harness|all>`");
       deps.io.err("  uninstall      remove only the file or block Collie wrote");
+      deps.io.err("  sync           bring every harness on this machine up to this build's skill (--json, --dry-run)");
       deps.io.err("  status         what each target carries now, and whether it is behind (--check for the exit code)");
       deps.io.err("  print          the text an install writes: `skill print <harness|all|generic>`");
       return EXIT.USAGE;

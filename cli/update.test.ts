@@ -2412,48 +2412,137 @@ describe("the hooks nudge", () => {
   });
 });
 
-// ── The skill nudge after a successful update ────────────────────────────────
-// Same design as the hooks nudge: the NEW binary answers, because the running process is the old build
-// and its embedded skill text is exactly the stale one. Silence unless the answer is "behind".
+// ── The skill follows the update (ADR 0111) ──────────────────────────────────
+// After every successful swap the NEW binary runs `skill sync --json` through the stable name, for the
+// reason the hooks nudge asks it: the running process is the old build, and its embedded skill text is
+// exactly the one that may have moved on. Nothing the sync does can fail the update.
+// `COLLIE_SKILL_SYNC=off` keeps the old behaviour: `skill status --check` and one note.
 
 const SKILL_NUDGE = "newer walky talky skill";
 const SKILL_CHECK = `${INST}/current/bin/collie skill status --check`;
+const SKILL_SYNC = `${INST}/current/bin/collie skill sync --json`;
+const SYNC_NOTE = "skill sync did not run";
+const CLAUDE_SKILL = "/home/u/.claude/skills/collie-walky-talky/SKILL.md";
+const synced = (over: Partial<Record<"changed" | "refused" | "skipped", unknown[]>> = {}): string =>
+  JSON.stringify({ changed: [], refused: [], skipped: [], ...over });
+const ONE_INSTALL = synced({ changed: [{ harness: "claude", path: CLAUDE_SKILL, action: "installed" }] });
 
-describe("the skill nudge", () => {
-  test("asks the NEW binary through `current`, and prints one line naming the command", async () => {
-    const h = binaryHarness({ skillCheck: { code: EXIT.STATE } });
+describe("the skill sync after a swap", () => {
+  const ROLLBACK: Omit<ApplyArgs, "handoff"> = { ...BINARY_APPLY, to: "0.9.0", version: "0.9.0", rollback: true };
+  const SWITCH: Omit<ApplyArgs, "handoff"> = { ...BINARY_APPLY, to: "0.9.0", version: "0.9.0", switch: true };
+
+  test("an update runs it in the NEW binary through `current`, within 30 s, and prints its lines", async () => {
+    const h = binaryHarness({ answers: [[SKILL_SYNC, { stdout: ONE_INSTALL }]] });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
-    expect(h.exec.calls).toContain(SKILL_CHECK);
-    expect(h.io.stdout.join("\n")).toContain(SKILL_NUDGE);
-    expect(h.io.stdout.join("\n")).toContain("collie skill install all");
+    expect(h.exec.calls).toContain(SKILL_SYNC);
+    expect(h.exec.timeouts).toContainEqual({ call: SKILL_SYNC, ms: 30_000 });
+    // The child resolves its own root, never this process's (#283).
+    expect(h.exec.overrides).toContainEqual({ call: SKILL_SYNC, env: { COLLIE_PLUGIN_ROOT: null } });
+    expect(h.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+    // The sync replaces the note: no second question, no note.
+    expect(h.exec.calls).not.toContain(SKILL_CHECK);
+    expect(h.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
   });
 
-  test("stays silent when nothing is behind, when the binary is too old to know the verb, or when the spawn throws", async () => {
-    const quiet = binaryHarness();
+  test("a rollback and a switch through the runner run it too, so the agents follow the build down", async () => {
+    for (const a of [ROLLBACK, SWITCH]) {
+      const h = binaryHarness({
+        others: ["0.9.0", "0.8.0"],
+        health: [{ version: "0.9.0" }],
+        answers: [[SKILL_SYNC, { stdout: synced({ changed: [{ harness: "codex", path: "/home/u/.codex/AGENTS.md", action: "updated" }] }) }]],
+      });
+      expect(await runner(h, a)).toBe(EXIT.OK);
+      expect(h.exec.calls).toContain(SKILL_SYNC);
+      expect(h.io.stdout).toContain("updated codex /home/u/.codex/AGENTS.md");
+    }
+  });
+
+  test("the in-place checkout path runs it in the binary `build` just wrote", async () => {
+    const built = posixKey(collieBinary(ROOT, hostFor("linux")));
+    const h = harness({ answers: [...LINKED, ...SHALLOW, [`${built} skill sync --json`, { stdout: ONE_INSTALL }]] });
+    expect(await cmdApplyUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`${built} skill sync --json`);
+    expect(h.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+  });
+
+  test("both terminal rollbacks run it after the flip", async () => {
+    const binary = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0", answers: [[SKILL_SYNC, { stdout: ONE_INSTALL }]] });
+    expect(await cmdUpdate(binary.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(binary.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    expect(binary.exec.calls).toContain(SKILL_SYNC);
+    expect(binary.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+
+    const staged = stagedHarness({
+      versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
+      answers: [[`${CURRENT}/bin/collie skill sync --json`, { stdout: ONE_INSTALL }]],
+    });
+    expect(await cmdUpdate(staged.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(staged.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    expect(staged.exec.calls).toContain(`${CURRENT}/bin/collie skill sync --json`);
+    expect(staged.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+  });
+
+  test("nothing changed prints nothing, and a build without the verb is silence too", async () => {
+    const quiet = binaryHarness({ answers: [[SKILL_SYNC, { stdout: synced({ skipped: [{ harness: "gemini", path: "/x", reason: "not on this machine" }] }) }]] });
     expect(await runner(quiet, BINARY_APPLY)).toBe(EXIT.OK);
-    expect(quiet.exec.calls).toContain(SKILL_CHECK);
-    expect(quiet.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+    expect(quiet.io.stdout).toEqual([`✓ updated to ${NEW}`]);
 
-    const old = binaryHarness({ skillCheck: { found: false, code: 127 } });
-    expect(await runner(old, BINARY_APPLY)).toBe(EXIT.OK);
-    expect(old.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+    // A rollback to a build before the verb: `collie skill sync` prints the general brief and exits 0.
+    const old = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0", answers: [[SKILL_SYNC, { stdout: "# Collie\nThe brief.\n" }]] });
+    expect(await cmdUpdate(old.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(old.io.stdout.join("\n")).not.toContain("The brief");
+    expect(old.io.stdout.join("\n")).not.toContain(SYNC_NOTE);
+  });
 
-    const boom = binaryHarness({ skillCheck: { code: EXIT.STATE } });
+  test("a refusal is a line, not a failure", async () => {
+    const h = binaryHarness({
+      answers: [[SKILL_SYNC, { stdout: synced({ refused: [{ harness: "codex", path: "/home/u/.codex/AGENTS.md", reason: "/home/u/.codex/AGENTS.md is a symlink" }] }) }]],
+    });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.io.stdout).toContain("refused codex /home/u/.codex/AGENTS.md: /home/u/.codex/AGENTS.md is a symlink");
+    expect(h.io.stderr).toEqual([]);
+  });
+
+  test("a failed, timed-out or unstartable sync never fails the update, and says one note", async () => {
+    const failed = binaryHarness({ answers: [[SKILL_SYNC, { code: EXIT.FAIL, stderr: "error: skill sync stopped — EACCES\n" }]] });
+    expect(await runner(failed, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(failed.io.stdout).toContain(
+      "note: skill sync did not run: error: skill sync stopped — EACCES; run `collie skill sync`.",
+    );
+
+    const slow = binaryHarness({ answers: [[SKILL_SYNC, { code: 124 }]] });
+    expect(await runner(slow, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(slow.io.stdout.join("\n")).toContain("skill sync did not run: it took longer than 30 s");
+
+    const boom = binaryHarness();
     const real = boom.deps.exec.capture.bind(boom.deps.exec);
-    boom.deps.exec.capture = (tool, args, timeoutMs) => {
-      if (args.join(" ") === "skill status --check") throw new Error("ENOEXEC: posix_spawn");
-      return real(tool, args, timeoutMs);
+    boom.deps.exec.capture = (tool, args, ...rest) => {
+      if (args.join(" ") === "skill sync --json") throw new Error("ENOEXEC: posix_spawn");
+      return real(tool, args, ...rest);
     };
     expect(await runner(boom, BINARY_APPLY)).toBe(EXIT.OK);
-    expect(boom.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
-    expect(boom.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+    expect(boom.io.stdout).toContain(`✓ updated to ${NEW}`);
+    expect(boom.io.stdout.join("\n")).toContain("skill sync did not run: ENOEXEC: posix_spawn");
     expect(boom.io.stderr).toEqual([]);
   });
 
-  test("never fires on a rollback", async () => {
-    const h = binaryHarness({ others: ["0.9.0"], skillCheck: { code: EXIT.STATE } });
-    await cmdUpdate(h.deps, ["--rollback"]);
-    expect(h.exec.calls.join("\n")).not.toContain("skill status --check");
+  test("COLLIE_SKILL_SYNC=off falls back to the check and the one note", async () => {
+    const h = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" }, skillCheck: { code: EXIT.STATE } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.exec.calls).not.toContain(SKILL_SYNC);
+    expect(h.exec.calls).toContain(SKILL_CHECK);
+    expect(h.io.stdout.join("\n")).toContain(SKILL_NUDGE);
+    expect(h.io.stdout.join("\n")).toContain("collie skill sync");
+
+    const quiet = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" } });
+    expect(await runner(quiet, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(quiet.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+
+    // A terminal rollback never nudged, and with the sync off it still does not.
+    const back = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" }, others: ["0.9.0"], currentSays: "0.9.0", skillCheck: { code: EXIT.STATE } });
+    expect(await cmdUpdate(back.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(back.exec.calls.join("\n")).not.toContain("skill status --check");
+    expect(back.exec.calls.join("\n")).not.toContain("skill sync");
   });
 });
 

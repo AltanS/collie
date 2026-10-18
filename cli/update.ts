@@ -60,6 +60,7 @@ import {
 import { packageCommand } from "./package-command.ts";
 import { herdrActionCommand, type Environment, type EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
+import { parseSyncResult, skillSyncEnabled, syncLines } from "./skill-sync-result.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
 import {
   type BunReadiness,
@@ -1090,6 +1091,8 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
  * binary carries? Asked of the new binary for the reason `nudgeHooks` is — the old build's embedded
  * text is the stale one. Silent unless the answer is `EXIT.STATE`; a skill nobody installed, a binary
  * too old to know the verb and a failed spawn all say nothing.
+ *
+ * Only with `COLLIE_SKILL_SYNC=off` since ADR 0111: by default {@link syncSkill} writes instead.
  */
 function nudgeSkill(deps: UpdateDeps, binary: string): void {
   let r;
@@ -1101,8 +1104,52 @@ function nudgeSkill(deps: UpdateDeps, binary: string): void {
   if (!r.found || r.code !== EXIT.STATE) return;
   deps.io.out(
     "note: this build carries a newer walky talky skill than the one your agents have —" +
-      " run `collie skill install all` to update it.",
+      " run `collie skill sync` to update it.",
   );
+}
+
+/** How long the skill sync may take. It writes a handful of small files; a hang must not hold the update. */
+const SKILL_SYNC_TIMEOUT_MS = 30_000;
+
+/**
+ * THE SKILL FOLLOWS THE UPDATE (ADR 0111). After every successful swap, the NEW binary runs `collie
+ * skill sync --json` through the stable name, for the reason {@link nudgeHooks} asks it: this process
+ * is the old build, and its embedded skill text is the one that may have moved on. The sync installs
+ * the skill into every harness present on this machine, rewrites a stale copy, and leaves out a target
+ * the operator uninstalled. Its lines go where the update's own notes go.
+ *
+ * NOTHING HERE FAILS THE UPDATE. A spawn that throws, a timeout and a non-zero exit each print one
+ * note naming the command to run by hand. A build that does not know the verb (a rollback to a version
+ * before 1.23.0 prints the general brief for `skill sync`) answers with no JSON, and that is silence.
+ *
+ * `COLLIE_SKILL_SYNC=off` keeps the old behaviour: ask `skill status --check` and print the one note.
+ * `nudgeWhenOff` is false on the two terminal rollbacks, which never nudged.
+ */
+function syncSkill(deps: UpdateDeps, binary: string, nudgeWhenOff = true): void {
+  if (!skillSyncEnabled(deps.ctx.env.COLLIE_SKILL_SYNC)) {
+    if (nudgeWhenOff) nudgeSkill(deps, binary);
+    return;
+  }
+  const didNotRun = (reason: string): void => {
+    deps.io.out(`note: skill sync did not run: ${reason}; run \`collie skill sync\`.`);
+  };
+  let r;
+  try {
+    r = deps.exec.capture(binary, ["skill", "sync", "--json"], SKILL_SYNC_TIMEOUT_MS, undefined, ITS_OWN_ROOT);
+  } catch (err) {
+    didNotRun(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  if (!r.found) return didNotRun(`${binary} was not found`);
+  if (r.code === 124) return didNotRun(`it took longer than ${String(SKILL_SYNC_TIMEOUT_MS / 1000)} s`);
+  const result = parseSyncResult(r.stdout);
+  if (r.code !== EXIT.OK) {
+    const said = r.stderr.trim().split("\n").findLast((l) => l.trim() !== "");
+    if (result !== null) for (const line of syncLines(result)) deps.io.out(line);
+    return didNotRun(said ?? `it exited ${String(r.code)}`);
+  }
+  if (result === null) return;
+  for (const line of syncLines(result)) deps.io.out(line);
 }
 
 /**
@@ -1135,7 +1182,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
   deps.io.out("✓ update complete");
   // `build` just wrote this binary from the code we are running, so it is the new list, not ours.
   nudgeHooks(deps, collieBinary(deps.ctx.root, deps.host));
-  nudgeSkill(deps, collieBinary(deps.ctx.root, deps.host));
+  syncSkill(deps, collieBinary(deps.ctx.root, deps.host));
   return EXIT.OK;
 }
 
@@ -2168,6 +2215,8 @@ async function rollbackBinary(deps: UpdateDeps): Promise<number> {
   }
   deps.io.out(`✓ rolled back to ${target}`);
   noteRollback(deps, at);
+  // The build rolled back to carries its own skill text, so the agents follow it down (ADR 0111).
+  syncSkill(deps, collieBinary(layout.currentLink, deps.host), false);
   return EXIT.OK;
 }
 
@@ -2816,6 +2865,7 @@ async function rollbackCheckout(deps: UpdateDeps, layout: BinaryLayout): Promise
   refreshRegistry(deps, layout.currentLink);
   deps.io.out(`✓ rolled back to ${target.version}`);
   noteRollback(deps, at.version);
+  syncSkill(deps, collieBinary(layout.currentLink, deps.host), false);
   return EXIT.OK;
 }
 
@@ -3344,7 +3394,8 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
   releaseLock(deps.files, stateDir);
 
   if (run.state === "done") {
-    // The two names that must follow a flip, and the nudge that must be asked of the NEW binary.
+    // The two names that must follow a flip, and the nudge and the skill sync that must be asked of
+    // the NEW binary.
     if (a.kind === "checkout") {
       if (!underVersions(deps.ctx.root, deps.host)) {
         republishName(deps, deps.host.path.join(layout.versionsDir, a.to), collieBinary(deps.ctx.root, deps.host));
@@ -3354,7 +3405,7 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
     const verb = a.rollback === true ? "rolled back" : a.switch === true ? "went back" : "updated";
     deps.io.out(`✓ ${verb} to ${a.version === "" ? a.to : a.version}`);
     nudgeHooks(deps, collieBinary(layout.currentLink, deps.host));
-    nudgeSkill(deps, collieBinary(layout.currentLink, deps.host));
+    syncSkill(deps, collieBinary(layout.currentLink, deps.host));
     return EXIT.OK;
   }
   if (run.state === "rolled-back") {
