@@ -491,6 +491,21 @@ describe("fixed-column terminal text", () => {
     expect(pre.querySelector("a")!.textContent).toBe("https://example.com");
   });
 
+  it("keeps the underline on the wide Hangul inside a link", () => {
+    const { container } = render(
+      <AnsiOutput text="open https://example.com/커피 now" wrap={false} />,
+    );
+    const link = container.querySelector("a")!;
+    const cells = [...link.querySelectorAll<HTMLElement>('[class~="w-[2ch]"]')];
+
+    expect(link.textContent).toBe("https://example.com/커피");
+    expect(cells.map((cell) => cell.textContent)).toEqual(["커", "피"]);
+    // An underline does not propagate into an inline-block child, so each wide piece draws the
+    // link's decoration itself.
+    expect(link.className).toContain("underline");
+    for (const cell of cells) expect(cell.className).toContain("[text-decoration:inherit]");
+  });
+
   it("keeps wrapping prose free of fixed-width cells", () => {
     const { container } = render(<AnsiOutput text="한글 설명입니다." />);
     expect(container.querySelector('[class~="w-[2ch]"]')).toBeNull();

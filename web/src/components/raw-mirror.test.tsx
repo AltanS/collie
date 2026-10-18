@@ -82,6 +82,19 @@ describe("RawMirror file paths", () => {
     expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=7"]);
   });
 
+  it("keeps the underline on the wide Hangul inside a linked path", () => {
+    const { container } = mirror("open docs/한글.md now", []);
+    const link = container.querySelector("a")!;
+    const cells = [...link.querySelectorAll<HTMLElement>('[class~="w-[2ch]"]')];
+
+    expect(link.textContent).toBe("docs/한글.md");
+    expect(cells.map((cell) => cell.textContent)).toEqual(["한", "글"]);
+    // An underline does not propagate into an inline-block child, so each wide piece draws the
+    // link's decoration itself.
+    expect(link.className).toContain("underline");
+    for (const cell of cells) expect(cell.className).toContain("[text-decoration:inherit]");
+  });
+
   it("a path outside the root stays plain text", () => {
     const { container } = mirror("cat /etc/hosts and ~/.ssh/config", []);
     expect(container.querySelector("a")).toBeNull();

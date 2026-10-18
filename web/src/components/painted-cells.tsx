@@ -17,9 +17,11 @@ import { widePieces } from "@/lib/text-width";
 // The characters stay inside the span, so the text nodes the find/link offsets and a clipboard copy
 // are defined over are unchanged.
 //
-// Every <pre> that mirrors pane rows goes through this: the pane mirror (ansi-output.tsx) and the
-// raw region under a lifted card (raw-mirror.tsx). Both run at `leading-[1.25]`, so both had the
-// step. The status strip and the agents footer render segments on their own and are not covered.
+// Every <pre> that mirrors pane rows goes through this: the pane mirror (ansi-output.tsx)
+// and the raw region under a lifted card (raw-mirror.tsx). Both run at `leading-[1.25]`, so
+// both had the step. A row that keeps its columns goes through `renderWideCells` below,
+// which ends in this function for every run it has nothing to add to. The status strip and
+// the agents footer render segments on their own and are not covered.
 export function renderCells(run: string): ReactNode {
   const pieces = cellPieces(run);
   if (pieces === null) return run;
@@ -34,9 +36,22 @@ export function renderCells(run: string): ReactNode {
   );
 }
 
-// Fixed-column mirrors hold fallback CJK glyphs to two ASCII cells; wrapping prose stays natural.
-const WIDE_CELL_CLASS = "inline-block w-[2ch] text-center";
+// The mirror's monospace stack carries no CJK face, so a double-width character falls
+// back to a font whose advance is not two ASCII cells, and every wall to its right drifts
+// off the column the terminal put it in. `renderWideCells` holds each such character to
+// exactly `2ch`, which is two cells of the monospace face, so the walls line up again.
+//
+// It runs wherever a row keeps its columns: inside a table run, in the pane mirror with
+// wrapping off, and in a lifted card's raw view with wrapping off. It does NOT run in
+// wrapping prose, because an inline-block per ideograph changes how the line breaks, and
+// nothing in prose needs the column back.
+//
+// `inline-block` is also why `[text-decoration:inherit]` is here: an underline does not
+// propagate into an inline-block child, so a link such as `docs/한글.md` would show its
+// Hangul bare. Each wide piece draws the decoration of the link around it.
+const WIDE_CELL_CLASS = "inline-block w-[2ch] text-center [text-decoration:inherit]";
 
+/** `renderCells`, with each double-width character held to two cells. */
 export function renderWideCells(run: string): ReactNode {
   // Keep ASCII-only polling rows on their allocation-free path.
   if (/^[\x20-\x7e]*$/.test(run)) return renderCells(run);
