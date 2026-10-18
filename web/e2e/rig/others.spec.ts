@@ -104,7 +104,10 @@ const PLANS = {
       prepare: () => undefined,
       took: (project) => existsSync(join(project, "phone-said-yes.txt")),
     },
-    question: { prompt: 'Use the ask tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do nothing else.', option: "Cherry" },
+    // omp draws an option's `preview` behind a rail the Ask reader declines (omp/ASK_NOTES.md), so the
+    // phone shows the unread-dialog card. The field is optional, yet Haiku filled it on 2026-10-18:
+    // the prompt rules it out, so the case tests the card and not the model's mood.
+    question: { prompt: 'Use the ask tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Give no option a preview. Do nothing else.', option: "Cherry" },
   },
 } satisfies Record<"pi" | "omp", Plan>;
 
