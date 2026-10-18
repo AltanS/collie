@@ -117,7 +117,6 @@ const BOXED = /^│ ([\s\S]*?)\s*│$/;
 const MIN_WINDOW = 5;
 const MAX_WINDOW = 60;
 
-
 /** How far above the footer the title may sit: the window bound plus the fixed rows. */
 const TITLE_SCAN_WINDOW = MAX_WINDOW + 12;
 

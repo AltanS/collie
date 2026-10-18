@@ -99,7 +99,6 @@ export interface ResumePickerRegion {
   startLine: number;
 }
 
-
 /** How far above the footer the title may sit. A tall pane is a few dozen rows; the bound keeps
  *  scrollback out of the search. */
 const TITLE_SCAN_WINDOW = 120;

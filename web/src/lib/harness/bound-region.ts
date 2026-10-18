@@ -6,14 +6,31 @@
  *  Mirrored rather than imported, as everything else bridge-sized is in `web/`. */
 export const MAX_REGION_CHARS = 32_000;
 
-// Every control (C0, DEL, C1), format character (the soft hyphen, the Arabic letter mark, zero-width
-// and directional marks, the bidi embeddings, overrides and isolates, the invisible operators, the
-// byte-order mark, the tag characters), the line and paragraph separators, and every other default
-// ignorable code point, such as the variation selectors. Written as Unicode properties, so the pattern
-// holds no raw control or combining character.
-const HIDDEN_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
-
-/** Whether a row holds a character that changes how it reads without being seen. */
+/** Whether a row holds a character that changes how it reads without being seen: the soft hyphen, the
+ *  Arabic letter mark, zero-width and directional marks, the line and paragraph separators, the bidi
+ *  embeddings, overrides and isolates, the invisible operators, variation selectors, the byte-order mark
+ *  and the tag characters, plus every C0 or C1 control. Found by code point, so no pattern holds a raw
+ *  control or combining character. */
 export function hasHiddenCharacter(row: string): boolean {
-  return HIDDEN_CHARACTER.test(row);
+  for (const ch of row) {
+    const code = ch.codePointAt(0)!;
+    if (
+      code < 0x20 ||
+      (code >= 0x7f && code <= 0x9f) ||
+      code === 0xad ||
+      code === 0x61c ||
+      code === 0x180e ||
+      (code >= 0x200b && code <= 0x200f) ||
+      code === 0x2028 ||
+      code === 0x2029 ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2060 && code <= 0x206f) ||
+      (code >= 0xfe00 && code <= 0xfe0f) ||
+      code === 0xfeff ||
+      (code >= 0xe0000 && code <= 0xe007f)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }

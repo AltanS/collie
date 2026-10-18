@@ -154,7 +154,6 @@ const OTHER_LABEL = "Other (type your own)";
 /** The mark a saved note leaves after its row's label (`noteMarker` in ask-dialog.ts). */
 const NOTE_MARK = /^(.*\S) {2}✎ note$/;
 
-
 /** omp caps the question at four rows before it offers `ctrl+o expand` (`MAX_HEADER_ROWS`). */
 const MAX_QUESTION_ROWS = 4;
 
