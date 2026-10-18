@@ -87,6 +87,17 @@ export interface WalkyTarget {
   state: string;
 }
 
+/**
+ * The `state` a lead's `who` gives each pane of a member it cannot reach right now: the member keeps
+ * its last panes in the list, but a message to them does not arrive now (bridge/walky/crew.ts).
+ */
+export const WALKY_UNREACHABLE = "unreachable";
+
+/** Whether a message sent now could reach this target: every target but an unreachable member's. */
+export function isReachable(target: Pick<WalkyTarget, "state">): boolean {
+  return target.state !== WALKY_UNREACHABLE;
+}
+
 /** A shell pane the bridge never sends a message to (`GET /api/walky/who`, `skipped`). */
 export interface WalkySkipped {
   address: string;

@@ -10,6 +10,7 @@ import { fetchWalkyWho } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
+  isReachable,
   stateWord,
   verifiedWord,
   WALKY_BODY_MAX,
@@ -41,8 +42,8 @@ import {
 const ALL = "all";
 
 /** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else the address. */
-function labelOf(reachable: readonly WalkyTarget[] | null, address: string): string {
-  const known = reachable?.find((r) => r.address === address);
+function labelOf(listed: readonly WalkyTarget[] | null, address: string): string {
+  const known = listed?.find((r) => r.address === address);
   return known === undefined ? address : `${known.label} (${address})`;
 }
 
@@ -116,7 +117,7 @@ export function WalkyBroadcastSheet({
   const [target, setTarget] = useState(ALL);
   const [receipts, setReceipts] = useState<WalkyReceipt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reachable, setReachable] = useState<WalkyTarget[] | null>(null);
+  const [listed, setListed] = useState<WalkyTarget[] | null>(null);
   const [skipped, setSkipped] = useState<WalkySkipped[]>([]);
   const [refusals, setRefusals] = useState<WalkyRefusals | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -127,19 +128,19 @@ export function WalkyBroadcastSheet({
     if (!open) return;
     setReceipts(null);
     setError(null);
-    setReachable(null);
+    setListed(null);
     setSkipped([]);
     setRefusals(null);
     setConfirming(false);
     const abort = new AbortController();
     fetchWalkyWho(abort.signal).then(
       (who) => {
-        setReachable(who.targets);
+        setListed(who.targets);
         setSkipped(who.skipped);
         setRefusals(who.refusals);
         return who;
       },
-      () => setReachable(null),
+      () => setListed(null),
     );
     return () => abort.abort();
   }, [open]);
@@ -150,7 +151,9 @@ export function WalkyBroadcastSheet({
   }, [confirming]);
 
   const covers = (memberId: string) => target === ALL || memberId === target;
-  const covered = reachable === null ? null : reachable.filter((r) => covers(r.memberId));
+  // The count and the question name only the panes a message can reach now: a lead keeps an
+  // unreachable member's last panes in `who`, and those do not take a message until it is back.
+  const covered = listed === null ? null : listed.filter((r) => covers(r.memberId) && isReachable(r));
   const reach = covered === null ? null : covered.length;
   const coveredSkipped = skipped.filter((s) => covers(s.memberId));
   const refused = refusalList(refusals);
@@ -256,7 +259,7 @@ export function WalkyBroadcastSheet({
                 {receipts.map((r, i) => (
                   <li key={`${r.target}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
                     {/* The target's own label (repo#branch) when the who list knows it, then its address. */}
-                    <span className="min-w-0 truncate font-medium">{labelOf(reachable, r.target)}</span>
+                    <span className="min-w-0 truncate font-medium">{labelOf(listed, r.target)}</span>
                     <span className={cn("text-xs first-letter:uppercase", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
                       {`${stateWord(r)} · ${verifiedWord(r)}`}
                     </span>

@@ -178,6 +178,19 @@ describe("Message all agents", () => {
       expect(within(dialog).queryByText(/^Message \d+ agents?/)).toBeNull();
     });
 
+    it("leaves out the panes of a machine the lead cannot reach right now, from the count and the question", async () => {
+      // The lead's who keeps an unreachable member's last panes, each with the state `unreachable`.
+      const targets = WHO_TARGETS.map((target) => (target.memberId === "workshop" ? { ...target, state: "unreachable" } : target));
+      server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets })));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      expect(await within(dialog).findByText("Agents reached: 1")).toBeInTheDocument();
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 1 agent on 1 machine?")).toBeInTheDocument();
+    });
+
     it("says the count is not known when the who list could not be read, and still asks", async () => {
       server.use(http.get("/api/walky/who", () => new HttpResponse(null, { status: 500 })));
       const user = userEvent.setup();
