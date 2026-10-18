@@ -40,9 +40,10 @@ import type { UpdateCrewMember, UpdatePeerLeg, UpdatePeerLegState, UpdateRun } f
 //
 // ── A ROLLBACK IS THE SAME RUN, GOING BACK (M60 spec 01) ────────────────────
 // The phone's Roll back is `collie update --rollback` through the same runner, so it walks the same
-// steps on the same record, which carries `action: "rollback"`. Only the words change, and two facts:
-// the members stay where they are (a rollback levels nobody), and this phone's own step is done only
-// when it runs the OLDER app, so "at or above the target" cannot end it.
+// steps on the same record, which carries `action: "rollback"` ("Go back now" carries `switch` and
+// keeps the update's words). Only the words change, and two facts:
+// the members follow their lead down after it (ADR 0110, since 1.23.0), and this phone's own step is
+// done only when it runs the OLDER app, so "at or above the target" cannot end it.
 //
 // ── DISMISSIBILITY IS STILL ONE SENTENCE ────────────────────────────────────
 // The app is locked while a run THIS DEVICE STARTED is in flight and the operator has not taken the
@@ -336,6 +337,8 @@ interface MemberContext {
   readonly target: string | null;
   readonly phase: UpdatePhase;
   readonly skipped: ReadonlySet<string>;
+  /** The run goes DOWN (M60 spec 01): a member is level only ON the target, never merely above it. */
+  readonly down?: boolean;
 }
 
 /** Why a waiting member is not moving yet, when the lead knows (ADR 0062). */
@@ -419,7 +422,11 @@ function memberWord(state: UpdatePeerLegState): string {
 function censusRow(member: UpdateCrewMember, ctx: MemberContext): UpdateScreenRow {
   const base = { key: `peer:${member.name}`, name: member.name, lead: false, phone: false, progress: null } as const;
   const target = ctx.target;
-  if (target !== null && member.version !== null && !memberBehind(member, target)) {
+  const level =
+    target !== null &&
+    member.version !== null &&
+    (ctx.down === true ? member.version.replace(/^v/, "") === target.replace(/^v/, "") : !memberBehind(member, target));
+  if (level && member.version !== null) {
     return { ...base, status: "ok", dim: false, word: t("updateScreen.row.on", { version: member.version }), versions: member.version, detail: null };
   }
   if (ctx.skipped.has(member.name)) {
@@ -696,6 +703,9 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
   const target = run.to ?? claim?.target ?? null;
   const from = run.from;
   const rollback = run.action === "rollback";
+  // A run that goes DOWN (a rollback, or a switch back to Stable) leaves this phone's app ABOVE the
+  // target until it reloads, so its step is done only on the very version (M60 spec 01).
+  const down = rollback || run.action === "switch";
   const skipped = new Set(claim?.skipped ?? []);
   const { legs, settledAt } = leadLegs(run, input.crewRun);
   // A NEWER RUN THAN THE ONE THIS DEVICE ASKED FOR is somebody else's: it gets the strip, never the lock.
@@ -711,7 +721,7 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
   if (phase === "done") {
     if (membersMoving) phase = "members";
     else if (mine) {
-      phone = phoneOf(input, target, Math.max(run.updatedAt, settledAt ?? 0), rollback);
+      phone = phoneOf(input, target, Math.max(run.updatedAt, settledAt ?? 0), down);
       if (phone.kind !== "done" && phone.kind !== "kept") phase = "phone";
     }
   } else if (phaseFailed(phase)) {
@@ -719,7 +729,7 @@ function leadView(input: UpdateScreenInput, run: UpdateRun): UpdateScreenView {
   }
   if (phase === "done" && phone.kind === "waiting") phone = { kind: "done" };
 
-  const ctx: MemberContext = { input, lead, target, phase, skipped };
+  const ctx: MemberContext = { input, lead, target, phase, skipped, down };
   // A FAILED RUN NEVER REACHED a member still waiting its turn: that row says "not touched".
   const members = phaseFailed(phase)
     ? memberRows(legs, ctx).map((row) => (row.status === "queued" ? untouched(row) : row))
@@ -929,7 +939,7 @@ function rollbackCopy(phase: UpdatePhase, lead: string, version: string, from: s
       return {
         heading: t("updateScreen.rollback.doneHeading"),
         subtitle: hasMembers
-          ? `${t("updateScreen.rollback.done", { lead, version })} ${t("updateScreen.rollback.membersStay")}`
+          ? `${t("updateScreen.rollback.done", { lead, version })} ${t("updateScreen.rollback.membersFollow")}`
           : t("updateScreen.rollback.done", { lead, version }),
         note: null,
       };
@@ -1152,16 +1162,17 @@ function readyView(input: UpdateScreenInput, ask: UpdateAsk): UpdateScreenView {
   let rows: UpdateScreenRow[];
   let heading: string;
   let subtitle: string;
-  if (ask.kind === "rollback") {
-    // A ROLLBACK MOVES THIS MACHINE AND THIS PHONE ONLY (M60 spec 01). The members keep the version
-    // they run: the crew never steps down behind its lead (ADR 0016).
+  if (ask.kind === "rollback" || ask.kind === "back") {
+    // A WAY DOWN: a rollback to the kept build, or "Go back now" to Stable (M60 spec 01). The members
+    // follow their lead down on both, after it (ADR 0110), so each is queued like an update's.
+    const back = ask.kind === "back";
     rows = [
-      { ...base, key: "lead", name: lead, lead: true, status: "queued", word: t("updateScreen.ready.rollbackLead"), versions: versionsOf(ask.current, ask.version), detail: t("updateScreen.ready.leadNote") },
-      ...members.map((m): UpdateScreenRow => ({ ...base, key: `peer:${m.name}`, name: m.name, status: "ok", word: t("updateScreen.ready.rollbackMember"), versions: m.version, detail: null })),
+      { ...base, key: "lead", name: lead, lead: true, status: "queued", word: back ? t("updateScreen.ready.backLead") : t("updateScreen.ready.rollbackLead"), versions: versionsOf(ask.current, ask.version), detail: t("updateScreen.ready.leadNote") },
+      ...members.map((m): UpdateScreenRow => ({ ...base, key: `peer:${m.name}`, name: m.name, status: "queued", word: t("updateScreen.ready.memberBack"), versions: versionsOf(m.version, ask.version), detail: null })),
       { ...base, key: "phone", name: t("updateScreen.phone"), phone: true, status: "queued", word: t("updateScreen.ready.phone"), versions: versionsOf(version, ask.version), detail: t("updateScreen.ready.rollbackPhoneNote") },
     ];
-    heading = t("updateScreen.ready.rollbackHeading", { version: ask.version });
-    subtitle = t("updateScreen.ready.rollbackSubtitle", { lead });
+    heading = back ? t("updateScreen.ready.backHeading", { version: ask.version }) : t("updateScreen.ready.rollbackHeading", { version: ask.version });
+    subtitle = back ? t("updateScreen.ready.backSubtitle", { lead }) : t("updateScreen.ready.rollbackSubtitle", { lead });
   } else if (ask.peersOnly) {
     rows = [
       { ...base, key: "lead", name: lead, lead: true, status: "ok", word: t("updateScreen.row.already", { version: ask.current }), versions: ask.current, detail: null },

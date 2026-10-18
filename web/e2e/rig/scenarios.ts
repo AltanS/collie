@@ -27,6 +27,7 @@ export const SCENARIOS = [
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },
   { id: "walky-crew-agents", title: "13 crew: lead agent to member agent and back", only: ["claude"], leg: "crew" },
   { id: "walky-crew-unreachable", title: "14 crew: an unreachable machine is left out", only: ["claude"], leg: "crew" },
+  { id: "crew-release-line", title: "15 crew: the lead's release line is the crew's", only: ["claude"], leg: "crew" },
 ] as const;
 export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 

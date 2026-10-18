@@ -1,4 +1,4 @@
-// The crew leg's global teardown: the crew table (cases 12 to 14), then `rig.ts down --crew`.
+// The crew leg's global teardown: the crew table (cases 12 to 15), then `rig.ts down --crew`.
 import "./crew-env";
 
 import { finishRun } from "./global-teardown";

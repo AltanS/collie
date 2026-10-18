@@ -240,6 +240,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The answer is the rollback run itself, followed in update mode through the same steps as an update (M60 spec 01), or a refusal (no previous build, a run already going) the operator reads on the confirm screen that asked. Neither survives a floating toast.",
   },
+  setReleaseLine: {
+    channel: "inline",
+    why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",
+  },
+  startGoBack: {
+    channel: "inline",
+    why: "Like startRollback: the answer is the run itself, followed in update mode, or a refusal (no Stable to go back to, a run already going) read on the confirm screen that asked (M60 spec 01).",
+  },
   snoozeUpdate: {
     channel: "silent",
     why: "\"Remind me next digest\" is answered by the card's own line changing to say so, in the same tap. A second acknowledgement of a dismissal is noise about noise.",

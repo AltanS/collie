@@ -90,7 +90,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 ## The cases
 
 Each harness runs the same five cases. The walky talky cases (6 to 14) run on the harnesses the last column names.
-Cases 12 to 14 run on the crew leg only (below).
+Cases 12 to 15 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
 | --- | --- | --- | --- |
@@ -108,6 +108,7 @@ Cases 12 to 14 run on the crew leg only (below).
 | 12 | Crew leg. "Message all agents" on the lead's Crew page: the sheet counts 2 agents on 2 machines, Send asks "Message 2 agents on 2 machines?", and Send there posts. Both panes get the header and body, the lead's `collie walky status` shows both receipts `delivered` (the member's through its sweep report), the member's pane opened on the phone through the lead (`?h=`) shows the header line, and both agents answer | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 13 | Crew leg. Claude on the lead runs `collie walky who` and sends to pi's address as `who` printed it, with its pane instance token (`#` and four characters). pi's pane gets the one-line nudge, `collie walky inbox <id>` shows the body, pi answers with `collie walky reply`, and Claude's pane shows the reply nudge. The lead's `collie walky status <id>` says `delivered` within 60 s (the member's report reached the lead), and the member's `collie walky status <reply id>` says `delivered` within 60 s (the lead pushed the outcome back to the sender's machine) | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 14 | Crew leg. The member's bridge stops: the lead's Crew page names it unreachable, the sheet counts 1 agent on 1 machine, the bridge takes the message for the lead's pane only and answers `rig-member/all` with a refused receipt ("host rig-member is unreachable"), which the sheet draws as a "not sent" row. The member then starts again and is reachable before the case ends | claude (lead) | `walky-crew.spec.ts` |
+| 15 | Crew leg. Release lines (M60 spec 01). On the lead's Updates page, the Release line control reads Stable; a tap on Edge shows the receipt, and `GET /api/update/line` on the lead says `edge` with nothing installed (no run record moves). The Crew page then says the members follow the lead's line, Edge. A tap on Stable puts it back, with its receipt. The member's own follow (an Edge build up, a rollback down) needs a published Edge tag behind a release mirror, which this rig does not serve; the unit suites in `bridge/crew/follow.test.ts` carry that half | claude (lead) | `walky-crew.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
@@ -120,7 +121,7 @@ settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
 
 ## The crew leg
 
-A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14)
+A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14), and the release-line case (15)
 against two machines on this one host:
 
 - **The lead** is the solo rig: Herdr session `collie-rig`, its attached client, and a bridge on a
@@ -238,7 +239,7 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   the send and the reply nudge of case 8, the broadcast) and 2 on omp (case 7 and the broadcast). Their "Load older" history is
   one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
-- The crew leg (cases 12 to 14) adds 4 Claude turns and 2 pi turns, and about 1 minute plus the rig's
+- The crew leg (cases 12 to 15) adds 4 Claude turns and 2 pi turns, and about 1 minute plus the rig's
   start. A nightly run is therefore about 6 minutes, 16 Claude turns, 11 pi turns and 7 omp turns.
 - Time: about 5 minutes for all three harnesses, about 2 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.
