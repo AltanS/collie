@@ -104,13 +104,15 @@ release. 1.14.2 was cut this way on 2026-09-28.
    the only commit allowed to touch it, and `scripts/check-flake-lock.sh` refuses the others.
    Leaving it alone is the ordinary case; a release does not owe the lock a bump.
 6. **Run `scripts/check-version.sh`** — it must print `✓`.
-7. **Run `make win-rehearse LOCAL=collie` from the workspace root before the tag.** Windows is a
-   supported host ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md)), and this rehearsal
-   installs, updates and rolls back a Windows build on the test VM, which no CI job can do. It
-   resets the VM's disk and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit
-   the release first. Read its table: a failed step holds the tag, and so does an unavailable VM.
-   The `windows.yml` run on the release commit must be green as well. Then run the browser leg
-   (step 8), then tag and push (the paragraph after it).
+7. **For a minor or major release, run `make win-rehearse LOCAL=collie` from the workspace root
+   before the tag.** Windows is a supported host
+   ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md)), and this rehearsal installs, updates
+   and rolls back a Windows build on the test VM, which no CI job can do. It resets the VM's disk
+   and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit the release first.
+   Read its table: a failed step holds the tag, and so does an unavailable VM. **A patch release
+   skips the rehearsal** (Altan, 2026-10-18). Every release, patch included, still needs a green
+   `windows.yml` run on the release commit. Then run the browser leg (step 8), then tag and push
+   (the paragraph after it).
 
    A missing Windows zip stops the release from the first of two moments: once an earlier stable
    release (not a draft, not a prerelease) has carried one, or on 2026-11-15
