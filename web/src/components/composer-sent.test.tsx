@@ -41,7 +41,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     text: "$ ",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     ...overrides,
@@ -246,7 +246,7 @@ describe("Composer: the suggestion strip", () => {
 
     it("with the switch off in Settings, and then reads nothing", async () => {
       const asked = serveSent(FOLDER, MACHINE);
-      const props = { prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system" as const, rawTerminal: false, tapToFocus: true, expandClippedReply: true, sentSuggestions: false } };
+      const props = { prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system" as const, rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false, sentSuggestions: false } };
       renderComposer(props);
       await userEvent.click(box());
       expect(stripState()).toBe("absent");
