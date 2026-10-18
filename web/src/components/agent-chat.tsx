@@ -3132,8 +3132,9 @@ export function AgentChat({
           // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
           // program has no prompt cache to warn about (M56 spec 14).
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
-          // The pane's walky talky messages (M62), a read row with the others.
-          onMessages={agent ? () => setDrawer("messages") : undefined}
+          // The pane's walky talky messages (M62), a read row with the others. The lead's own panes
+          // only: it reads no member's list in 1.23.0, so the sheet there could only say something untrue.
+          onMessages={agent && isLead(scope) ? () => setDrawer("messages") : undefined}
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
@@ -3154,11 +3155,11 @@ export function AgentChat({
         />
         {/* The pane's walky talky messages (M62). Reply hands the sender to the composer, which sends through
             the bridge's walky route with `replyTo`; the sheet itself sends nothing. A reply is a write, so a
-            read-only device, a saved copy and a quiet machine get the list without the button. */}
+            read-only device, a saved copy, a quiet machine and a pane that is gone get the list without the button. */}
         <WalkySheet
           open={drawer === "messages"}
           onClose={closeDrawer}
-          canReply={!readOnly && !savedCopyWrites && hostBlock === undefined}
+          canReply={!readOnly && !savedCopyWrites && hostBlock === undefined && !gone}
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;
