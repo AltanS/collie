@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
-import { fixtureKiroChat, fixtureKiroHistory, fixtureKiroSnapshot, KIRO_PANE_ID } from "@/test/kiro-fixtures";
+import { fixtureKiroChat, fixtureKiroHistory, fixtureKiroSnapshot, KIRO_PANE_ID } from "@/test/handlers";
 import { installApiStub, installPaneWorld, paneCapture, pinLocale, type PaneStep, type PaneWorld } from "./fixtures/api";
 
 // Real installed-CLI captures (kiro/APPROVAL_NOTES.md) drive the built UI, over the saved-session
