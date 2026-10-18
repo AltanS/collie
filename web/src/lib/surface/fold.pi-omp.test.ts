@@ -97,3 +97,85 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     }
   });
 });
+
+describe("omp's default band composer under the nerd preset (omp 18.12.1, issue 505)", () => {
+  // The band draws the status line as the top row with no `╭──` edge. Under the nerd preset it opens on
+  // the powerline cap U+E0B6 and the pi glyph U+F0D57, and closes its segments with U+E0B0 where the
+  // unicode preset draws `π` and `▶`, so before 505 no frame was found and every send was refused.
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-12-nerd-band-draft--w130.txt", "please check the build"],
+    ["omp--v18-12-nerd-band-draft--w80.txt", "please check the build"],
+    ["omp--v18-12-nerd-band-two-lines--w130.txt", "please check the build and report back"],
+    ["omp--v18-12-nerd-band-two-lines--w80.txt", "please check the build and report back"],
+    [
+      "omp--v18-12-nerd-band-wrapped--w130.txt",
+      "the quick brown fox jumps over the lazy dog while the band composer wraps this long draft across more than one row of the terminal so collie has to fold it back together",
+    ],
+    [
+      "omp--v18-12-nerd-band-wrapped--w80.txt",
+      "the quick brown fox jumps over the lazy dog while the band composer wraps this long draft across more than one row of the terminal so collie has to fold it back together",
+    ],
+  ];
+
+  for (const name of [
+    "omp--v18-12-nerd-band-idle--w130.txt",
+    "omp--v18-12-nerd-band-idle--w80.txt",
+    "omp--v18-12-nerd-band-done--w130.txt",
+    "omp--v18-12-nerd-band-done--w80.txt",
+    "omp--v18-12-band-idle--w130.txt",
+  ]) {
+    it(`${name}: reads an empty box, free`, () => {
+      const read = own(name);
+      expect(read.frame).not.toBeNull();
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    });
+  }
+
+  // The widened top and rows patterns must not read a transcript line as the band. Each decoy takes the
+  // place of the band's top row in a real capture: a powerline glyph with no pi glyph or spinner after it,
+  // a closer with no `─` run, a row indented past the top anchor's column, and a closer in running prose.
+  const BAND = "\u{E0B6} \u{F0D57} \u{E0B1} Haiku 4.5 \u{E0B1} project \u{E0B0}\u2500\u2500\u25004%\u2500\u2500\u2500\u2500200K\u2500";
+  const DECOYS: readonly [string, string][] = [
+    ["a cap and prose, no pi glyph or spinner", "\u{E0B6} the build is green \u{E0B0}\u2500\u2500\u2500 done"],
+    ["a pi glyph and a closer with no rule run", "\u{E0B6} \u{F0D57} notes \u{E0B0} done"],
+    ["a banded row indented past the anchor column", "    \u{F0D57} notes \u{E0B0}\u2500\u2500\u2500 done"],
+    ["a closer inside a sentence", "see the \u{E0B0}\u2500\u2500\u2500 glyph in the status line"],
+  ];
+
+  it("a band row put back over the capture's top row is found (the control for the decoys)", () => {
+    const name = "omp--v18-12-nerd-band-idle--w130.txt";
+    const rows = [...fixtureRows(name)];
+    rows[own(name).frame!.top] = { segments: [{ text: BAND, style: {}, muted: false }] };
+    expect(findInputFrame(rows, idleFor("omp")!)).not.toBeNull();
+  });
+
+  for (const [what, line] of DECOYS) {
+    it(`${what} is no band top row`, () => {
+      const name = "omp--v18-12-nerd-band-idle--w130.txt";
+      const rows = [...fixtureRows(name)];
+      rows[own(name).frame!.top] = { segments: [{ text: line, style: {}, muted: false }] };
+      expect(findInputFrame(rows, idleFor("omp")!)).toBeNull();
+    });
+  }
+
+  for (const [name, draft] of DRAFTS) {
+    it(`${name}: reads the draft, the ghost word left out`, () => {
+      const read = own(name);
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(read.frame!.interior.text.replace(/\s+/gu, " ").trim()).toBe(draft);
+    });
+  }
+
+  for (const name of [
+    "omp--v18-12-nerd-band-running--w130.txt",
+    "omp--v18-12-nerd-band-running--w80.txt",
+    "omp--v18-12-nerd-band-running-minute--w130.txt",
+  ]) {
+    it(`${name}: the spinner in the band reads as a running turn`, () => {
+      const read = own(name);
+      expect(read.frame).not.toBeNull();
+      expect(read.surface.turn).toBe("running");
+      expect(isFree(read.surface)).toBe(false);
+    });
+  }
+});

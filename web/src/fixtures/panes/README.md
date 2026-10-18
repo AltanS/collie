@@ -2502,3 +2502,30 @@ Nerd Font glyph, so the box's top edge (`╭── ⠋ 13s …`, `1m` past a min
 | `omp--v18-11-nerd-running-tool-minute--w130.txt`, `--w80.txt` | The same turn past a minute: the top edge reads `⠋ 1m`. Labelled `running` |
 | `omp--v18-11-nerd-ghost-word--w130.txt`, `--w80.txt` | The box holds `please push` with the ghost `ed` after it. Labelled `draft` |
 | `omp--v18-11-ghost-word--w130.txt` | The same with the `unicode` preset. Labelled `draft` |
+
+## omp 18.12 band composer, nerd preset (captured 2026-10-18, oh-my-pi `omp` v18.12.1, scratch tmux, issue 505)
+
+Read with `tmux capture-pane -p -e` from a scratch tmux server on its own socket. omp ran stock
+(`--no-extensions`) under `env -i` with a scratch `HOME`, in a fresh `git init` sandbox at
+`/tmp/collie-band/project`, with `PI_CODING_AGENT_DIR` on a scratch folder whose `config.yml` set only
+`setupVersion`, `composer.shape: band` (omp's default shape) and the `nerd` symbol preset, or no preset for the
+`unicode` control. The running captures took one model turn (`anthropic/claude-haiku-4-5`, a bash call to
+`sleep 75`). The width is in the name (`--w130`, `--w80`). No home path, host or account appears.
+
+The band draws the status line as the composer's top row, with no `╭──` edge, and the prompt row `╰─` under it.
+Under the `unicode` preset that row is ` π > … ▶─4%───…200K─`, which the profile's top pattern already read.
+Under the `nerd` preset it opens on the powerline cap U+E0B6 and the pi glyph U+F0D57, separates segments with
+U+E0B1 and closes them with U+E0B0 before the context meter, so no `π` and no `▶`: the frame was never found and
+every send was refused `unconfirmed` ("Collie cannot read this screen"). A running turn puts the spinner and
+its time where the pi glyph sits (`U+E0B6 ⠏ 14s U+E0B1 …`).
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-12-nerd-band-idle--w130.txt`, `--w80.txt` | A fresh session, the empty `╰─` row under the band. Labelled `idle` |
+| `omp--v18-12-band-idle--w130.txt` | The same with the `unicode` preset, the shape the profile already read. Labelled `idle` |
+| `omp--v18-12-nerd-band-draft--w130.txt`, `--w80.txt` | The box holds `please check the build`. Labelled `draft` |
+| `omp--v18-12-nerd-band-two-lines--w130.txt`, `--w80.txt` | A two-line draft, the second line `and report back` with omp's ghost `end` after it. Labelled `draft` |
+| `omp--v18-12-nerd-band-wrapped--w130.txt`, `--w80.txt` | A 169-character line wrapped over two or three rows. Labelled `draft` |
+| `omp--v18-12-nerd-band-running--w130.txt`, `--w80.txt` | A bash call runs: the band reads `⠋ 14s` where the pi glyph sits. Labelled `running` |
+| `omp--v18-12-nerd-band-running-minute--w130.txt` | The same turn past a minute: `⠼ 1m`. Labelled `running` |
+| `omp--v18-12-nerd-band-done--w130.txt`, `--w80.txt` | The turn ended (`Done.`), the empty box under the band: the follow-up send's screen. Labelled `idle` |

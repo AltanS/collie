@@ -3031,6 +3031,76 @@
    "version": "18.11",
    "state": "popup"
   },
+  "omp--v18-12-band-idle--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "idle"
+  },
+  "omp--v18-12-nerd-band-done--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "idle"
+  },
+  "omp--v18-12-nerd-band-done--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "idle"
+  },
+  "omp--v18-12-nerd-band-draft--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-nerd-band-draft--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-nerd-band-idle--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "idle"
+  },
+  "omp--v18-12-nerd-band-idle--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "idle"
+  },
+  "omp--v18-12-nerd-band-running--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "running"
+  },
+  "omp--v18-12-nerd-band-running--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "running"
+  },
+  "omp--v18-12-nerd-band-running-minute--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "running"
+  },
+  "omp--v18-12-nerd-band-two-lines--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-nerd-band-two-lines--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-nerd-band-wrapped--w130.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-nerd-band-wrapped--w80.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
   "omp--v18-4-approval-bash-moved.txt": {
    "harness": "omp",
    "version": "18.4",
