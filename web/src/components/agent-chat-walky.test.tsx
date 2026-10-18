@@ -15,6 +15,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
 
 import { fixtureAgents, fixtureWalkyAgent, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
+import { server } from "@/test/msw";
 import type { AgentView } from "@/lib/types";
 import type { WalkyRow } from "@/lib/walky";
 import { AgentChat } from "./agent-chat";
@@ -66,13 +67,45 @@ describe("the pane's Messages row and sheet", () => {
     expect(await screen.findByRole("button", { name: "Reply to collie-workspace#fix-465" })).toBeInTheDocument();
   });
 
-  it("offers no Messages row on a pane on a crew member: the lead cannot read that member's list in 1.23.0", async () => {
+  it("offers the row on a pane on a crew member too, and its Reply goes to the lead's route by the sender's address", async () => {
+    // The lead forwards the member's own list (CREW_PROTOCOL.md §21), and a reply carries no host: the
+    // address names the machine, and the lead routes it there.
     const user = userEvent.setup();
     const host = "workshop";
-    renderPane({ scope: { host }, agent: { ...agent, host } });
-    await user.click(screen.getByRole("button", { name: "Pane actions" }));
-    expect(await screen.findByRole("button", { name: "Find in output" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Messages" })).toBeNull();
+    const row = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, memberId: host, address: `${host}/w2:p4#m7q2` } };
+    const urls: string[] = [];
+    const listen = ({ request }: { request: Request }) => {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/walky") urls.push(request.url);
+    };
+    server.events.on("request:start", listen);
+    try {
+      renderPane({ scope: { host }, agent: { ...agent, host } }, [row]);
+      await openMessages(user);
+      await user.click(await screen.findByRole("button", { name: "Reply to collie-workspace#fix-465" }));
+      await user.type(await screen.findByPlaceholderText(/type a reply/i), "Seen it");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+    } finally {
+      server.events.removeListener("request:start", listen);
+    }
+    expect(recordedWalkyPosts()[0]).toMatchObject({ to: `${host}/w2:p4#m7q2`, replyTo: row.id, body: "Seen it" });
+    expect(urls).toHaveLength(1);
+    expect(new URL(urls[0]!).search).toBe("");
+  });
+
+  it("shows a member pane's sheet as unavailable when its list could not be read", async () => {
+    const user = userEvent.setup();
+    const host = "workshop";
+    function Unread() {
+      return (
+        <WalkyLogProvider rows={null} reads={2}>
+          <AgentChat paneId={agent.paneId} agents={[{ ...agent, host }]} shellPanes={[]} tabs={[]} text={paneTextWithDraft("out")} onBack={vi.fn()} onSelect={vi.fn()} scope={{ host }} agent={{ ...agent, host }} />
+        </WalkyLogProvider>
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: withHeaderHost(<Unread />) }])} />);
+    await openMessages(user);
+    expect(await screen.findByText("This machine does not keep messages yet.")).toBeInTheDocument();
   });
 
   it("sends a Reply to the sender's address as it stands, token included", async () => {

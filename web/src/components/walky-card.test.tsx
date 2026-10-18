@@ -76,6 +76,20 @@ describe("a walky talky turn with its id in the log", () => {
     expect(within(card).getByText("Tests are green on fix-465. You can merge.")).toBeInTheDocument();
   });
 
+  it("draws a crew member's message from that member's list, in the member's own words for the sender", () => {
+    // The lead forwards the member's list (CREW_PROTOCOL.md §21): the receipt is the member's, and the
+    // word says what the member knew, here a message the lead relayed with no sender block.
+    const row: WalkyRow = {
+      ...fixtureWalkyAgent,
+      from: { ...fixtureWalkyAgent.from, memberId: "otter", address: "otter/w2:p1" },
+      to: "badger/w1:p1",
+      signer: "otter",
+      receipt: { ...fixtureWalkyAgent.receipt, verified: "lead", by: "badger", target: "badger/w1:p1" },
+    };
+    inLog([row], turn(`${HEADER_AGENT}\nTests are green on fix-465. You can merge.`, row.id));
+    expect(within(theCard()).getByText("· relayed by the lead")).toBeInTheDocument();
+  });
+
   it("shows how the bridge could not check a message, in plain words", () => {
     const unsigned: WalkyRow = { ...fixtureWalkyAgent, receipt: { ...fixtureWalkyAgent.receipt, verified: "none" } };
     inLog([unsigned], turn(HEADER_AGENT, unsigned.id));
@@ -158,6 +172,15 @@ describe("a walky talky turn the log does not hold", () => {
     inLog(null, turn(HEADER_AGENT, "wt_k3f9x2m8q1a0"));
     expect(document.querySelector('[data-slot="walky-card"]')).toBeNull();
     expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.queryByText(NOT_IN_LOG)).toBeNull();
+  });
+
+  it("claims nothing for a member pane whose list the lead refused, however many polls go by", () => {
+    // An older member or one that is down: the loader keeps answering null (lib/loaders.ts `readWalky`).
+    const view = inLog(null, turn(HEADER_AGENT, "wt_k3f9x2m8q1a0"), 1);
+    deliver(view, null, turn(HEADER_AGENT, "wt_k3f9x2m8q1a0"), 2);
+    deliver(view, null, turn(HEADER_AGENT, "wt_k3f9x2m8q1a0"), 3);
+    expect(document.querySelector('[data-slot="walky-card"]')).toBeNull();
     expect(screen.queryByText(NOT_IN_LOG)).toBeNull();
   });
 

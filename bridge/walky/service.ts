@@ -110,16 +110,32 @@ export class WalkyService {
 
   /**
    * The message a reply answers, as this bridge's log holds it (M62 hardening D): for an agent, one
-   * that went to the agent's own pane; for the operator, any. It must have come from a pane, which is
-   * where the reply goes. Null: `unknown reply`.
+   * that went to the agent's own pane; for the operator, one that reached a pane here, else any this
+   * bridge logged. A lead logs the messages it routed or sent to a member's pane, and the phone shows
+   * those on that pane (§21, added 2026-10-18). It must have come from a pane, which is where the reply
+   * goes. Null: `unknown reply`, unless {@link elsewhereReply} lets the address carry it.
    */
   replyParent(replyTo: string, sender: WalkySenderRef): LogRecord | null {
     const records = this.deps.log.all(replyTo);
     const parent =
       sender.kind === "agent"
         ? records.find((record) => record.session === sender.pane.session && record.paneId === sender.pane.paneId && sameInstance(record.instance, sender.pane.instance))
-        : records.find((record) => record.session !== null);
+        : (records.find((record) => record.session !== null) ?? records[0]);
     return parent === undefined || parent.message.from.address === null ? null : parent;
+  }
+
+  /**
+   * Whether an operator's reply this log cannot place may go by its address (added 2026-10-18). The
+   * phone shows a crew member's pane from that member's own log, so a message between two panes of that
+   * member never reached this bridge. The reply then goes to the one pane its address names, on another
+   * machine, with `replyTo` kept; that machine's log holds the message, and its bridge pins the reply to
+   * the sender's pane as it does for its own (`replyPin` in deliver.ts). An agent's reply, a fan-out and
+   * a pane on this machine still need this log's record.
+   */
+  private elsewhereReply(to: string | null, sender: WalkySenderRef): to is string {
+    if (sender.kind !== "operator" || to === null) return false;
+    const address = parseAddress(to);
+    return address !== null && address.kind === "pane" && !isSelf(address.memberId, this.deps.memberId);
   }
 
   /** Build the message a request stands for: the body cleaned, the sender named, signed on a crew. */
@@ -141,8 +157,8 @@ export class WalkyService {
     let to = input.to;
     if (input.replyTo !== null) {
       const parent = this.replyParent(input.replyTo, sender);
-      if (parent === null) return { ok: true, receipts: [this.deliverer.refusal(input.id, input.to ?? "-", "unknown reply")] };
-      to = parent.message.from.address;
+      if (parent !== null) to = parent.message.from.address;
+      else if (!this.elsewhereReply(input.to, sender)) return { ok: true, receipts: [this.deliverer.refusal(input.id, input.to ?? "-", "unknown reply")] };
     }
     if (to === null) return { ok: false, error: "bad request" };
     // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
@@ -218,6 +234,7 @@ export class WalkyService {
   /**
    * A pane instance's unread messages, oldest first, each with its newest receipt. `all`: every
    * message that reached the instance, newest first (a record from before instances counts too).
+   * Only a received message is ever unread; what the pane sent is in {@link paneList}.
    */
   inbox(session: string, paneId: string, instance: string, all: boolean, limit = 50): WalkyEntry[] {
     if (all) return this.deps.log.forPane(session, paneId, instance, limit);
@@ -226,6 +243,15 @@ export class WalkyService {
       const receipt = this.deps.log.get(message.id, target)?.receipt ?? { id: message.id, target, state: "inbox-only", verified: "local", at: message.at, by: this.deliverer.by };
       return entryOf(message, receipt);
     });
+  }
+
+  /**
+   * The phone's list for one pane instance (`GET /api/pane/:id/walky`), newest first, each with its
+   * newest receipt: what reached the pane and what the pane sent (added 2026-10-18), so the phone can
+   * show the receipt of an agent's own message. `collie walky inbox --all` stays the received ones.
+   */
+  paneList(session: string, paneId: string, instance: string, limit: number): WalkyEntry[] {
+    return this.deps.log.forPane(session, paneId, instance, limit, true);
   }
 
   /**

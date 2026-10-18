@@ -192,6 +192,34 @@ describe("a record and its instance", () => {
     expect(again.forPane("main", "w1:p1", "bbbb", 10).map((entry) => entry.id)).toEqual([message(2).id]);
   });
 
+  test("lists what a pane instance sent as well as what it received, newest first, when asked for both", () => {
+    // The phone's list (added 2026-10-18): the receipt of an agent's own message, to a pane here or on
+    // another machine (a remote target has no placement on this bridge).
+    const dir = fresh();
+    let clock = 1000;
+    const log = new WalkyLog(dir, () => clock);
+    const p2 = { session: "main", paneId: "w1:p2", instance: "cccc" };
+    const nowhere = { session: null, paneId: null, instance: null };
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"), p2);
+    clock += 1;
+    log.record(message(2), "laptop/w9:p9", nowhere, { ...receipt(message(2), "accepted"), target: "laptop/w9:p9" }, p2);
+    clock += 1;
+    log.record(message(3), "local/w1:p2", p2, { ...receipt(message(3), "accepted"), target: "local/w1:p2" }, here);
+    log.update({ ...receipt(message(2), "delivered", 1003), target: "laptop/w9:p9", by: "laptop" });
+    const again = new WalkyLog(dir, () => 1004);
+    // Received only, as `collie walky inbox --all` reads it.
+    expect(again.forPane("main", "w1:p2", "cccc", 10).map((entry) => entry.id)).toEqual([message(3).id]);
+    // Both, each with its newest receipt.
+    const both = again.forPane("main", "w1:p2", "cccc", 10, true);
+    expect(both.map((entry) => entry.id)).toEqual([message(3).id, message(2).id, message(1).id]);
+    expect(both[1]?.receipt).toMatchObject({ target: "laptop/w9:p9", state: "delivered", by: "laptop" });
+    // The sender's instance must match, as the target's does, and the limit counts both kinds.
+    expect(again.forPane("main", "w1:p2", "dddd", 10, true).map((entry) => entry.id)).toEqual([]);
+    expect(again.forPane("main", "w1:p2", "cccc", 2, true)).toHaveLength(2);
+    // A sent message is never in the sender's unread inbox.
+    expect(again.inbox("main", "w1:p2", "cccc").map((m) => m.id)).not.toContain(message(1).id);
+  });
+
   test("keeps the sender's instance, and reads a sender from before instances as null", () => {
     const dir = fresh();
     const log = new WalkyLog(dir, () => 1000);

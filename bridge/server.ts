@@ -133,7 +133,7 @@ import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts";
-import type { UpdateMonitor } from "./update.ts";
+import { compareSemver, type UpdateMonitor } from "./update.ts";
 import { readStagingLog } from "./staging-log.ts";
 import {
   backVerdict,
@@ -216,7 +216,7 @@ import type { MachineSurface } from "./machines.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
 import { parsePhoneSend } from "./walky/parse.ts";
 import type { WalkyService } from "./walky/service.ts";
-import type { WalkyCrew } from "./walky/crew.ts";
+import { olderThanWalky, type WalkyCrew } from "./walky/crew.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -489,8 +489,9 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
 
 /**
  * Walky talky's list for one pane (M62): the messages that reached it, newest first, each with its
- * newest receipt. Read-gated like the pane read. A route of its own beside `PANE_ROUTE` for 1.23.0:
- * the GET answers this collie's own sessions only, and a `?host=` read answers 400.
+ * newest receipt. Read-gated like the pane read. A route of its own beside `PANE_ROUTE`: a `?host=`
+ * read is forwarded to the member that owns the pane and answered from that member's own log
+ * (CREW_PROTOCOL.md §21, added 2026-10-18), through the same gate every other pane read crosses.
  *
  * The same path carries the lead's message to a member (CREW_PROTOCOL.md §21): a POST, reached only
  * through the crew dispatch, answered by walky's own handler (`bridge/walky/crew.ts`), never by the
@@ -2231,6 +2232,21 @@ export function startServer(opts: {
       // answers only the GET on this path. Not behind the device gate: no phone stands behind it, and
       // the lead's attestation in the body is what admits it (bridge/walky/crew.ts checks it).
       const walkyPane = url.pathname.match(WALKY_PANE_ROUTE);
+      // The pane's list, which the lead forwards for a phone's `?host=` read (§21, added 2026-10-18):
+      // answered from this machine's own log, under this machine's own read gate, like `chat`.
+      if (walkyPane && req.method === "GET") {
+        const verdict = crewGate("read", cfg, device);
+        if (!verdict.ok) return text(verdict.reason, 403);
+        const rt = localRuntime(session, null);
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(walkyPane[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        return walkyPaneRoute(walky, rt.name, paneId, url.searchParams.get("limit"), req.headers.get("accept-encoding"));
+      }
       if (walkyPane && req.method === "POST") {
         const handler = opts.walkyCrew;
         if (handler === undefined) return jsonError({ error: "not found" }, 404, null);
@@ -2681,9 +2697,10 @@ export function startServer(opts: {
       }
       // ── Walky talky (M62) ────────────────────────────────────────────────
       // A message from the phone is an operator's, under the paired device's label, and a write under
-      // the same gate a reply rides. `who` and a pane's list are reads. This collie's own panes only in
-      // 1.23.0: a `?host=` read answers 400 until spec 03 makes the pane list forwardable, and an
-      // address on another member is the crew seam's business (bridge/walky/deliver.ts `routeRemote`).
+      // the same gate a reply rides: it carries no `?host=`, because the address names the machine and
+      // the crew seam routes it (bridge/walky/deliver.ts `routeRemote`). `who` and a pane's list are
+      // reads. `who` lists the whole crew from the lead already, so its `?host=` answers 400; a pane's
+      // list with `?host=` is forwarded to the member that owns the pane (§21, added 2026-10-18).
       if (pathname === "/api/walky" && req.method === "POST") {
         const denied = browserGate("write");
         if (denied) return denied;
@@ -2712,8 +2729,15 @@ export function startServer(opts: {
       if (walkyPane && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;
-        if (host.kind === "member") return text(WALKY_LOCAL_TEXT, 400);
-        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        // A member the lead knows to predate walky talky is answered here, with no dial: its list does
+        // not exist, and a pane polls this every few seconds (§21, the floor the message route uses).
+        if (host.kind === "member") {
+          const older = walkyOlderMemberAnswer(crewLead?.contributions().find((c) => c.state.memberId === host.id)?.state.version ?? null, opts.version);
+          if (older !== null) return older;
+        }
+        // Any other `?host=` goes through the one gate every pane read crosses: forwarded to the member
+        // that owns the pane, whose own log answers, or the lead's own runtime when the host is itself.
+        const rt = host.kind === "local" ? localRuntime(sessionName, req.headers.get("accept-encoding")) : await target();
         if (rt instanceof Response) return rt;
         let paneId: string;
         try {
@@ -7709,8 +7733,22 @@ async function programSendRoute(
  */
 /** What a walky talky route answers on a bridge built without the service. */
 export const WALKY_OFF_TEXT = "walky talky is not running on this bridge";
-/** What a walky talky read answers with `?host=` in 1.23.0. */
+/** What `GET /api/walky/who` answers with `?host=`: the lead's own `who` already lists every member. */
 export const WALKY_LOCAL_TEXT = "walky talky reads this machine's panes only for now; ask the machine itself";
+
+/** What the lead answers for a pane's list on a member that predates walky talky (§21). */
+export const WALKY_OLDER_MEMBER_TEXT = "that machine runs a Collie older than walky talky and keeps no messages";
+
+/**
+ * The lead's own answer for a member pane's walky list, or null to forward the read. A member whose
+ * reported version is below walky talky's floor (`olderThanWalky`, the rule the message route uses)
+ * keeps no list, so it gets a 404 with no dial. The phone reads any refusal as a list it could not read:
+ * no card and no "no log record" mark. A member that reported no version is asked, and its own 404 is
+ * the same answer.
+ */
+export function walkyOlderMemberAnswer(memberVersion: string | null, ownVersion: string): Response | null {
+  return olderThanWalky(memberVersion, ownVersion, compareSemver) ? text(WALKY_OLDER_MEMBER_TEXT, 404) : null;
+}
 
 /** `POST /api/walky`: one message from the phone, as an operator, under the device's label. */
 export async function walkyPostRoute(
@@ -7744,8 +7782,9 @@ export const WALKY_LIST_MAX = 200;
 const WALKY_LIST_DEFAULT = 50;
 
 /**
- * `GET /api/pane/:id/walky?limit=50`: the messages that reached the pane's current instance, newest
- * first. A pane id no pane holds now lists nothing: a new session that takes the id starts empty.
+ * `GET /api/pane/:id/walky?limit=50`: the messages that reached the pane's current instance and the
+ * ones it sent, newest first. A pane id no pane holds now lists nothing: a new session that takes the
+ * id starts empty.
  */
 export function walkyPaneRoute(walky: WalkyService | undefined, session: string, paneId: string, limitRaw: string | null, acceptEncoding: string | null): Response {
   if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
@@ -7753,7 +7792,7 @@ export function walkyPaneRoute(walky: WalkyService | undefined, session: string,
   const limit = limitRaw === null ? WALKY_LIST_DEFAULT : Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > WALKY_LIST_MAX) return text("bad limit", 400);
   const instance = walky.instanceOf(session, paneId);
-  return json({ messages: instance === null ? [] : walky.inbox(session, paneId, instance, true, limit) }, acceptEncoding);
+  return json({ messages: instance === null ? [] : walky.paneList(session, paneId, instance, limit) }, acceptEncoding);
 }
 
 export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> & { readonly name?: string }, pane: string | null, acceptEncoding: string | null): Response {

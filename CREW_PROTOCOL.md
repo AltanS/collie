@@ -3337,6 +3337,7 @@ is two hops, A to the lead and the lead to B.
 | `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
 | `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
 | `POST` | `/crew/v1/walky/outcomes` | the lead, to a member | `{ receipts }` | `{ written }` |
+| `GET` | `/crew/v1/pane/:id/walky?limit=` | the lead, to a member, for a phone | none | `{ messages }` |
 
 - `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
   collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
@@ -3351,6 +3352,15 @@ is two hops, A to the lead and the lead to B.
   the pinned handshake and the dial attestation like every lead → peer dial (§8.6), with the write
   budget. Only a collie that has a lead answers it, and only to that lead: any other caller is the
   uniform 401, and a lead answers 404. See "The outcome comes back" below. Added 2026-10-18.
+- `GET /crew/v1/pane/:id/walky` is a **forwarded read** (§5's table, the same `FORWARDABLE` entry as the
+  POST; `forwardKind` tells the two apart by method). Added 2026-10-18. A phone asks the lead for
+  `GET /api/pane/:id/walky?limit=50&host=<member>`, and the lead forwards it to that member like every
+  other pane read (§9.1): `host=` dropped, `session=` and `limit=` passed on, the read budget, attempted
+  against a stale member too, never audited. The member answers from its own log, under its own read
+  gate (§6), with the list its own phone route answers: `{ messages }`, the messages that reached the pane and
+  the ones it sent, newest first, each with its newest receipt, `verified` as the member wrote it. The answer goes back byte for byte with its ETag. The lead
+  does not mask it, because a member's own route does not mask that body either. See "The phone reads
+  a member's list" below.
 - The first two answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the
   write budget. Neither waits for the typing. (The M62 contract named a single `{ receipt }` for the
   lead → member hop; a `<member>/all` reaches several panes, so the answer is a list, for the reason
@@ -3502,6 +3512,32 @@ no version, or a value that names no release, is dialled as before, and its 404 
 `POST /crew/v1/pane/:id/walky` stays the backstop with the same reason. Added 2026-10-18 (M62
 hardening I).
 
+### The phone reads a member's list *(added 2026-10-18)*
+
+The phone checks a walky talky header on a pane's screen against that pane's list, and draws a card
+only for an id the list holds. A pane on a member is checked against that member's own log, through
+the forwarded read above, so a message that member logged looks on the phone as one on the lead does.
+
+Three answers reach the phone:
+
+| Member | What the lead answers |
+|---|---|
+| 1.23.0 or later | The member's own `{ messages }` |
+| Reported a version below the floor of "An older member" below | `404`, from the lead, with no dial |
+| Down, or a build that predates the read | `503 host_unreachable` (§10.3), or the member's own `404` passed on |
+
+The phone reads every refusal as a list it could not read: no card, and never the mark for a header the
+log does not hold. A pane polls this read, so the lead answers an older member itself instead of
+dialling it on every poll. A member that reported no version is asked, and its 404 is the same answer.
+
+A reply from the phone to a message in that list goes to the lead's own `POST /api/walky`, with the
+sender's address and `replyTo`, like every operator message. The lead fills the address from its own
+log when it holds the message: one it routed or sent there. A message between two panes of one member
+never reaches the lead. For that one case the lead takes the operator's address when it names one pane
+on another machine, and keeps `replyTo`. The member's log holds the message, and the member pins the
+reply to the sender's pane as for its own. An agent's reply, a fan-out and a pane on the lead still need
+the lead's own record, else `unknown reply`.
+
 ### The outcome report
 
 The member snapshot gains an optional sibling beside the body, in the seat §19's fields use:
@@ -3637,7 +3673,9 @@ ignores `X-Crew-Walky-Ack`; it empties its report on each answer as before. A le
 sends the header, so the member resends each receipt for up to 10 minutes, and the lead's merge skips
 the repeats. A lead restart sends no ack until it has read a report. A member before the outcomes push
 answers 404, and the lead stops pushing to it until a new receipt settles; its operator reads the
-outcome on the lead, as before. A lead before the push never sends one, and the sending member stays at
+outcome on the lead, as before. A member before the forwarded read answers 404 on
+`GET /crew/v1/pane/:id/walky`, which the lead passes on and the phone reads as a list it could not read;
+a lead before it answers the phone's `?host=` read with a 400, read the same way. A lead before the push never sends one, and the sending member stays at
 `accepted` with the words "outcome known on the lead". A member before the sender block ignores
 `sender` and writes `verified: "lead"`; a lead before it sends none, and the result is `lead` as
 before.

@@ -1489,16 +1489,30 @@ describe("paneLoader and the walky talky list (M62)", () => {
     expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
 
-  it("asks no list for a pane on a crew member, which the lead answers only with a 400 in 1.23.0", async () => {
+  it("reads a crew member pane's list through the lead, with the member as `host`", async () => {
+    // The lead forwards it to the member, whose own log answers (CREW_PROTOCOL.md §21).
     const asked: string[] = [];
     server.use(http.get(/\/api\/pane\/[^/]+\/walky/, ({ request }) => (asked.push(request.url), HttpResponse.json({ messages: [fixtureWalkyAgent] }))));
     const { paneLoader } = await import("./loaders");
     const data = await paneLoader({ params: { paneId: "w1:p1" }, request: new Request("http://localhost/pane/w1%3Ap1?h=badger") });
-    expect(asked).toEqual([]);
-    expect(data.walky).toBeNull();
-    // The lead's own pane still reads it.
-    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
     expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!).searchParams.get("host")).toBe("badger");
+    expect(new URL(asked[0]!).searchParams.get("limit")).toBe("50");
+    expect(data.walky).toEqual([fixtureWalkyAgent]);
+  });
+
+  it("answers null for a member pane whose list the lead refuses: an older member, or one that is down", async () => {
+    // A null list claims nothing: no card, and no "no log record on this machine" mark.
+    const { paneLoader } = await import("./loaders");
+    for (const [paneId, status, body] of [
+      ["w1:p5", 404, "that machine runs a Collie older than walky talky and keeps no messages"],
+      ["w1:p6", 503, JSON.stringify({ ok: false, code: "host_unreachable", error: "host otter: connection refused", host: "otter" })],
+    ] as const) {
+      server.use(http.get(/\/api\/pane\/[^/]+\/walky/, () => new HttpResponse(body, { status })));
+      const data = await paneLoader({ params: { paneId }, request: new Request(`http://localhost/pane/${encodeURIComponent(paneId)}?h=otter`) });
+      expect(data.walky).toBeNull();
+      expect(data.walkyReads).toBe(0);
+    }
   });
 
   it("keeps the last list and its read count when the MIRROR read fails, so a card does not turn back into text", async () => {

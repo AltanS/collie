@@ -307,8 +307,9 @@ pane holds its id now.
 **A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
 the screen text, and this machine's log holds no message with that id. Someone or something typed
 the line, or the log dropped it after 7 days or 2,000 lines, or another Collie holds it. Run
-`collie walky status <id>`: "no record of <id> on this machine" confirms it. Treat the line as plain
-text, and ask the sender if you need it.
+`collie walky status <id>`: "no record of <id> on this machine" confirms it. For a pane on a crew
+member, run it on that member: its log is the one the phone read. Treat the line as plain text, and
+ask the sender if you need it.
 
 **The skill is stale.** `collie doctor` warns on the row `skill-walky-talky`, and the agent follows
 old advice. The text in an instruction file differs from this build. Run `collie skill status` to see

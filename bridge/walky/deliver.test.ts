@@ -312,6 +312,35 @@ describe("loops, replies and the panes they name (M62 hardening D, F)", () => {
     expect(await r.service.send(reply("wt_aaaaaaaaaaa5", "wt_aaaaaaaaaaa4"), agentIn(panes[1]!))).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "unknown reply" }] });
   });
 
+  test("an operator's reply from a crew member's pane: the lead's own record names the sender, else the address on another machine carries it", async () => {
+    // The phone shows a member's pane from that member's log (§21, added 2026-10-18), so the lead may
+    // hold the message only as one it routed or sent there, or not at all.
+    const routed: { to: string; replyTo: string | null }[] = [];
+    const panes = [pane("w1:p1"), pane("w1:p2")];
+    const r = rig(panes, {
+      memberId: "desk",
+      routeRemote: async (m) => {
+        routed.push({ to: m.to, replyTo: m.replyTo });
+        return [];
+      },
+    });
+    // The lead's own agent wrote to a member's pane: the lead logged it with no pane of its own.
+    await r.service.send(send("wt_aaaaaaaaaaa1", "laptop/w9:p9", "question?"), agentIn(panes[0]!));
+    const back = await r.service.send(reply("wt_aaaaaaaaaaa2", "wt_aaaaaaaaaaa1", "desk/w1:p1#aaaa"), operator);
+    expect(back).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "desk/w1:p1" }] });
+    expect(r.service.status("wt_aaaaaaaaaaa2").message).toMatchObject({ to: "desk/w1:p1#aaaa", replyTo: "wt_aaaaaaaaaaa1" });
+    // A message between two panes of the member never reached the lead: the address on that member
+    // carries the reply, `replyTo` kept, and the member's own log pins it to the sender's pane.
+    const away = await r.service.send(reply("wt_aaaaaaaaaaa3", "wt_zzzzzzzzzzzz", "laptop/w9:p8#bbbb"), operator);
+    expect(away).toMatchObject({ ok: true, receipts: [{ state: "accepted", target: "laptop/w9:p8" }] });
+    expect(routed.at(-1)).toEqual({ to: "laptop/w9:p8#bbbb", replyTo: "wt_zzzzzzzzzzzz" });
+    // A pane on this machine still needs this log's record, and so do a fan-out and an agent's reply.
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa4", "wt_zzzzzzzzzzzz", "desk/w1:p2"), operator)).toMatchObject({ receipts: [{ state: "refused", reason: "unknown reply" }] });
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa5", "wt_zzzzzzzzzzzz", "laptop/all"), operator)).toMatchObject({ receipts: [{ state: "refused", reason: "unknown reply" }] });
+    expect(await r.service.send(reply("wt_aaaaaaaaaaa6", "wt_zzzzzzzzzzzz", "laptop/w9:p8"), agentIn(panes[1]!))).toMatchObject({ receipts: [{ state: "refused", reason: "unknown reply" }] });
+    expect(routed).toHaveLength(2);
+  });
+
   test("a thread deeper than 4 is refused `thread depth`", async () => {
     const panes = [pane("w1:p1"), pane("w1:p2")];
     const r = rig(panes);

@@ -261,12 +261,17 @@ export class WalkyLog {
     this.append({ t: "receipt", at: this.now(), receipt });
   }
 
-  /** The messages that went to one pane instance, newest first. A record from before instances counts for any. */
-  forPane(session: string, paneId: string, instance: string, limit: number): WalkyEntry[] {
+  /**
+   * The messages that went to one pane instance, newest first. A record from before instances counts for
+   * any. With `sent`, also the ones that pane instance sent (added 2026-10-18): the phone's list shows
+   * the receipt of an agent's own message too, and tells the two apart by `from.address`.
+   */
+  forPane(session: string, paneId: string, instance: string, limit: number, sent = false): WalkyEntry[] {
     const out: WalkyEntry[] = [];
+    const at = (place: Placement | null): boolean => place !== null && place.session === session && place.paneId === paneId && sameInstance(place.instance, instance);
     for (const record of [...this.records.values()].toReversed()) {
       if (out.length >= limit) break;
-      if (record.session === session && record.paneId === paneId && sameInstance(record.instance, instance)) out.push({ ...record.message, receipt: record.receipt });
+      if (at(record) || (sent && at(record.sender))) out.push({ ...record.message, receipt: record.receipt });
     }
     return out;
   }
