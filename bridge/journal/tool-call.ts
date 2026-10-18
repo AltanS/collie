@@ -93,6 +93,9 @@ const NAMES = {
   // Muse's file verbs (bridge/journal/muse.ts): without these its workhorse calls read as `other`.
   edit_file: "edit",
   write_file: "edit",
+  // Kiro's file verbs (bridge/journal/kiro.ts).
+  fs_write: "edit",
+  str_replace: "edit",
   // execute
   bash: "execute",
   shell: "execute",
@@ -103,6 +106,8 @@ const NAMES = {
   run: "execute",
   bashoutput: "execute",
   exec_command: "execute",
+  // Kiro's shell tool.
+  execute_bash: "execute",
   // read
   read: "read",
   read_file: "read",

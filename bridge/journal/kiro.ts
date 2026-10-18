@@ -12,7 +12,6 @@
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText } from "./cache-probe.ts";
-import { MAX_TRANSCRIPT_BYTES } from "./files.ts";
 import { HOST } from "../host.ts";
 import { procProcessIdentity } from "../proc-identity.ts";
 import { createKiroDiscovery } from "./kiro-discovery.ts";
@@ -21,12 +20,6 @@ import { createUnknownCounter, NO_CHANGE, noQueue, parseWith, reduction, remembe
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type { JournalAdapter, ProcessIdentityProbe, TranscriptEntry, TranscriptPart } from "./types.ts";
-
-/** An id longer than this is not one Kiro writes, and is not trusted as a map key. */
-const MAX_ID_CHARS = 512;
-// ACP's tool kinds (agentclientprotocol.com), all names the shared classifier knows. Kiro also
-// writes kinds such as "other", which must not type an unknown tool.
-const ACP_TOOL_KINDS: ReadonlySet<string> = new Set(["execute", "read", "edit", "search", "fetch", "delete", "move"]);
 
 /**
  * Row types kiro-cli 2.32.0 writes that carry nothing a reader shows: lifecycle and usage state,
@@ -57,7 +50,6 @@ interface KiroRow {
 
 /** One messages.jsonl row, or null for a line that is not a row with an id and a payload. */
 function parseRow(line: string): KiroRow | null {
-  if (line.length > MAX_TRANSCRIPT_BYTES) return null;
   let row: JsonObject | null;
   try {
     // SAFETY: JSON.parse returns JSON values; asRecord checks the object boundary.
@@ -66,15 +58,9 @@ function parseRow(line: string): KiroRow | null {
     return null;
   }
   const payload = asRecord(row?.payload);
-  const id = trustedId(row?.id);
+  const id = asText(row?.id) ?? "";
   if (row === null || payload === null || id === "") return null;
   return { id, ts: asText(row.timestamp) ?? "", type: asText(payload.type) ?? "", payload };
-}
-
-/** The id `value` holds, or "" when it is missing or too long to trust as a map key. */
-function trustedId(value: JsonValue | undefined): string {
-  const text = asText(value) ?? "";
-  return text.length <= MAX_ID_CHARS ? text : "";
 }
 
 /** A text part for something said (a prompt, a reply, a summary): ANSI removed, cut to the text cap. */
@@ -92,24 +78,12 @@ function toolResultFrom(content: string): ToolResult {
   return clamp(stripAnsi(content), MAX_RESULT_CHARS);
 }
 
-/**
- * The tool card a tool_call row shows. Only string, number and boolean arguments reach the
- * classifier, capped; the raw arguments never leave the parser.
- */
+/** The tool card a tool_call row shows, classified from the tool's name and arguments. */
 function toolCallPart(payload: JsonObject): ToolPart {
-  const args = asRecord(payload.args) ?? {};
-  const input: JsonObject = {};
-  for (const [key, value] of Object.entries(args).slice(0, 64)) {
-    if (typeof value === "string") input[key] = clamp(stripAnsi(value), MAX_TEXT_CHARS).text;
-    else if (typeof value === "number" || typeof value === "boolean") input[key] = value;
-  }
-  if (input.path === undefined && typeof payload.filePath === "string") input.path = clamp(payload.filePath, MAX_TEXT_CHARS).text;
+  const input = asRecord(payload.args) ?? {};
   const name = oneLine(asText(payload.toolName) ?? "") || "tool";
   const summary = summarizeToolInput(input) || oneLine(asText(payload.title) ?? "");
-  const byName = classifyToolCall(name, input, summary);
-  const kind = asText(payload.kind) ?? "";
-  const byKind = byName.kind === "other" && ACP_TOOL_KINDS.has(kind) ? classifyToolCall(kind, input, summary) : byName;
-  const part: ToolPart = { kind: "tool", id: trustedId(payload.toolCallId), name, summary, call: byKind.kind === "other" ? byName : byKind };
+  const part: ToolPart = { kind: "tool", id: asText(payload.toolCallId) ?? "", name, summary, call: classifyToolCall(name, input, summary) };
   // The call row carries its final status; a result row follows with the output.
   if (payload.status === "denied") part.result = { text: "", denied: true };
   return part;
@@ -145,7 +119,7 @@ export function createKiroReducer(): RowReducer {
 
   function onAssistant(row: KiroRow): Reduction {
     const operation = asText(row.payload.operationType) ?? "";
-    unknown.part(clamp(operation, 200).text);
+    unknown.part(operation);
     // A reply that took a steering message ends `[STEERING <id>: <note>]`; the TUI shows the note only.
     const content = (asText(row.payload.content) ?? "").replace(STEERING_NOTE, "$1");
     if (content === "" || (operation !== "Say" && operation !== "Summary")) return NO_CHANGE;
@@ -153,7 +127,7 @@ export function createKiroReducer(): RowReducer {
   }
 
   function onToolCall(row: KiroRow): Reduction {
-    const key = trustedId(row.payload.toolCallId);
+    const key = asText(row.payload.toolCallId) ?? "";
     if (key === "") return NO_CHANGE;
     const part = toolCallPart(row.payload);
     const entry = entryFor(row, "assistant", [part]);
@@ -162,7 +136,7 @@ export function createKiroReducer(): RowReducer {
   }
 
   function onToolResult(row: KiroRow): Reduction {
-    const key = trustedId(row.payload.toolCallId);
+    const key = asText(row.payload.toolCallId) ?? "";
     if (key === "" || typeof row.payload.content !== "string") return NO_CHANGE;
     const result = toolResultFrom(row.payload.content);
     if (row.payload.success === false) result.isError = true;
@@ -172,7 +146,7 @@ export function createKiroReducer(): RowReducer {
   }
 
   function onSubAgentStart(row: KiroRow): Reduction {
-    const key = trustedId(row.payload.subSessionId);
+    const key = asText(row.payload.subSessionId) ?? "";
     if (key === "") return NO_CHANGE;
     const explanation = oneLine(asText(row.payload.explanation) ?? "");
     const part: ToolPart = { kind: "tool", id: row.id, name: "subagent", summary: explanation, call: { kind: "task", agent: oneLine(asText(row.payload.subAgentName) ?? ""), summary: explanation } };
@@ -182,7 +156,7 @@ export function createKiroReducer(): RowReducer {
   }
 
   function onSubAgentComplete(row: KiroRow): Reduction {
-    const key = trustedId(row.payload.subSessionId);
+    const key = asText(row.payload.subSessionId) ?? "";
     const content = asText(row.payload.response) ?? asText(row.payload.errorMessage) ?? "";
     const result = toolResultFrom(content);
     if (row.payload.status !== "success") result.isError = true;
@@ -194,7 +168,7 @@ export function createKiroReducer(): RowReducer {
   function push(line: string): Reduction {
     const row = parseRow(line);
     if (row === null) return NO_CHANGE;
-    unknown.row(clamp(row.type, 200).text);
+    unknown.row(row.type);
     switch (row.type) {
       case "user": return addEntry(userEntry(row));
       case "assistant": return onAssistant(row);
