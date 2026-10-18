@@ -106,11 +106,12 @@ function textLine(text: string): StyledLine {
   return { segments: [{ text, style: {}, muted: false }] };
 }
 
-// `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts, plus the two steps of the matcher this
-// suite has to reproduce to check an adapter against it. Mirrored rather than imported: nothing in
-// web/ imports bridge code (wire types are mirrored the same way). Both sides work on ALREADY-parsed
-// text here, so the bridge's SGR strip has nothing left to do — what remains is its rstrip and its
-// "blank rows are not rows" rule, which is the counting the tail window is expressed in.
+// `DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts, plus the steps of its matcher this suite
+// has to reproduce to count the rows under a match: the normalisation, the last match, and the two
+// cuts at the end of the read (`rowsBelowMatch`). Mirrored rather than imported: the bridge's matcher
+// answers a verdict, not a count. Both sides work on ALREADY-parsed text here, so the bridge's SGR
+// strip has nothing left to do — what remains is its rstrip and its "blank rows are not rows" rule,
+// which is the counting the tail window is expressed in.
 const BRIDGE_PROMPT_TAIL_LINES = 6;
 
 function normalizeRegion(text: string): string[] {
@@ -133,13 +134,15 @@ function lastMatchEnd(fresh: string[], expected: string[]): number {
   return end;
 }
 
-/** The normalized index where the footer run under an input box starts (`Frame.volatile.footer`), as
- *  the bridge finds it: the first profile whose input frame names one decides, or null. */
-function footerStart(rows: readonly string[]): number | null {
+/** The normalized index of the first row of the footer run a profile names under an input box
+ *  (`Frame.volatile.named`), as the bridge finds it: only profiles that declare
+ *  `idle.volatile.below.footerRows` are asked, the first whose frame names one decides, or null. */
+function namedFooterStart(rows: readonly string[]): number | null {
   for (const profile of loadProfiles().values()) {
-    const footer = findInputFrame(plainRows(rows), profile.idle)?.volatile.footer;
-    if (footer === null || footer === undefined) continue;
-    return rows.slice(0, footer.first).filter((row) => row.replace(/\s+$/, "").length > 0).length;
+    if (profile.idle.volatile.below.footerRows === undefined) continue;
+    const first = findInputFrame(plainRows(rows), profile.idle)?.volatile.named[0];
+    if (first === undefined) continue;
+    return rows.slice(0, first.row).filter((row) => row.replace(/\s+$/, "").length > 0).length;
   }
   return null;
 }
@@ -147,9 +150,9 @@ function footerStart(rows: readonly string[]): number | null {
 /**
  * The non-blank rows the bridge counts below the last match of `expected` in a read of `rows`, or null
  * when the read does not hold it (bridge/prompt-binding.ts `matchText`). A task checklist that ends the
- * read is not counted. Nor is the footer run an input frame names under its box, cut only when the
- * read would be refused `not_in_tail` without the cut, the refusal kept when the cut finds nothing:
- * `agy--slash-exact.txt`'s region sits inside its slash popup, which is such a footer.
+ * read is not counted. Nor is the footer run a profile names under its box, cut only when the read
+ * would be refused `not_in_tail` without the cut, the uncut count kept when the cut leaves the match
+ * unfound or still out of the tail. A generic footer (`Frame.volatile.footer`) is never cut.
  */
 function rowsBelowMatch(rows: readonly string[], expected: string[]): number | null {
   const read = normalizeRegion(rows.join("\n"));
@@ -158,7 +161,7 @@ function rowsBelowMatch(rows: readonly string[], expected: string[]): number | n
   if (matchEnd === -1) return null;
   const below = end - 1 - matchEnd;
   if (below < BRIDGE_PROMPT_TAIL_LINES) return below;
-  const footer = footerStart(rows);
+  const footer = namedFooterStart(rows);
   if (footer === null || footer >= end) return below;
   const aboveFooter = lastMatchEnd(read.slice(0, footer), expected);
   if (aboveFooter === -1 || footer - 1 - aboveFooter >= BRIDGE_PROMPT_TAIL_LINES) return below;
@@ -670,7 +673,7 @@ export function describeAdapterConformance(
           const scrolled = [...loadLines(name), ...trailingOutput()];
           for (const block of adapter.buildBlocks(scrolled).filter(isNoticeMenu)) {
             if (block.kind !== "menu") continue;
-            // Counted as the bridge counts them: a footer run under the box is not (`rowsBelowMatch`).
+            // Counted as the bridge counts them: a named footer run under the box is not (`rowsBelowMatch`).
             const below = rowsBelowMatch(scrolled.map(lineText), normalizeRegion(block.menu.signature));
             expect(below).not.toBeNull();
             expect(below!).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
@@ -835,7 +838,7 @@ export function describeAdapterConformance(
               const read =
                 columns === undefined ? whole : splitLines(parseAnsi(cropRawColumns(loadRaw(name), columns))).map(lineText);
               // Nor, as the bridge does not, is a task checklist that ends the read counted against the
-              // tail (lib/task-checklist.ts), nor a footer run under the box the region ends above
+              // tail (lib/task-checklist.ts), nor a named footer run under the box the region ends above
               // (`rowsBelowMatch`, cut only where the uncut read would be refused).
               const expected = normalizeRegion(contract.region(model));
               const below = rowsBelowMatch(read, expected);
