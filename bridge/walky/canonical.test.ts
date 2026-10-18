@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { mintIdentity } from "../crew/identity.ts";
-import { attestationString, canonicalMessage, signMessage, verifyMessage } from "./canonical.ts";
+import { fingerprintOfCert, mintIdentity } from "../crew/identity.ts";
+import { signCanonical, verifyCanonical } from "../crew/signing.ts";
+import { attestationString, canonicalMessage, signMessage, verifyMessage, voucherString } from "./canonical.ts";
 import type { WalkyMessage } from "./types.ts";
 
 const desk = mintIdentity({ commonName: "collie-desk" });
@@ -69,5 +70,23 @@ describe("the attestation string", () => {
     expect(one.split("\n").slice(0, 4)).toEqual(["collie-walky-attest-v1", "wt_k3f9x2m8q1a0", "crew-1", "laptop"]);
     expect(attestationString(message, "crew-1", "desk")).not.toBe(one);
     expect(attestationString({ ...message, body: "x" }, "crew-1", "laptop")).not.toBe(one);
+  });
+});
+
+describe("the voucher string (CREW_PROTOCOL §21, added 2026-10-18)", () => {
+  test("is its own domain tag, the crew, the member and the certificate's fingerprint", () => {
+    const fingerprint = fingerprintOfCert(laptop.certPem)!;
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/u);
+    expect(voucherString("crew-1", "laptop", fingerprint)).toBe(["collie-walky-voucher-v1", "crew-1", "laptop", fingerprint].join("\n"));
+  });
+
+  test("a voucher for one crew, member or certificate is not good for another, and never as an attestation", () => {
+    const fingerprint = fingerprintOfCert(laptop.certPem)!;
+    const voucher = signCanonical(desk.keyPem, voucherString("crew-1", "laptop", fingerprint));
+    expect(verifyCanonical(desk.certPem, voucher, voucherString("crew-1", "laptop", fingerprint))).toBe(true);
+    expect(verifyCanonical(desk.certPem, voucher, voucherString("crew-2", "laptop", fingerprint))).toBe(false);
+    expect(verifyCanonical(desk.certPem, voucher, voucherString("crew-1", "desk", fingerprint))).toBe(false);
+    expect(verifyCanonical(desk.certPem, voucher, voucherString("crew-1", "laptop", fingerprintOfCert(desk.certPem)!))).toBe(false);
+    expect(verifyCanonical(desk.certPem, voucher, attestationString(message, "crew-1", "laptop"))).toBe(false);
   });
 });

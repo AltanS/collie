@@ -23,15 +23,16 @@
 // a 400 that may say why (§8.5).
 
 import type { JsonObject, JsonValue } from "../json.ts";
+import { fingerprintOfCert } from "../crew/identity.ts";
 import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
 import { labelOf, LOCAL_MEMBER, parseAddress } from "./address.ts";
-import { attestationString, verifyMessage } from "./canonical.ts";
+import { attestationString, verifyMessage, voucherString } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
-import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer } from "./parse.ts";
+import { readCrewDelivery, readErrorText, readMessage, readReceiptsAnswer, type CrewSenderBlock } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
 import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
@@ -153,9 +154,23 @@ export function checkFromMember(body: JsonValue | undefined, signer: TrustedMemb
 }
 
 /**
+ * Whether a sender block holds: the voucher is the lead's signature over this crew, the message's
+ * signer and the fingerprint of `certPem`, and the message's own signature verifies against `certPem`.
+ */
+function senderHolds(sender: CrewSenderBlock, message: WalkyMessage, lead: TrustedMember, crewId: string): boolean {
+  const fingerprint = fingerprintOfCert(sender.certPem);
+  if (fingerprint === null || message.signer === null) return false;
+  if (!verifyCanonical(lead.certPem, sender.voucher, voucherString(crewId, message.signer, fingerprint))) return false;
+  return verifyMessage(message, sender.certPem);
+}
+
+/**
  * A member's check of a message its lead routed to it. `segment` is the pane segment of the route,
  * already decoded; `self` is this member's id. The attestation is checked against the pinned lead;
- * the origin signature too, which verifies only when the lead itself sent the message.
+ * the origin signature too: against the lead's own certificate when the lead sent the message, or
+ * against the sender's certificate when the lead vouched for it in a `sender` block. A sender block
+ * that does not hold is the uniform 401: it is a claim that does not verify. Nothing in it is pinned
+ * or stored; the voucher is the lead's word for this one message.
  */
 export function checkFromLead(
   body: JsonValue | undefined,
@@ -166,10 +181,11 @@ export function checkFromLead(
 ): Checked<{ readonly message: WalkyMessage; readonly verified: WalkyVerified }> {
   const delivery = readCrewDelivery(body);
   if (delivery === null) return { ok: false, answer: badRequest("a walky delivery needs a well-formed `message` and `attest`") };
-  const { message, attest } = delivery;
+  const { message, attest, sender } = delivery;
   if (!verifyCanonical(lead.certPem, attest, attestationString(message, crewId, self))) return { ok: false, answer: UNAUTHORIZED };
   const problem = checkCrewMessage(message);
   if (problem !== null) return { ok: false, answer: answerOf(problem) };
+  if (sender !== undefined && !senderHolds(sender, message, lead, crewId)) return { ok: false, answer: UNAUTHORIZED };
   // The route names the pane the message is for: its own pane id, or `all` for a whole machine.
   const to = parseAddress(message.to);
   const fits =
@@ -178,7 +194,9 @@ export function checkFromLead(
       ? segment === WALKY_ALL_SEGMENT
       : to.memberId === self && (to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId));
   if (!fits) return { ok: false, answer: badRequest("the route does not name this message's address on this member") };
-  // `origin` only when the lead itself sent it: the one certificate a member pins, the signer and the
+  // A sender block that held: the sender's own signature verified, against a certificate the lead vouched for.
+  if (sender !== undefined) return { ok: true, message, verified: "origin" };
+  // `origin` when the lead itself sent it: the one certificate a member pins, the signer and the
   // sender the same machine, and the signature good over the message as it stands.
   const fromLead = message.signer === lead.memberId && message.from.memberId === message.signer;
   const verified: WalkyVerified = fromLead && verifyMessage(message, lead.certPem) ? "origin" : "lead";
@@ -188,6 +206,16 @@ export function checkFromLead(
 /** The lead's signature beside a message it routes to `receiver`. */
 export function attestFor(message: WalkyMessage, keyPem: string, crewId: string, receiver: string): string {
   return signCanonical(keyPem, attestationString(message, crewId, receiver));
+}
+
+/**
+ * The sender block the lead adds beside a message from `memberId`: the certificate it pinned for that
+ * member and its voucher for it. Null when the certificate does not parse (no fingerprint to vouch for).
+ */
+export function senderBlockFor(memberId: string, certPem: string, keyPem: string, crewId: string): CrewSenderBlock | null {
+  const fingerprint = fingerprintOfCert(certPem);
+  if (fingerprint === null) return null;
+  return { certPem, voucher: signCanonical(keyPem, voucherString(crewId, memberId, fingerprint)) };
 }
 
 /** One audit line, as the bridge's audit log takes it. */
@@ -287,6 +315,12 @@ export interface LeadRouteDeps {
   readonly members: () => readonly string[];
   /** This lead's key and crew id, or null when the store cannot give them. Read per message. */
   readonly signing: () => { readonly keyPem: string; readonly crewId: string } | null;
+  /**
+   * The certificate this lead pinned for an ENROLLED member of its roster, or null (§21, added
+   * 2026-10-18). A message signed by such a member travels with a `sender` block, so the receiving
+   * member can check the signature itself. Absent: no message carries one, as before.
+   */
+  readonly senderCert?: (memberId: string) => string | null;
   /** POST one body to `/crew/v1/pane/<segment>/walky` on one member, through the lead's forward. */
   readonly post: (memberId: string, segment: string, payload: string) => Promise<CrewDialAnswer>;
   /**
@@ -354,6 +388,11 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
     const address = parseAddress(message.to);
     const segment = address?.kind === "pane" ? address.paneId : WALKY_ALL_SEGMENT;
     const signing = deps.signing();
+    // One block per message: the voucher names the sender, not the receiver. Never for this lead's own
+    // message, which every member checks against the one certificate it pins already.
+    const signer = message.signer;
+    const senderCert = signing === null || signer === null || signer === deps.self ? null : (deps.senderCert?.(signer) ?? null);
+    const sender = senderCert === null || signing === null || signer === null ? null : senderBlockFor(signer, senderCert, signing.keyPem, signing.crewId);
     const lists = await Promise.all(
       targets.map(async (memberId): Promise<WalkyReceipt[]> => {
         const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : message.to;
@@ -362,7 +401,8 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
         const attest = attestFor(message, signing.keyPem, signing.crewId, memberId);
         // Every member is dialled at once, and each leg is cut at WALKY_LEG_MS.
-        const answer = await within(deps.post(memberId, segment, JSON.stringify({ message, attest })), deps.legMs ?? WALKY_LEG_MS);
+        const body = sender === null ? { message, attest } : { message, attest, sender };
+        const answer = await within(deps.post(memberId, segment, JSON.stringify(body)), deps.legMs ?? WALKY_LEG_MS);
         if (answer === null) return [ownReceipt(message, target, "unknown", deps.self, now(), MEMBER_SLOW)];
         const receipts = receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
         // Only a 200 carries the member's own receipts; every other answer is this lead's word.

@@ -189,14 +189,46 @@ export function readReceiptsAnswer(value: JsonValue | undefined): WalkyReceipt[]
   return readReceiptList(asJsonObject(value)?.receipts);
 }
 
-/** The lead-to-member body, `{ message, attest }`, or null when either is not one. */
-export function readCrewDelivery(value: JsonValue | undefined): { readonly message: WalkyMessage; readonly attest: string } | null {
+/** The longest `sender.certPem` a delivery may carry. A P-256 certificate is well under 1,000. */
+export const SENDER_CERT_MAX = 4096;
+/** The longest `attest` or `sender.voucher` a delivery may carry. A base64 P-256 signature is under 100. */
+export const SIGNATURE_MAX = 512;
+
+/** The sender block of a delivery (§21, added 2026-10-18): the sender's pinned certificate and the lead's voucher for it. */
+export interface CrewSenderBlock {
+  readonly certPem: string;
+  readonly voucher: string;
+}
+
+/** A lead-to-member body as `readCrewDelivery` reads it. `sender` is absent when the body carried none. */
+export interface CrewDelivery {
+  readonly message: WalkyMessage;
+  readonly attest: string;
+  readonly sender?: CrewSenderBlock;
+}
+
+function boundedText(value: JsonValue | undefined, max: number): string | null {
+  const read = asJsonString(value);
+  return read === undefined || read === "" || read.length > max ? null : read;
+}
+
+/**
+ * The lead-to-member body, `{ message, attest, sender? }`, or null when any part is not one. An absent
+ * or null `sender` reads as none (§7.1); one that is there must be whole, within its caps, or the body
+ * is malformed.
+ */
+export function readCrewDelivery(value: JsonValue | undefined): CrewDelivery | null {
   const row = asJsonObject(value);
   if (row === undefined) return null;
   const message = readMessage(row.message);
-  const attest = asJsonString(row.attest);
-  if (message === null || attest === undefined || attest === "" || attest.length > 512) return null;
-  return { message, attest };
+  const attest = boundedText(row.attest, SIGNATURE_MAX);
+  if (message === null || attest === null) return null;
+  if (row.sender === undefined || row.sender === null) return { message, attest };
+  const block = asJsonObject(row.sender);
+  const certPem = boundedText(block?.certPem, SENDER_CERT_MAX);
+  const voucher = boundedText(block?.voucher, SIGNATURE_MAX);
+  if (certPem === null || voucher === null) return null;
+  return { message, attest, sender: { certPem, voucher } };
 }
 
 /**

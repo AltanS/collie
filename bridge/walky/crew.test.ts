@@ -20,6 +20,7 @@ import {
   mergeReport,
   olderThanWalky,
   receiptsOfAnswer,
+  senderBlockFor,
   WalkyCrew,
   WalkyReport,
   WALKY_REPORT_MAX,
@@ -251,6 +252,75 @@ describe("a member's check of its lead's delivery", () => {
       { message: { ...message, body: "changed" }, attest: deliver(message).attest },
     ];
     for (const body of bad) expect(leadCheck(body, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: false, answer: { status: 401 } });
+  });
+
+  /** A delivery from `other` with the lead's sender block for `other`'s certificate, parts overridable. */
+  const vouched = (message: WalkyMessage, over: Partial<{ certPem: string; voucher: string }> = {}) => ({
+    ...deliver(message),
+    sender: { ...senderBlockFor("other", material("other").certPem, material("desk").keyPem, CREW.crewId)!, ...over },
+  });
+
+  test("a message from another member, with the lead's voucher for its certificate, verifies to the origin", () => {
+    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/w1:p9");
+    expect(leadCheck(vouched(message), "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: true, verified: "origin" });
+    // Absent or null, the block reads as none: the lead's word only, as before.
+    expect(leadCheck({ ...deliver(message), sender: null }, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: true, verified: "lead" });
+  });
+
+  test("a sender block that does not hold is the uniform 401: another certificate, member, key, crew or signer", () => {
+    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/w1:p9");
+    const forOther = (certPem: string, key = material("desk").keyPem, crewId = CREW.crewId) => senderBlockFor("other", certPem, key, crewId)!;
+    // The message signed with another machine's key, under `other`'s name: the vouched certificate does not verify it.
+    const misSigned = signMessage(unsigned("wt_aaaaaaaaaaa1", "other", "laptop/w1:p9"), material("laptop").keyPem, "other");
+    const bad = [
+      // A tampered certificate: the voucher names the fingerprint of the one the lead pinned.
+      vouched(message, { certPem: material("laptop").certPem }),
+      vouched(message, { certPem: "not a certificate" }),
+      // A voucher for another member, by another key, for another crew.
+      vouched(message, { voucher: senderBlockFor("laptop", material("other").certPem, material("desk").keyPem, CREW.crewId)!.voucher }),
+      vouched(message, { voucher: forOther(material("other").certPem, material("other").keyPem).voucher }),
+      vouched(message, { voucher: forOther(material("other").certPem, material("desk").keyPem, "crew-2").voucher }),
+      { ...vouched(misSigned), message: misSigned, attest: deliver(misSigned).attest },
+    ];
+    for (const body of bad) expect(leadCheck(body, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: false, answer: { status: 401 } });
+  });
+
+  test("a sender block past its caps, or half there, is a malformed body: a 400", () => {
+    const message = signed("wt_aaaaaaaaaaa1", "other", "laptop/w1:p9");
+    const bad = [
+      vouched(message, { certPem: "x".repeat(4097) }),
+      vouched(message, { voucher: "x".repeat(513) }),
+      vouched(message, { voucher: "" }),
+      { ...deliver(message), sender: { certPem: material("other").certPem } },
+      { ...deliver(message), sender: "yes" },
+    ];
+    for (const body of bad) expect(leadCheck(body, "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: false, answer: { status: 400 } });
+    expect(leadCheck(deliver(message), "w1:p9", lead, CREW.crewId, "laptop")).toMatchObject({ ok: true });
+  });
+
+  test("the lead adds the block for another member's message, and never for its own", async () => {
+    const bodies: JsonValue[] = [];
+    const checked: string[] = [];
+    const route = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop", "other"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      senderCert: (memberId) => material(memberId).certPem,
+      post: async (memberId, segment, payload) => {
+        // SAFETY: the route posts the JSON it built itself.
+        const body = JSON.parse(payload) as JsonValue;
+        bodies.push(body);
+        const check = checkFromLead(body, segment, lead, CREW.crewId, memberId);
+        checked.push(check.ok ? check.verified : "refused");
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      now: () => AT,
+    });
+    await route(signed("wt_aaaaaaaaaaa1", "other", "laptop/w1:p9"), "laptop");
+    await route(signed("wt_aaaaaaaaaaa2", "desk", "laptop/w1:p9"), "laptop");
+    expect(bodies[0]).toMatchObject({ sender: { certPem: material("other").certPem } });
+    expect(bodies[1]).not.toHaveProperty("sender");
+    expect(checked).toEqual(["origin", "origin"]);
   });
 
   test("the route names the message's pane, or `all` for a whole machine", () => {

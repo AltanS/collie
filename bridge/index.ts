@@ -2155,6 +2155,9 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       // A member whose reported version predates walky talky is refused `older member` without a dial.
       older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      // A message from another member travels with that member's pinned certificate and this lead's
+      // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
+      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && member.status === "enrolled")?.certPem ?? null,
       signing: () => {
         const held = trustStore.current();
         return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };

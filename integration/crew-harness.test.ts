@@ -2426,17 +2426,18 @@ describe("walky talky in a crew of four, on the real wire", () => {
     }
   }, 60_000);
 
-  test("a member's agent reaches another member's pane through the lead, and the receiver knows the sender only by the lead's word", async () => {
+  test("a member's agent reaches another member's pane through the lead, and the receiver checks the sender's own signature through the lead's voucher", async () => {
     const id = "wt_a2bpane00001";
     const body = "from member a to member b, through the lead";
     const sent = await agentSend(wa, id, paneOf(wb), body);
     // The lead routed it and B answered: the receipt is B's own, written on B, and it says how B knew the sender.
-    expect(sent).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wb), state: "accepted", by: idOf(wb), verified: "lead" }] });
+    expect(sent).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wb), state: "accepted", by: idOf(wb), verified: "origin" }] });
 
-    // B's log: the lead's attestation, NOT the origin (B pins only its lead and cannot check A's signature).
+    // B's log: the ORIGIN (added 2026-10-18). B pins only its lead, so the lead sent A's pinned
+    // certificate with its voucher for it, and B checked A's own signature against that certificate.
     expect(await walky(wb, { op: "status", id })).toMatchObject({
       ok: true,
-      receipts: [{ target: paneOf(wb), by: idOf(wb), verified: "lead" }],
+      receipts: [{ target: paneOf(wb), by: idOf(wb), verified: "origin" }],
       message: { id, kind: "agent", signer: idOf(wa), from: { memberId: idOf(wa), address: paneOf(wa) } },
     });
     // The lead logged the message it routed, from A's pane to B's.
@@ -2467,7 +2468,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
       async () =>
         auditOf(wl, "walky.send").some((l) => l.includes(idOf(wa))) &&
         auditOf(wl, "walky.deliver").some((l) => l.includes(`"host":"${idOf(wb)}"`)) &&
-        auditOf(wb, "walky.deliver").some((l) => l.includes(`"from":"${idOf(wl)}"`) && l.includes('"verified":"lead"')),
+        auditOf(wb, "walky.deliver").some((l) => l.includes(`"from":"${idOf(wl)}"`) && l.includes('"verified":"origin"')),
       10_000,
       async () => `lead audit: ${auditOf(wl, "walky.send").join(" | ")} ${auditOf(wl, "walky.deliver").join(" | ")}; B audit: ${auditOf(wb, "walky.deliver").join(" | ")}`,
     );
@@ -2605,7 +2606,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     // Through the lead at another member: the member's pane is written once however often the lead is asked.
     const idMember = "wt_replaymem001";
     const bodyMember = "sent twice to a pane on another member";
-    expect(await agentSend(wa, idMember, paneOf(wb), bodyMember)).toMatchObject({ ok: true, receipts: [{ id: idMember, target: paneOf(wb), by: idOf(wb), verified: "lead" }] });
+    expect(await agentSend(wa, idMember, paneOf(wb), bodyMember)).toMatchObject({ ok: true, receipts: [{ id: idMember, target: paneOf(wb), by: idOf(wb), verified: "origin" }] });
     await settled(wb, idMember);
     const deliveries = auditOf(wb, "walky.deliver").length;
     const again = await postAsMember(wa, { id: idMember, to: paneOf(wb), body: bodyMember, at: Date.now() });

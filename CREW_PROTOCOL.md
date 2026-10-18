@@ -3277,7 +3277,7 @@ is two hops, A to the lead and the lead to B.
 | Method | Path | Sent by | Body | Answer |
 |---|---|---|---|---|
 | `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
-| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest }` | `{ receipts }` |
+| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
 
 - `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
   collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
@@ -3317,10 +3317,22 @@ The lead's attestation, signed by the lead's key, beside a message it routes to 
 collie-walky-attest-v1\n<id>\n<crewId>\n<receiver memberId>\n<sha256(the message's canonical string) hex>
 ```
 
+The lead's voucher, signed by the lead's key, beside a message from another member of its roster
+(added 2026-10-18):
+
+```
+collie-walky-voucher-v1\n<crewId>\n<memberId>\n<fingerprint>
+```
+
+`fingerprint` is the SHA-256 of the sending member's pinned certificate over its DER, lowercase hex,
+the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
+
 `from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed. The
 attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
-present an attested message at a sibling or in another crew. Both use the primitives §8.6 already has:
-base64 ECDSA-P256-SHA256, with the key behind the signer's pinned certificate.
+present an attested message at a sibling or in another crew. The voucher binds the crew and names the
+member and its certificate; it names no message, so the attestation is still what binds one message
+to one receiver. All three use the primitives §8.6 already has: base64 ECDSA-P256-SHA256, with the key
+behind the signer's pinned certificate.
 
 ### The shape check both hops share
 
@@ -3374,11 +3386,28 @@ shared shape check above. The route's `:id` must name the message's own pane, or
 reaches this machine's agent panes only: a member never routes a message on, so a message cannot loop
 between a member and its lead.
 
-`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation;
-only the lead verifies the origin.** A member pins no other member, so a message from member A reaches
-member B as `verified: "lead"`. The one exception is a message the lead itself sent: the member pins
-that certificate, verifies the origin signature too, and writes `verified: "origin"`, and only when
-`from.memberId` is the signer as well.
+`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation,
+and the origin through a certificate its lead vouched for.** A member pins no other member. When the
+lead routes a message whose signer is an `enrolled` member of its roster other than itself, the body
+carries an optional `sender: { certPem, voucher }` (added 2026-10-18): the certificate the lead pinned
+for that member, and the lead's voucher for it (the canonical strings above). After the attestation
+and the shape check, the member then:
+
+1. recomputes the fingerprint from `certPem`;
+2. verifies `voucher` against its pinned lead, for its own crew id and for `memberId` equal to the
+   message's `signer`;
+3. verifies the message's own signature against `certPem`.
+
+All three good: `verified: "origin"`. Any failure in the sender block is the uniform 401, because it
+is a claim that does not verify. `certPem` is at most 4,096 characters and `voucher` at most 512; a
+longer one, an empty one or a block with a field missing reads as a malformed body, a 400. The member
+pins nothing from the block and stores nothing: the voucher is the lead's word for this one message,
+and a lead that lies about its roster is still believed, as it is for every write it forwards.
+
+Without `sender`, the result is `verified: "lead"`, as before. The one other way to `origin` is a
+message the lead itself sent: the member pins that certificate, verifies the origin signature too, and
+writes `verified: "origin"`, and only when `from.memberId` is the signer as well. The lead never adds a
+sender block to its own message.
 
 ### Dedupe, replay and the time window
 
