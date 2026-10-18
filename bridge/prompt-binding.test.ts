@@ -21,6 +21,7 @@ import { findInputFrame } from "../web/src/lib/surface/frame.ts";
 import { requireProfile } from "../web/src/lib/surface/profile.ts";
 import { detectQuestion as detectMuseQuestion } from "../web/src/lib/harness/muse/question.ts";
 import { detectCheckbox as detectMuseCheckbox } from "../web/src/lib/harness/muse/checkbox.ts";
+import { DEFAULT_TAIL_LINES, MAX_TAIL_LINES, tailLinesFor } from "../web/src/lib/tail-lines.ts";
 
 describe("normalizePromptRegion", () => {
   test("strips SGR sequences and normalizes CRLF and CR line endings", () => {
@@ -363,9 +364,16 @@ describe("an input box under the region (shadow only)", () => {
     expect(composerBelowShadow(fresh, region)).toBeUndefined();
   });
 
-  test("a half box under the region (no bottom edge) is no frame", () => {
-    const fresh = [region, RULE, "❯ "].join("\n");
+  test("a half box under the region (no bottom edge) on a wide pane is no frame", () => {
+    const fresh = [region, "─".repeat(80), "❯ "].join("\n");
     expect(composerBelowShadow(fresh, region)).toBeUndefined();
+  });
+
+  // Below 64 columns Hermes draws a rule and its `❯` row and nothing under them, so there the same
+  // half box is a whole box, and the shadow records it.
+  test("a rule and a `❯` row under the region on a narrow pane are Hermes's whole box", () => {
+    const fresh = [region, RULE, "❯ "].join("\n");
+    expect(composerBelowShadow(fresh, region)).toBe("composer_below");
   });
 
   test("a region the text check refuses gives no shadow", () => {
@@ -785,5 +793,33 @@ describe("the cut at the agents panel", () => {
     expect(verifyPromptBinding(raw, popup)).toEqual({ ok: true });
     const pushed = [raw.trimEnd(), ...Array.from({ length: 6 }, (_, i) => `output row ${String(i)}`)].join("\n");
     expect(verifyPromptBinding(pushed, popup)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+});
+
+// The tail window a grammar may declare (`expected_tail_lines`, web/src/lib/tail-lines.ts). The phone
+// and the bridge must agree on the default, and a declared window only ever widens it.
+describe("the declared tail window", () => {
+  test("the phone's default window is the bridge's", () => {
+    expect(DEFAULT_TAIL_LINES).toBe(DEFAULT_PROMPT_TAIL_LINES);
+  });
+
+  test("tailLinesFor declares nothing the default covers, one row of headroom past it, and refuses past the cap", () => {
+    expect(tailLinesFor(0)).toBeUndefined();
+    expect(tailLinesFor(DEFAULT_TAIL_LINES - 1)).toBeUndefined();
+    expect(tailLinesFor(DEFAULT_TAIL_LINES)).toBe(DEFAULT_TAIL_LINES + 2);
+    expect(tailLinesFor(7)).toBe(9);
+    expect(tailLinesFor(MAX_TAIL_LINES - 2)).toBe(MAX_TAIL_LINES);
+    expect(tailLinesFor(MAX_TAIL_LINES - 1)).toBeNull();
+  });
+
+  test("a window from tailLinesFor accepts its region with that many rows below, and one more, never two more", () => {
+    const region = "Q?\n1. Yes";
+    const screen = (below: number) => [region, ...Array.from({ length: below }, (_, i) => `chrome ${i}`)].join("\n");
+    const tailWindow = tailLinesFor(6)!;
+    expect(verifyExpectedPrompt(screen(5), region)).toEqual({ ok: true });
+    expect(verifyExpectedPrompt(screen(6), region)).toEqual({ ok: false, reason: "not_in_tail" });
+    expect(verifyExpectedPrompt(screen(6), region, tailWindow)).toEqual({ ok: true });
+    expect(verifyExpectedPrompt(screen(7), region, tailWindow)).toEqual({ ok: true });
+    expect(verifyExpectedPrompt(screen(8), region, tailWindow)).toEqual({ ok: false, reason: "not_in_tail" });
   });
 });

@@ -156,7 +156,7 @@ async function walkVerifyCommit(
 
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return withWhy(guarded.result, "entry");
-  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled, guarded.columns);
+  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled, guarded.columns, guarded.tail);
   if (walked.status !== "sent") return withWhy(walked, "bridge");
 
   const landed = (m: PromptModel) => {
@@ -185,6 +185,7 @@ async function walkVerifyCommit(
       model.signature,
       model.styledSignature,
       model.bindColumns,
+      model.bindTail,
     );
     return withWhy(commit, "bridge");
   } catch (e) {
@@ -228,7 +229,7 @@ export async function submitPromptFeedback(
 
   // Bind this write to the guarded region. It moves focus, so the steps after it must re-derive
   // rather than reuse this binding.
-  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled, guarded.columns);
+  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled, guarded.columns, guarded.tail);
   if (focus.status !== "sent") return focus;
 
   // The field must be FOCUSED, and STILL EMPTY, before anything is typed. Focus alone is not enough:
@@ -267,7 +268,14 @@ export async function submitPromptFeedback(
     // screen that has moved. (The sibling flows send their last key unbound; this one carries more.)
     const fresh = await readDialog(target(args));
     if (!fresh.model || !landed(fresh.model)) return { status: "changed" };
-    return sendBoundKeys(args, ["Enter"], fresh.model.signature, fresh.model.styledSignature, fresh.model.bindColumns);
+    return sendBoundKeys(
+      args,
+      ["Enter"],
+      fresh.model.signature,
+      fresh.model.styledSignature,
+      fresh.model.bindColumns,
+      fresh.model.bindTail,
+    );
   } catch (e) {
     return { status: "error", error: describeThrownError(e) };
   }

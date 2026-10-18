@@ -212,11 +212,14 @@ export class HoldStore {
     return this.write({ ...known, state: "running" });
   }
 
-  /** A release that met a pane not ready yet goes back to its place in the queue (its `seq` is kept). */
-  putBack(id: string): HeldEntry | null {
+  /**
+   * A release that met a pane not ready yet goes back to its place in the queue (its `seq` is kept).
+   * `counted` false puts it back without spending a try: a wait the screen asks for, not a failure.
+   */
+  putBack(id: string, counted = true): HeldEntry | null {
     const known = this.get(id);
     if (known === null || known.state === "ended") return null;
-    return this.write({ ...known, state: "held", tries: known.tries + 1 });
+    return this.write({ ...known, state: "held", tries: counted ? known.tries + 1 : known.tries });
   }
 
   /** The request closed without reaching the agent: the text stays for the phone's Resend. */

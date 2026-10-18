@@ -125,6 +125,7 @@ import {
   type StyledOutcome,
 } from "./prompt-binding.ts";
 import { MAX_BIND_COLUMN, type ColumnRange } from "../web/src/lib/column-range.ts";
+import { MAX_TAIL_LINES } from "../web/src/lib/tail-lines.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
@@ -4628,6 +4629,8 @@ export async function replyPane(
   if (!styled.ok) return text("bad expected_styled", 400);
   const columns = expectedColumns(fields, expected.present);
   if (!columns.ok) return text("bad expected_columns", 400);
+  const tail = expectedTailLines(fields, expected.present);
+  if (!tail.ok) return text("bad expected_tail_lines", 400);
   // `text`/`submit` are CHECKED, not assumed. They used only to be declared string/boolean, so a
   // body that lied handed a non-string to `pane.send_text` (herdr refused it one layer down) or
   // made `submit ?? true` follow a truthiness path nobody wrote. A malformed write is refused here,
@@ -4652,7 +4655,7 @@ export async function replyPane(
     return json(refusal, ae);
   }
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -4732,11 +4735,13 @@ export async function keysPane(
   if (!styled.ok) return text("bad expected_styled", 400);
   const columns = expectedColumns(fields, expected.present);
   if (!columns.ok) return text("bad expected_columns", 400);
+  const tail = expectedTailLines(fields, expected.present);
+  if (!tail.ok) return text("bad expected_tail_lines", 400);
   const keys = Array.isArray(fields.keys) ? fields.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -4838,12 +4843,33 @@ function expectedColumns(body: JsonObject, promptPresent: boolean): ExpectedColu
   return { ok: true, value: { start, end } };
 }
 
+type ExpectedTailLines = { ok: true; value: number | undefined } | { ok: false };
+
+/**
+ * The optional `expected_tail_lines` body field: how many of the fresh read's last non-blank rows the
+ * `expected_prompt` match may end in (`PromptModel.bindTail`, web/src/lib/tail-lines.ts). A grammar
+ * names it when its harness paints live chrome of its own under the dialog (Hermes's spinner, hint,
+ * status bar and input row), which would otherwise push a live region out of the default window.
+ * Like `expected_columns` it refines `expected_prompt` and never replaces it, so alone it is
+ * malformed, and so is anything but a whole number from `DEFAULT_PROMPT_TAIL_LINES` to
+ * `MAX_TAIL_LINES`: it can widen the window, never narrow it. Absent = the default window.
+ */
+function expectedTailLines(body: JsonObject, promptPresent: boolean): ExpectedTailLines {
+  if (!Object.prototype.hasOwnProperty.call(body, "expected_tail_lines")) {
+    return { ok: true, value: undefined };
+  }
+  const value = body.expected_tail_lines;
+  if (!promptPresent || typeof value !== "number" || !Number.isSafeInteger(value)) return { ok: false };
+  if (value < DEFAULT_PROMPT_TAIL_LINES || value > MAX_TAIL_LINES) return { ok: false };
+  return { ok: true, value };
+}
+
 type PromptBindingCheck =
   | {
       ok: true;
       // `styled` is present only when the phone sent `expected_styled`: `checked`, or
       // `skipped_unknown_version` when the text check alone decided (ADR 0080 point 7). `columns` is
-      // present only when the phone sent `expected_columns`.
+      // present only when the phone sent `expected_columns`, `tailLines` only with `expected_tail_lines`.
       // `shadow` is present only when a shadow check would have refused (M56 spec 03,
       // `composerBelowShadow`). It never refuses; the audit line carries it for the counters.
       audit: {
@@ -4853,6 +4879,7 @@ type PromptBindingCheck =
         styled?: StyledOutcome;
         columns?: ColumnRange;
         shadow?: BindingShadow;
+        tailLines?: number;
       };
     }
   | {
@@ -4867,6 +4894,7 @@ type PromptBindingCheck =
         expected: string;
         reason: Extract<PromptBindingVerdict, { ok: false }>["reason"] | "read_failed";
         columns?: ColumnRange;
+        tailLines?: number;
       };
     };
 
@@ -4898,7 +4926,9 @@ async function checkPromptBinding(
   expected: string,
   expectedStyledLines?: string,
   columns?: ColumnRange,
+  tailLines?: number,
 ): Promise<PromptBindingCheck> {
+  const tailWindow = tailLines ?? DEFAULT_PROMPT_TAIL_LINES;
   let fresh: MuxGrid;
   try {
     const expectedRawLines = expected.split(/\r\n?|\n/).length;
@@ -4906,7 +4936,7 @@ async function checkPromptBinding(
       MAX_READ_LINES,
       Math.max(
         cfg.readLines,
-        expectedRawLines + DEFAULT_PROMPT_TAIL_LINES + PROMPT_BINDING_BLANK_LINE_HEADROOM,
+        expectedRawLines + tailWindow + PROMPT_BINDING_BLANK_LINE_HEADROOM,
       ),
     );
     // Keep this coupled to readPane(): use its recent scope and preserved styling so the bridge
@@ -4932,7 +4962,8 @@ async function checkPromptBinding(
   // secret in it compares exactly as before, and one with a secret still matches itself.
   const freshText = cfg.redact ? redactAnsi(fresh.text) : fresh.text;
   // With `expected_columns`, both checks run on the read cut to those columns (verifyPromptBinding).
-  const result = verifyPromptBinding(freshText, expected, expectedStyledLines, columns);
+  // With `expected_tail_lines`, the match may end that many non-blank rows from the read's end.
+  const result = verifyPromptBinding(freshText, expected, expectedStyledLines, columns, tailWindow);
   if (!result.ok) {
     const refused: Extract<PromptBindingCheck, { ok: false }>["audit"] = {
       checked: true,
@@ -4942,6 +4973,7 @@ async function checkPromptBinding(
     };
     // Assigned, never conditionally spread: a binding without `expected_columns` records no `columns` key.
     if (columns !== undefined) refused.columns = columns;
+    if (tailLines !== undefined) refused.tailLines = tailLines;
     return { ok: false, ...apiError("prompt_changed"), status: 409, audit: refused };
   }
 
@@ -4958,6 +4990,7 @@ async function checkPromptBinding(
   // Assigned, never conditionally spread: a bound send without `expected_styled` records no `styled` key.
   if (result.styled !== undefined) passed.styled = result.styled;
   if (columns !== undefined) passed.columns = columns;
+  if (tailLines !== undefined) passed.tailLines = tailLines;
   // Shadow mode only: a box under the region is recorded, never refused (composerBelowShadow says why).
   // A throw in the shadow check must never cost the tap, so it records nothing then.
   let shadow: BindingShadow | undefined;

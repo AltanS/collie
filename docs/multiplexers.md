@@ -402,7 +402,8 @@ later message on that pane waits behind the held ones. A held text lasts 30 minu
 10 minutes. After that the row says the message was not sent, and offers Resend. Some commands never
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
-`/resume`, `/logout` and every `!` line. A held send survives a restart of Collie. Cancel works
+`/resume`, `/logout` and every `!` line. On Hermes these are `/exit`, `/quit`, `/clear`, `/new`,
+`/resume` and every `!` line. A held send survives a restart of Collie. Cancel works
 until the send starts to go out, and only on this machine's own panes. With two or more held sends the
 card shows a count and the first text, and Show all lists each send with its own Cancel. Collie keeps the held text on
 disk in plain form, in a file only your user can read (mode 0600). It deletes the text when the send
@@ -572,6 +573,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
+| Hermes | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
 
 A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
 Collie checks that the character lands in the box, then removes it.
@@ -617,6 +619,24 @@ Collie checks that the character lands in the box, then removes it.
   The list of background tasks under the box reads as unknown, and a send needs your tap.
   A running turn shows a row with a timer and `esc to interrupt`.
 
+- **Hermes** (the classic CLI; `hermes --tui` is not read) draws its box as a rule, a `❯` row and a rule.
+  Below 64 columns it draws no rule under the box. A named profile shows its name before the `❯`.
+  A newline goes in as Alt+Enter: Ctrl+J sends the message when `display.cli_multiline_shortcuts` is off.
+  The box shows at most eight rows. A longer message cannot be read back, so the send stops before Enter.
+  Submit sends it, and the phone then cannot confirm it went.
+  Hermes may show the rest of an earlier message in grey after your text.
+  That send stops before Enter too, and Submit sends only what you typed.
+  The model picker and the command palette open over the transcript, and the pane never reads free under one.
+
+- **Hermes during a turn** starts its row with `☤`, and Collie reads the turn from that mark.
+  What Enter does then is Hermes's own setting, so Collie never presses it during a turn.
+  A send during a turn is held, and it goes when the turn ends.
+  If a turn starts while Collie types, the send stops before Enter and the text stays in the box.
+
+- **Hermes's questions:** a question's typed answer opens a `✎` row, and a send from the phone answers it.
+  A held message never goes into that row. It waits until the question closes, then goes as a message.
+  While a held message waits, a new send joins it, so cancel the held one to answer from the phone.
+
 Grok, Antigravity and Muse are not installed on the build host.
 Their profiles rest on saved screens of each agent.
 No live message has gone to them through a profile, so Collie probes every send there.
@@ -625,6 +645,8 @@ So Collie refuses a send while the screen shows the turn running, and it types n
 Where a harness draws no running sign, Collie cannot tell, and the agent decides what Enter does.
 OpenCode and OMP passed live sends on a version above the checked one.
 Collie probes every send on them until a send passes inside the checked range.
+Hermes passed live sends on 0.22.2, inside its range, on Herdr only.
+The probe has not been tried in each Hermes dialog, so Collie probes every send there too.
 
 A version above the checked one still works, and the receipt says `provisional`.
 

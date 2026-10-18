@@ -42,7 +42,7 @@ export interface JournalRoots {
   opencode: readonly string[];
   /** Grok Build's `$GROK_HOME/sessions`. */
   grok: readonly string[];
-  /** Hermes' SessionDB directory — `state.db` lives at its top level. */
+  /** Hermes' home — `state.db` at its top level, and one under each `profiles/<name>/`. */
   hermes: readonly string[];
   /** Muse's `sessions` directory — `YYYY/MM/DD/<uuid>/session.jsonl` lives under it. */
   muse: readonly string[];

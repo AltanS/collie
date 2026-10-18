@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { hostFor } from "./host.ts";
 import {
@@ -11,8 +11,7 @@ import {
   nonLoopbackBindRefusal,
   resolveBridgeHost,
   resolveStateDir,
-  normaliseBasePath,
-} from "./config.ts";
+  normaliseBasePath, hermesHome } from "./config.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./uploads.ts";
 
 // loadConfig is the deployment contract — env vars in, a resolved Config out. Pure (just reads
@@ -41,6 +40,7 @@ const KEYS = [
   "PI_CODING_AGENT_DIR",
   "XDG_DATA_HOME",
   "GROK_HOME",
+  "HERMES_HOME",
   "OPENCLAW_STATE_DIR",
   "COLLIE_SUBMIT_KEYS",
   "COLLIE_TRUSTED_USER",
@@ -246,6 +246,27 @@ describe("loadConfig", () => {
   test("COLLIE_HERMES_ROOT relocates Hermes state.db", () => {
     process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
     expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
+  });
+
+  test("Hermes's root follows HERMES_HOME, and the Collie override wins", () => {
+    process.env.HERMES_HOME = "/srv/hermes-home";
+    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes-home"]);
+    process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
+    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
+  });
+
+  // A process Hermes runs inside a named profile has HERMES_HOME set to that profile's folder, and
+  // Hermes keeps every profile under its home, not under the profile (`get_default_hermes_root`).
+  test("a HERMES_HOME that is a named profile resolves to the home that holds every profile", () => {
+    const home = resolve("/home/u");
+    const native = join(home, ".hermes");
+    expect(hermesHome(undefined, home)).toBe(native);
+    expect(hermesHome("", home)).toBe(native);
+    expect(hermesHome(join(native, "profiles", "assistant"), home)).toBe(native);
+    expect(hermesHome(native, home)).toBe(native);
+    expect(hermesHome(join(resolve("/opt/data"), "profiles", "coder"), home)).toBe(resolve("/opt/data"));
+    expect(hermesHome(resolve("/opt/data"), home)).toBe(resolve("/opt/data"));
+    expect(hermesHome(join(home, ".hermes-other"), home)).toBe(join(home, ".hermes-other"));
   });
 
   test("OpenClaw's state folder follows OPENCLAW_STATE_DIR, and the Collie override wins", () => {

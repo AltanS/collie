@@ -62,6 +62,7 @@ import { WALK_GAPS, WALK_PAIRS, walkGroupKey } from "./walk-pairs";
 // bridge imports web/src/lib/styled-region.ts the other way, and neither pulls a cycle).
 import { verifyExpectedStyled, verifyPromptBinding } from "../../../../bridge/prompt-binding.ts";
 import { cropRawColumns, type ColumnRange } from "../column-range";
+import { MAX_TAIL_LINES } from "../tail-lines";
 import { trailingTaskChecklistStart } from "../task-checklist";
 import { findInputFrame, plainRows } from "../surface/frame";
 import { loadProfiles } from "../surface/profile";
@@ -154,17 +155,21 @@ function namedFooterStart(rows: readonly string[]): number | null {
  * would be refused `not_in_tail` without the cut, the uncut count kept when the cut leaves the match
  * unfound or still out of the tail. A generic footer (`Frame.volatile.footer`) is never cut.
  */
-function rowsBelowMatch(rows: readonly string[], expected: string[]): number | null {
+function rowsBelowMatch(
+  rows: readonly string[],
+  expected: string[],
+  tailLines: number = BRIDGE_PROMPT_TAIL_LINES,
+): number | null {
   const read = normalizeRegion(rows.join("\n"));
   const end = trailingTaskChecklistStart(read) ?? read.length;
   const matchEnd = lastMatchEnd(read.slice(0, end), expected);
   if (matchEnd === -1) return null;
   const below = end - 1 - matchEnd;
-  if (below < BRIDGE_PROMPT_TAIL_LINES) return below;
+  if (below < tailLines) return below;
   const footer = namedFooterStart(rows);
   if (footer === null || footer >= end) return below;
   const aboveFooter = lastMatchEnd(read.slice(0, footer), expected);
-  if (aboveFooter === -1 || footer - 1 - aboveFooter >= BRIDGE_PROMPT_TAIL_LINES) return below;
+  if (aboveFooter === -1 || footer - 1 - aboveFooter >= tailLines) return below;
   return footer - 1 - aboveFooter;
 }
 
@@ -823,7 +828,7 @@ export function describeAdapterConformance(
             }
           });
 
-          it(`${name}: the ${kind} bound region ends inside the bridge's ${BRIDGE_PROMPT_TAIL_LINES}-row tail window`, () => {
+          it(`${name}: the ${kind} bound region ends inside the bridge's tail window (${BRIDGE_PROMPT_TAIL_LINES} rows, or the model's declared tail)`, () => {
             // The first write of every choreography binds `region` as the bridge's expected prompt,
             // and `verifyExpectedPrompt` (bridge/prompt-binding.ts) only accepts a match ENDING
             // within the last 6 non-blank rows of the fresh read. A region ending higher 409s every
@@ -841,13 +846,39 @@ export function describeAdapterConformance(
               // tail (lib/task-checklist.ts), nor a named footer run under the box the region ends above
               // (`rowsBelowMatch`, cut only where the uncut read would be refused).
               const expected = normalizeRegion(contract.region(model));
-              const below = rowsBelowMatch(read, expected);
+              // A model that declares a tail window (`bindTail`, lib/tail-lines.ts) is matched against
+              // that window, which the bridge accepts only from its default up to MAX_TAIL_LINES.
+              const declared = contract.tail?.(model);
+              if (declared !== undefined) {
+                expect(declared, `${name}: the ${kind} declares a tail the bridge refuses`).toBeGreaterThan(BRIDGE_PROMPT_TAIL_LINES);
+                expect(declared, `${name}: the ${kind} declares a tail the bridge refuses`).toBeLessThanOrEqual(MAX_TAIL_LINES);
+              }
+              const tailWindow = declared ?? BRIDGE_PROMPT_TAIL_LINES;
+              const below = rowsBelowMatch(read, expected, tailWindow);
               expect(below, `${name}: the ${kind} region is not on its own screen`).not.toBeNull();
               expect(
                 below!,
                 `${name}: ${String(below)} non-blank rows sit below the ${kind} region — ` +
-                  `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
-              ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+                  `the bridge can only bind within the last ${String(tailWindow)}`,
+              ).toBeLessThan(tailWindow);
+            }
+          });
+
+          // A model that declares a tail window (`bindTail`) binds to its own raw capture through the
+          // bridge's verifier with that window, and the same region is refused with the default one:
+          // a declared tail that was not needed would only widen what a stale copy can match.
+          it(`${name}: a ${kind} declared tail binds to its own raw capture through the bridge's verifier, and is needed`, () => {
+            for (const model of modelsOf(adapter, name, kind)) {
+              const tail = contract.tail?.(model);
+              if (tail === undefined) continue;
+              const raw = loadRaw(name);
+              const region = contract.region(model);
+              const columns = contract.columns?.(model);
+              expect(verifyPromptBinding(raw, region, contract.styled?.(model), columns, tail).ok, `${name} with tail ${tail}`).toBe(true);
+              expect(verifyPromptBinding(raw, region, contract.styled?.(model), columns), `${name} with the default tail`).toMatchObject({
+                ok: false,
+                reason: "not_in_tail",
+              });
             }
           });
 

@@ -1,0 +1,139 @@
+{
+  "id": "hermes",
+  "identity": {
+    "binary": "hermes",
+    "versionCommand": [
+      "hermes",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "0.22.2 - 0.22.2",
+      "status": "verified",
+      "verifiedThrough": "0.22.2",
+      "verifiedOn": "2026-10-16"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": {
+        "pattern": "^─+$",
+        "minCells": 8,
+        "column": 0
+      },
+      "prompt": {
+        "pattern": "^(?:[✎☤](?: ❯)?|(?:[\\w.-]+ )?❯)(?: (?<draft>.*))?$",
+        "column": 0
+      },
+      "bottom": {
+        "pattern": "^─+$",
+        "minCells": 8,
+        "column": 0
+      },
+      "continuationIndent": 0,
+      "maxDraftRows": 7,
+      "maxTailRows": 16
+    },
+    "placeholders": {
+      "texts": [
+        "type your answer here and press Enter"
+      ],
+      "sgr": 3
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 7
+      },
+      "below": {
+        "maxRows": 14,
+        "footerMaxRows": 14
+      }
+    },
+    "runningRows": [
+      "^☤(?: ❯)?(?: |$)",
+      "^ {2}(?!❓|💻|🔐|🔑)\\S.*  \\((?: *\\d+\\.\\d+s|\\d+m\\d+s)(?: · [^()]+)?\\)$"
+    ],
+    "answerPrompt": "^✎(?: ❯)?(?: |$)",
+    "overlayRows": [
+      "^╭─ ⚙ Model Picker — ",
+      "^│ Select a model \\(\\d+ available\\) — type to filter\\s*│$",
+      "^│ Filter: .*\\(\\d+/\\d+ match — ",
+      "^│ Current: .+ on .+\\s*│$",
+      "^│ (?:❯ |  )← Back\\s*│$",
+      "^╭─ ⚙ Command Palette",
+      "^│ Type to filter \\d+ commands — ",
+      "^│ (?:❯ |  )/[\\w-]+  —  "
+    ],
+    "frameAlternates": [
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^─+$",
+          "minCells": 8,
+          "column": 0
+        },
+        "prompt": {
+          "pattern": "^(?:[✎☤]|(?:[\\w.-]+ )?❯)(?: (?<draft>.*))?$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^─+$",
+          "column": 0,
+          "open": true
+        },
+        "rows": "^(?![╭╰│]|─{64,}$).*$",
+        "continuationIndent": 0,
+        "maxDraftRows": 8,
+        "maxTailRows": 16
+      }
+    ]
+  },
+  "keys": {
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "alt+Enter"
+    ],
+    "interrupt": [
+      "ctrl+c"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "steers",
+    "neverHeld": [
+      "/exit",
+      "/quit",
+      "/clear",
+      "/new",
+      "/resume",
+      "!"
+    ]
+  },
+  "collapse": {
+    "pattern": "\\[Pasted text #(?<n>\\d+): (?<lines>\\d+) lines → [^\\]]+\\]"
+  },
+  "reservedLeads": [
+    "/",
+    "!"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "provisional",
+    "note": "Live sends passed on Hermes 0.22.2, inside the range, on Herdr, 2026-10-17: one line, two lines and six lines (newline Alt+Enter), a clarify's typed answer, a send held through a turn and released after it, and one held while a question opened, which waited for the question to close; a grey history suggestion and an input taller than the box's eight rows each stopped before Enter. The M56 spec 01 lab (the probe inert in every dialog on Herdr, tmux and zellij) has not run, so every send is probed."
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}

@@ -416,10 +416,15 @@ describe("the status rule across the whole corpus", () => {
   const PANES = new URL("../../../fixtures/panes/", import.meta.url);
   const foreign = readdirSync(PANES).filter((n) => n.endsWith(".txt") && !n.startsWith("pi--")).toSorted();
 
-  it("finds a pi editor in no other harness's capture but agy's prompt rows", () => {
+  it("finds a pi editor in no other harness's capture but agy's prompt rows and Hermes's frame", () => {
     expect(foreign.length).toBeGreaterThan(400);
     const found = foreign.filter((name) => locateComposer(fixture(name.slice(0, -4))) !== null);
-    expect(found).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
+    // Hermes's classic CLI draws pi's own shape around its input: a rule, the input rows, a rule, and
+    // a status row the other side. pi's grammar runs on a pi pane only (the registry picks the adapter
+    // by agent), so the match is shape, not a misread. The exception stays honest: Hermes still draws it.
+    const drawnByHermes = (name: string): boolean => name.startsWith("hermes--");
+    expect(found.filter((name) => !drawnByHermes(name))).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
+    expect(found.some(drawnByHermes)).toBe(true);
   });
 
   it("keeps prose under a markdown rule out: a plain row straight under the rule is not a status row", () => {

@@ -506,6 +506,39 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "steers",
     queueKey: "alt+Enter",
   },
+  {
+    id: "hermes",
+    binary: "hermes",
+    versionOutput: "Hermes Agent v0.22.2 (2026.9.24) · stable · local d923a5eb487a\nInstall directory: /opt/hermes\n",
+    version: "0.22.2",
+    above: "0.22.3",
+    takes: [
+      { anchor: "top", row: "─".repeat(64) },
+      { anchor: "prompt", row: "❯" },
+      { anchor: "prompt", row: "❯ hello there", draft: "hello there" },
+      { anchor: "prompt", row: "assistant ❯ hello there", draft: "hello there" },
+      // A clarify's typed answer: Hermes's own input row, `✎` in front (alone below 64 columns).
+      { anchor: "prompt", row: "✎ ❯ CockroachDB 23.2", draft: "CockroachDB 23.2" },
+      { anchor: "prompt", row: "✎ Firebird", draft: "Firebird" },
+      // A turn running: Hermes's input row with `☤` in front. The same glyph is the profile's running
+      // row, so the box is found and the turn reads running.
+      { anchor: "prompt", row: "☤ ❯ msg=interrupt · /queue · /bg · /steer · Ctrl+C cancel", draft: "msg=interrupt · /queue · /bg · /steer · Ctrl+C cancel" },
+      { anchor: "prompt", row: "☤ msg=interrupt", draft: "msg=interrupt" },
+      { anchor: "bottom", row: "─".repeat(64) },
+    ],
+    refuses: [
+      // A clarify waiting for a choice, an approval, a password: none takes text.
+      { anchor: "prompt", row: "? ❯" },
+      { anchor: "prompt", row: "⚠ ❯" },
+      { anchor: "prompt", row: "🔐 ❯" },
+      { anchor: "top", row: " ☤ lab-model │ ctx -- │ [░░░░░░░░░░] -- │ 0s │ ⏲ 0s" },
+    ],
+    collapse: { text: "[Pasted text #2: 12 lines → /home/u/.hermes/pastes/paste_2_101500.txt]", group: "lines", value: "12" },
+    reservedLeads: ["/", "!"],
+    submit: ["Enter"],
+    probeStatus: "provisional",
+    enterWhileRunning: "steers",
+  },
 ];
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
@@ -583,6 +616,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["an underPainted flag with no under pattern", ["idle", "frame", "underPainted"], true, "idle.frame.underPainted"],
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
+    ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
   ];
   for (const [name, path, value, field] of cases) {
     it(`refuses ${name}`, () => {

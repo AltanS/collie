@@ -859,6 +859,14 @@ function commitKeys(state: RunState): readonly string[] {
   return keys.submit;
 }
 
+/** Whether the box answers a question the agent asked: the profile's `idle.answerPrompt` on the frame's prompt row. */
+function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
+  const source = match?.profile.idle.answerPrompt;
+  if (source === undefined || snap.frame === null) return false;
+  const row = snap.texts[snap.frame.interior.prompt];
+  return row !== undefined && new RegExp(source, "u").test(row);
+}
+
 /**
  * Whether the receipt's `queued` comes only from a witness: a harness whose Enter does not queue but
  * that takes a message in a turn through its queue key. Its queue key may be its submit key too, so a
@@ -932,6 +940,8 @@ function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
 const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may have taken it. Check the transcript.";
 
+/** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
+const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
@@ -1457,6 +1467,8 @@ interface RunState {
   released?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
+  /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
+  answerWait?: boolean;
 }
 
 /** What the hold queue knows of one pane between polls (M56 spec 15 review). */
@@ -1788,8 +1800,10 @@ export class SendProtocol {
   private backToQueue(state: RunState, end: Ended): SendAnswer {
     const holds = this.deps.holds!;
     const entry = holds.get(state.record.id);
-    if (entry === null || entry.tries + 1 >= HOLD_TRIES) return this.settle(state, end);
-    holds.putBack(state.record.id);
+    // An open question is a wait, not a failed try: the request waits for it to close, up to its own expiry.
+    const counted = state.answerWait !== true;
+    if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
+    holds.putBack(state.record.id, counted);
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     return answerWith({ receipt, offers: [] }, { ...end.extra, detail: HELD });
@@ -2337,6 +2351,12 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
+    // A held request is a message for the agent, in every mode a release runs (a send, a command, a
+    // Replace): a box that answers the agent's question would take it as the answer. It waits.
+    if (state.released === true && answersQuestion(match, s0)) {
+      state.answerWait = true;
+      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    }
     state.manual = takesManualSend(s0.surface);
     if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
