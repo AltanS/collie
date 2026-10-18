@@ -176,6 +176,29 @@ describe("paneFilesRoot", () => {
     );
   });
 
+  it("a pane outside the workspace folder roots at its own folder, never the workspace's (#509)", () => {
+    const scratch = { workspaceId: "w1", cwd: "/private/tmp/scratch/work" };
+    const workspaces = [{ workspaceId: "w1", folder: "/var/home/me/repo" }];
+    expect(paneFilesRoot({ pane: scratch, panes: [pane, scratch], workspaces, home })).toBe("/private/tmp/scratch/work");
+    // The pane inside the folder keeps the workspace root.
+    expect(paneFilesRoot({ pane, panes: [pane, scratch], workspaces, home })).toBe("/var/home/me/repo");
+    // Outside and out of bounds at once (parked in home): no root, not the workspace's.
+    const parked = { workspaceId: "w1", cwd: home };
+    expect(paneFilesRoot({ pane: parked, panes: [pane, parked], workspaces, home })).toBeNull();
+    // A sibling repo under a shared parent: the pane's own folder, not the panes' common parent —
+    // the mux folder wins the workspace root on the bridge, and this pane is outside it.
+    const sibling = { workspaceId: "w1", cwd: "/var/home/me/projects/other" };
+    const inRepo = { workspaceId: "w1", cwd: "/var/home/me/projects/repo/web" };
+    expect(
+      paneFilesRoot({
+        pane: sibling,
+        panes: [inRepo, sibling],
+        workspaces: [{ workspaceId: "w1", folder: "/var/home/me/projects/repo" }],
+        home,
+      }),
+    ).toBe("/var/home/me/projects/other");
+  });
+
   it("a pane parked in home has no root", () => {
     const parked = { workspaceId: "w1", cwd: home };
     expect(paneFilesRoot({ pane: parked, panes: [parked], workspaces: [], home })).toBeNull();

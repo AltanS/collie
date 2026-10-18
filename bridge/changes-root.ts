@@ -1,10 +1,17 @@
-// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0065, § The root is the workspace).
+// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0065, § The root is the workspace; #509).
 //
 // The operator thinks in workspaces (a herdr workspace, a tmux session, a zellij session), not in
 // the folder one pane happens to sit in. A pane parked in `experiments/session-stream` used to show
 // that subfolder's repo alone, which was a partial and misleading picture of the work. So the root
 // is the WORKSPACE's folder, every pane in a workspace shows the same list, and nested repo
 // discovery then runs from that root exactly as it did from a pane's folder.
+//
+// One exception, and it is the whole of #509: a pane whose own folder is OUTSIDE its workspace's
+// root (a scratch tab that `cd`-ed to /tmp and launched an agent there) does not belong to that
+// picture at all. Showing it the workspace's repo under its own header names another pane's work
+// as this pane's. Such a pane reads its own folder instead ({@link rootForPane}); a pane inside
+// the root is unchanged, and the workspace route — asked by workspace, with no asking pane —
+// always reads the workspace root.
 //
 // Pure: the snapshot and the home folder come in as arguments, so the rule is tested without a mux,
 // a disk or a server. bridge/server.ts feeds it the live snapshot.
@@ -95,6 +102,27 @@ export function workspaceRoot(input: WorkspaceRootInput): string | null {
   const common = commonAncestor(cwds, host);
   if (common !== null && withinBound(common, input.home, host)) return common;
   return null;
+}
+
+/**
+ * The workspace root AS SEEN BY ONE PANE: the root itself, or `null` when the pane's own folder
+ * sits outside it (#509). `null` is the routes' cue to fall back to the pane's own cwd, exactly as
+ * they already do when a workspace has no root — so an outside pane shows its own folder (an empty
+ * Changes list when that folder holds no repo), never another pane's repo.
+ *
+ * A cwd that is not an absolute folder (blank, relative — a mux that reports none) cannot be shown
+ * to be outside anything, so the root stands: absence of a folder is not evidence of a different
+ * one. Pure string rules, like the rest of this file: two spellings of one folder that differ by a
+ * symlink (`/tmp` vs `/private/tmp`) read as outside here, and the server re-checks those against
+ * the disk before it discards a root.
+ */
+export function rootForPane(root: string | null, cwd: string, host: Host = HOST): string | null {
+  if (root === null) return null;
+  const own = normalize(cwd, host);
+  if (own === null) return root;
+  const base = normalize(root, host);
+  if (base === null) return root;
+  return isInside(host, own, base) ? root : null;
 }
 
 /** The snapshot slices the root lookup needs. `EngineSnapshot` satisfies it. */
