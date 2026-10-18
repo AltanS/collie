@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { Activity, ArrowLeft, Crown, MessageSquare, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
@@ -18,6 +18,7 @@ import { hostCounts } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { type CrewData } from "@/lib/loaders";
 import { homePath, machinePath } from "@/lib/nav";
+import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { isReadOnly, type AgentView, type CrewMemberStatus, type CrewStatusResponse } from "@/lib/types";
@@ -74,8 +75,13 @@ export function CrewRoute() {
   // The open sheet holds the member ID, not the member: the loader revalidates underneath an open
   // sheet on every poll, and a held object would go on rendering the census as it was when tapped.
   const [openId, setOpenId] = useState<string | null>(null);
-  // "Message all agents" (M62). A write, so a device that may not write is not offered it.
+  // "Message all agents" (M62). A write, so a device that may not write is not offered it. Either
+  // write gate counts, as on the dashboard and in a pane: the proxy-asserted allowlist, or a missing
+  // or rejected pairing credential, which the bridge would answer with a 401 after the confirm.
   const [messaging, setMessaging] = useState(false);
+  const { refused: notPaired } = usePairing();
+  const mayNotSend = isReadOnly(root?.device) || notPaired;
+  const mayNotSendId = useId();
   const selected = status?.members.find((m) => m.id === openId) ?? null;
 
   return (
@@ -126,16 +132,24 @@ export function CrewRoute() {
           />
         )}
         {status !== null && (
-          <Button
-            variant="outline"
-            className="h-11 w-full"
-            onClick={() => setMessaging(true)}
-            disabled={isReadOnly(root?.device)}
-            title={isReadOnly(root?.device) ? t("walky.crew.readOnly") : undefined}
-          >
-            <MessageSquare className="size-4" aria-hidden="true" />
-            {t("walky.crew.open")}
-          </Button>
+          // The reason is a line under the button, not a tooltip: a phone has no hover to show one.
+          <div className="flex flex-col gap-1.5">
+            <Button
+              variant="outline"
+              className="h-11 w-full"
+              onClick={() => setMessaging(true)}
+              disabled={mayNotSend}
+              aria-describedby={mayNotSend ? mayNotSendId : undefined}
+            >
+              <MessageSquare className="size-4" aria-hidden="true" />
+              {t("walky.crew.open")}
+            </Button>
+            {mayNotSend && (
+              <p id={mayNotSendId} className="text-xs text-muted-foreground">
+                {t("walky.crew.readOnly")}
+              </p>
+            )}
+          </div>
         )}
       </BandMain>
 

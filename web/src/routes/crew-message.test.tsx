@@ -5,7 +5,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { CrewProvider } from "@/components/crew-provider";
 import { asJsonString, parseJsonObject } from "@/lib/json";
-import { type CrewData } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type CrewData, type HomeData } from "@/lib/loaders";
+import { markNotPaired } from "@/lib/pairing";
 import { fixtureCrewStatus, fixtureServers, recordedWalkyPosts } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
@@ -254,6 +255,69 @@ describe("Message all agents", () => {
     await sendAndConfirm(user, dialog);
     await waitFor(() => expect(ids).toHaveLength(2));
     expect(ids[1]).toBe(ids[0]);
+  });
+
+  describe("a device that may not send", () => {
+    /** The Crew page under a root route whose device the bridge does not let write. */
+    function renderReadOnlyCrew() {
+      const root: HomeData = {
+        bridge: "connected",
+        device: { enforced: true, device: "kiosk", authorized: false },
+        agents: [],
+        shellPanes: [],
+        workspaces: [],
+        tabs: [],
+        sessions: [],
+        servers: [],
+        ts: 0,
+        scope: {},
+        viewAll: false,
+        snoozedUntil: null,
+        update: undefined,
+        error: false,
+        authError: false,
+      };
+      const router = createMemoryRouter(
+        [
+          {
+            id: ROOT_ROUTE_ID,
+            path: "/",
+            loader: () => root,
+            children: [
+              {
+                path: "crew",
+                loader: () => ({ status: fixtureCrewStatus, error: false }),
+                element: withHeaderHost(<CrewProvider servers={fixtureServers}><CrewRoute /></CrewProvider>),
+              },
+            ],
+          },
+        ],
+        { initialEntries: ["/crew"] },
+      );
+      render(<RouterProvider router={router} />);
+    }
+
+    it("shows why the button is off in words a touch screen can read, not only in a tooltip", async () => {
+      renderReadOnlyCrew();
+      const button = await screen.findByRole("button", { name: "Message all agents" });
+      expect(button).toBeDisabled();
+      expect(screen.getByText("This device may not send messages.")).toBeVisible();
+      expect(button).toHaveAccessibleDescription("This device may not send messages.");
+    });
+
+    it("treats a device the bridge refused for want of pairing the same way", async () => {
+      markNotPaired();
+      renderCrew();
+      const button = await screen.findByRole("button", { name: "Message all agents" });
+      expect(button).toBeDisabled();
+      expect(screen.getByText("This device may not send messages.")).toBeVisible();
+    });
+
+    it("says nothing about it on a device that may send", async () => {
+      renderCrew();
+      expect(await screen.findByRole("button", { name: "Message all agents" })).toBeEnabled();
+      expect(screen.queryByText("This device may not send messages.")).toBeNull();
+    });
   });
 
   it("is not offered on a solo install, where the page has no crew to message", async () => {
