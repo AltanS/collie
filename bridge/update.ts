@@ -1223,6 +1223,14 @@ export interface UpdateMonitorDeps {
    * exactly as before, with no line and no way back.
    */
   lineOffer?: (tags: readonly string[], installed: string) => LineReading;
+  /**
+   * This machine's line as the record says it NOW (M60 spec 01), read on every {@link UpdateMonitor.status}.
+   * The line is a fact of `update-line.json`, not of a release check: without this seam a machine
+   * whose check never succeeded (offline, rate-limited, the rig's dead mirror) reported no line, so
+   * the Updates card and the Crew page said Stable while the record, and the crew header, said Edge.
+   * Optional: a monitor without it names the line of the last resolve, as before.
+   */
+  line?: () => ReleaseLine;
 }
 
 /** What `GET /api/update/check` carries about what releases changed (1.21.1). */
@@ -1356,7 +1364,7 @@ export class UpdateMonitor {
       urgent: this.urgent ?? undefined,
       // EDGE NUDGES AT ONCE (M60 spec 01): a volunteer on Edge asked for the next build the day it
       // is out. Stable keeps today's windows.
-      edge: this.line === "edge",
+      edge: this.lineNow() === "edge",
     });
     if (!verdict.send) return;
     await store.setLastNotified(verdict.versions[verdict.versions.length - 1] ?? current, this.nowIso());
@@ -1397,6 +1405,11 @@ export class UpdateMonitor {
    */
   lineChanged(): void {
     if (this.published !== null) this.resolve(this.published);
+  }
+
+  /** The line to report: the record's, read now, or the last resolve's on a monitor without that seam. */
+  private lineNow(): ReleaseLine | null {
+    return this.deps.line?.() ?? this.line;
   }
 
   /** The routine offer from `tags`, without touching the cached answer. {@link publishedTags} asks. */
@@ -1631,7 +1644,8 @@ export class UpdateMonitor {
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
     // The line and the way back (M60 spec 01), on the same rule: absent on a monitor with no line
     // seam, and `back` absent in every case but an Edge build ahead of Stable on the Stable line.
-    if (this.line !== null) status.line = this.line;
+    const line = this.lineNow();
+    if (line !== null) status.line = line;
     if (this.back !== null) status.back = { to: this.back.to, exceptions: [...this.back.exceptions] };
     if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind, this.deps.instance);
     return status;

@@ -106,6 +106,27 @@ describe("Release line: Stable | Edge (M60 spec 01)", () => {
     expect(screen.getByRole("radio", { name: "Edge" })).toBeChecked();
   });
 
+  it("on Edge, a Stable tap is a person-started switch back: it saves stable and shows its receipt", async () => {
+    // Case 15 of the crew leg: the card must open on the line the bridge reports. A card that drew
+    // Stable here (a status with no line) made the Stable tap a no-op, and the record stayed edge.
+    const user = userEvent.setup();
+    const bodies: JsonObject[] = [];
+    server.use(
+      http.post("/api/update/line", async ({ request }) => {
+        const body = parseJsonObject(await request.text()) ?? {};
+        bodies.push(body);
+        return HttpResponse.json({ ok: true, line: "stable", rejected: [], changedAt: 2, requestId: asJsonString(body.requestId) ?? "" });
+      }),
+    );
+    renderCard(info({ line: "edge" }));
+    const group = await screen.findByRole("radiogroup", { name: "Release line" });
+    expect(within(group).getByRole("radio", { name: "Edge" })).toBeChecked();
+    await user.click(within(group).getByRole("radio", { name: "Stable" }));
+    expect(await screen.findByText("Saved. This machine is on Stable and takes final releases only.")).toBeInTheDocument();
+    expect(bodies.map((b) => b.line)).toEqual(["stable"]);
+    expect(screen.getByRole("radio", { name: "Stable" })).toBeChecked();
+  });
+
   it("a refusal keeps the old line and says why, beside the control", async () => {
     const user = userEvent.setup();
     server.use(
