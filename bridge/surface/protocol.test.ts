@@ -3931,6 +3931,64 @@ describe("the held send (M56 spec 15)", () => {
     expect(holds.list().map((entry) => entry.text)).toEqual(["/compact"]);
   });
 
+  describe("a never-held command on a profile the turn cannot be trusted with (PR 491)", () => {
+    const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+    const CODEX_WORKING = "• Working (4s • esc to interrupt)";
+    const outcomeOf = (answer: SendAnswer, holds: HoldStore) => ({
+      outcome: answer.receipt?.outcome,
+      detail: answer.detail,
+      held: holds.list().length,
+    });
+
+    test("control: the same /clear on a Claude whose version was read is refused, not held", async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const r = rig({ holds });
+      r.pane.over = [LIVE_ROW];
+      const answer = await r.send("/clear", { mode: "command" });
+      expect(outcomeOf(answer, holds)).toEqual({ outcome: "refused", detail: NEVER, held: 0 });
+    });
+
+    test("Claude, version unread: /clear in a turn is refused, not held", async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const r = untrusted({ holds });
+      const answer = await r.send("/clear", { id: "never-clr-01", mode: "command" });
+      expect(outcomeOf(answer, holds)).toEqual({ outcome: "refused", detail: NEVER, held: 0 });
+    });
+
+    test("Claude, version unread: a /clear sent in a turn is never typed after the turn ends", async () => {
+      const r = untrusted();
+      await r.send("/clear", { id: "never-clr-02", mode: "command" });
+      expect(await tick(r, RUNNING)).toEqual([]);
+      turnEnds(r.pane);
+      await freeTwice(r);
+      await tick(r);
+      expect(r.pane.transcript).not.toContain("> /clear");
+      expect(r.pane.calls).toEqual([]);
+    });
+
+    test("Codex, version unread: /new in a turn is refused, and never typed after the turn ends", async () => {
+      const clock = { now: 1_000_000 };
+      const holds = new HoldStore(join(dir, "held"), () => clock.now);
+      const r = rig({ pane: new FakePane("codex"), harness: "codex", version: "no version here", holds, clock });
+      r.pane.over = [CODEX_WORKING];
+      const answer = await r.send("/new", { id: "never-new-01", mode: "command" });
+      await tick(r, RUNNING);
+      r.pane.over = [];
+      await freeTwice(r);
+      await tick(r);
+      expect({ ...outcomeOf(answer, holds), typed: r.pane.transcript.includes("› /new") }).toEqual({ outcome: "refused", detail: NEVER, held: 0, typed: false });
+    });
+
+    test("Codex, version unread, a running screen with no box to read (gateSteeringTurn): /exit is refused, not held", async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const pane = new FakePane("codex");
+      pane.fixed = ["a transcript row", "", CODEX_WORKING, "", "a row Collie cannot read as a box"].join("\n");
+      const r = rig({ pane, harness: "codex", version: "no version here", holds });
+      const answer = await r.send("/exit", { id: "never-ext-01", mode: "command" });
+      expect(outcomeOf(answer, holds)).toEqual({ outcome: "refused", detail: NEVER, held: 0 });
+    });
+  });
+
   test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
