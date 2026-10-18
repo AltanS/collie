@@ -25,7 +25,9 @@ import {
   PORT_HI,
   PORT_LO,
   SESSION,
+  assertPrivateDir,
   assertUnderRoot,
+  assertUnderXdg,
   herdr,
   herdrEnv,
   killPid,
@@ -36,12 +38,14 @@ import {
   pidIs,
   readRun,
   readToken,
+  retireXdgHome,
   sleep,
   writeRun,
   type Run,
 } from "./rig-lib";
 import { asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src/lib/json";
 import { HARNESS_IDS, prepareHarness } from "./harnesses";
+import { socketPathProblem } from "./sock-path";
 
 const SELF = fileURLToPath(import.meta.url);
 /** This checkout: web/e2e/rig/rig.ts is three levels below it. */
@@ -123,6 +127,7 @@ async function daemon(): Promise<void> {
       await sleep(200);
     }
     await killPid(run.herdrPid, "herdr");
+    retireXdgHome();
     rmSync(P.run, { force: true });
     log("teardown done");
     process.exit(0);
@@ -154,7 +159,7 @@ async function daemon(): Promise<void> {
       if (run.socket === "") await sleep(200);
     }
     if (run.socket === "") throw new Error("the scratch Herdr server did not come up in 15 s");
-    assertUnderRoot(run.socket);
+    assertUnderXdg(run.socket);
     writeRun(run);
     log(`herdr up: ${run.socket}`);
 
@@ -233,10 +238,13 @@ async function cmdUp(): Promise<void> {
   if (!existsSync(join(WORKTREE, "web", "dist", "index.html"))) die("no web/dist: run `bun run build` in web/ first");
   const existing = readRun();
   if (existing !== null && pidIs(existing.daemonPid, DAEMON_TAG)) die("already up (run `down` first)");
+  const tooLong = socketPathProblem(P.xdg, SESSION); // Herdr fails on a long path only after it starts, and the rig would wait 15 s
+  if (tooLong !== null) die(tooLong);
   memGuard("the rig (Herdr + bridge)");
-  if (existsSync(join(P.xdg, "herdr"))) await cmdDown(); // a leftover from a crashed run lives only under the rig's root
+  if (existsSync(join(P.xdg, "herdr"))) await cmdDown(); // a leftover from a crashed run lives only in the rig's own Herdr home
   for (const dir of [P.state, P.config, P.logs]) rmSync(assertUnderRoot(dir), { recursive: true, force: true });
   for (const dir of [P.rig, P.state, P.config, P.logs, P.work, P.xdg, P.xdgState]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  assertPrivateDir(P.xdg);
   rmSync(P.token, { force: true });
   const port = await freePort();
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
@@ -286,6 +294,7 @@ async function cmdDown(): Promise<void> {
     }
   }
   if (run !== null) await killPid(run.herdrPid, "herdr");
+  retireXdgHome();
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
   console.log("down: bridge and scratch Herdr stopped");
