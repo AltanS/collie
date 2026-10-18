@@ -18,7 +18,7 @@
 // With `--harness`, the table shows that harness's rows and the idle rule and its thresholds apply
 // to that harness. The dialog rule and the cues rule still run over every fixture.
 //
-// The fixtures and the labels are the ones fold.test.ts pins; this script prints what the tests check.
+// The fixtures and the labels are the ones the fold.*.test.ts files pin; this script prints what the tests check.
 
 import { readdirSync } from "node:fs";
 

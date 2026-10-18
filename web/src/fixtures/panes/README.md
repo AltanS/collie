@@ -2285,7 +2285,7 @@ same length, and the session name on the box became `lab-sample`.
 `web/src/fixtures/surface-labels.json` gives every fixture in this folder one hand-checked row:
 the harness id it was captured under, the harness version (`unversioned` when the capture does not
 say), and a state: `idle`, `draft`, `running`, `popup`, `dialog`, `screen` (a full-screen view such
-as a picker, search box or shell prompt) or `other`. `web/src/lib/surface/fold.test.ts` fails when a
+as a picker, search box or shell prompt) or `other`. `web/src/lib/surface/fold.corpus.test.ts` fails when a
 fixture has no row or a row names a fixture that is gone. `dialog` and `screen` are the negative set:
 none may ever read `free`. The file also maps the eight incident commits of the reader-stability
 research to fixtures that show them. Where no capture shows an incident, the row rebuilds it from a
