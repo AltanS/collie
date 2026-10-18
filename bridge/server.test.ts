@@ -3615,14 +3615,19 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(src).not.toContain('"/api/update/status"');
   });
 
-  test("GET /api/pane/:id/claude-commands: read-gated, local-only, and scans only for a Claude agent pane", () => {
+  test("GET /api/pane/:id/claude-commands: device-read-gated, local-only, and scans only for a Claude agent pane", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const at = src.indexOf("const claudeCommandsMatch = pathname.match(PANE_CLAUDE_COMMANDS_ROUTE);");
     expect(at).toBeGreaterThan(0);
     const handler = src.slice(at, src.indexOf("\n    }\n", at));
-    expect(handler).toContain('caller.gate("read")');
+    // A read of this machine's disk, so the Files level, and before any runtime is resolved.
+    expect(handler).toContain('caller.gate("device-read")');
+    expect(handler).not.toContain('caller.gate("read")');
+    expect(handler.indexOf('caller.gate("device-read")')).toBeLessThan(handler.indexOf("await caller.resolve();"));
     expect(handler).toContain('if (req.method !== "GET") return text("method not allowed", 405);');
     expect(handler).toContain("await caller.resolve();");
+    // Fail closed: a throw in the scan answers an empty list.
+    expect(handler).toContain("catch (err)");
     expect(handler).toContain("rt.engine.current().agents.find");
     expect(handler).toContain('canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude"');
     expect(handler).toContain("discoverClaudeCommands(");

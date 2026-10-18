@@ -535,7 +535,8 @@ const WORKSPACE_FILES_IMAGE_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/image$/;
  * `GET /api/pane/<id>/claude-commands`: the slash commands Claude Code would load in that pane's cwd,
  * read off this machine's disk. The pane id is only looked up in the snapshot; the cwd the read
  * starts from is the one the multiplexer reported, never the request's. Not in `FORWARDABLE`: a pane
- * on a crew member answers the lead's 501, and the phone keeps the palette it already had.
+ * on a crew member answers the lead's 501, and the phone keeps the palette it already had. A read
+ * of this machine's disk, so it asks `device-read` like the Files routes.
  */
 const PANE_CLAUDE_COMMANDS_ROUTE = /^\/api\/pane\/([^/]+)\/claude-commands$/;
 
@@ -1875,7 +1876,7 @@ export function startServer(opts: {
 
     const claudeCommandsMatch = pathname.match(PANE_CLAUDE_COMMANDS_ROUTE);
     if (claudeCommandsMatch) {
-      const denied = caller.gate("read");
+      const denied = caller.gate("device-read");
       if (denied) return denied;
       if (req.method !== "GET") return text("method not allowed", 405);
       const rt = await caller.resolve();
@@ -1891,11 +1892,17 @@ export function startServer(opts: {
         return json({ commands: [] }, req.headers.get("accept-encoding"));
       }
       const home = homedir();
-      const commands = await discoverClaudeCommands({
-        home,
-        cwd: pane.cwd === "" ? null : pane.cwd,
-        configDir: claudeConfigDir(cfg.journalRoots.claude, home),
-      });
+      // Fail closed: a fault anywhere in the scan is an empty list, never a 500 that names a path.
+      let commands: Awaited<ReturnType<typeof discoverClaudeCommands>> = [];
+      try {
+        commands = await discoverClaudeCommands({
+          home,
+          cwd: pane.cwd === "" ? null : pane.cwd,
+          configDir: claudeConfigDir(cfg.journalRoots.claude, home),
+        });
+      } catch (err) {
+        console.warn(`[claude-commands] the scan failed, answering an empty list: ${String(err)}`);
+      }
       return json({ commands }, req.headers.get("accept-encoding"));
     }
 
