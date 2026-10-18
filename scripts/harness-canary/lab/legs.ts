@@ -33,6 +33,12 @@ export const SEND_TEXT = "Reply with only the word OK.";
 export const ASK_TEXT = "Run the shell command: touch lab-file.txt. Reply with nothing else.";
 export const ASK_FILE = "lab-file.txt";
 
+/**
+ * The row a finished reply to {@link SEND_TEXT} shows: Claude draws `● OK`, Codex `• OK`, omp and OpenCode
+ * print OK with no bullet. The typed message above it is a longer row, so only the reply matches.
+ */
+export const REPLY_ROW = /^\s*(?:[●•]\s*)?OK\b/u;
+
 const SESSION = "lab";
 const WAIT_REPLY_MS = 90_000;
 const WAIT_DIALOG_MS = 75_000;
@@ -110,6 +116,8 @@ export interface LegEnv {
   readonly project: string;
   readonly counters: LabCounters;
   readonly turns: { used: number; readonly cap: number };
+  /** The label of the option that declines a permission dialog (`HarnessSpec.decline`). */
+  readonly decline: RegExp;
   readonly log: (line: string) => void;
 }
 
@@ -195,7 +203,7 @@ export async function runSendLeg(env: LegEnv, id = "lab-send-1"): Promise<LegRes
   if (receipt === undefined) return { fact: null, screens, note: `no receipt: ${answer.detail ?? "none"}` };
   env.log(`send: ${receipt.outcome}${receipt.reason === undefined ? "" : ` (${receipt.reason})`}, keys ${receipt.keys.join(" ")}, profile ${match?.status ?? "none"} ${match?.version ?? "-"}`);
   const fact: SendFact = { outcome: receipt.outcome, reason: receipt.reason, probed: receipt.keys.some((key) => key === "probe") || match?.status !== "verified", keys: receipt.keys.length };
-  const done = await waitFor(env.pane, (view) => view.free && view.plain.some((row) => /^\s*●\s*OK\b/u.test(row)), WAIT_REPLY_MS);
+  const done = await waitFor(env.pane, (view) => view.free && view.plain.some((row) => REPLY_ROW.test(row)), WAIT_REPLY_MS);
   const after = done ?? (await env.pane.read());
   screens.push(factOf(after, "send", done === null ? "after the send, no reply seen" : "after the send and the reply", "idle"));
   return { fact, screens, note: done === null ? "the reply did not show in time" : "" };
@@ -222,8 +230,8 @@ export async function runAskLeg(env: LegEnv, id = "lab-send-2"): Promise<LegResu
   if (lifted === null) return { fact: null, screens, note: "the dialog was on screen and no reader lifted it" };
   const ask = book.publish(env.pane.paneId, `${env.harness}:lab`, lifted, askLifetimeOf(match));
   if (ask === null) return { fact: null, screens, note: "the ask book minted no ask" };
-  const no = ask.options.find((option) => /^no\b/iu.test(option.label));
-  if (no === undefined) return { fact: null, screens, note: `the dialog has no No option: ${ask.options.map((option) => option.label).join(" | ")}` };
+  const no = ask.options.find((option) => env.decline.test(option.label));
+  if (no === undefined) return { fact: null, screens, note: `the dialog has no option that declines: ${ask.options.map((option) => option.label).join(" | ")}` };
   const reply = await answerer.handle({ askId: ask.id, hash: ask.hash, optionId: no.id, origin: "person_tap" }, { session: SESSION, paneId: env.pane.paneId, harness: env.harness });
   const receipt = reply.receipt;
   env.log(`ask answer: option ${no.id} "${no.label}": ${receipt?.outcome ?? "no receipt"}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}, keys ${receipt?.keys.join(" ") ?? ""}`);
