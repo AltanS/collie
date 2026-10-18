@@ -97,3 +97,58 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     }
   });
 });
+
+describe("omp's default band composer under the nerd preset (omp 18.12.1, issue 505)", () => {
+  // The band draws the status line as the top row with no `╭──` edge. Under the nerd preset it opens on
+  // the powerline cap U+E0B6 and the pi glyph U+F0D57, and closes its segments with U+E0B0 where the
+  // unicode preset draws `π` and `▶`, so before 505 no frame was found and every send was refused.
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-12-nerd-band-draft--w130.txt", "please check the build"],
+    ["omp--v18-12-nerd-band-draft--w80.txt", "please check the build"],
+    ["omp--v18-12-nerd-band-two-lines--w130.txt", "please check the build and report back"],
+    ["omp--v18-12-nerd-band-two-lines--w80.txt", "please check the build and report back"],
+    [
+      "omp--v18-12-nerd-band-wrapped--w130.txt",
+      "the quick brown fox jumps over the lazy dog while the band composer wraps this long draft across more than one row of the terminal so collie has to fold it back together",
+    ],
+    [
+      "omp--v18-12-nerd-band-wrapped--w80.txt",
+      "the quick brown fox jumps over the lazy dog while the band composer wraps this long draft across more than one row of the terminal so collie has to fold it back together",
+    ],
+  ];
+
+  for (const name of [
+    "omp--v18-12-nerd-band-idle--w130.txt",
+    "omp--v18-12-nerd-band-idle--w80.txt",
+    "omp--v18-12-nerd-band-done--w130.txt",
+    "omp--v18-12-nerd-band-done--w80.txt",
+    "omp--v18-12-band-idle--w130.txt",
+  ]) {
+    it(`${name}: reads an empty box, free`, () => {
+      const read = own(name);
+      expect(read.frame).not.toBeNull();
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    });
+  }
+
+  for (const [name, draft] of DRAFTS) {
+    it(`${name}: reads the draft, the ghost word left out`, () => {
+      const read = own(name);
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(read.frame!.interior.text.replace(/\s+/gu, " ").trim()).toBe(draft);
+    });
+  }
+
+  for (const name of [
+    "omp--v18-12-nerd-band-running--w130.txt",
+    "omp--v18-12-nerd-band-running--w80.txt",
+    "omp--v18-12-nerd-band-running-minute--w130.txt",
+  ]) {
+    it(`${name}: the spinner in the band reads as a running turn`, () => {
+      const read = own(name);
+      expect(read.frame).not.toBeNull();
+      expect(read.surface.turn).toBe("running");
+      expect(isFree(read.surface)).toBe(false);
+    });
+  }
+});
