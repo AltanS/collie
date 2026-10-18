@@ -472,11 +472,9 @@ describe("mirror line wrapping", () => {
   });
 });
 
-// Wrap is right for prose and wrong for a table, whose meaning is the column a character sits in
-// (lib/table-run.ts). So a table run pans inside its own scroller while everything around it keeps
-// wrapping. What a refactor would break silently is not the scroller — it is the mirror text around
-// it: the run is grouped by moving line nodes under one span, and the find offsets, the link
-// offsets and a clipboard copy are all defined by the "\n" text nodes those lines sit between.
+// With wrapping off the screen is a grid. A CJK glyph falls back to a face whose advance is not two
+// cells (components/painted-cells.tsx), so outside tables too each one is held to two cells, or
+// every wall to its right drifts. Wrapping prose keeps its natural advances.
 describe("fixed-column terminal text", () => {
   const text = `${ESC}[35m→ 1. 커피${ESC}[0m   │ details\n  2. 차      │ https://example.com\n`;
 
@@ -513,6 +511,11 @@ describe("fixed-column terminal text", () => {
   });
 });
 
+// Wrap is right for prose and wrong for a table, whose meaning is the column a character sits in
+// (lib/table-run.ts). So a table run pans inside its own scroller while everything around it keeps
+// wrapping. What a refactor would break silently is not the scroller — it is the mirror text around
+// it: the run is grouped by moving line nodes under one span, and the find offsets, the link
+// offsets and a clipboard copy are all defined by the "\n" text nodes those lines sit between.
 describe("a table pans while the mirror around it wraps", () => {
   const TABLE = ["| Option | Cost |", "| --- | --- |", "| A | low |", "| B | high |"].join("\n");
   const TEXT = `here is the comparison:\n\n${TABLE}\n\nsee https://herdr.dev/docs\n`;
