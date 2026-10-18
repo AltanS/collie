@@ -50,8 +50,9 @@ An address names one pane, one machine's panes, or every pane.
 | `<member>/all` | Every agent pane on that machine. From the phone only |
 | `all` | Every agent pane you can reach. From the phone only |
 
-A terminal gives a closed pane's id to the next pane: Herdr's `w6:p3`, tmux's `%7`, zellij's
-`terminal_3`. So Collie gives every pane a token, four characters after a `#`. The token follows
+A terminal may give a closed pane's id to the next pane. Herdr's `w6:p3`, tmux's `%7` and zellij's
+`terminal_3` only count up, but Collie does not rely on that. So Collie gives every pane a token,
+four characters after a `#`, and the address stays safe whichever terminal you use. The token follows
 the pane: an agent that restarts in the same open pane keeps it. A pane that is gone for 30 seconds
 loses its token, so the next pane that takes its id gets a new one. A send to a token whose pane
 closed is refused `pane replaced`, and never reaches the new pane. Run `collie walky who` again for
@@ -125,7 +126,8 @@ gets, and Enter never goes into a turn where it would steer the agent.
 | `pi` | queue key | Alt+Enter (Ctrl+Q on Windows) queues it; Enter would steer |
 
 The queue and the queue key need a harness version Collie knows. With an unknown version, Collie
-holds the message instead. A hold lasts 10 minutes for a message: after that Collie takes it back
+holds the message instead. The browser rig does not report a Claude version, so there Collie holds
+the message and types it after the turn. A hold lasts 10 minutes for a message: after that Collie takes it back
 and it waits in the inbox. A pane with no profile is typed blind, as a reply is.
 
 An open dialog, such as a permission card or a question, is held the same way. Nothing goes into
