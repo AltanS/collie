@@ -641,6 +641,8 @@ export const en = {
   "chat.card.move": "Move",
   // `{agent}` is the sub-agent's own name, so it is not translated.
   "chat.card.agent": "Agent · {agent}",
+  "chat.subagent.prompt": "Prompt",
+  "chat.subagent.report": "Report",
   "chat.card.thinking": "Thinking",
   "chat.card.lines": "lines {from}–{to}",
   // Where a search ran, after the query it ran for. `{where}` is a folder, shown verbatim.

@@ -62,8 +62,8 @@ export type ToolCall =
   | { kind: "fetch"; url: string }
   /** A file was removed or renamed. `to` is the destination of a move. */
   | { kind: "delete" | "move"; path: string; to?: string }
-  /** A subagent ran. */
-  | { kind: "task"; agent: string; summary: string }
+  /** A subagent ran. `agentId` names the subagent's own log when the harness records one. */
+  | { kind: "task"; agent: string; summary: string; agentId?: string }
   /**
    * The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is
    * the list of chosen labels for question `i`, present only once the call completed with answers.

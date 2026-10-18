@@ -1198,7 +1198,7 @@ export type ToolCall =
   | { kind: "search"; query: string; where?: string; hits?: number }
   | { kind: "fetch"; url: string }
   | { kind: "delete" | "move"; path: string; to?: string }
-  | { kind: "task"; agent: string; summary: string }
+  | { kind: "task"; agent: string; summary: string; agentId?: string }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
   | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
   | { kind: "other"; name: string; summary: string };
@@ -1590,6 +1590,17 @@ export interface ChatBefore {
 export type PaneChatResponse =
   | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
   | ({ paneId: string; available: true } & ChatBody);
+
+/** GET /api/pane/:id/subagent/:agentId — one Claude subagent's own JSONL transcript. */
+export type PaneSubagentResponse =
+  | { paneId: string; agentId: string; available: false }
+  | {
+      paneId: string;
+      agentId: string;
+      available: true;
+      entries: TranscriptEntry[];
+      fileTruncated: boolean;
+    };
 
 /**
  * `error` is the bridge's English sentence and stays what a client displays when it has nothing

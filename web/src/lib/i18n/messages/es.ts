@@ -576,6 +576,8 @@ export const es: Dictionary = {
   "chat.card.delete": "Eliminar",
   "chat.card.move": "Mover",
   "chat.card.agent": "Agente · {agent}",
+  "chat.subagent.prompt": "Instrucción",
+  "chat.subagent.report": "Informe",
   "chat.card.thinking": "Razonamiento",
   "chat.card.lines": "líneas {from}–{to}",
   "chat.card.searchIn": "en {where}",

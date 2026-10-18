@@ -134,7 +134,7 @@ export function summarizeToolInput(input: JsonValue | undefined): string {
 // operator sends, and never on the audit trail.
 
 /** Keys whose string values the bridge wrote itself, left unmasked wherever they sit inside a part. */
-const UNMASKED_KEYS: ReadonlySet<string> = new Set(["kind", "id", "mimeType"]);
+const UNMASKED_KEYS: ReadonlySet<string> = new Set(["kind", "id", "agentId", "mimeType"]);
 
 /**
  * The two image URL shapes `resolveImageUrl` (journal/pi.ts) produces: this collie's blob route by

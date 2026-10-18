@@ -718,6 +718,8 @@ describe("solo zero-tax — routes", () => {
       // One picture under the Files root, as its bytes (ADR 0090): the Files read's checks and gate,
       // the type read off the bytes, forwarded to the owning member like `files`.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/image$/",
+      // One Claude subagent's own JSONL transcript, read on demand when the subagent sheet opens.
+      "/^\\/api\\/pane\\/([^/]+)\\/subagent\\/([^/]+)$/",
       // Walky talky's list for one pane (M62): the messages that reached it, newest first. A read, gated
       // like the pane read, this collie's own panes only until spec 03 makes it forwardable.
       "/^\\/api\\/pane\\/([^/]+)\\/walky$/",
