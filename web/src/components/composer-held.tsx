@@ -207,7 +207,7 @@ export function HeldCard({ paneId, scope, rows, canAct, sending, onSend, onChang
     <div data-slot="held-card" data-mode="expanded" className={QUEUED_FLOAT}>
       {head}
       {/* Oldest first, the next to send on top. A long queue scrolls here and not the page; `overscroll-contain` keeps the mirror under the card still. */}
-      <div data-slot="held-list" className="max-h-[45vh] divide-y divide-dashed divide-status-working/25 overflow-y-auto overscroll-contain">
+      <div data-slot="held-list" className="max-h-[45dvh] divide-y divide-dashed divide-status-working/25 overflow-y-auto overscroll-contain">
         {rows.map((row) => rowBlock(row, "py-1.5 first:pt-0 last:pb-0"))}
       </div>
     </div>

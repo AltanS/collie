@@ -86,7 +86,7 @@ the draft notice, which holds no space, over a reserved strip or a smaller in-fl
    row is held, else the first row's own label. A Show all toggle sits at its right, with the first
    row's text under it, clamped to two lines, and no per-row button: a Cancel on a count would not say
    which row it cancels. Show all lists every row as a single row, oldest first, in a list capped at
-   `max-h-[45vh]` that scrolls inside the card. The open state is per pane and in memory: the
+   `max-h-[45dvh]` that scrolls inside the card. The open state is per pane and in memory: the
    composer keys the card by pane, and the card collapses again when the rows drop to one or none.
    Show all stays on a crew member's pane and on a locked composer, because it is a view and not an act
    on the queue; the row buttons stay gated by `canAct` as before.
@@ -94,12 +94,12 @@ the draft notice, which holds no space, over a reserved strip or a smaller in-fl
 **Consequences.**
 
 - **The card covers more of the mirror's last rows while a queue exists.** A collapsed queue is about
-  as tall as one single row, whatever its length, and an open list can take up to 45vh. That is the
+  as tall as one single row, whatever its length, and an open list can take up to 45dvh. That is the
   price of moving nothing, and Show less is the way to see under it. With the draft notice also due
   the column is taller still.
-- **`vh` is the large viewport.** On a phone with the soft keyboard up the mirror region is shorter
-  than 45vh of the screen, so an open list may reach above it. The list scrolls and Show less is in
-  the head, so nothing is lost, but this is the first place to look if the card ever clips.
+- **The cap is `dvh`, the viewport the soft keyboard leaves.** With the keyboard up an open list
+  shrinks with it instead of reaching above the mirror region. The list scrolls and Show less is in
+  the head, so nothing is lost.
 - **The composer's in-flow strips are now all phone-side conditions again.** The held sends are
   host-and-bridge facts, so they left that list the way the draft notice did.
 

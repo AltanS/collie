@@ -146,7 +146,7 @@ describe("the held-send card", () => {
     // Each row is a single row as today: its text clamped to three lines, inside a list that scrolls in the card.
     expect(screen.getByText("text of req00001")).toHaveClass("line-clamp-3");
     const list = card.querySelector('[data-slot="held-list"]')!;
-    expect(list.className).toMatch(/(?:^|\s)max-h-\[45vh\](?=\s|$)/);
+    expect(list.className).toMatch(/(?:^|\s)max-h-\[45dvh\](?=\s|$)/);
     expect(list.className).toMatch(/(?:^|\s)overflow-y-auto(?=\s|$)/);
     expect(list.contains(found[0] ?? null)).toBe(true);
     expect(showLess()).toHaveTextContent("Show less");
