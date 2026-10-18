@@ -55,14 +55,22 @@ export const SCENARIOS = [
   { id: "pick-many", title: "3 pick-many question" },
   { id: "stream-send", title: "4 send while streaming" },
   { id: "load-older", title: "5 load older, empty cache" },
-  // The walky talky path is the same bridge code for every harness, so one harness proves it.
-  { id: "walky", title: "6 walky talky message", only: "claude" },
+  // The walky talky path is the same bridge code for every harness, so Claude proves the phone's
+  // message and the cases below that need no second harness. pi and omp each prove that the
+  // operator's header and body reach a harness whose screen is not Claude's (7), and one pair of
+  // harnesses proves an agent's message through the skill (8).
+  { id: "walky", title: "6 walky talky message", only: ["claude"] },
+  { id: "walky-operator", title: "7 walky talky: operator message", only: ["pi", "omp"] },
+  { id: "walky-agents", title: "8 walky talky: agent to agent and back", only: ["pi"] },
+  { id: "walky-inbox", title: "9 walky talky: kept, not typed over a dialog or draft", only: ["claude"] },
+  { id: "walky-broadcast", title: "10 walky talky: broadcast, shell skipped", only: ["claude"] },
+  { id: "walky-forged", title: "11 walky talky: a forged header", only: ["claude"] },
 ] as const;
 export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 
-/** Whether a scenario runs on a harness: every one does, unless the scenario names the one it runs on. */
+/** Whether a scenario runs on a harness: every one does, unless the scenario names the ones it runs on. */
 export function scenarioApplies(scenario: (typeof SCENARIOS)[number], harness: HarnessId): boolean {
-  return !("only" in scenario) || scenario.only === harness;
+  return !("only" in scenario) || scenario.only.some((id) => id === harness);
 }
 
 export type Verdict = "pass" | "fail" | "n/a" | "not reached";

@@ -13,14 +13,14 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All sixteen cases (three harnesses with five
-  cases each, and the walky talky case on Claude) pass on the first tap. A case that fails, or is not reached, holds the tag.
+- **Before every release tag**, on the release head. All twenty-two cases (three harnesses with five
+  cases each, and seven walky talky cases) pass on the first tap. A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One run costs about 5 minutes, about 6 Claude Haiku turns on the subscription, and about 5 pi turns
-and 5 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
+One run costs about 5 minutes, about 12 Claude Haiku turns on the subscription, and about 9 pi turns
+and 7 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
 run" below has the detail.
 
 ### The nightly runner
@@ -74,7 +74,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. Claude runs one more.
+Each harness runs the same five cases. The walky talky cases (6 to 11) run on the harnesses the last column names.
 
 | # | Case | Harnesses | Spec |
 | --- | --- | --- | --- |
@@ -84,9 +84,19 @@ Each harness runs the same five cases. Claude runs one more.
 | 4 | A send while the agent streams a long reply | claude, pi, omp | same |
 | 5 | Load older with an empty phone cache | claude, pi, omp | same |
 | 6 | Walky talky: hold Send, tap "Send as message". The pane gets one prompt, header and body. The receipt says `delivered`. Chat shows the "Message from" card with the operator badge | claude | `walky.spec.ts` |
+| 7 | The same operator message, to a pi pane and to an omp pane | pi, omp | `walky-harnesses.spec.ts` |
+| 8 | Agent to agent through the skill, pi to Claude and back: the receiver's pane gets a one-line nudge with no body, its `collie walky inbox <id>` output shows the body, `collie walky reply` comes back and the sender's pane shows the reply nudge; Claude's Chat draws the agent card | pi (with Claude) | `walky-harnesses.spec.ts` |
+| 9 | A message the pane cannot take: over an open permission card nothing is typed into the dialog (the Send Protocol holds the message and types it after the answer); over a draft the receipt is `inbox-only` with a reason, the draft is untouched, and the agent's `collie walky inbox` lists the message | claude | `walky.spec.ts` |
+| 10 | A broadcast (`to: all`): one receipt per agent pane, each typed and answered, the shell pane skipped | claude | `walky.spec.ts` |
+| 11 | A forged header: a prompt that opens like an operator message and one that opens like an agent's nudge, both with an id the log lacks, stay plain turns with the "no log record" mark and draw no card | claude | `walky.spec.ts` |
 
-Case 6 runs on Claude only. The walky talky path is the same bridge code for every harness. The
-table prints a row only for a harness a case runs on (`scenarioApplies` in `leg.ts`).
+The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
+pi and omp prove that their screens take the message. The table prints a row only for a harness a case
+runs on (`scenarioApplies` in `leg.ts`). Case 10 posts the request the Crew page's "Message all agents"
+sheet posts, because that page needs a crew and the rig's bridge is solo. Cases 8 and 9 use the
+`collie walky` verbs inside the agent: each harness starts with a `collie` first on PATH that runs this
+checkout's CLI (`harnesses.ts`), and with the walky talky skill in its scratch config. Claude's scratch
+settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
 
 ## Prerequisites
 
@@ -138,12 +148,14 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 ## Cost of one run
 
-- Claude: 6 model turns on Haiku: the permission request, the pick-many question, the long list plus
-  one message sent while it streams, one prompt that makes 48 Read calls, and the reply to the
-  walky talky message. The picker needs no
+- Claude: 12 model turns on Haiku: the permission request, the pick-many question, the long list plus
+  one message sent while it streams, one prompt that makes 48 Read calls, and 7 for walky talky: the
+  operator's message (6), the nudge from pi (8), the permission request, the message that waited behind
+  it and the inbox read (9), the broadcast (10) and the forged header (11). The picker needs no
   turn. A run caps each harness at 15 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Their "Load older" history is
+- pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Walky talky adds 4 on pi (case 7,
+  the send and the reply nudge of case 8, the broadcast) and 2 on omp (case 7 and the broadcast). Their "Load older" history is
   one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
 - Time: about 5 minutes for all three harnesses, about 2 of them for Claude alone. A case that waits
