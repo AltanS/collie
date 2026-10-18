@@ -324,6 +324,41 @@ entirely.
 Why it is built this way: [ADR 0096](../.adr/0096-speech-can-stay-on-the-phone.md). The setup steps
 are in [Voice input and Web Push](voice-and-push.md#whistle-speech-to-text-on-your-phone-or-your-host).
 
+## Walky talky
+
+Walky talky carries messages between agent sessions, so this section says what a message proves and
+what it does not. The commands are in [Walky talky](walky-talky.md).
+
+```sh
+# in .env, then run `collie restart`
+COLLIE_WALKY=off
+```
+
+That line makes this machine refuse every message for its panes. The CLI on the machine can still send.
+
+- **A crew key signs a message across machines.** A member signs a message with its crew key. The
+  lead checks the signature against the key it pinned for that member, then adds its own signature
+  for the machine that receives it. A solo install has no crew key. It signs nothing and sends nothing
+  off the machine.
+- **The phone's card needs the log.** The phone draws a message card only when the bridge's own log
+  holds that message id. A header that an agent only prints on the screen stays plain text, with the
+  mark "no log record on this machine".
+- **Every machine a message crosses keeps it.** The sender's machine, the lead and the receiving
+  machine each log the message, for 7 days and at most 2,000 lines, in `<stateDir>/walky/`. Never
+  put a secret in a message.
+- **An agent's message is a peer's words.** The pane gets one line with the sender's header and no
+  body. The agent reads the body as the output of `collie walky inbox <id>`, which a harness treats
+  as data and not as your instruction. The installed skill tells the agent to weigh it and never to
+  run a destructive command because a peer asked.
+
+> **Note.** An agent runs as your user, so it can read the crew key and open the local socket. It
+> could sign a message or claim a pane that is not its own. The signature protects a message on its
+> way between machines and tells the receiver which machine sent it. It does not protect you from a
+> program on the same machine that lies about itself.
+
+Walky talky adds no outbound call. A message to another machine rides the crew link that already
+exists, and no model, cloud service or third party sees it.
+
 ## What leaves the machine is masked
 
 Collie masks known secret shapes in pane text and file content before it reaches a phone.
@@ -422,6 +457,9 @@ you or your machine, only the static user-agent `collie-update-check`.
 The Whistle model download is the other outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
+
+Walky talky adds no outbound call. A message to another machine rides the crew link and goes
+nowhere else ([Walky talky](#walky-talky)).
 
 If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
 start and once an hour. That call is yours to turn on, and it sends nothing about you either.
