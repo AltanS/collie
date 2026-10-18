@@ -170,6 +170,12 @@ export interface AgentView {
    */
   cache?: PaneCache;
   /**
+   * The pane's active todo list, as the bridge read it from the session's task files or journal.
+   * Mirrors `PaneTodo` in bridge/todos.ts. **Absent, never a placeholder**, when the pane has no
+   * todos or on an older bridge. Text only, never markup.
+   */
+  todos?: PaneTodo[];
+  /**
    * The model this pane's agent is on, in the harness's own words. Mirrors `PaneWire.model` in
    * bridge/types.ts. **Absent, never a placeholder**, and text only: read it through `modelLabel`
    * (lib/model-label.ts), which shortens it and drops anything that is not a name.
@@ -312,6 +318,16 @@ export interface AskDecided {
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */
 export type GitHead = { kind: "branch"; name: string } | { kind: "detached"; sha: string };
+
+export type PaneTodoStatus = "pending" | "in_progress" | "completed";
+
+/** One item in a pane's todo list. Mirrors `PaneTodo` in bridge/todos.ts. */
+export interface PaneTodo {
+  id: string;
+  text: string;
+  status: PaneTodoStatus;
+  activeForm?: string;
+}
 
 /**
  * One rule as the pane sheet reads it. Mirrors `CacheRuleWire` in bridge/types.ts.

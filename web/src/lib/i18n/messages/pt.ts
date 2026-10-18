@@ -251,6 +251,7 @@ export const pt: Dictionary = {
   "composer.controls.type": "Digitar",
   "composer.controls.quick": "Rápido",
   "composer.controls.agent": "Agent",
+  "composer.controls.tasks": "Tarefas {done}/{total}",
   "composer.controls.displayAria": "Configurações de exibição",
   "composer.controls.display": "Tela",
   "composer.controls.screenAria": "Mostrar as linhas da tela, sem cartões",

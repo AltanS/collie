@@ -160,6 +160,7 @@ import {
   maskPaneRead,
   maskSnapshotTitles,
   maskTerminalTitle,
+  maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import { redactAnsi } from "./redact.ts";
@@ -1170,6 +1171,11 @@ export function startServer(opts: {
     effort?(sessionKey: string): string | undefined;
   };
   /**
+   * Each pane's active todo list (bridge/todos.ts), read synchronously at serialise time like
+   * `cache`. Absent means no pane carries a `todos` key.
+   */
+  todos?: { get(pane: AgentView): AgentView["todos"] };
+  /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
    * carries a `gitHead` key, which is every test that builds this server by hand.
@@ -1509,9 +1515,13 @@ export function startServer(opts: {
       // The effort rides with the model, and only with it: an effort alone names nothing (#463).
       const effort = model === undefined || key === undefined ? undefined : cache?.effort?.(key);
       const withCache = effort === undefined ? withModel : { ...withModel, effort };
+      // The tasks are words the agent wrote, so they take the mirror's mask like the title above.
+      const readTodos = opts.todos?.get(p);
+      const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
+      const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withCache : { ...withCache, gitHead };
+      return gitHead === undefined ? withTodos : { ...withTodos, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

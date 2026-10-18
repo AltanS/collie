@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
+import { setLocale, whenLocaleReady } from "@/lib/i18n";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -4413,3 +4414,53 @@ describe("the cap (M56 spec 09)", () => {
     expect(recordedSends()[2]!.capAck).toBeUndefined();
   });
 });
+
+describe("Composer tasks dock", () => {
+  it("hides the Tasks button when there are no todos, and toggles the minimal list dock when present", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    expect(screen.queryByRole("button", { name: /^Tasks / })).not.toBeInTheDocument();
+
+    cleanup();
+    renderComposer({
+      readOnly: true,
+      todos: [
+        { id: "1", text: "Audit journal adapters", status: "completed" },
+        { id: "2", text: "Render todo dock", status: "in_progress", activeForm: "Rendering todo dock" },
+        { id: "3", text: "Run tests", status: "pending" },
+      ],
+    });
+
+    const pill = screen.getByRole("button", { name: "Tasks 1/3" });
+    expect(pill).not.toBeDisabled();
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Audit journal adapters")).not.toBeInTheDocument();
+
+    await user.click(pill);
+    expect(pill).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Audit journal adapters")).toBeInTheDocument();
+    expect(screen.getByText("Render todo dock")).toBeInTheDocument();
+    expect(screen.getByText("Run tests")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close Tasks 1/3" }));
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Audit journal adapters")).not.toBeInTheDocument();
+  });
+
+  it("renders the translated Tasks button in zh-TW", async () => {
+    setLocale("zh-TW");
+    await whenLocaleReady("zh-TW");
+    try {
+      renderComposer({
+        todos: [
+          { id: "1", text: "第一項", status: "completed" },
+          { id: "2", text: "第二項", status: "in_progress" },
+        ],
+      });
+      expect(await screen.findByRole("button", { name: "待辦 1/2" })).toBeInTheDocument();
+    } finally {
+      setLocale("en");
+    }
+  });
+});
+

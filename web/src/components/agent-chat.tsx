@@ -2942,6 +2942,7 @@ export function AgentChat({
                   prefs={prefs}
                   // Settings → Hand: which thumb the belt and the reply box are laid out for.
                   hand={handOf(prefs)}
+                  todos={agent?.todos}
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
                   // beside the switcher's, for the stacking-context reason the pane-menu note gives.
                   display={{

@@ -61,13 +61,34 @@ export function maskTerminalTitle<P extends { terminalTitle?: string }>(pane: P)
 }
 
 /**
- * A snapshot with every pane's program-set title masked. The lead's merged snapshot carries its
- * members' panes as the members sent them, so a member that does not mask sent its titles in clear.
+ * A pane's todo list with its words masked. A task's subject and its present-tense form are text an
+ * agent wrote, so they can hold a path, a command or a key. Ids and statuses are the bridge's own.
+ */
+export function maskTodoList<T extends { text: string; activeForm?: string }>(todos: readonly T[]): T[] {
+  return todos.map((todo) => {
+    const masked = { ...todo, text: redactText(todo.text) };
+    if (todo.activeForm !== undefined) masked.activeForm = redactText(todo.activeForm);
+    return masked;
+  });
+}
+
+/** A pane with its program-set title and its todo list masked, whichever of them it carries. */
+function maskPaneWords<P extends { terminalTitle?: string; todos?: readonly { text: string; activeForm?: string }[] }>(pane: P): P {
+  const titled = maskTerminalTitle(pane);
+  return titled.todos === undefined ? titled : { ...titled, todos: maskTodoList(titled.todos) };
+}
+
+/**
+ * A snapshot with every pane's program-set title and todo list masked. The lead's merged snapshot
+ * carries its members' panes as the members sent them, so a member that does not mask sent them in clear.
  */
 export function maskSnapshotTitles<
-  S extends { agents: readonly { terminalTitle?: string }[]; shellPanes: readonly { terminalTitle?: string }[] },
+  S extends {
+    agents: readonly { terminalTitle?: string; todos?: readonly { text: string; activeForm?: string }[] }[];
+    shellPanes: readonly { terminalTitle?: string }[];
+  },
 >(snapshot: S): S {
-  return { ...snapshot, agents: snapshot.agents.map(maskTerminalTitle), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
+  return { ...snapshot, agents: snapshot.agents.map(maskPaneWords), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
 }
 
 /**
