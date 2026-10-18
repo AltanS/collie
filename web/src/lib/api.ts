@@ -1468,7 +1468,8 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
 
 /**
  * GET /api/pane/:id/walky: the walky talky messages kept for one pane, newest first, each with its
- * receipt (M62). A poll read, so it takes the poll's deadline; forwardable like the pane read.
+ * receipt (M62). A poll read, so it takes the poll's deadline. The lead's own panes only in 1.23.0:
+ * the lead answers a `?host=` read with a 400, so the pane loader does not ask it for a member's pane.
  * The pane loader asks it beside the mirror, and the Chat card and the mirror row take their
  * cross-check from the answer (lib/walky.ts).
  */

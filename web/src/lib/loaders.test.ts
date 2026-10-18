@@ -1489,6 +1489,18 @@ describe("paneLoader and the walky talky list (M62)", () => {
     expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
 
+  it("asks no list for a pane on a crew member, which the lead answers only with a 400 in 1.23.0", async () => {
+    const asked: string[] = [];
+    server.use(http.get(/\/api\/pane\/[^/]+\/walky/, ({ request }) => (asked.push(request.url), HttpResponse.json({ messages: [fixtureWalkyAgent] }))));
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: new Request("http://localhost/pane/w1%3Ap1?h=badger") });
+    expect(asked).toEqual([]);
+    expect(data.walky).toBeNull();
+    // The lead's own pane still reads it.
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(asked).toHaveLength(1);
+  });
+
   it("keeps the last list and its read count when the MIRROR read fails, so a card does not turn back into text", async () => {
     setWalkyRows([fixtureWalkyAgent]);
     const { paneLoader } = await import("./loaders");
