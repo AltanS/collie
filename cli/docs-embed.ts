@@ -48,7 +48,14 @@ import SKILL_TEMPLATE from "./skill.md" with { type: "text" };
 
 // The walky talky skill an installer writes into a harness (`cli/skill-install.ts`). Its placeholders
 // are filled when it is rendered for a target, not when it is printed.
-import WALKY_TALKY_SKILL_TEMPLATE from "./skills/walky-talky.md" with { type: "text" };
+import WALKY_TALKY_SKILL_TEXT from "./skills/walky-talky.md" with { type: "text" };
+
+/**
+ * The skill template with LF line ends. A Windows checkout with autocrlf hands the import CRLF, and a
+ * `\r` in the rendered text would break the trust lines and make every installed copy read `stale`.
+ * The template is written as text for a harness, so LF is its only form.
+ */
+const WALKY_TALKY_SKILL_TEMPLATE = WALKY_TALKY_SKILL_TEXT.replaceAll("\r\n", "\n");
 
 export { SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
 

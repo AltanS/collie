@@ -3,8 +3,13 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { inboxKey, LOG_KEEP_MS, LOG_MAX_LINES, LOG_ROTATE_TO, WalkyLog, INBOX_MAX } from "./log.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
+
+// File modes and Unix sockets are POSIX. Windows has no 0700 or 0600, so those checks sit in a test
+// that is skipped there, and the behaviour beside them still runs.
+const POSIX_ONLY = HOST.platform === "win32";
 
 const dirs: string[] = [];
 function fresh(): string {
@@ -50,7 +55,15 @@ describe("the log", () => {
     expect(again.pending()).toEqual([]);
   });
 
-  test("is private: a 0700 folder and a 0600 file", () => {
+  test("makes its own folder and one log file", () => {
+    const dir = fresh();
+    const log = new WalkyLog(dir, () => 1000);
+    log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));
+    expect(statSync(dir).isDirectory()).toBe(true);
+    expect(statSync(join(dir, "log.jsonl")).isFile()).toBe(true);
+  });
+
+  test.skipIf(POSIX_ONLY)("is private: a 0700 folder and a 0600 file", () => {
     const dir = fresh();
     const log = new WalkyLog(dir, () => 1000);
     log.record(message(1), "local/w1:p1", here, receipt(message(1), "accepted"));

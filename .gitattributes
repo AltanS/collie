@@ -12,3 +12,8 @@
 # The vendored speech engine is pinned by hash (ADR 0096). A Windows checkout with autocrlf would
 # rewrite the glue's line endings and the served bytes would no longer be the hashed bytes.
 web/public/stt/** -text
+
+# The skill texts the CLI embeds and writes into a harness. A CRLF checkout would put `\r` in the
+# rendered skill. The code strips it as well (cli/docs-embed.ts), because an installed copy can be CRLF.
+cli/skill.md text eol=lf
+cli/skills/*.md text eol=lf

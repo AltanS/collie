@@ -70,7 +70,7 @@ function withoutFrontMatter(text: string): string {
 
 /** The managed block for a rendered skill: markers around the body, no trailing newline. */
 export function blockOf(rendered: string): string {
-  return `${BLOCK_BEGIN}\n${withoutFrontMatter(rendered).replace(/\n+$/u, "")}\n${BLOCK_END}`;
+  return `${BLOCK_BEGIN}\n${withoutFrontMatter(withLf(rendered)).replace(/\n+$/u, "")}\n${BLOCK_END}`;
 }
 
 /** Text with the stamp's collie version blanked, so two builds of one text compare equal. */
@@ -78,7 +78,10 @@ function withoutStampVersion(text: string): string {
   return text.replace(STAMP_VERSION, "$1-$2");
 }
 
-const sameText = (a: string, b: string): boolean => withoutStampVersion(a) === withoutStampVersion(b);
+/** Line ends do not make a skill stale: an editor on Windows may save the file with CRLF. */
+const withLf = (text: string): string => text.replaceAll("\r\n", "\n");
+
+const sameText = (a: string, b: string): boolean => withoutStampVersion(withLf(a)) === withoutStampVersion(withLf(b));
 
 // ── The targets ──────────────────────────────────────────────────────────────
 
