@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { OTHER_REASON, readRefusals, reasonKey, RefusalCounter, refusalLine, REFUSAL_REASONS_MAX } from "./refusals.ts";
+
+// File modes and Unix sockets are POSIX. Windows has no 0700 or 0600, so those checks sit in a test
+// that is skipped there, and the behaviour beside them still runs.
+const POSIX_ONLY = HOST.platform === "win32";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -26,8 +31,7 @@ describe("the refusal counter", () => {
     expect(entries(readRefusals('{"v":1,"since":1,"counts":{"constructor":3,"__proto__":2}}').counts)).toEqual([["__proto__", 2], ["constructor", 3]]);
   });
 
-
-  test("counts per reason, keeps the first time, and survives a restart in a 0600 file with no body", () => {
+  test("counts per reason, keeps the first time, and survives a restart in a file with no body", () => {
     const at = dir();
     const counter = new RefusalCounter(at, () => 1000);
     counter.count("rate limit");
@@ -35,12 +39,17 @@ describe("the refusal counter", () => {
     counter.count("pair limit");
     expect(counter.current()).toEqual({ since: 1000, counts: { "rate limit": 2, "pair limit": 1 } });
     const file = join(at, "refusals.json");
-    expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(statSync(at).mode & 0o777).toBe(0o700);
     expect(readFileSync(file, "utf8")).not.toContain("wt_");
     const again = new RefusalCounter(at, () => 9000);
     again.count("rate limit");
     expect(again.current()).toEqual({ since: 1000, counts: { "rate limit": 3, "pair limit": 1 } });
+  });
+
+  test.skipIf(POSIX_ONLY)("keeps its file at 0600 in a 0700 folder", () => {
+    const at = dir();
+    new RefusalCounter(at, () => 1000).count("rate limit");
+    expect(statSync(join(at, "refusals.json")).mode & 0o777).toBe(0o600);
+    expect(statSync(at).mode & 0o777).toBe(0o700);
   });
 
   test("a reason is cut at its first colon and to 40 characters, so one cause is one line", () => {

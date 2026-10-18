@@ -5,12 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { BeaconMatcher } from "../beacon/decorate.ts";
-import { hostFor } from "../host.ts";
+import { HOST, hostFor } from "../host.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { parseWalkyRequest } from "./parse.ts";
 import { WalkyService } from "./service.ts";
 import { answerRequest, placeMarkers, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
+
+// A Unix socket file with an owner-only mode is POSIX; Windows has no walky socket ("Windows has no
+// socket" below), so every part of this test is about that socket.
+const POSIX_ONLY = HOST.platform === "win32";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -104,7 +108,7 @@ describe("the requests", () => {
 });
 
 describe("the socket", () => {
-  test("is 0600, answers one line per connection, and refuses a second bridge on the same path", async () => {
+  test.skipIf(POSIX_ONLY)("is 0600, answers one line per connection, and refuses a second bridge on the same path", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-sock-"));
     roots.push(root);
     const path = walkySocketPath(root);

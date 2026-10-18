@@ -3,11 +3,16 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { sendIdOf, type SendResult, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { SEEN_KEEP_MS, seenHash, WalkySeen } from "./seen.ts";
 import { WalkyService } from "./service.ts";
 import type { WalkyMessage } from "./types.ts";
+
+// File modes and Unix sockets are POSIX. Windows has no 0700 or 0600, so those checks sit in a test
+// that is skipped there, and the behaviour beside them still runs.
+const POSIX_ONLY = HOST.platform === "win32";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -54,17 +59,22 @@ class Host implements WalkyHost {
 }
 
 describe("the seen file", () => {
-  test("keeps an id and target a day, apart from the log, on disk at 0600", () => {
+  test("keeps an id and target a day, apart from the log, on disk", () => {
     const at = { now: 1_786_000_000_000 };
     const folder = dir();
     const seen = new WalkySeen(folder, () => at.now);
     seen.add(message("wt_aaaaaaaaaaa1"), "local/%1");
     seen.add(message("wt_aaaaaaaaaaa1"), "local/%1");
     expect(seen.of("wt_aaaaaaaaaaa1")).toEqual([{ target: "local/%1", firstSeen: at.now, hash: seenHash(message("wt_aaaaaaaaaaa1")) }]);
-    expect(statSync(join(folder, "seen.json")).mode & 0o777).toBe(0o600);
     expect(new WalkySeen(folder, () => at.now).has("wt_aaaaaaaaaaa1", "local/%1")).toBe(true);
     at.now += SEEN_KEEP_MS + 1;
     expect(new WalkySeen(folder, () => at.now).has("wt_aaaaaaaaaaa1", "local/%1")).toBe(false);
+  });
+
+  test.skipIf(POSIX_ONLY)("keeps an id and target a day, apart from the log, on disk at 0600", () => {
+    const folder = dir();
+    new WalkySeen(folder).add(message("wt_aaaaaaaaaaa1"), "local/%1");
+    expect(statSync(join(folder, "seen.json")).mode & 0o777).toBe(0o600);
   });
 
   test("a file that does not parse reads as empty", () => {

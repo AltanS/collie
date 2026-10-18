@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
   LedgerError,
@@ -320,9 +320,16 @@ describe("the leg's environment", () => {
 
 describe("the command line", () => {
   test("defaults, flags and the environment names", () => {
-    expect(parseOptions([], {}, "/h")).toEqual({ plan: false, stateDir: "/h/.local/state/collie-browser-leg", root: "/h/.cache/collie-lab/browser-leg-nightly", repo: "https://github.com/AltanS/collie.git" });
-    expect(parseOptions(["--plan", "--state-dir", "/s", "--root", "/r", "--repo", "/repo"], {}, "/h")).toEqual({ plan: true, stateDir: "/s", root: "/r", repo: "/repo" });
-    expect(parseOptions([], { COLLIE_BROWSER_LEG_STATE_DIR: "/e" }, "/h")).toMatchObject({ stateDir: "/e" });
+    // parseOptions resolves every path, so on Windows "/h" becomes "C:\h": expect what `resolve` and `join` give.
+    const home = "/h";
+    expect(parseOptions([], {}, home)).toEqual({
+      plan: false,
+      stateDir: resolve(join(home, ".local", "state", "collie-browser-leg")),
+      root: resolve(join(home, ".cache", "collie-lab", "browser-leg-nightly")),
+      repo: "https://github.com/AltanS/collie.git",
+    });
+    expect(parseOptions(["--plan", "--state-dir", "/s", "--root", "/r", "--repo", "/repo"], {}, home)).toEqual({ plan: true, stateDir: resolve("/s"), root: resolve("/r"), repo: "/repo" });
+    expect(parseOptions([], { COLLIE_BROWSER_LEG_STATE_DIR: "/e" }, home)).toMatchObject({ stateDir: resolve("/e") });
     expect(parseOptions(["-h"], {}, "/h")).toBe("help");
   });
 

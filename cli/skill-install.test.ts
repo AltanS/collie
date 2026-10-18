@@ -21,6 +21,7 @@ import {
   type SkillDeps,
   skillFiles,
   skillReport,
+  skillState,
 } from "./skill-install.ts";
 import { collieBinary } from "./unit.ts";
 
@@ -242,6 +243,31 @@ describe("status and drift", () => {
     d.files.entries.set(CLAUDE_FILE, { text: rendered(d).replace(/collie [^ ]+ -->\s*$/u, "collie 0.0.1 -->\n") });
     expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
     expect(cmdSkillStatus(d, ["--check"])).toBe(EXIT.OK);
+  });
+
+  test("line ends do not make a copy stale: a CRLF template and a CRLF installed file or block read as installed", () => {
+    // Windows: git's autocrlf can hand the template CRLF, and an editor can save an installed copy with it.
+    const crlf = (value: string): string => value.replaceAll("\n", "\r\n");
+    const d = deps();
+    const lf = rendered(d);
+    expect(lf).not.toContain("\r");
+    cmdSkillInstall(d, ["claude"]);
+    cmdSkillInstall(d, ["codex"]);
+    d.files.entries.set(CLAUDE_FILE, { text: crlf(text(d, CLAUDE_FILE)!) });
+    d.files.entries.set(CODEX_FILE, { text: crlf(text(d, CODEX_FILE)!) });
+    expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
+    expect(stateOf(d, CODEX_FILE)).toBe("installed");
+    // The reverse: LF on disk against a CRLF-rendered template.
+    cmdSkillInstall(d, ["claude"]);
+    cmdSkillInstall(d, ["codex"]);
+    const files = skillFiles(d.ctx);
+    const claude = files.find((f) => f.path === CLAUDE_FILE)!;
+    const codex = files.find((f) => f.path === CODEX_FILE)!;
+    expect(skillState(d, claude, crlf(lf)).kind).toBe("installed");
+    expect(skillState(d, codex, crlf(lf)).kind).toBe("installed");
+    // CRLF everywhere still notices a real change.
+    d.files.entries.set(CLAUDE_FILE, { text: crlf(stale(d)) });
+    expect(stateOf(d, CLAUDE_FILE)).toBe("stale");
   });
 
   test("a refused target is not drift", () => {
