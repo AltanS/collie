@@ -11,6 +11,12 @@
 import { sendLines } from "../../web/src/lib/surface/send.ts";
 import { escapeBody, WALKY_BODY_MAX } from "./types.ts";
 
+/**
+ * The reason a body past the cap is refused with. A cut body can change what it says, so the sender's
+ * bridge never cuts one in silence: the send is refused and the sender shortens it.
+ */
+export const BODY_TOO_LONG = "body over 4,000 characters";
+
 /** Every invisible format character the body drops. */
 const INVISIBLE = /[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu;
 

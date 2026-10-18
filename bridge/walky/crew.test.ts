@@ -154,6 +154,13 @@ describe("the lead's check of a member's message", () => {
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1", { body: "a\u0007b" }), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
     expect(memberCheck(signed("wt_aaaaaaaaaaa1", "laptop", "local/w1:p1"), laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
   });
+
+  test("a body over 4,000 characters is a 400 on both hops, never cut", () => {
+    const long = signed("wt_aaaaaaaaaaa1", "laptop", "other/w1:p1", { body: "x".repeat(4001) });
+    expect(memberCheck(long, laptop)).toMatchObject({ ok: false, answer: { status: 400 } });
+    const attest = attestFor(long, material("desk").keyPem, CREW.crewId, "other");
+    expect(leadCheck({ message: long, attest }, "w1:p1", member({ memberId: "desk", role: "lead" }), CREW.crewId, "other")).toMatchObject({ ok: false, answer: { status: 400 } });
+  });
 });
 
 describe("the one shape check both crew hops share", () => {

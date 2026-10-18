@@ -64,6 +64,13 @@ describe("the requests", () => {
     expect(walky.status("wt_aaaaaaaaaaa2").receipts).toEqual([]);
   });
 
+  test("an agent's body over 4,000 characters is refused with the reason, and nothing is logged", async () => {
+    const walky = service();
+    const long = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "\u{1f415}".repeat(4001) }));
+    expect(await answerRequest(walky, long!, [target])).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "body over 4,000 characters" }] });
+    expect(walky.log.all("wt_aaaaaaaaaaa1")).toEqual([]);
+  });
+
   test("markers this bridge cannot place answer `not here`, so the CLI asks the next bridge", async () => {
     const request = parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: marker("%9") }));
     expect(await answerRequest(service(), request!, [target])).toEqual({ ok: false, error: "not here" });

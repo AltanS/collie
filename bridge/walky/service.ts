@@ -9,7 +9,7 @@
 
 import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
-import { cleanBody } from "./clean.ts";
+import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import type { RefusalCounts } from "./refusals.ts";
@@ -136,6 +136,8 @@ export class WalkyService {
       to = parent.message.from.address;
     }
     if (to === null) return { ok: false, error: "bad request" };
+    // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
+    if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
     const message = this.compose({ ...input, to }, sender);
     if (message === null) return { ok: false, error: "empty body" };
     const from: SenderPane | null = sender.kind === "agent" ? { session: sender.pane.session, paneId: sender.pane.paneId } : null;

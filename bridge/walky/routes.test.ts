@@ -53,6 +53,17 @@ describe("POST /api/walky", () => {
     expect(await res.json()).toMatchObject({ receipts: [{ target: "local/w1:p1" }, { target: "local/w1:p2" }] });
   });
 
+  test("a body over 4,000 characters is refused, never cut, and the refusal is counted", async () => {
+    const walky = service();
+    const res = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "x".repeat(4001) }, context([]));
+    expect(await res.json()).toMatchObject({ receipt: { target: "local/w1:p1", state: "refused", reason: "body over 4,000 characters" } });
+    expect(walky.status("wt_aaaaaaaaaaa1").receipts).toEqual([]);
+    expect(walky.refusals().counts).toEqual({ "body over 4,000 characters": 1 });
+    const fits = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa2", to: "local/w1:p1", body: "x".repeat(4000) }, context([]));
+    expect(await fits.json()).toMatchObject({ receipt: { state: "accepted" } });
+    expect(walky.status("wt_aaaaaaaaaaa2").message?.body).toHaveLength(4000);
+  });
+
   test("a bad body is a 400 and sends nothing", async () => {
     for (const body of [null, { id: "x", to: "all", body: "hi" }, { id: "wt_aaaaaaaaaaa1", to: "../x", body: "hi" }, { id: "wt_aaaaaaaaaaa1", to: "all", body: 7 }]) {
       expect((await walkyPostRoute(service(), body, context([]))).status).toBe(400);

@@ -67,7 +67,8 @@ Your own message, from the phone, types the header and the body:
 Stop and report what you changed.
 ```
 
-The body is at most 4,000 characters, with control bytes and direction marks removed. A body line
+The body is at most 4,000 characters, with control bytes and direction marks removed. A longer
+body is never cut: the send is refused `body over 4,000 characters`, and you shorten it. A body line
 that starts with `[walky-talky` gets one leading space, so a body can never pose as a second
 message.
 
@@ -280,6 +281,7 @@ What walky talky refuses, and how to turn it off.
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
 | 6 messages in 10 minutes between the same two panes, either direction | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
+| A body over 4,000 characters, after control bytes are removed | `body over 4,000 characters` |
 | A reply chain deeper than 4 replies | `thread depth` |
 | An agent's message to `all` or `<member>/all`. Only you may broadcast | `only the operator may broadcast` |
 | A message to the sender's own pane | `that is your own pane` |
