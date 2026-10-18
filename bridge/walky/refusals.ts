@@ -38,12 +38,13 @@ export function readRefusals(raw: string | null): RefusalCounts {
   const row = raw === null ? undefined : parseJsonObject(raw);
   if (row?.v !== 1) return { since: null, counts: {} };
   const since = asJsonNumber(row.since) ?? null;
-  const counts: Record<string, number> = {};
+  // A Map, never a plain object: a reason such as `constructor` must not read an inherited property.
+  const counts = new Map<string, number>();
   for (const [reason, value] of Object.entries(asJsonObject(row.counts) ?? {})) {
     const count = asJsonNumber(value);
-    if (count !== undefined && Number.isSafeInteger(count) && count > 0) counts[reasonKey(reason)] = count;
+    if (count !== undefined && Number.isSafeInteger(count) && count > 0) counts.set(reasonKey(reason), count);
   }
-  return { since, counts };
+  return { since, counts: Object.fromEntries(counts) };
 }
 
 /** The counts as one line: `rate limit 3, pair limit 1`, the most first. */
@@ -55,7 +56,7 @@ export function refusalLine(counts: RefusalCounts["counts"]): string {
 }
 
 export class RefusalCounter {
-  private state: { since: number | null; counts: Record<string, number> };
+  private state: { since: number | null; readonly counts: Map<string, number> };
   private readonly path: string | null;
 
   /** `dir` null keeps the counts in memory only. */
@@ -65,22 +66,22 @@ export class RefusalCounter {
   ) {
     this.path = dir === null ? null : join(dir, "refusals.json");
     const held = readRefusals(this.path !== null && existsSync(this.path) ? readFileSync(this.path, "utf8") : null);
-    this.state = { since: held.since, counts: { ...held.counts } };
+    this.state = { since: held.since, counts: new Map(Object.entries(held.counts)) };
   }
 
   /** Count one refusal. A write that fails costs the count, never the refusal. */
   count(reason: string): void {
     let key = reasonKey(reason);
     const counts = this.state.counts;
-    if (counts[key] === undefined && Object.keys(counts).length >= REFUSAL_REASONS_MAX) key = OTHER_REASON;
-    counts[key] = (counts[key] ?? 0) + 1;
+    if (!counts.has(key) && counts.size >= REFUSAL_REASONS_MAX) key = OTHER_REASON;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
     this.state.since ??= this.now();
     if (this.path === null || this.dir === null) return;
     try {
       mkdirSync(this.dir, { recursive: true, mode: 0o700 });
       chmodSync(this.dir, 0o700);
       const temp = `${this.path}.tmp`;
-      writeFileSync(temp, `${JSON.stringify({ v: 1, since: this.state.since, counts })}\n`, { mode: 0o600 });
+      writeFileSync(temp, `${JSON.stringify({ v: 1, since: this.state.since, counts: Object.fromEntries(counts) })}\n`, { mode: 0o600 });
       renameSync(temp, this.path);
     } catch {
       // The count stays in memory; the next write tries again.
@@ -89,6 +90,6 @@ export class RefusalCounter {
 
   /** The counts as they stand. */
   current(): RefusalCounts {
-    return { since: this.state.since, counts: { ...this.state.counts } };
+    return { since: this.state.since, counts: Object.fromEntries(this.state.counts) };
   }
 }
