@@ -165,6 +165,44 @@ describe("Message all agents", () => {
       expect(recordedWalkyPosts()).toHaveLength(0);
     });
 
+    it("Back hands focus to Send message, so the keyboard path does not fall out of the sheet", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      await user.click(await within(dialog).findByRole("button", { name: "Back" }));
+      expect(within(dialog).getByRole("button", { name: "Send message" })).toHaveFocus();
+    });
+
+    it("hands focus to the receipts once Send is answered, inside the sheet", async () => {
+      whoWith();
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await sendAndConfirm(user, dialog);
+      await within(dialog).findAllByRole("listitem");
+      const receipts = dialog.querySelector('[data-slot="walky-receipts"]');
+      await waitFor(() => expect(receipts).toHaveFocus());
+    });
+
+    it("hands focus to the error when no answer came", async () => {
+      whoWith();
+      server.use(http.post("/api/walky", () => HttpResponse.error()));
+      const user = userEvent.setup();
+      renderCrew();
+      const dialog = await open(user);
+      await within(dialog).findByText("Agents reached: 3");
+      await user.type(within(dialog).getByRole("textbox"), "Pause");
+      await sendAndConfirm(user, dialog);
+      const alert = await within(dialog).findByRole("alert");
+      await waitFor(() => expect(alert).toHaveFocus());
+    });
+
     it("posts once on Send", async () => {
       whoWith();
       const user = userEvent.setup();

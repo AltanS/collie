@@ -122,6 +122,13 @@ export function WalkyBroadcastSheet({
   const [refusals, setRefusals] = useState<WalkyRefusals | null>(null);
   const [confirming, setConfirming] = useState(false);
   const backRef = useRef<HTMLButtonElement>(null);
+  // Where focus goes once the question is gone. Its two buttons leave the DOM with it, and a focused
+  // node that leaves drops focus to the page behind the sheet, so the keyboard path would fall out:
+  // Back hands focus to "Send message", and an answered Send to what came of it.
+  const sendRef = useRef<HTMLButtonElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const receiptsRef = useRef<HTMLDivElement>(null);
+  const [focusNext, setFocusNext] = useState<"send" | "outcome" | null>(null);
 
   // A fresh look every time the sheet opens, and nothing carried over from the last message.
   useEffect(() => {
@@ -150,6 +157,13 @@ export function WalkyBroadcastSheet({
     if (confirming) backRef.current?.focus();
   }, [confirming]);
 
+  useEffect(() => {
+    if (focusNext === null) return;
+    const node = focusNext === "send" ? sendRef.current : error !== null ? errorRef.current : receiptsRef.current;
+    node?.focus({ preventScroll: true });
+    setFocusNext(null);
+  }, [focusNext, error]);
+
   const covers = (memberId: string) => target === ALL || memberId === target;
   // The count and the question name only the panes a message can reach now: a lead keeps an
   // unreachable member's last panes in `who`, and those do not take a message until it is back.
@@ -168,6 +182,7 @@ export function WalkyBroadcastSheet({
     setError(null);
     const result = await send(to, body);
     if (result === null) return;
+    setFocusNext("outcome");
     if (!result.ok) {
       setError(result.error);
       return;
@@ -218,11 +233,14 @@ export function WalkyBroadcastSheet({
           <WalkyConfirm
             question={confirmQuestion(covered)}
             backRef={backRef}
-            onBack={() => setConfirming(false)}
+            onBack={() => {
+              setConfirming(false);
+              setFocusNext("send");
+            }}
             onSend={submit}
           />
         ) : (
-          <Button className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
+          <Button ref={sendRef} className="h-11" onClick={() => setConfirming(true)} disabled={body === "" || tooLong || sending}>
             {sending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
             {sending ? t("walky.crew.sending") : t("walky.crew.send")}
           </Button>
@@ -245,12 +263,22 @@ export function WalkyBroadcastSheet({
           </p>
         )}
         {error !== null && (
-          <p role="alert" className="text-sm text-status-blocked">
+          <p
+            ref={errorRef}
+            role="alert"
+            tabIndex={-1}
+            className="text-sm text-status-blocked outline-none"
+          >
             {t("walky.crew.failed", { error })}
           </p>
         )}
         {receipts !== null && (
-          <div data-slot="walky-receipts" className="flex flex-col gap-1">
+          <div
+            ref={receiptsRef}
+            data-slot="walky-receipts"
+            tabIndex={-1}
+            className="flex flex-col gap-1 outline-none"
+          >
             <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.receipts")}</span>
             {receipts.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("walky.crew.noReceipts")}</p>
