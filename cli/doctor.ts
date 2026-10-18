@@ -2072,8 +2072,8 @@ function beaconHooks(
 /**
  * `skill-walky-talky` — does any instruction file carry a walky talky skill older than this build's?
  *
- * Warn on stale, ok otherwise, as `hooksAreBehind` treats the hooks: a target with no skill is the
- * operator's choice (nothing writes one without `collie skill install`) and is not drift. A refused
+ * Warn on stale, ok otherwise, as `hooksAreBehind` treats the hooks: a target with no skill is not
+ * drift (the harness is not here, the sync is off, or the operator uninstalled it, ADR 0111). A refused
  * target is named, because install would not heal it, but it is not a warning either.
  */
 function skillWalkyTalky(deps: DoctorDeps): Finding {

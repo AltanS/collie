@@ -767,6 +767,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     min: 1,
     doc: "How long an update waits for the restarted bridge to answer.",
   },
+  {
+    key: "skill_sync",
+    env: "COLLIE_SKILL_SYNC",
+    section: "update",
+    kind: "bool",
+    default: true,
+    doc: "After each update, install the walky talky skill into every harness on this machine and keep it current. Off only prints a note when it is behind.",
+  },
 
   // ── serve ──────────────────────────────────────────────────────────────────
   {
