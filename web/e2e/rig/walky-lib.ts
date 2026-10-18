@@ -4,19 +4,26 @@
 // Every case is judged twice, by the bridge's receipt and by the pane's own screen. A receipt that says
 // `delivered` while the screen shows nothing, or a screen that shows a line the receipt calls refused,
 // fails the case.
-import type { Browser } from "@playwright/test";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+import type { Browser, Page } from "@playwright/test";
 import { devices } from "@playwright/test";
 
-import { asJsonObject, asJsonString, type JsonObject } from "../../src/lib/json";
-import type { HarnessId } from "./harnesses";
+import { asJsonNumber, asJsonObject, asJsonString, type JsonObject } from "../../src/lib/json";
+import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
 import {
+  NotReached,
   PHONE_DEVICE,
   capture,
   captureScreen,
+  freeSurface,
   hold,
   jsonRows,
   message,
   phoneOn,
+  sendFromComposer,
   spendTurn,
   tap,
   tapWords,
@@ -24,9 +31,11 @@ import {
   type Rig,
   type ScenarioId,
   type ScenarioResult,
+  type TapLog,
+  type TapRecorder,
   type Trail,
 } from "./leg";
-import { DEVICE_LABEL } from "./rig-lib";
+import { DEVICE_LABEL, machineDirs, memGuard, newWorkspacePane, paneRun, readRun, sleep, type Machine } from "./rig-lib";
 
 export const PHONE = devices[PHONE_DEVICE];
 
@@ -118,6 +127,39 @@ export interface OperatorMessage {
   readonly reply: RegExp;
 }
 
+/** What "Send as message" made of one tap: the request it posted, or why the menu never opened. */
+export type AsMessage = { readonly menu: true; readonly tap: TapLog; readonly id: string } | { readonly menu: false };
+
+/**
+ * The phone's way to a walky talky message, as a thumb does it: write the line, hold Send, tap "Send as
+ * message" in the menu that opens. The hold is no request and is logged as a tap that sent nothing; the
+ * tap posts `/api/walky`. Throws when the tap made no walky talky request.
+ */
+export async function sendAsMessage(page: Page, recorder: TapRecorder, body: string, log: TapLog[]): Promise<AsMessage> {
+  await page.getByRole("textbox").last().fill(body);
+  const send = page.getByRole("button", { name: message("composer.send.sendAria"), exact: true });
+  log.push(await hold(page, send, "hold Send"));
+  const row = page.getByRole("button", { name: message("walky.composer.sendAsMessage"), exact: true });
+  const menu = await row
+    .waitFor({ state: "visible", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!menu) return { menu: false };
+  const t = await tap(recorder, row, "Send as message");
+  log.push(t);
+  const id = t.answers.find((a) => a.path === "/api/walky")?.requestId ?? null;
+  if (id === null) throw new Error(`the tap made no walky talky request: ${tapWords(t)}`);
+  return { menu: true, tap: t, id };
+}
+
+/** The line under the composer that follows the receipt ("Message to this pane: ..."), or null while none shows. */
+export async function composerStrip(page: Page): Promise<string | null> {
+  const prefix = message("walky.composer.outcome", { label: message("walky.composer.toThisPane"), state: "" }).trim();
+  const strip = page.getByText(prefix).first();
+  if (!(await strip.isVisible().catch(() => false))) return null;
+  return ((await strip.textContent().catch(() => null)) ?? "").trim() || null;
+}
+
 /**
  * The operator's message from the phone to one pane: write a line, hold Send, tap "Send as message".
  * With the first hold and the first tap: the bridge takes it; the pane gets one prompt, the header and
@@ -130,29 +172,14 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
   const log = trail.log;
   const notes = trail.notes;
   try {
-    await page.getByRole("textbox").last().fill(c.body);
-    const send = page.getByRole("button", { name: message("composer.send.sendAria"), exact: true });
-    log.push(await hold(page, send, "hold Send"));
-    const row = page.getByRole("button", { name: message("walky.composer.sendAsMessage"), exact: true });
-    const menu = await row
-      .waitFor({ state: "visible", timeout: 5000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!menu) {
+    const sent = await sendAsMessage(page, recorder, c.body, log);
+    if (!sent.menu) {
       trail.captures.push(await capture(page, `walky-${c.tag}-no-menu`));
       return { verdict: "fail", taps: log.length, minTaps: 2, note: "the first hold on Send opened no 'Send as message' row", taps_log: log, captures: trail.captures };
     }
-    const t = await tap(recorder, row, "Send as message");
-    log.push(t);
-    const answer = t.answers.find((a) => a.path === "/api/walky");
-    const id = answer?.requestId ?? null;
-    if (id === null) throw new Error(`the tap made no walky talky request: ${tapWords(t)}`);
-    const strip = message("walky.composer.outcome", { label: message("walky.composer.toThisPane"), state: "" }).trim();
-    const stripShown = await page
-      .getByText(strip)
-      .first()
-      .isVisible()
-      .catch(() => false);
+    const t = sent.tap;
+    const id = sent.id;
+    const stripShown = (await composerStrip(page)) !== null;
     notes.push(`${tapWords(t)}; strip ${stripShown ? "shown" : "not shown"}`);
 
     // One prompt: the header row, then the body on the next row, in the pane's input history.
@@ -185,5 +212,202 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
     return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: trail.captures };
   } finally {
     await context.close();
+  }
+}
+
+/** Whether the agent's turn runs now, by the Surface when the harness has one, else by Herdr's status. */
+async function turnRuns(rig: Rig, pane: string): Promise<boolean> {
+  const found = await rig.pane(pane).catch(() => null);
+  if (found === null) return false;
+  return found.surface === null ? found.status === "working" : found.surface.turn === "running";
+}
+
+export interface BusyMessage {
+  readonly harness: HarnessId;
+  readonly tag: string;
+  /** The numbered lines the long reply holds. */
+  readonly items: number;
+  /** The first lines of the list: the screen shows them once the reply streams. */
+  readonly streaming: RegExp;
+  /** The operator's body, and the harness's own line for the answer. */
+  readonly body: string;
+  readonly reply: RegExp;
+}
+
+/** The last item of a long reply, as a line of the pane. */
+const lastItem = (items: number): RegExp => new RegExp(`^\\s*(?:[⏺●]\\s*)?${String(items)}\\.\\s+\\S`, "gm");
+
+/**
+ * A message from the phone while a turn runs (docs/walky-talky.md, "Into a busy pane"). The turn is a long
+ * numbered list. The operator holds Send and taps "Send as message" while it streams, with the first
+ * hold and the first tap. The message must not steer the turn: the list runs to its last line, and only
+ * then does the agent answer the body. The receipt ends at `delivered`, the header is on the screen once,
+ * and the phone's line under the box ends on "typed into the pane". When the bridge typed the message,
+ * and what the strip said on the way, go into the note: a harness that queues takes it in during the turn.
+ */
+export async function busyMessage(browser: Browser, rig: Rig, pane: string, trail: Trail, c: BusyMessage): Promise<ScenarioResult> {
+  spendTurn(c.harness, "walky busy: the long reply");
+  spendTurn(c.harness, "walky busy: the message sent during it");
+  const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+  const log = trail.log;
+  const notes = trail.notes;
+  try {
+    const prompt = `List ${String(c.items)} different fruits, one per line, numbered 1 to ${String(c.items)}, each with one sentence of about twenty words about its taste. Write the list as plain text in your reply and call no tool. No other text.`;
+    log.push(await sendFromComposer(page, recorder, prompt, "send the long prompt"));
+    if ((await rig.screenUntil(pane, c.streaming, 60_000, 120)) === null) {
+      trail.captures.push(await captureScreen(rig, pane, `walky-${c.tag}-no-stream`));
+      throw new NotReached("the long reply never started streaming");
+    }
+    const running = await turnRuns(rig, pane);
+    const startedAt = Date.now();
+    const sent = await sendAsMessage(page, recorder, c.body, log);
+    if (!sent.menu) {
+      trail.captures.push(await capture(page, `walky-${c.tag}-no-menu`));
+      return { verdict: "fail", taps: log.length, minTaps: 3, note: "the first hold on Send opened no 'Send as message' row", taps_log: log, captures: trail.captures };
+    }
+    const id = sent.id;
+    const header = `[walky-talky ${id}]`;
+    notes.push(`the turn ${running ? "ran" : "was already over"} at the tap; ${tapWords(sent.tap)}`);
+
+    // Watch until the turn is over and the receipt has settled: when the header showed, when the
+    // receipt left `accepted`, when the turn ended, and the words the phone's line went through.
+    const strips: string[] = [];
+    let headerAt: number | null = null;
+    let headerWhileRunning = false;
+    let deliveredAt: number | null = null;
+    let endedAt: number | null = null;
+    const end = Date.now() + 240_000;
+    while (Date.now() < end) {
+      const now = await turnRuns(rig, pane);
+      if (!now && endedAt === null) endedAt = Date.now();
+      if (deliveredAt === null && stateOf((await walkyRows(rig, pane)).find((row) => row.id === id)) === "delivered") deliveredAt = Date.now();
+      if (headerAt === null && (await rig.screen(pane, 300)).includes(header)) {
+        headerAt = Date.now();
+        headerWhileRunning = now;
+      }
+      const strip = await composerStrip(page);
+      if (strip !== null && strips.at(-1) !== strip) strips.push(strip);
+      if (endedAt !== null && deliveredAt !== null) break;
+      await sleep(700);
+    }
+    // The phone's line follows the receipt on the pane's ordinary revalidation: allow it a moment more.
+    const deliveredWord = message("walky.state.delivered");
+    const stripEnd = Date.now() + 45_000;
+    let stripAt: number | null = null;
+    while (Date.now() < stripEnd) {
+      const strip = await composerStrip(page);
+      if (strip !== null && strips.at(-1) !== strip) strips.push(strip);
+      if (strip !== null && strip.includes(deliveredWord)) {
+        stripAt = Date.now();
+        break;
+      }
+      await sleep(700);
+    }
+    const seconds = (at: number | null): string => (at === null ? "never" : `${String(Math.round((at - startedAt) / 1000))} s`);
+    notes.push(`after the tap: header on screen ${seconds(headerAt)}${headerAt === null ? "" : headerWhileRunning ? " (during the turn, queued by the harness)" : " (after the turn)"}, receipt delivered ${seconds(deliveredAt)}, turn ended ${seconds(endedAt)}, the phone's line said "${deliveredWord}" ${seconds(stripAt)}`);
+
+    // The list runs to its last line, then the answer: a message that steered would cut the list.
+    const answered = await rig.screenUntil(pane, c.reply, REPLY_MS, 600);
+    await waitIdle(rig, pane, REPLY_MS);
+    const screen = await rig.screen(pane, 800);
+    const lastAt = [...screen.matchAll(lastItem(c.items))].at(-1)?.index ?? -1;
+    const replyAt = screen.search(c.reply);
+    const inOrder = lastAt !== -1 && replyAt > lastAt;
+    const headers = screen.split(header).length - 1;
+    notes.push(lastAt === -1 ? `the list never reached item ${String(c.items)}` : `the list ran to item ${String(c.items)}`, answered === null ? "no answer to the body on screen" : inOrder ? "the answer came after the last item" : "the answer came BEFORE the last item", `the header is on screen ${String(headers)} time(s)`);
+    const receipt = await settledWalky(rig, pane, id, 30_000);
+    const finalStrip = await composerStrip(page);
+    notes.push(`receipt ${receipt}`, `the phone's line went through: ${strips.length === 0 ? "nothing shown" : strips.map((line) => `"${line}"`).join(" -> ")}`);
+    trail.captures.push(await capture(page, `walky-${c.tag}`), await captureScreen(rig, pane, `walky-${c.tag}`));
+    const verdict = sent.tap.worked && running && receipt === "delivered" && lastAt !== -1 && answered !== null && inOrder && headers === 1 && finalStrip !== null && finalStrip.includes(deliveredWord) ? "pass" : "fail";
+    return { verdict, taps: log.length, minTaps: 3, note: notes.join("; "), taps_log: log, captures: trail.captures };
+  } finally {
+    await context.close();
+  }
+}
+
+/** The address `who` prints for one pane, token included, or null when `who` does not list it. */
+export async function whoAddress(rig: Rig, paneId: string): Promise<string | null> {
+  const who = asJsonObject(await rig.get("/api/walky/who"));
+  const found = jsonRows(who?.targets).find((target) => withoutInstance(asJsonString(target.address) ?? "") === addressOf(paneId));
+  return asJsonString(found?.address) ?? null;
+}
+
+/** Quote a word for /bin/sh. */
+const quoted = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
+
+/**
+ * Start one more agent of a harness in a fresh pane, from the start script the run already wrote
+ * (`prepareHarness` ran when the session started, so the scratch config is not rewritten under a
+ * running agent). Throws NotReached when it never comes up idle. The caller closes the pane.
+ */
+export async function startExtraAgent(rig: Rig, id: HarnessId): Promise<string> {
+  memGuard(`an extra ${id}`);
+  const dirs = harnessDirs(id);
+  const paneId = newWorkspacePane(dirs.project, `leg-${id}-extra`);
+  await sleep(800);
+  paneRun(paneId, `exec ${quoted(dirs.start)}`);
+  const up = await rig.until(() => rig.pane(paneId), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
+  if (up === null) throw new NotReached(`an extra ${id} did not come up idle in 90 s`);
+  return paneId;
+}
+
+/** This checkout: web/e2e/rig/walky-lib.ts is three levels below it. */
+const WORKTREE = resolve(import.meta.dirname, "..", "..", "..");
+
+export interface CliSend {
+  /** The exit code: 0 taken, 4 refused, 1 unknown, 3 and up another failure. */
+  readonly code: number;
+  readonly id: string | null;
+  readonly receipts: JsonObject[];
+  readonly out: string;
+}
+
+/**
+ * `collie walky send` as an agent's Bash tool runs it, with no model turn: this checkout's CLI, the
+ * sender pane's own Herdr markers (`HERDR_PANE_ID`, the machine's socket) and its machine's state dir.
+ * The HOME is the bridge's empty one, so the CLI can reach no bridge but the rig's own. The bridge
+ * proves the sender the way it proves an agent's: the markers name the pane.
+ */
+export async function cliSend(senderPane: string, to: string, text: string, machine: Machine = "lead"): Promise<CliSend> {
+  const run = readRun();
+  const socket = machine === "lead" ? run?.socket : run?.member?.socket;
+  if (socket === undefined || socket === "") throw new Error(`the rig has no ${machine} socket`);
+  const dirs = machineDirs(machine);
+  const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, HERDR_PANE_ID: senderPane, HERDR_SOCKET_PATH: socket };
+  const result = await new Promise<{ code: number; out: string }>((done) => {
+    const child = spawn("bun", [join(WORKTREE, "cli", "main.ts"), "walky", "send", "--json", to, text], { env, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      out += chunk;
+    });
+    child.on("error", () => done({ code: 1, out }));
+    child.on("close", (code) => done({ code: code ?? 1, out }));
+  });
+  const doc = asJsonObject(parseJsonLine(result.out));
+  return { code: result.code, id: asJsonString(doc?.id) ?? null, receipts: jsonRows(doc?.receipts), out: result.out.trim() };
+}
+
+/** The first line of a CLI's output that is a JSON object. */
+function parseJsonLine(out: string): JsonObject | undefined {
+  for (const line of out.split("\n")) {
+    try {
+      const doc = asJsonObject(JSON.parse(line));
+      if (doc !== undefined) return doc;
+    } catch {
+      /* not JSON */
+    }
+  }
+  return undefined;
+}
+
+/** How many messages a machine refused for one reason, from its own `walky/refusals.json` (no bodies, no senders). */
+export function refusalCount(machine: Machine, reason: string): number {
+  try {
+    const doc = asJsonObject(JSON.parse(readFileSync(join(machineDirs(machine).state, "walky", "refusals.json"), "utf8")));
+    return asJsonNumber(asJsonObject(doc?.counts)?.[reason]) ?? 0;
+  } catch {
+    return 0;
   }
 }

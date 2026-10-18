@@ -1,7 +1,7 @@
 // The browser leg's CREW LEG: the same Playwright phone, against a two-machine scratch crew. The lead
 // is the solo rig's bridge and Herdr; the member is a second Herdr server and a second bridge, enrolled
 // into the lead with the real invite and join verbs (rig.ts `up --crew`, crew-enrol.ts). It runs the
-// walky talky cases that need a crew (12 to 14 in README.md) and the release-line case (15), and
+// walky talky cases that need a crew (12 to 14 and 19 to 21 in README.md) and the release-line case (15), and
 // nothing else.
 //
 //     cd web && bunx playwright test -c e2e/rig/crew.config.ts

@@ -22,12 +22,20 @@ export const SCENARIOS = [
   { id: "walky-inbox", title: "9 walky talky: kept, not typed over a dialog or draft", only: ["claude"] },
   { id: "walky-broadcast", title: "10 walky talky: broadcast, shell skipped", only: ["claude"] },
   { id: "walky-forged", title: "11 walky talky: a forged header", only: ["claude"] },
+  // The cases that put a message in the way of something: a running turn (16, every harness), an open
+  // question card (17) and a pane that closed and was replaced (18).
+  { id: "walky-busy", title: "16 walky talky: a message during a running turn" },
+  { id: "walky-question", title: "17 walky talky: a message over a question card", only: ["claude"] },
+  { id: "walky-replaced", title: "18 walky talky: an address of a pane that closed", only: ["claude"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },
   { id: "walky-crew-agents", title: "13 crew: lead agent to member agent and back", only: ["claude"], leg: "crew" },
   { id: "walky-crew-unreachable", title: "14 crew: an unreachable machine is left out", only: ["claude"], leg: "crew" },
   { id: "crew-release-line", title: "15 crew: the lead's release line is the crew's", only: ["claude"], leg: "crew" },
+  { id: "walky-crew-member-to-lead", title: "19 crew: member agent to lead agent and back", only: ["claude"], leg: "crew" },
+  { id: "walky-crew-off", title: "20 crew: walky talky off on the member", only: ["claude"], leg: "crew" },
+  { id: "walky-crew-pair-limit", title: "21 crew: the seventh message between two panes is refused", only: ["claude"], leg: "crew" },
 ] as const;
 export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 

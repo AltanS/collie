@@ -13,6 +13,15 @@
 //      nudge) with ids the log lacks. Chat shows both as plain turns, with the "no log record" mark,
 //      and draws no card.
 //
+//   16 a message sent while a turn runs: the long list runs to its last line, and only then does the
+//      agent answer the body (docs/walky-talky.md, "Into a busy pane"). pi and omp run it in
+//      walky-harnesses.spec.ts.
+//   17 a message sent over a question card: nothing enters the question, the phone answers it, and
+//      then the message is typed and answered. Case 9 does the same over a permission card.
+//   18 an address with the token of a pane that closed: refused, and the pane that came after gets
+//      nothing. (Herdr does not give a closed pane's id to the next pane, so the refusal here is
+//      `no such pane`; `pane replaced` needs a multiplexer that reuses ids, see the unit tests.)
+//
 // Cases 7 and 8 (pi, omp, and agent to agent) are in walky-harnesses.spec.ts.
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -40,8 +49,8 @@ import {
   waitIdle,
   type Session,
 } from "./leg";
-import { DEVICE_LABEL, sleep } from "./rig-lib";
-import { PHONE, REPLY_MS, addressOf, escape, mintId, operatorHeader, operatorMessage, reasonOf, rowOf, settledWalky, stateOf, walkyRows } from "./walky-lib";
+import { DEVICE_LABEL, paneClose, sleep } from "./rig-lib";
+import { PHONE, REPLY_MS, addressOf, busyMessage, escape, mintId, operatorHeader, operatorMessage, reasonOf, rowOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
 
 const H = "claude" as const;
 const session: Session = { paneId: null, startNote: "not started" };
@@ -110,8 +119,9 @@ test.describe("walky talky", () => {
         const yes = await tap(recorder, card.getByRole("button", { name: "Yes", exact: true }), "Yes");
         log.push(yes);
         const ran = (await rig.until(async () => existsSync(proof), (made) => made, 15_000)) === true;
-        // Live behaviour (2026-10-18): the Send Protocol holds the message behind the dialog and types it
-        // once the box is free, so it ends `delivered`, once. docs/walky-talky.md says `inbox-only`.
+        // The Send Protocol holds the message behind the dialog and types it once the dialog is answered,
+        // so it ends `delivered`, once (docs/walky-talky.md, "Into a busy pane"). It waits in the inbox as
+        // `held past 10 minutes` only when the hold runs out first.
         const afterState = await settledWalky(rig, pane, waiting, 60_000);
         const typedOnce = (await rig.screenUntil(pane, new RegExp(escape(operatorHeader(waiting))), 30_000, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
@@ -289,6 +299,118 @@ test.describe("walky talky", () => {
         return { verdict, taps: log.length, minTaps: 2, note: `${notes.join("; ")}; ${log.map(tapWords).join("; ")}`, taps_log: log, captures: trail.captures };
       } finally {
         await context.close();
+      }
+    });
+  });
+
+  test("16 walky talky (claude): a message sent during a running turn waits for it, then is answered", async ({ browser, rig }) => {
+    await runScenario(H, "walky-busy", session, (pane, trail) =>
+      busyMessage(browser, rig, pane, trail, { harness: H, tag: "16-claude", items: 160, streaming: /^\s*(?:⏺|●)?\s*1[0-9]\.\s+\S/m, body: "Walky busy check: reply with only the word BUSY-OK, nothing else.", reply: /^\s*(?:⏺|●)\s*BUSY-OK/m }),
+    );
+  });
+
+  test("17 walky talky: a message sent over a question card is held until the phone answers the question, then typed", async ({ browser, rig }) => {
+    await runScenario(H, "walky-question", session, async (pane, trail) => {
+      spendTurn(H, "walky question: a pick-one question");
+      spendTurn(H, "walky question: the message that waited behind the card");
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        // No option gets a preview: Claude draws a preview behind a rail the Ask reader declines (the rig prompt rule of case 3 on omp).
+        log.push(
+          await sendFromComposer(
+            page,
+            recorder,
+            'Use the AskUserQuestion tool exactly once: one question, header Fruit, text "Which fruit do you like?", multiSelect false, options Apple, Banana, Cherry. Give no option a preview. Do nothing else.',
+            "ask the agent a question",
+          ),
+        );
+        const card = page.getByRole("group", { name: "Which fruit do you like?" });
+        await expect(card, "no question card on the phone").toBeVisible({ timeout: 60_000 });
+        // The composer is gone while a card shows, so the message goes in as the phone's own request.
+        const waiting = mintId();
+        const mark = waiting.slice(3, 9);
+        const body = `Walky question check ${mark}: answer with only the word MANGO-SEVEN, nothing else.`;
+        const posted = await rig.post("/api/walky", { id: waiting, to: addressOf(pane), body });
+        notes.push(`POST /api/walky ${String(posted.status)}`);
+        await sleep(4000);
+        const during = await rig.screen(pane, 120);
+        const typedDuring = during.includes(`[walky-talky ${waiting}]`) || during.includes(mark);
+        const duringState = stateOf((await walkyRows(rig, pane)).find((row) => row.id === waiting));
+        const cardStill = await card.isVisible();
+        notes.push(`while the card stands the receipt says ${duringState ?? "nothing"}, ${typedDuring ? "the message was TYPED" : "nothing typed"}, card ${cardStill ? "still up" : "GONE"}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-17-card"), await capture(page, "walky-17-card"));
+
+        // The phone answers the question: the answer is Cherry, whole, with no word of the message in it.
+        const answer = await tap(recorder, card.getByRole("button", { name: /^Cherry\b/ }), "Cherry");
+        log.push(answer);
+        const review = page.getByRole("group", { name: "Ready to submit your answers?" });
+        if (await review.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false)) log.push(await tap(recorder, review.getByRole("button", { name: "Submit answers", exact: true }), "Submit answers"));
+        const answered = (await rig.screenUntil(pane, /Which fruit do you like\?\s*→\s*Cherry\s*$/m, 30_000, 200)) !== null;
+        notes.push(answered ? "Claude got Cherry" : "the answer did not reach Claude");
+
+        // Then the held message is typed, once, and answered.
+        const after = await settledWalky(rig, pane, waiting, 90_000);
+        const typedOnce = (await rig.screenUntil(pane, new RegExp(escape(operatorHeader(waiting))), 30_000, 200)) !== null;
+        const reply = (await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*MANGO-SEVEN/m, REPLY_MS, 200)) !== null;
+        await waitIdle(rig, pane, REPLY_MS);
+        const total = (await rig.screen(pane, 300)).split(`[walky-talky ${waiting}]`).length - 1;
+        notes.push(`after the answer the receipt says ${after}, the header is on screen ${String(total)} time(s), ${reply ? "Claude answered the body" : "no answer to the body"}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-17-after"));
+        const verdict = posted.status === 200 && !typedDuring && duringState === "accepted" && cardStill && answered && answer.worked && after === "delivered" && typedOnce && total === 1 && reply && log.every((l) => l.worked) ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 2, note: `${notes.join("; ")}; ${log.map(tapWords).join("; ")}`, taps_log: log, captures: trail.captures };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+
+  test("18 walky talky: an address with the token of a pane that closed is refused, and the pane that came after gets nothing", async ({ rig }) => {
+    await runScenario(H, "walky-replaced", session, async (_pane, trail) => {
+      const notes = trail.notes;
+      const opened: string[] = [];
+      try {
+        // A throwaway Claude, so the run's own session stays. Its address is read the way an agent reads it: from `who`.
+        const old = await startExtraAgent(rig, H);
+        opened.push(old);
+        const address = await rig.until(() => whoAddress(rig, old), (found) => found !== null && /#[a-z0-9]{4}$/u.test(found), 40_000, 1000);
+        notes.push(address === null ? `who never printed a token address for ${old}` : `who printed ${address} for ${old}`);
+        if (address === null) return { verdict: "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+
+        // The session ends, its pane closes, and the pane stays gone past the bridge's 30 s sweep.
+        paneClose(old);
+        const closedAt = Date.now();
+        const gone = (await rig.until(async () => (await rig.pane(old)) === null, (dropped) => dropped, 20_000)) === true;
+        await sleep(Math.max(0, 35_000 - (Date.now() - closedAt)));
+        const listed = (await whoAddress(rig, old)) !== null;
+        notes.push(`${old} closed: the snapshot ${gone ? "dropped it" : "STILL has it"}, who ${listed ? "STILL lists it" : "dropped it"} after 35 s`);
+
+        // Another agent starts, so a pane holds an id again, and the old address gets a message.
+        const fresh = await startExtraAgent(rig, H);
+        opened.push(fresh);
+        notes.push(`the next pane is ${fresh}${fresh === old ? ", the same id" : ", a new id (Herdr does not reuse ids)"}`);
+        const id = mintId();
+        const mark = id.slice(3, 9);
+        const body = `Walky replaced check ${mark}: answer with only the word NEVER-SEEN, nothing else.`;
+        const posted = await rig.post("/api/walky", { id, to: address, body });
+        const receipt = asJsonObject(asJsonObject(posted.json)?.receipt);
+        const state = asJsonString(receipt?.state) ?? null;
+        const reason = asJsonString(receipt?.reason) ?? null;
+        notes.push(`POST /api/walky to the old address: ${String(posted.status)}, receipt ${state ?? "none"}${reason === null ? "" : ` (${reason})`}`);
+
+        // Nothing reached the new pane: not its list, not its screen, not its Chat.
+        await sleep(3000);
+        const rows = await walkyRows(rig, fresh);
+        const screen = await rig.screen(fresh, 200);
+        const reached = rows.some((row) => row.id === id) || screen.includes(`[walky-talky ${id}]`) || screen.includes(mark);
+        notes.push(reached ? "the new pane GOT the message" : "the new pane got nothing");
+        trail.captures.push(await captureScreen(rig, fresh, "walky-18-new-pane"));
+        const refusal = state === "refused" && (reason === "pane replaced" || reason === "no such pane");
+        const verdict = gone && !listed && posted.status === 200 && refusal && !reached ? "pass" : "fail";
+        return { verdict, taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+      } finally {
+        for (const pane of opened) paneClose(pane);
       }
     });
   });

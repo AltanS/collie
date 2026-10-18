@@ -1,7 +1,8 @@
 // The browser leg's rig CLI: an ISOLATED bridge mirroring a SCRATCH Herdr server. Run it with bun:
 //
 //   bun e2e/rig/rig.ts up [--crew] | down | status | start <harness> [--on lead|member] | pane <cmd...>
-//                      | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member
+//                      | snapshot | read <pane> [lines] [--on member] | crew stop-member
+//                      | crew start-member [--env COLLIE_WALKY=off]
 //
 // Folded from experiments/collie-rig/rig.ts in the workspace (2026-10-17), with the state moved on
 // disk (rig-lib.ts STATE_ROOT). The Playwright global setup runs
@@ -26,7 +27,9 @@
 //
 // `crew stop-member` and `crew start-member` ask the daemon (SIGUSR1, SIGUSR2) to stop the member's
 // bridge by its recorded pid and to start it again with the same dirs and port. The member's Herdr
-// and its agents keep running, as on a machine whose Collie was stopped.
+// and its agents keep running, as on a machine whose Collie was stopped. `start-member --env
+// COLLIE_WALKY=off` starts it with one allowed setting changed (MEMBER_ENV_ALLOWED), for the case
+// that proves a machine with walky talky off; a start without `--env` clears the setting.
 import "./rig-mode";
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -148,6 +151,27 @@ const log = (line: string) => appendFileSync(join(P.logs, "daemon.log"), `${new 
 /** The log file of one machine's process: the lead keeps the solo rig's names. */
 const logName = (machine: Machine, what: string): string => join(P.logs, machine === "lead" ? `${what}.log` : `member-${what}.log`);
 
+/**
+ * The settings a case may change on the member's bridge, and the file that holds them for the daemon's
+ * next start of it (`crew start-member --env NAME=value`). An allow list, so no case can slip any other
+ * COLLIE_ name into a bridge the rig keeps clean.
+ */
+const MEMBER_ENV_ALLOWED: readonly string[] = ["COLLIE_WALKY"];
+const MEMBER_ENV_FILE = join(P.rig, "member-env.json");
+
+/** The allowed settings a case asked the member's bridge to start with; none when the file is absent or unreadable. */
+function memberEnvOverrides(): [string, string][] {
+  try {
+    const doc = asJsonObject(parseJson(readFileSync(MEMBER_ENV_FILE, "utf8")));
+    return MEMBER_ENV_ALLOWED.flatMap((name): [string, string][] => {
+      const value = asJsonString(doc?.[name]);
+      return value === undefined ? [] : [[name, value]];
+    });
+  } catch {
+    return [];
+  }
+}
+
 /** The bridge's environment on one machine: only what it needs, every inherited COLLIE_/HERDR_ name dropped. */
 function bridgeEnv(machine: Machine, port: number, socket: string) {
   const d = machineDirs(machine);
@@ -179,6 +203,7 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     // listening keeps it off the network (bridge/update.ts, the rehearsal mirror).
     COLLIE_UPDATE_MIRROR: "http://127.0.0.1:1",
   });
+  if (machine === "member") for (const [name, value] of memberEnvOverrides()) env[name] = value;
   return env;
 }
 
@@ -397,6 +422,7 @@ async function cmdUp(crew: boolean): Promise<void> {
     assertPrivateDir(d.xdg);
   }
   rmSync(P.token, { force: true });
+  rmSync(MEMBER_ENV_FILE, { force: true });
   const port = await freePort();
   const memberPort = crew ? await freePort([port]) : null;
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
@@ -484,11 +510,12 @@ async function cmdDown(): Promise<void> {
   }
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
+  rmSync(MEMBER_ENV_FILE, { force: true });
   console.log(machines.length === 1 ? "down: bridge and scratch Herdr stopped" : "down: both bridges and both scratch Herdr servers stopped");
 }
 
 /** `crew stop-member` / `crew start-member`: the daemon does it, and this waits until rig.json and the port agree. */
-async function cmdCrew(verb: string | undefined): Promise<void> {
+async function cmdCrew(verb: string | undefined, args: readonly string[] = []): Promise<void> {
   const run = readRun();
   if (run?.ready !== true || run.member === undefined) return die("the crew rig is not up (`up --crew`)");
   if (!pidIs(run.daemonPid, DAEMON_TAG)) return die("the rig's daemon is gone; run `down --crew`");
@@ -501,6 +528,18 @@ async function cmdCrew(verb: string | undefined): Promise<void> {
     return;
   }
   if (verb === "start-member") {
+    // `--env NAME=value`, repeated: the allowed settings the member starts with. Without it the member starts clean.
+    const wanted: Record<string, string> = {};
+    for (let i = 0; i < args.length; i += 2) {
+      const pair = args[i + 1] ?? "";
+      const at = pair.indexOf("=");
+      if (args[i] !== "--env" || at < 1) return die("usage: crew start-member [--env NAME=value ...]");
+      const name = pair.slice(0, at);
+      if (!MEMBER_ENV_ALLOWED.includes(name)) return die(`--env takes ${MEMBER_ENV_ALLOWED.join(", ")}, not ${name}`);
+      wanted[name] = pair.slice(at + 1);
+    }
+    if (Object.keys(wanted).length === 0) rmSync(MEMBER_ENV_FILE, { force: true });
+    else writeFileSync(MEMBER_ENV_FILE, JSON.stringify(wanted), { mode: 0o600 });
     if (run.member.bridgePid !== null && pidIs(run.member.bridgePid, BRIDGE_TAG)) {
       console.log("crew: the member's bridge already runs");
       return;
@@ -603,7 +642,7 @@ switch (cmd) {
     break;
   }
   case "crew":
-    await cmdCrew(rest[0]);
+    await cmdCrew(rest[0], rest.slice(1));
     break;
   case "pane":
     await cmdPane(rest, machineFlag(argv));
@@ -639,7 +678,7 @@ switch (cmd) {
   }
   default:
     console.log(
-      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] | pane <cmd...> | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member\n" +
+      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] | pane <cmd...> | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member [--env NAME=value]\n" +
         "       add --crew to any command to reach the crew rig's state root (`crew <verb>` implies it)",
     );
     process.exitCode = cmd === undefined || cmd === "help" ? 0 : 1;
