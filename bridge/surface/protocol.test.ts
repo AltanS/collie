@@ -296,6 +296,17 @@ function nextId(): string {
   return `req-${String(ids).padStart(6, "0")}`;
 }
 
+/**
+ * The Claude range these tests were written against: verified through 2.1.296. In them 2.1.301 and
+ * 2.1.302 stand for the provisional versions the live screens of 2026-10-17 came from, and the
+ * probed path they take is what the tests prove. A harness lab run that moves claude.json's range
+ * (2.1.302 on 2026-10-18) must not turn those versions verified under the tests, so the rig keeps
+ * this range for Claude. profile.test.ts covers the shipped range itself.
+ */
+const CLAUDE_TEST_RANGE: readonly [VersionRange] = [
+  { range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" },
+];
+
 function rig(
   options: {
     mode?: Mode;
@@ -330,8 +341,10 @@ function rig(
     profile: (harness: string) => {
       // An edited profile is matched as the bridge would match it, so an edited range moves the status.
       const { edit, status } = options;
-      const base = harness === FRAMELESS ? framelessProfile() : loadProfiles().get(harness);
-      const profiles = base === undefined ? undefined : edit !== undefined ? new Map([[harness, edit(base)]]) : harness === FRAMELESS ? new Map([[harness, base]]) : undefined;
+      const loaded = harness === FRAMELESS ? framelessProfile() : loadProfiles().get(harness);
+      const base = harness === "claude" && loaded !== undefined ? { ...loaded, versions: CLAUDE_TEST_RANGE } : loaded;
+      const pinned = harness === FRAMELESS || harness === "claude";
+      const profiles = base === undefined ? undefined : edit !== undefined ? new Map([[harness, edit(base)]]) : pinned ? new Map([[harness, base]]) : undefined;
       const lookup: ProfileForOptions = profiles === undefined ? { log: () => undefined } : { log: () => undefined, profiles };
       const match = profileFor(harness, version, lookup);
       if (match === null) return Promise.resolve(null);
