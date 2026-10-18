@@ -3296,6 +3296,11 @@ is two hops, A to the lead and the lead to B.
   for the message as a whole (a refusal names the message's own `to`, `all` on a broadcast) stands
   for the leg the lead dialled and takes its target, `<member>/all` or the pane address. A receipt
   in another machine's name, or for a pane on another machine, is dropped. Added 2026-10-18.
+- The lead dials every member at once, and gives each leg at most 8 seconds, all of it (the forward's
+  write budget bounds the dial to the answer's headers only). A leg past that is the lead's own
+  `unknown` with the reason `member slow`, never `refused`: the member may still deliver. Its outcome
+  report then updates the leg; a pane of a leg routed as `<member>/all` is logged as a target of its
+  own. Added 2026-10-18.
 
 ### The canonical strings
 

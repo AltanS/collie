@@ -527,6 +527,37 @@ describe("the outcome report", () => {
   });
 });
 
+describe("a member that never answers", () => {
+  test("its leg is the lead's own `unknown: member slow` at the leg cap, the rest answer at once, and its report still lands", async () => {
+    const routeRemote = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop", "other"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      legMs: 40,
+      now: () => AT,
+      post: async (memberId) => {
+        if (memberId === "laptop") return new Promise<CrewDialAnswer>(() => undefined);
+        return { kind: "answer", status: 200, body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: "other/w2:p1", state: "accepted", verified: "lead", at: AT, by: "other" }] } };
+      },
+    });
+    const lead = service("desk", [pane("w1:p1")], undefined, { routeRemote });
+    const started = performance.now();
+    const answer = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(performance.now() - started).toBeLessThan(1000);
+    const receipts = answer.ok ? answer.receipts : [];
+    expect(receipts.map((receipt) => `${receipt.target} ${receipt.state} ${receipt.reason ?? "-"}`)).toEqual([
+      "desk/w1:p1 accepted -",
+      "laptop/all unknown member slow",
+      "other/w2:p1 accepted -",
+    ]);
+    // The member delivered after all: its snapshot report names the pane, and the lead takes it.
+    const late: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p8", state: "delivered", verified: "lead", at: AT + 9000, by: "laptop" };
+    expect(mergeReport(lead.log, "laptop", [late])).toBe(1);
+    await lead.service.deliverer.settled();
+    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => `${receipt.target} ${receipt.state}`)).toContain("laptop/w1:p8 delivered");
+  });
+});
+
 describe("`who` on a lead", () => {
   test("lists every member's agent panes from the sweep's bodies, with the member's address", () => {
     const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>

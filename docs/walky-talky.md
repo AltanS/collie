@@ -140,6 +140,9 @@ checks that its lead passed the message on.
   with its next crew update. On a member, a message to another machine shows
   `queued (outcome known on the lead)`, and `send` does not wait for more. Run
   `collie walky status <id>` on the lead, or open the pane on the phone, to see "typed into the pane".
+- **A slow machine does not hold up a broadcast.** The lead gives each machine 8 seconds. A machine
+  that takes longer shows `may have arrived, will not be sent again (member slow)`, and its next
+  crew update fills in the outcome.
 - **An older machine refuses.** A message to a member whose reported version predates walky talky
   gives `not sent: older member` at once, with no dial. A member under an older lead gives
   `not sent: older lead`. Update the crew to fix it.
