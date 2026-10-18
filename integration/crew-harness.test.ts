@@ -8,11 +8,12 @@ import { join } from "node:path";
 import { HOST } from "../bridge/host.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
-import { askSocket } from "../cli/walky.ts";
+import { askSocket, cmdWalkySend, cmdWalkyStatus, type WalkyDeps } from "../cli/walky.ts";
 import { asJsonString } from "../web/src/lib/json.ts";
 import { signMessage } from "../bridge/walky/canonical.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
-import { readReceiptsAnswer } from "../bridge/walky/parse.ts";
+import { readReceiptsAnswer, readWalkyReport } from "../bridge/walky/parse.ts";
+import { attestFor, senderBlockFor, WALKY_REPORT_FIELD } from "../bridge/walky/crew.ts";
 import { NUDGE_MARK, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 import { cmdDevicesRevoke } from "../cli/pairing.ts";
 import {
@@ -2391,6 +2392,53 @@ describe("walky talky in a crew of four, on the real wire", () => {
     return { status: res.status, body: (await res.json().catch(() => null)) as JsonValue };
   }
 
+  /**
+   * A crew dial at `member` as the lead `wl` makes it: the lead's client certificate against the
+   * member's pin, the crew secret and the dial attestation, the way `PeerClient` dials. It reads the
+   * lead's identity off disk, so it works while the lead's process is down.
+   */
+  async function asLead(member: Instance, method: string, path: string, body?: string, extra: Record<string, string> = {}): Promise<Response> {
+    const from = wl.store()!;
+    const to = member.store()!;
+    const timestamp = Date.now();
+    const headers = new Headers({
+      authorization: `Bearer ${from.crew!.secret}`,
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": from.self.memberId,
+      [TIMESTAMP_HEADER]: String(timestamp),
+      [DIAL_HEADER]: signDial(from.self.keyPem, { method, path, timestamp, to: to.self.memberId }),
+      ...extra,
+    });
+    if (body !== undefined) headers.set("content-type", "application/json");
+    return crewFetch(`https://127.0.0.1:${member.port}${path}`, {
+      method,
+      headers,
+      body,
+      tls: { cert: from.self.certPem, key: from.self.keyPem, ca: [to.self.certPem], checkServerIdentity: () => undefined },
+    });
+  }
+
+  /** The lead-to-member route for `member`'s pane, percent-encoded as the lead's forward sends it. */
+  const paneRoute = (member: Instance): string => `${CREW_PREFIX}pane/${encodeURIComponent(member.paneId)}/walky`;
+
+  /** An agent's message from `from`'s pane, signed with `key` under `from`'s member id. */
+  function agentMessage(from: Instance, id: string, to: string, body: string, key = from.store()!.self.keyPem): WalkyMessage {
+    const memberId = idOf(from);
+    const unsigned: WalkyMessage = {
+      v: 1,
+      id,
+      kind: "agent",
+      from: { memberId, address: paneOf(from), harness: "claude", label: "drill" },
+      to,
+      replyTo: null,
+      at: Date.now(),
+      body,
+      signer: null,
+      signature: null,
+    };
+    return signMessage(unsigned, key, memberId);
+  }
+
   beforeAll(async () => {
     // A checkout that holds a manifest naming a release from before walky talky. The bridge reads its
     // own version off `<root>/herdr-plugin.toml` (bridge/version.ts), and a member reports that string
@@ -2539,6 +2587,69 @@ describe("walky talky in a crew of four, on the real wire", () => {
     }
   }, 60_000);
 
+  test("the sender member's own status shows the outcome the lead pushed back, and `send` there prints it", async () => {
+    // `collie walky send` itself, run as an agent in A's pane: the pane's own environment names it.
+    const id = "wt_clisend00001";
+    const captured: Captured = { out: [], err: [] };
+    const base = depsFor(wa, captured);
+    const cli: WalkyDeps = {
+      ctx: { ...base.ctx, env: { HERDR_PANE_ID: wa.paneId, HERDR_SOCKET_PATH: wa.socketPath } },
+      files: realFiles,
+      uid: process.getuid?.(),
+      io: base.io,
+      platform: HOST.platform,
+      readStdin: () => Promise.resolve(""),
+      stdinIsTty: true,
+      ask: (path, line) => askSocket(path, line, 5000),
+      sockets: () => [walkySocketPath(wa.stateDir)],
+      mintId: () => id,
+    };
+    // B types it, B's next snapshot answer reports it, and the lead pushes it back to A, all inside
+    // the 15 s `send` waits on a local message.
+    expect(await cmdWalkySend(cli, [paneOf(wb), "from member a, told how it ended"])).toBe(EXIT.OK);
+    expect(captured.out).toEqual([id, `to ${paneOf(wb)}`, "typed into the pane"]);
+    expect(captured.err).toEqual([]);
+    // A's own log holds B's receipt, as B wrote it, and nothing is left "on the lead".
+    expect(await walky(wa, { op: "status", id })).toMatchObject({ ok: true, receipts: [{ id, target: paneOf(wb), state: "delivered", by: idOf(wb), verified: "origin" }], elsewhere: [] });
+    const status: Captured = { out: [], err: [] };
+    expect(await cmdWalkyStatus({ ...cli, io: depsFor(wa, status).io }, [id])).toBe(EXIT.OK);
+    expect(status.out).toEqual([id, `${paneOf(wb)}: typed into the pane (signed by ${idOf(wa)})`]);
+    expect(typedFor(wb, id)).toHaveLength(1);
+  }, 60_000);
+
+  test("a sender block whose certificate the lead did not vouch for is the uniform 401, and the vouched one reads `origin`", async () => {
+    const leadData = wl.store()!;
+    const crewId = leadData.crew!.crewId;
+    const pinned = leadData.peers.find((m) => m.memberId === idOf(wa))!.certPem;
+    const voucher = senderBlockFor(idOf(wa), pinned, leadData.self.keyPem, crewId)!;
+    const forger = mintIdentity({ commonName: "collie-forger", sans: ["127.0.0.1"] });
+    const deliver = (message: WalkyMessage, sender: { certPem: string; voucher: string }): Promise<Response> =>
+      asLead(wb, "POST", paneRoute(wb), JSON.stringify({ message, attest: attestFor(message, leadData.self.keyPem, crewId, idOf(wb)), sender }));
+
+    // A's real message, with the certificate swapped: the voucher names the fingerprint of the one the lead pinned.
+    const tampered = agentMessage(wa, "wt_tampercert01", paneOf(wb), "a certificate the lead never pinned");
+    const swapped = await deliver(tampered, { ...voucher, certPem: forger.certPem });
+    expect(swapped.status).toBe(401);
+    expect(await swapped.json()).toEqual({ error: "unauthorized" });
+    // A forger that signs as A with its own key, and sends its own certificate under A's voucher.
+    const forged = agentMessage(wa, "wt_tampercert02", paneOf(wb), "signed by a forger as member a", forger.keyPem);
+    expect((await deliver(forged, { ...voucher, certPem: forger.certPem })).status).toBe(401);
+    // …or keeps the vouched certificate, which its key did not sign with.
+    expect((await deliver(forged, voucher)).status).toBe(401);
+
+    // THE CONTROL: the same hand-built delivery with the lead's real block is taken, as `origin`.
+    const control = agentMessage(wa, "wt_tampercert03", paneOf(wb), "vouched for by the lead");
+    const taken = await deliver(control, voucher);
+    expect(taken.status).toBe(200);
+    expect(await taken.json()).toMatchObject({ receipts: [{ id: control.id, target: paneOf(wb), by: idOf(wb), verified: "origin" }] });
+    await settled(wb, control.id);
+    // Nothing the refused deliveries said reached B: no record, no line.
+    for (const id of ["wt_tampercert01", "wt_tampercert02"]) {
+      expect(await walky(wb, { op: "status", id })).toMatchObject({ ok: true, receipts: [], message: null });
+      expect(typedFor(wb, id)).toEqual([]);
+    }
+  }, 60_000);
+
   test("a member the lead knows to be older is refused `older member` BEFORE any dial", async () => {
     // The member reports 1.0.0 on its hello and its sweep answers; the lead's `older` check reads it.
     await waitFor(async () => (await versionsOnLead())[idOf(wo)] === "1.0.0", 20_000, async () => `the lead holds ${JSON.stringify(await versionsOnLead())}`);
@@ -2654,4 +2765,52 @@ describe("walky talky in a crew of four, on the real wire", () => {
       for (const at of [wl, wa, wb, wo]) expect(typedFor(at, id)).toEqual([]);
     }
   }, 60_000);
+
+  test("a member's report rides every snapshot answer until a sweep carries the lead's ack, then it is gone", async () => {
+    // LAST in this block: it stops the lead, so nothing but this test reads B's report while it runs.
+    const leadData = wl.store()!;
+    const crewId = leadData.crew!.crewId;
+    /** B's report on one snapshot answer, read with the lead's identity; `ack` rides as the header the sweep sends. */
+    const reportOf = async (ack?: string) => {
+      const res = await asLead(wb, "GET", CREW_SNAPSHOT_PATH, undefined, ack === undefined ? {} : { "X-Crew-Walky-Ack": ack });
+      expect(res.status).toBe(200);
+      // SAFETY: the snapshot route answers JSON; `readWalkyReport` checks every field it reads.
+      return readWalkyReport((await res.json()) as JsonValue, WALKY_REPORT_FIELD);
+    };
+    /** A delivery from the lead's own agent, as the lead's forward sends it. */
+    const fromLead = async (id: string): Promise<void> => {
+      const message = agentMessage(wl, id, paneOf(wb), "a message whose receipt B reports", leadData.self.keyPem);
+      const res = await asLead(wb, "POST", paneRoute(wb), JSON.stringify({ message, attest: attestFor(message, leadData.self.keyPem, crewId, idOf(wb)) }));
+      expect(res.status).toBe(200);
+      await settled(wb, id);
+    };
+    const holds = (report: { receipts: readonly WalkyReceipt[] }, id: string): boolean => report.receipts.some((r) => r.id === id && r.state === "delivered");
+
+    await wl.stop();
+    try {
+      await fromLead("wt_ackcursor001");
+      const first = await reportOf();
+      expect(holds(first, "wt_ackcursor001")).toBe(true);
+      expect(first.cursor).toMatch(/^[0-9a-f]{8}\.\d+$/u);
+      // An answer nobody acked loses nothing: the next one carries the same receipt and cursor.
+      const second = await reportOf();
+      expect(holds(second, "wt_ackcursor001")).toBe(true);
+      expect(second.cursor).toBe(first.cursor);
+      // An ack from another epoch (a lead acking what B's previous run sent) acks nothing.
+      expect(holds(await reportOf(`${first.cursor!.startsWith("0") ? "f" : "0"}${first.cursor!.slice(1)}`), "wt_ackcursor001")).toBe(true);
+      // The ack of that cursor: gone before the answer is built.
+      expect(holds(await reportOf(first.cursor!), "wt_ackcursor001")).toBe(false);
+      // A second one, held while the lead is down: only the real lead's sweep may ack it now.
+      await fromLead("wt_ackcursor002");
+      expect(holds(await reportOf(), "wt_ackcursor002")).toBe(true);
+    } finally {
+      await wl.start();
+    }
+    // The lead comes back with no cursor: its first sweep reads the report, its next one carries the ack.
+    await waitFor(
+      async () => !holds(await reportOf(), "wt_ackcursor002"),
+      20_000,
+      async () => `B still reports ${JSON.stringify(await reportOf())}`,
+    );
+  }, 90_000);
 });
