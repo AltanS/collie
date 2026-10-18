@@ -572,7 +572,7 @@ export function resolveJournalRoots(
     ),
     hermes: envRoots("COLLIE_HERMES_ROOT", join(home, ".hermes"), env),
     // Kiro V3 writes its sessions under $KIRO_HOME/sessions, or ~/.kiro/sessions when KIRO_HOME is unset.
-    // kiro-cli 2.32.0 writes to ~/.kiro when KIRO_HOME is blank or spaces, hence `||` where the others use `??`.
+    // kiro-cli 2.32.0 writes to ~/.kiro when KIRO_HOME is blank or spaces, so a blank value counts as unset.
     kiro: envRoots(
       "COLLIE_KIRO_ROOT",
       join(env.KIRO_HOME?.trim() || join(home, ".kiro"), "sessions"),
