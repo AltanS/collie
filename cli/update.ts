@@ -36,7 +36,7 @@ import {
   type ReleaseLine,
   writeUpdateLine,
 } from "../bridge/update-line.ts";
-import { readReleaseTag, stampPackageJson, stampToml } from "../scripts/release-version.ts";
+import { readReleaseTag, stampPackageJson, stampToml } from "../scripts/release-tag.ts";
 import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
