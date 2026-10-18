@@ -12,12 +12,17 @@ import {
   LedgerError,
   MIN_CLAUDE_MINUTES,
   MIN_MEM_KB,
+  PLAN_CREW,
   STALE_RUNNING_MS,
+  addVerdicts,
   blockers,
   claim,
   claudeMinutesLeft,
   countsText,
+  crewLegRuns,
+  crewStateRoot,
   decide,
+  decideLegs,
   emptyCounts,
   expireStale,
   legEnv,
@@ -31,6 +36,7 @@ import {
   resultsFolderIn,
   settle,
   writeLedger,
+  type Decision,
   type Facts,
   type Ledger,
   type Outcome,
@@ -46,6 +52,7 @@ const T0 = Date.UTC(2026, 9, 18, 3, 0, 0);
 const DEAD: (pid: number) => boolean = () => false;
 const LIVE: (pid: number) => boolean = () => true;
 
+const VERDICTS_15 = { claude: { pass: 5, fail: 0, "not reached": 0, "n/a": 0 }, pi: { pass: 5, fail: 0, "not reached": 0, "n/a": 0 }, omp: { pass: 5, fail: 0, "not reached": 0, "n/a": 0 } };
 const row = (over: Partial<Row> = {}): Row => ({ ...TUPLE, date: "2026-10-18", result: "pass", log: "/log", ...over });
 
 let dir = "";
@@ -130,6 +137,32 @@ describe("the ledger file", () => {
     writeLedger(path, { rows: [full, row({ sha: "b".repeat(40), result: "running", startedAt: T0, pid: 7 })] });
     expect(readLedger(path).rows[0]).toEqual(full);
     expect(readLedger(path).rows[1]?.pid).toBe(7);
+  });
+
+  test("a row with the crew leg's folder and table survives a write and a read", () => {
+    const path = join(dir, "state", "ledger.json");
+    const both = row({ results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md", note: "18 cases passed" });
+    writeLedger(path, { rows: [both] });
+    expect(readLedger(path).rows[0]).toEqual(both);
+  });
+
+  test("a row written before the crew leg existed still parses, with no crew fields", () => {
+    const path = join(dir, "ledger.json");
+    const old = { ...TUPLE, date: "2026-10-17", result: "pass", log: "/log", results: "/r", table: "/r/table.md", note: "15 cases passed", verdicts: VERDICTS_15 };
+    writeFileSync(path, JSON.stringify({ rows: [old] }));
+    const [parsed] = readLedger(path).rows;
+    expect(parsed).toMatchObject({ result: "pass", results: "/r", table: "/r/table.md" });
+    expect(parsed?.crewResults).toBeUndefined();
+    expect(parsed?.crewTable).toBeUndefined();
+    expect(parsed?.verdicts?.pi.pass).toBe(5);
+  });
+
+  test("a row without a crew leg writes no crew keys", () => {
+    const path = join(dir, "ledger.json");
+    writeLedger(path, { rows: [row({ results: "/r", table: "/r/table.md" })] });
+    const text = readFileSync(path, "utf8");
+    expect(text).not.toContain("crewResults");
+    expect(text).not.toContain("crewTable");
   });
 });
 
@@ -230,6 +263,14 @@ describe("claim and settle", () => {
     expect(readLedger(path).rows).toEqual([earlier, done]);
   });
 
+  test("settle keeps the crew leg's folder and table beside the solo ones", () => {
+    const path = join(dir, "ledger.json");
+    claim(path, TUPLE, meta, LIVE);
+    const done = settle(path, TUPLE, { result: "pass", note: "ok", results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md" });
+    expect(done).toMatchObject({ results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md" });
+    expect(readLedger(path).rows[0]).toEqual(done);
+  });
+
   test("a result needs a claim", () => {
     const path = join(dir, "ledger.json");
     expect(() => settle(path, TUPLE, { result: "pass", note: "x" })).toThrow(LedgerError);
@@ -297,6 +338,86 @@ describe("the table and the verdict", () => {
     expect(resultsFolderIn(log)).toBe("/s/results/b");
     expect(resultsFolderIn("nothing")).toBeUndefined();
   });
+
+  test("the crew leg's folder is read from its own teardown line, and the solo read ignores it", () => {
+    const log = "Browser leg, run a (results in /s/results/a):\n\n...\nBrowser leg (crew), run b (results in /c/results/b):\n";
+    expect(resultsFolderIn(log, "crew")).toBe("/c/results/b");
+    expect(resultsFolderIn(log)).toBe("/s/results/a");
+    expect(resultsFolderIn("Browser leg, run a (results in /s/results/a):\n", "crew")).toBeUndefined();
+  });
+});
+
+describe("the crew table and the two-leg verdict", () => {
+  const line = (harness: string, verdict: string): string => `| ${harness} | a case | ${verdict} | 1/1 | note |`;
+  const crewTable = (...verdicts: string[]): string => ["| harness | scenario | verdict | taps | note |", "|---|---|---|---|---|", ...verdicts.map((v) => line("claude", v))].join("\n");
+  const soloPass: Decision = { result: "pass", note: "15 cases passed", verdicts: VERDICTS_15 };
+  const crew = (...verdicts: string[]): Decision => decide(parseTable(crewTable(...verdicts)), 0, ["claude"]);
+
+  test("the crew table has Claude cases only, and that is a full table for the crew leg", () => {
+    expect(decide(parseTable(crewTable("pass", "pass", "pass")), 0, ["claude"])).toMatchObject({ result: "pass", note: "3 cases passed" });
+    expect(decide(parseTable(crewTable("pass", "pass", "pass")), 0).result).toBe("failed");
+  });
+
+  test("the crew leg runs once the solo leg wrote a table with cases, whatever the solo verdict was", () => {
+    expect(crewLegRuns(parseTable(crewTable("fail")))).toBe(true);
+    expect(crewLegRuns(parseTable(crewTable("not reached")))).toBe(true);
+    expect(crewLegRuns(null)).toBe(false);
+    expect(crewLegRuns([])).toBe(false);
+  });
+
+  test("the counts of the two legs add up per harness", () => {
+    const sum = addVerdicts(VERDICTS_15, crew("pass", "pass", "fail").verdicts);
+    expect(sum?.claude).toEqual({ pass: 7, fail: 1, "not reached": 0, "n/a": 0 });
+    expect(sum?.pi.pass).toBe(5);
+    expect(addVerdicts(VERDICTS_15, undefined)).toBe(VERDICTS_15);
+    expect(addVerdicts(undefined, undefined)).toBeUndefined();
+  });
+
+  test("pass only when both legs passed every case", () => {
+    const both = decideLegs(soloPass, crew("pass", "pass", "pass"));
+    expect(both).toMatchObject({ result: "pass", note: "18 cases passed (solo 15, crew 3)" });
+    expect(both.verdicts?.claude.pass).toBe(8);
+  });
+
+  test("a case not reached in the crew leg makes the row failed, and the note names the crew leg", () => {
+    const d = decideLegs(soloPass, crew("pass", "not reached", "pass"));
+    expect(d.result).toBe("failed");
+    expect(d.note).toBe("crew leg: 1 case(s) proved nothing: not reached claude 1");
+    expect(d.verdicts?.claude["not reached"]).toBe(1);
+  });
+
+  test("a case not reached or n/a in the solo leg makes the row failed, and the note names the solo leg", () => {
+    const solo = decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "omp" ? "n/a" : "pass"))].join("\n")), 0);
+    const d = decideLegs(solo, crew("pass", "pass", "pass"));
+    expect(d.result).toBe("failed");
+    expect(d.note).toStartWith("solo leg: ");
+    expect(d.note).not.toContain("crew leg");
+  });
+
+  test("a failed case in either leg is fail, and a fail outranks a case not reached in the other leg", () => {
+    expect(decideLegs(soloPass, crew("pass", "fail", "pass"))).toMatchObject({ result: "fail", note: "crew leg: 1 case(s) failed: claude 1" });
+    const soloFail = decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "pi" ? "fail" : "pass"))].join("\n")), 1);
+    expect(decideLegs(soloFail, crew("pass", "pass", "pass")).result).toBe("fail");
+    const d = decideLegs(soloFail, crew("not reached", "pass", "pass"));
+    expect(d.result).toBe("fail");
+    expect(d.note).toContain("solo leg: 1 case(s) failed: pi 1; crew leg: 1 case(s) proved nothing");
+  });
+
+  test("the crew leg writing no table is failed, even when the solo leg passed", () => {
+    const d = decideLegs(soloPass, decide(null, 1, ["claude"]));
+    expect(d).toMatchObject({ result: "failed", note: "crew leg: the leg wrote no table (exit 1)" });
+    expect(d.verdicts).toEqual(soloPass.verdicts);
+  });
+
+  test("a crew leg that did not run is never a pass, and the note says it was not run", () => {
+    expect(decideLegs(soloPass, null)).toMatchObject({ result: "failed", note: "crew leg: not run" });
+    const noTable = decide(null, 1);
+    expect(decideLegs(noTable, null)).toMatchObject({ result: "failed", note: "solo leg: the leg wrote no table (exit 1); crew leg: not run" });
+  });
+
+  test("a crew leg with a clean table but a bad exit is failed", () => {
+    expect(decideLegs(soloPass, decide(parseTable(crewTable("pass", "pass", "pass")), 1, ["claude"])).result).toBe("failed");
+  });
 });
 
 describe("the leg's environment", () => {
@@ -315,6 +436,21 @@ describe("the leg's environment", () => {
       "/nightly/state",
     );
     expect(env).toEqual({ PATH: "/bin", COLLIE_RIG_KEY_FILE: "/k/.env", COLLIE_RIG_CLAUDE_BIN: "/c", COLLIE_RIG_STATE: "/nightly/state" });
+  });
+});
+
+describe("the crew leg's environment", () => {
+  test("the crew rig state sits beside the solo one, under the same root", () => {
+    expect(crewStateRoot("/nightly")).toBe(join("/nightly", "crew-state"));
+  });
+
+  test("the crew leg gets the same environment with its own state root, and the key file untouched", () => {
+    const base = { PATH: "/bin", COLLIE_RIG_KEY_FILE: "/k/.env", COLLIE_RIG_CREW: "1", COLLIE_RIG_KEEP: "1", COLLIE_RIG_STATE: "/elsewhere" };
+    const solo = legEnv(base, "/nightly/state");
+    const crew = legEnv(base, crewStateRoot("/nightly"));
+    expect(crew).toEqual({ ...solo, COLLIE_RIG_STATE: join("/nightly", "crew-state") });
+    expect(crew.COLLIE_RIG_KEY_FILE).toBe("/k/.env");
+    expect("COLLIE_RIG_CREW" in crew).toBe(false);
   });
 });
 
@@ -387,7 +523,8 @@ describe("main --plan", () => {
   test("says it would run, and writes nothing at all", async () => {
     const r = rig();
     expect(await main(argv("--plan"), {}, r.world, r.out)).toBe(0);
-    expect(r.lines).toEqual(["plan: collie main 0a7ee1d, claude 2.1.302, pi 0.87.1, omp 18.6.1", "plan: would run"]);
+    expect(r.lines).toEqual(["plan: collie main 0a7ee1d, claude 2.1.302, pi 0.87.1, omp 18.6.1", "plan: would run", PLAN_CREW]);
+    expect(PLAN_CREW).toContain("includes the crew leg");
     expect(r.counter.executed).toBe(0);
     expect(existsSync(join(dir, "state"))).toBe(false);
   });
@@ -429,6 +566,22 @@ describe("main, a real run", () => {
     expect(await main(argv(), {}, again.world, again.out)).toBe(0);
     expect(again.counter.executed).toBe(0);
     expect(again.lines[0]).toContain("nothing to do");
+  });
+
+  test("a run with a crew leg keeps both tables, adds a crew line, and a pass says nothing to the operator", async () => {
+    const r = rig({ outcome: { ...PASS, crewResults: "/c", crewTable: "/c/table.md", verdicts: { ...VERDICTS_PASS, claude: { ...emptyCounts(), pass: 8 } } } });
+    expect(await main(argv(), {}, r.world, r.out)).toBe(0);
+    expect(ledgerRows()[0]).toMatchObject({ result: "pass", results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md" });
+    expect(r.lines).toEqual(["claude 2.1.302: 8 pass", "pi 0.87.1: 5 pass", "omp 18.6.1: 5 pass", "table: /r/table.md (collie main 0a7ee1d, pass)", "crew table: /c/table.md"]);
+    expect(notifyLog()).toEqual([]);
+  });
+
+  test("a bad run names the failing leg in the one notify line, with both tables", async () => {
+    const r = rig({ outcome: { result: "failed", note: "crew leg: 1 case(s) proved nothing: not reached claude 1", table: "/r/table.md", crewTable: "/c/table.md", verdicts: VERDICTS_PASS } });
+    expect(await main(argv(), {}, r.world, r.out)).toBe(2);
+    expect(notifyLog()).toHaveLength(1);
+    expect(notifyLog()[0]).toContain("failed: crew leg: 1 case(s) proved nothing");
+    expect(notifyLog()[0]).toContain("table /r/table.md, crew table /c/table.md");
   });
 
   test("a failed case writes fail, exits 1, and tells the operator once", async () => {

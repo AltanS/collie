@@ -20,9 +20,10 @@ The leg is a gate. It runs in three places:
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One run costs about 5 minutes, about 12 Claude Haiku turns on the subscription, and about 9 pi turns
-and 7 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
-run" below has the detail.
+One solo run costs about 5 minutes, about 12 Claude Haiku turns on the subscription, and about 9 pi turns
+and 7 omp turns on OpenRouter Haiku 4.5 (a few cents). The crew leg adds about 1 minute, 4 Claude turns
+and 2 pi turns, and the nightly run does both. The turn cap is 15 per harness. "Cost of one run" below
+has the detail.
 
 ### The nightly runner
 
@@ -34,9 +35,17 @@ bun web/e2e/rig/nightly.ts          # runs the leg if this tuple has no row yet
 `nightly.ts` needs only Bun and node builtins, so it runs from a checkout with no `node_modules`. It
 never writes into the checkout it starts from. It keeps a clone of its own at
 `~/.cache/collie-lab/browser-leg-nightly/clone`, fetches `origin/main` into it and checks it out
-detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the leg. The leg uses a
-rig state of its own (`~/.cache/collie-lab/browser-leg-nightly/state`), so a leg that a person runs by
-hand is never taken down by a nightly run.
+detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the solo leg, then the
+crew leg (below), in the same run and under the same ledger row. Each leg uses a rig state of its own
+(`~/.cache/collie-lab/browser-leg-nightly/state` and `.../crew-state`, set through `COLLIE_RIG_STATE`),
+so a leg that a person runs by hand is never taken down by a nightly run, and the two legs share no
+folder, Herdr home, port or socket. The solo rig is down before the crew rig comes up.
+
+**The crew leg in a nightly run.** It runs `bunx playwright test -c e2e/rig/crew.config.ts` in the clone's
+`web/`, with the same environment as the solo leg, so the key file passes through untouched. It needs
+nothing that the solo leg does not need: it has the same 8 GB memory guard, because the solo rig is down
+first. If the solo leg could not start (it wrote no table), the crew leg does not run and the row is
+`failed`. If the solo leg ran and a case failed, the crew leg still runs, for a full picture of the tuple.
 
 **Once per tuple.** A tuple is the main commit, the Claude Code version, the pi version and the omp
 version. The versions come from the binaries `bins.ts` names. The ledger
@@ -52,25 +61,30 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   on the next start.
 - A live `running` row holds the line for every other tuple, so two runs never share the clone or the
   rig.
-- A run that cannot finish writes `failed`. A run in which a case failed writes `fail`. A case that
-  was not reached, or is not applicable, proves nothing, so it makes the row `failed`.
+- A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
+  case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
+  `failed`. The row is `pass` only when both legs passed every case (22 solo cases and 3 crew cases). A
+  `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
 free memory, no key file, a binary or the remote that will not answer, and a ledger that cannot be
 read. These cost nothing and write no row. Each appends one line to
-`~/.local/state/collie-browser-leg/notify.log`. A `fail` or `failed` run appends one line too.
-`--plan` names the same blockers and writes nothing.
+`~/.local/state/collie-browser-leg/notify.log`. A `fail` or `failed` run appends one line too, and it
+names each leg that did not pass (`solo leg: ...; crew leg: ...`). `--plan` names the same blockers,
+says that the crew leg is included, and writes nothing.
 
 **The key.** `COLLIE_RIG_KEY_FILE` comes from the runner's own environment and goes on to the leg. The
 runner checks only that it names a readable file. It never reads, prints or copies the key.
 
-**Output and exit code.** One line per harness, then the path of the run's `table.md`. The row keeps
-the verdict counts and the results folder, and the run log sits under
+**Output and exit code.** One line per harness (the counts of both legs added up, the crew cases run
+under Claude), then the path of the solo leg's `table.md` and the path of the crew leg's. The row keeps
+the verdict counts, the solo results folder and table (`results`, `table`) and the crew leg's
+(`crewResults`, `crewTable`). Rows from before the crew leg have no crew fields. The run log sits under
 `~/.cache/collie-lab/browser-leg-nightly/logs/`. Exit 0: the leg passed, or there was nothing to do.
 Exit 1: a case failed. Exit 2: the run could not start or could not finish.
 
-Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves the clone, rig state
-and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
+Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves the clone, the rig states
+(`state`, `crew-state`) and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
 a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
@@ -224,6 +238,8 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   the send and the reply nudge of case 8, the broadcast) and 2 on omp (case 7 and the broadcast). Their "Load older" history is
   one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
+- The crew leg (cases 12 to 14) adds 4 Claude turns and 2 pi turns, and about 1 minute plus the rig's
+  start. A nightly run is therefore about 6 minutes, 16 Claude turns, 11 pi turns and 7 omp turns.
 - Time: about 5 minutes for all three harnesses, about 2 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.
 
