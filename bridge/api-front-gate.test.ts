@@ -139,6 +139,8 @@ describe("the route table read off server.ts", () => {
       // The Files image read (ADR 0090): bytes off the disk, so a missing token is refused here too.
       "/api/pane/id1/files/image",
       "/api/workspace/id1/files/image",
+      // The Claude commands a pane would load: names and descriptions off this disk.
+      "/api/pane/id1/claude-commands",
     ]) {
       expect(paths).toContain(known);
     }
@@ -531,8 +533,8 @@ describe("the local credential: reads only, from this host through nothing", () 
     }
   });
 
-  test("the Files read, files/image and files/exist routes ask device-read, never read (by source)", () => {
-    for (const route of ["WORKSPACE_FILES_ROUTE", "PANE_FILES_EXIST_ROUTE", "PANE_FILES_IMAGE_ROUTE"]) {
+  test("the Files read, files/image, files/exist and Claude commands routes ask device-read, never read (by source)", () => {
+    for (const route of ["WORKSPACE_FILES_ROUTE", "PANE_FILES_EXIST_ROUTE", "PANE_FILES_IMAGE_ROUTE", "PANE_CLAUDE_COMMANDS_ROUTE"]) {
       const at = SERVER_CODE.indexOf(`pathname.match(${route})`);
       expect({ route, found: at > 0 }).toEqual({ route, found: true });
       const nextGate = SERVER_CODE.slice(at).match(/caller\.gate\("([a-z-]+)"\)/);

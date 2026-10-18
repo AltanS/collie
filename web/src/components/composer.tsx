@@ -22,7 +22,7 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
 import { SentSheet } from "@/components/sent-sheet";
 import { SentSuggestions } from "@/components/sent-suggestions";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
@@ -1068,7 +1068,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The operator's own palette rows, resolved against the shipped catalog for both the button's
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
-  const commands = commandsFor(agent, operatorCommands);
+  const claudeCommands = useClaudeCommands(drawer === "cmd", agent, paneId, scope, operatorCommands);
+  const commands = commandsFor(agent, operatorCommands, claudeCommands);
   const todoList = todos ?? [];
   const todoDone = todoList.filter((item) => item.status === "completed").length;
   const todoLabel =
@@ -2508,7 +2509,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        paneId={paneId}
+        scope={scope}
         mine={operatorCommands}
+        found={claudeCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

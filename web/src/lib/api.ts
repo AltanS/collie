@@ -1180,6 +1180,38 @@ export async function fetchFilesExist(
   return exists.map(asJsonString).filter((p): p is string => p !== undefined && asked.has(p));
 }
 
+/** One slash command Claude Code would load in a pane's cwd, read off its machine's disk. */
+export interface ClaudeCommand {
+  command: string;
+  description: string;
+  argHint: string;
+}
+
+/** Validated shape of a discovered Claude slash command: `/` followed by up to 120 safe characters. */
+const CLAUDE_COMMAND_RE = /^\/[\p{L}\p{N}._:-]{1,120}$/u;
+
+/**
+ * The commands this pane's Claude Code would offer, from the skills and command files on its machine.
+ * Throws on a fault, including a crew member's 501 and an older bridge's 404; the palette then shows
+ * what it had before this read existed.
+ */
+export async function fetchClaudeCommands(paneId: string, scope?: Scope, signal?: AbortSignal): Promise<ClaudeCommand[]> {
+  const got = await doReq<JsonObject>(withScope(`/api/pane/${encodeURIComponent(paneId)}/claude-commands`, scope), {
+    signal,
+    timeoutMs: GET_TIMEOUT_MS,
+  });
+  const rows = Array.isArray(got.commands) ? got.commands : [];
+  const out: ClaudeCommand[] = [];
+  for (const raw of rows) {
+    const row = asJsonObject(raw);
+    if (row === undefined) continue;
+    const command = asJsonString(row.command);
+    if (command === undefined || !CLAUDE_COMMAND_RE.test(command)) continue;
+    out.push({ command, description: asJsonString(row.description) ?? "", argHint: asJsonString(row.argHint) ?? "" });
+  }
+  return out;
+}
+
 /**
  * Run a write to a pane's input under the poll burst. The burst starts when the request is ISSUED,
  * because the operator is watching the mirror from the tap on, and again when it comes back ok, so

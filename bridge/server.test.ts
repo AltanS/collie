@@ -3436,10 +3436,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All TWENTY-FOUR session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // All TWENTY-FIVE session-scoped route handlers (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
-    // by pane or workspace (ADR 0090), tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
+    // by pane or workspace (ADR 0090), the Claude commands a pane would load, tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
     // branch plan and create from a folder (ADR 0093), and the
     // three writes on a phone's own launcher rows, served by one function (ADR 0094), and the two
     // writes on this machine's one-off command history, served by one function (ADR 0095), and the
@@ -3447,7 +3447,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107)) reach
     // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(24);
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(25);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -3681,6 +3681,27 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(src).toContain("update: updateStatusWithPeers(),");
     expect(src).toContain("...updateStatusWithPeers(), preflight: report");
     expect(src).not.toContain('"/api/update/status"');
+  });
+
+  test("GET /api/pane/:id/claude-commands: device-read-gated, local-only, and scans only for a Claude agent pane", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf("const claudeCommandsMatch = pathname.match(PANE_CLAUDE_COMMANDS_ROUTE);");
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n    }\n", at));
+    // A read of this machine's disk, so the Files level, and before any runtime is resolved.
+    expect(handler).toContain('caller.gate("device-read")');
+    expect(handler).not.toContain('caller.gate("read")');
+    expect(handler.indexOf('caller.gate("device-read")')).toBeLessThan(handler.indexOf("await caller.resolve();"));
+    expect(handler).toContain('if (req.method !== "GET") return text("method not allowed", 405);');
+    expect(handler).toContain("await caller.resolve();");
+    // Fail closed: a throw in the scan answers an empty list.
+    expect(handler).toContain("catch (err)");
+    expect(handler).toContain("rt.engine.current().agents.find");
+    expect(handler).toContain('canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude"');
+    expect(handler).toContain("discoverClaudeCommands(");
+    const forwardableAt = src.indexOf("const FORWARDABLE");
+    const forwardableBlock = src.slice(forwardableAt, forwardableAt + 1200);
+    expect(forwardableBlock).not.toContain("claude-commands");
   });
 });
 

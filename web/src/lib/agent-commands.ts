@@ -17,6 +17,7 @@
 //
 // To regenerate: re-run the per-agent doc-fetch agents (see CHANGELOG) and replace the arrays.
 
+import type { ClaudeCommand } from "@/lib/api";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
 import type { OperatorCommand } from "@/lib/types";
 
@@ -317,8 +318,9 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
 export function commandsFor(
   agent: string | undefined | null,
   mine: readonly OperatorCommand[] = [],
+  found: readonly ClaudeCommand[] = [],
 ): readonly AgentCommand[] {
-  const shipped = catalogFor(agent);
+  const shipped = withFound(agent, catalogFor(agent), found);
   const aimed = rowsFor(mine, agent, (row) => row.command);
   // Rule 2: nothing of yours points here, so this pane was never part of what you were choosing.
   if (aimed.length === 0) return shipped;
@@ -334,6 +336,35 @@ export function commandsFor(
     // dangerous command still confirms, so the only direction this field moves is up.
     dangerous: (byName.get(row.command)?.dangerous ?? false) || row.confirm === true,
   }));
+}
+
+/**
+ * The reference catalog with the on-disk skill and command candidates folded in, Claude only.
+ * Shipped built-in rows stay untouched (`common`, `dangerous`, `takesArg`, `description`); discovered
+ * candidates join as searchable rows (`common: false`) with `takesArg: true` so tapping one stages
+ * `/cmd ` into the composer for review rather than submitting immediately.
+ */
+function withFound(
+  agent: string | undefined | null,
+  shipped: readonly AgentCommand[],
+  found: readonly ClaudeCommand[],
+): readonly AgentCommand[] {
+  if (found.length === 0 || canonicalAgent(agent?.toLowerCase().trim() ?? "") !== "claude") return shipped;
+  const seen = new Set(shipped.map((row) => row.command));
+  const merged = [...shipped];
+  for (const row of found) {
+    if (seen.has(row.command)) continue;
+    seen.add(row.command);
+    merged.push({
+      command: row.command,
+      description: row.description,
+      takesArg: true,
+      argHint: row.argHint,
+      common: false,
+      dangerous: false,
+    });
+  }
+  return merged;
 }
 
 /** The agent names the shipped catalog is filed under — pinned against AGENT_FAMILIES in the tests. */
