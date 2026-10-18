@@ -82,8 +82,25 @@ async function request(deps: WalkyDeps, body: JsonObject, path?: string): Promis
   return { ok: false, error: "no running Collie bridge answers on this machine" };
 }
 
+/**
+ * A string another machine may have written, as this CLI prints it into a terminal (often an agent's):
+ * every control character (C0, DEL, C1) and every bidirectional override becomes `?`, so no escape
+ * sequence, line break or reordering reaches the screen. The one place a crew-supplied string is
+ * printed through: a receipt's target, reason and writer, `who`'s columns, the target line, an error.
+ */
+export function shown(value: string): string {
+  let out = "";
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    const control = code < 0x20 || (code >= 0x7f && code <= 0x9f);
+    const bidi = (code >= 0x200e && code <= 0x200f) || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+    out += control || bidi ? "?" : ch;
+  }
+  return out;
+}
+
 function failure(deps: WalkyDeps, answer: { readonly error: string }): number {
-  deps.io.err(`walky talky: ${answer.error}`);
+  deps.io.err(`walky talky: ${shown(answer.error)}`);
   if (answer.error.startsWith("no running")) return EXIT.UNREACHABLE;
   if (answer.error === "empty body" || answer.error === "bad request") return EXIT.USAGE;
   return EXIT.STATE;
@@ -102,17 +119,18 @@ function receiptsOf(value: JsonValue | undefined): WalkyReceipt[] {
  * only what is printed changes. `elsewhere`: the lead keeps this receipt's outcome.
  */
 export function stateWords(receipt: WalkyReceipt, elsewhere = false): string {
+  const reason = receipt.reason === undefined ? undefined : shown(receipt.reason);
   switch (receipt.state) {
     case "accepted":
       return elsewhere ? `queued (${OUTCOME_ON_LEAD})` : "queued";
     case "delivered":
       return "typed into the pane";
     case "inbox-only":
-      return receipt.reason === undefined ? "waiting in the inbox, not typed" : `waiting in the inbox, not typed: ${receipt.reason}`;
+      return reason === undefined ? "waiting in the inbox, not typed" : `waiting in the inbox, not typed: ${reason}`;
     case "unknown":
-      return receipt.reason === undefined ? "may have arrived, will not be sent again" : `may have arrived, will not be sent again (${receipt.reason})`;
+      return reason === undefined ? "may have arrived, will not be sent again" : `may have arrived, will not be sent again (${reason})`;
     case "refused":
-      return receipt.reason === undefined ? "not sent" : `not sent: ${receipt.reason}`;
+      return reason === undefined ? "not sent" : `not sent: ${reason}`;
     case "expired":
       return "expired";
   }
@@ -122,7 +140,7 @@ export function stateWords(receipt: WalkyReceipt, elsewhere = false): string {
 export function verifiedWords(receipt: WalkyReceipt, signer: string | null): string {
   switch (receipt.verified) {
     case "origin":
-      return `signed by ${signer ?? receipt.by}`;
+      return `signed by ${shown(signer ?? receipt.by)}`;
     case "lead":
       return "relayed by the lead";
     case "local":
@@ -135,7 +153,7 @@ export function verifiedWords(receipt: WalkyReceipt, signer: string | null): str
 /** One receipt as one line: its target when asked, then its state in words. */
 export function receiptLine(receipt: WalkyReceipt, withTarget: boolean, elsewhere: ReadonlySet<string> = new Set()): string {
   const words = stateWords(receipt, receipt.state === "accepted" && elsewhere.has(receipt.target));
-  return withTarget ? `${receipt.target}: ${words}` : words;
+  return withTarget ? `${shown(receipt.target)}: ${words}` : words;
 }
 
 /** Whether a receipt may still change, so `send` points at `status`: anything not typed and not refused. */
@@ -190,10 +208,10 @@ export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Pro
   }
   // A solo install with this one agent pane: nobody to message yet, and the reason in one line.
   if (note === undefined && self !== undefined && self.startsWith(`${LOCAL_MEMBER}/`) && targets.length === 1 && asJsonString(targets[0]!.address) === self) {
-    deps.io.out(`You are ${self}. No other agent pane yet. A message needs two.`);
+    deps.io.out(`You are ${shown(self)}. No other agent pane yet. A message needs two.`);
     return EXIT.OK;
   }
-  const rows = targets.map((row) => [asJsonString(row.address) ?? "-", asJsonString(row.machine) ?? "-", asJsonString(row.harness) ?? "-", asJsonString(row.label) ?? "-", asJsonString(row.state) ?? "-"]);
+  const rows = targets.map((row) => [row.address, row.machine, row.harness, row.label, row.state].map((cell) => shown(asJsonString(cell) ?? "-")));
   const head = ["ADDRESS", "MACHINE", "HARNESS", "LABEL", "STATE"];
   const widths = head.map((title, column) => Math.max(title.length, ...rows.map((row) => row[column]!.length)));
   const line = (cells: readonly string[]): string => cells.map((cell, column) => cell.padEnd(widths[column]!)).join("  ").trimEnd();
@@ -271,10 +289,10 @@ async function bodyOf(deps: WalkyDeps, text: string | null): Promise<string | nu
 function targetLine(target: JsonValue | undefined, fallback: string): string {
   const row = asJsonObject(target);
   const address = asJsonString(row?.address);
-  if (row === undefined || address === undefined) return `to ${fallback}`;
+  if (row === undefined || address === undefined) return `to ${shown(fallback)}`;
   const harness = asJsonString(row.harness);
   const label = asJsonString(row.label);
-  return `to ${[address, harness, label].filter((part): part is string => part !== undefined && part !== "").join(", ")}`;
+  return `to ${shown([address, harness, label].filter((part): part is string => part !== undefined && part !== "").join(", "))}`;
 }
 
 /**

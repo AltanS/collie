@@ -41,7 +41,7 @@ import type { RouteRemote } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import { readCrewDelivery, readErrorText, readMessage, readOutcomesPush, readReceiptsAnswer, readWalkyCursor, type CrewSenderBlock, type WalkyReportBody } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
-import { WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { movesForward, receiptReason, WALKY_BODY_MAX, WALKY_HARNESS_MAX, WALKY_LABEL_MAX, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** The member-to-lead route, under the crew prefix: `POST /crew/v1/walky`. */
 export const CREW_WALKY_ROUTE = "walky";
@@ -51,6 +51,12 @@ export const WALKY_ALL_SEGMENT = "all";
 export const WALKY_REPORT_FIELD = "walky";
 /** The most receipts one report holds. The oldest goes first. */
 export const WALKY_REPORT_MAX = 100;
+/**
+ * How many pane targets one message may gain on one member from a receipt naming a pane under a leg
+ * sent as a whole (`<member>/all`, `all`): a member's report on the lead, the lead's push on the
+ * sender (§21, added 2026-10-18). Far above any machine's agent panes.
+ */
+export const WALKY_LEG_PANES_MAX = 50;
 /**
  * The request header the lead's sweep carries to ack a member's report (§21, added 2026-10-18): the
  * cursor of the last report it read from that member. Absent: nothing is acked, as before.
@@ -316,15 +322,41 @@ export class WalkyCrew {
 export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly WalkyReceipt[]): number {
   let written = 0;
   for (const receipt of receipts) {
+    if (!canonicalTarget(receipt.target)) continue;
     const address = parseAddress(receipt.target);
     if (address === null || (address.kind !== "all" && address.memberId === self)) continue;
     const held = log.get(receipt.id, receipt.target);
-    if (held === null || held.message.from.memberId !== self) continue;
-    if (held.receipt.state === receipt.state && held.receipt.at >= receipt.at) continue;
+    if (held === null) {
+      // A pane of a leg this member sent as a whole and never heard pane by pane (a slow leg): the
+      // same rule as the lead's `mergeReport`, a target of its own under this member's message.
+      const leg = address.kind === "pane" ? legOf(log, receipt.id, address.memberId) : null;
+      if (leg === null || leg.message.from.memberId !== self) continue;
+      log.record(leg.message, receipt.target, { session: null, paneId: null, instance: null }, receipt);
+      written += 1;
+      continue;
+    }
+    if (held.message.from.memberId !== self || !movesForward(held.receipt, receipt)) continue;
     log.update(receipt);
     written += 1;
   }
   return written;
+}
+
+/** Whether a receipt's target is in the one form this crew logs: bare (`bareAddress`) and trimmed. */
+function canonicalTarget(target: string): boolean {
+  return target === bareAddress(target.trim());
+}
+
+/**
+ * The record a pane receipt on `memberId` lands under when the log holds none for that pane: the leg
+ * this machine sent there as a whole, `<memberId>/all` or `all`. Null when there is none, or when the
+ * message already holds {@link WALKY_LEG_PANES_MAX} pane targets on that member.
+ */
+function legOf(log: WalkyLog, id: string, memberId: string): LogRecord | null {
+  const leg = log.get(id, `${memberId}/all`) ?? log.get(id, "all");
+  if (leg === null) return null;
+  const panes = log.all(id).filter((record) => record.target.startsWith(`${memberId}/`) && record.target !== `${memberId}/all`).length;
+  return panes >= WALKY_LEG_PANES_MAX ? null : leg;
 }
 
 // ── Sending: the two RouteRemote seams ───────────────────────────────────────────────────────────
@@ -332,7 +364,9 @@ export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly Wa
 /** One receipt the routing bridge writes itself, for a target it could not reach. */
 function ownReceipt(message: WalkyMessage, target: string, state: WalkyReceiptState, by: string, at: number, reason?: string): WalkyReceipt {
   const base: WalkyReceipt = { id: message.id, target, state, verified: "local", at, by };
-  return reason === undefined ? base : { ...base, reason };
+  // A dial's reason can be the far side's own error text: cleaned to the form every reader keeps.
+  const clean = receiptReason(reason);
+  return clean === undefined ? base : { ...base, reason: clean };
 }
 
 /** What one dial to the other side came to. */
@@ -654,21 +688,23 @@ export class WalkyReport {
 export function mergeReport(log: WalkyLog, memberId: string, receipts: readonly WalkyReceipt[]): number {
   let written = 0;
   for (const receipt of receipts) {
-    if (receipt.by !== memberId) continue;
+    if (receipt.by !== memberId || !canonicalTarget(receipt.target)) continue;
     const address = parseAddress(receipt.target);
     if (address === null || address.kind !== "pane" || address.memberId !== memberId) continue;
     const held = log.get(receipt.id, receipt.target);
     if (held === null) {
       // A pane of a leg this lead routed as a whole (`<member>/all`, or `all`) that never answered
       // pane by pane (a slow member, a lost answer): the report names the pane, and it is logged as a
-      // target of its own under the leg's message.
-      const leg = log.get(receipt.id, `${memberId}/all`) ?? log.get(receipt.id, "all");
-      if (leg === null) continue;
+      // target of its own under the leg's message. Never for the member's own broadcast: the lead
+      // routed none of it to the sender's machine. At most WALKY_LEG_PANES_MAX panes per message.
+      const leg = legOf(log, receipt.id, memberId);
+      if (leg === null || leg.message.from.memberId === memberId) continue;
       log.record(leg.message, receipt.target, { session: null, paneId: null, instance: null }, receipt);
       written += 1;
       continue;
     }
-    if (held.receipt.state === receipt.state && held.receipt.at >= receipt.at) continue;
+    // Only a move forward: a finished outcome is never replaced (types.ts `movesForward`).
+    if (!movesForward(held.receipt, receipt)) continue;
     log.update(receipt);
     written += 1;
   }

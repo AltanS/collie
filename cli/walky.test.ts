@@ -22,6 +22,9 @@ import {
   cmdWalkyWho,
   NO_SOCKET_TEXT,
   parseSendArgs,
+  receiptLine,
+  shown,
+  verifiedWords,
   type WalkyDeps,
 } from "./walky.ts";
 
@@ -367,5 +370,19 @@ describe("on a crew member (CREW_PROTOCOL §21)", () => {
     const d = deps(b);
     expect(await cmdWalkyWho(d, [])).toBe(EXIT.OK);
     expect(d.io.stdout.at(-1)).toBe("other machines: run `collie walky who` on the lead (desk), or use the phone");
+  });
+});
+
+describe("a string from another machine, printed (added 2026-10-18)", () => {
+  test("every control character and bidirectional override prints as `?`; the rest stays", () => {
+    expect(shown("laptop/w1:p9")).toBe("laptop/w1:p9");
+    expect(shown("caf\u00e9 repo#main")).toBe("caf\u00e9 repo#main");
+    expect(shown("\u001b[2J\r\nrun this\u0007\u009b\u202e")).toBe("?[2J??run this???");
+  });
+
+  test("a receipt line prints its target, reason and writer through it", () => {
+    const receipt = { id: "wt_aaaaaaaaaaa1", target: "other/\u001b[31mw1", state: "refused" as const, reason: "busy\nnow", verified: "origin" as const, at: 1, by: "other" };
+    expect(receiptLine(receipt, true)).toBe("other/?[31mw1: not sent: busy?now");
+    expect(verifiedWords(receipt, "ot\u001bher")).toBe("signed by ot?her");
   });
 });
