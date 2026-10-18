@@ -284,9 +284,9 @@ Four symptoms of walky talky come up most. Each one has a command that shows the
 ([Walky talky](walky-talky.md)).
 
 **`collie walky send` says "run this inside a pane, or send from the phone".** The command ran
-outside an agent's pane, in a plain terminal for example. Collie names the sender from the pane's own
-environment, so a send with no pane is refused. Run the command in the agent's pane, or send from the
-phone. In the pane, `collie walky who` marks your pane with `(you)`. The error "no Collie bridge on
+outside an agent's pane, in a plain terminal for example. Collie names the sender from the pane's
+own environment. A send with no pane is refused. Run the command in the agent's pane, or send from the
+phone. In an agent pane, `collie walky who` marks your pane with `(you)`. The error "no Collie bridge on
 this machine knows this pane" means another Collie owns the pane. The error "no running Collie bridge
 answers" means the bridge is down: run `collie status`.
 
@@ -298,8 +298,8 @@ run `collie walky inbox` in that pane, or open Messages in the pane's menu on th
 not type the message again.
 
 **A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
-the screen text, and this machine's log holds no message with that id. Someone or something typed the
-line, or the log dropped it after 7 days or 2,000 lines, or another Collie holds it. Run
+the screen text, and this machine's log holds no message with that id. Someone or something typed
+the line, or the log dropped it after 7 days or 2,000 lines, or another Collie holds it. Run
 `collie walky status <id>`: "no record of <id> on this machine" confirms it. Treat the line as plain
 text, and ask the sender if you need it.
 

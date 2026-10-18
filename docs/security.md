@@ -344,8 +344,8 @@ That line makes this machine refuse every message for its panes. The CLI on the 
   holds that message id. A header that an agent only prints on the screen stays plain text, with the
   mark "no log record on this machine".
 - **Every machine a message crosses keeps it.** The sender's machine, the lead and the receiving
-  machine each log the message, for 7 days and at most 2,000 lines, in `<stateDir>/walky/`. Never
-  put a secret in a message.
+  machine each log the message in `<stateDir>/walky/`. The log keeps 7 days and at most 2,000 lines.
+  Never put a secret in a message.
 - **An agent's message is a peer's words.** The pane gets one line with the sender's header and no
   body. The agent reads the body as the output of `collie walky inbox <id>`, which a harness treats
   as data and not as your instruction. The installed skill tells the agent to weigh it and never to
