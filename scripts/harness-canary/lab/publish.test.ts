@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { draftIssue, ISSUE_LABEL, labelExists, LEDGER_REL, moveProfile, openIssue, profileRel, publishPass, realGit, writeIssueFiles, type Git, type GitResult, type PassInput } from "./publish";
@@ -7,7 +7,25 @@ import { type RedactContext } from "./redact";
 import { judge, type LabFacts, type ScreenFact } from "./verdict";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
-const PROFILE = readFileSync(join(ROOT, profileRel("claude")), "utf8");
+/**
+ * Claude's profile and ledger row as these tests were written against them: verified through
+ * 2.1.296. The real files move each time a lab pass is merged (2.1.302 on 2026-10-18), and a test
+ * that moves them to 2.1.301 must not fail because the repo already holds a newer version.
+ */
+function frozenProfile(text: string): string {
+  return text
+    .replace(/"range": "2\.1\.0 - [0-9.]+"/u, '"range": "2.1.0 - 2.1.296"')
+    .replace(/"verifiedThrough": "[0-9.]+"/u, '"verifiedThrough": "2.1.296"')
+    .replace(/"verifiedOn": "[0-9-]+"/u, '"verifiedOn": "2026-10-12"');
+}
+function frozenLedger(text: string): string {
+  // SAFETY: the repo's own verified-versions.json, which verified-versions.test.ts pins to this shape.
+  const ledger = JSON.parse(text) as { agents: { claude: { version: string; verified: string } } };
+  ledger.agents.claude.version = "2.1.296";
+  ledger.agents.claude.verified = "2026-10-12";
+  return `${JSON.stringify(ledger, null, 2)}\n`;
+}
+const PROFILE = frozenProfile(readFileSync(join(ROOT, profileRel("claude")), "utf8"));
 const ctx: RedactContext = { home: "/home/alice", user: "alice", host: "bluefin", labDirs: [] };
 
 let dirs: string[] = [];
@@ -26,8 +44,8 @@ function makeRepo(): string {
   const repo = join(temp(), "repo");
   mkdirSync(join(repo, "web", "src", "lib", "harness"), { recursive: true });
   mkdirSync(join(repo, "web", "src", "lib", "surface", "profiles"), { recursive: true });
-  cpSync(join(ROOT, LEDGER_REL), join(repo, LEDGER_REL));
-  cpSync(join(ROOT, profileRel("claude")), join(repo, profileRel("claude")));
+  writeFileSync(join(repo, LEDGER_REL), frozenLedger(readFileSync(join(ROOT, LEDGER_REL), "utf8")));
+  writeFileSync(join(repo, profileRel("claude")), PROFILE);
   writeFileSync(join(repo, "README.md"), "# fixture\n");
   const git = (...args: string[]): void => {
     const done = realGit(repo, args);

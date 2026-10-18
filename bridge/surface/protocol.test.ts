@@ -296,6 +296,17 @@ function nextId(): string {
   return `req-${String(ids).padStart(6, "0")}`;
 }
 
+/**
+ * The Claude range these tests were written against: verified through 2.1.296. In them 2.1.301 and
+ * 2.1.302 stand for the provisional versions the live screens of 2026-10-17 came from, and the
+ * probed path they take is what the tests prove. A harness lab run that moves claude.json's range
+ * (2.1.302 on 2026-10-18) must not turn those versions verified under the tests, so the rig keeps
+ * this range for Claude. profile.test.ts covers the shipped range itself.
+ */
+const CLAUDE_TEST_RANGE: readonly [VersionRange] = [
+  { range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" },
+];
+
 function rig(
   options: {
     mode?: Mode;
@@ -330,8 +341,10 @@ function rig(
     profile: (harness: string) => {
       // An edited profile is matched as the bridge would match it, so an edited range moves the status.
       const { edit, status } = options;
-      const base = harness === FRAMELESS ? framelessProfile() : loadProfiles().get(harness);
-      const profiles = base === undefined ? undefined : edit !== undefined ? new Map([[harness, edit(base)]]) : harness === FRAMELESS ? new Map([[harness, base]]) : undefined;
+      const loaded = harness === FRAMELESS ? framelessProfile() : loadProfiles().get(harness);
+      const base = harness === "claude" && loaded !== undefined ? { ...loaded, versions: CLAUDE_TEST_RANGE } : loaded;
+      const pinned = harness === FRAMELESS || harness === "claude";
+      const profiles = base === undefined ? undefined : edit !== undefined ? new Map([[harness, edit(base)]]) : pinned ? new Map([[harness, base]]) : undefined;
       const lookup: ProfileForOptions = profiles === undefined ? { log: () => undefined } : { log: () => undefined, profiles };
       const match = profileFor(harness, version, lookup);
       if (match === null) return Promise.resolve(null);
@@ -5372,5 +5385,127 @@ describe("omp 18.11's box composer (issue 497)", () => {
       expect(pane.calls).toEqual([]);
       expect(pane.keysSeen).toEqual([]);
     }
+  });
+});
+
+describe("S1 reads the turn again before the commit key (PR 491): a turn starts between S0 and the Enter", () => {
+  const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
+
+  test("pi: /model typed on an idle box, a turn starts while it goes in: Enter must not steer the turn", async () => {
+    const pane = new PiPane("alt+Enter");
+    const { send } = rig({ pane, harness: "pi", version: "0.87.1" });
+    pane.afterInput = (_p, what) => {
+      if (what === "type:/model" || what === "paste:/model") pane.inTurn = true;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
+  });
+
+  test("omp: /model typed on an idle box, a turn starts while it goes in: Enter must not steer the turn", async () => {
+    const { pane, send } = omp();
+    pane.afterInput = (_p, what) => {
+      if (what === "type:/model" || what === "paste:/model") pane.inTurn = true;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
+  });
+
+  test("codex: /new (never held) typed on an idle box, a turn starts while it goes in: no Enter into the turn", async () => {
+    const pane = new FakePane("codex");
+    const { send } = rig({ pane, harness: "codex", version: "0.159.2" });
+    pane.afterInput = (p, what) => {
+      if (what === "type:/new" || what === "paste:/new") p.over = ["• Working (0s • esc to interrupt)"];
+    };
+    const answer = await send("/new", { mode: "command" });
+    expect({ enter: pane.keysSeen.includes("Enter"), outcome: answer.receipt?.outcome }).toEqual({ enter: false, outcome: "typed_not_submitted" });
+  });
+
+  test("claude: /clear (never held) typed on an idle box, a turn starts while it goes in: no Enter (Claude would queue /clear)", async () => {
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what === "type:/clear" || what === "paste:/clear") p.over = [LIVE_ROW];
+    };
+    const answer = await send("/clear", { mode: "command" });
+    expect({ enter: pane.keysSeen.includes("Enter"), outcome: answer.receipt?.outcome }).toEqual({ enter: false, outcome: "typed_not_submitted" });
+    expect(answer.receipt).toMatchObject({ reason: "changed", detail: TURN_STARTED });
+  });
+
+  test("claude, version unread: a message typed on an idle box, a turn starts while it goes in: no Enter (S0 would have held it)", async () => {
+    const { pane, send } = rig({ version: "no version here" });
+    pane.afterInput = (p, what) => {
+      if (what.endsWith("then give it a title")) p.over = [LIVE_ROW];
+    };
+    const answer = await send("then give it a title");
+    expect({ enter: pane.keysSeen.includes("Enter"), outcome: answer.receipt?.outcome }).toEqual({ enter: false, outcome: "typed_not_submitted" });
+  });
+
+  test("pi on a full screen (the turn's Working row scrolls the transcript up one row): Enter must not steer the turn", async () => {
+    const pane = new PiPane("alt+Enter");
+    const render = pane.render.bind(pane);
+    pane.render = () => render().split("\n").slice(-16).join("\n");
+    const { send } = rig({ pane, harness: "pi", version: "0.87.1" });
+    pane.afterInput = (_p, what) => {
+      if (what === "type:/model" || what === "paste:/model") pane.inTurn = true;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
+  });
+
+  test("omp on a full screen (the turn's Working row scrolls the transcript up one row): Enter must not steer the turn", async () => {
+    const { pane, send } = omp();
+    const render = pane.render.bind(pane);
+    pane.render = () => render().split("\n").slice(-16).join("\n");
+    pane.afterInput = (_p, what) => {
+      if (what === "type:/model" || what === "paste:/model") pane.inTurn = true;
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
+  });
+
+  test("unchanged: a message on a Claude whose version was read, a turn starts while it goes in: Enter still goes out (Claude queues it)", async () => {
+    // The same screens as the unread-version case above, where S1 reads the turn; here the rule allows the send.
+    const { pane, send } = rig();
+    pane.afterInput = (p, what) => {
+      if (what.endsWith("then give it a title")) p.over = [LIVE_ROW];
+    };
+    const answer = await send("then give it a title");
+    expect({ enter: pane.keysSeen.includes("Enter"), outcome: answer.receipt?.outcome }).toEqual({ enter: true, outcome: "sent" });
+  });
+
+  test("codex: /status (a command Codex queues) typed on an idle box, a turn starts while it goes in: it takes Tab, as at S0, never Enter", async () => {
+    const pane = new FakePane("codex");
+    const { send } = rig({ pane, harness: "codex", version: "0.159.2" });
+    pane.afterInput = (p, what) => {
+      if (what === "type:/status" || what === "paste:/status") p.over = ["• Working (0s • esc to interrupt)"];
+    };
+    const answer = await send("/status", { mode: "command" });
+    expect({ enter: pane.keysSeen.includes("Enter"), last: answer.receipt?.keys.at(-1), queued: pane.queued }).toEqual({ enter: false, last: "Tab", queued: ["/status"] });
+  });
+
+  test("omp, no box found (the manual send, two taps): /model typed, a running row draws under it: Enter must not steer the turn", async () => {
+    const pane = new FakePane("generic");
+    const { send, protocol } = rig({ pane, harness: "omp", version: "18.11.3" });
+    const prepared = await protocol.handle({ id: "prepare-omp-s1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface?.reason).toBe("no-match");
+    pane.afterInput = (p, what) => {
+      if (what === "type:/model" || what === "paste:/model") p.footer = "⠋ Working... (4s • esc to interrupt)";
+    };
+    const answer = await send("/model", { mode: "command", rowsHash: prepared.rowsHash! });
+    expect({ enter: pane.keysSeen.includes("Enter"), outcome: answer.receipt?.outcome, detail: answer.detail }).toEqual({ enter: false, outcome: "typed_not_submitted", detail: TURN_STARTED });
+  });
+
+  test("control: pi, a turn start that also adds two transcript rows above the band: the S1 compare keeps Enter back on its own", async () => {
+    const pane = new PiPane("alt+Enter");
+    const render = pane.render.bind(pane);
+    pane.render = () => render().split("\n").slice(-16).join("\n");
+    const { send } = rig({ pane, harness: "pi", version: "0.87.1" });
+    pane.afterInput = (p, what) => {
+      if (what === "type:/model" || what === "paste:/model") {
+        pane.inTurn = true;
+        p.transcript.push(" > a queued prompt that started the turn", "");
+      }
+    };
+    const answer = await send("/model", { mode: "command" });
+    expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
   });
 });
