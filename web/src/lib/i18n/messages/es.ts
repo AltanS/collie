@@ -2451,6 +2451,7 @@ export const es: Dictionary = {
   "walky.composer.outcome": "Message to {label}: {state}",
   "walky.composer.dismiss": "Dismiss",
   "walky.composer.empty": "Write the message first.",
+  "walky.composer.tooLong": "A message holds at most 4,000 characters.",
   // The Crew page's broadcast.
   "walky.crew.open": "Message all agents",
   "walky.crew.title": "Message all agents",

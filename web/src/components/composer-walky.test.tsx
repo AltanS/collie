@@ -104,6 +104,15 @@ describe("Send as message (the Send button's long-press menu)", () => {
     expect(loadDraft(undefined, "w1:p1")).toBe("again");
   });
 
+  it("names the message limit, not the draft store, when the text is too long to send as a message", async () => {
+    saveDraft(undefined, "w1:p1", "x".repeat(4_001));
+    renderComposer();
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "Send" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Send as message" }));
+    expect(await screen.findByText("Message not sent: A message holds at most 4,000 characters.")).toBeInTheDocument();
+    expect(recordedWalkyPosts()).toEqual([]);
+  });
+
   it("offers no menu on a locked field, even with a draft in the box and a press on Send", async () => {
     // A draft kept from before the device lost write access: the box holds text, so Send is drawn.
     saveDraft(undefined, "w1:p1", "Stop and report");
