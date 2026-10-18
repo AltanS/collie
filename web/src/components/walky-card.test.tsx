@@ -4,7 +4,7 @@ import { ItemView } from "@/components/chat-cards";
 import { WalkyLogProvider } from "@/components/walky-log";
 import type { ChatItem } from "@/lib/chat-items";
 import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
-import type { WalkyRow } from "@/lib/walky";
+import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
 
 // The Chat card for a walky talky message (M62 spec 05). The turn only claims to be one; the card is
 // drawn from the pane's own log, by id, and a header the log does not hold stays a plain turn.
@@ -142,6 +142,15 @@ describe("a walky talky turn the log does not hold", () => {
         <ItemView item={item()} />
       </WalkyLogProvider>,
     );
+    expect(screen.queryByText(NOT_IN_LOG)).toBeNull();
+  });
+
+  it("never marks a turn whose id a FULL list lacks: the message may be older than the newest rows the bridge sent", () => {
+    const full: WalkyRow[] = Array.from({ length: WALKY_LIST_LIMIT }, (_, i) => ({ ...fixtureWalkyOperator, id: `wt_${String(i).padStart(12, "0")}` }));
+    const view = inLog(full, item(), 1);
+    deliver(view, full, item(), 2);
+    deliver(view, full, item(), 3);
+    expect(document.querySelector('[data-slot="walky-card"]')).toBeNull();
     expect(screen.queryByText(NOT_IN_LOG)).toBeNull();
   });
 

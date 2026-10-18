@@ -187,24 +187,36 @@ export function mirrorHeaderId(row: string): string | null {
 
 // ── THE CROSS-CHECK ───────────────────────────────────────────────────────────
 
+/**
+ * How many messages the phone asks a pane's list for (`GET /api/pane/:id/walky?limit=`). The bridge
+ * answers the newest ones only, so a list this long may have older messages cut off.
+ */
+export const WALKY_LIST_LIMIT = 50;
+
 /** The pane's walky list, indexed. `null` where the list could not be read (an older bridge, a failed read). */
 export interface WalkyLog {
   rows: readonly WalkyRow[];
   byId: ReadonlyMap<string, WalkyRow>;
+  /**
+   * Whether the list is the pane's whole log. False when the bridge answered as many rows as were asked
+   * for: an older message may sit past the cut, so an id the list lacks proves nothing.
+   */
+  complete: boolean;
 }
 
 /** Index a list. Newest first stays the order of `rows`. */
-export function walkyLog(rows: readonly WalkyRow[]): WalkyLog {
+export function walkyLog(rows: readonly WalkyRow[], limit = WALKY_LIST_LIMIT): WalkyLog {
   const byId = new Map<string, WalkyRow>();
   for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row);
-  return { rows, byId };
+  return { rows, byId, complete: rows.length < limit };
 }
 
 /**
  * What the log says about an id a screen printed:
  * - `held`: the log holds it, so the card (or the row style) is earned and draws from `row`;
- * - `absent`: the list was read and does not hold it, so the text is only text, marked quietly;
- * - `unchecked`: the list could not be read, so nothing is claimed either way.
+ * - `absent`: the list was read whole and does not hold it, so the text is only text, marked quietly;
+ * - `unchecked`: the list could not be read, or was cut at the limit and lacks the id, so nothing is
+ *   claimed either way. A real message older than the newest {@link WALKY_LIST_LIMIT} is not marked.
  */
 export type Standing =
   | { standing: "held"; row: WalkyRow }
@@ -214,7 +226,8 @@ export type Standing =
 export function standingOf(log: WalkyLog | null, id: string): Standing {
   if (log === null) return { standing: "unchecked" };
   const row = log.byId.get(id);
-  return row === undefined ? { standing: "absent" } : { standing: "held", row };
+  if (row !== undefined) return { standing: "held", row };
+  return log.complete ? { standing: "absent" } : { standing: "unchecked" };
 }
 
 // ── ADDRESSING AND IDS ────────────────────────────────────────────────────────

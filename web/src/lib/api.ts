@@ -28,7 +28,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
-import type { WalkyReceipt, WalkyRefusals, WalkyRow, WalkySendBody, WalkySkipped, WalkyTarget, WalkyWho } from "./walky";
+import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1472,7 +1472,7 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
  * The pane loader asks it beside the mirror, and the Chat card and the mirror row take their
  * cross-check from the answer (lib/walky.ts).
  */
-export async function fetchPaneWalky(paneId: string, scope?: Scope, signal?: AbortSignal, limit = 50): Promise<WalkyRow[]> {
+export async function fetchPaneWalky(paneId: string, scope?: Scope, signal?: AbortSignal, limit = WALKY_LIST_LIMIT): Promise<WalkyRow[]> {
   const got = await req<{ messages: WalkyRow[] }>(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/walky?limit=${limit}`, scope),
     { signal, timeoutMs: POLL_TIMEOUT_MS },

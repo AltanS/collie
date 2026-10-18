@@ -12,8 +12,10 @@ import {
   standingOf,
   stateWord,
   verifiedWord,
+  WALKY_LIST_LIMIT,
   walkyLog,
   type WalkyReceipt,
+  type WalkyRow,
   type WalkyState,
 } from "./walky";
 
@@ -111,6 +113,19 @@ describe("standingOf", () => {
 
   it("claims nothing when the list was not read", () => {
     expect(standingOf(null, fixtureWalkyAgent.id)).toEqual({ standing: "unchecked" });
+  });
+
+  it("claims nothing for an id a full list lacks: the bridge cut the list at the limit, and older messages are past it", () => {
+    const full: WalkyRow[] = Array.from({ length: WALKY_LIST_LIMIT }, (_, i) => ({
+      ...fixtureWalkyOperator,
+      id: `wt_${String(i).padStart(12, "0")}`,
+    }));
+    const cut = walkyLog(full);
+    expect(standingOf(cut, "wt_zzzzzzzzzzzz")).toEqual({ standing: "unchecked" });
+    // An id the full list does hold still earns its card.
+    expect(standingOf(cut, "wt_000000000007")).toMatchObject({ standing: "held" });
+    // One short of the limit, the list is the whole log, and absence is a fact.
+    expect(standingOf(walkyLog(full.slice(1)), "wt_zzzzzzzzzzzz")).toEqual({ standing: "absent" });
   });
 });
 
