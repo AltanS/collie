@@ -4,8 +4,8 @@
 import type { JsonValue } from "../../json";
 import claude from "./claude.json";
 import codex from "./codex.json";
-import cursor from "./cursor.json";
 import agy from "./agy.json";
+import cursor from "./cursor.json";
 import grok from "./grok.json";
 import hermes from "./hermes.json";
 import muse from "./muse.json";
