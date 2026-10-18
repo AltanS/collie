@@ -14,13 +14,22 @@ function cells(leg: Leg): string[] {
 }
 
 describe("the browser leg's cases per leg", () => {
-  test("the solo leg prints the twenty-two cells it printed before the crew leg", () => {
-    expect(cells("solo")).toHaveLength(22);
+  test("the solo leg prints twenty-seven cells: the twenty-two it printed before the crew leg, and cases 16 to 18", () => {
+    expect(cells("solo")).toHaveLength(27);
+    expect(cells("solo").filter((cell) => cell.endsWith(" walky-busy"))).toEqual(["claude walky-busy", "pi walky-busy", "omp walky-busy"]);
     expect(cells("solo").every((cell) => !cell.includes("walky-crew"))).toBe(true);
   });
 
-  test("the crew leg prints cases 12 to 14, once each, under Claude", () => {
-    expect(cells("crew")).toEqual(["claude walky-crew-broadcast", "claude walky-crew-agents", "claude walky-crew-unreachable", "claude crew-release-line"]);
+  test("the crew leg prints cases 12 to 15 and 19 to 21, once each, under Claude", () => {
+    expect(cells("crew")).toEqual([
+      "claude walky-crew-broadcast",
+      "claude walky-crew-agents",
+      "claude walky-crew-unreachable",
+      "claude crew-release-line",
+      "claude walky-crew-member-to-lead",
+      "claude walky-crew-off",
+      "claude walky-crew-pair-limit",
+    ]);
   });
 
   test("no cell is in both legs, and every case is in one", () => {

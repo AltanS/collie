@@ -9,10 +9,14 @@
 //      harnesses.ts). The receiver's pane gets ONE nudge line with no body; the receiver runs
 //      `collie walky inbox <id>` and the body shows in that command's output; `collie walky reply`
 //      goes back, and the sender's pane shows the reply's nudge and reads it the same way.
+//   16 the operator's message while a turn runs (Claude in walky.spec.ts): the long list runs to its last
+//      line, and only then does the agent answer the body (docs/walky-talky.md, "Into a busy pane").
+//      pi and omp take the message by their queue key during the turn; the case judges the order, not
+//      the moment the text went in.
 //
 // pi and omp need a provider key (COLLIE_RIG_KEY_FILE); without one both cases report "not reached".
 import { NotReached, capture, captureScreen, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tapWords, test, waitIdle, type Session } from "./leg";
-import { PHONE, REPLY_MS, addressOf, addressPattern, firstRow, operatorMessage, settledWalky, withoutInstance, wrapped } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, operatorMessage, settledWalky, withoutInstance, wrapped } from "./walky-lib";
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 
 const claudeSession: Session = { paneId: null, startNote: "not started" };
@@ -22,6 +26,9 @@ const OPERATOR = {
   pi: { body: "Walky check: answer here with only the word PI-OK, nothing else.", reply: /^\s*PI-OK\.?\s*$/m },
   omp: { body: "Walky check: answer here with only the word OMP-OK, nothing else.", reply: /^\s*OMP-OK\.?\s*$/m },
 } as const;
+
+/** The list case 16 asks for, long enough to run about 40 s on each harness (omp streams slower than pi). */
+const ITEMS = { pi: 180, omp: 80 } as const;
 
 for (const harness of ["pi", "omp"] as const) {
   const session: Session = { paneId: null, startNote: "not started" };
@@ -33,6 +40,12 @@ for (const harness of ["pi", "omp"] as const) {
 
     test(`7 walky talky (${harness}): 'Send as message' from the phone types one header and body, the card shows`, async ({ browser, rig }) => {
       await runScenario(harness, "walky-operator", session, (pane, trail) => operatorMessage(browser, rig, pane, trail, { harness, scenario: "walky-operator", tag: `7-${harness}`, ...OPERATOR[harness] }));
+    });
+
+    test(`16 walky talky (${harness}): a message sent during a running turn waits for it, then is answered`, async ({ browser, rig }) => {
+      await runScenario(harness, "walky-busy", session, (pane, trail) =>
+        busyMessage(browser, rig, pane, trail, { harness, tag: `16-${harness}`, items: ITEMS[harness], streaming: /^\s*1[0-9]\.\s+\S/m, body: "Walky busy check: answer here with only the word BUSY-OK, nothing else.", reply: /^\s*BUSY-OK\.?\s*$/m }),
+      );
     });
   });
 }

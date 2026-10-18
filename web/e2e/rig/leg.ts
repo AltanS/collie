@@ -74,7 +74,7 @@ export function record(row: LedgerRow): void {
 // ── model turns ──────────────────────────────────────────────────────────────────────────────────
 
 /** Model turns one full run may spend on one harness. */
-export const TURN_CAP = 15;
+export const TURN_CAP = 20;
 
 /**
  * Count one model turn (a prompt the agent answers with the model). Throws when the harness has no
