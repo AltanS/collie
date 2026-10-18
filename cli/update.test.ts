@@ -58,6 +58,7 @@ import {
   nextMajorRelease,
   parseApiTags,
   parseRemoteTags,
+  rollbackTarget,
   planToTag,
   planUpdate,
   platformId,
@@ -2214,6 +2215,127 @@ describe("collie update --rollback", () => {
   });
 });
 
+describe("the phone's rollback: collie update --rollback --run-id (M60 spec 01)", () => {
+  const ROLLBACK_APPLY: Omit<ApplyArgs, "handoff"> = {
+    to: "0.9.0",
+    from: "1.0.0",
+    version: "0.9.0",
+    commit: "",
+    kind: "binary",
+    rollback: true,
+  };
+
+  test("hands the flip to the detached runner as a rollback run, and moves nothing itself", async () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-7"])).toBe(EXIT.OK);
+    // The restart would kill the bridge that asked: this process flips nothing and restarts nothing.
+    expect(h.link.ops).toEqual([]);
+    expect(h.restarts).toBe(0);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run).toMatchObject({ state: "staging", from: "1.0.0", to: "0.9.0", runId: "r-7", action: "rollback" });
+    const argv = h.exec.ran[0]?.command ?? [];
+    expect(argv[0]).toBe("systemd-run");
+    expect(argv).toContain("--rollback");
+    expect(argv.slice(argv.indexOf("--to"), argv.indexOf("--to") + 2)).toEqual(["--to", "0.9.0"]);
+    // Nothing downloaded: the build is already on disk.
+    expect(h.files.ops.join("\n")).not.toContain(".staging/");
+  });
+
+  test("with nothing older on disk it is refused before any record or lock is written", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-7"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("nothing to roll back to — 1.0.0 is the only version installed");
+    expect(h.files.read(RUN_FILE)).toBeNull();
+    expect(h.files.read(LOCK_FILE)).toBeNull();
+    expect(h.exec.ran).toEqual([]);
+  });
+
+  test("the runner flips back, checks the older build's health, prunes nothing, and levels nobody", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], health: [{ version: "0.9.0" }] });
+    expect(await runner(h, ROLLBACK_APPLY)).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`symlink versions/0.9.0 ${INST}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    const written = h.files.read(RUN_FILE);
+    const run = parseUpdateRun(written);
+    expect(run).toMatchObject({ state: "done", from: "1.0.0", to: "0.9.0", action: "rollback" });
+    expect(h.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    // The version rolled away from stays: it is the one most likely wanted back.
+    expect(h.files.ops.join("\n")).not.toContain(".trash");
+    expect(h.files.exists(`${BROOT}/bin/collie`)).toBe(true);
+    // A done rollback with a run id starts no crew levelling run.
+    expect(crewTurnStart(written === null ? null : parseUpdateRun(written.replace('"state"', '"runId":"r-7","state"')))).toBeNull();
+  });
+
+  test("an older build that does not come up is rolled FORWARD again, and says so", async () => {
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" },
+      health: [{ down: true }, { down: true }, { down: true }, { down: true }, { version: "1.0.0" }],
+    });
+    expect(await runner(h, ROLLBACK_APPLY)).toBe(EXIT.FAIL);
+    // Flipped to the older build, then once back to the one it left.
+    expect(h.link.ops.filter((o) => o.startsWith("symlink"))).toEqual([
+      `symlink versions/0.9.0 ${INST}/.current.new`,
+      `symlink versions/1.0.0 ${INST}/.current.new`,
+    ]);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))).toMatchObject({ state: "rolled-back", action: "rollback" });
+    expect(h.io.stderr.join("\n")).toContain("rolled forward to 1.0.0 again");
+  });
+
+  test("the runner's argv carries --rollback only for a rollback, and reads it back", () => {
+    const argv = applyArgv({ ...ROLLBACK_APPLY, handoff: 42 });
+    expect(argv).toContain("--rollback");
+    expect(parseApplyArgs(argv.slice(1))).toEqual({ ...ROLLBACK_APPLY, handoff: 42 });
+    expect(applyArgv({ ...BINARY_APPLY, handoff: 42 })).not.toContain("--rollback");
+  });
+});
+
+describe("rollbackTarget: the one answer to \"is there a previous build\" (M60 spec 01)", () => {
+  test("a binary install: the newest complete version below current, by semver", () => {
+    const h = binaryHarness({ others: ["0.9.0", "0.10.0", "0.8.0", "2.0.0"] });
+    expect(rollbackTarget(h.deps, BROOT, "binary")).toEqual({
+      kind: "ready",
+      layout: "binary",
+      from: "1.0.0",
+      to: "0.10.0",
+      fromVersion: "1.0.0",
+      toVersion: "0.10.0",
+      commit: "",
+    });
+  });
+
+  test("a binary payload's own build stamp names the commit the health gate checks", () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    h.files.write(`${INST}/versions/0.9.0/web/dist/build-info.json`, JSON.stringify({ version: "0.9.0", sha: "abc1234" }));
+    const t = rollbackTarget(h.deps, BROOT, "binary");
+    expect(t.kind === "ready" ? t.commit : null).toBe("abc1234");
+  });
+
+  test("a binary install with only the live version has none, and says why", () => {
+    expect(rollbackTarget(binaryHarness().deps, BROOT, "binary")).toEqual({ kind: "none", reason: "1.0.0 is the only version installed" });
+  });
+
+  test("a staged checkout: the newest complete worktree below current, with its marker's commit", () => {
+    const h = stagedHarness({ versions: { "v0.8.0": "0.8.0", "v0.9.0": "0.9.0", "v0.9.1": null, "v1.0.0": "1.0.0" } });
+    expect(rollbackTarget(h.deps, WT("v1.0.0"), "detached-checkout")).toEqual({
+      kind: "ready",
+      layout: "checkout",
+      from: "v1.0.0",
+      to: "v0.9.0",
+      fromVersion: "1.0.0",
+      toVersion: "0.9.0",
+      commit: "abc1234",
+    });
+  });
+
+  test("packaged and in-place installs keep no previous build", () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(rollbackTarget(h.deps, BROOT, "packaged").kind).toBe("none");
+    expect(rollbackTarget(h.deps, ROOT, "detached-checkout").kind).toBe("none");
+    expect(rollbackTarget(h.deps, ROOT, "unknown").kind).toBe("none");
+  });
+});
+
 // ── The hooks nudge after a successful update ────────────────────────────────
 // The gap it closes: a new build registers a beacon hook event, the operator's `settings.json` does
 // not carry it, and until now only a manual `doctor` or `hooks status` ever said so. What is pinned
@@ -2638,6 +2760,22 @@ describe("collie update --rollback on a staged checkout", () => {
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("names 0.8.0, not 0.9.0");
     expect(h.link.ops).toEqual([]);
+  });
+
+  test("from the phone (--run-id) it becomes a detached rollback run over the same target", async () => {
+    const h = stagedHarness({ versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-8"])).toBe(EXIT.OK);
+    expect(h.link.ops).toEqual([]);
+    expect(parseUpdateRun(h.files.read(`${STATE}/update.json`))).toMatchObject({
+      state: "staging",
+      from: "v1.0.0",
+      to: "v0.9.0",
+      runId: "r-8",
+      action: "rollback",
+    });
+    const argv = h.exec.ran[0]?.command ?? [];
+    expect(argv).toContain("--rollback");
+    expect(argv.slice(argv.indexOf("--commit"), argv.indexOf("--commit") + 2)).toEqual(["--commit", "abc1234"]);
   });
 
   test("a rollback that does not come up is rolled FORWARD again", async () => {

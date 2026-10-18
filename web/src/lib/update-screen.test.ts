@@ -594,3 +594,73 @@ describe("a document that boots holding a claim, before any source has answered"
     expect(read({ run: undefined, answered: true }).phase).toBe("none");
   });
 });
+
+// ── A ROLLBACK (M60 spec 01) ─────────────────────────────────────────────────────────────────────
+
+describe("a rollback walks the same steps in its own words", () => {
+  // bluefin runs 1.12.0 and goes back to 1.11.1; this phone runs the 1.12.0 app.
+  const BACK_CLAIM: UpdateClaim = { ...CLAIM, target: FROM, members: [], rollback: true };
+  const back = (state: UpdateRunState, over: Partial<UpdateRun> = {}) =>
+    run(state, { from: TO, to: FROM, action: "rollback", ...over });
+  const crewOn: UpdateCrewMember[] = [
+    { name: "minibuch", version: TO, verdict: "green", reasons: [], asOf: NOW - 3_000 },
+    { name: "cellar", version: TO, verdict: "green", reasons: [], asOf: NOW - 3_000 },
+  ];
+  const readBack = (over: Partial<UpdateScreenInput> = {}) =>
+    read({ claim: BACK_CLAIM, crew: crewOn, bundle: { id: "bundle-a", version: TO }, ...over });
+
+  it("Ready to start names the older build, moves this machine and this phone, and the members stay", () => {
+    const view = read({
+      ask: { kind: "rollback", version: FROM, major: false, peersOnly: false, current: TO },
+      crew: crewOn,
+      claim: null,
+      startedHere: false,
+      bundle: { id: "bundle-a", version: TO },
+    });
+    expect(view.phase).toBe("ready");
+    expect(view.heading).toBe(`Roll back to ${FROM}`);
+    expect(view.subtitle).toBe("bluefin switches back to the build it ran before. Nothing is downloaded or built.");
+    expect(view.rows.map((r) => [r.key, r.status, r.word, r.versions])).toEqual([
+      ["lead", "queued", "switches back, then restarts", `${TO} → ${FROM}`],
+      ["peer:minibuch", "ok", "keeps its version", TO],
+      ["peer:cellar", "ok", "keeps its version", TO],
+      ["phone", "queued", "reloads at the end", `${TO} → ${FROM}`],
+    ]);
+  });
+
+  it("nothing is built: the staging step switches back", () => {
+    const view = readBack({ run: back("staging") });
+    expect(view.phase).toBe("build");
+    expect(view.heading).toBe(`Switching bluefin back to ${FROM}`);
+    expect(view.rows[0]?.word).toBe(`switching back to ${FROM}`);
+    // The members keep their build, on every step.
+    expect(view.rows.filter((r) => r.key.startsWith("peer:")).map((r) => r.status)).toEqual(["ok", "ok"]);
+  });
+
+  it("this phone's step waits for the OLDER app: a newer bundle is not arrived", () => {
+    const view = readBack({ run: back("done"), serverStale: true });
+    expect(view.phase).toBe("phone");
+    expect(view.kickPhone).toBe(true);
+    // An update to the same target would call this phone done already; a rollback may not.
+    expect(read({ run: run("done", { to: FROM, from: FROM }), bundle: { id: "bundle-a", version: TO }, crew: crewOn }).phase).toBe("done");
+  });
+
+  it("ends as Rollback finished once this phone runs the older app, and says the members stayed", () => {
+    const view = readBack({ run: back("done"), bundle: { id: "bundle-b", version: FROM } });
+    expect(view.phase).toBe("done");
+    expect(view.heading).toBe("Rollback finished");
+    expect(view.subtitle).toBe(`bluefin and this phone run ${FROM} again. The other machines keep their version.`);
+  });
+
+  it("a rollback that fails its check says this machine stays on the build it left", () => {
+    const view = readBack({ run: back("rolled-back") });
+    expect(view.phase).toBe("rolled-back");
+    expect(view.heading).toBe(`bluefin stays on ${TO}`);
+    expect(view.subtitle).toBe(`${FROM} failed its check, so bluefin went back to ${TO}. It works normally.`);
+  });
+
+  it("before the run's record lands, the claim's words are a rollback's too", () => {
+    const view = readBack({ run: undefined, answered: false });
+    expect(view.heading).toBe(`Switching bluefin back to ${FROM}`);
+  });
+});

@@ -879,6 +879,9 @@ describe("solo zero-tax — routes", () => {
       // Closing the update band (M17/08) — solo, no crew sibling: it writes the lead's own update
       // record, and the band a peer's operator closes is that machine's own decision.
       "/api/update/dismiss",
+      // Rolling back from the phone (M60 spec 01) — solo, no crew sibling, for the update route's
+      // reason: it moves this machine's own build, and a rollback levels nobody (ADR 0016).
+      "/api/update/rollback",
       // The digest's "remind me next digest" dismiss — solo, no crew sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",

@@ -236,6 +236,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The answer is the run itself — a progress state that persists in the card for the length of a restart, or a refusal (a red preflight, a run already going) the operator has to read and act on. Neither survives a floating toast, and both belong beside the button that asked for them (components/update-card.tsx).",
   },
+  startRollback: {
+    channel: "inline",
+    why: "The answer is the rollback run itself, followed in update mode through the same steps as an update (M60 spec 01), or a refusal (no previous build, a run already going) the operator reads on the confirm screen that asked. Neither survives a floating toast.",
+  },
   snoozeUpdate: {
     channel: "silent",
     why: "\"Remind me next digest\" is answered by the card's own line changing to say so, in the same tap. A second acknowledgement of a dismissal is noise about noise.",

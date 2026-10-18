@@ -78,6 +78,7 @@ import type {
   UpdateInfo,
   UpdateRun,
   UpdateStartResponse,
+  RollbackStartResponse,
   UploadResponse,
   WorktreeBaseChoice,
   WorktreeCreateResponse,
@@ -2226,6 +2227,20 @@ export function startUpdate(a: {
   const body: UpdateStartBody = { confirm: true, target: a.target, major: a.major };
   if (a.peersOnly === true) body.peersOnly = true;
   return req<UpdateStartResponse>("/api/update", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * Roll back to the build kept on disk (M60 spec 01): `collie update --rollback`, behind the same
+ * confirm and the same write gate as an update. `target` is the version the confirm sheet named, so a
+ * sheet left open over a prune or a second rollback cannot consent to another build. `requestId` is
+ * a UUID minted per confirm; the bridge makes it the run id, and a retry with the same id gets the
+ * same receipt rather than a second rollback.
+ */
+export function startRollback(a: { target: string; requestId: string }): Promise<RollbackStartResponse> {
+  return req<RollbackStartResponse>("/api/update/rollback", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, target: a.target, requestId: a.requestId }),
+  });
 }
 
 /** "Remind me next digest" — the card's dismiss. Not a mute: the banner keeps showing. */

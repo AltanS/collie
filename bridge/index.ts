@@ -1081,11 +1081,12 @@ const preflightCache = new PreflightCache({
  * a binary install checks the release manifest and this platform's `sha256`, and on a checkout
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
-const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string | null }) => {
+const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string | null; rollback?: boolean }) => {
   const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
     major: a.major,
+    rollback: a.rollback === true,
     stamp: String(Date.now()),
     hasSystemdRun: Bun.which("systemd-run") !== null,
     hasSetsid: Bun.which("setsid") !== null,
@@ -1118,6 +1119,8 @@ const updateAction = canRunUpdate
       lockHeld: () => updateLockHeld(cfg.stateDir),
       newRunId,
       start: startDetachedUpdate,
+      // The phone's rollback (M60 spec 01): the same spawn, verb `update --rollback --run-id`.
+      rollback: (a: { runId: string }) => startDetachedUpdate({ major: false, runId: a.runId, rollback: true }),
       beginCrewRun: (a: { runId: string; to: string }) => {
         updateTurns.begin(a.runId, a.to, Date.now());
         // §20's FIRST immediate sweep: the operator has confirmed, so the first turn goes out on a

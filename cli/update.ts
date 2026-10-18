@@ -29,6 +29,7 @@ import {
   binaryLayout,
   type BinaryLayout,
   detectInstall,
+  type InstallKind,
   gitArgs,
   isGitCheckout,
   isManagedCheckout,
@@ -1057,6 +1058,14 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (args.includes("--rollback")) {
+    // FROM THE PHONE (M60 spec 01): `--run-id` is what `POST /api/update/rollback` adds, and it turns
+    // the rollback into a RUN, handed to the same detached runner an update takes, so the phone
+    // follows it on the record and the restart cannot kill the process driving it. The terminal's
+    // `collie update --rollback` (no run id) is unchanged below.
+    const rollbackRunId = wantsRunId(args);
+    if (rollbackRunId !== null && (install.kind === "binary" || (staged && layout !== null))) {
+      return rollbackDetached(deps, install.kind, rollbackRunId);
+    }
     if (install.kind === "binary") return await rollbackBinary(deps);
     if (install.kind === "packaged") {
       // Above the checkout branch on purpose: the message below it is three sentences about
@@ -1933,6 +1942,96 @@ async function rollbackBinary(deps: UpdateDeps): Promise<number> {
   return EXIT.OK;
 }
 
+/**
+ * Where `collie update --rollback` would go on this install, decided without touching anything.
+ *
+ * THE ONE ANSWER TO "IS THERE A PREVIOUS BUILD" (M60 spec 01). The preflight reports it (the phone's
+ * Roll back button is offered from that report, and `POST /api/update/rollback` refuses without it),
+ * and the phone's rollback run hands exactly this target to the runner. The rule is the terminal
+ * rollback's own: the newest complete version on disk that is LOWER than the one `current` names.
+ * Lower by semver, so a second rollback steps further back, and a rollback never moves forward.
+ *
+ * `commit` is what the health gate checks the restarted build against: a staged checkout's marker
+ * names it, a binary install's payload names it in its own `web/dist/build-info.json`. Empty when
+ * neither says, which the gate then reads as "this version, no build stamp".
+ */
+export type RollbackTarget =
+  | {
+      readonly kind: "ready";
+      readonly layout: "binary" | "checkout";
+      /** The version DIRECTORY `current` names now, and the one to flip to. */
+      readonly from: string;
+      readonly to: string;
+      /** The dotted versions inside them. */
+      readonly fromVersion: string;
+      readonly toVersion: string;
+      readonly commit: string;
+    }
+  | { readonly kind: "none"; readonly reason: string };
+
+export function rollbackTarget(
+  deps: { readonly files: Files; readonly link: LinkReader; readonly host: Host },
+  root: string,
+  kind: InstallKind["kind"],
+): RollbackTarget {
+  if (kind === "packaged") return { kind: "none", reason: `${root} is a packaged install, and its package manager owns the previous version` };
+  if (kind === "binary") {
+    const layout = binaryLayout(root, deps.host);
+    const at = currentVersionDir(deps, layout) ?? layout.version;
+    const older = listVersions(deps, layout, "binary").filter((v) => v.complete && compareSemver(v.version, at) < 0);
+    const target = older[older.length - 1];
+    if (target === undefined) return { kind: "none", reason: `${at} is the only version installed` };
+    const stamp = readBuildInfo(deps.files.read(deps.host.path.join(layout.versionsDir, target.dir, "web", "dist", "build-info.json")));
+    const plus = stamp?.indexOf("+") ?? -1;
+    const commit = stamp === null || plus < 0 ? "" : stamp.slice(plus + 1);
+    return { kind: "ready", layout: "binary", from: at, to: target.dir, fromVersion: at, toVersion: target.version, commit };
+  }
+  const isCheckout = kind === "linked-clone" || kind === "detached-checkout";
+  if (!isCheckout || !(underVersions(root, deps.host) || kind === "linked-clone")) {
+    return { kind: "none", reason: "this install advances in place and keeps no previous version on disk" };
+  }
+  const layout = layoutForCheckout(root, deps.host);
+  const at = stagedCurrent(deps, layout);
+  if (at === null) return { kind: "none", reason: "no staged version is current yet" };
+  const older = stagedVersions(deps, layout).filter((v) => v.complete && compareSemver(v.version, at.version) < 0);
+  const target = older[older.length - 1];
+  if (target === undefined) return { kind: "none", reason: `${at.dir} is the only complete version this checkout kept` };
+  const marker = readBuildMarker(deps, deps.host.path.join(layout.versionsDir, target.dir));
+  return {
+    kind: "ready",
+    layout: "checkout",
+    from: at.dir,
+    to: target.dir,
+    fromVersion: at.version,
+    toVersion: target.version,
+    commit: marker?.commit ?? "",
+  };
+}
+
+/**
+ * `collie update --rollback --run-id <id>`: the phone's rollback (M60 spec 01). The same target the
+ * terminal rollback takes ({@link rollbackTarget}), handed to the detached runner as a run whose
+ * record says `action: "rollback"`. The runner flips, restarts through `current`, checks the older
+ * build's health, flips forward again once if it does not come up, and prunes nothing: the version
+ * rolled away from is the one the operator is most likely to want back.
+ */
+function rollbackDetached(deps: UpdateDeps, kind: InstallKind["kind"], runId: string): number {
+  const target = rollbackTarget(deps, deps.ctx.root, kind);
+  if (target.kind === "none") {
+    deps.io.err(`error: nothing to roll back to — ${target.reason}.`);
+    return EXIT.FAIL;
+  }
+  const layout =
+    target.layout === "binary" ? binaryLayout(deps.ctx.root, deps.host) : layoutForCheckout(deps.ctx.root, deps.host);
+  deps.io.out(`rolling back ${target.fromVersion} → ${target.toVersion}…`);
+  return handOff(
+    deps,
+    layout,
+    { to: target.to, from: target.from, version: target.toVersion, commit: target.commit, kind: target.layout, rollback: true },
+    runId,
+  );
+}
+
 // ── The staged checkout path (M15/02) ────────────────────────────────────────
 // A checkout stops mutating itself in place. ONE layout serves both install kinds:
 //
@@ -2077,7 +2176,7 @@ const stagedVersions = (deps: { readonly files: Files }, layout: BinaryLayout): 
   listVersions(deps, layout, "checkout");
 
 /** The staged version `current` names, or null when it names nothing we laid down. */
-function stagedCurrent(deps: UpdateDeps, layout: BinaryLayout): VersionOnDisk | null {
+function stagedCurrent(deps: { readonly files: Files; readonly link: LinkReader }, layout: BinaryLayout): VersionOnDisk | null {
   const at = currentVersionDir(deps, layout);
   if (at === null) return null;
   return stagedVersions(deps, layout).find((v) => v.dir === at) ?? null;
@@ -2480,6 +2579,11 @@ export interface ApplyArgs {
   readonly kind: "checkout" | "binary";
   /** The pid of the process that staged this run and wrote the lock — see {@link handOff}. */
   readonly handoff: number;
+  /**
+   * A rollback run (M60 spec 01, `--rollback` in the runner's argv): `to` is the OLDER build. The
+   * runner prunes nothing after it, and its record says `action: "rollback"`. Absent on an update.
+   */
+  readonly rollback?: boolean;
 }
 
 const flagValue = (args: readonly string[], name: string): string | null => {
@@ -2495,7 +2599,7 @@ export function parseApplyArgs(args: readonly string[]): ApplyArgs | null {
   const to = flagValue(args, "--to");
   if (to === null || to === "") return null;
   const from = flagValue(args, "--from");
-  return {
+  const parsed: ApplyArgs = {
     to,
     from: from === null || from === "" ? null : from,
     version: flagValue(args, "--version") ?? "",
@@ -2503,6 +2607,8 @@ export function parseApplyArgs(args: readonly string[]): ApplyArgs | null {
     kind: flagValue(args, "--kind") === "binary" ? "binary" : "checkout",
     handoff: Number.parseInt(flagValue(args, "--handoff") ?? "", 10) || 0,
   };
+  // An update's argv carries no `--rollback`, and its parse carries no such key.
+  return args.includes("--rollback") ? { ...parsed, rollback: true } : parsed;
 }
 
 /** {@link ApplyArgs} back as argv — one spelling, so the handoff and the parser can never drift. */
@@ -2520,6 +2626,7 @@ export function applyArgv(a: ApplyArgs): string[] {
     a.kind,
     "--handoff",
     String(a.handoff),
+    ...(a.rollback === true ? ["--rollback"] : []),
   ];
 }
 
@@ -2736,11 +2843,11 @@ function handOff(
   takeLock(deps.files, deps.ctx.stateDir, deps.pid, now);
   // The run id rides the RECORD, not the runner's argv: `runApply` picks the staging record up off
   // disk and keeps driving it, so the id reaches every later state without `--to` growing a sibling.
-  const staging = reduce(
-    reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId }, now),
-    { kind: "stage" },
-    now,
-  );
+  const begin: RunEvent =
+    a.rollback === true
+      ? { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId, action: "rollback" }
+      : { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId };
+  const staging = reduce(reduce(idleRun(now), begin, now), { kind: "stage" }, now);
   writeRun(deps.files, deps.ctx.stateDir, staging);
 
   const plan = launchPlan({
@@ -2878,7 +2985,13 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
     onDisk !== null && onDisk.state === "staging"
       ? { ...onDisk, pid: deps.pid }
       : reduce(
-          reduce(idleRun(deps.now()), { kind: "begin", from: a.from, to: a.to, pid: deps.pid }, deps.now()),
+          reduce(
+            idleRun(deps.now()),
+            a.rollback === true
+              ? { kind: "begin", from: a.from, to: a.to, pid: deps.pid, action: "rollback" }
+              : { kind: "begin", from: a.from, to: a.to, pid: deps.pid },
+            deps.now(),
+          ),
           { kind: "stage" },
           deps.now(),
         );
@@ -2917,6 +3030,8 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
         }),
       ),
       prune: () => {
+        // A rollback prunes nothing: the version it left is the one most likely wanted back.
+        if (a.rollback === true) return;
         if (a.kind === "binary") collectOldVersions(deps, layout, a.to);
         else pruneVersions(deps, layout);
       },
@@ -2941,13 +3056,17 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
       }
       refreshRegistry(deps, layout.currentLink);
     }
-    deps.io.out(`✓ updated to ${a.version === "" ? a.to : a.version}`);
+    deps.io.out(`✓ ${a.rollback === true ? "rolled back" : "updated"} to ${a.version === "" ? a.to : a.version}`);
     nudgeHooks(deps, collieBinary(layout.currentLink, deps.host));
     nudgeSkill(deps, collieBinary(layout.currentLink, deps.host));
     return EXIT.OK;
   }
   if (run.state === "rolled-back") {
-    deps.io.err(`error: ${a.to} did not pass its health check — rolled back to ${a.from ?? "?"}.`);
+    deps.io.err(
+      a.rollback === true
+        ? `error: ${a.to} did not pass its health check — rolled forward to ${a.from ?? "?"} again.`
+        : `error: ${a.to} did not pass its health check — rolled back to ${a.from ?? "?"}.`,
+    );
     deps.io.err(`       ${run.reason ?? "no reason recorded"}`);
     return EXIT.FAIL;
   }

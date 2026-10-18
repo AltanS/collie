@@ -158,6 +158,8 @@ export function UpdateCard() {
   // notes. The offer's notes while one is waiting, the running version's otherwise.
   const notes = notesView(check?.releaseNotes, releaseAvailable);
   const preflight = check?.preflight ?? null;
+  // The build a rollback would go back to, off the preflight only (M60 spec 01), or null.
+  const rollback = preflight?.rollback ?? null;
   const runState = run?.state;
   const running = runInFlight(run);
   // Nothing on this card may be tapped while an update is being asked for, started, or driven.
@@ -501,6 +503,33 @@ export function UpdateCard() {
             )}
           </div>
       )}
+
+      {/* ROLL BACK (M60 spec 01). Offered only when the preflight names a build kept on disk, which is
+          the bridge's one answer to "is there a previous build"; absent on a checkout that advances
+          in place, a packaged install and a first install. NOT gated on a red preflight: going back is
+          exactly what a machine in trouble may need. It opens update mode at "Ready to start" like
+          every other action here, and that screen's start is the confirm. Async like the sections
+          below, so it arrives in a `Collapse` under the action row and never moves the button. */}
+      <Collapse open={rollback !== null && !packageManaged}>
+        {rollback !== null && !packageManaged ? (
+          <div className="flex flex-col gap-1.5 border-t border-border px-4 py-3">
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={moving}
+                onClick={() =>
+                  openUpdateMode({ kind: "rollback", version: rollback.to, major: false, peersOnly: false, current: rollback.from })
+                }
+              >
+                <RotateCcw className="size-4" />
+                {t("settings.updateCard.rollback.action", { version: rollback.to })}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">{t("settings.updateCard.rollback.note", { version: rollback.to })}</p>
+          </div>
+        ) : null}
+      </Collapse>
 
       {/* EVERY ARRIVAL ON THIS CARD IS A `Collapse` (DESIGN.md §7, hard rule 1). The three sections
           below are all async: the run record lands on a poll, and the peer lines and the preflight
@@ -861,6 +890,9 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
   const version = run.to ?? run.from ?? "";
   const still = run.from ?? "";
   const now = useTick(inFlight);
+  // A ROLLBACK RUN (M60 spec 01) says so, and offers no Retry: Retry opens an UPDATE to `run.to`,
+  // which on a rollback is the older build. The Roll back row above is the way to try again.
+  const rollback = run.action === "rollback";
   // Off the run's OWN start stamp, which the host wrote, so the number is the run's age and not this
   // tab's age. A phone opened mid-run joins the count where the run actually is.
   const elapsed = run.startedAt > 0 ? Math.max(0, now - run.startedAt) : null;
@@ -881,7 +913,7 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
         role="status"
       >
         {inFlight && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
-        <span className="min-w-0">{stateLine(run, version, still, restartOver)}</span>
+        <span className="min-w-0">{rollback ? rollbackLine(run, version, still, restartOver) : stateLine(run, version, still, restartOver)}</span>
       </div>
 
       {/* PROOF OF LIFE, and the cheapest there is (M20/08). Four sentences over several minutes said
@@ -927,7 +959,7 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
         </details>
       )}
 
-      {(run.state === "rolled-back" || run.state === "interrupted") && (
+      {!rollback && (run.state === "rolled-back" || run.state === "interrupted") && (
         <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
           <RotateCcw className="size-4" />
           {t("settings.updateCard.retry")}
@@ -969,6 +1001,20 @@ function stateLine(run: UpdateRun, version: string, still: string, restartOver =
       return t("settings.updateCard.state.interrupted");
     case "idle":
       return "";
+  }
+}
+
+/** A rollback run's sentence (M60 spec 01): its own where an update's would be wrong, else the update's. */
+function rollbackLine(run: UpdateRun, version: string, still: string, restartOver: boolean): string {
+  switch (run.state) {
+    case "staging":
+      return t("settings.updateCard.state.rollbackStaging", { version });
+    case "done":
+      return t("settings.updateCard.state.rollbackDone", { version });
+    case "rolled-back":
+      return t("settings.updateCard.state.rollbackRolledBack", { version: still });
+    default:
+      return stateLine(run, version, still, restartOver);
   }
 }
 

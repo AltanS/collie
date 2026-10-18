@@ -54,6 +54,8 @@ export type RunEvent =
        * from a terminal, which is a run with no id, never a run with a blank one.
        */
       readonly runId?: string | null;
+      /** `rollback` for a run that goes back to a build on disk (M60 spec 01). Absent on an update. */
+      readonly action?: "rollback";
     }
   /** Preflight passed; the new version is being built or laid down. */
   | { readonly kind: "stage" }
@@ -140,7 +142,8 @@ export function reduce(run: UpdateRun, event: RunEvent, now: number): UpdateRun 
       // Assigned, never conditionally spread: a run with no id must carry NO such key rather than one
       // whose value is `undefined`, or it would serialise as a key the reader has to guess about.
       const id = event.runId ?? null;
-      return id === null || id === "" ? begun : { ...begun, runId: id };
+      const named = id === null || id === "" ? begun : { ...begun, runId: id };
+      return event.action === "rollback" ? { ...named, action: "rollback" } : named;
     }
     case "stage":
       expect(run, event.kind, ["preflight"]);

@@ -17,6 +17,7 @@ import {
   updateLockPath,
   updateRunPath,
   UPDATE_RUN_SCHEMA,
+  crewTurnStart,
   type UpdateRun,
 } from "./update-run.ts";
 
@@ -185,5 +186,19 @@ describe("the run id (M16/04)", () => {
     expect(read?.state).toBe("rolled-back");
     expect(read?.to).toBe("v1.1.0");
     expect(read?.runId).toBe("r-9");
+  });
+});
+
+describe("a rollback run (M60 spec 01)", () => {
+  test("carries action rollback, and a record without it, or with any other word, carries no such key", () => {
+    expect(parseUpdateRun(JSON.stringify(record({ action: "rollback" })))?.action).toBe("rollback");
+    expect("action" in (parseUpdateRun(JSON.stringify(record())) ?? {})).toBe(false);
+    expect("action" in (parseUpdateRun(JSON.stringify({ ...record(), action: "downgrade" })) ?? {})).toBe(false);
+  });
+
+  test("a done rollback with a run id starts no crew levelling run; the same update does", () => {
+    const done = record({ state: "done", to: "0.9.0", runId: "r-1", updatedAt: NOW });
+    expect(crewTurnStart(done)).toEqual({ runId: "r-1", to: "0.9.0", at: NOW });
+    expect(crewTurnStart({ ...done, action: "rollback" })).toBeNull();
   });
 });

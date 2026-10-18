@@ -136,7 +136,9 @@ import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts
 import type { UpdateMonitor } from "./update.ts";
 import { readStagingLog } from "./staging-log.ts";
 import {
+  parseRollbackRequest,
   parseUpdateStartRequest,
+  rollbackVerdict,
   updateStartVerdict,
   type PreflightReport,
 } from "./update-action.ts";
@@ -1023,6 +1025,11 @@ export interface UpdateActionDeps {
    * three immediate sweeps. A no-op on a solo install and on a peer.
    */
   beginCrewRun?: (a: { runId: string; to: string }) => void;
+  /**
+   * Start `collie update --rollback --run-id <id>`, detached (M60 spec 01). Undefined disables
+   * `POST /api/update/rollback`, which then answers 503 like the update route without its deps.
+   */
+  rollback?: (a: { runId: string }) => { ok: true } | { ok: false; reason: string };
 }
 
 export function startServer(opts: {
@@ -3240,6 +3247,72 @@ export function startServer(opts: {
         // showed "Update finished" at 0:00 with the old versions).
         return json(
           { ok: true, to: verdict.to, major: verdict.major, run: status.run ?? null, runId },
+          req.headers.get("accept-encoding"),
+          202,
+        );
+      }
+
+      if (pathname === "/api/update/rollback" && req.method === "POST") {
+        // ── ROLLING BACK FROM THE PHONE (M60 spec 01) ───────────────────────
+        // `collie update --rollback` behind the same gate, the same confirm and the same detached
+        // runner as an update, so the phone follows it on the run record exactly as it follows an
+        // update. The verdict is `rollbackVerdict`; the request id the phone minted IS the run id.
+        const denied = browserGate("write");
+        if (denied) return denied;
+        const action = opts.updateAction;
+        if (!action?.rollback) return text("rollback action unavailable", 503);
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and
+          // `parseRollbackRequest` re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parseRollbackRequest(body);
+        if (parsed === null) {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        // FORCED: the version directories may have changed since the card was drawn (a prune, a
+        // second rollback), and the target on disk NOW is the one the sheet must have named.
+        const report = await action.preflight(true);
+        const status = updateMonitor.status();
+        const verdict = rollbackVerdict(parsed, {
+          run: status.run ?? null,
+          lockHeld: action.lockHeld(),
+          preflight: report,
+          installKind: status.installKind,
+          crewRunOpen: opts.crewLead?.updateRunOpen() ?? false,
+        });
+        if (verdict.kind === "refuse") {
+          return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
+        }
+        if (verdict.kind === "replay") {
+          // The same confirm again: its receipt, and nothing started.
+          return json(
+            { ok: true, from: verdict.from, to: verdict.to, run: status.run ?? null, runId: verdict.runId, replay: true },
+            req.headers.get("accept-encoding"),
+            202,
+          );
+        }
+        const started = action.rollback({ runId: verdict.runId });
+        if (!started.ok) {
+          return jsonError(
+            apiError("update.start_failed", { reason: started.reason }),
+            500,
+            req.headers.get("accept-encoding"),
+          );
+        }
+        // No crew run: a rollback levels nobody (ADR 0016; `crewTurnStart` refuses it too).
+        audit.record({
+          action: "update.rollback",
+          device: whois(req).device,
+          detail: { from: verdict.from, to: verdict.to, requestId: verdict.runId },
+        });
+        // 202, and the request ends here, for the update route's reason: the rollback restarts this
+        // process. The card watches the run record whose `runId` is the request id it sent.
+        return json(
+          { ok: true, from: verdict.from, to: verdict.to, run: status.run ?? null, runId: verdict.runId },
           req.headers.get("accept-encoding"),
           202,
         );

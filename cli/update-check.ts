@@ -53,6 +53,7 @@ import {
   planToTag,
   planUpdate,
   type ReleaseTag,
+  rollbackTarget,
   wantsToTag,
 } from "./update.ts";
 
@@ -128,6 +129,13 @@ export interface PreflightReport {
   readonly installKind?: InstallKind["kind"];
   readonly checks: readonly PreflightCheck[];
   readonly crew?: readonly PreflightMember[];
+  /**
+   * The build `collie update --rollback` would go back to, when this install keeps one (M60 spec 01):
+   * the version `current` names now and the older one on disk. ABSENT when there is none, which is
+   * every in-place checkout, every packaged install, and a first install. The phone offers Roll back
+   * from this field, and `POST /api/update/rollback` refuses without it. Additive: the schema stays.
+   */
+  readonly rollback?: { readonly from: string; readonly to: string };
 }
 
 /**
@@ -1023,7 +1031,10 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
     ...checks.map((c) => c.verdict),
     ...(crew ?? []).map(topLevelMemberVerdict),
   ]);
-  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
+  const base: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
+  // No network and no build: the version directories on disk ARE the answer (`rollbackTarget`).
+  const back = rollbackTarget(deps, deps.ctx.root, install.kind);
+  const report = back.kind === "ready" ? { ...base, rollback: { from: back.fromVersion, to: back.toVersion } } : base;
   return crew === undefined ? report : { ...report, crew };
 }
 
@@ -1046,6 +1057,10 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
   deps.io.out("");
   deps.io.out("instance:");
   for (const c of report.checks) deps.io.out(checkLine(c, colour));
+  if (report.rollback !== undefined) {
+    deps.io.out("");
+    deps.io.out(`rollback: ${report.rollback.to} is kept on disk (collie update --rollback)`);
+  }
   if (report.crew === undefined) return;
   deps.io.out("");
   deps.io.out("crew:");

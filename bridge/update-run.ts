@@ -132,6 +132,16 @@ export interface UpdateRun {
   readonly logTail?: string;
   /** The command the operator runs by hand — carried only by `stuck`. */
   readonly recovery?: string;
+  /**
+   * `rollback` when this run goes BACK to a build already on disk (M60 spec 01, the phone's "Roll
+   * back"): `to` is then the older version and `from` the one being left. Absent on every update.
+   *
+   * Additive within schema 2: a reader older than the field drops it and reads the run as an update
+   * to `to`, which is still a true sentence about where the machine went. The one reader that must
+   * know is {@link crewTurnStart}: a rollback starts no levelling run, because the crew never steps
+   * down behind its lead (ADR 0016).
+   */
+  readonly action?: "rollback";
 }
 
 /** The lock file's contents: who holds it and since when. */
@@ -175,6 +185,7 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
     reason?: string;
     logTail?: string;
     recovery?: string;
+    action?: string;
   };
   try {
     // SAFETY: `JSON.parse` answers a JSON value, and every field read off it below is either
@@ -212,6 +223,8 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
   if (doc.reason !== undefined) run.reason = doc.reason;
   if (doc.logTail !== undefined) run.logTail = doc.logTail;
   if (doc.recovery !== undefined) run.recovery = doc.recovery;
+  // Only the one word this build knows. Anything else reads as no action, which is an update.
+  if (doc.action === "rollback") run.action = "rollback";
   return run;
 }
 
@@ -233,6 +246,7 @@ interface DraftRun {
   reason?: string;
   logTail?: string;
   recovery?: string;
+  action?: "rollback";
 }
 
 /** The lock in `text`, or null. Same posture as {@link parseUpdateRun}: half a lock is no lock. */
@@ -341,6 +355,10 @@ export function crewTurnStart(
 ): { readonly runId: string; readonly to: string; readonly at: number } | null {
   if (run === null || run.state !== "done") return null;
   if (run.runId === undefined || run.to === null) return null;
+  // A ROLLBACK LEVELS NOBODY (M60 spec 01). Its `to` is the OLDER build, and no member steps down
+  // behind its lead (ADR 0016; `crew/follow.ts` refuses anything not higher), so a run started over
+  // it would wait on turns no member can take.
+  if (run.action === "rollback") return null;
   // `updatedAt` is the moment this machine finished, which is the moment the levelling could have
   // begun. A caller that re-derives the queue after a restart ages the run against it, so a record
   // left behind by a crash days ago cannot start a levelling run today (M20/01).
