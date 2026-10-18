@@ -2402,6 +2402,12 @@ export class SendProtocol {
       return;
     }
 
+    // A harness that swallows a submit key sent too soon after the text names its pause in the
+    // profile (`paste.settleMs`, #507): the blind send's 350 ms is the same pause with no profile
+    // to name it. The pause sits before S1, so the read Enter is minted on is taken after it.
+    const settleMs = state.match?.profile.paste?.settleMs;
+    if (settleMs !== undefined) await this.sleep(settleMs);
+
     const s1 = await this.awaitTyped(state, s0, landing, prefix, lines);
     state.marks.s1 = s1;
     this.lap(state, "s1");
