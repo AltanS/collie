@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A queued send no longer moves the layout.** The sends Collie holds until a turn ends now float over the bottom of the terminal view as one card, in the place of the terminal draft notice, so the box and the mirror stay where they are. Two or more collapse to a count and the next message, with Show all.
+
 ### Fixed
 
 - **Korean reads more naturally across the app.** Settings, pane actions, alerts, uploads and refusal messages have better wording, and instructions name the buttons as the screen shows them. Thanks @mud-the-developer (#498).
