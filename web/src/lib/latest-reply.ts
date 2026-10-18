@@ -25,10 +25,17 @@
 // Escapes must go BEFORE the fold: `\x1b[38;5;1m` is mostly digits, and digits survive folding, so an
 // un-stripped SGR run would inject garbage into the middle of a probe. parseAnsi is the repo's one
 // place that knows escape shapes — use it rather than a second regex that can drift from it.
+//
+// STRETCHTEXT. A reply written with cc-stretch (`{{short|long}}`, lib/stretch.ts) is painted in one
+// of two spellings: the fullscreen view paints every stretch closed, its short form underlined, and
+// the main screen paints every stretch open with no closers. Both are tried before the source. A
+// screen with only some stretches opened matches neither, and its tail probe fails: that reply reads
+// as off-screen, which is the safe direction.
 
 import { parseAnsi } from "./ansi";
 import { BOX_CROSS_GLYPH_CLASS, BOX_VERTICAL_GLYPH_CLASS } from "./rule-glyphs";
 import type { TranscriptEntry } from "./types";
+import { fullSpelling, parseStretches, skimSpelling, stretches } from "@/lib/stretch";
 
 /**
  * How much of the reply each probe compares, in folded characters.
@@ -214,12 +221,7 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
     rowEnds.push(mirror.length);
   }
 
-  // Both spellings are this same reply. The painted one is tried first and only when it still holds
-  // two whole probes: what it drops (a link's target, a tag) can leave too little to tell one reply
-  // from another, and the short-reply rule above judged the raw text, not this.
-  const painted = prose.length > PAINTED_SPELLING_MAX_CHARS ? "" : fold(paintedSpelling(prose));
-  const spellings = painted.length >= PROBE_CHARS * 2 ? [painted, fold(prose)] : [fold(prose)];
-  for (const reply of new Set(spellings)) {
+  for (const reply of spellingsOf(prose)) {
     const tail = reply.slice(-PROBE_CHARS);
     const at = mirror.indexOf(tail);
     if (at === -1) continue;
@@ -230,6 +232,27 @@ export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPl
     return { fit: "clipped", endLine: endLine === -1 ? rows.length - 1 : endLine };
   }
   return elsewhere("off-screen");
+}
+
+/**
+ * Every folded spelling of one reply, in the order {@link locateReply} tries them. Each is this same
+ * reply. A painted one is tried only when it still holds two whole probes: what it drops (a link's
+ * target, a tag, a stretch's other form) can leave too little to tell one reply from another, and the
+ * short-reply rule judged the raw text, not this. A reply with stretches is tried first as both of
+ * its stretch spellings, then as written.
+ */
+function spellingsOf(prose: string): Set<string> {
+  const spellings: string[] = [];
+  if (prose.length <= PAINTED_SPELLING_MAX_CHARS) {
+    const hasStretch = prose.includes("{{") && stretches(parseStretches(prose)).length > 0;
+    const sources = hasStretch ? [skimSpelling(prose), fullSpelling(prose), prose] : [prose];
+    for (const source of sources) {
+      const painted = fold(paintedSpelling(source));
+      if (painted.length >= PROBE_CHARS * 2) spellings.push(painted);
+    }
+  }
+  spellings.push(fold(prose));
+  return new Set(spellings);
 }
 
 // `[label](target)` and `![alt](target)`, with an optional `"title"`. The label may hold single-backtick

@@ -280,6 +280,9 @@ export const ko: Dictionary = {
   "settings.display.fullReply.label": "최신 답변 전체 보기",
   "settings.display.fullReply.hint":
     "에이전트 터미널은 스크롤백을 남기지 않아 긴 답변은 앞부분이 사라집니다. 켜면 에이전트 로그에서 전체 답변을 가져와 해당 줄을 대신 표시합니다.",
+  "settings.display.stretchText.label": "스트레치텍스트 답변",
+  "settings.display.stretchText.hint":
+    "cc-stretch 플러그인으로 작성된 답변은 짧은 형태로 표시됩니다. 구절을 탭하면 펼쳐집니다.",
   "settings.display.rawTerminal.label": "원시 터미널",
   "settings.display.rawTerminal.hint":
     "프롬프트 버튼, UI 장식, 상태 바 없이 순수 화면만 표시합니다. 대화상자가 깨져서 직접 키를 입력해야 할 때 유용합니다.",
@@ -1384,6 +1387,9 @@ export const ko: Dictionary = {
   "transcript.truncated": "… 생략됨",
   "transcript.toolImageAlt": "도구 출력",
   "transcript.attachmentAlt": "첨부 파일",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "간단히 보기",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "터미널 그래픽",

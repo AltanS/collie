@@ -234,6 +234,9 @@ export const ru: Dictionary = {
   "settings.display.tapToType.hint": "При включении нажатие в любом месте зеркала открывает клавиатуру. При выключении зеркало ведет себя как документ: нажатия попадают в текст, а клавиатуру открывает только поле ввода.",
   "settings.display.fullReply.label": "Весь последний ответ",
   "settings.display.fullReply.hint": "Терминал агента не хранит историю прокрутки, поэтому длинный ответ теряет начало. При включении этот ответ показывается целиком из собственного лога агента вместо строк, которые он занимает.",
+  "settings.display.stretchText.label": "Ответы stretchtext",
+  "settings.display.stretchText.hint":
+    "Ответы, написанные с плагином cc-stretch, показывают краткую форму; коснитесь фразы, чтобы раскрыть её.",
   "settings.display.rawTerminal.label": "Терминал без обработки",
   "settings.display.rawTerminal.hint": "Показывает простое зеркало: без интерактивных кнопок промптов, интерфейса и статусных строк. Используйте, если диалог отображается некорректно и вы хотите управлять им вручную через Keys.",
   "settings.display.noInvert.label": "Рендерить эту панель нативно",
@@ -1337,6 +1340,9 @@ export const ru: Dictionary = {
   "transcript.truncated": "… часть скрыта",
   "transcript.toolImageAlt": "Вывод инструмента",
   "transcript.attachmentAlt": "Вложение",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Свернуть",
   "mirror.imageAlt": "Терминальная графика",
   "mirror.imageBadge": "[Изображение]",
   "mirror.imageMatchedByOrder": "совпало по порядку, откройте Историю для проверки",

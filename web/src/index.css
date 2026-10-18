@@ -580,6 +580,30 @@
    values are the tokens above, and src/themes/themes.test.ts holds the two equal. */
 @import "./themes.css";
 
+/* Stretchtext hues (components/markdown-text.tsx, lib/stretch.ts): a closed stretch's underline,
+   and the ink of the words an open stretch added and of its «. They are the cc-stretch plugin's own
+   palette (0.3.4, hooks/register.tsx), so a reply reads in the same colours in Collie as in the
+   terminal: Claude Code's theme hues warning, autoAccept, planMode and claude, mixed toward the
+   text colour for `--stretch-N`, and that mixed 35% toward the background for `--stretch-N-faded`,
+   rounded per channel as the plugin rounds them. The faded form is the open stretches other than
+   the one opened last. Dark mixes 45% toward white, as the plugin does. Light mixes only 15% toward
+   black: at the plugin's 45% the four hues sit so close to black body text that they barely read
+   as colour. The light values then go darker than the plugin's mix on purpose: an open stretch's
+   added words are prose, so every light value, faded or not, holds 4.5:1 on the background and
+   card of every shipped theme (themes/stretch-contrast.test.ts measures it).
+   A block of their own, outside the token block: that one is ADR 0106's closed list, and these
+   hues are the plugin's, fixed under every theme. */
+:root {
+  --stretch-1: light-dark(#805c1a, #ffdd77);
+  --stretch-1-faded: light-dark(#78684a, #a6904d);
+  --stretch-2: light-dark(#7300d9, #d3bdff);
+  --stretch-2-faded: light-dark(#8a4bc1, #897ba6);
+  --stretch-3: light-dark(#005757, #9ac5c0);
+  --stretch-3-faded: light-dark(#457171, #64807d);
+  --stretch-4: light-dark(#91503b, #e9b4a3);
+  --stretch-4-faded: light-dark(#846257, #97756a);
+}
+
 /* Explicit pins. Class-based so theme-init.js can set them before first paint. */
 :root.light {
   color-scheme: light;
@@ -651,6 +675,14 @@
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);
+  --color-stretch-1: var(--stretch-1);
+  --color-stretch-1-faded: var(--stretch-1-faded);
+  --color-stretch-2: var(--stretch-2);
+  --color-stretch-2-faded: var(--stretch-2-faded);
+  --color-stretch-3: var(--stretch-3);
+  --color-stretch-3-faded: var(--stretch-3-faded);
+  --color-stretch-4: var(--stretch-4);
+  --color-stretch-4-faded: var(--stretch-4-faded);
 
   --color-host-0: var(--host-0);
   --color-host-1: var(--host-1);

@@ -82,6 +82,11 @@ export interface DisplayPrefs {
    */
   expandClippedReply: boolean;
   /**
+   * Whether agent replies draw cc-stretch `{{short|long}}` stretches as tappable phrases (default:
+   * false). Off, the markup reads as written, exactly as every surface drew it before this existed.
+   */
+  stretchText: boolean;
+  /**
    * How long this phone keeps the Chat tail of each pane, to read with the bridge out of reach:
    * `off`, `1d` (the default) or `7d` (M46 spec 09, lib/chat-tail.ts). Read at each write, so a change
    * applies from the next write on. Choosing `off` also deletes every tail already kept.
@@ -255,6 +260,7 @@ const DEFAULTS: DisplayPrefs = {
   rawTerminal: false,
   tapToFocus: true,
   expandClippedReply: true,
+  stretchText: false,
   keepChat: KEEP_CHAT_DEFAULT,
 };
 
@@ -375,6 +381,7 @@ function loadPrefs(): DisplayPrefs {
       rawTerminal: asJsonBoolean(p.rawTerminal) ?? DEFAULTS.rawTerminal,
       tapToFocus: asJsonBoolean(p.tapToFocus) ?? DEFAULTS.tapToFocus,
       expandClippedReply: asJsonBoolean(p.expandClippedReply) ?? DEFAULTS.expandClippedReply,
+      stretchText: asJsonBoolean(p.stretchText) ?? DEFAULTS.stretchText,
       // The same independent default: a payload written before the setting existed reads 1 day.
       keepChat: readKeepChat(asJsonString(p.keepChat)),
       // Absent until the operator picks one, so a payload written before the setting existed (and
@@ -418,6 +425,8 @@ export interface UseDisplayPrefsReturn {
   setTapToFocus: (tapToFocus: boolean) => void;
   /** Toggle or explicitly set whether a clipped reply is re-shown in full above the mirror. */
   setExpandClippedReply: (expandClippedReply: boolean) => void;
+  /** Toggle or explicitly set whether agent replies draw their stretches as tappable phrases. */
+  setStretchText: (stretchText: boolean) => void;
   /** How long this phone keeps the Chat tail. `off` also deletes every tail already kept. */
   setKeepChat: (keepChat: KeepChat) => void;
   /** Which thumb the pane screen is laid out for. */
@@ -501,6 +510,14 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const setStretchText = useCallback((stretchText: boolean) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, stretchText };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
   const setKeepChat = useCallback((keepChat: KeepChat) => {
     setPrefs((p) => {
       const next: DisplayPrefs = { ...p, keepChat };
@@ -539,6 +556,7 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     setRawTerminal,
     setTapToFocus,
     setExpandClippedReply,
+    setStretchText,
     setKeepChat,
     setHand,
     setSentSuggestions,

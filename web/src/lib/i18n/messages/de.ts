@@ -283,6 +283,9 @@ export const de: Dictionary = {
   "settings.display.fullReply.label": "Vollständige letzte Antwort",
   "settings.display.fullReply.hint":
     "Das Terminal eines Agenten hat keinen Verlaufspuffer, daher fehlt bei langen Antworten der Anfang. Aktiv: Die Antwort erscheint vollständig aus dem Protokoll des Agenten und ersetzt die abgeschnittenen Zeilen.",
+  "settings.display.stretchText.label": "Stretchtext-Antworten",
+  "settings.display.stretchText.hint":
+    "Antworten, die mit dem cc-stretch-Plugin geschrieben sind, zeigen ihre Kurzform; tippe auf eine Phrase, um sie zu öffnen.",
   "settings.display.rawTerminal.label": "Rohes Terminal",
   "settings.display.rawTerminal.hint":
     "Zeigt den reinen Terminal-Puffer ohne Buttons, Rahmen oder Statusleisten. Gedacht für falsch dargestellte TUI-Dialoge zur manuellen Tastensteuerung.",
@@ -1395,6 +1398,9 @@ export const de: Dictionary = {
   "transcript.truncated": "… gekürzt",
   "transcript.toolImageAlt": "Werkzeugausgabe",
   "transcript.attachmentAlt": "Anhang",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Weniger anzeigen",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Terminal-Grafik",

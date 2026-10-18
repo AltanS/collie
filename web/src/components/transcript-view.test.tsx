@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
 
+import { StretchTextContext } from "./markdown-text";
 import { TranscriptView } from "./transcript-view";
 import { setDeviceToken } from "@/lib/pairing";
 import { server } from "@/test/setup";
@@ -550,5 +551,34 @@ describe("TranscriptView: durable markdown, code and link items", () => {
     render(<TranscriptView agent="durable" entries={[durable("m2", "[click](javascript:alert(1)) and [ok](https://example.com/)")]} />);
     expect(screen.queryByRole("link", { name: "click" })).toBeNull();
     expect(screen.getByRole("link", { name: "ok" })).toBeInTheDocument();
+  });
+});
+
+// A stretch is the agent's own markup in its reply: the reader's turn and the agent's thinking keep
+// the braces as written, even on a device that draws stretches.
+describe("TranscriptView — stretchtext", () => {
+  it("draws a stretch in an assistant's reply prose and nowhere else", () => {
+    render(
+      <StretchTextContext.Provider value>
+        <TranscriptView
+          agent="claude"
+          entries={[
+            turn({ uuid: "u1", role: "user", parts: [{ kind: "text", text: "you {{asked|x}}" }] }),
+            turn({
+              uuid: "a1",
+              role: "assistant",
+              parts: [
+                { kind: "thinking", text: "hmm {{pondered|y}}" },
+                { kind: "text", text: "we {{replied|z}}" },
+              ],
+            }),
+          ]}
+        />
+      </StretchTextContext.Provider>,
+    );
+    expect(screen.getByRole("button", { name: "replied" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "asked" })).toBeNull();
+    expect(screen.getByText("you {{asked|x}}")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "pondered" })).toBeNull();
   });
 });

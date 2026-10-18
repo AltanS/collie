@@ -281,6 +281,9 @@ export const es: Dictionary = {
   "settings.display.fullReply.label": "Respuesta completa",
   "settings.display.fullReply.hint":
     "La terminal de un agente no guarda historial, así que una respuesta larga pierde su inicio. Si esta activo, se muestra completa desde el registro del agente, en lugar de las lineas que cubre.",
+  "settings.display.stretchText.label": "Respuestas stretchtext",
+  "settings.display.stretchText.hint":
+    "Las respuestas escritas con el plugin cc-stretch muestran su forma breve; toca una frase para abrirla.",
   "settings.display.rawTerminal.label": "Terminal sin formato",
   "settings.display.rawTerminal.hint":
     "Muestra la sesion directa sin botones de interfaz ni barras. Util si un dialogo falla y requiere control manual mediante Teclas.",
@@ -1394,6 +1397,9 @@ export const es: Dictionary = {
   "transcript.truncated": "[truncado]",
   "transcript.toolImageAlt": "Salida de herramienta",
   "transcript.attachmentAlt": "Archivo adjunto",
+
+  // --- markdown (agent prose in Chat and History) ---
+  "markdown.stretch.close": "Mostrar menos",
 
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Gráfico de terminal",

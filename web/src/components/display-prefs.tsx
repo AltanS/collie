@@ -80,6 +80,7 @@ interface DisplayPrefsContentProps {
    *  override rather than pinning it, so a later change to that answer is still followed. */
   setMirrorNative: (native: boolean) => void;
   setExpandClippedReply: (expandClippedReply: boolean) => void;
+  setStretchText: (stretchText: boolean) => void;
   /** The body switch and the Chat rows. Absent while the experiment is off. */
   paneView?: PaneViewControl;
 }
@@ -215,12 +216,30 @@ export function DisplayPrefsContent({
   mirrorNative,
   setMirrorNative,
   setExpandClippedReply,
+  setStretchText,
   paneView,
 }: DisplayPrefsContentProps) {
   useLocale();
   // What is on screen, not what was chosen: a pane with no journal holds `chat` and draws the
   // terminal, and the rows must answer for the terminal it is actually drawing.
   const chat = paneView?.showing === "chat";
+  // Both bodies draw agent replies (the Chat stream, and the Full reply card over the mirror), so
+  // this one row answers for either.
+  const stretchTextRow = (
+    <Row
+      label={t("settings.display.stretchText.label")}
+      hint={t("settings.display.stretchText.hint")}
+      htmlFor="pref-stretch-text"
+      control={
+        <Switch
+          id="pref-stretch-text"
+          checked={prefs.stretchText}
+          onCheckedChange={setStretchText}
+          aria-label={t("settings.display.stretchText.label")}
+        />
+      }
+    />
+  );
   return (
     <div data-slot="list-group">
       {paneView && paneView.terminalOffered !== false && <ViewRow view={paneView} />}
@@ -258,6 +277,7 @@ export function DisplayPrefsContent({
               />
             }
           />
+          {stretchTextRow}
         </>
       ) : (
         <>
@@ -301,6 +321,7 @@ export function DisplayPrefsContent({
               />
             }
           />
+          {stretchTextRow}
           <Row
             label={t("settings.display.rawTerminal.label")}
             hint={t("settings.display.rawTerminal.hint")}
