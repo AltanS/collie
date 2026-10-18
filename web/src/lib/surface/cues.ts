@@ -267,8 +267,9 @@ function signPatterns(sources: readonly string[]): readonly RegExp[] {
   return compiled;
 }
 
-/** The running signs a profile declares: `runningRows` read on the volatile rows and edges, and
- *  `runningPrompt` read on the prompt row only. */
+/** The running signs a profile declares: `runningRows` read on a found frame's volatile rows and edges,
+ *  and `runningPrompt` on its prompt row only. With no frame to read, the bridge's manual-send gate
+ *  reads both on every row (bridge/surface/protocol.ts). */
 export type RunningSigns = Pick<IdleProfile, "runningRows" | "runningPrompt">;
 
 /**
