@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useId, useRef, useState, type Ref } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   isReachable,
   stateWord,
+  targetWord,
   verifiedWord,
   WALKY_BODY_MAX,
   wasTaken,
@@ -41,10 +42,10 @@ import {
 
 const ALL = "all";
 
-/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else the address. */
+/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else its {@link targetWord}. */
 function labelOf(listed: readonly WalkyTarget[] | null, address: string): string {
   const known = listed?.find((r) => r.address === address);
-  return known === undefined ? address : `${known.label} (${address})`;
+  return known === undefined ? targetWord(address) : `${known.label} (${address})`;
 }
 
 /** `reason count` pairs joined by ", ": the reasons are the bridge's own words, in its order, never translated. */
@@ -164,6 +165,17 @@ export function WalkyBroadcastSheet({
     setFocusNext(null);
   }, [focusNext, error]);
 
+  // A chosen machine that has left the crew (it is no longer in `members`) is not a target any more:
+  // the picker has no row for it, and an armed question about it is put away, so it cannot be answered
+  // for a target the picker no longer shows. The choice goes back to every machine, whose own count
+  // the next question names.
+  const gone = target !== ALL && !members.some((m) => m.id === target);
+  useEffect(() => {
+    if (!gone) return;
+    setTarget(ALL);
+    setConfirming(false);
+  }, [gone]);
+
   const covers = (memberId: string) => target === ALL || memberId === target;
   // The count and the question name only the panes a message can reach now: a lead keeps an
   // unreachable member's last panes in `who`, and those do not take a message until it is back.
@@ -175,6 +187,7 @@ export function WalkyBroadcastSheet({
   const body = text.trim();
   const tooLong = body.length > WALKY_BODY_MAX;
   const to = target === ALL ? ALL : `${target}/${ALL}`;
+  const tooLongId = useId();
 
   async function submit() {
     if (body === "" || tooLong || sending) return;
@@ -204,10 +217,18 @@ export function WalkyBroadcastSheet({
               setConfirming(false);
             }}
             placeholder={t("walky.crew.textPlaceholder")}
+            aria-describedby={tooLong ? tooLongId : undefined}
             rows={4}
             className="min-h-24 w-full resize-none rounded-lg border border-border bg-background p-3 text-base text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
         </label>
+        {/* Why Send is off: a disabled button says nothing by itself on a phone. Outside the label, so
+            it describes the field and does not become part of its name. */}
+        {tooLong && (
+          <p id={tooLongId} className="text-xs text-status-blocked">
+            {t("walky.composer.tooLong")}
+          </p>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.target")}</span>
           <Select

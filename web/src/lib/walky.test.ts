@@ -11,6 +11,7 @@ import {
   signerOf,
   standingOf,
   stateWord,
+  targetWord,
   verifiedWord,
   WALKY_LIST_LIMIT,
   walkyLog,
@@ -126,6 +127,14 @@ describe("standingOf", () => {
     expect(standingOf(cut, "wt_000000000007")).toMatchObject({ standing: "held" });
     // One short of the limit, the list is the whole log, and absence is a fact.
     expect(standingOf(walkyLog(full.slice(1)), "wt_zzzzzzzzzzzz")).toEqual({ standing: "absent" });
+  });
+});
+
+describe("targetWord", () => {
+  it("reads a broadcast's bare `all` as every machine, and leaves a real address as it is", () => {
+    expect(targetWord("all")).toBe("every machine");
+    expect(targetWord("bluefin/all")).toBe("bluefin/all");
+    expect(targetWord("bluefin/w1:p1")).toBe("bluefin/w1:p1");
   });
 });
 

@@ -307,6 +307,15 @@ export function signerOf(row: Pick<WalkyMessage, "signer" | "from">): string | n
   return row.signer ?? row.from.memberId;
 }
 
+/**
+ * A receipt's target as a row names it when no pane is known for it. The bare `all` is the line a
+ * broadcast writes for the crew leg before the members answer (bridge/walky/deliver.ts), and reads
+ * as "every machine"; any other address is shown as it is.
+ */
+export function targetWord(address: string): string {
+  return address === "all" ? t("walky.crew.receiptAll") : address;
+}
+
 /** Where a message stands, in words, with the bridge's reason when there is one. */
 export function stateWord(receipt: WalkyReceipt): string {
   switch (receipt.state) {

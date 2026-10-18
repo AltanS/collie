@@ -2277,6 +2277,7 @@ export const pt: Dictionary = {
   "walky.crew.send": "Send message",
   "walky.crew.sending": "Sending",
   "walky.crew.receipts": "Receipts",
+  "walky.crew.receiptAll": "every machine",
   "walky.crew.noReceipts": "The bridge answered with no receipts.",
   "walky.crew.failed": "Message not sent: {error}",
   "walky.crew.readOnly": "This device may not send messages.",
