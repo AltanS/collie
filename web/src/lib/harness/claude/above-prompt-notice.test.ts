@@ -70,6 +70,30 @@ describe("the notice above the box", () => {
     expect(claudeBuildBlocks(taller(6)).some((b) => b.kind === "menu")).toBe(false);
   });
 
+  it("lifts the notice with Claude Code's agents panel under the box: the panel is not counted against the tail", () => {
+    expect(claudeBuildBlocks(lines("claude--v2302-notice-over-agents-panel--w69.txt")).map((b) => b.kind)).toEqual(["raw", "menu"]);
+  });
+
+  // Only the panel is left out, from its first named row down: the rows between the box and it count.
+  it("lifts with five rows between the box and the agents panel, and not with six or more", () => {
+    const all = lines("claude--v2302-notice-over-agents-panel--w69.txt");
+    const withStatusRows = (extra: number) => [...all.slice(0, 69), ...Array.from({ length: extra }, () => all[67]!), ...all.slice(69)];
+    expect(claudeBuildBlocks(withStatusRows(3)).some((b) => b.kind === "menu")).toBe(true);
+    expect(claudeBuildBlocks(withStatusRows(4)).some((b) => b.kind === "menu")).toBe(false);
+    expect(claudeBuildBlocks(withStatusRows(6)).some((b) => b.kind === "menu")).toBe(false);
+  });
+
+  // Plain output under the box, a blank row between (a shell under a Claude that has exited), walks as
+  // the frame's generic footer, which is no named run: its rows count, as the bridge counts them.
+  it("does not lift with a blank row and four to eight plain output rows under the box", () => {
+    const raw = readFileSync(join(PANES, HEADS_UP), "utf8");
+    for (let count = 4; count <= 8; count++) {
+      const output = Array.from({ length: count }, (_, i) => `notes-${String(i)}.txt`);
+      const screen = splitLines(parseAnsi([raw, "", ...output].join("\n")));
+      expect(claudeBuildBlocks(screen).some((b) => b.kind === "menu"), `${String(count)} rows`).toBe(false);
+    }
+  });
+
   it("binds the card from the notice's head down through the box's bottom edge", () => {
     const card = claudeBuildBlocks(lines(HEADS_UP)).find((b) => b.kind === "menu");
     if (card?.kind !== "menu") throw new Error("no menu");
