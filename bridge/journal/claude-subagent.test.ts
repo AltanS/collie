@@ -5,10 +5,12 @@ import { join } from "node:path";
 
 import type { JsonObject } from "../json.ts";
 import {
+  claudeJournal,
   ClaudeTranscriptSource,
   createClaudeReducer,
   isAgentId,
   parseClaudeTranscript,
+  readClaudeSubagent,
 } from "./claude.ts";
 
 const SESSION_ID = "fa52de65-e7ac-4f05-b746-cfe1eb44deb7";
@@ -261,6 +263,143 @@ describe("ClaudeTranscriptSource.resolveSubagent", () => {
       const siblingEscapeId = "a2222222222222222";
       await symlink(siblingSession, join(subDir, `agent-${siblingEscapeId}.jsonl`));
       expect(await source.resolveSubagent({ kind: "id", value: SESSION_ID }, siblingEscapeId)).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── Containment, adversarially (PR 504 review) ──────────────────────────────────────────────────
+//
+// The route's only client-chosen input is `agentId`; the session id comes from the pane's own ref.
+// Each case below is a way a path could leave the session's own `subagents/` folder, and each must
+// answer null, which the route turns into `available: false`, the same answer as "no such file".
+describe("ClaudeTranscriptSource.resolveSubagent — containment", () => {
+  const SIBLING_ID = "11111111-2222-4333-8444-555555555555";
+  const ref = { kind: "id", value: SESSION_ID } as const;
+
+  async function lab(): Promise<{ base: string; root: string; proj: string; other: string; subDir: string }> {
+    const base = join(tmpdir(), `collie-subagent-contain-${process.pid}-${Math.random().toString(16).slice(2)}`);
+    const root = join(base, "projects");
+    const proj = join(root, "-Users-test-repo");
+    const other = join(root, "-Users-test-other");
+    const subDir = join(proj, SESSION_ID, "subagents");
+    await mkdir(subDir, { recursive: true });
+    await mkdir(join(proj, SIBLING_ID, "subagents"), { recursive: true });
+    await mkdir(other, { recursive: true });
+    await writeFile(join(proj, `${SESSION_ID}.jsonl`), '{"uuid":"u1","type":"user"}\n');
+    await writeFile(join(proj, `${SIBLING_ID}.jsonl`), '{"uuid":"u2","type":"user"}\n');
+    return { base, root, proj, other, subDir };
+  }
+
+  test("an agentId carrying a slash, a dot-dot, a backslash, a NUL or an encoded separator never resolves", async () => {
+    const { base, root, subDir } = await lab();
+    try {
+      // A real file the traversal would land on if the id were joined unchecked.
+      await writeFile(join(subDir, "agent-a1234567.jsonl"), '{"uuid":"s1"}\n');
+      const source = new ClaudeTranscriptSource(root);
+      for (const bad of [
+        "a1234567/../a1234567",
+        "../subagents/agent-a1234567",
+        "a1234567/",
+        "/etc/passwd",
+        "a1234567\\..",
+        "a1234567\u0000",
+        "a1234567%2F..",
+        "..",
+        "a1234567.jsonl",
+        "A123456Z",
+        `a${"0".repeat(33)}`,
+      ]) {
+        expect(isAgentId(bad)).toBe(false);
+        expect(await source.resolveSubagent(ref, bad)).toBeNull();
+      }
+      expect(await source.resolveSubagent(ref, "a1234567")).not.toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a symlinked agent file pointing at a sibling session's subagent log is refused", async () => {
+    const { base, root, proj, subDir } = await lab();
+    try {
+      const siblingLog = join(proj, SIBLING_ID, "subagents", "agent-abbbbbbb.jsonl");
+      await writeFile(siblingLog, '{"uuid":"sibling-sub"}\n');
+      await symlink(siblingLog, join(subDir, "agent-abbbbbbb.jsonl"));
+      expect(await new ClaudeTranscriptSource(root).resolveSubagent(ref, "abbbbbbb")).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a symlinked agent file pointing into another project, or outside the root, is refused", async () => {
+    const { base, root, other, subDir } = await lab();
+    try {
+      const otherProject = join(other, "notes.jsonl");
+      await writeFile(otherProject, '{"uuid":"other-project"}\n');
+      await symlink(otherProject, join(subDir, "agent-acccccc1.jsonl"));
+      const outside = join(base, "outside.jsonl");
+      await writeFile(outside, '{"uuid":"outside"}\n');
+      await symlink(outside, join(subDir, "agent-acccccc2.jsonl"));
+      const source = new ClaudeTranscriptSource(root);
+      expect(await source.resolveSubagent(ref, "acccccc1")).toBeNull();
+      expect(await source.resolveSubagent(ref, "acccccc2")).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a symlinked subagents folder pointing at a sibling session's folder is refused", async () => {
+    const { base, root, proj } = await lab();
+    try {
+      await rm(join(proj, SESSION_ID, "subagents"), { recursive: true });
+      await writeFile(join(proj, SIBLING_ID, "subagents", "agent-adddddd1.jsonl"), '{"uuid":"sibling-sub"}\n');
+      await symlink(join(proj, SIBLING_ID, "subagents"), join(proj, SESSION_ID, "subagents"));
+      expect(await new ClaudeTranscriptSource(root).resolveSubagent(ref, "adddddd1")).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a session folder that is itself a symlink out of the root is refused", async () => {
+    const { base, root, proj } = await lab();
+    try {
+      const away = join(base, "away");
+      await mkdir(join(away, "subagents"), { recursive: true });
+      await writeFile(join(away, "subagents", "agent-aeeeeee1.jsonl"), '{"uuid":"away"}\n');
+      await rm(join(proj, SESSION_ID), { recursive: true });
+      await symlink(away, join(proj, SESSION_ID));
+      expect(await new ClaudeTranscriptSource(root).resolveSubagent(ref, "aeeeeee1")).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a session id reads the subagent folder beside its OWN log, never another project's", async () => {
+    const { base, root, other } = await lab();
+    try {
+      // The other project holds a folder named after this session with a subagent log in it, but the
+      // session's log lives in the first project: the read must not wander across.
+      await mkdir(join(other, SESSION_ID, "subagents"), { recursive: true });
+      await writeFile(join(other, SESSION_ID, "subagents", "agent-afffffff.jsonl"), '{"uuid":"wrong"}\n');
+      expect(await new ClaudeTranscriptSource(root).resolveSubagent(ref, "afffffff")).toBeNull();
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("readClaudeSubagent reports a small log as complete", async () => {
+    const { base, root, subDir } = await lab();
+    try {
+      await writeFile(
+        join(subDir, "agent-a7777777.jsonl"),
+        `${JSON.stringify({ type: "user", uuid: "s1", isSidechain: true, message: { role: "user", content: "hi" } })}\n`,
+      );
+      const adapter = claudeJournal(root);
+      const read = await readClaudeSubagent(adapter, ref, "a7777777");
+      expect(read).not.toBeNull();
+      expect(read!.fileTruncated).toBe(false);
+      expect(read!.entries.length).toBe(1);
     } finally {
       await rm(base, { recursive: true, force: true });
     }

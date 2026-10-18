@@ -1076,6 +1076,11 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     if (ref.kind !== "id" || !isSessionId(ref.value) || !isAgentId(agentId)) return null;
     const mainPath = await this.resolve(ref);
     if (mainPath === null) return null;
+    // The root that built the parent log's path is the outer bound (files.ts header): the session's
+    // own folder is the inner one, but a session folder that is itself a symlink moves that inner
+    // bound wherever it points, so the real path must also stay inside the building root.
+    const root = this.pathCache.get(ref.value)?.root;
+    if (root === undefined) return null;
     const projectDir = dirname(mainPath);
     const mainStem = mainPath.endsWith(".jsonl") ? mainPath.slice(0, -".jsonl".length) : null;
     const fallbackStem = join(projectDir, ref.value);
@@ -1084,7 +1089,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       const candidate = join(stem, "subagents", `agent-${agentId}.jsonl`);
       if (!(await exists(candidate))) continue;
       const real = await containedRealpath(candidate, stem);
-      if (real !== null) return real;
+      if (real !== null && (await containedRealpath(real, root)) !== null) return real;
     }
     return null;
   }
