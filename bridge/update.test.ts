@@ -1817,6 +1817,42 @@ describe("UpdateMonitor on a release line (M60 spec 01)", () => {
     expect(monitor.status()).toMatchObject({ line: "stable", releaseAvailable: false, back: { to: "1.22.6", exceptions: [] } });
   });
 
+  it("names the record's line before any check succeeded, and a switch shows at once (case 15)", async () => {
+    // The rig's bridge, and any offline machine: the release check never answers, so no tags were
+    // ever resolved. The line is still the record's, on the card, on the Crew page and in the
+    // crew header alike; before this seam the status carried no line and both pages said Stable.
+    let record: UpdateLineRecord = DEFAULT_UPDATE_LINE;
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: () => Promise.reject(new Error("nothing accepted a connection")),
+      lineOffer: lineSeam(() => record),
+      line: () => record.line,
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ line: "stable", latest: null, releaseAvailable: false });
+    record = { ...record, line: "edge" };
+    monitor.lineChanged();
+    expect(monitor.status().line).toBe("edge");
+    record = { ...record, line: "stable" };
+    monitor.lineChanged();
+    expect(monitor.status().line).toBe("stable");
+    expect(monitor.status().back).toBeUndefined();
+  });
+
+  it("the record's line wins over the last resolve's, so a switch needs no lineChanged to show", async () => {
+    let record: UpdateLineRecord = { ...DEFAULT_UPDATE_LINE, line: "edge" };
+    const { monitor } = makeMonitor({
+      current: "1.22.6",
+      fetchTags: async () => apiTags("v1.22.6", "v1.23.0-edge.1"),
+      lineOffer: lineSeam(() => record),
+      line: () => record.line,
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().line).toBe("edge");
+    record = { ...record, line: "stable" };
+    expect(monitor.status().line).toBe("stable");
+  });
+
   it("a monitor with no line seam reports no line, and resolves as it always did", async () => {
     const { monitor } = makeMonitor({ current: "1.22.6", fetchTags: async () => apiTags("v1.22.6", "v1.23.0-edge.1") });
     await monitor.checkRelease();

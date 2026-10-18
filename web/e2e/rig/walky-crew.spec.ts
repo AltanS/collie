@@ -407,6 +407,7 @@ test.describe("walky talky across a crew", () => {
         const group = page.getByRole("radiogroup", { name: message("updates.line.title") });
         await group.waitFor({ state: "visible", timeout: 20_000 });
         const stableChecked = await group.getByRole("radio", { name: message("updates.line.stable"), exact: true }).isChecked();
+        notes.push(`the control reads ${stableChecked ? "Stable" : "NOT Stable"}`);
 
         trail.log.push(await tap(recorder, group.getByRole("radio", { name: message("updates.line.edge"), exact: true }), "Edge"));
         const edgeReceipt = await page
@@ -438,6 +439,8 @@ test.describe("walky talky across a crew", () => {
           .catch(() => false);
         const stableSaved = (await lineOf()) === "stable";
         notes.push(`Stable: receipt ${stableReceipt ? "shown" : "NOT shown"}, line record ${stableSaved ? "stable" : "NOT stable"}`);
+        // Each tap's answer is the POST /api/update/line receipt; a tap with none did not work.
+        notes.push(`taps: ${trail.log.map((l) => `${l.label} ${l.worked ? "answered" : `NOT answered (${String(l.answers.length)} answer(s))`}`).join(", ")}`);
         const verdict =
           before === "stable" && stableChecked && edgeReceipt && edgeSaved && nothingStarted && crewSays && stableReceipt && stableSaved && trail.log.every((l) => l.worked)
             ? "pass"

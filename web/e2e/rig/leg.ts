@@ -318,7 +318,8 @@ export interface TapLog {
   readonly screenStillMs: number | null;
 }
 
-const WATCHED = /\/api\/(ask\/|send$|walky$|pane\/[^/]+\/(keys|reply)$)/;
+// `update/line` is the Release line control's one write (crew case 15): its receipt says `ok`.
+const WATCHED = /\/api\/(ask\/|send$|walky$|update\/line$|pane\/[^/]+\/(keys|reply)$)/;
 
 /** Records the bridge's answer to every write the page makes, and the ask ids its snapshots carried. */
 export class TapRecorder {
@@ -352,7 +353,7 @@ export class TapRecorder {
       // A `prepare` send is a read: the bridge reads the screen and types nothing. The phone makes one
       // before a menu commit whose card is newer than its ask (lib/dialog-ask.ts), so it is not a tap.
       if (path === "/api/send" && asJsonString(body?.mode) === "prepare") return;
-      const requestId = asJsonString(body?.id) ?? null;
+      const requestId = asJsonString(body?.id) ?? asJsonString(body?.requestId) ?? null;
       void this.noteAnswer(response, at, path, requestId);
     });
   }
