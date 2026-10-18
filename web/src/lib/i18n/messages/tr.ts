@@ -1547,6 +1547,7 @@ export const tr: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "{version} sürümüne geri dönülüyor…",
   "settings.updateCard.state.rollbackDone": "{version} sürümüne geri dönüldü.",
   "settings.updateCard.state.rollbackRolledBack": "Geri alma denetimi başarısız oldu. Bu makine hâlâ {version} sürümünde.",
+  "settings.updateCard.edgeRejected": "Edge {version} derlemesi denetimden geçemedi ve geri alındı. Tekrar sunulmayacaktır.",
   "settings.updateCard.progressNote": "Bu ekranı açık tutun. Terminal oturumunuza dokunulmadı.",
   "settings.updateCard.retry": "Yeniden dene",
   "settings.updateCard.logTail": "Günlük sonu",

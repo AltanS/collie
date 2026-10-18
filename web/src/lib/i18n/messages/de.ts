@@ -1703,6 +1703,7 @@ export const de: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "Wechsel zurück zu {version}…",
   "settings.updateCard.state.rollbackDone": "Auf {version} zurückgesetzt.",
   "settings.updateCard.state.rollbackRolledBack": "Die Prüfung des Rollbacks ist fehlgeschlagen. Dieser Rechner verwendet weiterhin {version}.",
+  "settings.updateCard.edgeRejected": "Edge-Build {version} hat die Prüfung nicht bestanden und wurde zurückgesetzt. Er wird nicht erneut angeboten.",
   "settings.updateCard.progressNote": "Diese Ansicht geöffnet lassen. Die Terminal-Sitzung bleibt unberührt.",
   "settings.updateCard.retry": "Erneut versuchen",
   "settings.updateCard.logTail": "Log-Auszug",

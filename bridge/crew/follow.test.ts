@@ -1614,6 +1614,40 @@ describe("the crew follows the lead on both lines (M60 spec 01, ADR 0110)", () =
     expect(d).toEqual({ kind: "follow", tag: "v1.23.0-edge.1", runId: RUN_ID, line: "edge" });
   });
 
+  test("a member never takes an Edge build it rejected, whatever run asks (its own health gate failed it)", () => {
+    const d = followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.2", leadLine: "edge", rejected: ["1.23.0-edge.2"] }));
+    expect(d).toMatchObject({ kind: "refuse", reason: "build-rejected" });
+    // The next Edge build is a different build, and is taken.
+    expect(followGuards(facts({ own: "1.22.6", leadRelease: "1.23.0-edge.3", leadLine: "edge", rejected: ["1.23.0-edge.2"] }))).toMatchObject({
+      kind: "follow",
+      tag: "v1.23.0-edge.3",
+    });
+  });
+
+  test("the follower reads the member's rejected builds on every sweep, and spawns nothing for one", async () => {
+    let rejected: readonly string[] = [];
+    const started: string[] = [];
+    const f = new CrewFollower({
+      installKind: "detached-checkout",
+      self: () => ({ version: "1.22.6", self: "attic" }),
+      run: () => null,
+      rejected: () => rejected,
+      preflight: () => Promise.resolve({ schema: 1, verdict: "green", checks: [] }),
+      start: (a) => {
+        started.push(a.tag);
+        return { ok: true };
+      },
+      now: () => NOW,
+      log: () => {},
+    });
+    rejected = ["1.23.0-edge.2"];
+    f.observe({ leadRelease: "1.23.0-edge.2", leadLine: "edge", turn: formatTurn("attic", RUN_ID) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toEqual([]);
+    expect(f.last()).toMatchObject({ kind: "refuse", reason: "build-rejected" });
+  });
+
   test("a member on an Edge build follows an Edge lead to the next one", () => {
     const d = followGuards(facts({ own: "1.23.0-edge.1", leadRelease: "1.23.0-edge.2", leadLine: "edge" }));
     expect(d).toMatchObject({ kind: "follow", tag: "v1.23.0-edge.2" });

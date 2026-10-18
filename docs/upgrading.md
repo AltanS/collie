@@ -652,6 +652,8 @@ last Stable build. The last Stable build is not pruned until the machine is back
 
 **Roll back.** A rollback off an Edge build puts the machine on Stable and marks that build as
 rolled back from. This is true for **Roll back** on the phone and for `collie update --rollback`.
+An Edge build that fails its own health check is rolled back by the updater and marked the same
+way, so it is not offered again. The line stays Edge, and the next Edge build is offered as usual.
 
 **The crew follows the lead.** The lead's line is the crew's line. A member follows its lead to an
 Edge build when the lead is on Edge, and takes the lead's line for its own. A member steps down only

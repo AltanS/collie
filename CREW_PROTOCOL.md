@@ -3302,7 +3302,8 @@ and its `to` is that release. Any later run on the lead clears it.
 
 The member takes the lead's line for its own, in its own `update-line.json`. On a `rollback` step
 off an Edge build, it also marks its own Edge build as rolled back from, so that build is not
-offered again on that machine.
+offered again on that machine. An Edge build that fails the member's own health gate is marked the
+same way, and the member refuses a marked build in any later run, as `build-rejected`.
 
 **On the lead.** A run with a step opens the crew run like any other, and a leg is done once the
 member is at or below the target. A down run has no lead-side hourly limit.

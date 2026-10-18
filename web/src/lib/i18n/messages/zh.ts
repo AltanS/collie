@@ -1671,6 +1671,7 @@ export const zh: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "正在切换回 {version}…",
   "settings.updateCard.state.rollbackDone": "已回滚到 {version}。",
   "settings.updateCard.state.rollbackRolledBack": "回滚未通过检查，这台机器仍为 {version}。",
+  "settings.updateCard.edgeRejected": "Edge 构建版本 {version} 未通过检查并已回滚。系统不会再次提供该版本。",
   "settings.updateCard.progressNote": "请保持此界面开启。终端会话不受影响。",
   "settings.updateCard.retry": "重试",
   "settings.updateCard.logTail": "日志末尾",

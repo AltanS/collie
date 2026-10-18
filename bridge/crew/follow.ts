@@ -165,6 +165,7 @@ export type FollowRefusal =
   | "not-higher"
   | "crosses-a-major"
   | "already-rolled-back"
+  | "build-rejected"
   | "rate-limited"
   | "no-turn"
   | "preflight-red"
@@ -217,6 +218,11 @@ export interface FollowFacts {
   readonly turn: string | null;
   /** This peer's own run record, which is the whole of its memory. There is no second state file. */
   readonly run: UpdateRun | null;
+  /**
+   * The Edge builds this peer rolled back from, by hand or on its own health gate (`update-line.json`,
+   * ADR 0110). Such a build is never taken again, whatever run asks. Absent reads as none.
+   */
+  readonly rejected?: readonly string[];
   readonly now: number;
 }
 
@@ -299,6 +305,12 @@ export function followGuards(f: FollowFacts): FollowDecision {
       "already-rolled-back",
       `this machine already rolled back from ${wanted} in this run; a new confirm on the phone permits one more attempt`,
     );
+  }
+  // ── 5b. NOT A BUILD THIS PEER REJECTED (ADR 0110) ──────────────────────────
+  // An Edge build this machine rolled back from, by hand or on its own health gate, is never taken
+  // again, in any run: a new confirm does not make a broken build less broken.
+  if (f.rejected?.includes(lead) === true) {
+    return refuse("build-rejected", `${wanted} failed on this machine before and is not taken again`);
   }
 
   // A run that is still being driven is a run this must not race. The updater's own lock says the
@@ -418,6 +430,8 @@ export interface CrewFollowerDeps {
   readonly self: () => { readonly version: string; readonly self: string };
   /** The run record on disk as of now, resolved. Re-read every time — that is the memory. */
   readonly run: () => UpdateRun | null;
+  /** The builds this peer rejected (`update-line.json`), re-read every time. Absent reads as none. */
+  readonly rejected?: () => readonly string[];
   readonly preflight: FollowEffects["preflight"];
   /**
    * Spawn the detached updater with `--to-tag <tag> --run-id <id>`.
@@ -555,6 +569,7 @@ export class CrewFollower {
       leadLine: headers.leadLine ?? null,
       turn: headers.turn,
       run: this.deps.run(),
+      rejected: this.deps.rejected?.() ?? [],
       now: this.now(),
     };
     // Whose turn the lead is stating, read once and handed to `record` — see there for why a

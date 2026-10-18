@@ -28,6 +28,7 @@ import {
   type UpdateRun,
 } from "../bridge/update-run.ts";
 import {
+  afterFailedBuild,
   afterRollback,
   isEdgeBuild,
   isStrictRelease,
@@ -608,6 +609,23 @@ function noteRollback(deps: UpdateDeps, fromVersion: string): void {
     deps.io.out(`  ${fromVersion} is marked as rolled back from; this machine is on the Stable line again.`);
   } catch (err) {
     deps.io.err(`warning: could not mark ${fromVersion} as rolled back from (${String(err)}).`);
+  }
+}
+
+/**
+ * An Edge build that failed its health check and was rolled back by this runner: rejected, so no
+ * line offers it again (ADR 0110). The line stays as the person set it. Best-effort and said out
+ * loud, like {@link noteRollback}: the run record already says what happened.
+ */
+function noteFailedBuild(deps: UpdateDeps, failed: string): void {
+  if (!isEdgeBuild(failed.replace(/^v/, ""))) return;
+  try {
+    const record = readUpdateLine((p) => deps.files.read(p), deps.ctx.stateDir);
+    const next = afterFailedBuild(record, failed);
+    if (next !== record) writeUpdateLine(deps.files, deps.ctx.stateDir, next);
+    deps.io.err(`       ${failed.replace(/^v/, "")} is marked as rolled back from and is not offered again.`);
+  } catch (err) {
+    deps.io.err(`warning: could not mark ${failed} as rolled back from (${String(err)}).`);
   }
 }
 
@@ -3340,6 +3358,10 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
     return EXIT.OK;
   }
   if (run.state === "rolled-back") {
+    // AN EDGE BUILD THAT FAILED ITS CHECK IS NOT OFFERED AGAIN (ADR 0110). Only on an update: a
+    // rollback or a switch that fails left nothing new behind. The member's own health gate is this
+    // same runner, so a member rejects the build the same way.
+    if (runActionOf(a) === undefined) noteFailedBuild(deps, a.version === "" ? a.to : a.version);
     deps.io.err(
       a.rollback === true
         ? `error: ${a.to} did not pass its health check — rolled forward to ${a.from ?? "?"} again.`

@@ -1210,6 +1210,8 @@ const crewFollower =
         // Re-read on every decision, never captured: it IS the memory, and the record on disk is
         // what survives this machine's own restart.
         run: () => readUpdateRun(cfg.stateDir),
+        // The Edge builds this member rolled back from (ADR 0110), never taken again.
+        rejected: () => readUpdateLineSync(cfg.stateDir).rejected,
         // ONE subprocess answers guards 6 and 8: `--to-tag` turns the `upstream` check into "does
         // this exact release resolve here, and may this install take it", resolved through
         // `listTags()` / `anonymousTagUrl()` over anonymous HTTPS with no credential.

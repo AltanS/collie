@@ -1547,6 +1547,7 @@ export const pt: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "Alternando de volta para {version}…",
   "settings.updateCard.state.rollbackDone": "Revertido para {version}.",
   "settings.updateCard.state.rollbackRolledBack": "O rollback falhou na verificação. Esta máquina ainda está na {version}.",
+  "settings.updateCard.edgeRejected": "A build Edge {version} falhou na verificação e foi revertida. Ela não será oferecida novamente.",
   "settings.updateCard.progressNote": "Mantenha esta tela aberta. Sua sessão de terminal não foi alterada.",
   "settings.updateCard.retry": "Tentar novamente",
   "settings.updateCard.logTail": "Fim do log",

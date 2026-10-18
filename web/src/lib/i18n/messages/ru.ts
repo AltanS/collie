@@ -1619,6 +1619,7 @@ export const ru: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "Переключение обратно на {version}…",
   "settings.updateCard.state.rollbackDone": "Выполнен откат до {version}.",
   "settings.updateCard.state.rollbackRolledBack": "Откат не прошел проверку. На этой машине осталась {version}.",
+  "settings.updateCard.edgeRejected": "Сборка Edge {version} не прошла проверку и была откачена. Повторно она не предлагается.",
   "settings.updateCard.progressNote": "Не закрывайте этот экран. Сессия терминала не затронута.",
   "settings.updateCard.retry": "Повторить",
   "settings.updateCard.logTail": "Конец журнала",

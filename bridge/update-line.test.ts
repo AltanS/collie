@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  afterFailedBuild,
   afterRollback,
   baseVersion,
   DEFAULT_UPDATE_LINE,
@@ -18,6 +19,7 @@ import {
   REJECTED_MAX,
   UNREADABLE_BY_LAST_STABLE,
   UPDATE_LINE_SCHEMA,
+  type UpdateLineRecord,
   updateLinePath,
   withLine,
   writeUpdateLine,
@@ -276,5 +278,26 @@ describe("the record: update-line.json", () => {
       `rename ${updateLinePath("/state")}.tmp ${updateLinePath("/state")}`,
     ]);
     expect(readUpdateLine((p) => files.get(p) ?? null, "/state")).toEqual(record);
+  });
+});
+
+describe("an Edge build that fails its own health check (ADR 0110)", () => {
+  const edge: UpdateLineRecord = { ...DEFAULT_UPDATE_LINE, line: "edge", changedAt: 10 };
+
+  test("is rejected, and the line stays where the person set it", () => {
+    const after = afterFailedBuild(edge, "v1.23.0-edge.2");
+    expect(after).toMatchObject({ line: "edge", rejected: ["1.23.0-edge.2"], changedAt: 10 });
+    expect(afterFailedBuild(after, "1.23.0-edge.2")).toBe(after);
+  });
+
+  test("a failed strict release is not rejected", () => {
+    expect(afterFailedBuild(edge, "1.23.0")).toBe(edge);
+  });
+
+  test("the next check offers the build after it, never the failed one", () => {
+    const after = afterFailedBuild(edge, "1.23.0-edge.2");
+    const offer = lineOffer({ tags: TAGS, installed: "1.22.6", line: after.line, rejected: after.rejected });
+    expect(offer.latest).toBe("1.23.0-edge.1");
+    expect(offer.newer).not.toContain("1.23.0-edge.2");
   });
 });

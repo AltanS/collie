@@ -1492,6 +1492,17 @@ describe("Roll back — offered from the preflight's kept build, confirmed in up
     expect(await screen.findByRole("button", { name: "Roll back to 1.2.4" })).toBeEnabled();
   });
 
+  it("an Edge build that failed its check says it is not offered again, and offers no Retry (ADR 0110)", async () => {
+    const view = renderCard(info({ run: runAt("rolled-back", { from: "1.3.0", to: "1.4.0-edge.1" }) }));
+    expect(await screen.findByText("Edge build 1.4.0-edge.1 failed its check and was rolled back. It is not offered again.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    view.unmount();
+    // A strict release that failed keeps its Retry, and says nothing about Edge.
+    renderCard(info({ run: runAt("rolled-back", { from: "1.3.0", to: "1.4.0" }) }));
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByText(/is not offered again/)).toBeNull();
+  });
+
   it("a rollback run says so, and offers no Retry that would update to the older build", async () => {
     const view = renderCard(info({ current: "1.2.4", run: runAt("done", { from: "1.3.0", to: "1.2.4", action: "rollback" }) }));
     expect(await screen.findByText("Rolled back to 1.2.4.")).toBeInTheDocument();

@@ -1810,6 +1810,7 @@ export const en = {
   "settings.updateCard.state.rollbackStaging": "Switching back to {version}…",
   "settings.updateCard.state.rollbackDone": "Rolled back to {version}.",
   "settings.updateCard.state.rollbackRolledBack": "The rollback failed its check. This machine is still on {version}.",
+  "settings.updateCard.edgeRejected": "Edge build {version} failed its check and was rolled back. It is not offered again.",
   "settings.updateCard.progressNote": "Keep this screen open. Your terminal session is untouched.",
   "settings.updateCard.retry": "Retry",
   "settings.updateCard.logTail": "Log tail",

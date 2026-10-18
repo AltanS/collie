@@ -1667,6 +1667,7 @@ export const zhTW: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "正在切換回 {version}…",
   "settings.updateCard.state.rollbackDone": "已復原至 {version}。",
   "settings.updateCard.state.rollbackRolledBack": "復原未通過檢查，這台機器仍為 {version}。",
+  "settings.updateCard.edgeRejected": "Edge 組建 {version} 未通過檢查，已復原。之後不會再提供。",
   "settings.updateCard.progressNote": "請保持此介面開啟。終端機工作階段不受影響。",
   "settings.updateCard.retry": "重試",
   "settings.updateCard.logTail": "記錄末尾",

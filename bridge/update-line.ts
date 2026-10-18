@@ -181,8 +181,29 @@ export function withLine(record: UpdateLineRecord, line: ReleaseLine, at: number
 export function afterRollback(record: UpdateLineRecord, from: string, at: number): UpdateLineRecord {
   const left = bare(from);
   if (!isEdgeBuild(left)) return record;
-  const rejected = record.rejected.includes(left) ? record.rejected : [...record.rejected, left].slice(-REJECTED_MAX);
+  const rejected = rejectBuild(record, left).rejected;
   return { schema: UPDATE_LINE_SCHEMA, line: "stable", rejected, changedAt: record.line === "stable" ? record.changedAt : at };
+}
+
+/**
+ * An Edge build that FAILED ITS HEALTH CHECK and was rolled back by the updater itself (ADR 0110).
+ *
+ * The build is rejected, so the next check does not offer it again: without this a broken Edge
+ * build fails, rolls back, is offered, fails again, which is the loop the Edge line exists to stop.
+ * The line stays where the person set it. Only a rollback a person starts moves the machine to
+ * Stable ({@link afterRollback}). A strict release that fails is not rejected: the next Stable is the
+ * fix, and a strict release stays offered as before.
+ */
+export function afterFailedBuild(record: UpdateLineRecord, failed: string): UpdateLineRecord {
+  const build = bare(failed.replace(/^v/, ""));
+  if (!isEdgeBuild(build)) return record;
+  return rejectBuild(record, build);
+}
+
+/** `record` with `build` in its rejected list, once, keeping the newest {@link REJECTED_MAX}. */
+function rejectBuild(record: UpdateLineRecord, build: string): UpdateLineRecord {
+  if (record.rejected.includes(build)) return record;
+  return { ...record, rejected: [...record.rejected, build].slice(-REJECTED_MAX) };
 }
 
 /**

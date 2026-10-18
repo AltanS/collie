@@ -1547,6 +1547,7 @@ export const it: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "Ritorno a {version} in corso…",
   "settings.updateCard.state.rollbackDone": "Rollback a {version} eseguito.",
   "settings.updateCard.state.rollbackRolledBack": "Il controllo del rollback non è riuscito. Questa macchina è ancora su {version}.",
+  "settings.updateCard.edgeRejected": "La build Edge {version} non ha superato il controllo ed è stata ripristinata. Non verrà più proposta.",
   "settings.updateCard.progressNote": "Tieni aperta questa schermata. La tua sessione terminale non è stata toccata.",
   "settings.updateCard.retry": "Riprova",
   "settings.updateCard.logTail": "Ultime righe del log",

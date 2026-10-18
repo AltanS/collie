@@ -1689,6 +1689,7 @@ export const ja: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "{version} に切り替え中…",
   "settings.updateCard.state.rollbackDone": "{version} にロールバックしました。",
   "settings.updateCard.state.rollbackRolledBack": "ロールバックのチェックに失敗しました。このマシンは引き続き {version} のままです。",
+  "settings.updateCard.edgeRejected": "Edge ビルド {version} はチェックに失敗したため、ロールバックされました。再提供はされません。",
   "settings.updateCard.progressNote": "この画面を開いたままにしてください。端末セッションには影響しません。",
   "settings.updateCard.retry": "再試行",
   "settings.updateCard.logTail": "ログ末尾",

@@ -1681,6 +1681,7 @@ export const ko: Dictionary = {
   "settings.updateCard.state.rollbackStaging": "{version}(으)로 다시 전환하는 중…",
   "settings.updateCard.state.rollbackDone": "{version}(으)로 롤백했습니다.",
   "settings.updateCard.state.rollbackRolledBack": "롤백 검사에 실패했습니다. 이 머신은 여전히 {version} 상태입니다.",
+  "settings.updateCard.edgeRejected": "Edge 빌드 {version} 검사에 실패하여 롤백되었습니다. 다시 제공되지 않습니다.",
   "settings.updateCard.progressNote": "이 화면을 열어 두세요. 터미널 세션에는 영향이 없습니다.",
   "settings.updateCard.retry": "재시도",
   "settings.updateCard.logTail": "로그 끝부분",

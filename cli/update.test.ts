@@ -3908,6 +3908,28 @@ describe("two release lines: Stable and Edge (M60 spec 01)", () => {
     expect(h.io.stdout.join("\n")).toContain("on the Stable line again");
   });
 
+  test("an Edge build that fails its health check is rejected; the line stays Edge (ADR 0110)", async () => {
+    const edge = "1.1.0-edge.1";
+    const h = binaryHarness({
+      others: ["0.9.0", edge],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" },
+      health: [{ version: "1.0.0" }],
+    });
+    h.files.write(LINE_FILE, lineDoc("edge"));
+    expect(await runner(h, { ...BINARY_APPLY, to: edge, version: edge })).toBe(EXIT.FAIL);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("rolled-back");
+    const record = parseUpdateLine(h.files.read(LINE_FILE));
+    expect(record.line).toBe("edge");
+    expect(record.rejected).toEqual([edge]);
+    expect(h.io.stderr.join("\n")).toContain(`${edge} is marked as rolled back from and is not offered again.`);
+  });
+
+  test("a strict release that fails its health check is not rejected, and writes no line record", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" }, health: [{ version: "1.0.0" }] });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(h.files.read(LINE_FILE)).toBeNull();
+  });
+
   test("a rollback off a Stable build writes no line record", async () => {
     const h = stagedHarness({ versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" } });
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);

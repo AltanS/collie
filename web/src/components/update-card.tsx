@@ -893,6 +893,10 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
   // A ROLLBACK RUN (M60 spec 01) says so, and offers no Retry: Retry opens an UPDATE to `run.to`,
   // which on a rollback is the older build. The Roll back row above is the way to try again.
   const rollback = run.action === "rollback";
+  // AN EDGE BUILD THAT FAILED ITS CHECK (ADR 0110): the runner rejected it, so no line offers it
+  // again, and a Retry would ask for a build the updater now refuses. Only an update's failure: a
+  // rollback or a switch that fails left no new build behind.
+  const failedEdge = run.action === undefined && run.state === "rolled-back" && EDGE_BUILD.test((run.to ?? "").replace(/^v/, ""));
   // Off the run's OWN start stamp, which the host wrote, so the number is the run's age and not this
   // tab's age. A phone opened mid-run joins the count where the run actually is.
   const elapsed = run.startedAt > 0 ? Math.max(0, now - run.startedAt) : null;
@@ -959,7 +963,13 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
         </details>
       )}
 
-      {!rollback && (run.state === "rolled-back" || run.state === "interrupted") && (
+      {failedEdge && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("settings.updateCard.edgeRejected", { version: (run.to ?? "").replace(/^v/, "") })}
+        </p>
+      )}
+
+      {!rollback && !failedEdge && (run.state === "rolled-back" || run.state === "interrupted") && (
         <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
           <RotateCcw className="size-4" />
           {t("settings.updateCard.retry")}
@@ -968,6 +978,9 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
     </div>
   );
 }
+
+/** An Edge build's version: `1.23.0-edge.2` (ADR 0110). */
+const EDGE_BUILD = /-edge\.\d+$/;
 
 /** `m:ss`, ticking. Monospaced digits at the call site, so the row does not jitter every second. */
 function clockOf(ms: number): string {
