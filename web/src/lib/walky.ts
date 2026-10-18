@@ -252,10 +252,48 @@ export function resultId(output: string | undefined): string | null {
 }
 
 /**
- * A shell line that runs the walky talky CLI: it STARTS with `collie walky` (leading space allowed),
- * then the verb. `inbox <id>` carries the id it names.
+ * The walky talky CLI as the first words of one command segment: `collie walky`, where `collie` may carry
+ * a path in front (`/home/me/.local/bin/collie`, `~/.local/bin/collie`, `C:\\tools\\collie.exe`). The installed
+ * skill names the binary by its absolute path, so a bare `collie` is only one of the shapes.
  */
-const WALKY_COMMAND = /^\s*collie\s+walky(?=\s|$)(?:\s+(send|reply|inbox)(?=\s|$))?(?:\s+(wt_[a-z0-9]{12})(?![A-Za-z0-9_]))?/;
+const WALKY_BINARY = /^(?:[^\s;&|]*[\\/])?collie(?:\.exe)?\s+walky(?=\s|$)/;
+/** After the binary: the verb, and for `inbox` the id it names. */
+const WALKY_VERB = /^(?:\s+(send|reply|inbox)(?=\s|$))?(?:\s+(wt_[a-z0-9]{12})(?![A-Za-z0-9_]))?/;
+/** Words that may stand before the command in a segment: `env`, and `NAME=value` assignments. */
+const SEGMENT_LEAD = /^(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)*/;
+
+/**
+ * A command line cut into its segments at `;`, `&&`, `||`, `|`, `&`, an opening `(` or `{`, and a line
+ * break, outside quotes. `cd x && git log | collie walky send a` is three segments. A quote hides its
+ * separators, so `echo "a; collie walky send"` stays one segment that starts with `echo`.
+ */
+function shellSegments(command: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const c = command.charAt(i);
+    if (quote !== null) {
+      cur += c;
+      if (c === "\\" && quote === '"') cur += command.charAt(++i);
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      cur += c;
+    } else if (c === "\\") {
+      cur += c + command.charAt(++i);
+    } else if (c === ";" || c === "&" || c === "|" || c === "(" || c === "{" || c === "\n") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
 
 export interface WalkyCommand {
   /** The verb, or `other` for any other (`who`, `status`, a bare `collie walky`). */
@@ -264,13 +302,23 @@ export interface WalkyCommand {
   id: string | null;
 }
 
-/** The walky command a shell line runs, or null when it is not one. */
+/**
+ * The walky command a shell line runs, or null when it is not one. The CLI must be the first words of a
+ * segment of the line (after `env` and `NAME=value` words), so a `cd x &&` or `export X=1;` before it, a
+ * path in front of `collie`, and a pipe into it (`git log | collie walky send a`) all match, while
+ * `echo collie walky send` and `ls collie` do not. The first segment that is a walky command wins.
+ */
 export function parseWalkyCommand(command: string): WalkyCommand | null {
-  const m = WALKY_COMMAND.exec(command);
-  if (m === null) return null;
-  const verb = m[1];
-  if (verb !== "send" && verb !== "reply" && verb !== "inbox") return { verb: "other", id: null };
-  return { verb, id: verb === "inbox" ? (m[2] ?? null) : null };
+  for (const segment of shellSegments(command)) {
+    const words = segment.trimStart().replace(SEGMENT_LEAD, "");
+    const bin = WALKY_BINARY.exec(words);
+    if (bin === null) continue;
+    const m = WALKY_VERB.exec(words.slice(bin[0].length));
+    const verb = m?.[1];
+    if (verb !== "send" && verb !== "reply" && verb !== "inbox") return { verb: "other", id: null };
+    return { verb, id: verb === "inbox" ? (m?.[2] ?? null) : null };
+  }
+  return null;
 }
 
 /**

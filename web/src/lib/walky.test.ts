@@ -317,13 +317,50 @@ describe("parseWalkyCommand", () => {
 
   it.each([
     "echo collie walky send x y",
-    "cd x && collie walky send a b",
+    'echo "a; collie walky send x y"',
+    "git commit -m 'collie walky' && ls",
+    "cat notes | grep collie walky",
+    "/usr/bin/collie-walky send a b",
+    "xcollie walky send a b",
     "collie walkyx send a b",
     "collie walky-send a b",
     "ls collie",
     "",
   ])("is not a walky command: %j", (command) => {
     expect(parseWalkyCommand(command)).toBeNull();
+  });
+
+  it("reads the CLI named by an absolute path, as the installed skill writes it", () => {
+    expect(parseWalkyCommand('/var/home/altan/.local/bin/collie walky send local/w6:p3#k3f9 "hi"')).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand("/var/home/altan/.cache/collie-lab/next-1.22/bin/collie walky who")).toEqual({ verb: "other", id: null });
+    expect(parseWalkyCommand("/opt/collie/bin/collie walky inbox wt_k3f9x2m8q1a0")).toEqual({ verb: "inbox", id: "wt_k3f9x2m8q1a0" });
+    expect(parseWalkyCommand("C:\\tools\\collie.exe walky send a b")).toEqual({ verb: "send", id: null });
+  });
+
+  it("reads the ~/.local/bin/collie form and a relative path", () => {
+    expect(parseWalkyCommand('~/.local/bin/collie walky reply wt_k3f9x2m8q1a0 "ok"')).toEqual({ verb: "reply", id: null });
+    expect(parseWalkyCommand("./bin/collie walky who")).toEqual({ verb: "other", id: null });
+  });
+
+  it("reads the command after a cd, an assignment or an env prefix", () => {
+    expect(parseWalkyCommand('cd /repo && collie walky send a "x"')).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand('cd /repo; /usr/local/bin/collie walky inbox wt_k3f9x2m8q1a0')).toEqual({ verb: "inbox", id: "wt_k3f9x2m8q1a0" });
+    expect(parseWalkyCommand('env COLLIE_X=1 collie walky send a "x"')).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand('COLLIE_X="a b" FOO=1 collie walky who')).toEqual({ verb: "other", id: null });
+    expect(parseWalkyCommand('(cd /repo && collie walky send a "x")')).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand("export A=1\ncollie walky who")).toEqual({ verb: "other", id: null });
+  });
+
+  it("reads a body piped into send", () => {
+    expect(parseWalkyCommand("git log --oneline -5 | collie walky send local/w6:p3#k3f9")).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand("git log | /home/me/.local/bin/collie walky send a")).toEqual({ verb: "send", id: null });
+    expect(parseWalkyCommand("cat msg.txt | tee /tmp/x | collie walky reply wt_k3f9x2m8q1a0")).toEqual({ verb: "reply", id: null });
+  });
+
+  it("does not read a walky mention that is only an argument of another command", () => {
+    expect(parseWalkyCommand("echo collie walky")).toBeNull();
+    expect(parseWalkyCommand("echo collie walky send a b | cat")).toBeNull();
+    expect(parseWalkyCommand("man collie walky")).toBeNull();
   });
 
   it("does not take the id of a longer word as the inbox id", () => {

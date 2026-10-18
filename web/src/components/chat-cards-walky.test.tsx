@@ -54,6 +54,15 @@ describe("a tool card that ran collie walky", () => {
     expect(walkyCard()).toBeNull();
   });
 
+  it("wears the badge and shows the receipt line when the skill's absolute path names the binary", () => {
+    draw(exec('cd /repo && /var/home/altan/.local/bin/collie walky send bluefin/w6:p3#k3f9 "Merged."', SEND_OUTPUT), [fixtureWalkySent]);
+    expect(badge()).not.toBeNull();
+    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    draw(exec("git log --oneline -5 | ~/.local/bin/collie walky send bluefin/w6:p3#k3f9", SEND_OUTPUT), [fixtureWalkySent]);
+    expect(badge()).not.toBeNull();
+    expect(receipt()).not.toBeNull();
+  });
+
   it("wears no badge on any other command, even one that mentions walky", () => {
     draw(exec("echo collie walky send x y", "x"), [fixtureWalkyAgent]);
     expect(badge()).toBeNull();
