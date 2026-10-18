@@ -33,9 +33,11 @@
 //
 // WHERE THE SESSION COMES FROM: Herdr ships no muse integration and drops custom-source session
 // reports (probed 2026-10-02 on herdr 0.9.0: an explicit report-agent-session never surfaces in
-// pane.get), so muse panes carry no agentSession. `discover` finds the log instead: the newest
-// session.jsonl whose metadata workspace_root equals the pane's cwd. Two panes sharing one cwd can
-// cross-wire (newest wins); the ref is re-derived per tap so it self-heals when one ends.
+// pane.get), so muse panes carry no agentSession. `discover` finds the log instead, from the pane's
+// own identity first: a `resume <uuid>` in its foreground argv, else the foreground pid matched
+// against each same-cwd log's `runtime.session.route_facts` pid. With no exact match a single
+// same-cwd log is still that pane's, but two live panes sharing one cwd must never cross-wire
+// (#508): an ambiguous cwd reads as no session rather than as the other pane's log.
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -85,7 +87,7 @@ function isMuseArgv0(argv0: string): boolean {
 /**
  * The session a pane's foreground argv names, or null when none does. Only the exact `resume
  * <uuid>` form counts: a fresh `muse`, `resume --last`, and anything run under a wrapper fall
- * through to the cwd walk, where the just-started session is the newest and still wins. First
+ * through to the cwd walk, where the foreground pid and the ambiguity rule take over. First
  * match wins — the foreground group holds one TUI, and a uuid that names no log resolves to
  * nothing downstream anyway.
  */
@@ -97,6 +99,20 @@ function sessionFromArgv(processes: readonly ForegroundProcess[] | undefined): s
     if (isMuseSessionId(argv[2]!)) return argv[2]!.toLowerCase();
   }
   return null;
+}
+
+/**
+ * The positive pids a pane's foreground group reports, or an empty set when it reports none.
+ * A fresh `muse` names no session in argv, but the TUI pid Herdr lists here is the same pid the
+ * session wrote into its own `route_facts` record — the exact identity {@link sessionFromArgv}
+ * cannot give it (#508).
+ */
+function foregroundPids(processes: readonly ForegroundProcess[] | undefined): ReadonlySet<number> {
+  const pids = new Set<number>();
+  for (const proc of processes ?? []) {
+    if (proc.pid !== undefined && Number.isInteger(proc.pid) && proc.pid > 0) pids.add(proc.pid);
+  }
+  return pids;
 }
 
 /** `recorded_at` is microseconds since the epoch; the transcript wants an ISO string. */
@@ -694,12 +710,14 @@ export class MuseTranscriptSource implements TranscriptSource {
    * Find the session running in `cwd` without a reported ref.
    *
    * Herdr reports no session for muse panes (see the header), so the history and chat routes ask
-   * here when the pane names none. Two rules, in order. First, the pane's own foreground argv: a
+   * here when the pane names none. Rules, in order. First, the pane's own foreground argv: a
    * `muse … resume <uuid>` there names the session exactly, so two tabs in one workspace each
-   * read their own transcript. Otherwise — no argv, a fresh `muse` with no resume, or a
-   * multiplexer that offers none — the newest session.jsonl whose metadata workspace_root
-   * equals the cwd, read from the file's head (the metadata record sits on line 2). The walk is
-   * newest-first with an early exit, so the common case costs a few directory reads; the caps
+   * read their own transcript. Next, the foreground pid: a fresh `muse` has no resume argv, but
+   * its log's head carries that pid in `runtime.session.route_facts`, so among the logs whose
+   * metadata workspace_root equals the cwd the one whose pid is in the pane's foreground is its
+   * own (#508). Otherwise a single same-cwd log is the answer, and two or more are no answer at
+   * all — newest-wins there would serve one pane the other's conversation. The metadata and
+   * route_facts records sit on the head's first lines; the walk is newest-first and the caps
    * below bound the worst case. Subagent logs are excluded by construction — only a
    * `<uuid>/session.jsonl` at exactly that depth is ever a candidate.
    *
@@ -714,15 +732,29 @@ export class MuseTranscriptSource implements TranscriptSource {
     const named = sessionFromArgv(hints?.processes);
     if (named !== null) return { kind: "id", value: named };
     if (cwd.trim() === "") return null;
+    const pids = foregroundPids(hints?.processes);
+    let sole: string | null = null;
+    let ambiguous = false;
     for (const root of this.roots) {
-      const hit = await this.findByRoot(root, cwd);
-      if (hit === null) continue;
-      return { kind: "id", value: hit };
+      const hit = await this.findByRoot(root, cwd, pids);
+      if (hit.kind === "exact") return { kind: "id", value: hit.uuid };
+      if (hit.kind === "ambiguous") ambiguous = true;
+      if (hit.kind === "sole") {
+        // A sole match in each of two roots is the same ambiguity as two in one root.
+        if (sole !== null && sole !== hit.uuid) ambiguous = true;
+        sole = hit.uuid;
+      }
     }
-    return null;
+    return ambiguous || sole === null ? null : { kind: "id", value: sole };
   }
 
-  private async findByRoot(root: string, cwd: string): Promise<string | null> {
+  private async findByRoot(
+    root: string,
+    cwd: string,
+    pids: ReadonlySet<number>,
+  ): Promise<
+    { kind: "exact" | "sole"; uuid: string } | { kind: "ambiguous" } | { kind: "none" }
+  > {
     // Newest first, so the first few candidates are the only ones usually read. The walk stops
     // collecting past MAX_DISCOVER_CANDIDATES: past that the answer is "too many sessions to
     // tell", which reads as no session rather than as a slow one.
@@ -753,12 +785,25 @@ export class MuseTranscriptSource implements TranscriptSource {
       if (candidates.length >= MAX_DISCOVER_CANDIDATES) break;
     }
     candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    let sole: string | null = null;
+    let matches = 0;
     for (const candidate of candidates.slice(0, MAX_DISCOVER_READS)) {
       const contained = await containedRealpath(candidate.path, root);
       if (contained === null) continue;
-      if ((await metadataRoot(contained)) === cwd) return candidate.uuid;
+      const identity = await headIdentity(contained);
+      if (identity.root !== cwd) continue;
+      matches += 1;
+      // Newest-first, so the first pid hit is the newest log this pane's own process wrote.
+      if (identity.pid !== null && pids.has(identity.pid)) {
+        return { kind: "exact", uuid: candidate.uuid };
+      }
+      if (sole === null) sole = candidate.uuid;
+      // With no pid to settle it, a second same-cwd log already proves the ambiguity. With one,
+      // an older candidate may still be this pane's own, so the bounded walk continues.
+      if (matches >= 2 && pids.size === 0) return { kind: "ambiguous" };
     }
-    return null;
+    if (matches === 0 || sole === null) return { kind: "none" };
+    return matches === 1 ? { kind: "sole", uuid: sole } : { kind: "ambiguous" };
   }
 
   stat = statFile;
@@ -790,16 +835,22 @@ async function descending(dir: string): Promise<string[]> {
 }
 
 /**
- * The workspace_root a session log's metadata record declares, or null when the head carries
- * none. Reads the head only — the metadata record sits on the log's second line.
+ * The identity a session log's head declares: the metadata record's workspace_root and the
+ * route_facts record's pid, each null when the head carries none. Reads the head only — the two
+ * records sit on the log's first lines (metadata second, route_facts third), so the scan stops
+ * once both are known. The pid is the first route_facts in the head: a resumed log appends later
+ * ones beyond it, but a resumed pane already names its session in argv, and the fresh panes the
+ * pid exists for have exactly one.
  */
-async function metadataRoot(path: string): Promise<string | null> {
+async function headIdentity(path: string): Promise<{ root: string | null; pid: number | null }> {
   let text: string;
   try {
     text = await head(path);
   } catch {
-    return null;
+    return { root: null, pid: null };
   }
+  let root: string | null = null;
+  let pid: number | null = null;
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
     let parsed: JsonValue;
@@ -809,13 +860,21 @@ async function metadataRoot(path: string): Promise<string | null> {
     } catch {
       continue;
     }
-    if (!isObj(parsed) || str(parsed.payload_type) !== "runtime.session.metadata") continue;
+    if (!isObj(parsed)) continue;
     const payload = isObj(parsed.payload) ? parsed.payload : null;
     const record = payload !== null && isObj(payload.record) ? payload.record : null;
-    const root = record === null ? "" : str(record.workspace_root);
-    return root === "" ? null : root;
+    if (record === null) continue;
+    if (str(parsed.payload_type) === "runtime.session.metadata" && root === null) {
+      const value = str(record.workspace_root);
+      root = value === "" ? null : value;
+    }
+    if (str(parsed.payload_type) === "runtime.session.route_facts" && pid === null) {
+      const value = record.pid;
+      pid = typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+    }
+    if (root !== null && pid !== null) break;
   }
-  return null;
+  return { root, pid };
 }
 
 /**

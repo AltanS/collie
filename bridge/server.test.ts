@@ -5437,7 +5437,7 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
     }
   });
 
-  test("a multiplexer without the call keeps the newest-wins fallback", async () => {
+  test("a multiplexer without the call gets no journal when two sessions share the cwd (#508)", async () => {
     const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
     try {
       await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
@@ -5472,9 +5472,11 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
         new Request(url),
       );
       // SAFETY: the bridge's own JSON, served by the call above.
-      const body = (await res.json()) as { available: boolean; entries?: unknown[] };
-      expect(body.available).toBe(true);
-      expect(JSON.stringify(body.entries)).toContain("beta from session B");
+      const body = (await res.json()) as { available: boolean; reason?: string; entries?: unknown[] };
+      // No foreground identity and two same-cwd logs: no Chat beats the other pane's (#508).
+      expect(body.available).toBe(false);
+      expect(body.reason).toBe("no-session");
+      expect(body.entries).toBeUndefined();
     } finally {
       await rm(base, { recursive: true, force: true });
     }
