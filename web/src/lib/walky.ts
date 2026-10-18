@@ -55,7 +55,7 @@ export interface WalkyReceipt {
   id: string;
   state: WalkyState;
   /**
-   * Why, in the bridge's words: "no such pane", "not an agent pane", "dialog open", "password prompt",
+   * Why, in the bridge's words: "no such pane", "not an agent pane", "pane busy", "box not free", "password prompt",
    * "rate limit", "off", "no terminal" (a session with no terminal is `inbox-only`, not refused),
    * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature".
    */
