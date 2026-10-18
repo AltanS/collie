@@ -28,6 +28,7 @@ describe("parsePiFooter: the footers the corpus prints", () => {
       "↑↓ move  1-9 select  space toggle  enter toggle  tab next question  c comment  esc cancel",
       true, "other", true, true, "cancel", false,
     ],
+    ["↑↓ choose · Enter confirm · Esc cancel · D details", true, "select", false, false, "cancel", false],
     ["Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel", false, "select", false, false, "cancel", false],
   ] as const)("%s", (text, arrowsMove, enter, digitsSelect, spaceToggles, escapeVerb, tabs) => {
     expect(parsePiFooter(text)).toEqual({ text, arrowsMove, enter, digitsSelect, spaceToggles, escapeVerb, tabs });

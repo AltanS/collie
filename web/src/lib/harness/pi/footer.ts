@@ -11,6 +11,8 @@
 //                                                                         the PR 397 extension (pi--v110-*)
 //   ↑↓ move  1-9 select  space select  enter next  tab next question  c comment  esc cancel
 //                                                                         OmO's built-in ask (pi--omo-v5130-*)
+//   ↑↓ choose · Enter confirm · Esc cancel · D details                    a frameless consent dialog
+//                                                                         (pi--v130-gentle-review-consent.txt)
 //
 // Two separators (` • ` and OmO's double space; ` · ` too, which pi's own modals print) and two hint
 // forms (`<key> to <verb>` and `<key> <verb>`). Every segment must be a hint whose key is in the
@@ -27,8 +29,8 @@ export type EnterRole = "select" | "submit" | "other";
 export interface PiFooter {
   /** The joined text that was parsed (one space between wrapped rows). */
   text: string;
-  /** ↑↓ named, with a verb that moves the pointer (`navigate`, `move`, or `select` as the stock
-   *  questionnaire's `↑↓ select` says it). */
+  /** ↑↓ named, with a verb that moves the pointer (`navigate`, `move`, `choose`, or `select` as the
+   *  stock questionnaire's `↑↓ select` says it). */
   arrowsMove: boolean;
   /** Enter's role, or null when the footer does not name Enter. `select` and `confirm` are `select`;
    *  `submit` is `submit`; every other verb (`next`, `toggle`, `save and next`, `goes to the first
@@ -60,7 +62,7 @@ function keyKind(token: string): KeyKind | null {
   if (/^space$/i.test(token)) return "space";
   if (token === "1-9") return "digits";
   if (/^(?:tab|shift\+tab)$/i.test(token)) return "tab";
-  if (/^[a-z]$/.test(token) || /^ctrl\+[a-z]$/i.test(token)) return "letter";
+  if (/^[a-z]$/i.test(token) || /^ctrl\+[a-z]$/i.test(token)) return "letter";
   return null;
 }
 
@@ -92,7 +94,7 @@ export function parsePiFooter(text: string): PiFooter | null {
     const verb = m[2]!.trim().toLowerCase();
     switch (kind) {
       case "updown":
-        if (verb === "navigate" || verb === "move" || verb === "select") footer.arrowsMove = true;
+        if (verb === "navigate" || verb === "move" || verb === "choose" || verb === "select") footer.arrowsMove = true;
         break;
       case "enter":
         // Two Enter hints on one footer are two claims; keep the stricter reading.

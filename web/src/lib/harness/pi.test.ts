@@ -37,7 +37,7 @@ describeAdapterConformance(piAdapter, {
 
 describe("pi adapter routing", () => {
   it("lifts every question screen the corpus proves, and no fewer", () => {
-    expect(lifted).toHaveLength(47);
+    expect(lifted).toHaveLength(49);
   });
 
   it.each([
