@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 import { cellPieces } from "@/lib/cell-glyphs";
-import { widePieces } from "@/lib/text-width";
+import { WIDE_RANGES, widePieces } from "@/lib/text-width";
 
 // A plain run → nodes. The Block and Powerline characters whose whole job is to fill their cell are
 // painted as boxes rather than typed, because a glyph is an em tall and a cell is taller than that
@@ -51,10 +51,22 @@ export function renderCells(run: string): ReactNode {
 // Hangul bare. Each wide piece draws the decoration of the link around it.
 const WIDE_CELL_CLASS = "inline-block w-[2ch] text-center [text-decoration:inherit]";
 
-/** `renderCells`, with each double-width character held to two cells. */
+// Every code point that can start a two-cell cluster, built once from the table
+// `widePieces` reads, plus U+FE0F (VS16), which turns a narrow base such as `⚠` or a
+// keycap digit into a two-cell emoji. A run with no match holds no wide cluster, so it
+// skips `widePieces` and its `Intl.Segmenter` pass. Box drawing, `⏺`, `❯` and `→` are not
+// in the table, and a Claude screen carries them on nearly every row, re-rendered on every
+// poll. The regex is not global, so `test` keeps no state and allocates nothing.
+const hex = (cp: number) => `\\u{${cp.toString(16)}}`;
+const MAY_HOLD_WIDE = new RegExp(
+  `[${WIDE_RANGES.map(([lo, hi]) => `${hex(lo)}-${hex(hi)}`).join("")}${hex(0xfe0f)}]`,
+  "u",
+);
+
+/** `renderCells`, with each double-width character held to two cells. A run without one
+ *  is handed to `renderCells` as it came: no pieces, no segmenter, no element. */
 export function renderWideCells(run: string): ReactNode {
-  // Keep ASCII-only polling rows on their allocation-free path.
-  if (/^[\x20-\x7e]*$/.test(run)) return renderCells(run);
+  if (!MAY_HOLD_WIDE.test(run)) return renderCells(run);
   const pieces = widePieces(run);
   if (!pieces.some((p) => p.wide)) return renderCells(run);
   return pieces.map((p, k) =>
