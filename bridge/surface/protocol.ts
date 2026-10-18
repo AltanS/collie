@@ -255,6 +255,13 @@ export interface SendDeps {
    * `turn_running`.
    */
   readonly holds?: HoldStore;
+  /**
+   * A blind send went out (M61, ADR 0107): on a pane with no profile, the text was typed and Enter
+   * went through the gate, and the receipt says `sent`. Called once, after the receipt is settled and
+   * inside a try, never for a refusal, a replay or a send that did not submit. What the caller keeps
+   * of it is the caller's business: the bridge keeps the line only for a shell pane (bridge/sent.ts).
+   */
+  readonly blindSent?: (sent: { readonly session: string; readonly paneId: string; readonly text: string }) => void;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -2207,7 +2214,9 @@ export class SendProtocol {
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
       if (state.noticeKey) note.cause = NOTICE_KEY;
-      return this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
+      const answer = this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
+      if (state.blind && answer.receipt?.outcome === "sent") this.noteBlindSent(state);
+      return answer;
     } catch (err) {
       if (!(err instanceof Ended)) throw err;
       if (release && err.outcome === "refused" && err.reason !== undefined && ((NOT_YET.has(err.reason) && state.keys.length === 0) || cleanProbe(state, err))) return this.backToQueue(state, err);
@@ -2215,6 +2224,15 @@ export class SendProtocol {
       return this.settle(state, err);
     } finally {
       locks.release(state.lockKey, record.id);
+    }
+  }
+
+  /** Tell {@link SendDeps.blindSent} a blind send went out. Never throws, and never changes the answer. */
+  private noteBlindSent(state: RunState): void {
+    try {
+      this.deps.blindSent?.({ session: state.target.session, paneId: state.target.paneId, text: state.request.text });
+    } catch (err) {
+      console.warn(`[send] the blind-send note failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

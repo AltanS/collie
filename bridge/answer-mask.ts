@@ -69,3 +69,12 @@ export function maskSnapshotTitles<
 >(snapshot: S): S {
   return { ...snapshot, agents: snapshot.agents.map(maskTerminalTitle), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
 }
+
+/**
+ * A Sent answer (ADR 0107) with every line masked. A line that matched a pattern when it was sent was
+ * never kept, so this changes a line only when the pattern list grew after it was recorded, or when a
+ * member one release behind kept what this bridge would not. Every other field is untouched.
+ */
+export function maskSentAnswer<T extends { entries: readonly { line: string }[] }>(answer: T): T {
+  return { ...answer, entries: answer.entries.map((entry) => ({ ...entry, line: redactText(entry.line) })) };
+}

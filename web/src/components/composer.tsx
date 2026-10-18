@@ -2,9 +2,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, MessageSquare, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, Loader2, MessageSquare, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
-import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
+import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
@@ -22,6 +22,9 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
 import { CommandPalette } from "@/components/command-palette";
+import { SentSheet } from "@/components/sent-sheet";
+import { SentSuggestions } from "@/components/sent-suggestions";
+import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -116,6 +119,8 @@ interface ComposerProps {
   agent: string | undefined | null;
   /** True for a bare shell pane — tweaks the placeholder copy. */
   isShell: boolean;
+  /** The pane's folder, absolute. Sent (M61) lists "This folder" with it; absent, it offers the machine only. */
+  cwd?: string | undefined;
   /* NO `status` AND NO `stale` HERE ANY MORE. The composer took the pane's state as a prop for one
      reason: the status band above the controls row drew it as a word. That band is gone (see the
      long note at the row below), the word went with it rather than moving, and the state is the
@@ -350,7 +355,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1124,11 +1129,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
+  // SENT (M61): on a shell pane, the lines sent through Collie come back from a sheet (the belt's
+  // Sent, or the strip's "All") and as suggestions above the box. Both only put a line in the box.
+  // Sending it is the person's own tap on Send, which runs the ordinary Send Protocol with a request
+  // id of its own.
+  const [sentOpen, setSentOpen] = useState(false);
+  // Whether the text box has focus: the suggestion strip is there only then, like a keyboard's.
+  const [boxFocused, setBoxFocused] = useState(false);
+  const suggestionsOn = isShell && sentSuggestionsOf(prefs);
+  const suggestions = useSentSuggestions({ enabled: suggestionsOn, scope, cwd });
+  function pickSent(line: string) {
+    direct.deactivateSilently();
+    updateInput(line);
+    focusInputEnd();
+  }
+
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
   function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" = "sent") {
+    // The bridge has a new line now (a shell pane only: the read is off elsewhere).
+    suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
@@ -1177,8 +1199,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   async function send(value: string, isDraft: boolean): Promise<boolean> {
-    const t = value.trim();
-    if (!t || locked || sending) return false;
+    // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
+    // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
+    // check and the mode read the fully trimmed text on both, so neither sees a difference.
+    const trimmed = value.trim();
+    const t = isShell ? value.trimEnd() : trimmed;
+    if (!trimmed || locked || sending) return false;
     if (offlineRef.current) {
       setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
       return false;
@@ -1190,7 +1216,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(t), null);
+    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null);
   }
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
@@ -1285,7 +1311,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
-    const line = composeLine(input, attachments);
+    const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
@@ -1815,6 +1841,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled: locked,
                 onSelect: () => requestDrawer(drawer === "quick" ? null : "quick"),
               },
+              // Sent (M61): the shell lines sent through Collie, on a shell pane only. The bridge's own
+              // `kind` decides that (`isShell`); no list of harness names lives in the web.
+              ...(isShell
+                ? [
+                    {
+                      id: "sent",
+                      icon: ListEnd,
+                      label: translate("sent.button"),
+                      disabled: locked,
+                      onSelect: () => setSentOpen(true),
+                    },
+                  ]
+                : []),
               // Withdrawn rather than greyed when this pane has no commands at all: there is no
               // palette to open, which is a different thing from one this device may not use.
               ...(commands.length > 0
@@ -2059,6 +2098,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
+        {/* SENT SUGGESTIONS (M61): lines sent before, on a shell pane, directly above the box and only
+            while the box has focus. Not with "Type into terminal" armed (the box is not where the
+            words go), a dialog card up, a locked composer or a chip in the box. */}
+        {suggestionsOn && (
+          <SentSuggestions
+            open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
+            lines={suggestions.lines}
+            typed={input}
+            onPick={pickSent}
+            onAll={() => setSentOpen(true)}
+          />
+        )}
         <div
           data-slot="composer-box"
           className={cn(
@@ -2111,7 +2162,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   }
             }
             onSelect={direct.active ? undefined : rememberCaret}
-            onBlur={direct.active ? undefined : rememberCaret}
+            onFocus={() => setBoxFocused(true)}
+            onBlur={(e) => {
+              setBoxFocused(false);
+              if (!direct.active) rememberCaret(e);
+            }}
             onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
             onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
             onKeyDown={
@@ -2396,6 +2451,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onDiscard={recorder.discard}
         />
       )}
+
+      {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} onPick={pickSent} />}
 
       {/* Slash-command palette */}
       <CommandPalette

@@ -101,6 +101,13 @@ export interface DisplayPrefs {
    * a payload written before the setting existed reads the right hand.
    */
   hand?: Hand;
+  /**
+   * Whether a shell pane offers lines from Sent above its box while the box has focus (M61). On by
+   * default. Optional in the TYPE only, for the same reason as {@link hand}: every read goes through
+   * {@link sentSuggestionsOf}, which answers on for an absent value, so a stored payload from before
+   * the setting and the literal prefs in the component tests stay valid. Per device, in this one key.
+   */
+  sentSuggestions?: boolean;
 }
 
 /** The two hands the pane screen can be laid out for. */
@@ -111,6 +118,11 @@ export const HAND_DEFAULT: Hand = "right";
 /** Narrow a string of unknown provenance (a stored pref, a segmented value) to a Hand. */
 export function isHand(value: string | undefined): value is Hand {
   return HANDS.some((hand) => hand === value);
+}
+
+/** Whether the suggestion strip is on, with the default (on) where a literal left it out. */
+export function sentSuggestionsOf(prefs: DisplayPrefs): boolean {
+  return prefs.sentSuggestions ?? true;
 }
 
 /** The hand of a prefs value, with the default where a literal left it out. */
@@ -368,6 +380,8 @@ function loadPrefs(): DisplayPrefs {
       // Absent until the operator picks one, so a payload written before the setting existed (and
       // one that picked the default) reads the right hand through {@link handOf}.
       hand: readHand(asJsonString(p.hand)),
+      // Absent until the operator chooses, and read as on through {@link sentSuggestionsOf}.
+      sentSuggestions: asJsonBoolean(p.sentSuggestions),
     };
   } catch {
     return DEFAULTS;
@@ -408,6 +422,8 @@ export interface UseDisplayPrefsReturn {
   setKeepChat: (keepChat: KeepChat) => void;
   /** Which thumb the pane screen is laid out for. */
   setHand: (hand: Hand) => void;
+  /** Whether a shell pane offers lines from Sent above its box. */
+  setSentSuggestions: (on: boolean) => void;
 }
 
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
@@ -504,6 +520,14 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const setSentSuggestions = useCallback((sentSuggestions: boolean) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, sentSuggestions };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
   return {
     prefs,
     setWrap,
@@ -517,5 +541,6 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     setExpandClippedReply,
     setKeepChat,
     setHand,
+    setSentSuggestions,
   };
 }

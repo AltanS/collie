@@ -1983,6 +1983,54 @@ export type RecentRunsResponse =
   | { ok: true; removed: number }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
+// ── SENT (M61): the record of shell lines a person sent through Collie ───────────────────────────
+// The wire contract of GET /api/sent, POST /api/sent/remove and POST /api/sent/clear. Held in memory
+// only: nothing here is stored on the phone.
+
+/** Where the bridge reads from: this machine, or (on a crew lead) this machine and every member. */
+export type SentScope = "here" | "all";
+
+/** One distinct line on one machine. Repeats are merged by the bridge into `count`. */
+export interface SentEntry {
+  /** Stable per line on its machine (the first 16 hex characters of the line's sha256). */
+  id: string;
+  line: string;
+  /** Absolute folder, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the newest record. */
+  at: number;
+  /** Entry kinds, never harness names. */
+  kind: "shell" | "run";
+  count: number;
+  /** The machine id the crew already uses. */
+  host: string;
+}
+
+/** One machine the bridge asked, and whether it answered. */
+export interface SentMachine {
+  host: string;
+  label: string;
+  ok: boolean;
+  /** That machine records nothing (`COLLIE_SENT=off`). */
+  off?: boolean;
+  reason?: "old_version" | "unreachable" | "timeout";
+}
+
+/** GET /api/sent. `entries` is newest first. */
+export interface SentAnswer {
+  entries: SentEntry[];
+  /** A later page exists on at least one machine. */
+  more: boolean;
+  /** This bridge records nothing. */
+  off: boolean;
+  machines: SentMachine[];
+}
+
+/** POST /api/sent/remove and /clear. Idempotent: a missing id still answers ok. */
+export type SentWriteResponse =
+  | { ok: true }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
 /** One agent a host can start by id. Mirrors `HarnessInfo` in bridge/types.ts. */
 export interface HarnessInfo {
   /** The id `POST /api/launch` takes as `harness`, and the brand key `AgentIcon` draws. */

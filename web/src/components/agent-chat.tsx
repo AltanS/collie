@@ -2910,6 +2910,7 @@ export function AgentChat({
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
                   isShell={isShell}
+                  cwd={agent?.cwd || undefined}
                   held={agent?.held}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status

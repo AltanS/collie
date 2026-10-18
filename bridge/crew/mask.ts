@@ -4,6 +4,7 @@ import {
   maskFileBody,
   maskHistoryPage,
   maskPaneRead,
+  maskSentAnswer,
 } from "../answer-mask.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
@@ -70,7 +71,14 @@ function maskBody(answer: TextAnswer, body: JsonObject, raw: string): string | n
       // A listing is names only; the lead's own route masks a file's text alone.
       if (!("text" in body)) return raw;
       return isFileText(body) ? JSON.stringify(maskFileBody(body, true)) : null;
+    case "sent":
+      return isSentAnswer(body) ? JSON.stringify(maskSentAnswer(body)) : null;
   }
+}
+
+/** A Sent answer (ADR 0107) as deep as its mask reads it: an `entries` list whose every `line` is a string. */
+function isSentAnswer(body: JsonObject): body is JsonObject & { entries: { line: string }[] } {
+  return Array.isArray(body.entries) && body.entries.every((entry) => isObject(entry) && typeof entry.line === "string");
 }
 
 function isObject(value: JsonValue | undefined): value is JsonObject {

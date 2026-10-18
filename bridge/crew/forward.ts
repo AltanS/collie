@@ -110,6 +110,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // Check one typed line before it runs (ADR 0095, amendment): a read that runs and stores nothing, so
   // a `?host=` check is the member's own scan, and a member that predates it answers 404.
   /^launch\/check$/,
+  // Sent (ADR 0107): one record of shell lines per machine, so a `?host=` read answers from THAT
+  // member's own `sent.jsonl`, and a remove or a clear changes that file and nothing else. A lead's
+  // `scope=all` asks each member this same read with `scope=here`. Additive-optional (§7.1): a member
+  // that predates it answers 404, which the lead reports as `old_version`.
+  /^sent(?:\/(?:remove|clear))?$/,
   // The new-space sheet's folder list (#289): folders exist on ONE machine, so the list is that
   // machine's own `folders.json`, read and starred on the member that holds it — the lead keeps no
   // copy. Additive-optional (CREW_PROTOCOL.md §7.1): a member that predates it answers 404, and the
@@ -135,7 +140,7 @@ const FORWARDABLE: readonly RegExp[] = [
  * by pane or by space. A picture (`files/image`) and a blob are bytes, never text, and stay byte for
  * byte, and so does every write's answer.
  */
-export type TextAnswer = "pane" | "history" | "chat" | "changes" | "files";
+export type TextAnswer = "pane" | "history" | "chat" | "changes" | "files" | "sent";
 
 /** Which {@link TextAnswer} a crew route answers with, or `null` for a route whose answer is not text. */
 export function textAnswerOf(route: string): TextAnswer | null {
@@ -146,6 +151,8 @@ export function textAnswerOf(route: string): TextAnswer | null {
   if (/^(?:pane|workspace)\/[^/]+\/files$/.test(route)) return "files";
   // The items of a durable conversation are History's own shape (`entries`), masked the same way.
   if (/^durable\/conversation\/[^/]+\/items$/.test(route)) return "history";
+  // Sent's lines are what a person typed (ADR 0107): masked again on the lead, as every other text.
+  if (route === "sent") return "sent";
   return null;
 }
 
@@ -188,6 +195,9 @@ export function forwardKind(route: string): ForwardKind {
   // The line check is a POST that changes nothing: attempted even against a stale member, never refused
   // before it is tried (§10.3).
   if (route === "launch/check") return "read";
+  // Sent's list changes nothing on the member (ADR 0107): a read, tried against a stale member too.
+  // Its remove and clear write that member's file, so they stay writes.
+  if (route === "sent") return "read";
   // The folder list is a GET that changes nothing, read even from a stale member like the rows
   // above; a star writes that member's file, so it is a write and a member not taking writes
   // refuses it before it is tried (§10.3), as a read-only device does on the member itself.
@@ -241,6 +251,10 @@ export function forwardAuditAction(route: string): string | null {
   if (route === "launch/recent/remove") return "launch.recent.remove";
   if (route === "launch/recent/clear") return "launch.recent.clear";
   if (route === "launchers" || route === "launch/check") return null;
+  // The member writes the same two names for Sent's writes (ADR 0107); its list is a read.
+  if (route === "sent/remove") return "sent.remove";
+  if (route === "sent/clear") return "sent.clear";
+  if (route === "sent") return null;
   if (route === "folders" || route === "folders/star") return null; // a read, and a preference
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read

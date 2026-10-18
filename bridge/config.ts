@@ -329,6 +329,12 @@ export interface Config {
    */
   redact: boolean;
   /**
+   * Whether this machine keeps Sent, its record of the shell lines a person sent through Collie
+   * (`COLLIE_SENT`, default on). Off: nothing is recorded and a read lists nothing; remove and clear
+   * still work. See `bridge/sent.ts` and ADR 0107.
+   */
+  sent: "on" | "off";
+  /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
    * When set, devices whose header value isn't in {@link deviceAllowlist} are read-only. See
@@ -708,6 +714,7 @@ export function loadConfig(env: Environment = process.env): Config {
     accessAud: envList("COLLIE_ACCESS_AUD", env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),
     redact: envBool("COLLIE_REDACT", true, env),
+    sent: envEnum("COLLIE_SENT", ["on", "off"] as const, "on", env),
     deviceHeader: (env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST", env),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS", env),
