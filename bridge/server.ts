@@ -3960,26 +3960,6 @@ export async function reopenConversation(
 }
 
 /**
- * GET /api/pane/:id/chat — what is new in the pane's session since the client last looked.
- *
- * The same log `history` reads and the same safety story: the session ref is resolved HERE from the
- * live snapshot, keyed by pane id, so the only client-controlled inputs are that pane id (a `Map`
- * lookup), two position tokens of digits (journal/live.ts), and a turn's `uuid`, which only ever
- * reaches an in-memory `findIndex`. No path, no cursor with a path inside it.
- *
- * `?before=` is the one branch that reads the disk widely, and it reads it through the SAME
- * `TranscriptStore` the History route uses — so a "load older" tap after a History visit is a cache
- * hit, not a second 32 MB read.
- *
- * ── THE ETAG IS HASHED OVER THE BODY, NOT COMPOSED FROM ITS FIELDS ───────────
- * Spec 08 sketched a tag over `(gen, head, lastChangedSeq)`. A hash of the serialised body is
- * strictly better and costs the same: it cannot drift from what was actually sent, and it varies with
- * the REQUEST as well as the window — two clients at different revisions ask for different answers,
- * and a field-composed tag would hand them the same validator. An unchanged poll re-serialises to the
- * same bytes (an empty `upserts` and three unmoved positions), so it is a 304 either way, which is
- * the requirement.
- */
-/**
  * GET /api/pane/:id/subagent/:agentId — one Claude subagent's own transcript log, read on demand.
  */
 async function paneSubagent(
@@ -4025,6 +4005,26 @@ async function paneSubagent(
   }
 }
 
+/**
+ * GET /api/pane/:id/chat — what is new in the pane's session since the client last looked.
+ *
+ * The same log `history` reads and the same safety story: the session ref is resolved HERE from the
+ * live snapshot, keyed by pane id, so the only client-controlled inputs are that pane id (a `Map`
+ * lookup), two position tokens of digits (journal/live.ts), and a turn's `uuid`, which only ever
+ * reaches an in-memory `findIndex`. No path, no cursor with a path inside it.
+ *
+ * `?before=` is the one branch that reads the disk widely, and it reads it through the SAME
+ * `TranscriptStore` the History route uses — so a "load older" tap after a History visit is a cache
+ * hit, not a second 32 MB read.
+ *
+ * ── THE ETAG IS HASHED OVER THE BODY, NOT COMPOSED FROM ITS FIELDS ───────────
+ * Spec 08 sketched a tag over `(gen, head, lastChangedSeq)`. A hash of the serialised body is
+ * strictly better and costs the same: it cannot drift from what was actually sent, and it varies with
+ * the REQUEST as well as the window — two clients at different revisions ask for different answers,
+ * and a field-composed tag would hand them the same validator. An unchanged poll re-serialises to the
+ * same bytes (an empty `upserts` and three unmoved positions), so it is a 304 either way, which is
+ * the requirement.
+ */
 export async function paneChat(
   cfg: Config,
   journals: Record<string, JournalAdapter> | null,
