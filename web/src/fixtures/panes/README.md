@@ -2465,3 +2465,40 @@ through.
 | `omp--v18-6-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`. Labelled `dialog` |
 | `omp--v18-6-model-selector-empty--w120.txt` | The Models picker `/model` opens, a full-screen box with providers and models. Labelled `dialog` |
 | `omp--v18-6-settings-screen--w120.txt` | The settings screen `/settings` opens. Labelled `dialog` |
+
+## omp 18.11 box composer (captured 2026-10-18, oh-my-pi `omp` v18.11.3, scratch tmux, issue 497)
+
+Read with `tmux capture-pane -p -e` from a scratch tmux server on its own socket. omp ran stock
+(`--no-extensions`) from a scratch install, with a scratch home, the box composer
+(`composer.shape: box`, the shape the issue's reporter uses) and either the `nerd` symbol preset
+(`nerd` in the name) or the default `unicode` preset. The project folder is `/tmp/c497/project`, so
+no user name is in them. The width is in the name (`--w130`, `--w80`). The four running captures took
+one model turn (a cheap model through OpenRouter, a bash call to `sleep 85`).
+
+What they show, by the issue's parts. The box draws its right border on every draft row, and a
+wrapped row leaves fewer than eight spaces before it, so the draft read `│` and `─╯` as text (part 1);
+the prompt and continuation patterns now leave one trailing border out. The image chip is `🖼 #1`
+under `unicode` and U+F03E `#1` under `nerd` (part 2), and the paste chip U+F15C under `nerd`. The
+slash list's pointer is U+F054 under `nerd` (part 3). A skill is listed as `skill:<name>`: `/wrap-up`
+puts the pointer on `skill:wrap-up`, while `/ship` with a command `ship` and a skill `ship` lists
+only the command (part 4, `commandList.namespaces`). The working row names the tool's intent with a
+Nerd Font glyph, so the box's top edge (`╭── ⠋ 13s …`, `1m` past a minute) is the running sign
+(part 7). The word completion paints `ed` after `please push` in the titanium theme's `dim`
+(`#6b7280`), which `idle.inlineHint` names (part 6).
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-11-nerd-box-wrapped--w130.txt`, `--w80.txt` | A 202-character line wrapped over two or three box rows. Labelled `draft` |
+| `omp--v18-11-nerd-box-two-lines--w130.txt`, `--w80.txt` | A two-line draft, one `│` row and the `╰─` row. Labelled `draft` |
+| `omp--v18-11-nerd-box-path-text--w130.txt`, `--w80.txt` | An upload path inside a message, wrapped so a row fills the box to two spaces before `│`. Labelled `draft` |
+| `omp--v18-11-nerd-image-chip--w130.txt`, `--w80.txt` | A pasted upload path alone: omp draws its image card over the box and the chip U+F03E `#1` in it. Labelled `draft` |
+| `omp--v18-11-image-chip--w130.txt` | The same with the `unicode` preset: `🖼 #1`. Labelled `draft` |
+| `omp--v18-11-nerd-slash-model--w130.txt`, `--w80.txt` | The box holds `/model`, ten entries under it, the pointer U+F054 on `model`. Labelled `popup` |
+| `omp--v18-11-nerd-skill-pointed--w130.txt`, `--w80.txt` | The box holds `/wrap-up`, one entry `skill:wrap-up` under the pointer. Labelled `popup` |
+| `omp--v18-11-skill-pointed--w130.txt` | The same with the `unicode` preset: `❯ ✦ skill:wrap-up`. Labelled `popup` |
+| `omp--v18-11-nerd-skill-and-command--w130.txt` | A command `ship` (a file in `commands/`) and a skill `ship`: `/ship` lists the command only, the pointer on it. Labelled `popup` |
+| `omp--v18-11-nerd-skill-long-form--w130.txt` | The box holds `/skill:ship`, the pointer on `skill:ship`. Labelled `popup` |
+| `omp--v18-11-nerd-running-tool--w130.txt`, `--w80.txt` | A bash call runs: the working row reads `󱊷 Working…` at 11 s, then `󱊷 Running sleep and echo command` at 13 s; the top edge reads `╭── ⠸ 11s …`. Labelled `running` |
+| `omp--v18-11-nerd-running-tool-minute--w130.txt`, `--w80.txt` | The same turn past a minute: the top edge reads `⠋ 1m`. Labelled `running` |
+| `omp--v18-11-nerd-ghost-word--w130.txt`, `--w80.txt` | The box holds `please push` with the ghost `ed` after it. Labelled `draft` |
+| `omp--v18-11-ghost-word--w130.txt` | The same with the `unicode` preset. Labelled `draft` |

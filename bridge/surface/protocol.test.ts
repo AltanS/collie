@@ -12,6 +12,8 @@ import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, t
 import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
+import { splitLines } from "../../web/src/lib/blocks.ts";
+import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -5201,4 +5203,174 @@ describe("a slash command over pi's and omp's own command list (field case, 2026
       expect(deps.store.get(id)?.receipt?.detail).toBe(OPENED);
     });
   }
+});
+
+// Issue 497 (omp 18.11.3, the box composer, captured 2026-10-18 in a scratch tmux session): sends that
+// ended `typed_not_submitted` (mismatch or modal_cue) on main, read off the captures themselves.
+describe("omp 18.11's box composer (issue 497)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const capture = (name: string): string[] => readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\]8;[^\u001b]*\u001b\\/gu, "").replace(/\u001b\[[0-9;:]*m/gu, "");
+  const VERSION = "18.11.3";
+  const WRAP =
+    "Collie wrap probe: the quick brown fox jumps over the lazy dog while the phone sends a long single line that must wrap " +
+    "across two rows of the omp box at one hundred and thirty columns wide, ending here.";
+  const IMAGE = "/tmp/c497/uploads/w1-mx7k2p-1a2b3c4d.png";
+  const OMP = loadProfiles().get("omp")!;
+  const collapse = new RegExp(OMP.collapse.pattern, "uy");
+
+  /** The draft the Surface reads off a capture, as the bridge reads it. */
+  const boxOf = (name: string): string => {
+    const rows = capture(name).join("\n");
+    const frame = findFrame(rows);
+    expect(frame, name).not.toBeNull();
+    return frame!.placeholder ? "" : frame!.interior.text;
+  };
+  const findFrame = (text: string): ReturnType<typeof findInputFrame> => findInputFrame(splitLines(parseAnsi(text)), OMP.idle);
+
+  test("boxMatches takes the drafts, the chips and the ghost word off the captures", () => {
+    for (const w of [130, 80]) {
+      expect(boxMatches(boxOf(`omp--v18-11-nerd-box-wrapped--w${String(w)}.txt`), "", [WRAP], collapse)).toBe(true);
+      expect(boxMatches(boxOf(`omp--v18-11-nerd-box-two-lines--w${String(w)}.txt`), "", ["First line of a two-line draft.", "Second line of the same draft."], collapse)).toBe(true);
+      expect(boxMatches(boxOf(`omp--v18-11-nerd-image-chip--w${String(w)}.txt`), "", [IMAGE], collapse)).toBe(true);
+      expect(boxMatches(boxOf(`omp--v18-11-nerd-ghost-word--w${String(w)}.txt`), "", ["please push"], collapse)).toBe(true);
+    }
+    expect(boxMatches(boxOf("omp--v18-11-image-chip--w130.txt"), "", [IMAGE], collapse)).toBe(true);
+    expect(boxMatches(boxOf("omp--v18-11-ghost-word--w130.txt"), "", ["please push"], collapse)).toBe(true);
+    // Still a mismatch: the box holds more than was typed.
+    expect(boxMatches(boxOf("omp--v18-11-nerd-ghost-word--w130.txt"), "", ["please"], collapse)).toBe(false);
+    expect(boxMatches(boxOf("omp--v18-11-nerd-box-wrapped--w130.txt"), "", [WRAP.slice(0, -1)], collapse)).toBe(false);
+  });
+
+  /**
+   * The capture `name` while the box holds `shown` (the typed text, or "" for a capture of an empty box).
+   * Any other box text draws the capture up to its top edge, then one `╰─ <text>` row with the right
+   * border, as omp draws a short draft, and nothing under it. A submit key (Enter, or omp's ctrl+q)
+   * takes the text out of the box: into the transcript over the box, or, with `running`, into omp's
+   * queue rows over the box.
+   */
+  const scene = (pane: FakePane, name: string, shown: string, options: { running?: boolean } = {}): void => {
+    const rows = capture(name);
+    const width = Number(/--w(\d+)\.txt$/u.exec(name)![1]);
+    const top = rows.findLastIndex((row) => plain(row).startsWith("╭──"));
+    expect(top).toBeGreaterThan(0);
+    const shortRow = (text: string): string => `╰─ ${text}${" ".repeat(Math.max(1, width - 5 - text.length))}─╯`;
+    const above: string[] = [];
+    let taken: string | null = null;
+    pane.collapseOver = 100_000;
+    pane.beforeWrite = (p, what) => {
+      if ((what === "keys:Enter" || what === "keys:ctrl+q") && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
+      if (options.running === true) above.push(`  1. ${taken}`, "  └ Alt+↑ to edit");
+      else above.push(` ${taken.replace(/\n/gu, " ")}`, "");
+      taken = null;
+      p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      const head = rows.slice(0, top);
+      if (p.box === shown && above.length === 0) {
+        p.fixed = rows.join("\n");
+        return;
+      }
+      p.fixed = [...head.slice(above.length), ...above, rows[top]!, shortRow(p.box.replace(/\n/gu, " "))].join("\n");
+    };
+  };
+
+  const sendOn = async (name: string, text: string, mode: "send" | "command", options: { running?: boolean } = {}): Promise<{ answer: SendAnswer; pane: FakePane }> => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: "omp", version: VERSION });
+    scene(pane, name, options.running === true ? "" : text, options);
+    const answer = await send(text, { mode });
+    return { answer, pane };
+  };
+
+  test("a wrapped 202-character line, at 130 and at 80 columns: sent with ctrl+q", async () => {
+    for (const w of [130, 80]) {
+      const { answer, pane } = await sendOn(`omp--v18-11-nerd-box-wrapped--w${String(w)}.txt`, WRAP, "send");
+      expect(answer.receipt, String(w)).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1)).toBe("ctrl+q");
+      neverEscape(pane);
+    }
+  });
+
+  test("a two-line draft: sent", async () => {
+    const { answer } = await sendOn("omp--v18-11-nerd-box-two-lines--w130.txt", "First line of a two-line draft.\nSecond line of the same draft.", "send");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  // An upload alone is its path, which starts with `/`, so the phone sends it as a command (Enter).
+  test("an upload path that omp turns into its image chip, Nerd Font and unicode: sent with Enter", async () => {
+    for (const name of ["omp--v18-11-nerd-image-chip--w130.txt", "omp--v18-11-image-chip--w130.txt"]) {
+      const { answer, pane } = await sendOn(name, IMAGE, "command");
+      expect(answer.receipt, name).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1)).toBe("Enter");
+    }
+  });
+
+  test("an upload path inside a message, wrapped to the box's right border: sent with ctrl+q", async () => {
+    const text =
+      "look at /tmp/c497/uploads/w1-mx7k2p-1a2b3c4d-and-a-long-tail-so-the-path-fills-the-row-to-the-right-border-" +
+      "0123456789abcdef0123456789abcdef.png please";
+    for (const w of [130, 80]) {
+      const { answer, pane } = await sendOn(`omp--v18-11-nerd-box-path-text--w${String(w)}.txt`, text, "send");
+      expect(answer.receipt, String(w)).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1)).toBe("ctrl+q");
+    }
+  });
+
+  test("/model with the Nerd Font pointer on it, and /wrap-up with the pointer on skill:wrap-up: sent with Enter", async () => {
+    for (const [name, text] of [
+      ["omp--v18-11-nerd-slash-model--w130.txt", "/model"],
+      ["omp--v18-11-nerd-skill-pointed--w80.txt", "/wrap-up"],
+      ["omp--v18-11-skill-pointed--w130.txt", "/wrap-up"],
+    ] as const) {
+      const { answer, pane } = await sendOn(name, text, "command");
+      expect(answer.receipt, name).toMatchObject({ outcome: "sent" });
+      expect(pane.keysSeen.at(-1)).toBe("Enter");
+      neverEscape(pane);
+    }
+  });
+
+  test("/wrap-up while the list shows a command wrap-up beside the skill: left typed, no Enter", async () => {
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: "omp", version: VERSION });
+    const name = "omp--v18-11-skill-pointed--w130.txt";
+    scene(pane, name, "/wrap-up");
+    const rows = capture(name);
+    const list = rows.findIndex((row) => plain(row).startsWith("❯ "));
+    expect(list).toBeGreaterThan(0);
+    const withCommand = [...rows.slice(0, list + 1), "  ⌘ wrap-up                A command of the same name", ...rows.slice(list + 1)].join("\n");
+    const draw = pane.beforeRead!;
+    pane.beforeRead = (p, n) => {
+      void draw(p, n);
+      if (p.box === "/wrap-up") p.fixed = withCommand;
+    };
+    const answer = await send("/wrap-up", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    neverEscape(pane);
+  });
+
+  test("a send during a running tool turn, at 13 s and past a minute: queued with ctrl+q", async () => {
+    for (const name of ["omp--v18-11-nerd-running-tool--w80.txt", "omp--v18-11-nerd-running-tool-minute--w130.txt"]) {
+      const { answer, pane } = await sendOn(name, "QUEUED 497 follow up", "send", { running: true });
+      expect(answer.receipt, name).toMatchObject({ outcome: "sent", queued: true });
+      expect(pane.keysSeen.at(-1)).toBe("ctrl+q");
+      neverEscape(pane);
+    }
+  });
+
+  // omp names no `commandWhileRunning`, and its Enter steers a turn: a command in a turn waits for the
+  // pane to read free (no hold store here, so it is refused), and nothing is typed.
+  test("/model during the running tool turn is not typed: the turn is seen", async () => {
+    for (const name of ["omp--v18-11-nerd-running-tool--w130.txt", "omp--v18-11-nerd-running-tool-minute--w80.txt"]) {
+      const { answer, pane } = await sendOn(name, "/model", "command", { running: true });
+      expect(answer.receipt, name).toMatchObject({ outcome: "refused", reason: "turn_running" });
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
 });

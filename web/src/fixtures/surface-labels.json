@@ -2916,6 +2916,121 @@
    "version": "18.10",
    "state": "draft"
   },
+  "omp--v18-11-ghost-word--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-image-chip--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-path-text--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-path-text--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-two-lines--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-two-lines--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-wrapped--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-box-wrapped--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-ghost-word--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-ghost-word--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-image-chip--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-image-chip--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "draft"
+  },
+  "omp--v18-11-nerd-running-tool--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "running"
+  },
+  "omp--v18-11-nerd-running-tool--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "running"
+  },
+  "omp--v18-11-nerd-running-tool-minute--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "running"
+  },
+  "omp--v18-11-nerd-running-tool-minute--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "running"
+  },
+  "omp--v18-11-nerd-skill-and-command--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-nerd-skill-long-form--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-nerd-skill-pointed--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-nerd-skill-pointed--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-nerd-slash-model--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-nerd-slash-model--w80.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
+  "omp--v18-11-skill-pointed--w130.txt": {
+   "harness": "omp",
+   "version": "18.11",
+   "state": "popup"
+  },
   "omp--v18-4-approval-bash-moved.txt": {
    "harness": "omp",
    "version": "18.4",

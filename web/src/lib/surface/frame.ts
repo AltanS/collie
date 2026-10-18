@@ -122,6 +122,8 @@ interface Compiled {
   readonly bottom: CompiledAnchor;
   readonly footerRows: readonly CompiledFooterRow[];
   readonly interior: CompiledInterior;
+  /** The ghost text's colours (`idle.inlineHint`); null for a profile that names none. */
+  readonly hint: ReadonlySet<string> | null;
 }
 
 const compiledByIdle = new WeakMap<IdleProfile, Compiled>();
@@ -152,10 +154,12 @@ function compile(idle: IdleProfile): Compiled {
       trailerRow: trailer === undefined ? null : new RegExp(trailer.row, "u"),
       trailerPad: trailer?.pad === undefined ? null : new RegExp(trailer.pad, "u"),
       maxPad: trailer?.maxPad ?? 0,
-      continuation: continuation === undefined ? null : new RegExp(continuation, "u"),
+      // `d` gives the text group's offset, so the ghost text test reads the runs under it.
+      continuation: continuation === undefined ? null : new RegExp(continuation, "du"),
       under: under === undefined ? null : new RegExp(under, "u"),
       underPainted: idle.frame.underPainted === true,
     },
+    hint: idle.inlineHint === undefined ? null : new Set(idle.inlineHint.fg),
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
@@ -291,6 +295,70 @@ function isPlaceholderText(text: string, idle: IdleProfile): boolean {
   if (text.length === 0) return false;
   if (idle.placeholders.texts.includes(text)) return true;
   return (idle.placeholders.prefixes ?? []).some((prefix) => text.startsWith(prefix));
+}
+
+/** One piece of the draft: its row, and its first and past-last offset in the row's text. */
+interface DraftPiece {
+  readonly row: number;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** The piece of `text` from `from` to `to`, trimmed at both ends, or null when it holds nothing visible. */
+function trimmedPiece(row: number, text: string, from: number, to: number): DraftPiece | null {
+  const slice = text.slice(from, to);
+  const trimmed = slice.trim();
+  if (trimmed.length === 0) return null;
+  const start = from + (slice.length - slice.trimStart().length);
+  return { row, start, end: start + trimmed.length };
+}
+
+/** The run attributes that make a style, beside the foreground colour. */
+const RUN_FLAGS = ["bold", "dim", "italic", "underline", "strike"] as const;
+
+const LETTERS = /^\p{L}+$/u;
+
+/**
+ * Where the profile's ghost text starts in the draft's last piece (`idle.inlineHint`), or null when the
+ * piece ends in none. The run under the piece's last character is the ghost only when all of these
+ * hold: its foreground is one of the profile's colours, it carries no other attribute, its part inside
+ * the piece is letters only and nothing visible follows in the run, and it opens straight after a
+ * visible character of the piece in another style. A harness paints its word completion so, after the
+ * cursor at the end of the draft; a run that fails any test is read as typed text.
+ */
+function hintStart(row: FrameRow, piece: DraftPiece, colours: ReadonlySet<string>): number | null {
+  let from = 0;
+  let previous: FrameRun | null = null;
+  for (const run of row.segments) {
+    const to = from + run.text.length;
+    if (to < piece.end) {
+      if (run.text.length > 0) previous = run;
+      from = to;
+      continue;
+    }
+    const before = previous;
+    if (from <= piece.start || before === null) return null;
+    if (run.fg === undefined || !colours.has(run.fg) || RUN_FLAGS.some((flag) => run[flag] === true)) return null;
+    if (!LETTERS.test(run.text.slice(0, piece.end - from)) || run.text.slice(piece.end - from).trim().length > 0) return null;
+    if (!/\S$/u.test(before.text)) return null;
+    const sameStyle = before.fg === run.fg && RUN_FLAGS.every((flag) => (before[flag] === true) === (run[flag] === true));
+    return sameStyle ? null : from;
+  }
+  return null;
+}
+
+/**
+ * The draft as one line: each piece's text joined with one space, with the profile's ghost text cut off
+ * the end of the last piece ({@link hintStart}).
+ */
+function draftText(rows: readonly FrameRow[], texts: readonly string[], pieces: readonly DraftPiece[], hint: ReadonlySet<string> | null): string {
+  const last = pieces[pieces.length - 1];
+  const ghost = last === undefined || hint === null ? null : hintStart(rows[last.row]!, last, hint);
+  return pieces
+    .map((piece) => texts[piece.row]!.slice(piece.start, piece === last && ghost !== null ? ghost : piece.end).trim())
+    .filter((part) => part.length > 0)
+    .join(" ")
+    .trim();
 }
 
 /** The statusline run and the footer under the bottom edge (`Frame.volatile`). */
@@ -456,12 +524,14 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   const hole = promptMatch.groups?.draft;
   const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
   if (hole !== undefined) anchorsHit.push("draft");
-  const parts = [(hole ?? "").trim()];
+  const pieces: DraftPiece[] = [];
+  const holePiece = trimmedPiece(prompt, texts[prompt]!, holeStart, holeStart + (hole ?? "").length);
+  if (holePiece !== null) pieces.push(holePiece);
   for (let j = prompt + 1; j < bottom; j++) {
-    const part = texts[j]!.trim();
-    if (part.length > 0) parts.push(part);
+    const piece = trimmedPiece(j, texts[j]!, 0, texts[j]!.length);
+    if (piece !== null) pieces.push(piece);
   }
-  const text = parts.join(" ").trim();
+  const text = draftText(rows, texts, pieces, c.hint);
   anchorsHit.push("bottom");
 
   const byText = isPlaceholderText(text, idle);
@@ -497,10 +567,12 @@ function bandAbove(texts: readonly string[], top: number, idle: IdleProfile): { 
   return aboveRows > 0 ? { first: from - aboveRows, last: top - 1 } : null;
 }
 
-/** The text a row adds to the draft on the interior walk: the profile's `text` group, or the trimmed row. */
-function interiorPiece(text: string, continuation: RegExp | null): string {
-  const hit = continuation?.exec(text.trimEnd())?.groups?.text;
-  return (hit ?? (continuation === null ? text : "")).trim();
+/** The piece a row adds to the draft on the interior walk: the profile's `text` group, or the trimmed row. */
+function interiorPiece(row: number, text: string, continuation: RegExp | null): DraftPiece | null {
+  if (continuation === null) return trimmedPiece(row, text, 0, text.length);
+  const hit = continuation.exec(text.trimEnd());
+  const span = hit?.indices?.groups?.text;
+  return span === undefined ? null : trimmedPiece(row, text, span[0], span[1]);
 }
 
 /**
@@ -578,12 +650,12 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
   const hole = promptMatch.groups?.draft;
   const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
-  const parts: string[] = [];
+  const pieces: DraftPiece[] = [];
   for (let j = top + 1; j <= last; j++) {
-    const piece = j === prompt ? (hole ?? "").trim() : interiorPiece(texts[j]!, c.interior.continuation);
-    if (piece.length > 0) parts.push(piece);
+    const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
+    if (piece !== null) pieces.push(piece);
   }
-  const text = parts.join(" ").trim();
+  const text = draftText(rows, texts, pieces, c.hint);
   // A list pushed the harness's own row down: only the typed command's own list may stand there.
   if (listed && ownListUnder(texts, bottom, text, idle.volatile.below.commandList) === null) return null;
 

@@ -153,6 +153,13 @@ const TALL_PALETTE_V18_6 = [
   "omp--v18-6-slash-model-list--w80.txt",
 ];
 
+// The three omp 18.11.3 palettes (nerd preset, issue 497) taller than the bridge's tail window.
+const TALL_PALETTE_V18_11 = [
+  "omp--v18-11-nerd-skill-and-command--w130.txt",
+  "omp--v18-11-nerd-slash-model--w130.txt",
+  "omp--v18-11-nerd-slash-model--w80.txt",
+];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -168,6 +175,31 @@ const DECLINED = new Set([
   "omp--fresh-idle-widget-below.txt",
   "omp--fresh-idle.txt",
   "omp--menu-dismissed.txt",
+  // omp 18.11.3's box composer, stock with the nerd and unicode symbol presets (issue 497, 2026-10-18):
+  // drafts, an image chip, the slash list, a skill command, a running tool turn and a ghost word.
+  "omp--v18-11-ghost-word--w130.txt",
+  "omp--v18-11-image-chip--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w80.txt",
+  "omp--v18-11-nerd-box-two-lines--w130.txt",
+  "omp--v18-11-nerd-box-two-lines--w80.txt",
+  "omp--v18-11-nerd-box-wrapped--w130.txt",
+  "omp--v18-11-nerd-box-wrapped--w80.txt",
+  "omp--v18-11-nerd-ghost-word--w130.txt",
+  "omp--v18-11-nerd-ghost-word--w80.txt",
+  "omp--v18-11-nerd-image-chip--w130.txt",
+  "omp--v18-11-nerd-image-chip--w80.txt",
+  "omp--v18-11-nerd-running-tool--w130.txt",
+  "omp--v18-11-nerd-running-tool--w80.txt",
+  "omp--v18-11-nerd-running-tool-minute--w130.txt",
+  "omp--v18-11-nerd-running-tool-minute--w80.txt",
+  "omp--v18-11-nerd-skill-and-command--w130.txt",
+  "omp--v18-11-nerd-skill-long-form--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w80.txt",
+  "omp--v18-11-nerd-slash-model--w130.txt",
+  "omp--v18-11-nerd-slash-model--w80.txt",
+  "omp--v18-11-skill-pointed--w130.txt",
   "omp--v18-4-composer-idle.txt",
   "omp--v18-10-draft-blank-line.txt",
   "omp--v18-10-draft-indented.txt",
@@ -270,7 +302,7 @@ describeAdapterConformance(ompAdapter, {
   // changed while clearing it" (pi-shape.ts `piComposerPrompt`). Null means an unbound write, exactly
   // as the boxed shape answers for the same palette sitting under its own composer (chrome.ts).
   // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
-  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6],
+  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11],
 });
 
 // The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
@@ -326,6 +358,29 @@ describe("the omp corpus", () => {
     "omp--v18-10-draft-blank-line.txt",
     "omp--v18-10-draft-indented.txt",
     "omp--v18-10-draft-two-lines.txt",
+    "omp--v18-11-ghost-word--w130.txt",
+    "omp--v18-11-image-chip--w130.txt",
+    "omp--v18-11-nerd-box-path-text--w130.txt",
+    "omp--v18-11-nerd-box-path-text--w80.txt",
+    "omp--v18-11-nerd-box-two-lines--w130.txt",
+    "omp--v18-11-nerd-box-two-lines--w80.txt",
+    "omp--v18-11-nerd-box-wrapped--w130.txt",
+    "omp--v18-11-nerd-box-wrapped--w80.txt",
+    "omp--v18-11-nerd-ghost-word--w130.txt",
+    "omp--v18-11-nerd-ghost-word--w80.txt",
+    "omp--v18-11-nerd-image-chip--w130.txt",
+    "omp--v18-11-nerd-image-chip--w80.txt",
+    "omp--v18-11-nerd-running-tool--w130.txt",
+    "omp--v18-11-nerd-running-tool--w80.txt",
+    "omp--v18-11-nerd-running-tool-minute--w130.txt",
+    "omp--v18-11-nerd-running-tool-minute--w80.txt",
+    "omp--v18-11-nerd-skill-and-command--w130.txt",
+    "omp--v18-11-nerd-skill-long-form--w130.txt",
+    "omp--v18-11-nerd-skill-pointed--w130.txt",
+    "omp--v18-11-nerd-skill-pointed--w80.txt",
+    "omp--v18-11-nerd-slash-model--w130.txt",
+    "omp--v18-11-nerd-slash-model--w80.txt",
+    "omp--v18-11-skill-pointed--w130.txt",
     "omp--v18-4-approval-bash-moved.txt",
     "omp--v18-4-approval-bash.txt",
     "omp--v18-4-approval-write-long.txt",
@@ -513,6 +568,30 @@ const COMPOSER_FIXTURES = [
   // reason a `/…` send can complete at all on this shape (pi-shape.ts).
   "omp--v18-8-slash-palette.txt",
   "omp--v18-8-slash-palette-w48.txt",
+  // omp 18.11.3's box composer (issue 497, 2026-10-18).
+  "omp--v18-11-ghost-word--w130.txt",
+  "omp--v18-11-image-chip--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w80.txt",
+  "omp--v18-11-nerd-box-two-lines--w130.txt",
+  "omp--v18-11-nerd-box-two-lines--w80.txt",
+  "omp--v18-11-nerd-box-wrapped--w130.txt",
+  "omp--v18-11-nerd-box-wrapped--w80.txt",
+  "omp--v18-11-nerd-ghost-word--w130.txt",
+  "omp--v18-11-nerd-ghost-word--w80.txt",
+  "omp--v18-11-nerd-image-chip--w130.txt",
+  "omp--v18-11-nerd-image-chip--w80.txt",
+  "omp--v18-11-nerd-running-tool--w130.txt",
+  "omp--v18-11-nerd-running-tool--w80.txt",
+  "omp--v18-11-nerd-running-tool-minute--w130.txt",
+  "omp--v18-11-nerd-running-tool-minute--w80.txt",
+  "omp--v18-11-nerd-skill-and-command--w130.txt",
+  "omp--v18-11-nerd-skill-long-form--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w80.txt",
+  "omp--v18-11-nerd-slash-model--w130.txt",
+  "omp--v18-11-nerd-slash-model--w80.txt",
+  "omp--v18-11-skill-pointed--w130.txt",
   // omp 18.6.1's open box with the slash palette under it (lab, 2026-10-17).
   "omp--v18-6-slash-mod-partial--w120.txt",
   "omp--v18-6-slash-model-list--w120.txt",

@@ -82,12 +82,13 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
+import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
 import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
-import type { OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
+import type { CommandListRows, OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -977,14 +978,14 @@ const LIST_ELSEWHERE = "The command list at the box pointed at another command, 
 /**
  * Whether a read shows a command typed into the box while the harness's command list under it points
  * at another command ({@link commandListAt}): Enter picks the highlighted entry, so it would run
- * that one. A list whose pointer rests on the typed command is its own typeahead and passes; a list
- * with no pointer is left to the cue read.
+ * that one. A list whose pointer rests on the typed command ({@link pointsAt}, the profile's `rows`) is
+ * its own typeahead and passes; a list with no pointer is left to the cue read.
  */
-function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
-  const pointed = snap.commandList?.pointed ?? null;
-  if (pointed === null || snap.frame === null) return false;
+function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null, rows: CommandListRows | undefined): boolean {
+  const list = snap.commandList;
+  if (list === null || list.pointed === null || snap.frame === null) return false;
   if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
-  return pointed !== (prefix + lines.join("")).trim();
+  return !pointsAt(list, prefix + lines.join(""), rows);
 }
 
 /** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
@@ -3017,7 +3018,7 @@ export class SendProtocol {
       }
       // A command whose list under the box points at another command: Enter would run that one. The list
       // may still be catching up with the paste, so the read waits; when no read passes, the text stays.
-      elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse);
+      elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse, state.match?.profile.idle.volatile.below.commandList);
       if (elsewhere) {
         why = "modal_cue";
         return "wait";
