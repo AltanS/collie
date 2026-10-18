@@ -284,9 +284,13 @@ sends the sender's certificate, so that machine checks the sender's signature to
 member that sent it. Run `collie walky status <id>` on the sender's machine or on the lead
 ([Across a crew](walky-talky.md#across-a-crew)).
 
-> **Note.** A member needs Collie 1.23.0 to take a message. A message to an older member is refused
-> `not sent: older member`, and a member under an older lead gets `not sent: older lead`. Run
-> `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+On the phone, a pane on a member shows its messages as a lead's own pane does. The lead reads the
+list from that member's log, so the cards and the Messages sheet look the same on every machine
+([On the phone](walky-talky.md#on-the-phone)).
+
+> **Note.** A member needs Collie 1.23.0 to take a message and to show its messages on the phone. A
+> message to an older member is refused `not sent: older member`, and a member under an older lead
+> gets `not sent: older lead`. Run `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
 ## Machines
 

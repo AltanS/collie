@@ -2512,6 +2512,16 @@ assert_eq "$rc" "3"
 beacon_env skill uninstall codex || fail "\`collie skill uninstall codex\` failed: ${STDERR}"
 assert_eq "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "$(printf '# My rules\nBe brief.')"
 
+# `skill sync` (ADR 0111): the uninstall above is a standing no, a harness whose folder exists gets the
+# skill, and a second run prints nothing.
+beacon_env skill sync --json || fail "\`collie skill sync --json\` failed: ${STDERR}"
+assert_contains "$STDOUT" '"reason":"uninstalled"'
+assert_eq "$(cat "${BEACON_HOME}/.codex/AGENTS.md")" "$(printf '# My rules\nBe brief.')"
+[ -f "${CLAUDE_DIR}/skills/collie-walky-talky/SKILL.md" ] || fail "\`collie skill sync\` did not install into the Claude profile that exists"
+beacon_env skill sync || fail "a second \`collie skill sync\` failed: ${STDERR}"
+assert_eq "$STDOUT" ""
+beacon_env skill uninstall claude || fail "\`collie skill uninstall claude\` failed: ${STDERR}"
+
 # ── The emitter ──────────────────────────────────────────────────────────────
 # Outside a multiplexer: nothing at all, and exit 0.
 beacon_env beacon emit </dev/null || fail "\`collie beacon emit\` exited non-zero outside a multiplexer"

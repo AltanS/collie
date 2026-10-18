@@ -411,9 +411,10 @@ export function AgentChat({
   // The walky talky message the Messages sheet opens on: a tapped Chat card, or an id chip. The pane menu's
   // own row clears it, so that way in shows the list from the top.
   const [walkyFocus, setWalkyFocus] = useState<string | null>(null);
-  // ONE predicate for "this pane has a Messages sheet": the pane menu's row, a Chat card's tap and an id chip's
-  // tap all read it, so no tap opens a sheet the menu would not offer.
-  const messagesSheet = agent !== undefined && isLead(scope);
+  // ONE predicate for "this pane has a Messages sheet" (a member's pane too: the lead forwards its list).
+  // The pane menu's row, a Chat card's tap and an id chip's tap all read it, so no tap opens a sheet the
+  // menu would not offer.
+  const messagesSheet = agent !== undefined;
   const { lead: crewLead } = useCrew();
   const walkySelf = paneAddress(paneId, scope, crewLead, agent?.instance);
   const openWalkyMessage = useCallback((id: string) => {
@@ -3164,8 +3165,8 @@ export function AgentChat({
           // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
           // program has no prompt cache to warn about (M56 spec 14).
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
-          // The pane's walky talky messages (M62), a read row with the others. The lead's own panes
-          // only: it reads no member's list in 1.23.0, so the sheet there could only say something untrue.
+          // The pane's walky talky messages (M62), a read row with the others. A member's pane too: the
+          // lead forwards its list from that member's own log (CREW_PROTOCOL.md §21).
           onMessages={
             messagesSheet
               ? () => {

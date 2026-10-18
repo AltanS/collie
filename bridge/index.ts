@@ -1007,6 +1007,9 @@ const updateMonitor = new UpdateMonitor({
   // This machine's release line (M60 spec 01), read off disk on every resolve so a switch through
   // `POST /api/update/line` is seen at once. A missing file is Stable with nothing rejected.
   lineOffer: (tags, installed) => lineReading(readUpdateLineSync(cfg.stateDir), tags, installed),
+  // The line itself, read per status, so the card and the Crew page name it before any check has
+  // succeeded (an offline machine, the rig's dead mirror), the same line the crew header carries.
+  line: () => readUpdateLineSync(cfg.stateDir).line,
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions, linkChange, urgent) =>
     void push.send({

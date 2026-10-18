@@ -227,14 +227,17 @@ shows the sender's kind (`agent` or `operator`), the message body, and "reply to
 A small word says how the sender was known: "signed by" a machine, "relayed by the lead", "this
 machine", or "not verified".
 
-The card appears only when the bridge's own log holds that message. A header that an agent merely
-prints stays plain text, with the quiet mark "no log record on this machine"
-([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from the bridge's log
-at once, also for a message from another agent that its pane has not read yet.
+The card appears only when the log of the machine that owns the pane holds that message. For a pane
+on a crew member, the lead reads that member's log. A header that an agent merely prints stays plain
+text, with the quiet mark "no log record on this machine"
+([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from that log at once,
+also for a message from another agent that its pane has not read yet.
+
+When the phone cannot read the log, it claims nothing: no card and no mark. This happens on a member
+older than 1.23.0, and on a member the lead cannot reach.
 
 Tap the card to open the Messages sheet on that message. The sheet scrolls to it and marks it, and
-its Reply button is next to it. A pane on a crew member has no Messages sheet, so its card is not a
-button.
+its Reply button is next to it.
 
 When an agent runs `collie walky` in a tool card, the card wears a small "walky talky" badge. After
 `send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example
@@ -251,9 +254,10 @@ Each receipt state shows the words in the table above, with the reason after "no
 - **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane, newest
   first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
   has the title "To" and the pane it went to, with the receipt state in words, and no "Reply"
-  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's address. A pane of a member has no Messages row, only the lead's own
-  panes have one. An empty sheet says "No messages for this pane yet." A machine that cannot
-  keep messages says "This machine does not keep messages yet."
+  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  address. A pane on a crew member has the row too, and its list comes from that member's own log. A
+  reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
+  yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".
   The text goes to this pane as a message from you. The phone adds the pane's token to the address,
   so the text reaches the session you are looking at. If another pane has taken the id since, the
@@ -271,24 +275,38 @@ Each receipt state shows the words in the table above, with the reason after "no
 ## Install the skill
 
 An agent uses walky talky only when it knows how. Collie writes the skill that teaches it into
-your agents' own instruction files, and only when you ask.
-
-```sh
-collie skill install all
-```
+your agents' own instruction files.
 
 The skill is a short text. It teaches the agent the `collie walky` verbs, how to read the header
-of a message, and when not to send. No other command and no bridge start touches those files.
+of a message, and when not to send.
 
-You can also name one harness: `claude`, `codex`, `opencode`, `pi` or `gemini`.
+After each update, Collie installs the skill into every harness it finds on this machine, and
+keeps each copy current. A rollback and a switch of release line do the same with the build they
+go to. Collie finds a harness by its config folder, for example `~/.codex`. For Claude Code, each
+profile folder that exists gets the skill.
+
+Run the same step by hand at any time, for example right after a fresh install:
+
+```sh
+collie skill sync
+```
+
+It prints one line for each file it installed or updated, and one line for each file it refused.
+It prints nothing when every copy is current. `--dry-run` shows the changes and writes nothing.
+`--json` prints the result for a script.
+
+For a harness that Collie did not find, name it. Collie then creates the file:
+`claude`, `codex`, `opencode`, `pi` or `gemini`.
 
 ```sh
 collie skill install claude
 ```
 
-`install all` skips a harness whose config folder does not exist on this machine. Name that
-harness to create the file anyway. A running agent reads its instructions at start, so restart it
-after an install.
+`collie skill install all` installs into every harness whose config folder exists. A running agent
+reads its instructions at start, so restart it after an install.
+
+Only `collie update`, `collie skill install` and `collie skill sync` write those files. The bridge
+never writes them, and no bridge start touches them.
 
 ### Where the skill goes
 
@@ -326,16 +344,19 @@ collie skill status
 Each target is one of these.
 
 - `installed`: the file or block matches this build.
-- `stale`: it differs from this build. Run `collie skill install all` to bring it up to date.
-- `absent`: you did not install it there. This is your choice and is never a problem.
+- `stale`: it differs from this build. The next update brings it up to date, or run
+  `collie skill sync` now.
+- `absent`: the harness is not on this machine, the sync is off, or you uninstalled the skill
+  there. This is never a problem.
 - `refused`: Collie will not touch it, for example because it is a symlink.
 
 `collie skill status --check` prints nothing and exits with code 3 when any installed copy is
 stale. A new Collie version alone does not make a copy stale. Only a change to the skill text, or
 to the path of the `collie` binary it names, does.
 
-`collie doctor` shows the same answer as the `skill-walky-talky` check. `collie update` prints one
-note when the new build carries a newer skill.
+`collie doctor` shows the same answer as the `skill-walky-talky` check. With
+`COLLIE_SKILL_SYNC=off`, `collie update` writes nothing and prints one note when the new build
+carries a newer skill.
 
 ### Take the skill out again
 
@@ -344,6 +365,9 @@ collie skill uninstall all
 ```
 
 This removes the Claude file and cuts out the block. It leaves the rest of each file untouched.
+
+Collie records the uninstall under its state directory, so the next update does not put the skill
+back. `collie skill install <harness>` removes that record again.
 
 ## Limits and switches
 
@@ -355,7 +379,13 @@ COLLIE_WALKY=off
 ```
 
 `COLLIE_WALKY=off` makes this machine refuse every message for its panes, as `not sent: off`. The
-CLI on that machine still sends. These are the limits that stay on:
+CLI on that machine still sends.
+
+`COLLIE_SKILL_SYNC=off` stops `collie update` from writing the skill. The update then only prints a
+note when an installed copy is behind, and `collie skill install` and `collie skill sync` still
+work by hand.
+
+These are the limits that stay on:
 
 | Limit | Refused as |
 | --- | --- |
@@ -376,7 +406,9 @@ CLI on that machine still sends. These are the limits that stay on:
   open dialog is held: nothing enters the dialog, the message is typed after the dialog is answered,
   and it waits in the inbox only if the 10-minute hold runs out.
 - **A reply goes back to the pane that sent the message.** Collie finds that pane from the session
-  and pane the bridge logged. The address in the reply plays no part.
+  and pane the bridge logged. The address in the reply plays no part. One case differs: your reply
+  from the phone to a message that only a member's log holds. The address then takes the reply to
+  that member, and the member's log finds the pane.
 - **The refusals are counted**, per reason, in `<stateDir>/walky/refusals.json`, with no body and
   no sender. `collie doctor` shows them in the row `walky-refusals`. The Crew page shows them under
   a broadcast.
@@ -398,7 +430,8 @@ messages.
 
 Across a crew, a message rides the crew link that already exists, through the lead. A member posts
 it to the lead. The lead posts it to the member that owns the pane. The lead then pushes each
-outcome back to the sender's machine, on `POST /crew/v1/walky/outcomes`. A member keeps the
+outcome back to the sender's machine, on `POST /crew/v1/walky/outcomes`. The phone reads a member
+pane's list through the lead, which forwards the read to that member. A member keeps the
 outcomes it reports in memory until the lead acks them, and drops them after 10 minutes. The routes
 are in [`CREW_PROTOCOL.md` §21](../CREW_PROTOCOL.md).
 

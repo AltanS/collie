@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import type { Environment } from "./context.ts";
-import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT } from "./fakes.ts";
+import { capture, context, fakeFiles, fakeLinkFs, HOME, ROOT, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   BLOCK_BEGIN,
@@ -12,6 +12,7 @@ import {
   cmdSkillInstall,
   cmdSkillPrint,
   cmdSkillStatus,
+  cmdSkillSync,
   cmdSkillUninstall,
   cmdSkillVerb,
   insertBlock,
@@ -22,6 +23,7 @@ import {
   skillFiles,
   skillReport,
   skillState,
+  uninstalledFile,
 } from "./skill-install.ts";
 import { collieBinary } from "./unit.ts";
 
@@ -345,5 +347,125 @@ describe("print and the verb router", () => {
     const d = deps();
     expect(cmdSkillVerb(d, "frobnicate", [])).toBe(EXIT.USAGE);
     expect(d.io.stderr.join("\n")).toContain("usage: collie skill");
+  });
+});
+
+describe("sync", () => {
+  const CLAUDE_SETTINGS = join(HOME, ".claude", "settings.json");
+  const OPENCODE_CONFIG = join(HOME, ".config", "opencode", "opencode.json");
+  const PI_SETTINGS = join(HOME, ".pi", "agent", "settings.json");
+  const older = (d: SkillDeps): string => rendered(d).replace("# Walky talky", "# Walky talky (older)");
+
+  /** claude installed, codex stale, opencode present but absent, pi refused, gemini not on this machine. */
+  function machine(): ReturnType<typeof deps> {
+    const d = deps({ files: { [CLAUDE_SETTINGS]: "{}", [OPENCODE_CONFIG]: "{}", [PI_SETTINGS]: "{}", [PI_FILE]: "mine\n" } });
+    cmdSkillInstall(d, ["claude"]);
+    cmdSkillInstall(d, ["codex"]);
+    d.files.entries.set(CODEX_FILE, { text: `${blockOf(older(d))}\n` });
+    d.fs.entries.set(PI_FILE, { kind: "symlink", target: "/nix/store/z-AGENTS.md" });
+    d.io.stdout.length = 0;
+    d.files.ops.length = 0;
+    return d;
+  }
+
+  test("the matrix: installed stays, stale is rewritten, a present harness gets it, a missing one is skipped, a refusal is reported", () => {
+    const d = machine();
+    expect(cmdSkillSync(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      `updated codex ${CODEX_FILE}`,
+      `installed opencode ${OPENCODE_FILE}`,
+      `refused pi ${PI_FILE}: ${PI_FILE} is a symlink`,
+    ]);
+    expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
+    expect(stateOf(d, CODEX_FILE)).toBe("installed");
+    expect(stateOf(d, OPENCODE_FILE)).toBe("installed");
+    expect(text(d, PI_FILE)).toBe("mine\n");
+    expect(text(d, GEMINI_FILE)).toBeUndefined();
+    expect(d.files.ops.join("\n")).not.toContain(CLAUDE_FILE);
+  });
+
+  test("is idempotent: a second run prints nothing and writes nothing", () => {
+    const d = machine();
+    cmdSkillSync(d, []);
+    d.io.stdout.length = 0;
+    d.files.ops.length = 0;
+    expect(cmdSkillSync(d, [])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([`refused pi ${PI_FILE}: ${PI_FILE} is a symlink`]);
+    expect(d.files.ops).toEqual([]);
+  });
+
+  test("--dry-run says what it would do and writes nothing", () => {
+    const d = machine();
+    expect(cmdSkillSync(d, ["--dry-run"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toContain(`would update codex ${CODEX_FILE}`);
+    expect(d.io.stdout).toContain(`would install opencode ${OPENCODE_FILE}`);
+    expect(d.files.ops).toEqual([]);
+    expect(stateOf(d, CODEX_FILE)).toBe("stale");
+    expect(stateOf(d, OPENCODE_FILE)).toBe("absent");
+  });
+
+  test("--json prints changed, refused and skipped, and nothing else", () => {
+    const d = machine();
+    expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toHaveLength(1);
+    expect(JSON.parse(d.io.stdout[0]!)).toEqual({
+      changed: [
+        { harness: "codex", path: CODEX_FILE, action: "updated" },
+        { harness: "opencode", path: OPENCODE_FILE, action: "installed" },
+      ],
+      refused: [{ harness: "pi", path: PI_FILE, reason: `${PI_FILE} is a symlink` }],
+      skipped: [{ harness: "gemini", path: GEMINI_FILE, reason: "not on this machine" }],
+    });
+  });
+
+  test("a Claude profile gets it only when its folder exists", () => {
+    const d = deps({ env: { COLLIE_TRANSCRIPT_ROOT: join("/srv", "ops", "projects") }, files: { [CLAUDE_SETTINGS]: "{}" } });
+    cmdSkillSync(d, []);
+    expect(text(d, CLAUDE_FILE)).toBe(rendered(d));
+    expect(text(d, OPS_FILE)).toBeUndefined();
+  });
+
+  test("a target the operator uninstalled stays out until `skill install` takes the marker off", () => {
+    const d = deps({ files: { [CLAUDE_SETTINGS]: "{}", [join(HOME, ".codex", "config.toml")]: "" } });
+    cmdSkillInstall(d, ["claude"]);
+    cmdSkillInstall(d, ["codex"]);
+    expect(cmdSkillUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.io.stdout.join("\n")).toContain("leave it out from now on");
+    expect(text(d, uninstalledFile(STATE))).toBe(`${CODEX_FILE}\n`);
+    d.io.stdout.length = 0;
+    expect(cmdSkillSync(d, ["--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.io.stdout[0]!).skipped).toContainEqual({ harness: "codex", path: CODEX_FILE, reason: "uninstalled" });
+    expect(text(d, CODEX_FILE)).toBeUndefined();
+    cmdSkillStatus(d, []);
+    expect(d.io.stdout.join("\n")).toContain("you uninstalled it");
+    // An uninstall of a harness that never had it is the same no.
+    cmdSkillUninstall(d, ["gemini"]);
+    expect(text(d, uninstalledFile(STATE))).toBe(`${[CODEX_FILE, GEMINI_FILE].toSorted().join("\n")}\n`);
+    // Install by name takes the marker off, and sync follows the harness again.
+    cmdSkillInstall(d, ["codex"]);
+    cmdSkillInstall(d, ["gemini"]);
+    expect(text(d, uninstalledFile(STATE))).toBeUndefined();
+    d.files.entries.set(CODEX_FILE, { text: `${blockOf(older(d))}\n` });
+    d.io.stdout.length = 0;
+    cmdSkillSync(d, []);
+    expect(d.io.stdout).toEqual([`updated codex ${CODEX_FILE}`]);
+  });
+
+  test("a write that throws is reported and exits 1; the other targets still sync", () => {
+    const d = deps({ files: { [CLAUDE_SETTINGS]: "{}", [OPENCODE_CONFIG]: "{}" } });
+    const write = d.files.write.bind(d.files);
+    d.files.write = (p, t, m) => {
+      if (p.startsWith(CLAUDE_FILE)) throw new Error("EIO");
+      write(p, t, m);
+    };
+    expect(cmdSkillSync(d, [])).toBe(EXIT.FAIL);
+    expect(d.io.stdout).toContain(`refused claude ${CLAUDE_FILE}: could not write it: EIO`);
+    expect(d.io.stdout).toContain(`installed opencode ${OPENCODE_FILE}`);
+  });
+
+  test("the router knows `sync`", () => {
+    const d = deps();
+    expect(cmdSkillVerb(d, "sync", ["--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.io.stdout[0]!)).toMatchObject({ changed: [], refused: [] });
   });
 });

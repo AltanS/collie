@@ -28,7 +28,15 @@ import {
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { cmdDocs, cmdSkill } from "./docs.ts";
-import { cmdSkillInstall, cmdSkillPrint, cmdSkillStatus, cmdSkillUninstall, cmdSkillVerb, type SkillDeps } from "./skill-install.ts";
+import {
+  cmdSkillInstall,
+  cmdSkillPrint,
+  cmdSkillStatus,
+  cmdSkillSync,
+  cmdSkillUninstall,
+  cmdSkillVerb,
+  type SkillDeps,
+} from "./skill-install.ts";
 import { asksForHelp, EXIT, type Io, realIo } from "./io.ts";
 import {
   cmdExecBridge,
@@ -251,7 +259,7 @@ function hooksDeps(io: Io): HooksDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
-/** `skill install|uninstall|status|print`: the context, the filesystem and the symlink probe, like `hooks`. */
+/** `skill install|uninstall|sync|status|print`: the context, the filesystem and the symlink probe, like `hooks`. */
 function skillDeps(io: Io): SkillDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
@@ -908,7 +916,7 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "skill",
     summary:
-      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, status, print",
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, sync, status, print",
     subcommands: [
       {
         name: "install",
@@ -919,6 +927,12 @@ export const COMMANDS: readonly Command[] = [
         name: "uninstall",
         summary: "remove only the file or block Collie wrote: `skill uninstall <harness|all>`",
         run: (args, s) => cmdSkillUninstall(skillDeps(s.io), args),
+      },
+      {
+        name: "sync",
+        summary:
+          "bring every harness on this machine up to this build's skill, as `collie update` does after each update (`--dry-run`, `--json`)",
+        run: (args, s) => cmdSkillSync(skillDeps(s.io), args),
       },
       {
         name: "status",
