@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
 
 import {
+  bareAddress,
   mintWalkyId,
   NUDGE_MARK,
   mirrorHeaderId,
@@ -135,6 +136,8 @@ describe("targetWord", () => {
     expect(targetWord("all")).toBe("every machine");
     expect(targetWord("bluefin/all")).toBe("bluefin/all");
     expect(targetWord("bluefin/w1:p1")).toBe("bluefin/w1:p1");
+    // A token is never split off: a target that carries one is shown whole.
+    expect(targetWord("bluefin/w1:p1#k3f9")).toBe("bluefin/w1:p1#k3f9");
   });
 });
 
@@ -151,6 +154,23 @@ describe("paneAddress", () => {
     expect(paneAddress("w1:p1", { host: "minibuch" }, "bluefin")).toBe("minibuch/w1:p1");
     expect(paneAddress("w1:p1", undefined, "bluefin")).toBe("bluefin/w1:p1");
     expect(paneAddress("w1:p1", undefined, undefined)).toBe("local/w1:p1");
+  });
+
+  it("appends #<token> when the pane carries an instance, and sends the bare address when it does not", () => {
+    expect(paneAddress("w1:p1", { host: "minibuch" }, "bluefin", "k3f9")).toBe("minibuch/w1:p1#k3f9");
+    expect(paneAddress("w1:p1", undefined, "bluefin", "k3f9")).toBe("bluefin/w1:p1#k3f9");
+    expect(paneAddress("w1:p1", undefined, undefined, "a0b1")).toBe("local/w1:p1#a0b1");
+    expect(paneAddress("w1:p1", undefined, "bluefin", undefined)).toBe("bluefin/w1:p1");
+    expect(paneAddress("w1:p1", undefined, "bluefin", "")).toBe("bluefin/w1:p1");
+  });
+});
+
+describe("bareAddress", () => {
+  it("drops the session token and leaves every other address as it is", () => {
+    expect(bareAddress("bluefin/w1:p1#k3f9")).toBe("bluefin/w1:p1");
+    expect(bareAddress("bluefin/w1:p1")).toBe("bluefin/w1:p1");
+    expect(bareAddress("all")).toBe("all");
+    expect(bareAddress("bluefin/all")).toBe("bluefin/all");
   });
 });
 
@@ -192,5 +212,7 @@ describe("the words", () => {
   it("gives a refusal its reason", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "rate limit" })).toBe("not sent: rate limit");
     expect(stateWord({ ...receipt, state: "refused" })).toBe("not sent");
+    // The bridge's words show as they are, in every translation: a replaced pane reads like a busy one.
+    expect(stateWord({ ...receipt, state: "refused", reason: "pane replaced" })).toBe("not sent: pane replaced");
   });
 });

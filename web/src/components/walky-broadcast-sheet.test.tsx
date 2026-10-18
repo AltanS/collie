@@ -55,6 +55,33 @@ describe("WalkyBroadcastSheet", () => {
     expect(row).toHaveTextContent(/^every machinequeued · this machine$/);
   });
 
+  it("shows a receipt's bare target with the label of a `who` pane that carries a session token", async () => {
+    server.use(
+      http.get("/api/walky/who", () =>
+        HttpResponse.json({ targets: [{ ...TARGETS[0]!, address: "bluefin/w1:p1#k3f9" }, TARGETS[1]!] }),
+      ),
+      http.post("/api/walky", () =>
+        HttpResponse.json({
+          receipts: [
+            { id: "wt_aaaaaaaaaaaa", state: "delivered", verified: "local", at: 1, by: "bluefin", target: "bluefin/w1:p1" },
+            { id: "wt_aaaaaaaaaaaa", state: "refused", reason: "pane replaced", verified: "local", at: 1, by: "workshop", target: "workshop/w1:p1" },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Agents reached: 2");
+    await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Send" }));
+    const rows = await within(dialog).findAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("a#b (bluefin/w1:p1)");
+    expect(rows[1]).toHaveTextContent("c#d (workshop/w1:p1)");
+    expect(rows[1]).toHaveTextContent("not sent: pane replaced");
+  });
+
   it("drops a chosen machine that left the crew: the picker, the count and the question go back to every machine", async () => {
     const user = userEvent.setup();
     const view = render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);

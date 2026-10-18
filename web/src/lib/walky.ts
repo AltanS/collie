@@ -57,7 +57,8 @@ export interface WalkyReceipt {
   /**
    * Why, in the bridge's words: "no such pane", "not an agent pane", "pane busy", "box not free", "password prompt",
    * "rate limit", "off", "no terminal" (a session with no terminal is `inbox-only`, not refused),
-   * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature".
+   * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature",
+   * "pane replaced" (the address named a session instance and the pane now holds another).
    */
   reason?: string;
   verified: WalkyVerified;
@@ -250,9 +251,30 @@ export const SOLO_MEMBER = "local";
  * This pane's address. The pane's machine is the scope's host (a crew member) or, with none, the
  * lead's own id on a crew, or `local` on a solo install. A pane id is unique only within its machine,
  * which is why the machine is part of the address.
+ *
+ * A pane that carries an `instance` (the four-character token of its current session) gets `#<token>`
+ * after the pane id, so the message goes to that session only: if the pane id is reused by another
+ * session, the bridge refuses with `pane replaced` instead of typing into a stranger. A pane without
+ * one (an older machine in a crew) gets the bare address, which means whatever holds the id now.
  */
-export function paneAddress(paneId: string, scope: Scope | undefined, lead: string | undefined): string {
-  return `${scope?.host ?? lead ?? SOLO_MEMBER}/${paneId}`;
+export function paneAddress(
+  paneId: string,
+  scope: Scope | undefined,
+  lead: string | undefined,
+  instance?: string,
+): string {
+  const bare = `${scope?.host ?? lead ?? SOLO_MEMBER}/${paneId}`;
+  return instance === undefined || instance === "" ? bare : `${bare}#${instance}`;
+}
+
+/**
+ * An address without its `#<token>`. A receipt's `target` is always bare, while a message's `to`, a
+ * sender's `from.address` and a `who` target may carry the token, so a place that compares or shows
+ * the pane on its own goes through this first.
+ */
+export function bareAddress(address: string): string {
+  const at = address.indexOf("#");
+  return at === -1 ? address : address.slice(0, at);
 }
 
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";

@@ -10,7 +10,7 @@ import type { NoticeTone } from "@/components/ui/notice";
 
 /** Who a message in the composer is addressed to, when it is not simply this pane. */
 export interface WalkyAim {
-  /** One address, `<memberId>/<paneId>`. */
+  /** One address, `<memberId>/<paneId>`, with `#<token>` when the sender named an instance. */
   to: string;
   /** The message being answered. */
   replyTo?: string;
@@ -45,10 +45,13 @@ function toneOf(receipt: WalkyReceipt): NoticeTone {
  */
 export function useWalkyComposer({
   paneId,
+  instance,
   scope,
   onTaken,
 }: {
   paneId: string;
+  /** The pane's current session instance, when its machine reports one. The address then names it. */
+  instance?: string | undefined;
   scope: Scope | undefined;
   /** The message left. The composer clears its draft and revalidates the pane. */
   onTaken: () => void;
@@ -60,7 +63,7 @@ export function useWalkyComposer({
   // The message the strip still follows: sent, answered `accepted`, and not dismissed.
   const [followed, setFollowed] = useState<{ id: string; label: string } | null>(null);
   const log = useWalkyLog();
-  const address = paneAddress(paneId, scope, lead);
+  const address = paneAddress(paneId, scope, lead, instance);
 
   const sendMessage = useCallback(
     async (line: string): Promise<boolean> => {

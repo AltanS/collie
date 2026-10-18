@@ -153,6 +153,8 @@ const AGENT_VIEW_KEYS = {
   sendProtocol: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
   held: true,
+  // Not a crew dimension: the pane's session instance (walky talky), four characters naming the session that holds the pane id now. Absent on a machine that predates it.
+  instance: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -259,6 +261,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "hold",
       "hooks",
       "host",
+      "instance",
       "kind",
       "lastActiveAt",
       "lastSeenAt",

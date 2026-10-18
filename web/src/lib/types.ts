@@ -11,6 +11,12 @@ export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
 export interface AgentView {
   paneId: string;
+  /**
+   * The pane's current session instance: four characters of [a-z0-9] that change when another session
+   * takes over the same pane id. A walky message addressed `<member>/<paneId>#<instance>` reaches only
+   * that session. Absent on a machine that predates it.
+   */
+  instance?: string;
   workspaceId: string;
   workspaceLabel: string;
   workspaceNumber: number;

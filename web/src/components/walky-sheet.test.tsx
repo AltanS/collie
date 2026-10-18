@@ -42,6 +42,22 @@ describe("WalkySheet", () => {
     expect(screen.getByText("waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });
 
+  it("draws a message whose `to` and sender address carry a session token without splitting them", async () => {
+    const user = userEvent.setup();
+    const row: WalkyRow = {
+      ...fixtureWalkyAgent,
+      from: { ...fixtureWalkyAgent.from, address: "bluefin/w6:p3#k3f9" },
+      to: "bluefin/w1:p1#zz99",
+    };
+    const props = sheet([row]);
+    expect(screen.getByText("Tests are green on fix-465. You can merge.")).toBeInTheDocument();
+    expect(screen.getByText("typed into the pane")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Reply/ }));
+    // Reply hands the row as it stands: its sender's address keeps the token.
+    expect(props.onReply).toHaveBeenCalledExactlyOnceWith(row);
+    expect(vi.mocked(props.onReply).mock.calls[0]?.[0].from.address).toBe("bluefin/w6:p3#k3f9");
+  });
+
   it("offers Reply on the agent message only, and hands the row to the caller", async () => {
     const user = userEvent.setup();
     const props = sheet([fixtureWalkyAgent, fixtureWalkyOperator]);
