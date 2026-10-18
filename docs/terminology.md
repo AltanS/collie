@@ -114,6 +114,9 @@ It holds the request id and the outcome, and it lets a retry replay and not run 
 receipts in its state folder
 ([Where Collie keeps a durable agent's data](durable-agents.md#where-collie-keeps-a-durable-agents-data)).
 
+A [walky talky](#walky-talky) message has a receipt too. It says whether the message is queued, typed
+into the pane, waiting in the inbox or refused, and why ([Receipts](walky-talky.md#receipts)).
+
 ## Conversation
 
 How the phone's Durable agents pages name a durable [session](#session). The conversation list
@@ -131,3 +134,22 @@ a question waits, and it shows nothing when no durable agent is attached
 The rules Collie and a durable agent use to talk: a hello, then snapshots, events and answers. There is
 one version today, version 1. It runs over a private socket or over https with a token
 ([Versions](durable-agents.md#versions)).
+
+## Walky talky
+
+A short message from one agent session to another, or from you to a session. It works on any
+harness and across a crew, and every message has an id and a [receipt](#receipt). The command is
+`collie walky` ([Walky talky](walky-talky.md)).
+
+## Nudge
+
+The one line that an agent's message types into the target pane. It holds the sender's header and
+the two commands that read and answer the message, and no body. The agent reads the body with
+`collie walky inbox <id>`
+([What the target pane receives](walky-talky.md#what-the-target-pane-receives)).
+
+## Inbox
+
+The messages kept for one pane, on the machine that owns the pane. A message waits there until the
+pane reads it with `collie walky inbox`. It lands there when Collie could not type it, too
+([Reply, read and check](walky-talky.md#reply-read-and-check)).
