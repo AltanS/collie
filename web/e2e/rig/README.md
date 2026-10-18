@@ -97,6 +97,14 @@ captures sit beside them.
 By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
 After a crash, `bun e2e/rig/rig.ts down` stops what the rig started.
 
+Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
+Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
+Herdr would exit with "local socket name length exceeds capacity of sun_path". So the rig keeps this one
+folder outside the state root: `$XDG_RUNTIME_DIR/collie-rig-<8 hex>`, or `/tmp/collie-rig-<8 hex>` when
+that is unset, mode 0700. The hex is a hash of the state root, so two rigs with two state roots never
+share a folder. `up` checks the path length first and stops at once with the path and its size
+(`sock-path.ts`); `down` removes the folder. Everything else of the rig stays under the state root.
+
 For development, `COLLIE_RIG_KEEP=1` leaves the rig and the harnesses up after a run,
 `COLLIE_RIG_REUSE=1` takes a rig that is already up, and `COLLIE_RIG_PANE_CLAUDE=<pane>` (or `_PI`,
 `_OMP`) takes a harness that already runs in that pane.
