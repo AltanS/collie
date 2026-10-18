@@ -135,7 +135,9 @@ export function parseWalkyRequest(line: string): WalkyRequest | null {
   }
   if (op !== "send") return null;
   const id = text(row, "id");
-  const to = text(row, "to");
+  // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not
+  // carry them, or a crew leg is logged under one spelling and answered under another.
+  const to = text(row, "to")?.trim() ?? null;
   const body = text(row, "body");
   const replyTo = textOrNull(row, "replyTo") ?? null;
   if (replyTo !== null && !isWalkyId(replyTo)) return null;
@@ -158,7 +160,7 @@ export function parsePhoneSend(value: JsonValue | undefined): PhoneSend | { read
   const row = asJsonObject(value);
   if (row === undefined) return { error: "bad body" };
   const id = text(row, "id");
-  const to = text(row, "to");
+  const to = text(row, "to")?.trim() ?? null;
   const body = text(row, "body");
   const replyTo = textOrNull(row, "replyTo") ?? null;
   if (!isWalkyId(id)) return { error: "bad id" };

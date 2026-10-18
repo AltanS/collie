@@ -64,6 +64,12 @@ describe("POST /api/walky", () => {
     expect(walky.status("wt_aaaaaaaaaaa2").message?.body).toHaveLength(4000);
   });
 
+  test("the address is signed and logged without the blanks around it", async () => {
+    const walky = service();
+    await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa1", to: " local/w1:p1 ", body: "hi" }, context([]));
+    expect(walky.status("wt_aaaaaaaaaaa1").message?.to).toBe("local/w1:p1");
+  });
+
   test("a bad body is a 400 and sends nothing", async () => {
     for (const body of [null, { id: "x", to: "all", body: "hi" }, { id: "wt_aaaaaaaaaaa1", to: "../x", body: "hi" }, { id: "wt_aaaaaaaaaaa1", to: "all", body: 7 }]) {
       expect((await walkyPostRoute(service(), body, context([]))).status).toBe(400);

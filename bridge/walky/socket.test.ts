@@ -71,6 +71,11 @@ describe("the requests", () => {
     expect(walky.log.all("wt_aaaaaaaaaaa1")).toEqual([]);
   });
 
+  test("the address is kept as the bridge spells it, without the blanks around it", () => {
+    const request = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: " desk/%2\n", body: "hi" }));
+    expect(request).toMatchObject({ op: "send", to: "desk/%2" });
+  });
+
   test("markers this bridge cannot place answer `not here`, so the CLI asks the next bridge", async () => {
     const request = parseWalkyRequest(JSON.stringify({ v: 1, op: "who", markers: marker("%9") }));
     expect(await answerRequest(service(), request!, [target])).toEqual({ ok: false, error: "not here" });
