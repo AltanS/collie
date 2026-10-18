@@ -34,8 +34,6 @@ Collie types into the composer only when the whole status bar frame is on screen
 
 The footer is `/sessions to resume · /copy to clipboard` on V3 and `/copy to clipboard` alone on the V2 engine (`kiro-cli chat --v2`). It disappears while a draft is typed.
 
-The placeholder is drawn after the cursor cell (`›  ask…`), and a draft of the same words has the cursor after it (`› ask…`). The phone's reader checks that cell and keeps such a draft (`chrome.ts`), but the send profile matches the placeholder by its trimmed text, so the bridge's Send Protocol reads that one draft as an empty box.
-
 ## Send profile
 
 `web/src/lib/surface/profiles/kiro.json` is the bridge's send profile for kiro-cli 2.32.0, measured on that build on 2026-10-17. Ctrl+J, Shift+Enter and Alt+Enter each insert a newline, and the profile uses Ctrl+J. One Backspace per character clears a draft across its lines. Bracketed paste is taken as text; past about 10 lines or 1500 characters it collapses to `N lines ▸` or `N chars ▸`, and one Backspace removes that chip. `!` and `@` are plain characters in the box, but a draft starting with `!` runs as a local shell command with no approval, so `/`, `!` and `@` are reserved leads.

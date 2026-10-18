@@ -51,12 +51,7 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const frame = locateComposer(lines);
   if (frame === null) return null;
-  // Kiro draws its placeholder after the cursor cell, so the prompt row reads `›  ask…`. A user who
-  // typed the same words has the cursor after them and one space after the prompt; keep that draft.
-  // The profile cannot say this (its placeholder is plain text matched after trimming), so the
-  // bridge's Send Protocol reads that typed draft as an empty box (APPROVAL_NOTES.md, Composer frame).
-  const cursorFirst = /^\S {2}/.test(frameRows(lines)[frame.interior.prompt] ?? "");
-  if (frame.placeholder && cursorFirst) return null;
+  if (frame.placeholder) return null;
   return frame.interior.text === "" ? null : frame.interior.text;
 }
 
