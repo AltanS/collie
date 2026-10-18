@@ -1,0 +1,76 @@
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242msample Sample Some sentence in example words words, words the sentence example (sample, words, some, words, some). An an the a[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242ma the some-words Sample.an sentence.[0m
+     [0m[2m[38;2;248;248;242m  4 [0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242ma sample some, the words words (an to `some/words/example/`) some the some sample.[0m
+     [0m[2m[38;2;248;248;242m  6 [0m
+     [0m[2m[38;2;248;248;242m  8 [0m
+     [0m[2m[38;2;248;248;242m  9 [0m[38;2;248;248;242m- **Some**: the some An, words example some the words example. Sample an example words the An an the an sample, the some an in[0m
+     [0m[2m[38;2;248;248;242m 10 [0m[38;2;248;248;242m- **Words some**: a Example the in a example sample, paragraph some the words'a Example some An.[0m
+     [0m[38;2;153;153;153m… +76 lines [0m
+     
+[0m[38;2;224;164;88m✎ [0m[38;2;163;177;138m✓ [0m[38;2;78;186;101m● [0m[1mWrite[0m(.the\sample-words.an)
+[0m[38;2;153;153;153m  ⎿  [0mWrote [0m[1m5[0m lines to [0m[1m.the\sample-words.an[0m
+     [0m[2m[38;2;248;248;242m 1 [0m[38;2;248;248;242mWords Sample, an sample-an Example the an the some An some sample the sample Sample Some sentence in example words words some a[0m
+     [0m[2m[38;2;248;248;242m   [0m[38;2;248;248;242man words'a Example sentence, `an` the Sample example, the a sentence, words the sentence example, in words-the-sample some.[0m
+     [0m[2m[38;2;248;248;242m 2 [0m
+     [0m[2m[38;2;248;248;242m 3 [0m[38;2;248;248;242mSample the words example: `some/words/sample.an`.[0m
+     [0m[2m[38;2;248;248;242m 4 [0m
+     [0m[2m[38;2;248;248;242m 5 [0m[38;2;248;248;242mWords some: sample `A:\the\sample` (Sample, an, example.an), some the some some the sample'a sample, the some the sample some a[0m
+     [0m[2m[38;2;248;248;242m   [0m[38;2;248;248;242msome. The `Sample_The` words some (words 3) an sample-sample some the words some some an an words example.[0m
+[0m[38;2;217;119;87m[$ 1 ran][0m
+
+[0m[38;2;217;119;87m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m                                                                                                                                            [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m  The the sentence words, the sentence the the sample.                                                                                      [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m│[0m[48;2;26;26;26m                                                                                                                                            [0m[38;2;217;119;87m│[0m
+[0m[38;2;217;119;87m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+[0m[38;2;224;164;88m✎ [0m[38;2;163;177;138m✓ [0m[38;2;78;186;101m● [0m[1mUpdate[0m(some\Sentence.an)
+[0m[38;2;153;153;153m  ⎿  [0mAdded [0m[1m1[0m line
+     [0m[2m[38;2;248;248;242m 38 [0m[38;2;248;248;242m - **Some**: `some.the` (the sample/some some, `A:\the\some`), run an `some run`: some sample, words, statements the some-some[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m the example an the sentence in a sample some, example to `.the/`; `some/some.an` some the to some an, the the words an the an[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m the, example the example the in `A:\the\some\some\Sentence.an`.[0m
+     [0m[2m[38;2;248;248;242m 39 [0m[38;2;248;248;242m - **Some words** (words): a words a example run words example, words words some some the example an sample, an an an words in[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m  example an an some (`sample/some-words-words/Words.an`).[0m
+     [0m[2m[38;2;248;248;242m 40 [0m[38;2;248;248;242m - **Example words**: the `<!-- some-the-example: Some-An-An <the> -->` line words the words an `some/words/Some.an` (an Words[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m a, example an `sample sentence --words`), some the `<example>@<the>` the example; `sample` the the words some the the the the[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m an.[0m
+     [0m[38;2;80;200;80m[48;2;2;40;0m 41 +[0m[38;2;248;248;242m[48;2;2;40;0m- **Sample**: the example sample-an Example the an the some An some sample the sample Sample Some sentence in words words the[0m
+     [0m[38;2;80;200;80m[48;2;2;40;0m    +[0m[38;2;248;248;242m[48;2;2;40;0ma Example sentence, example the a sentence, in words-the-sample some (`some/words/sample.an`, An-333).                       [0m
+     [0m[2m[38;2;248;248;242m 42 [0m[38;2;248;248;242m - **Placeholder**: the words (`sample/placeholder.an`) some sentence the words: words sample the words, sample, some the some[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m a words, the example `some`, `example` an `illustrationan`.[0m
+     [0m[2m[38;2;248;248;242m 43 [0m[38;2;248;248;242m - **An-example some**: a some a example sample some `words some` words the sentence an in words an an; words paragraph some a[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m a an `A0` paragraph an the some words.[0m
+     [0m[2m[38;2;248;248;242m 44 [0m[38;2;248;248;242m - **Words example**: a Sentence some paragraph to a some an the **some the** (the some sentence'a some sample some; `~/.words[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m a`'a an `sample-sample`, the Sample the Sample some), in `%Illustration%\sample-words\words\<some>\`, some a example in words[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m an some words some `words/words/words.an1`; the paragraph some'a example **the**a an to the some an sentence an, some words a[0m
+     [0m[2m[38;2;248;248;242m    [0m[38;2;248;248;242m a.[0m
+[0m[38;2;217;119;87m[$ 1 ran][0m
+
+[0m[38;2;224;164;88m✎ [0m[38;2;163;177;138m✓ [0m[38;2;78;186;101m● [0m[1mWrite[0m(.the\the-sample-some.the)
+[0m[38;2;153;153;153m  ⎿  [0mWrote [0m[1m9[0m lines to [0m[1m.the\the-sample-some.the[0m
+     [0m[2m[38;2;248;248;242m 1 [0m[38;2;248;248;242msome: some Sample, an sample-an Example words some the sentence[0m
+     [0m[2m[38;2;248;248;242m 2 [0m
+     [0m[2m[38;2;248;248;242m 3 [0m[38;2;248;248;242mSample the words example in some/words/sample.an: a Example the an the[0m
+     [0m[2m[38;2;248;248;242m 4 [0m[38;2;248;248;242msome An some sample Sample Some sentence in words words some sentence,[0m
+     [0m[2m[38;2;248;248;242m 5 [0m[38;2;248;248;242man/Sample example the a sentence, in words-the-sample some.[0m
+     [0m[2m[38;2;248;248;242m 6 [0m
+     [0m[2m[38;2;248;248;242m 7 [0m[38;2;248;248;242mSome: An-333[0m
+     [0m[2m[38;2;248;248;242m 8 [0m
+     [0m[2m[38;2;248;248;242m 9 [0m[38;2;248;248;242mAn-Sentence-An: Sample Some 5.5 <example@paragraph.the>[0m
+[0m[38;2;217;119;87m$ [0m[38;2;224;164;88m… [0m[1mBash[0m(an ~/.sample; the the some/words/sample.an some/words/Some.an some/Sentence.an && some run --the .the/sample.the --some words
+    --example 300 -- the sample -A .the/the-sample-some.the; an=$?; some -a 5 .the/sample.the; the the -1 --example; some $an)
+     [0m[38;2;153;153;153m(ctrl+b to run in background)[0m 
+
+[0m[38;2;215;119;87m✢ [0m[38;2;233;154;122mFiddle-faddling… · tool use[0m[38;2;215;119;87m [0m[38;2;153;153;153m(4m 32s · ↓[0m [0m[38;2;153;153;153m10.8k tokens)[0m
+[0m[38;2;153;153;153m  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work[0m
+                                                                                                                                          [0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦ [0m[38;2;153;153;153mHeads up · [0mWith GitHub triggers, anyone who files an issue on your public repos can put text in front of an unattended Claude session
+  on your main PC.
+  [0m[38;2;177;185;249m1[0m: Learn more   [0m[38;2;177;185;249m2[0m: Knew this already   [0m[38;2;177;185;249m0[0m: Dismiss
+    
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mthe: [0m[38;2;63;185;106m 12%[0m[38;2;153;153;153m  |  the: 5a [0m[38;2;88;166;255m 31%[0m[38;2;153;153;153m (2a03a) · 7a [0m[38;2;239;92;92m 61%[0m[38;2;153;153;153m / A [0m[38;2;88;166;255m  1%[0m[38;2;153;153;153m (4a17a)  |  an: $  66.17  |  A: 341A some  |  Some 5.5  |  some+*  |  A:\Words\some…[0m
+  [0m[38;2;255;107;128m⏵⏵ bypass permissions on[0m[38;2;153;153;153m (shift+tab to cycle) · ← 2 agents[0m

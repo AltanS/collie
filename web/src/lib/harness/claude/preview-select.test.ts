@@ -142,6 +142,8 @@ describe("detectPreviewSelect — false-positive / cross-grammar isolation", () 
     "claude--select-menu.txt", // the standard select must stay prompt-select territory
     "claude--wizard-q1.txt", // the standard wizard must stay wizard territory
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
   ]) {
     it(`${name} produces zero preview detections`, () => {
       expect(detectPreviewSelect(fixtureLines(name))).toBeNull();
@@ -387,10 +389,11 @@ describe("detectPreviewSelect — the label column comes from a real option row"
   });
 });
 
-// Claude Code 2.1.302 paints a coloured cell in column 0 of a dialog and still draws its rule full
-// width from column 2, so the rule wraps into a `──` stub row: above the chip row and above
+// Theme hardening, captured from Claude Code 2.1.302 running a theme plugin that draws a two-column
+// gutter beside the dialog: Claude Code still draws its rule at the full pane width, so the rule
+// overflows by the gutter's width and wraps into a `──` stub row, above the chip row and above
 // "Chat about this", between the Notes line and the footer.
-describe("detectPreviewSelect — a wrapped dialog rule (Claude Code 2.1.302)", () => {
+describe("detectPreviewSelect — a dialog rule wrapped beside a theme's gutter", () => {
   const FIXTURE = "claude--v2302-preview-wrapped-rule--w141.txt";
 
   it("reads past the rule's stub to the Notes line", () => {

@@ -936,6 +936,11 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2302-heads-up-above-box--w142.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "running"
+  },
   "claude--v2302-turn-ended-yn--w119.txt": {
    "harness": "claude",
    "version": "2.1.302",
@@ -961,6 +966,16 @@
    "version": "2.1.302",
    "state": "dialog"
   },
+  "claude--v2302-wizard-review-barred--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
+  "claude--v2302-wizard-review-long-q--w140.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
+  },
   "claude--v2302-preview-wrapped-rule--w141.txt": {
    "harness": "claude",
    "version": "2.1.302",
@@ -975,6 +990,21 @@
    "harness": "claude",
    "version": "2.1.302",
    "state": "popup"
+  },
+  "claude--v2302-idle-full-screen--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "idle"
+  },
+  "claude--v2302-slash-model-list-padded--w120--h36.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "popup"
+  },
+  "claude--v2302-multiselect-field-focused--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.302",
+   "state": "dialog"
   },
   "claude--wizard-multiselect-checked.txt": {
    "harness": "claude",
@@ -2809,7 +2839,7 @@
   "omp--slash-palette--filtered.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--slash-palette.txt": {
    "harness": "omp",
@@ -3174,12 +3204,12 @@
   "omp--v18-8-slash-palette-w48.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-8-slash-palette.txt": {
    "harness": "omp",
    "version": "18.8",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--v18-pi-effort-hint.txt": {
    "harness": "omp",
@@ -3205,6 +3235,41 @@
    "harness": "omp",
    "version": "unversioned",
    "state": "draft"
+  },
+  "omp--v18-6-slash-model-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-model-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-settings-list--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-slash-mod-partial--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-model-selector-empty--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
+  },
+  "omp--v18-6-settings-screen--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "dialog"
   },
   "omp--working.txt": {
    "harness": "omp",
@@ -3426,6 +3491,26 @@
    "version": "0.87.1",
    "state": "dialog"
   },
+  "pi--v0871-permission-gate-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow-moved.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate-narrow.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-permission-gate.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
   "pi--v0871-question-answer-editor-typed.txt": {
    "harness": "pi",
    "version": "0.87.1",
@@ -3522,6 +3607,31 @@
    "state": "dialog"
   },
   "pi--v0871-questionnaire-tabs.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "dialog"
+  },
+  "pi--v0871-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "0.87.1",
+   "state": "popup"
+  },
+  "pi--v0871-model-selector-empty--w120.txt": {
    "harness": "pi",
    "version": "0.87.1",
    "state": "dialog"
@@ -3817,6 +3927,51 @@
    "state": "dialog"
   },
   "pi--v130-gentle-choice.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-custom-footer-draft.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-custom-footer-idle.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-slash-model-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-model-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-settings-list--w80.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-slash-mod-partial--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-model-selector-empty--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-settings-screen--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"

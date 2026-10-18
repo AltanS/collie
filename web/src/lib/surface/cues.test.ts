@@ -2,7 +2,8 @@ import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, isSingleKeyRow, ownCommandList, readCues } from "./cues";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues } from "./cues";
+import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText } from "./frame";
 import { requireProfile } from "./profile";
 import { isFree } from "./surface";
@@ -32,7 +33,7 @@ describe("quoted dialogs in a transcript", () => {
       expect(read.cues?.strength).toBe("none");
       expect(isFree(read.surface)).toBe(true);
       // The quote is a dialog shape: read with no frame, the cues see it.
-      expect(readCues(rows.slice(0, read.frame!.top - 2), null).strength).toBe("strong");
+      expect(readCues(rows.slice(0, read.frame!.top - 2), null, null).strength).toBe("strong");
     });
   }
 
@@ -61,6 +62,63 @@ describe("the bottom cluster", () => {
     expect(read.surface.modal).toBe("unreadable");
   });
 
+  it("passes over the profile's notice above a live box: its key row is no single-key prompt", () => {
+    const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", IDLE);
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("single-key");
+    expect(read.cues?.strength).toBe("none");
+    expect(read.surface.modal).toBe("none");
+  });
+
+  it("keeps the strong cue on a notice-shaped block that is not exact", () => {
+    const keys = "  1: Learn more   2: Knew this already   0: Dismiss";
+    const notExact = [
+      ["  on your main PC.", keys],
+      ["✦ Heads up · Something new", "  1: Learn more   y: Yes   0: Dismiss"],
+      ["✦ Heads up · Something new", keys, "  something else"],
+      // Items joined by a separator glyph are split as the single-key cue splits them: a letter key there is no notice.
+      ["✦ Heads up · Something new", "  1: Learn more · y: Yes   0: Dismiss"],
+      ["✦ Heads up · Something new", "  1: Learn more • y: Yes   0: Dismiss"],
+      ["✦ Heads up · Something new", "  1: Learn more │ y: Yes   0: Dismiss"],
+      ["✦ Heads up · Something new", "  1: Learn more 2: Knew this   0: Dismiss"],
+    ];
+    for (const over of notExact) {
+      const rows = rowsOf(["● done", "", ...over, RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n"));
+      const read = readScreen(rows, "claude", IDLE);
+      expect(read.cues?.strength, over.join(" / ")).toBe("strong");
+      expect(read.surface.modal).toBe("unreadable");
+    }
+  });
+
+  it("reads a notice whose key items a separator glyph joins as a notice", () => {
+    for (const joined of ["  1: Learn more | 2: Knew this   0: Dismiss", "  1: Learn more • 2: Knew this │ 0: Dismiss"]) {
+      const rows = rowsOf(["● done", "", "✦ Heads up · Something new", joined, "", RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n"));
+      expect(readScreen(rows, "claude", IDLE).cues?.strength, joined).toBe("none");
+    }
+  });
+
+  // The band over the box is counted from the notice's first row: a notice with three continuation rows
+  // would fill six rows counted from the box, and a survey drawn above it would go unread.
+  it("reads a dialog drawn above a notice of three continuation rows", () => {
+    const survey = ["● How is the agent doing this session? (optional)", "  1: Bad    2: Fine    3: Good    0: Dismiss", ""];
+    const notice = ["✦ Heads up · Something new", "  one", "  two", "  three", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    const read = readScreen(rowsOf(["● done", "", ...survey, ...notice, RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n")), "claude", IDLE);
+    expect(read.cues?.strength).toBe("strong");
+    expect(read.surface.modal).toBe("unreadable");
+  });
+
+  // A turn's spinner inside the band over a notice: the notice's key row is left out of every read.
+  it("reads no cue on a notice under a running turn's spinner", () => {
+    const over = ["✻ Thinking… (2s · esc to interrupt)", "", "✦ Heads up · Something new", "  1: Learn more   2: Knew this already   0: Dismiss", ""];
+    const rows = rowsOf(["● done", "", ...over, RULE, "❯ ", RULE, "  model · ctx 3%"].join("\n"));
+    const read = readScreen(rows, "claude", IDLE);
+    expect(read.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    expect(read.cues?.strength).toBe("none");
+    const frame = read.frame!;
+    const bare = [...rows.slice(0, frame.interior.first), ...rows.slice(frame.interior.last + 1)];
+    expect(readCues(bare, null, noticeOver(rows.map(rowText), frame, IDLE)).strength).toBe("none");
+    expect(readCues(bare, null, null).strength).toBe("strong");
+  });
+
   it("never reads the status rows under a box for a cue", () => {
     const read = readScreen(fixtureRows("claude-lab--statusline-numbered-rows--w82.txt"), "claude", IDLE);
     expect(read.cues?.cues).toEqual([]);
@@ -72,7 +130,7 @@ describe("the bottom cluster", () => {
     const rows = plainRows(["● done", RULE, "❯ /", RULE, ...tall]);
     const frame = findInputFrame(rows, IDLE)!;
     expect(frame.volatile.status).toBeNull();
-    expect(readCues(rows, frame).cluster.length).toBe(12);
+    expect(readCues(rows, frame, null).cluster.length).toBe(12);
   });
 
   // The 2026-10-16 incident on lane 8788: the agents panel's two agent rows read as a checkbox list
@@ -83,77 +141,77 @@ describe("the bottom cluster", () => {
     const held = plainRows(["● done", RULE, "❯ ", RULE, mode, "", ...panel, "", "  ↓ to manage"]);
     const heldFrame = findInputFrame(held, IDLE)!;
     expect(heldFrame.volatile.named).toHaveLength(5);
-    expect(readCues(held, heldFrame).strength).toBe("none");
+    expect(readCues(held, heldFrame, null).strength).toBe("none");
     // Too many statusline rows: the walk fails, nothing is named, and the panel is in sight again.
     const tall = Array.from({ length: IDLE.volatile.below.maxRows }, (_, i) => `  status ${String(i)}`);
     const failed = plainRows(["● done", RULE, "❯ ", RULE, ...tall, mode, "", ...panel, "", "  ↓ to manage"]);
     const failedFrame = findInputFrame(failed, IDLE)!;
     expect(failedFrame.volatile.status).toBeNull();
     expect(failedFrame.volatile.named).toEqual([]);
-    expect(readCues(failed, failedFrame).strength).not.toBe("none");
+    expect(readCues(failed, failedFrame, null).strength).not.toBe("none");
   });
 
   it(`ends the no-frame cluster at ${String(CLUSTER_GAP_ROWS)} blank rows`, () => {
     const rows = plainRows([" ❯ 1. Yes", "   2. No", "", "", "", "a reply", "more reply", "last line"]);
-    const cues = readCues(rows, null);
+    const cues = readCues(rows, null, null);
     expect(cues.cluster).toEqual([5, 6, 7]);
     expect(cues.strength).toBe("none");
   });
 
   it(`passes over a footer of up to ${String(FOOTER_MAX_ROWS)} rows set apart at the bottom, once`, () => {
     const rows = plainRows(["old", "", "", "", " ❯ 1. Yes", "   2. No", "", "", "", "", "~/proj:main"]);
-    const cues = readCues(rows, null);
+    const cues = readCues(rows, null, null);
     expect(cues.cluster).toEqual([4, 5, 10]);
     expect(cues.strength).toBe("strong");
   });
 
   it(`reads up to ${String(CLUSTER_MAX_ROWS)} non-blank rows, and a list the cap would cut whole`, () => {
     const airy = plainRows(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? `line ${String(i)}` : "")));
-    expect(readCues(airy, null).cluster).toHaveLength(CLUSTER_MAX_ROWS);
+    expect(readCues(airy, null, null).cluster).toHaveLength(CLUSTER_MAX_ROWS);
     const list = ["header", "→   first [x]", ...Array.from({ length: 30 }, (_, i) => `    item${String(i)} [x]`), "", "  status"];
-    const cues = readCues(plainRows(list), null);
+    const cues = readCues(plainRows(list), null, null);
     expect(cues.cluster[0]).toBe(1);
     expect(cues.strength).toBe("strong");
   });
 
   it("gives the same hash for the same rows", () => {
     const rows = plainRows(["a", "b"]);
-    expect(readCues(rows, null).hash).toBe(readCues(plainRows(["a", "b"]), null).hash);
-    expect(readCues(rows, null).hash).not.toBe(readCues(plainRows(["a", "c"]), null).hash);
+    expect(readCues(rows, null, null).hash).toBe(readCues(plainRows(["a", "b"]), null, null).hash);
+    expect(readCues(rows, null, null).hash).not.toBe(readCues(plainRows(["a", "c"]), null, null).hash);
   });
 });
 
 describe("cue shapes", () => {
   it("a pointer on a numbered row is strong", () => {
-    expect(readCues(plainRows(["Proceed?", " ❯ 1. Yes", "   2. No"]), null).strength).toBe("strong");
-    expect(readCues(plainRows(["⟩ 2. Always", "  3. Abort"]), null).strength).toBe("strong");
+    expect(readCues(plainRows(["Proceed?", " ❯ 1. Yes", "   2. No"]), null, null).strength).toBe("strong");
+    expect(readCues(plainRows(["⟩ 2. Always", "  3. Abort"]), null, null).strength).toBe("strong");
   });
 
   it("a key-hint footer with a listed row is strong, a key-hint alone is weak", () => {
-    expect(readCues(plainRows(["  1. Red", "", "  Enter to select"]), null).strength).toBe("strong");
-    expect(readCues(plainRows(["some text", "", "  Enter to select"]), null).strength).toBe("weak");
+    expect(readCues(plainRows(["  1. Red", "", "  Enter to select"]), null, null).strength).toBe("strong");
+    expect(readCues(plainRows(["some text", "", "  Enter to select"]), null, null).strength).toBe("weak");
   });
 
   it("two key hints name a choice or a list and are strong", () => {
-    expect(readCues(plainRows(["  Approve", "  Deny", "", "up/down navigate  enter select  esc cancel"]), null).strength).toBe("strong");
+    expect(readCues(plainRows(["  Approve", "  Deny", "", "up/down navigate  enter select  esc cancel"]), null, null).strength).toBe("strong");
   });
 
   it("a pointed list of three rows is strong, of two rows weak", () => {
-    expect(readCues(plainRows(["    ❯ Alpha", "      Beta", "      Gamma"]), null).strength).toBe("strong");
-    expect(readCues(plainRows(["    ❯ Alpha", "      Beta"]), null).strength).toBe("weak");
+    expect(readCues(plainRows(["    ❯ Alpha", "      Beta", "      Gamma"]), null, null).strength).toBe("strong");
+    expect(readCues(plainRows(["    ❯ Alpha", "      Beta"]), null, null).strength).toBe("weak");
   });
 
   it("a numbered list alone is weak, one numbered row is no cue", () => {
-    expect(readCues(plainRows(["  1. one", "  2. two"]), null).strength).toBe("weak");
-    expect(readCues(plainRows(["  1. build ok  2. tests ok"]), null).strength).toBe("none");
+    expect(readCues(plainRows(["  1. one", "  2. two"]), null, null).strength).toBe("weak");
+    expect(readCues(plainRows(["  1. build ok  2. tests ok"]), null, null).strength).toBe("none");
   });
 
   it("reads boxed rows like bare ones", () => {
-    expect(readCues(plainRows(["┃  1 (○) Red", "┃  2 (○) Green", "┃  ↑/↓ navigate · y copy"]), null).strength).toBe("strong");
+    expect(readCues(plainRows(["┃  1 (○) Red", "┃  2 (○) Green", "┃  ↑/↓ navigate · y copy"]), null, null).strength).toBe("strong");
   });
 
   it("reads an icon key cap with a letter as one key", () => {
-    expect(readCues(plainRows(["  some text", "", " \u{F0311} or \u{F0634} Q submit  \u{F12B7} cancel"]), null).strength).toBe("strong");
+    expect(readCues(plainRows(["  some text", "", " \u{F0311} or \u{F0634} Q submit  \u{F12B7} cancel"]), null, null).strength).toBe("strong");
   });
 
   it("knows a single-key prompt and not a count or prose", () => {
@@ -207,21 +265,37 @@ describe("the running sign on live captures (Claude Code 2.1.301, Codex 0.163.0,
   });
 });
 
+describe("the running sign on a themed Claude Code spinner (words between the ellipsis and the timer)", () => {
+  it("a spinner with one ` · <words>` segment before its bracketed timer fires", () => {
+    expect(isRunningRow("✢ Fiddle-faddling… · tool use (4m 32s · ↓ 4.8k tokens)")).toBe(true);
+    expect(isRunningRow("✽ Flowing… · tool use (5m 41s · ↓ 4.8k tokens)")).toBe(true);
+    expect(isRunningRow("✽ Flowing… · thinking (48s · ↓ 1.2k tokens)")).toBe(true);
+  });
+
+  it("look-alike rows stay off", () => {
+    expect(isRunningRow("  ctx:  9%  |  sub: 5h  49% (3h06m) · 7d  87%")).toBe(false);
+    expect(isRunningRow("  ◯ general-purpose  Create m56s2.txt file                   9s · ↓ 28.4k tokens")).toBe(false);
+    expect(isRunningRow("● Bash(ls -la)")).toBe(false);
+    expect(isRunningRow("✻ Worked for 3m 12s · done 12:40 PM")).toBe(false);
+    expect(isRunningRow("✽ Flowing… · this is a sentence well over thirty one characters long (5s)")).toBe(false);
+  });
+});
+
 describe("overlay shapes in the no-frame cluster", () => {
-  const kinds = (rows: string[]) => readCues(plainRows(rows), null).cues.map((cue) => cue.kind);
+  const kinds = (rows: string[]) => readCues(plainRows(rows), null, null).cues.map((cue) => cue.kind);
 
   it("a title row that names only its close key is strong", () => {
     const rows = ["        Select agent                    esc", "", "        Search", "", "      ● build native", "        plan native"];
     expect(kinds(rows)).toContain("dismiss-header");
-    expect(readCues(plainRows(rows), null).strength).toBe("strong");
+    expect(readCues(plainRows(rows), null, null).strength).toBe("strong");
     expect(kinds(["Press esc for help", "                esc", "a title esc"])).not.toContain("dismiss-header");
   });
 
   it("three slash commands with descriptions are strong, two are not a list", () => {
     const rows = ["┃ /agents     Switch agent   ┃", "┃ /connect    Connect        ┃", "┃ /debug      Debug info     ┃"];
     expect(kinds(rows)).toContain("command-list");
-    expect(readCues(plainRows(rows), null).strength).toBe("strong");
-    expect(readCues(plainRows(rows.slice(0, 2)), null).strength).toBe("none");
+    expect(readCues(plainRows(rows), null, null).strength).toBe("strong");
+    expect(readCues(plainRows(rows.slice(0, 2)), null, null).strength).toBe("none");
   });
 
   it("a slash query with a choice under it is strong", () => {
@@ -233,13 +307,13 @@ describe("overlay shapes in the no-frame cluster", () => {
   it("a pointer list between two rules is strong, without the rules weak", () => {
     const list = ["  ❯ 256k (active) Default", "    500k          500000 tokens"];
     const rule = "─".repeat(40);
-    expect(readCues(plainRows([rule, ...list, rule]), null).strength).toBe("strong");
-    expect(readCues(plainRows(list), null).strength).toBe("weak");
+    expect(readCues(plainRows([rule, ...list, rule]), null, null).strength).toBe("strong");
+    expect(readCues(plainRows(list), null, null).strength).toBe("weak");
   });
 
   it("a pointed list reads wrapped rows as part of the item above", () => {
     const rows = ["❯ resume       Resume a different", "               session", "  pin          Pin a session", "  pause        Freeze all agents"];
-    expect(readCues(plainRows(rows), null).strength).toBe("strong");
+    expect(readCues(plainRows(rows), null, null).strength).toBe("strong");
   });
 
   it("never counts over a found frame, where a quote must stay free", () => {
@@ -317,6 +391,8 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     for (const [name, command] of [
       ["claude--v2302-slash-model-list--w120--h40.txt", "/model"],
       ["claude--v2302-slash-effort-list--w120--h40.txt", "/effort"],
+      // The fix rig's 120 x 36 Herdr pane: the same list, with blank rows under it to the pane's bottom.
+      ["claude--v2302-slash-model-list-padded--w120--h36.txt", "/model"],
     ] as const) {
       const rows = fixtureRows(name);
       const frame = findInputFrame(rows, IDLE)!;
@@ -356,5 +432,48 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     expect(under(["  ❯ /model      Set the model", "  model · ctx 3%"])).toBeNull();
     expect(under(["", "  ❯ /model      Set the model"])).toBeNull();
     expect(under([" ❯ 1. Yes", "   2. No"])).toBeNull();
+  });
+});
+
+describe("a list that leaves the lead off, under the box only, over the harness's own footer (pi and omp profiles, 1.22.5)", () => {
+  const PI = requireProfile("pi").idle;
+  const LIST = PI.volatile.below.commandList;
+  const texts = (rows: ReturnType<typeof plainRows>): string[] => rows.map(rowText);
+  const FOOTER = ["~/project (main)", "0.0%/200k (auto)                                   model • off"];
+  /** pi's box between two rules holding `box`, the rows `under` it, then pi's folder and stats rows. */
+  const screen = (box: string, under: string[], footer = FOOTER, above: string[] = []) => plainRows(["an earlier answer", ...above, RULE, box, RULE, ...under, ...footer]);
+  const read = (rows: ReturnType<typeof plainRows>) => {
+    const frame = findInputFrame(rows, PI);
+    return { frame, list: frame === null ? null : commandListAt(texts(rows), frame, LIST), own: ownCommandList(texts(rows), frame, PI) !== null };
+  };
+  const MODEL = ["→ model          <provider/model> — Select model", "  scoped-models  Enable/disable models for Ctrl+P cycling"];
+
+  it("the pointer on `model` under a box that holds /model is its own typeahead: the lead goes in front", () => {
+    expect(read(screen("/model", MODEL))).toMatchObject({ list: { pointed: "/model", side: "under", first: 4, last: 5 }, own: true });
+    // The same list under /mod or /models is no typeahead of the box's text. Its unpainted rows are
+    // no footer either, so the plain rows here find no box at all; the painted capture does (fold.test.ts).
+    expect(read(screen("/mod", MODEL))).toMatchObject({ frame: null, own: false });
+    expect(read(screen("/models", MODEL))).toMatchObject({ frame: null, own: false });
+  });
+
+  it("a list taller than the footer bound still finds the box, and only when the list is its own", () => {
+    const tall = [...MODEL, "  modelpreset    Presets", "  switch         Switch", "  (1/9)"];
+    expect(read(screen("/model", tall))).toMatchObject({ frame: { interior: { text: "/model" } }, own: true });
+    // The same list pointed at another command: the row under the box is no footer, so no box.
+    expect(read(screen("/mod", tall)).frame).toBeNull();
+  });
+
+  it("the footer ends the list: one run to the screen's end, at most four rows, no blank row in it", () => {
+    expect(read(screen("/model", MODEL, ["↑0 ↓0 $0.000 from an extension"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five"])).own).toBe(false);
+    expect(read(screen("/model", MODEL, [FOOTER[0]!, "", FOOTER[1]!])).own).toBe(false);
+    // A row that is neither list nor footer between them: no list.
+    expect(read(screen("/model", [...MODEL, " Do you want to proceed?"])).own).toBe(false);
+  });
+
+  it("a list over the box is never read on a profile that names only the side under it", () => {
+    const rows = screen("/model", [], FOOTER, ["→ model          <provider/model> — Select model"]);
+    expect(read(rows)).toMatchObject({ list: null, own: false });
   });
 });

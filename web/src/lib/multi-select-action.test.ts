@@ -68,7 +68,7 @@ type Pointer = "opt1" | "opt2" | "opt3" | "opt4" | "free" | "submit" | "chat" | 
 // free-text row, a navigable Submit row, a rule, the "Chat about this" escape, and the select footer.
 // `pointer` places the ❯; `checked` marks rows.
 function checkboxBuffer(
-  opts: { pointer?: Pointer; checked?: number[]; question?: string } = {},
+  opts: { pointer?: Pointer; checked?: number[]; question?: string; stepper?: string } = {},
 ): string {
   const pointer = opts.pointer ?? "opt1";
   const checked = new Set(opts.checked ?? []);
@@ -84,10 +84,11 @@ function checkboxBuffer(
   const submitRow = (pointer === "submit" ? "❯    " : "     ") + "Submit";
   const chatRow = (pointer === "chat" ? "❯ " : "  ") + "6. Chat about this";
   // The free-text "Type something" row can also carry the pointer (Claude lets the ❯ rest on it);
-  // pointerAt classifies it as a non-Submit row, so the Submit walk must nudge past it, never Enter.
+  // pointerAt reads it as `field`, so the Submit walk must nudge past it, never Enter, and no digit
+  // goes out until the pointer has left it.
   const freeRow = (pointer === "free" ? "❯ " : "  ") + "5. [ ] Type something";
   return [
-    "←  ☐ Toppings  ✔ Submit  →",
+    opts.stepper ?? "←  ☐ Toppings  ✔ Submit  →",
     "",
     opts.question ?? "Which pizza toppings do you want?",
     "",
@@ -334,9 +335,9 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
   });
 
   it("NEVER Enters when the pointer sits on the free-text row — nudges past it, never activates", async () => {
-    const m = model(checkboxBuffer({ pointer: "opt1" }));
-    // The ❯ parked on "5. [ ] Type something" (the composer row) reads as a non-Submit row, so the
-    // walk only ever nudges Down — it must never mistake it for Submit and blind-Enter.
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    // The ❯ parked on "5. [ ] Type something" (the composer row) reads as `field`, a non-Submit row,
+    // so the walk only ever nudges Down — it must never mistake it for Submit and blind-Enter.
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "free" })));
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
@@ -376,6 +377,129 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });
     expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+});
+
+// With the ❯ on "Type something" the field has the keyboard: a digit is typed into it (measured on
+// Claude Code 2.1.283), and Left/Right move its cursor. The model says `pointer: "field"`, and every
+// digit or step key first moves the pointer off with ONE Up, reads that back, and then goes through
+// its own entry guard against the read that showed the pointer off the field.
+describe("the pointer on the free-text field — leave it before any digit", () => {
+  const WIZARD_STEP = "←  ☐ Toppings  ☐ Size  ✔ Submit  →";
+
+  it("the commit comparison tells a focused field from an unfocused one; identity does not", () => {
+    const off = model(checkboxBuffer({ pointer: "opt1" }));
+    const on = model(checkboxBuffer({ pointer: "free" }));
+    expect(on.phase === "checkbox" && on.pointer).toBe("field");
+    expect(multiSelectEquals(off, on)).toBe(false);
+    expect(multiSelectEquals(on, model(checkboxBuffer({ pointer: "free" })))).toBe(true);
+    // The macros' own arrows move the pointer onto and off the field: that is not drift.
+    expect(multiSelectIdentity(off, on)).toBe(true);
+  });
+
+  it("toggle: one Up, a read showing the pointer off the field, then the digit bound to that read", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    const left = model(checkboxBuffer({ pointer: "opt4" }));
+    script(
+      checkboxBuffer({ pointer: "free" }), // offField's entry guard
+      checkboxBuffer({ pointer: "opt4" }), // read after the Up: off the field
+      checkboxBuffer({ pointer: "opt4" }), // the digit's own entry guard
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 3 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Up"], undefined, m.regionSignature],
+      ["w1:p1", ["3"], undefined, left.regionSignature],
+    ]);
+  });
+
+  it("toggle: a redraw that has not caught up costs a read, never a second Up", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    script(
+      checkboxBuffer({ pointer: "free" }), // entry guard
+      checkboxBuffer({ pointer: "free" }), // first read: not redrawn yet
+      checkboxBuffer({ pointer: "none" }), // a torn frame: no pointer at all
+      checkboxBuffer({ pointer: "opt4" }), // off the field
+      checkboxBuffer({ pointer: "opt4" }), // the digit's entry guard
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 1 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["1"]]);
+  });
+
+  it("toggle: NO digit while the pointer stays on the field", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "free" })));
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(res).toEqual({ status: "changed" });
+    expect(keysSent()).toEqual([["Up"]]);
+  });
+
+  it("toggle: NO digit when the pointer is back on the field by the digit's own guard", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    script(
+      checkboxBuffer({ pointer: "free" }), // entry guard
+      checkboxBuffer({ pointer: "opt4" }), // off the field
+      checkboxBuffer({ pointer: "free" }), // someone moved it back in the gap
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(res).toEqual({ status: "changed" });
+    expect(keysSent()).toEqual([["Up"]]);
+  });
+
+  it("toggle: a box that flipped while leaving the field stops before the digit", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    script(
+      checkboxBuffer({ pointer: "free" }), // entry guard
+      checkboxBuffer({ pointer: "opt4", checked: [1] }), // off the field, but another device ticked 1
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(res).toEqual({ status: "changed" });
+    expect(keysSent()).toEqual([["Up"]]);
+  });
+
+  it("toggle: a tap on a screen with the field unfocused never commits on one where it has focus", async () => {
+    const m = model(checkboxBuffer({ pointer: "opt1" }));
+    mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "free" })));
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("escape: leaves the field before the 'Chat about this' digit", async () => {
+    const m = model(checkboxBuffer({ pointer: "free" }));
+    script(checkboxBuffer({ pointer: "free" }), checkboxBuffer({ pointer: "opt4" }), checkboxBuffer({ pointer: "opt4" }));
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "escape" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["6"]]);
+  });
+
+  it("a step key of a wizard step: leaves the field before Right", async () => {
+    const m = model(checkboxBuffer({ pointer: "free", stepper: WIZARD_STEP }));
+    expect(m.phase === "checkbox" && m.steps).not.toBeNull();
+    script(
+      checkboxBuffer({ pointer: "free", stepper: WIZARD_STEP }),
+      checkboxBuffer({ pointer: "opt4", stepper: WIZARD_STEP }),
+      checkboxBuffer({ pointer: "opt4", stepper: WIZARD_STEP }),
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "nav", keys: ["Right"] } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["Right"]]);
+  });
+
+  it("Submit from the field: arrows only, Down onto Submit, then Enter", async () => {
+    const m = model(checkboxBuffer({ pointer: "free", checked: [1, 2, 3, 4] }));
+    script(
+      checkboxBuffer({ pointer: "free", checked: [1, 2, 3, 4] }), // entry guard
+      checkboxBuffer({ pointer: "free", checked: [1, 2, 3, 4] }), // read: the field → Down
+      checkboxBuffer({ pointer: "submit", checked: [1, 2, 3, 4] }), // read: Submit → Enter
+    );
+    const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, m.regionSignature],
+      ["w1:p1", ["Enter"], undefined],
+    ]);
   });
 });
 

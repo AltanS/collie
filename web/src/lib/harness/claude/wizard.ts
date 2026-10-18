@@ -276,8 +276,10 @@ function detectReviewPhase(lines: StyledLine[], texts: string[], fi: number): Wi
   const { stepper, index: stepperIdx } = found;
 
   // The echoed answers between the stepper and the prompt: "● <question>" rows each followed by a
-  // "→ <answer>" row; other non-blank lines continue whichever field is open (wrapped text). The
-  // "Review your answers" heading and the ⚠ warning are recognised and skipped.
+  // "→ <answer>" row; other non-blank lines continue whichever field is open (wrapped text). Each row
+  // is read without the `│` bar Claude Code 2.1.302 can draw down an echoed question ("│ ● …",
+  // "│   …"), as on the question step. The "Review your answers" heading and the ⚠ warning are
+  // recognised and skipped.
   const answers: WizardAnswer[] = [];
   let incomplete = false;
   let open: { question: string; answer: string | null } | null = null;
@@ -286,7 +288,7 @@ function detectReviewPhase(lines: StyledLine[], texts: string[], fi: number): Wi
     open = null;
   };
   for (let i = stepperIdx + 1; i < ri; i++) {
-    const t = texts[i]!.trim();
+    const t = questionRowText(texts[i]!);
     if (t.length === 0 || /^review your answers$/i.test(t)) continue;
     if (t.startsWith("⚠")) {
       incomplete = true;

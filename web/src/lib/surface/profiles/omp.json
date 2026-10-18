@@ -138,7 +138,16 @@
       },
       "below": {
         "maxRows": 2,
-        "footerMaxRows": 2
+        "footerMaxRows": 2,
+        "commandList": {
+          "lead": "/",
+          "sides": [
+            "under"
+          ],
+          "pointer": "^❯ (?:[^\\x00-\\x7F\\s]\\S* {1,2})?(?<command>\\w[\\w:.-]*)(?: {2,}\\S.*)?$",
+          "entry": "^ {2}(?:[^\\x00-\\x7F\\s]\\S* {1,2})?(?<command>\\w[\\w:.-]*)(?: {2,}\\S.*)?$",
+          "wrapped": "^ {8,}\\S"
+        }
       }
     },
     "runningRows": [

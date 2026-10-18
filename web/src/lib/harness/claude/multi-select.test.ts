@@ -145,6 +145,8 @@ describe("detectMultiSelect — false-positive gate", () => {
     "claude--select-menu.txt",
     "claude--wizard-q1.txt",
     "claude--wizard-submit.txt",
+    "claude--v2302-wizard-review-long-q--w140.txt",
+    "claude--v2302-wizard-review-barred--w140.txt",
     "claude--permission-edit.txt",
     "claude--trust-prompt.txt",
     "claude--working.txt",
@@ -351,7 +353,7 @@ describe("detectMultiSelect — the advance row is a place, not a word", () => {
     // "advance", the macro would press Enter on whatever row the terminal's ❯ is really on — and on
     // "Chat about this" that aborts the entire tool call.
     // The last checkbox row is "Type something", as on every real capture: a pointer ON that field
-    // declines the screen (see the field tests below), so the decoy test keeps it elsewhere.
+    // reads `field` (see the field tests below), so the decoy test keeps it elsewhere.
     const m = model(
       pane(["  1. [ ] Garlic knots", "  ❯ Submit", "❯ 2. [ ] Caesar salad", "  3. [ ] Type something"], "Submit"),
     );
@@ -361,5 +363,58 @@ describe("detectMultiSelect — the advance row is a place, not a word", () => {
     // than "option" — which is fine: every non-"advance" pointer costs the macro a Down, never an
     // Enter. What must never happen is "advance".
     expect(m!.pointer).not.toBe("advance");
+  });
+});
+
+// Claude Code 2.1.302, a multiSelect step with the pointer on "Type something" (sanitised from a field
+// capture on lane 8788, 2026-10-17: same rows, styles and widths, neutral words). Until 1.22.5 the
+// grammar declined the screen whenever the pointer stood on the field, so the phone showed the
+// unread-dialog card and the Surface read `modal: unreadable`. Now it is claimed, and the pointer
+// reads `field`: the macros move it off with an arrow before any digit (lib/multi-select-action.ts).
+describe("the pointer on the 'Type something' field (Claude Code 2.1.302)", () => {
+  const FIELD = "claude--v2302-multiselect-field-focused--w160.txt";
+  const POINTER = "\u001b[0m\u001b[38;2;177;185;249m❯\u001b[0m ";
+  const GREY = "\u001b[0m\u001b[38;2;153;153;153m";
+
+  it("is claimed: question, four ticked options with their descriptions, Submit, the escape", () => {
+    const region = detectMultiSelectRegion(fixtureLines(FIELD));
+    expect(region).not.toBeNull();
+    const m = region!.model;
+    if (m.phase !== "checkbox") throw new Error("expected checkbox phase");
+    expect(m.question).toBe("Which of the larger items should I take on after the changes ship?");
+    expect(m.options.map((o) => [o.n, o.label, o.checked])).toEqual([
+      [1, "New checks first (Recommended)", true],
+      [2, "Quick script fixes", true],
+      [3, "No second planning pass", true],
+      [4, "Step cap + new commands", true],
+    ]);
+    expect(m.options[0]!.description).toMatch(/^Add the four checks the review asked for/);
+    expect(m.pointer).toBe("field");
+    expect(m.advanceLabel).toBe("Submit");
+    expect(m.escape).toEqual({ n: 6, label: "Chat about this" });
+    // One question chip and the Submit chip: a standalone multiSelect, no Left/Right to a sibling.
+    expect(m.steps).toBeNull();
+    // The region starts at the stepper, under the dialog's top rule; the transcript above stays raw.
+    expect(lineText(fixtureLines(FIELD)[region!.startLine]!)).toContain("☒ Next step");
+  });
+
+  it("a typed field reads `field` too, and its row is an option the macros toggle off the field", () => {
+    const typed = fixtureText(FIELD).replace("[ ] \u001b[0m\u001b[2mType something", "[✔] teal");
+    expect(typed).not.toBe(fixtureText(FIELD));
+    const m = detectMultiSelect(splitLines(parseAnsi(typed)))!;
+    if (m.phase !== "checkbox") throw new Error("expected checkbox phase");
+    expect(m.pointer).toBe("field");
+    expect(m.options.at(-1)).toMatchObject({ n: 5, label: "teal", checked: true });
+  });
+
+  it("with the pointer moved up onto option 4 it reads `option`, the same dialog otherwise", () => {
+    const moved = fixtureText(FIELD)
+      .replace(`${POINTER}${GREY}5. `, `  ${GREY}5. `)
+      .replace(`  ${GREY}4.`, `${POINTER}${GREY}4.`);
+    expect(moved).not.toBe(fixtureText(FIELD));
+    const on = detectMultiSelect(fixtureLines(FIELD))!;
+    const off = detectMultiSelect(splitLines(parseAnsi(moved)))!;
+    expect(off.pointer).toBe("option");
+    expect(off.signature).toBe(on.signature);
   });
 });

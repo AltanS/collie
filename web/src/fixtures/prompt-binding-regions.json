@@ -57,12 +57,12 @@
   {
     "fixture": "claude--menu-effort-slider--w120.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "   Effort\n\n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w132.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n                                   Faster                                                 Smarter\n                                   ──────────▲────────────────────────────────┆──────────────────\n                                   low     medium     high     xhigh      max       ultracode\n                                                                                xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "   Effort\n\n                                   Faster                                                 Smarter\n                                   ──────────▲────────────────────────────────┆──────────────────\n                                   low     medium     high     xhigh      max       ultracode\n                                                                                xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w60.txt",
@@ -72,7 +72,7 @@
   {
     "fixture": "claude--menu-effort-slider--w80.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n         Faster                                                 Smarter\n         ──────────▲────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "   Effort\n\n         Faster                                                 Smarter\n         ──────────▲────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w60-low.txt",
@@ -82,17 +82,17 @@
   {
     "fixture": "claude--menu-effort-slider--w80-low.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n         Faster                                                 Smarter\n         ─▲─────────────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "   Effort\n\n         Faster                                                 Smarter\n         ─▲─────────────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w80-ultracode.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort                                                                       \n                                                                                \n         Faster                                                 Smarter         \n         ───────────────────────────────────────────┆─────────▲────────         \n         low     medium     high     xhigh      max       ultracode             \n                                                      xhigh + workflows         \n                                                                                \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel   "
+    "region": "   Effort                                                                       \n                                                                                \n         Faster                                                 Smarter         \n         ───────────────────────────────────────────┆─────────▲────────         \n         low     medium     high     xhigh      max       ultracode             \n                                                      xhigh + workflows         \n                                                                                \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel   "
   },
   {
     "fixture": "claude--menu-effort-slider--w60-ultracode.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort                                                   \n                                                            \nFaster                                                 \n───────────────────────────────────────────┆─────────▲──────\nlow     medium     high     xhigh      max       ultracode  \n                                             xhigh +       \n                                                            \n   ←/→ to adjust · Enter to confirm · s for this session \nonly · Esc to cancel"
+    "region": "   Effort                                                   \n                                                            \nFaster                                                 \n───────────────────────────────────────────┆─────────▲──────\nlow     medium     high     xhigh      max       ultracode  \n                                             xhigh +       \n                                                            \n   ←/→ to adjust · Enter to confirm · s for this session \nonly · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w40-ultracode.txt",
@@ -132,12 +132,12 @@
   {
     "fixture": "claude--menu-model-picker-moved.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Select model\n   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.\n\n     1. Default (recommended) ✔  Opus 5 with 1M context · Best for everyday, complex tasks\n     2. Opus (1M context)        Opus 5 with 1M context · Best for everyday, complex tasks\n   ❯ 3. Fable                    Fable 5 · Most capable for your hardest and longest-running tasks\n     4. Sonnet                   Sonnet 5 · Efficient for routine tasks\n     5. Haiku                    Haiku 4.5 · Fastest for quick answers\n\n   ◐ Medium effort ←/→ to adjust\n\n   Enter to set as default · s to use this session only · Esc to cancel"
+    "region": "   Select model\n   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.\n\n     1. Default (recommended) ✔  Opus 5 with 1M context · Best for everyday, complex tasks\n     2. Opus (1M context)        Opus 5 with 1M context · Best for everyday, complex tasks\n   ❯ 3. Fable                    Fable 5 · Most capable for your hardest and longest-running tasks\n     4. Sonnet                   Sonnet 5 · Efficient for routine tasks\n     5. Haiku                    Haiku 4.5 · Fastest for quick answers\n\n   ◐ Medium effort ←/→ to adjust\n\n   Enter to set as default · s to use this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-model-picker.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Select model\n   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.\n\n   ❯ 1. Default (recommended) ✔  Opus 5 with 1M context · Best for everyday, complex tasks\n     2. Opus (1M context)        Opus 5 with 1M context · Best for everyday, complex tasks\n     3. Fable                    Fable 5 · Most capable for your hardest and longest-running tasks\n     4. Sonnet                   Sonnet 5 · Efficient for routine tasks\n     5. Haiku                    Haiku 4.5 · Fastest for quick answers\n\n   ◐ Medium effort ←/→ to adjust\n\n   Enter to set as default · s to use this session only · Esc to cancel"
+    "region": "   Select model\n   Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.\n\n   ❯ 1. Default (recommended) ✔  Opus 5 with 1M context · Best for everyday, complex tasks\n     2. Opus (1M context)        Opus 5 with 1M context · Best for everyday, complex tasks\n     3. Fable                    Fable 5 · Most capable for your hardest and longest-running tasks\n     4. Sonnet                   Sonnet 5 · Efficient for routine tasks\n     5. Haiku                    Haiku 4.5 · Fastest for quick answers\n\n   ◐ Medium effort ←/→ to adjust\n\n   Enter to set as default · s to use this session only · Esc to cancel"
   },
   {
     "fixture": "claude--permission-bash.txt",
@@ -242,27 +242,32 @@
   {
     "fixture": "claude--v2283-slash-effort.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Effort\n                                           \n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n  \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "   Effort\n                                           \n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n  \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--v2283-slash-export.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Export conversation                                                                                \n   Select export method\n\n   ❯ 1. Copy to clipboard  Copy the conversation to your system clipboard\n     2. Save to file       Save the conversation to a file in the current directory\n  \n   Esc to cancel"
+    "region": "   Export conversation                                                                                \n   Select export method\n\n   ❯ 1. Copy to clipboard  Copy the conversation to your system clipboard\n     2. Save to file       Save the conversation to a file in the current directory\n  \n   Esc to cancel"
   },
   {
     "fixture": "claude--v2283-slash-hooks.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Hooks\n   20 hooks configured\n\n   This menu is read-only. To add or change a hook, edit settings.json or ask Claude. Learn more\n\n   ❯ PreToolUse   4 hooks\n     Before tool execution\n     PostToolUse   3 hooks\n     After tool execution\n     PostToolUseFailure   2 hooks\n     After tool execution fails\n     PostToolBatch\n     After a batch of tool calls resolves\n     PermissionDenied\n     After auto mode classifier denies a tool call\n     Notification   2 hooks\n     When notifications are sent\n     UserPromptSubmit   2 hooks\n     When the user submits a prompt\n     UserPromptExpansion\n     When a user-typed slash command expands into a prompt\n     SessionStart   3 hooks\n     When a new session is started\n     Stop   2 hooks\n     Right before Claude concludes its response\n     StopFailure\n     When the turn ends due to an API error\n     SubagentStart\n     When a subagent (Agent tool call) is started\n     SubagentStop\n     Right before a subagent (Agent tool call) concludes its response\n     PreCompact\n     Before conversation compaction\n\n     ↓ 19 more below\n  \n   Enter to confirm · Esc to cancel"
+    "region": "   Hooks\n   20 hooks configured\n\n   This menu is read-only. To add or change a hook, edit settings.json or ask Claude. Learn more\n\n   ❯ PreToolUse   4 hooks\n     Before tool execution\n     PostToolUse   3 hooks\n     After tool execution\n     PostToolUseFailure   2 hooks\n     After tool execution fails\n     PostToolBatch\n     After a batch of tool calls resolves\n     PermissionDenied\n     After auto mode classifier denies a tool call\n     Notification   2 hooks\n     When notifications are sent\n     UserPromptSubmit   2 hooks\n     When the user submits a prompt\n     UserPromptExpansion\n     When a user-typed slash command expands into a prompt\n     SessionStart   3 hooks\n     When a new session is started\n     Stop   2 hooks\n     Right before Claude concludes its response\n     StopFailure\n     When the turn ends due to an API error\n     SubagentStart\n     When a subagent (Agent tool call) is started\n     SubagentStop\n     Right before a subagent (Agent tool call) concludes its response\n     PreCompact\n     Before conversation compaction\n\n     ↓ 19 more below\n  \n   Enter to confirm · Esc to cancel"
   },
   {
     "fixture": "claude--v2283-slash-mcp.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Manage MCP servers\n   2 servers\n                                           \n     claude.ai\n   ❯ ✔ claude.ai Claude Docs   8 tools\n     ⚠ claude.ai Google Drive   needs authentication\n  \n   https://code.claude.com/docs/en/mcp for help\n   ↑/↓ to navigate · Enter to confirm · Esc to cancel"
+    "region": "   Manage MCP servers\n   2 servers\n                                           \n     claude.ai\n   ❯ ✔ claude.ai Claude Docs   8 tools\n     ⚠ claude.ai Google Drive   needs authentication\n  \n   https://code.claude.com/docs/en/mcp for help\n   ↑/↓ to navigate · Enter to confirm · Esc to cancel"
   },
   {
     "fixture": "claude--v2283-slash-usage.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Settings  Status   Config   Usage   Stats\n\n   Session\n     \n   Total cost:            $0.0000\n   Total duration (API):  0s\n   Total duration (wall): 1m 41s\n   Total code changes:    0 lines added, 0 lines removed\n   Usage:                 0 input, 0 output, 0 cache read, 0 cache write\n          \n   Current session   \n   ███████████████                                    30% used\n   Resets 1:29pm (Europe/Berlin)               \n                                         \n   Current week (all models)\n   █████                                              10% used\n   Resets Oct 2, 11:59pm (Europe/Berlin)\n\n   Current week (Fable)\n                                                      0% used\n   Resets Oct 3, 12am (Europe/Berlin)\n\n   What's contributing to your limits usage?\n   Approximate, based on local sessions on this machine — does not include other devices or claude.ai\n\n   Scanning local sessions…\n\n   Usage credits\n   Usage credits are off · /usage-credits to turn them on\n  \n   Esc to cancel"
+    "region": "   Settings  Status   Config   Usage   Stats\n\n   Session\n     \n   Total cost:            $0.0000\n   Total duration (API):  0s\n   Total duration (wall): 1m 41s\n   Total code changes:    0 lines added, 0 lines removed\n   Usage:                 0 input, 0 output, 0 cache read, 0 cache write\n          \n   Current session   \n   ███████████████                                    30% used\n   Resets 1:29pm (Europe/Berlin)               \n                                         \n   Current week (all models)\n   █████                                              10% used\n   Resets Oct 2, 11:59pm (Europe/Berlin)\n\n   Current week (Fable)\n                                                      0% used\n   Resets Oct 3, 12am (Europe/Berlin)\n\n   What's contributing to your limits usage?\n   Approximate, based on local sessions on this machine — does not include other devices or claude.ai\n\n   Scanning local sessions…\n\n   Usage credits\n   Usage credits are off · /usage-credits to turn them on\n  \n   Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2302-heads-up-above-box--w142.txt",
+    "detector": "menu",
+    "region": "✦ Heads up · With GitHub triggers, anyone who files an issue on your public repos can put text in front of an unattended Claude session\n  on your main PC.\n  1: Learn more   2: Knew this already   0: Dismiss\n    \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
   },
   {
     "fixture": "claude--wizard-multiselect-checked.txt",
@@ -362,7 +367,7 @@
   {
     "fixture": "claude-lab--menu-rewind--w82.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Rewind\n\n   Restore the code and/or conversation to the point before…\n\n     /compact\n     ⚠ No code restore\n\n   ❯ (current)\n\n\n\n   Enter to continue · Esc to cancel"
+    "region": "   Rewind\n\n   Restore the code and/or conversation to the point before…\n\n     /compact\n     ⚠ No code restore\n\n   ❯ (current)\n\n\n\n   Enter to continue · Esc to cancel"
   },
   {
     "fixture": "claude-lab--menu-rewind-v2291--w82.txt",
@@ -387,7 +392,7 @@
   {
     "fixture": "claude-lab--tasks-panel--w82.txt",
     "detector": "menu",
-    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Background\n\n   No tasks currently running\n\n   ↑/↓ to select · Enter to view · Esc to close"
+    "region": "   Background\n\n   No tasks currently running\n\n   ↑/↓ to select · Enter to view · Esc to close"
   },
   {
     "fixture": "claude-lab--tasks-panel-v2291--w82.txt",
@@ -418,6 +423,16 @@
     "fixture": "claude--v2283-ask-type-something-typed-two-lines.txt",
     "detector": "prompt-select",
     "region": "  on two lines with a newline, \"Which colors?\" then \"Pick all that apply.\", 3 options with newline in descriptions. Do  \n  nothing else.                                                                                                         \n\n● User declined to answer questions\n  ⎿  · Which fruit?\n     Think about taste. (Apple / Banana / Orange)\n     · Which colors?\n     Pick all that apply. (Red / Green / Blue)\n     \n✻ Crunched for 3s · done 8:47 AM\n\n❯ Use AskUserQuestion now with ONE question: \"What is your favorite fruit?\" with options Apple, Banana, Orange (short   \n  descriptions). Do nothing else.                                                                                       \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Fruit \n\nWhat is your favorite fruit?\n\n  1. Apple\n     A crisp, sweet fruit.\n  2. Banana\n     A soft, yellow fruit.\n  3. Orange\n     A juicy citrus fruit.                                                                            \n❯ 4. my own answer\n     second line of my answer\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2283-multiselect-type-something-focused.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colors  ✔ Submit  →\n\nWhich colors?\n\n  1. [ ] Red\n         A warm, bright color.\n  2. [ ] Blue\n         A cool, calm color.\n  3. [ ] Green\n         A natural, fresh color.\n❯ 4. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2302-multiselect-field-focused--w160.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Next step  ✔ Submit  →\n\nWhich of the larger items should I take on after the changes ship?\n\n  1. [✔] New checks first (Recommended)\n         Add the four checks the review asked for, so that the later items can be proven. Cheap: about 1-2 USD per full run.\n  2. [✔] Quick script fixes\n         Item 5 (one path resolver, errors name the expected form) and item 6 (every refusal prints the full next command). Low risk.\n  3. [✔] No second planning pass\n         Item 4: the plan is kept after the review and reused by the next run. Saves about 40% of the planning tokens.\n  4. [✔] Step cap + new commands\n         Item 1 (step cap, split tasks over 5 items) and items 3 and 7 (check --run, plan --json, commit-check). Biggest saving, medium risk, a design change.\n❯ 5. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this"
   },
   {
     "fixture": "claude--v2283-permission-amend-focused.txt",
@@ -613,6 +628,16 @@
     "fixture": "claude--v2302-wizard-long-question--w54.txt",
     "detector": "wizard",
     "region": "  ←  ☐ Branch  ☐ Ranger dies  ✔ Submit  →\n \n  │ new floor (Nerf Goblin Encounter): the explorer \n  │ suggests a feature branch \n  │ `feat/goblin-two-round-call-out`. Its evidence: \n  │ the change bumps the rules version (32 to 33), \n  │ touches the engine and content, and needs tests \n  │ edited red first. The engine change is small, \n  │ though: the call stands until the shot, a fresh \n  │ call is drawn only when none stands, and the \n  │ Ranger goes from 4 to 2. Where should it land?\n  \n  ❯ 1. Land on main (Recommended)\n       One item, one commit on main, in this release \n       like the rest. Worst case: if Mary changes the \n       rule again before the cut, a second rules bump \n       (to 34) lands on main too.\n    2. Feature branch\n       Build it on feat/goblin-two-round-call-out with\n       a draft PR, merged by /ship. Worst case: an \n       extra merge step, and it's held out of the \n       release until the merge.\n    3. Type something.\n  ────────────────────────────────────────────────────\n  ──\n    4. Chat about this\n \n  Enter to select · Tab/Arrow keys to navigate · Esc \n  to cancel"
+  },
+  {
+    "fixture": "claude--v2302-wizard-review-long-q--w140.txt",
+    "detector": "wizard",
+    "region": "  ←  ☒ Draft edits  ☒ Save mode  ☒ Reset  ✔ Submit  →\n  \n  Review your answers\n \n   │ ● When a user opens the settings page with unsaved changes still pending from an earlier visit, perhaps because they closed the tab\n   │   mid-edit, lost their network connection, or the session expired while a form was half-filled, how should the page treat those\n   │   leftover edits so that nothing is silently lost and the user is never surprised by values they did not knowingly choose?\n     → Restore with banner\n   ● How should changes be saved?\n     → Save button\n   ● Where should the reset-to-defaults control live?\n     → Page footer\n    \n  Ready to submit your answers?\n  \n  ❯ 1. Submit answers\n    2. Cancel"
+  },
+  {
+    "fixture": "claude--v2302-wizard-review-barred--w140.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Draft edits  ☒ Save mode  ☒ Reset  ✔ Submit  →\n\nReview your answers\n\n │ ● When a user opens the settings page with unsaved changes still pending from an earlier visit, perhaps because they closed the tab\n │   mid-edit, lost their network connection, or the session expired while a form was half-filled, how should the page treat those\n │   leftover edits so that nothing is silently lost and the user is never surprised by values they did not knowingly choose?\n   → Restore with banner\n │ ● How should changes be saved?\n   → Save button\n │ ● Where should the reset-to-defaults control live?\n   → Page footer\n\nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
   },
   {
     "fixture": "claude--v2302-preview-wrapped-rule--w141.txt",

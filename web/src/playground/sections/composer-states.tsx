@@ -8,7 +8,7 @@ export const DEF: SectionDef = {
   id: "composer-states",
   title: "Composer states",
   intent:
-    "The way out, one card per state of the pane's Surface and the three facts the phone keeps. In every state but a pane that is gone, a device that may not write and a link that is down, the Screen pill and the Keys dock are one tap away and the placeholder names the state. Each card is the real composer on a Claude pane; tap Keys, tap Screen, type and tap Send to see what lands at the thumb. Cards are numbered so a worker can be briefed by number.",
+    "The way out, one card per state of the pane's Surface and the three facts the phone keeps. In every state but a pane that is gone, a device that may not write and a link that is down, the Screen pill and the Keys dock are one tap away. Each card is the real composer on a Claude pane; tap Keys, tap Screen, type and tap Send to see what lands at the thumb. Cards are numbered so a worker can be briefed by number.",
 };
 
 export function ComposerStatesSection() {

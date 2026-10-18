@@ -9,7 +9,6 @@
 // screen that turned free since the last poll does not cost an extra tap where the slot still lets the
 // tap through.
 
-import type { DialogNoun } from "./harness/dialog-contract";
 import { t } from "./i18n";
 import { takesManualSend } from "./surface/send";
 import { askOf, isFree, type Surface } from "./surface/surface";
@@ -71,11 +70,6 @@ export function sendSlot(surface: Surface, facts: ComposerFacts): SendSlot {
 /** Whether the field itself is locked: nothing typed here can ever leave this phone for this pane. */
 export function fieldLocked(slot: SendSlot): boolean {
   return slot === "gone" || slot === "readOnly" || slot === "unreachable";
-}
-
-/** The noun an ask's placeholder names ("Menu is waiting"), or null when the Surface holds no ask. */
-export function askNoun(surface: Surface): DialogNoun | null {
-  return askOf(surface.modal)?.kind ?? null;
 }
 
 /** The composer's Surface for a pane, with the reason when its box is out of reach. */

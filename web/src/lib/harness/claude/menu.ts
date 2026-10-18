@@ -128,8 +128,13 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
     }
   }
 
+  // The signature starts under a `▔` edge, not on it. Claude Code splices timed notices into the
+  // edge (`You've used 94% of your weekly limit · …`) and takes them away a few seconds later, which
+  // changed the signature of a dialog nobody touched: the bridge minted a new ask id and refused a
+  // tap on the old one as gone (the /model picker, 2.1.302, 2026-10-17). The edge stays the
+  // region's first row for the renderer.
   return {
-    model: { title, actions, nav, signature: regionSignature(texts, top, fi) },
+    model: { title, actions, nav, signature: regionSignature(texts, region.edge ? top + 1 : top, fi) },
     startLine: top,
   };
 }

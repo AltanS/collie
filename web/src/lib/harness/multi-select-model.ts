@@ -36,8 +36,14 @@ export interface MultiSelectEscape {
 
 /** Which KIND of row the `❯` pointer sits on — the advance macro drives it to `advance` before Enter.
  *  Parsed SEPARATELY from the signature (which normalises the pointer out), so the macro's own
- *  Down/Up moves don't perturb the race-guard identity. */
-export type MultiPointer = "advance" | "chat" | "option" | "other" | null;
+ *  Down/Up moves don't perturb the race-guard identity.
+ *
+ *  `field`: the pointer is on the dialog's free-text row, which then has the keyboard. A digit is
+ *  typed INTO it there (and Left/Right move its cursor), so no digit or step key may be sent while
+ *  the pointer stays on it: the macros move it off with an arrow first, and `multiSelectEquals`
+ *  tells a screen with the field focused from one without. Only a detector that has measured this
+ *  reports it. */
+export type MultiPointer = "advance" | "chat" | "field" | "option" | "other" | null;
 
 /**
  * How a tap turns into keystrokes on this dialog — the one thing about multi-select choreography
@@ -229,9 +235,12 @@ function sameAnswers(a: WizardAnswer[] | undefined, b: WizardAnswer[] | undefine
  * pointer/checkbox-independent core signature is decisive (a re-rendered dialog / different subject
  * changes it); question + options (labels AND `checked`) re-introduce the checkbox state the
  * signature normalises out, so the FULL visible state participates. The pointer is deliberately NOT
- * compared — it is transient (the Submit macro moves it) and the signature already strips it. Every
- * key plan the model declares (`advanceKeys`, the review's `submitKeys`/`cancelKeys`/`backKeys`)
- * participates exactly, in this comparator and in {@link multiSelectIdentity}.
+ * compared — it is transient (the Submit macro moves it) and the signature already strips it — with
+ * one exception: whether it is on the free-text field. That re-routes every digit into the field, so
+ * a tap aimed at a screen with the field unfocused must not commit on one where it has focus, nor the
+ * reverse. Every key plan the model declares (`advanceKeys`, the review's
+ * `submitKeys`/`cancelKeys`/`backKeys`) participates exactly, in this comparator and in
+ * {@link multiSelectIdentity}.
  *
  * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
  * adapter produced the block through exactly these functions.
@@ -241,6 +250,7 @@ export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boo
   if (a.signature !== b.signature) return false;
   if (a.phase === "checkbox" && b.phase === "checkbox") {
     return (
+      (a.pointer === "field") === (b.pointer === "field") &&
       sameSteps(a, b) &&
       a.advanceLabel === b.advanceLabel &&
       sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&

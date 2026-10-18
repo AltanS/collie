@@ -1,0 +1,21 @@
+
+ [0m[1m[38;2;138;190;183mpi[0m[38;2;102;102;102m v0.87.1[0m                                                                                                             
+ [0m[38;2;102;102;102mescape[0m[38;2;128;128;128m interrupt · [0m[38;2;102;102;102mctrl+c/ctrl+d[0m[38;2;128;128;128m clear/exit · [0m[38;2;102;102;102m/[0m[38;2;128;128;128m commands · [0m[38;2;102;102;102m![0m[38;2;128;128;128m bash · [0m[38;2;102;102;102mctrl+o[0m[38;2;128;128;128m more[0m                                        
+ [0m[38;2;102;102;102mPress ctrl+o to show full startup help and loaded resources.[0m                                                           
+                                                                                                                        
+ [0m[38;2;102;102;102mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                  
+
+[0m[38;2;240;198;116m[Skills][0m                                                                                                                
+[0m[38;2;102;102;102m  agent-browser[0m                                                                                                         
+
+
+ [0m[38;2;255;255;0mWarning: No models available. Use /login to log into a provider via OAuth or API key. See:                             [0m
+ [0m[38;2;255;255;0m  /home/demo/user/.config/nvm/versions/node/v24.8.0/lib/node_modules/@earendil-works/pi-coding-agent/docs/providers.md [0m
+ [0m[38;2;255;255;0m  /home/demo/user/.config/nvm/versions/node/v24.8.0/lib/node_modules/@earendil-works/pi-coding-agent/docs/models.md[0m    
+
+[0m[38;2;80;80;80m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+/settings[0m[7m [0m                                                                                                              
+[0m[38;2;80;80;80m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;138;190;183m→ settings    Open settings menu[0m                                                                                        
+[0m[38;2;102;102;102m/home/demo/user/.cache/collie-lab/fix-slash-pi-omp-state/harness/pi087/project[0m
+[0m[38;2;102;102;102m0.0%/0 (auto)                                                                                                    unknown[0m

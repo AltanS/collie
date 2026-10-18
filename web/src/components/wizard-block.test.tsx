@@ -161,6 +161,15 @@ describe("WizardBlock — review (Submit) step presentation", () => {
     expect(screen.queryByRole("button", { name: /^Cancel$/ })).not.toBeInTheDocument();
   });
 
+  it("lists every answer when Claude Code bars a wrapped question", () => {
+    const model = fixtureModel("claude--v2302-wizard-review-long-q--w140.txt");
+    render(<WizardBlock wizard={model} onAction={vi.fn()} />);
+    expect(screen.getByText(/^When a user opens the settings page/)).toBeInTheDocument();
+    for (const answer of ["Restore with banner", "Save button", "Page footer"]) {
+      expect(screen.getByText(answer)).toBeInTheDocument();
+    }
+  });
+
   it("surfaces the not-all-answered warning on an incomplete review", () => {
     const model = fixtureModel("claude--wizard-submit-unanswered.txt");
     render(<WizardBlock wizard={model} onAction={vi.fn()} />);

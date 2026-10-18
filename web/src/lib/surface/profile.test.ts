@@ -227,6 +227,44 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(parseProfile(rawCodex()).idle.volatile.below.commandList).toBeUndefined();
   });
 
+  it("pi and omp: the slash list under the box names its command without the lead (field case 2026-10-17, 1.22.5)", () => {
+    const read = (id: string) => {
+      const list = loadProfiles().get(id)!.idle.volatile.below.commandList!;
+      const commandOf = (source: string, text: string): string | null => new RegExp(source, "u").exec(text)?.groups?.["command"] ?? null;
+      return { list, pointer: (text: string) => commandOf(list.pointer, text), entry: (text: string) => commandOf(list.entry, text), wrapped: (text: string) => new RegExp(list.wrapped, "u").test(text) };
+    };
+    const stock = read("pi");
+    expect(stock.list).toMatchObject({ lead: "/", sides: ["under"], footer: { maxRows: 4 } });
+    // Stock pi 0.87.1 and 1.3.0, pi 1.2.0 with editor padding, OmO on pi.
+    expect(stock.pointer("→ model          <provider/model> — Select model (opens selector UI)")).toBe("model");
+    expect(stock.pointer(" → settings       Open settings menu")).toBe("settings");
+    expect(stock.pointer("  → compact     Manually compact the session context")).toBe("compact");
+    expect(stock.entry("  scoped-models  Enable/disable models for Ctrl+P cycling")).toBe("scoped-models");
+    expect(stock.entry("    favorite-models  Manage favorite models for Ctrl+P cycling")).toBe("favorite-models");
+    expect(stock.wrapped("  (1/145)")).toBe(true);
+    expect(stock.entry("  (1/145)")).toBeNull();
+    // Not a list row: the box's text, the folder and stats rows, a selector's search row.
+    expect(stock.entry("/model")).toBeNull();
+    expect(stock.entry("~/project (main)")).toBeNull();
+    expect(stock.entry("0.0%/200k (auto)")).toBeNull();
+    expect(stock.pointer("> ")).toBeNull();
+    const omp = read("omp");
+    expect(omp.list).toMatchObject({ lead: "/", sides: ["under"] });
+    expect(omp.list.footer).toBeUndefined();
+    // omp 18.6.1 draws an icon column, omp 18.8 too, older omp none; a scrollbar cell ends the row.
+    expect(omp.pointer(`❯ ⬢  model         Model: none selected${" ".repeat(60)}█`)).toBe("model");
+    expect(omp.entry(`  🏃 prewalk       Arm or restart a one-shot model handoff${" ".repeat(40)}█`)).toBe("prewalk");
+    expect(omp.entry("  👁️  advisor       Advisor: off")).toBe("advisor");
+    expect(omp.pointer("❯ 🕘 resume       Resume a different session")).toBe("resume");
+    expect(omp.pointer("❯ new                     Start a new session")).toBe("new");
+    expect(omp.pointer("❯ skill:sample-doc-tool   Read a sample document bundle")).toBe("skill:sample-doc-tool");
+    expect(omp.wrapped(`${" ".repeat(19)}advisor)${" ".repeat(50)}│`)).toBe(true);
+    // Not a list row: the open box's prompt row, its top edge, a picker's pointed provider.
+    expect(omp.entry("╰─ /model")).toBeNull();
+    expect(omp.pointer(" π > ⬢ no-model > 📁 …/project > ◫ 7.1K/? ⟲ ▶────")).toBeNull();
+    expect(omp.pointer("│ ❯ ⬢ All models          34 │  All available models")).toBeNull();
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -541,6 +579,8 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["a continuation with no text group", ["idle", "frame", "continuation"], "^ *┃ .*$", "idle.frame.continuation"],
     ["an overlay row that is no expression", ["idle", "overlayRows", 0], "[unclosed", "idle.overlayRows[0]"],
     ["an under row that is no expression", ["idle", "frame", "under"], "[unclosed", "idle.frame.under"],
+    ["an underPainted flag that is no boolean", ["idle", "frame", "underPainted"], "yes", "idle.frame.underPainted"],
+    ["an underPainted flag with no under pattern", ["idle", "frame", "underPainted"], true, "idle.frame.underPainted"],
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
   ];
@@ -561,6 +601,15 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
     expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
     expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
+  });
+
+  it("checks the notice heads: each compiles and none matches a blank row", () => {
+    expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "[unclosed")).path).toBe("idle.notices[0].head");
+    expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "^\\s*$")).path).toBe("idle.notices[0].head");
+    expect(failure(change(rawClaude(), ["idle", "notices"], "no list")).path).toBe("idle.notices");
+    expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
+    expect(parseProfile(rawClaude()).idle.notices).toEqual([{ head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)" }]);
+    expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
   });
 
   it("accepts a profile that names no hook", () => {
@@ -610,6 +659,15 @@ describe("parseProfile names the failing field", () => {
     ["a command list with no pointer pattern", ["idle", "volatile", "below", "commandList", "pointer"], undefined, "idle.volatile.below.commandList.pointer"],
     ["a command list entry with no command group", ["idle", "volatile", "below", "commandList", "entry"], "^ {2,6}/\\S+$", "idle.volatile.below.commandList.entry"],
     ["a command list wrapped row that matches a blank row", ["idle", "volatile", "below", "commandList", "wrapped"], "^\\s*$", "idle.volatile.below.commandList.wrapped"],
+    ["a command list lead with a space in it", ["idle", "volatile", "below", "commandList", "lead"], "/ ", "idle.volatile.below.commandList.lead"],
+    ["an empty command list lead", ["idle", "volatile", "below", "commandList", "lead"], "", "idle.volatile.below.commandList.lead"],
+    ["command list sides that are no list", ["idle", "volatile", "below", "commandList", "sides"], "under", "idle.volatile.below.commandList.sides"],
+    ["no command list side", ["idle", "volatile", "below", "commandList", "sides"], [], "idle.volatile.below.commandList.sides"],
+    ["an unknown command list side", ["idle", "volatile", "below", "commandList", "sides"], ["under", "left"], "idle.volatile.below.commandList.sides[1]"],
+    ["a command list side named twice", ["idle", "volatile", "below", "commandList", "sides"], ["under", "under"], "idle.volatile.below.commandList.sides[1]"],
+    ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
+    ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
+    ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],
     ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
     ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
     ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],
