@@ -32,6 +32,8 @@
 
 import { readFileSync } from "node:fs";
 
+import { isEdgeVersion, sectionVersion } from "./release-version.ts";
+
 /** The five group headings, in the order the release page prints them. */
 export const GROUPS = ["Added", "Changed", "Fixed", "Packaging", "Docs"] as const;
 
@@ -83,8 +85,12 @@ interface RawSection {
 /**
  * The lines of `## [version] - date`'s section, and the date out of that heading. The section runs
  * from its own heading to the next `## ` heading, or to the end of the file.
+ *
+ * An Edge build (`1.23.0-edge.1`, M60 spec 01) reads its base version's section: the tag carries the
+ * suffix and the CHANGELOG never does, so the Edge page and the Stable page list the same lines.
  */
-function sectionLines(changelog: string, version: string): RawSection {
+function sectionLines(changelog: string, tagged: string): RawSection {
+	const version = sectionVersion(tagged);
 	const lines = toLines(changelog);
 	const headingPattern = new RegExp(
 		`^## \\[${version.replace(/\./g, "\\.")}\\] - (\\d{4}-\\d{2}-\\d{2})\\s*$`,
@@ -386,7 +392,19 @@ export function changelogAnchor(version: string, date: string): string {
  * update banner (web/src/components/update-banner.tsx) to copy one command, so this may never sit
  * behind a `<details>` and may never sit below the change list.
  */
-function updateBlock(): string[] {
+function updateBlock(edge: boolean): string[] {
+	// AN EDGE BUILD IS A PRE-RELEASE (M60 spec 01). A Stable install never takes it on its own, and
+	// the routine command below would not either, so the page says what it is instead of printing a
+	// command that lands somewhere else. Stable supersedes it: the release of the same version is
+	// newer than every Edge build of it.
+	if (edge) {
+		return [
+			"## Update",
+			"",
+			"**This is an Edge build**, a pre-release for volunteers. A Stable install does not take it,",
+			"and the Stable release of the same version supersedes it.",
+		];
+	}
 	return [
 		"## Update",
 		"",
@@ -463,14 +481,16 @@ export function renderBody(
 	notVerified: readonly string[] = [],
 ): string {
 	const section = parseSection(changelog, version);
-	const anchor = changelogAnchor(version, section.date);
+	// The heading's own version: an Edge build links its base version's section.
+	const heading = sectionVersion(version);
+	const anchor = changelogAnchor(heading, section.date);
 	// THE URGENT LINE STAYS AS IT WAS WRITTEN, AND IT GOES FIRST (ADR 0046). It is the one sentence a
 	// reader has to see before the update command, so it sits above the block a phone came here to
 	// copy from. One line, the author's own, with no wrapper around it.
 	const urgent = parseUrgent(changelog, version);
 	const lines: string[] = [];
 	if (urgent) lines.push(`**Urgent.** ${urgent.reason}`, "");
-	lines.push(...updateBlock(), "", "## What changed", "");
+	lines.push(...updateBlock(isEdgeVersion(version)), "", "## What changed", "");
 
 	for (const group of section.groups) {
 		if (group.leads.length === 0) continue;
@@ -488,7 +508,7 @@ export function renderBody(
 	if (drift.length > 0) lines.push(...drift, "");
 
 	lines.push(
-		`Full detail with commits: [${version} in the changelog](https://github.com/${repo}/blob/${tag}/CHANGELOG.md#${anchor})`,
+		`Full detail with commits: [${heading} in the changelog](https://github.com/${repo}/blob/${tag}/CHANGELOG.md#${anchor})`,
 		"",
 	);
 

@@ -570,3 +570,28 @@ describe("accept-drift: the release page", () => {
 		expect(notVerifiedOf("Not verified: ")).toEqual([]);
 	});
 });
+
+describe("an Edge build's page (M60 spec 01)", () => {
+	test("reads its base version's section, says what it is, and links the real assets", () => {
+		const body = renderBody(FULL, "2.1.0-edge.3", REPO, "v2.1.0-edge.3", "v2.1.0-edge.2");
+		const stable = renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0");
+		// The same change list as the Stable page of the same version.
+		const changes = (page: string) => page.slice(page.indexOf("## What changed"), page.indexOf("Full detail"));
+		expect(changes(body)).toBe(changes(stable));
+		expect(body).toContain("**This is an Edge build**, a pre-release for volunteers.");
+		expect(body).not.toContain("collie update  ");
+		// The changelog link names the heading that exists, at the tag that was pushed.
+		expect(body).toContain(`[2.1.0 in the changelog](https://github.com/${REPO}/blob/v2.1.0-edge.3/CHANGELOG.md#${changelogAnchor("2.1.0", parseSection(FULL, "2.1.0").date)})`);
+		// The assets carry the whole version, as the payload jobs name them.
+		expect(body).toContain(`releases/download/v2.1.0-edge.3/collie-2.1.0-edge.3-linux-x64.tar.gz`);
+		expect(body).toContain("Compare: [v2.1.0-edge.2...v2.1.0-edge.3]");
+	});
+
+	test("a section that does not exist still stops the release, named by its base version", () => {
+		expect(() => renderBody(FULL, "9.9.9-edge.1", REPO, "v9.9.9-edge.1")).toThrow("## [9.9.9]");
+	});
+
+	test("a tail that is not edge.N is looked up as written, as an old beta's was", () => {
+		expect(() => parseSection(FULL, "2.1.0-rc.1")).toThrow("## [2.1.0-rc.1]");
+	});
+});

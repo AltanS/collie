@@ -5,6 +5,11 @@ min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
 platforms = ["linux", "macos"]
 
+# `version` above is plain X.Y.Z in git, always. An Edge build (tag vX.Y.Z-edge.N, M60 spec 01)
+# carries X.Y.Z-edge.N here only inside its release payload: each release job stamps its own copy
+# before it builds (scripts/release-version.ts), and scripts/check-version.sh refuses the suffix
+# anywhere but under that tag.
+
 # This plugin is a thin launcher. The actual bridge runs as a systemd --user service so it
 # outlives Herdr restarts (see ARCHITECTURE.md §3). Every action below runs
 # scripts/collie-ctl.sh, which since M6/01 implements nothing: it resolves Bun, builds bin/collie
