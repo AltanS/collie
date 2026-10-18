@@ -44,6 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
 - **The harness lab runs Codex, OpenCode and omp to the end.** Codex 0.163.0 no longer stops at once on a missing `CODEX_HOME`: the lab makes the folder, copies an API key login and trusts its one project. Codex, OpenCode and omp may now spend the send and ask turns, each run presses its own decline button, and omp gets a lab spec that signs in with an OpenRouter key from the environment.
 - **A lab pass commits when the profile already reaches the version.** The pass moves the verified-versions row alone then, and keeps the date a person wrote. A pass that cannot commit removes its branch and worktree, so the next try is not refused with "exists already".
+- **omp's default band composer takes sends again under the Nerd Font symbols.** omp draws its status line as the top of the input box, and with the nerd symbol preset that row starts with a powerline cap instead of `π`, so Collie found no input box and refused every send with "Collie cannot read this screen". Collie now reads that row too, idle, with a draft and during a turn. Thanks @kjozsa (#505).
 
 ## [1.22.6] - 2026-10-18
 
