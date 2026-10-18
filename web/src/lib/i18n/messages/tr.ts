@@ -511,6 +511,8 @@ export const tr: Dictionary = {
   "chat.card.delete": "Sil",
   "chat.card.move": "Taşı",
   "chat.card.agent": "Ajan · {agent}",
+  "chat.subagent.prompt": "Görev istemi",
+  "chat.subagent.report": "Rapor",
   "chat.card.thinking": "Düşünüyor",
   "chat.card.lines": "{from}–{to} satırları",
   "chat.card.searchIn": "{where} içinde",

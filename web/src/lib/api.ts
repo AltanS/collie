@@ -40,6 +40,7 @@ import type {
   ChatAfter,
   ChatBefore,
   PaneChatResponse,
+  PaneSubagentResponse,
   CreateResponse,
   DismissScope,
   DevicesResponse,
@@ -1210,6 +1211,20 @@ export async function fetchClaudeCommands(paneId: string, scope?: Scope, signal?
     out.push({ command, description: asJsonString(row.description) ?? "", argHint: asJsonString(row.argHint) ?? "" });
   }
   return out;
+}
+
+/**
+ * GET /api/pane/:id/subagent/:agentId: one Claude subagent's own JSONL transcript, read on demand
+ * when the operator opens a subagent card's sheet.
+ */
+export function fetchSubagentTranscript(
+  paneId: string,
+  agentId: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<PaneSubagentResponse> {
+  const path = `/api/pane/${encodeURIComponent(paneId)}/subagent/${encodeURIComponent(agentId)}`;
+  return req<PaneSubagentResponse>(withScope(path, scope), { signal, timeoutMs: GET_TIMEOUT_MS });
 }
 
 /**

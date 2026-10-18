@@ -108,6 +108,9 @@ async function answer(route: Route, path: string): Promise<void> {
       fileTruncated: false,
     });
   }
+  if (/^\/api\/pane\/[^/]+\/subagent\/[^/]+$/.test(path)) {
+    return fulfillJson(route, { paneId: "w1:p1", agentId: "a000000", available: false });
+  }
   if (/^\/api\/pane\/[^/]+\/reply$/.test(path)) {
     // The fake pane stays honest: the draft the POST carried is what the next mirror read renders,
     // exactly as the unit layer's handler does it.
