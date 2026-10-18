@@ -68,7 +68,8 @@ describe("socketPathProblem", () => {
   });
 });
 
-describe("shortXdgHome", () => {
+// POSIX homes: `join` writes backslashes on Windows, and the rig's Herdr runs on Linux and macOS only.
+describe.skipIf(process.platform === "win32")("shortXdgHome", () => {
   test("the nightly state root gets a home in the runtime dir whose sockets fit", () => {
     const home = shortXdgHome(NIGHTLY_ROOT, SESSION, "/run/user/1000", "linux");
     expect(home.startsWith("/run/user/1000/")).toBe(true);
