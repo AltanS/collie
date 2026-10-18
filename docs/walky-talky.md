@@ -116,6 +116,7 @@ gets, and Enter never goes into a turn where it would steer the agent.
 | `agy` | hold | Collie holds it and types it when the pane is free |
 | `claude` | queue | Enter queues it in the harness, and it runs after the turn |
 | `codex` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |
+| `cursor` | queue | Enter queues it in the harness, and it runs after the turn |
 | `grok` | hold | Collie holds it and types it when the pane is free |
 | `hermes` | hold | Collie holds it and types it when the pane is free |
 | `muse` | hold | Collie holds it and types it when the pane is free |
