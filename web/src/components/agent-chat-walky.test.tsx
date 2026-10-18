@@ -14,7 +14,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => liveness.live,
 }));
 
-import { fixtureAgents, fixtureWalkyAgent, fixtureWalkyOperator, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
+import { fixtureAgents, fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySent, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
 import type { AgentView } from "@/lib/types";
@@ -168,6 +168,23 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     await user.click(screen.getByRole("button", { name: "Open message wt_k3f9x2m8q1a0" }));
     const dialog = await screen.findByRole("dialog", { name: "Messages" });
     expect(dialog.querySelector('[data-focused="true"]')).toHaveAttribute("data-kind", "agent");
+  });
+
+  it("lists the messages this pane sent beside the ones it received, newest first, from the pane's own address", async () => {
+    const user = userEvent.setup();
+    const sent: WalkyRow = {
+      ...fixtureWalkySent,
+      from: { ...fixtureWalkySent.from, address: `local/${agent.paneId}` },
+      receipt: { ...fixtureWalkySent.receipt, target: "local/w6:p3" },
+    };
+    withJournal(turns.slice(1));
+    renderPane({ agent: sessionAgent }, [fixtureWalkyAgent, sent]);
+    await openMessages(user);
+    const dialog = await screen.findByRole("dialog", { name: "Messages" });
+    const rows = [...dialog.querySelectorAll('[data-slot="walky-list-row"]')];
+    expect(rows.map((r) => r.getAttribute("data-direction"))).toEqual(["sent", "received"]);
+    expect(within(dialog).getByText("To local/w6:p3")).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button", { name: /^Reply/ })).toHaveLength(1);
   });
 
   it("opens the list from the top, with no row focused, from the pane menu", async () => {

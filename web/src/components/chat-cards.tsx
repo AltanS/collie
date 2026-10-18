@@ -59,7 +59,7 @@ import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
 import { WalkyCard } from "@/components/walky-card";
 import { WalkyIds } from "@/components/walky-id-chip";
-import { useWalkyLog, useWalkyReads } from "@/components/walky-log";
+import { useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -73,6 +73,7 @@ import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
 import {
+  directionOf,
   parseWalkyCommand,
   resultId,
   shellLineOf,
@@ -511,6 +512,7 @@ function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: 
  */
 function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header: EnvelopeHeader }) {
   const standing = standingOf(useWalkyLog(), header.id);
+  const self = useWalkySelf();
   const reads = useWalkyReads();
   const absent = standing.standing === "absent";
   // The read count at which this turn first found itself absent, or null while it is not. Set while
@@ -519,7 +521,8 @@ function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header:
   const [absentSince, setAbsentSince] = useState<number | null>(null);
   if (absent && absentSince === null) setAbsentSince(reads);
   else if (!absent && absentSince !== null) setAbsentSince(null);
-  if (standing.standing === "held") return <WalkyCard row={standing.row} />;
+  // A held id that this pane SENT is not a message it received: a header that borrows it stays the plain turn.
+  if (standing.standing === "held" && directionOf(standing.row, self) === "received") return <WalkyCard row={standing.row} />;
   return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 
@@ -799,13 +802,15 @@ function WalkyReceiptLine({ text, className }: { text: string; className: string
 function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCommand }) {
   useLocale();
   const log = useWalkyLog();
+  const self = useWalkySelf();
   const output = "output" in props.tool ? props.tool.output : undefined;
   let receipt: string | null = null;
   let inbox: WalkyRow | null = null;
   if (command.verb === "send" || command.verb === "reply") {
     const id = resultId(output);
     const standing = id === null ? null : standingOf(log, id);
-    if (standing?.standing === "held") {
+    // A line "Message to <target>" is about a message this pane sent: a row that reached this pane is not one.
+    if (standing?.standing === "held" && directionOf(standing.row, self) === "sent") {
       receipt = t("walky.composer.outcome", {
         label: targetWord(standing.row.receipt.target),
         state: stateWord(standing.row.receipt),
@@ -813,7 +818,8 @@ function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCo
     }
   } else if (command.verb === "inbox" && command.id !== null) {
     const standing = standingOf(log, command.id);
-    if (standing.standing === "held") inbox = standing.row;
+    // `inbox` reads a message that came in; a row this pane sent has no card to show here.
+    if (standing.standing === "held" && directionOf(standing.row, self) === "received") inbox = standing.row;
   }
   const card = <ToolCardBody {...props} walky={{ receipt }} />;
   if (inbox === null) return card;

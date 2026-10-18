@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { WalkyLogProvider } from "@/components/walky-log";
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 import type { WalkyRow } from "@/lib/walky";
 
 import { WalkySheet } from "./walky-sheet";
@@ -187,5 +187,70 @@ describe("WalkySheet focus (a tapped card or id chip)", () => {
     view.rerender(again(false));
     view.rerender(again(true));
     expect(focused()[0]).toHaveAttribute("data-kind", "operator");
+  });
+});
+
+describe("WalkySheet with rows in both directions", () => {
+  const MIXED = [fixtureWalkyAgent, fixtureWalkySent, fixtureWalkyOperator];
+  const rowsOf = () => [...document.querySelectorAll<HTMLElement>('[data-slot="walky-list-row"]')];
+
+  it("orders newest first across both directions", () => {
+    sheet(MIXED, { self: fixtureWalkySelf });
+    // 09:32 sent, 09:31 operator, 09:30 agent.
+    expect(rowsOf().map((r) => r.getAttribute("data-direction") + ":" + r.getAttribute("data-kind"))).toEqual([
+      "sent:agent",
+      "received:operator",
+      "received:agent",
+    ]);
+  });
+
+  it("titles a sent row \"To <target>\" with the receipt's state words, no kind badge, no Reply", () => {
+    sheet(MIXED, { self: fixtureWalkySelf });
+    const row = rowsOf()[0];
+    if (row === undefined) throw new Error("no rows");
+    const inside = within(row);
+    expect(inside.getByText("To bluefin/w6:p3")).toBeInTheDocument();
+    expect(inside.getByText("typed into the pane")).toBeInTheDocument();
+    expect(inside.getByText("Merged. Thanks.")).toBeInTheDocument();
+    expect(inside.queryByText("agent")).toBeNull();
+    expect(inside.queryByText("collie-workspace#this-pane")).toBeNull();
+    expect(inside.queryByRole("button")).toBeNull();
+    // The sender's own row says nothing of who vouched for it.
+    expect(row.textContent).not.toMatch(/this machine|signed by/);
+  });
+
+  it("keeps the received rows as they were: kind badge, sender label, verified word, Reply on the agent's", () => {
+    sheet(MIXED, { self: fixtureWalkySelf });
+    const received = rowsOf().filter((r) => r.getAttribute("data-direction") === "received");
+    expect(received).toHaveLength(2);
+    expect(received[1] && within(received[1]).getByText("collie-workspace#fix-465")).toBeInTheDocument();
+    expect(received[1] && within(received[1]).getByText(/signed by bluefin/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Reply/ })).toHaveLength(1);
+  });
+
+  it("reports the failure of a sent message in the log's words", () => {
+    const refused = { ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, state: "refused" as const, reason: "pane replaced" } };
+    sheet([refused], { self: fixtureWalkySelf });
+    expect(screen.getByText("not sent: pane replaced")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="walky-state"]')?.className).toContain("text-status-blocked");
+  });
+
+  it("names a broadcast's receipt target in words", () => {
+    sheet([{ ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, target: "all" } }], { self: fixtureWalkySelf });
+    expect(screen.getByText("To every machine")).toBeInTheDocument();
+  });
+
+  it("can focus a sent row, and a chip can point at it", async () => {
+    const user = userEvent.setup();
+    const reply = { ...fixtureWalkyOperator, replyTo: fixtureWalkySent.id };
+    sheet([fixtureWalkySent, reply], { self: fixtureWalkySelf, focusId: reply.id });
+    await user.click(screen.getByRole("button", { name: `Open message ${fixtureWalkySent.id}` }));
+    const marked = document.querySelector('[data-focused="true"]');
+    expect(marked).toHaveAttribute("data-direction", "sent");
+  });
+
+  it("without a pane address every row reads as received, as before sent rows existed", () => {
+    sheet(MIXED);
+    expect(rowsOf().every((r) => r.getAttribute("data-direction") === "received")).toBe(true);
   });
 });

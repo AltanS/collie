@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { useWalkyLog } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { signerOf, stateWord, verifiedWord, type WalkyRow } from "@/lib/walky";
+import { directionOf, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
@@ -20,6 +20,12 @@ import { cn } from "@/lib/utils";
 // one with an address to answer: an operator message is the reader's own. The sheet does not send;
 // it hands the row to the pane's composer (`onReply`), which opens in message mode on the sender and
 // sends through `POST /api/walky` with `replyTo` (hooks/use-walky-send.ts).
+//
+// ── BOTH DIRECTIONS ───────────────────────────────────────────────────────────
+// The pane's list holds the messages that reached the pane AND the ones it sent, each with its receipt,
+// newest first across both. A received row is drawn as it always was. A SENT row (`directionOf`, read from
+// the addresses against `self`) is titled "To <target as the log names it>" and carries the receipt's state
+// words: no kind badge (the sender is this pane), and no Reply, because there is nobody to answer in it.
 //
 // ── A FOCUSED MESSAGE ─────────────────────────────────────────────────────────
 // A tap on a Chat card, or on an id chip, opens this sheet on ONE message (`focusId`): the sheet scrolls
@@ -42,6 +48,8 @@ interface WalkySheetProps {
   canReply: boolean;
   /** The message to scroll to and highlight, when the sheet was opened on one. */
   focusId?: string | null;
+  /** This pane's address (`paneAddress`). It tells a sent row from a received one; without it every row reads as received. */
+  self?: string | undefined;
 }
 
 /**
@@ -60,7 +68,7 @@ function centreInScroller(el: HTMLElement): void {
   box.scrollTop += a.top - b.top - (box.clientHeight - a.height) / 2;
 }
 
-export function WalkySheet({ open, onClose, onReply, canReply, focusId = null }: WalkySheetProps) {
+export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self }: WalkySheetProps) {
   useLocale();
   const log = useWalkyLog();
   const rows = log === null ? [] : newestFirst(log.rows);
@@ -87,6 +95,7 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null }:
                 row={row}
                 canReply={canReply}
                 onReply={() => onReply(row)}
+                self={self}
                 focused={row.id === wanted}
                 holds={(id) => log?.byId.has(id) === true}
                 onFocusId={(id) => setMoved({ from: focusId, id })}
@@ -103,11 +112,13 @@ function WalkyListRow({
   row,
   canReply,
   onReply,
+  self,
   focused,
   holds,
   onFocusId,
 }: {
   row: WalkyRow;
+  self: string | undefined;
   canReply: boolean;
   onReply: () => void;
   focused: boolean;
@@ -115,22 +126,32 @@ function WalkyListRow({
   onFocusId: (id: string) => void;
 }) {
   const refused = row.receipt.state === "refused" || row.receipt.state === "expired";
-  // Only an agent message has an address to answer.
-  const replyable = canReply && row.kind === "agent" && row.from.address !== null;
+  const sent = directionOf(row, self) === "sent";
+  // Only a message that came in from an agent has an address to answer.
+  const replyable = !sent && canReply && row.kind === "agent" && row.from.address !== null;
   return (
     <div
       data-slot="walky-list-row"
       data-kind={row.kind}
+      data-direction={sent ? "sent" : "received"}
       data-id={row.id}
       data-focused={focused ? "true" : undefined}
       className={cn("rounded-md border px-3 py-2 transition-colors", focused ? "border-status-working/60 bg-status-working/8" : "border-border")}
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
-        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-medium">
-          {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
-        </Badge>
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.from.label}</span>
+        {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />}
+        {sent ? (
+          <span data-slot="walky-sent-to" className="min-w-0 flex-1 truncate font-medium text-foreground">
+            {t("walky.sheet.sentTo", { target: targetWord(row.receipt.target) })}
+          </span>
+        ) : (
+          <>
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-medium">
+              {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
+            </Badge>
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.from.label}</span>
+          </>
+        )}
         <span className="shrink-0 tabular-nums">{timeAgoShort(row.at)}</span>
       </div>
       <p className="font-content line-clamp-6 whitespace-pre-wrap break-words text-sm">{row.body}</p>
@@ -146,7 +167,7 @@ function WalkyListRow({
           <span data-slot="walky-state" className={cn(refused && "text-status-blocked")}>
             {stateWord(row.receipt)}
           </span>
-          {` · ${verifiedWord(row.receipt, signerOf(row))}`}
+          {!sent && ` · ${verifiedWord(row.receipt, signerOf(row))}`}
         </p>
         {replyable && (
           <Button

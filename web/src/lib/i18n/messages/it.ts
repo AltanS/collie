@@ -2295,10 +2295,11 @@ export const it: Dictionary = {
   "walky.card.title": "Message from {label}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "nessuna traccia nel registro di questa macchina",
-  "walky.card.open": "Apri nei messaggi",
+  "walky.card.open": "Apri in {sheet}",
   "walky.tool.badge": "walky talky",
   "walky.chip.aria": "Apri il messaggio {id}",
   "walky.sheet.inReplyTo": "In risposta a",
+  "walky.sheet.sentTo": "A {target}",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.

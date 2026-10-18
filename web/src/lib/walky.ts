@@ -364,6 +364,23 @@ export function bareAddress(address: string): string {
   return at === -1 ? address : address.slice(0, at);
 }
 
+export type WalkyDirection = "received" | "sent";
+
+/**
+ * Which way a row of a pane's list went, for the pane at address `self` (see {@link paneAddress}). The list
+ * holds both the messages that reached the pane and the ones it sent (each with its receipt), and the row
+ * has no field for the direction: it is read off the addresses. A row is SENT when its sender is this pane
+ * and its receipt's target is another one; every other row is received, including a pane's message to
+ * itself. With no `self` (a mount that cannot name its pane) every row reads as received, as it did before
+ * the list held sent rows. Tokens are ignored on both sides ({@link bareAddress}).
+ */
+export function directionOf(row: Pick<WalkyRow, "from" | "receipt">, self: string | undefined): WalkyDirection {
+  if (self === undefined || row.from.address === null) return "received";
+  const me = bareAddress(self);
+  if (bareAddress(row.receipt.target) === me) return "received";
+  return bareAddress(row.from.address) === me ? "sent" : "received";
+}
+
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 /** The largest byte that maps evenly onto the 36-letter alphabet (36 * 7 = 252), so no letter is likelier. */
 const ID_FAIR_BELOW = 252;

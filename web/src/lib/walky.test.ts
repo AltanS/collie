@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 
 import {
   bareAddress,
+  directionOf,
   findWalkyIds,
   parseWalkyCommand,
   resultId,
@@ -340,5 +341,41 @@ describe("shellLineOf", () => {
     expect(shellLineOf({ kind: "read" })).toBeNull();
     expect(shellLineOf({ kind: "search", summary: "collie walky who" })).toBeNull();
     expect(shellLineOf({ kind: "execute" })).toBeNull();
+  });
+});
+
+describe("directionOf", () => {
+  it("reads a row this pane sent as sent: its sender is the pane and its receipt's target is another", () => {
+    expect(directionOf(fixtureWalkySent, fixtureWalkySelf)).toBe("sent");
+  });
+
+  it("reads rows that reached the pane as received", () => {
+    expect(directionOf(fixtureWalkyAgent, fixtureWalkySelf)).toBe("received");
+    expect(directionOf(fixtureWalkyOperator, fixtureWalkySelf)).toBe("received");
+  });
+
+  it("ignores the session token on either side", () => {
+    expect(directionOf(fixtureWalkySent, `${fixtureWalkySelf}#k3f9`)).toBe("sent");
+    const tokened = { ...fixtureWalkySent, from: { ...fixtureWalkySent.from, address: "bluefin/w1:p1#zz99" } };
+    expect(directionOf(tokened, fixtureWalkySelf)).toBe("sent");
+  });
+
+  it("reads a message the pane sent to itself as received", () => {
+    const toSelf = { ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, target: "bluefin/w1:p1" } };
+    expect(directionOf(toSelf, fixtureWalkySelf)).toBe("received");
+  });
+
+  it("reads another pane's message to a third pane as received: only the pane's own sends are sent", () => {
+    expect(directionOf(fixtureWalkySent, "bluefin/w9:p9")).toBe("received");
+  });
+
+  it("reads every row as received with no pane address, or a sender with no address", () => {
+    expect(directionOf(fixtureWalkySent, undefined)).toBe("received");
+    expect(directionOf(fixtureWalkyOperator, fixtureWalkySelf)).toBe("received");
+  });
+
+  it("reads a broadcast receipt (`all`) from this pane as sent", () => {
+    const broadcast = { ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, target: "all" } };
+    expect(directionOf(broadcast, fixtureWalkySelf)).toBe("sent");
   });
 });

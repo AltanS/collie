@@ -86,6 +86,7 @@ import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
+import { paneAddress } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -96,7 +97,7 @@ import { useModelOnScreen } from "@/hooks/use-model-on-screen";
 import { modelLabel } from "@/lib/model-label";
 import { useMaskedHintRetired } from "@/lib/masked-hint";
 import { entriesHoldMask, holdsMask } from "@/lib/masked-text";
-import { useHostHealth } from "@/components/crew-provider";
+import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
@@ -410,6 +411,11 @@ export function AgentChat({
   // The walky talky message the Messages sheet opens on: a tapped Chat card, or an id chip. The pane menu's
   // own row clears it, so that way in shows the list from the top.
   const [walkyFocus, setWalkyFocus] = useState<string | null>(null);
+  // ONE predicate for "this pane has a Messages sheet": the pane menu's row, a Chat card's tap and an id chip's
+  // tap all read it, so no tap opens a sheet the menu would not offer.
+  const messagesSheet = agent !== undefined && isLead(scope);
+  const { lead: crewLead } = useCrew();
+  const walkySelf = paneAddress(paneId, scope, crewLead, agent?.instance);
   const openWalkyMessage = useCallback((id: string) => {
     setWalkyFocus(id);
     setDrawer("messages");
@@ -2457,7 +2463,7 @@ export function AgentChat({
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
             {chatShown ? (
-              <WalkyOpenProvider open={agent && isLead(scope) ? openWalkyMessage : null}>
+              <WalkyOpenProvider open={messagesSheet ? openWalkyMessage : null} self={walkySelf}>
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
                   feed={chatFeed}
@@ -3161,7 +3167,7 @@ export function AgentChat({
           // The pane's walky talky messages (M62), a read row with the others. The lead's own panes
           // only: it reads no member's list in 1.23.0, so the sheet there could only say something untrue.
           onMessages={
-            agent && isLead(scope)
+            messagesSheet
               ? () => {
                   setWalkyFocus(null);
                   setDrawer("messages");
@@ -3194,6 +3200,7 @@ export function AgentChat({
           onClose={closeDrawer}
           canReply={!readOnly && !savedCopyWrites && hostBlock === undefined && !gone}
           focusId={walkyFocus}
+          self={walkySelf}
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;

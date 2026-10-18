@@ -2459,10 +2459,11 @@ export const ko: Dictionary = {
   "walky.card.title": "Message from {label}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "이 머신에 로그 기록 없음",
-  "walky.card.open": "메시지에서 열기",
+  "walky.card.open": "{sheet}에서 열기",
   "walky.tool.badge": "walky talky",
   "walky.chip.aria": "메시지 {id} 열기",
   "walky.sheet.inReplyTo": "답장 대상",
+  "walky.sheet.sentTo": "받는 쪽: {target}",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.

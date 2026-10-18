@@ -248,8 +248,10 @@ the log holds the same way as the header row.
 Each receipt state shows the words in the table above, with the reason after "not sent" and
 "waiting in the inbox, not typed".
 
-- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. A message
-  from an agent has a "Reply" button, and the reply keeps the token of the sender's address. A pane of a member has no Messages row, only the lead's own
+- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane, newest
+  first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
+  has the title "To" and the pane it went to, with the receipt state in words, and no "Reply"
+  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's address. A pane of a member has no Messages row, only the lead's own
   panes have one. An empty sheet says "No messages for this pane yet." A machine that cannot
   keep messages says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".

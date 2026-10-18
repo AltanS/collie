@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { ItemView } from "@/components/chat-cards";
 import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
 import type { ChatItem } from "@/lib/chat-items";
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
 
 // The Chat card for a walky talky message (M62 spec 05). The turn only claims to be one; the card is
@@ -225,5 +225,32 @@ describe("a walky card that opens the Messages sheet", () => {
     expect(card).toHaveAttribute("data-kind", "agent");
     expect(card).toHaveAttribute("data-verified", "origin");
     expect(card).toHaveAttribute("data-id", fixtureWalkyAgent.id);
+  });
+});
+
+describe("a header that borrows an id this pane sent", () => {
+  it("stays the plain turn: the card is for messages that reached the pane", () => {
+    render(
+      <WalkyLogProvider rows={[fixtureWalkySent]} reads={1}>
+        <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+          <ItemView item={turn("[walky-talky wt_s3ntaaaa0001] from agent bluefin/w6:p3 (claude, x)\nhi", fixtureWalkySent.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(document.querySelector('[data-slot="walky-card"]')).toBeNull();
+    expect(screen.getByText("You")).toBeInTheDocument();
+  });
+});
+
+describe("the card's screen-reader words", () => {
+  it("name the sheet by its own title, so the two never disagree", () => {
+    render(
+      <WalkyLogProvider rows={[fixtureWalkyAgent]}>
+        <WalkyOpenProvider open={() => {}}>
+          <ItemView item={turn(`${HEADER_AGENT}\nbody`, fixtureWalkyAgent.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(screen.getByText("Open in Messages")).toBeInTheDocument();
   });
 });

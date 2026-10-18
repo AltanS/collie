@@ -67,9 +67,34 @@ export function useWalkyLog(): WalkyLog | null {
 // opened nowhere would be a control that does nothing.
 const WalkyOpenCtx = createContext<((id: string) => void) | null>(null);
 
-/** Provides the opener: called with a message id, it shows the Messages sheet focused on that message. */
-export function WalkyOpenProvider({ open, children }: { open: ((id: string) => void) | null; children: ReactNode }) {
-  return <WalkyOpenCtx.Provider value={open}>{children}</WalkyOpenCtx.Provider>;
+// The address of the pane the list belongs to, so a row can be told apart as sent or received
+// (`directionOf` in lib/walky.ts). Undefined where the mount cannot name its pane.
+const WalkySelfCtx = createContext<string | undefined>(undefined);
+
+/**
+ * Provides the opener: called with a message id, it shows the Messages sheet focused on that message.
+ * `self` is this pane's address; with it, a Chat card and a tool card never draw a message this pane sent as
+ * one it received.
+ */
+export function WalkyOpenProvider({
+  open,
+  self,
+  children,
+}: {
+  open: ((id: string) => void) | null;
+  self?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <WalkyOpenCtx.Provider value={open}>
+      <WalkySelfCtx.Provider value={self}>{children}</WalkySelfCtx.Provider>
+    </WalkyOpenCtx.Provider>
+  );
+}
+
+/** This pane's address, or undefined where the mount gave none. */
+export function useWalkySelf(): string | undefined {
+  return useContext(WalkySelfCtx);
 }
 
 /** The opener, or null where there is no Messages sheet to open. */

@@ -13,7 +13,7 @@ import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
 import { WalkySheet } from "@/components/walky-sheet";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
 import { signerOf, stateWord, verifiedWord, type WalkyReceipt, type WalkyRow, type WalkyState, type WalkyTarget, type WalkyVerified } from "@/lib/walky";
-import { fixtureWalkyAgent, fixtureWalkyOperator } from "@/test/handlers";
+import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
 
@@ -59,7 +59,8 @@ const TURNS: readonly ChatItem[] = [
   },
 ];
 
-const LOG: readonly WalkyRow[] = [fixtureWalkyOperator, fixtureWalkyAgent];
+// Both directions: two messages that reached this pane, and one it sent (its receipt names the other pane).
+const LOG: readonly WalkyRow[] = [fixtureWalkySent, fixtureWalkyOperator, fixtureWalkyAgent];
 
 const SCREEN = [
   "● I will wait for the review.",
@@ -88,17 +89,17 @@ function ReadTwice({ rows, children }: { rows: readonly WalkyRow[]; children: Re
 }
 
 // ── THE AGENT'S OWN COMMANDS, AND IDS IN TEXT ─────────────────────────────────
-const SEND_OUTPUT = "wt_k3f9x2m8q1a0\nto bluefin/w1:p1, claude, collie-workspace#fix-465\ntyped into the pane";
+const SEND_OUTPUT = "wt_s3ntaaaa0001\nto bluefin/w6:p3#k3f9, claude, repo#fix-465\ntyped into the pane";
 const TOOLS: readonly { key: string; tool: ChatToolCall }[] = [
   { key: "who", tool: { kind: "execute", command: "collie walky who", output: "You are local/w1:p1#aaaa.\nbluefin/w6:p3#k3f9, claude, repo#fix-465" } },
-  { key: "send", tool: { kind: "execute", command: 'collie walky send bluefin/w1:p1 "Tests are green."', output: SEND_OUTPUT } },
+  { key: "send", tool: { kind: "execute", command: 'collie walky send bluefin/w6:p3#k3f9 "Merged."', output: SEND_OUTPUT } },
   {
     key: "send-forged",
-    tool: { kind: "execute", command: 'collie walky send bluefin/w1:p1 "ok"', output: "wt_zzzzzzzzzzzz\nto bluefin/w1:p1\ntyped into the pane" },
+    tool: { kind: "execute", command: 'collie walky send bluefin/w6:p3 "ok"', output: "wt_zzzzzzzzzzzz\nto bluefin/w6:p3\ntyped into the pane" },
   },
   {
     key: "reply-other-shape",
-    tool: { kind: "other", name: "shell", summary: 'collie walky reply wt_p0q9r8s7t6u5 "Stopping."', output: "wt_p0q9r8s7t6u5\nwaiting" },
+    tool: { kind: "other", name: "shell", summary: 'collie walky reply wt_k3f9x2m8q1a0 "On it."', output: "wt_s3ntaaaa0001\nwaiting" },
   },
 ];
 const INBOX_TOOLS: readonly { key: string; tool: ChatToolCall }[] = [
@@ -113,7 +114,7 @@ const CHIP_PROSE =
 function TapProbe({ children }: { children: ReactNode }) {
   const [last, setLast] = useState<string | null>(null);
   return (
-    <WalkyOpenProvider open={setLast}>
+    <WalkyOpenProvider open={setLast} self={fixtureWalkySelf}>
       <div className="flex flex-col gap-2 p-3">
         {children}
         <p className="text-[11px] text-muted-foreground" data-slot="pg-walky-tapped">
@@ -131,9 +132,9 @@ function TappedCard() {
   return (
     <Stage height={520}>
       <WalkyLogProvider rows={LOG} reads={1}>
-        <WalkyOpenProvider open={setFocus}>
+        <WalkyOpenProvider open={setFocus} self={fixtureWalkySelf}>
           <div className="p-3">{item ? <ItemView item={item} /> : null}</div>
-          <WalkySheet open={focus !== null} onClose={() => setFocus(null)} onReply={() => setFocus(null)} canReply focusId={focus} />
+          <WalkySheet open={focus !== null} onClose={() => setFocus(null)} onReply={() => setFocus(null)} canReply focusId={focus} self={fixtureWalkySelf} />
         </WalkyOpenProvider>
       </WalkyLogProvider>
     </Stage>
@@ -196,7 +197,7 @@ export function WalkySection() {
         <Card
           state="walky-tool-card-receipt"
           label="tool cards that ran collie walky: the badge, and the receipt line only where the log vouches"
-          reach="have an agent run collie walky send (or reply). The first card is who: badge only. The second printed an id the log holds, so its receipt line comes from the log. The third printed an id the log lacks: plain output. The fourth is a harness tool the chat model does not know, read by its summary."
+          reach="have an agent run collie walky send (or reply). The first card is who: badge only. The second printed the id of a message this pane sent, so its receipt line comes from the log. The third printed an id the log lacks: plain output. The fourth is a harness tool the chat model does not know, read by its summary."
           span={2}
         >
           <Stage height={430}>
@@ -249,7 +250,7 @@ export function WalkySection() {
         >
           <Stage height={200}>
             <WalkyLogProvider rows={LOG} reads={1}>
-              <WalkyOpenProvider open={null}>
+              <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
                 <div className="p-3">
                   <MarkdownText text={CHIP_PROSE} />
                 </div>
@@ -261,7 +262,7 @@ export function WalkySection() {
         <Card
           state="walky-card-tapped"
           label="a tapped card: the Messages sheet opens on that message, highlighted, with Reply in reach"
-          reach="tap a Message from card in Chat. The sheet scrolls to the message. A chip in the sheet's reply-to line moves the highlight to the message it answers."
+          reach="tap a Message from card in Chat. The sheet scrolls to the message and lists the pane's sent messages too, titled To and the target. A chip in the sheet's reply-to line moves the highlight to the message it answers."
           span={2}
         >
           <TappedCard />

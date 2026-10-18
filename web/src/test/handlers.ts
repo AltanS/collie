@@ -586,6 +586,24 @@ export const fixtureWalkyOperator: WalkyRow = {
   receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo", target: "bluefin/w1:p1" },
 };
 
+/** The address of the pane the walky fixtures belong to: the target of the two rows above, the sender of the one below. */
+export const fixtureWalkySelf = "bluefin/w1:p1";
+
+/** A message THIS pane sent to another agent pane (the list holds sent rows too), with its receipt. */
+export const fixtureWalkySent: WalkyRow = {
+  v: 1,
+  id: "wt_s3ntaaaa0001",
+  kind: "agent",
+  from: { memberId: "bluefin", address: "bluefin/w1:p1", harness: "claude", label: "collie-workspace#this-pane" },
+  to: "bluefin/w6:p3#k3f9",
+  replyTo: null,
+  at: Date.parse("2026-10-17T09:32:00Z"),
+  body: "Merged. Thanks.",
+  signer: "bluefin",
+  signature: "c2ln",
+  receipt: { id: "wt_s3ntaaaa0001", state: "delivered", verified: "local", at: Date.parse("2026-10-17T09:32:02Z"), by: "bluefin", target: "bluefin/w6:p3" },
+};
+
 let walkyRows: WalkyRow[] = [];
 let walkyPosts: WalkySendBody[] = [];
 /** The rows `GET /api/pane/:id/walky` answers with, newest first. */

@@ -59,7 +59,7 @@ export function WalkyCard({ row }: { row: WalkyRow }) {
         {row.replyTo !== null && <span>{`· ${t("walky.card.replyTo", { id: row.replyTo })}`}</span>}
         <span data-slot="walky-verified">{`· ${verifiedWord(row.receipt, signerOf(row))}`}</span>
       </span>
-      {open !== null && <span className="sr-only">{t("walky.card.open")}</span>}
+      {open !== null && <span className="sr-only">{t("walky.card.open", { sheet: t("walky.sheet.title") })}</span>}
     </>
   );
   const common = {
