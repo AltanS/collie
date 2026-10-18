@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 import { cellPieces } from "@/lib/cell-glyphs";
+import { widePieces } from "@/lib/text-width";
 
 // A plain run → nodes. The Block and Powerline characters whose whole job is to fill their cell are
 // painted as boxes rather than typed, because a glyph is an em tall and a cell is taller than that
@@ -29,6 +30,25 @@ export function renderCells(run: string): ReactNode {
       <span key={k} className="cell-glyph" data-cell={p.cell}>
         {p.text}
       </span>
+    ),
+  );
+}
+
+// Fixed-column mirrors hold fallback CJK glyphs to two ASCII cells; wrapping prose stays natural.
+const WIDE_CELL_CLASS = "inline-block w-[2ch] text-center";
+
+export function renderWideCells(run: string): ReactNode {
+  // Keep ASCII-only polling rows on their allocation-free path.
+  if (/^[\x20-\x7e]*$/.test(run)) return renderCells(run);
+  const pieces = widePieces(run);
+  if (!pieces.some((p) => p.wide)) return renderCells(run);
+  return pieces.map((p, k) =>
+    p.wide ? (
+      <span key={k} className={WIDE_CELL_CLASS}>
+        {p.text}
+      </span>
+    ) : (
+      <Fragment key={k}>{renderCells(p.text)}</Fragment>
     ),
   );
 }

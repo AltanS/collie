@@ -477,6 +477,27 @@ describe("mirror line wrapping", () => {
 // wrapping. What a refactor would break silently is not the scroller — it is the mirror text around
 // it: the run is grouped by moving line nodes under one span, and the find offsets, the link
 // offsets and a clipboard copy are all defined by the "\n" text nodes those lines sit between.
+describe("fixed-column terminal text", () => {
+  const text = `${ESC}[35m→ 1. 커피${ESC}[0m   │ details\n  2. 차      │ https://example.com\n`;
+
+  it("holds Hangul to two cells outside tables when wrapping is off", () => {
+    const { container } = render(<AnsiOutput text={text} wrap={false} query="커피" />);
+    const pre = container.querySelector("pre")!;
+    const cells = [...pre.querySelectorAll('[class~="w-[2ch]"]')];
+
+    expect(cells.map((cell) => cell.textContent).join("")).toBe("커피차");
+    expect(pre.textContent).toBe("→ 1. 커피   │ details\n  2. 차      │ https://example.com\n");
+    expect(pre.querySelector("[data-find-match]")!.textContent).toBe("커피");
+    expect(pre.querySelector("a")!.textContent).toBe("https://example.com");
+  });
+
+  it("keeps wrapping prose free of fixed-width cells", () => {
+    const { container } = render(<AnsiOutput text="한글 설명입니다." />);
+    expect(container.querySelector('[class~="w-[2ch]"]')).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toBe("한글 설명입니다.");
+  });
+});
+
 describe("a table pans while the mirror around it wraps", () => {
   const TABLE = ["| Option | Cost |", "| --- | --- |", "| A | low |", "| B | high |"].join("\n");
   const TEXT = `here is the comparison:\n\n${TABLE}\n\nsee https://herdr.dev/docs\n`;

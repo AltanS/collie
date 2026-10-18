@@ -14,6 +14,15 @@ import { RawMirror } from "./raw-mirror";
 // so a Powerline cap or a block there is a quarter of a row short too (lib/cell-glyphs.ts). A card's
 // Terminal view that brought the step back would undo the mirror's fix exactly when a dialog lifts.
 describe("RawMirror", () => {
+  it.each([false, true])("preserves column widths or prose wrapping (wrap: %s)", (wrap) => {
+    const text = "→ 1. \x1b[35m커피\x1b[0m   │ details\n  2. 차      │ details";
+    const { container } = render(<RawMirror lines={splitLines(parseAnsi(text))} wrap={wrap} />);
+    const cells = [...container.querySelectorAll('[class~="w-[2ch]"]')];
+
+    expect(cells.map((cell) => cell.textContent).join("")).toBe(wrap ? "" : "커피차");
+    expect(container.querySelector("pre")!.textContent).toBe("→ 1. 커피   │ details\n  2. 차      │ details");
+  });
+
   it("paints cell-filling characters and leaves the text as the terminal printed it", () => {
     const text = "\ue0b6CL\ue0b4 5h \u2588\u2588 91%";
     const { container } = render(<RawMirror lines={splitLines(parseAnsi(text))} />);
@@ -60,6 +69,17 @@ describe("RawMirror file paths", () => {
     await waitFor(() => expect(container.querySelector("a")?.textContent).toBe("src/cart.ts"));
     expect(container.querySelectorAll("a")).toHaveLength(1);
     expect(asked).toEqual([["src/cart.ts", "architecture/notes.md"]]);
+  });
+
+  it("keeps two-cell Hangul beside a linked file and preserves the link target", () => {
+    const opened: string[] = [];
+    const { container } = mirror("파일 src/cart.ts:7 한글", opened);
+    const cells = [...container.querySelectorAll('[class~="w-[2ch]"]')];
+
+    expect(cells.map((cell) => cell.textContent).join("")).toBe("파일한글");
+    expect(container.querySelector("pre")!.textContent).toBe("파일 src/cart.ts:7 한글");
+    fireEvent.click(container.querySelector("a")!);
+    expect(opened).toEqual(["/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=7"]);
   });
 
   it("a path outside the root stays plain text", () => {
