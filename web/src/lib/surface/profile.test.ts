@@ -603,6 +603,41 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
   });
 
+  it("omp 18.11 (issue 497): the chips of every symbol preset collapse, the Nerd Font pointer points, and a skill is listed under its namespace", () => {
+    const omp = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!);
+    // pi-tui's symbols.ts: the paste chip is 📄 (unicode) or U+F15C (nerd), the image chip 🖼 or U+F03E;
+    // the ascii preset's `txt` and `img` are left out, as its `+ - |` box is not read either.
+    const chip = new RegExp(`^(?:${omp.collapse.pattern})$`, "u");
+    for (const text of ["📄 #3", "🖼 #1", "\u{F15C} #2", "\u{F03E} #1"]) expect(chip.test(text), text).toBe(true);
+    for (const text of ["img #1", "txt #1", "#1", "🖼#1"]) expect(chip.test(text), text).toBe(false);
+    const list = omp.idle.volatile.below.commandList!;
+    const pointer = new RegExp(list.pointer, "u");
+    expect(pointer.exec("\u{F054} \u{F0EE5} model                Switch model")?.groups?.["command"]).toBe("model");
+    expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
+    expect(pointer.test("> model   Switch model")).toBe(false);
+    expect(list.namespaces).toEqual(["skill:"]);
+    expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });
+  });
+
+  it("omp 18.11 (issue 497): the prompt and continuation rows leave the box's right border out of the draft", () => {
+    const omp = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!);
+    const prompt = new RegExp(omp.idle.frame.prompt.pattern, "u");
+    const continuation = new RegExp(omp.idle.frame.continuation!, "u");
+    const draft = (row: string): string | undefined => prompt.exec(row)?.groups?.["draft"];
+    expect(draft("╰─ box at one hundred and thirty columns wide, ending here.                   ─╯")).toBe("box at one hundred and thirty columns wide, ending here.");
+    expect(draft("╰─ text that fills the row ─╯")).toBe("text that fills the row");
+    expect(draft("╰─ text under the cursor╯")).toBe("text under the cursor");
+    expect(draft("│  a draft row that fills the box  │")).toBe("a draft row that fills the box");
+    expect(draft("╰─ hello there")).toBe("hello there");
+    expect(draft(`╰─${" ".repeat(60)}⇧⇥ to change thinking effort${" ".repeat(4)}─╯`)).toBe("");
+    // A border glyph the person typed stays when the box's own border follows it.
+    expect(draft("╰─ a │    ─╯")).toBe("a │");
+    const text = (row: string): string | undefined => continuation.exec(row)?.groups?.["text"];
+    expect(text("│  Collie wrap probe: the quick brown fox jumps over the lazy dog while the    │")?.trim()).toBe("Collie wrap probe: the quick brown fox jumps over the lazy dog while the");
+    expect(text("│  a row with the scroll thumb  █")?.trim()).toBe("a row with the scroll thumb");
+    expect(text("│  a row with no border")?.trim()).toBe("a row with no border");
+  });
+
   it("checks the notice heads: each compiles and none matches a blank row", () => {
     expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "[unclosed")).path).toBe("idle.notices[0].head");
     expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "^\\s*$")).path).toBe("idle.notices[0].head");
@@ -668,6 +703,16 @@ describe("parseProfile names the failing field", () => {
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],
+    ["command list namespaces that are no list", ["idle", "volatile", "below", "commandList", "namespaces"], "skill:", "idle.volatile.below.commandList.namespaces"],
+    ["no command list namespace", ["idle", "volatile", "below", "commandList", "namespaces"], [], "idle.volatile.below.commandList.namespaces"],
+    ["an empty command list namespace", ["idle", "volatile", "below", "commandList", "namespaces"], [""], "idle.volatile.below.commandList.namespaces[0]"],
+    ["a command list namespace with a space in it", ["idle", "volatile", "below", "commandList", "namespaces"], ["skill: x"], "idle.volatile.below.commandList.namespaces[0]"],
+    ["a command list namespace named twice", ["idle", "volatile", "below", "commandList", "namespaces"], ["skill:", "skill:"], "idle.volatile.below.commandList.namespaces[1]"],
+    ["an inline hint that is no object", ["idle", "inlineHint"], "rgb(107,114,128)", "idle.inlineHint"],
+    ["an inline hint with no colour", ["idle", "inlineHint"], { fg: [] }, "idle.inlineHint.fg"],
+    ["an inline hint colour written as hex", ["idle", "inlineHint"], { fg: ["#6b7280"] }, "idle.inlineHint.fg[0]"],
+    ["an inline hint colour out of range", ["idle", "inlineHint"], { fg: ["rgb(107,114,256)"] }, "idle.inlineHint.fg[0]"],
+    ["an inline hint colour named twice", ["idle", "inlineHint"], { fg: ["rgb(1,2,3)", "rgb(1,2,3)"] }, "idle.inlineHint.fg[1]"],
     ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
     ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
     ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],

@@ -11,13 +11,15 @@ import type { CommandListRows } from "./profile";
 
 /**
  * The profile's command list, read at a box: the command its pointer rests on with the profile's lead
- * in front (null with no pointer), the side of the box it stands on, and its first and last row.
+ * in front (null with no pointer), the side of the box it stands on, its first and last row, and the
+ * command of every entry on screen with the lead in front, the pointed one included, top to bottom.
  */
 export interface CommandListRead {
   readonly pointed: string | null;
   readonly side: "above" | "under";
   readonly first: number;
   readonly last: number;
+  readonly entries: readonly string[];
 }
 
 interface CompiledCommandList {
@@ -25,6 +27,7 @@ interface CompiledCommandList {
   readonly entry: RegExp;
   readonly wrapped: RegExp;
   readonly lead: string;
+  readonly namespaces: readonly string[];
   readonly under: boolean;
   readonly above: boolean;
   readonly footer: { readonly pattern: RegExp; readonly maxRows: number } | null;
@@ -41,6 +44,7 @@ function listPatterns(list: CommandListRows): CompiledCommandList {
     entry: new RegExp(list.entry, "u"),
     wrapped: new RegExp(list.wrapped, "u"),
     lead: list.lead ?? "",
+    namespaces: list.namespaces ?? [],
     under: sides.includes("under"),
     above: sides.includes("above"),
     footer: list.footer === undefined ? null : { pattern: new RegExp(list.footer.pattern, "u"), maxRows: list.footer.maxRows },
@@ -53,8 +57,8 @@ function isBlank(text: string): boolean {
   return text.trim().length === 0;
 }
 
-/** One row of a command list: the pointed entry with its command, another entry, a row that is no entry, or none of them. */
-type ListRow = { readonly kind: "pointer"; readonly command: string } | { readonly kind: "entry" } | { readonly kind: "wrapped" } | null;
+/** One row of a command list: the pointed entry or another entry, each with its command, a row that is no entry, or none of them. */
+type ListRow = { readonly kind: "pointer" | "entry"; readonly command: string } | { readonly kind: "wrapped" } | null;
 
 function listRow(text: string, patterns: CompiledCommandList): ListRow {
   const head = patterns.pointer.exec(text);
@@ -62,7 +66,11 @@ function listRow(text: string, patterns: CompiledCommandList): ListRow {
     const command = head.groups?.["command"];
     return command === undefined ? null : { kind: "pointer", command: patterns.lead + command };
   }
-  if (patterns.entry.test(text)) return { kind: "entry" };
+  const entry = patterns.entry.exec(text);
+  if (entry !== null) {
+    const command = entry.groups?.["command"];
+    return command === undefined ? null : { kind: "entry", command: patterns.lead + command };
+  }
   if (patterns.wrapped.test(text)) return { kind: "wrapped" };
   return null;
 }
@@ -89,28 +97,31 @@ function footerFrom(texts: readonly string[], at: number, footer: CompiledComman
  */
 function listUnder(texts: readonly string[], bottom: number, patterns: CompiledCommandList): CommandListRead | null {
   let pointed: string | null = null;
-  let entries = 0;
+  const entries: string[] = [];
   let last = bottom;
   for (let i = bottom + 1; i < texts.length; i++) {
     const text = texts[i]!.trimEnd();
     if (isBlank(text)) {
-      if (entries === 0) return null;
+      if (entries.length === 0) return null;
       continue;
     }
     const row = listRow(text, patterns);
     if (row === null) {
-      if (entries > 0 && footerFrom(texts, i, patterns.footer)) break;
+      if (entries.length > 0 && footerFrom(texts, i, patterns.footer)) break;
       return null;
     }
-    if (row.kind === "wrapped" && entries === 0) return null;
-    if (row.kind === "pointer") {
-      if (pointed !== null) return null;
-      pointed = row.command;
+    if (row.kind === "wrapped") {
+      if (entries.length === 0) return null;
+    } else {
+      if (row.kind === "pointer") {
+        if (pointed !== null) return null;
+        pointed = row.command;
+      }
+      entries.push(row.command);
     }
-    if (row.kind !== "wrapped") entries++;
     last = i;
   }
-  return entries === 0 ? null : { pointed, side: "under", first: bottom + 1, last };
+  return entries.length === 0 ? null : { pointed, side: "under", first: bottom + 1, last, entries };
 }
 
 /**
@@ -131,7 +142,8 @@ function listAbove(texts: readonly string[], top: number, patterns: CompiledComm
   if (rows.length === 0) return null;
   const pointers = rows.flatMap(({ row }) => (row.kind === "pointer" ? [row.command] : []));
   if (pointers.length > 1) return null;
-  return { pointed: pointers[0] ?? null, side: "above", first: rows[0]!.at, last: top - 1 };
+  const entries = rows.flatMap(({ row }) => (row.kind === "wrapped" ? [] : [row.command]));
+  return { pointed: pointers[0] ?? null, side: "above", first: rows[0]!.at, last: top - 1, entries };
 }
 
 /**
@@ -151,16 +163,36 @@ export function commandListNear(texts: readonly string[], top: number, bottom: n
 }
 
 /**
+ * Whether the list's pointer rests on the command `typed`, so Enter there runs that command: the
+ * pointed command is `typed` itself, or `typed` is the lead and a bare name and the pointer rests on
+ * that name under one of the profile's namespaces (a harness that lists the skill `wrap-up` as
+ * `skill:wrap-up` for a typed `/wrap-up`). The second form holds only while no entry on screen is
+ * `typed` itself: a list that shows both spellings has two commands of that name, and Enter might run
+ * the other one. False with no pointer.
+ */
+export function pointsAt(read: CommandListRead, typed: string, list: CommandListRows | undefined): boolean {
+  const text = typed.trim();
+  if (read.pointed === null) return false;
+  if (read.pointed === text) return true;
+  if (list === undefined) return false;
+  const patterns = listPatterns(list);
+  if (patterns.namespaces.length === 0 || !text.startsWith(patterns.lead) || read.entries.includes(text)) return false;
+  const bare = text.slice(patterns.lead.length);
+  if (bare.length === 0) return false;
+  return patterns.namespaces.some((namespace) => !bare.startsWith(namespace) && read.pointed === patterns.lead + namespace + bare);
+}
+
+/**
  * The list under the box whose bottom edge (or open box's last row) is row `bottom`, when its pointer
- * rests on exactly `text`, the box's text: the typed command's own typeahead. Null otherwise, and on a
- * profile whose list never stands under the box.
+ * rests on `text`, the box's text ({@link pointsAt}): the typed command's own typeahead. Null otherwise,
+ * and on a profile whose list never stands under the box.
  */
 export function ownListUnder(texts: readonly string[], bottom: number, text: string, list: CommandListRows | undefined): CommandListRead | null {
   if (list === undefined) return null;
   const patterns = listPatterns(list);
   if (!patterns.under) return null;
   const read = listUnder(texts, bottom, patterns);
-  return read !== null && read.pointed !== null && read.pointed === text.trim() ? read : null;
+  return read !== null && pointsAt(read, text, list) ? read : null;
 }
 
 /**

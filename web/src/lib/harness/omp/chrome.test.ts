@@ -70,6 +70,27 @@ const BOX_COMPOSER_FIXTURES = [
   // omp 18.6.1 with `/settings` typed: a five-row palette under the open box (lab, 2026-10-17).
   "omp--v18-6-slash-settings-list--w120.txt",
   "omp--v18-6-slash-settings-list--w80.txt",
+  // omp 18.11.3's box composer, nerd and unicode symbol presets (issue 497, 2026-10-18).
+  "omp--v18-11-ghost-word--w130.txt",
+  "omp--v18-11-image-chip--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w130.txt",
+  "omp--v18-11-nerd-box-path-text--w80.txt",
+  "omp--v18-11-nerd-box-two-lines--w130.txt",
+  "omp--v18-11-nerd-box-two-lines--w80.txt",
+  "omp--v18-11-nerd-box-wrapped--w130.txt",
+  "omp--v18-11-nerd-box-wrapped--w80.txt",
+  "omp--v18-11-nerd-ghost-word--w130.txt",
+  "omp--v18-11-nerd-ghost-word--w80.txt",
+  "omp--v18-11-nerd-image-chip--w130.txt",
+  "omp--v18-11-nerd-image-chip--w80.txt",
+  "omp--v18-11-nerd-running-tool--w130.txt",
+  "omp--v18-11-nerd-running-tool--w80.txt",
+  "omp--v18-11-nerd-running-tool-minute--w130.txt",
+  "omp--v18-11-nerd-running-tool-minute--w80.txt",
+  "omp--v18-11-nerd-skill-long-form--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w130.txt",
+  "omp--v18-11-nerd-skill-pointed--w80.txt",
+  "omp--v18-11-skill-pointed--w130.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -79,6 +100,10 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-6-slash-mod-partial--w120.txt",
   "omp--v18-6-slash-model-list--w120.txt",
   "omp--v18-6-slash-model-list--w80.txt",
+  // omp 18.11.3, nerd preset: `/ship` and `/model` with a ten-row palette (issue 497, 2026-10-18).
+  "omp--v18-11-nerd-skill-and-command--w130.txt",
+  "omp--v18-11-nerd-slash-model--w130.txt",
+  "omp--v18-11-nerd-slash-model--w80.txt",
 ];
 
 const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
@@ -129,6 +154,27 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     // omp 18.6.1: the `/settings` palette under the open box, at 120 and 80 columns.
     { fixture: "omp--v18-6-slash-settings-list--w120.txt", top: 17, bottom: 18, suggestEnd: 23 },
     { fixture: "omp--v18-6-slash-settings-list--w80.txt", top: 18, bottom: 19, suggestEnd: 24 },
+    // omp 18.11.3's box composer (issue 497): drafts, chips, a short skill list and a running turn.
+    { fixture: "omp--v18-11-ghost-word--w130.txt", top: 15, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18-11-image-chip--w130.txt", top: 21, bottom: 22, suggestEnd: 23 },
+    { fixture: "omp--v18-11-nerd-box-path-text--w130.txt", top: 14, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-box-path-text--w80.txt", top: 15, bottom: 18, suggestEnd: 19 },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w130.txt", top: 14, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w80.txt", top: 15, bottom: 17, suggestEnd: 18 },
+    { fixture: "omp--v18-11-nerd-box-wrapped--w130.txt", top: 14, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-box-wrapped--w80.txt", top: 15, bottom: 18, suggestEnd: 19 },
+    { fixture: "omp--v18-11-nerd-ghost-word--w130.txt", top: 14, bottom: 15, suggestEnd: 16 },
+    { fixture: "omp--v18-11-nerd-ghost-word--w80.txt", top: 15, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-image-chip--w130.txt", top: 20, bottom: 21, suggestEnd: 22 },
+    { fixture: "omp--v18-11-nerd-image-chip--w80.txt", top: 21, bottom: 22, suggestEnd: 23 },
+    { fixture: "omp--v18-11-nerd-running-tool--w130.txt", top: 43, bottom: 44, suggestEnd: 45 },
+    { fixture: "omp--v18-11-nerd-running-tool--w80.txt", top: 43, bottom: 44, suggestEnd: 45 },
+    { fixture: "omp--v18-11-nerd-running-tool-minute--w130.txt", top: 43, bottom: 44, suggestEnd: 45 },
+    { fixture: "omp--v18-11-nerd-running-tool-minute--w80.txt", top: 43, bottom: 44, suggestEnd: 45 },
+    { fixture: "omp--v18-11-nerd-skill-long-form--w130.txt", top: 14, bottom: 15, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-skill-pointed--w130.txt", top: 14, bottom: 15, suggestEnd: 17 },
+    { fixture: "omp--v18-11-nerd-skill-pointed--w80.txt", top: 15, bottom: 16, suggestEnd: 19 },
+    { fixture: "omp--v18-11-skill-pointed--w130.txt", top: 15, bottom: 16, suggestEnd: 18 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -224,7 +270,8 @@ describe("extractStatusLines", () => {
   // The two omp 18.4 hint captures carry the capturing operator's own statusline template, not
   // the `π … ▶` powerline these assertions read, and neither does the 18.4.10 idle capture, whose
   // row runs on into a context meter (`▶─2%───┃─1.1M`) and names branch `main`. The three 18.10 draft
-  // captures run on into the same meter (`▶───5%───…128K─`).
+  // captures run on into the same meter (`▶───5%───…128K─`). The 18.11 captures run in a scratch folder
+  // with no branch, and the nerd preset draws no `π` and no `▶`.
   it.each(
     BOX_COMPOSER_FIXTURES.filter(
       (f) =>
@@ -233,7 +280,8 @@ describe("extractStatusLines", () => {
         f !== "omp--fresh-agents-hint.txt" &&
         f !== "omp--v18-4-composer-idle.txt" &&
         !f.startsWith("omp--v18-10-draft-") &&
-        !f.startsWith("omp--v18-6-"),
+        !f.startsWith("omp--v18-6-") &&
+        !f.startsWith("omp--v18-11-"),
     ),
   )(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",
@@ -751,6 +799,9 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-6-slash-mod-partial--w120.txt", top: 17, bottom: 18, suggestEnd: 29 },
       { fixture: "omp--v18-6-slash-model-list--w120.txt", top: 17, bottom: 18, suggestEnd: 29 },
       { fixture: "omp--v18-6-slash-model-list--w80.txt", top: 18, bottom: 19, suggestEnd: 30 },
+      { fixture: "omp--v18-11-nerd-skill-and-command--w130.txt", top: 14, bottom: 15, suggestEnd: 26 },
+      { fixture: "omp--v18-11-nerd-slash-model--w130.txt", top: 14, bottom: 15, suggestEnd: 26 },
+      { fixture: "omp--v18-11-nerd-slash-model--w80.txt", top: 15, bottom: 16, suggestEnd: 27 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {

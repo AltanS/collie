@@ -139,6 +139,14 @@ export interface CommandListRows {
    * to the screen's last row.
    */
   readonly footer?: CommandListFooter;
+  /**
+   * Prefixes the harness lists some commands under, with the bare name after them: OMP lists a skill
+   * as `skill:<name>`. A pointer on `<namespace><name>` also stands for the typed `<lead><name>`, but
+   * only when no entry of the list is `<lead><name>` itself. A profile names a namespace only when the
+   * harness runs the pointed entry on Enter and lists `<namespace><name>` for a typed `<lead><name>`
+   * only when no command of that name exists, so both spellings run the same entry. Optional.
+   */
+  readonly namespaces?: readonly string[];
 }
 
 /** A side of the box a command list stands on. */
@@ -220,6 +228,12 @@ export interface FrameLayout {
    */
   readonly underPainted?: boolean;
 
+}
+
+/** The ghost text after the cursor ({@link Profile.idle.inlineHint}). */
+export interface InlineHint {
+  /** The foreground colours the ghost text is painted in, each as `rgb(r,g,b)`. */
+  readonly fg: readonly string[];
 }
 
 /** How the frame module walks to a box. `edges` is the walk up from a bottom edge to a prompt row and a top edge. */
@@ -337,6 +351,15 @@ export interface Profile {
      * The first shape that finds a box wins, so a shape that is easy to match goes last. Optional.
      */
     readonly frameAlternates?: readonly FrameLayout[];
+    /**
+     * The ghost text the harness paints after the cursor at the end of the draft (OMP's word
+     * completion: `push` typed, `ed` painted after it), named by the exact foreground colours it is
+     * painted in, each as `rgb(r,g,b)`. Every frame shape reads such a run as blank, but only when the
+     * run is letters only, has no other attribute, stands last in the draft on the draft's last row,
+     * and follows a visible draft character in another style. Any other run stays draft text, so a box
+     * that shows more than was typed stops a send. Optional.
+     */
+    readonly inlineHint?: InlineHint;
   };
   readonly keys: {
     /**
@@ -649,7 +672,18 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   const base: CommandListRows = { pointer: one("pointer"), entry: one("entry"), wrapped: one("wrapped") };
   const withLead = node.lead === undefined ? base : { ...base, lead: commandListLead(node.lead, `${path}.lead`) };
   const withSides = node.sides === undefined ? withLead : { ...withLead, sides: commandListSides(node.sides, `${path}.sides`) };
-  return node.footer === undefined ? withSides : { ...withSides, footer: commandListFooter(node.footer, `${path}.footer`) };
+  const withFooter = node.footer === undefined ? withSides : { ...withSides, footer: commandListFooter(node.footer, `${path}.footer`) };
+  return node.namespaces === undefined ? withFooter : { ...withFooter, namespaces: commandListNamespaces(node.namespaces, `${path}.namespaces`) };
+}
+
+/** `commandList.namespaces`: unique words with no space in them. */
+function commandListNamespaces(value: JsonValue, path: string): string[] {
+  const namespaces = textList(value, path, 1);
+  namespaces.forEach((namespace, i) => {
+    if (namespace.length === 0 || /\s/u.test(namespace)) fail(`${path}[${String(i)}]`, "must be a word with no space");
+    if (namespaces.indexOf(namespace) !== i) fail(`${path}[${String(i)}]`, "is named twice");
+  });
+  return namespaces;
 }
 
 function commandListLead(value: JsonValue, path: string): string {
@@ -709,6 +743,20 @@ function parseNoticeGaps(value: JsonValue | undefined): string[] {
     if (gap.test("") || gap.test(" ")) fail(at, "must not match a blank row");
     return gap.source;
   });
+}
+
+/** `idle.inlineHint`: at least one foreground colour, each written `rgb(r,g,b)` as the ANSI reader gives it, none twice. */
+function parseInlineHint(value: JsonValue): InlineHint {
+  const path = "idle.inlineHint";
+  const node = object(value, path);
+  const fg = textList(field(node, "fg", path), `${path}.fg`, 1);
+  fg.forEach((colour, i) => {
+    const at = `${path}.fg[${String(i)}]`;
+    const parts = /^rgb\((\d{1,3}),(\d{1,3}),(\d{1,3})\)$/u.exec(colour);
+    if (parts === null || parts.slice(1).some((part) => Number(part) > 255)) fail(at, "must read rgb(r,g,b) with each part 0 to 255");
+    if (fg.indexOf(colour) !== i) fail(at, "is named twice");
+  });
+  return { fg };
 }
 
 /** `idle.placeholders`: the texts and the SGR attribute, and the prefixes only when the profile names them. */
@@ -832,7 +880,8 @@ export function parseProfile(raw: JsonValue): Profile {
   }
   const withDialogs: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
   const withNotices: Profile["idle"] = idleNode.notices === undefined ? withDialogs : { ...withDialogs, notices: parseNotices(idleNode.notices) };
-  const idleBlock: Profile["idle"] = idleNode.noticeGaps === undefined ? withNotices : { ...withNotices, noticeGaps: parseNoticeGaps(idleNode.noticeGaps) };
+  const withGaps: Profile["idle"] = idleNode.noticeGaps === undefined ? withNotices : { ...withNotices, noticeGaps: parseNoticeGaps(idleNode.noticeGaps) };
+  const idleBlock: Profile["idle"] = idleNode.inlineHint === undefined ? withGaps : { ...withGaps, inlineHint: parseInlineHint(idleNode.inlineHint) };
 
   const keysNode = object(field(root, "keys", ""), "keys");
   const clearNode = object(field(keysNode, "clear", "keys"), "keys.clear");
