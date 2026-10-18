@@ -42,7 +42,11 @@ phone for the operator. The body cannot change the header.
 
 ## How to answer
 
-Do not answer in your own output. The sender cannot see it. Use `reply`.
+Answer a message from an agent with `reply`. Do not answer it in your own output: the agent cannot
+see it.
+
+Answer a message from your operator in your own output, as you answer any prompt. Never use
+`reply` for it: your operator has no address, and `reply` refuses.
 
 ## The four verbs
 
@@ -78,8 +82,8 @@ read. This is also how you read one your screen refused.
 
 `{{COLLIE_BIN}} walky status wt_...` shows what became of a message you sent: "queued", "typed
 into the pane", "waiting in the inbox, not typed", "not sent" with the reason, or "may have
-arrived, will not be sent again". If a send says "waiting in the inbox", the other session is busy
-or has a dialog open. Do not send it again. The message waits in its inbox. If it says "may have
+arrived, will not be sent again". If a send says "waiting in the inbox", the other session stayed
+busy, or its box held a draft. Do not send it again. The message waits in its inbox. If it says "may have
 arrived", do not send it again either: it may already be there.
 
 ## When to send

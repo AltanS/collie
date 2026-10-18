@@ -114,6 +114,15 @@ The queue and the queue key need a harness version Collie knows. With an unknown
 holds the message instead. A hold lasts 10 minutes for a message: after that Collie takes it back
 and it waits in the inbox. A pane with no profile is typed blind, as a reply is.
 
+An open dialog, such as a permission card or a question, is held the same way. Nothing goes into
+the dialog. Once the dialog is answered, Collie types the message and the receipt reads "typed into
+the pane". It waits in the inbox only when the hold runs out first. A box that holds your own draft
+is never typed into: the message waits in the inbox as `draft present`.
+
+Two messages to one pane are typed one after the other, never into each other. The second waits
+while the first is typed, and its receipt stays "queued". A message that still waits after 2
+minutes stays in the inbox as `pane busy`.
+
 ## Reply, read and check
 
 Answer a message, read your inbox and look up a receipt.
@@ -182,7 +191,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | --- | --- | --- |
 | `accepted` | queued | Logged, not typed yet |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
-| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown (a dialog open, a hold Collie took back after 10 minutes, no terminal, a bridge restart). It waits in the pane's inbox |
+| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 10 minutes` (a busy pane or an open dialog outlasted the hold), `draft present`, `box not free`, `pane busy`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
 | `refused` | not sent | Not taken, for the reason shown: no such pane, not an agent pane, a limit, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 10 minutes, or the log lost the record. Collie never sends it again |
 
@@ -327,7 +336,8 @@ CLI on that machine still sends. These are the limits that stay on:
 | A reply whose sender pane closed, or now sits in another session | `sender gone` |
 
 - **Collie never answers a message on its own**, and never answers a dialog with one. A send over an
-  open dialog is refused by the Send Protocol, and the message stays in the inbox.
+  open dialog is held: nothing enters the dialog, the message is typed after the dialog is answered,
+  and it waits in the inbox only if the 10-minute hold runs out.
 - **A reply goes back to the pane that sent the message.** Collie finds that pane from the session
   and pane the bridge logged. The address in the reply plays no part.
 - **The refusals are counted**, per reason, in `<stateDir>/walky/refusals.json`, with no body and

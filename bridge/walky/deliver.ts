@@ -35,6 +35,14 @@ import { formatEnvelope, type WalkyMessage, type WalkyReceipt, type WalkyReceipt
 export const HELD_LIMIT_MS = 10 * 60 * 1000;
 /** How often a held send's state is read. */
 export const HELD_POLL_MS = 2000;
+/**
+ * How long a message waits for this bridge's earlier walky send into the same pane to be answered
+ * before it is typed. Past it the message is `inbox-only: pane busy`. A send answers within its own
+ * steps (about 15 s) or as `held`, so two minutes is room enough.
+ */
+export const LANE_WAIT_MS = 2 * 60 * 1000;
+/** The reason of a message that waited out {@link LANE_WAIT_MS}. */
+export const PANE_BUSY = "pane busy";
 
 /** One pane of this bridge, as walky talky sees it. */
 export interface WalkyPane {
@@ -162,6 +170,8 @@ export interface DelivererDeps {
   readonly refusals?: RefusalCounter;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** {@link LANE_WAIT_MS}, for a test. A real timer: the wait is for another send, not for the clock. */
+  readonly laneWaitMs?: number;
   readonly warn?: (line: string) => void;
 }
 
@@ -174,7 +184,8 @@ export function sendIdOf(id: string, target: string): string {
 export function reasonOf(result: SendResult): string {
   if (result.outcome === "typed_not_submitted") return "typed, not submitted";
   if (result.outcome !== "refused") return result.reason === undefined ? result.outcome : `${result.outcome}: ${result.reason.replace(/_/gu, " ")}`;
-  if (result.reason === "not_free" || result.reason === "busy") return "dialog open";
+  if (result.reason === "busy") return "pane busy";
+  if (result.reason === "not_free") return "box not free";
   if (result.reason === "pane_gone") return "no such pane";
   return (result.reason ?? "refused").replace(/_/gu, " ");
 }
@@ -188,6 +199,14 @@ export class WalkyDeliverer {
   private readonly seen: WalkySeen;
   private readonly refusals: RefusalCounter;
   private readonly running = new Set<Promise<void>>();
+  /**
+   * Per pane, the promise of the newest walky send this bridge started there: it resolves once the Send
+   * Protocol answered that send (typed, refused, or `held`). A second message waits for it, so two
+   * quick messages are typed one after the other, never into each other, and the second is not
+   * refused `busy` by the first's own typing. A `held` answer releases the pane: the Send Protocol's
+   * hold queue then keeps the order.
+   */
+  private readonly lanes = new Map<string, Promise<void>>();
 
   constructor(private readonly deps: DelivererDeps) {
     this.now = deps.now ?? Date.now;
@@ -349,7 +368,7 @@ export class WalkyDeliverer {
       const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId }, accepted, sender);
       this.deps.log.inboxAdd(pane.session, pane.paneId, message);
       receipts.push(accepted);
-      this.track(this.type(record, pane));
+      this.track(this.inLane(record, pane));
     }
     // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
     if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
@@ -441,8 +460,47 @@ export class WalkyDeliverer {
     this.running.add(tracked);
   }
 
-  /** Type one logged message into its pane, and write how it ended. */
-  private async type(record: LogRecord, pane: WalkyPane): Promise<void> {
+  /**
+   * Type one logged message once the pane's earlier walky send was answered. The first message to a
+   * free pane starts at once, in this same tick, so its send id is on disk before any await. The
+   * receipt stays `accepted` while it waits, as a hold does.
+   */
+  private async inLane(record: LogRecord, pane: WalkyPane): Promise<void> {
+    const key = `${pane.session}\u0000${pane.paneId}`;
+    const before = this.lanes.get(key) ?? null;
+    const { promise: mine, resolve: release } = Promise.withResolvers<void>();
+    this.lanes.set(key, mine);
+    const done = (): void => {
+      release();
+      if (this.lanes.get(key) === mine) this.lanes.delete(key);
+    };
+    try {
+      if (before !== null && !(await this.waited(before))) {
+        this.deps.log.update(this.next(record, "inbox-only", PANE_BUSY));
+        return;
+      }
+      await this.type(record, pane, done);
+    } finally {
+      done();
+    }
+  }
+
+  /** Whether `before` resolved inside {@link LANE_WAIT_MS}. */
+  private async waited(before: Promise<void>): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), this.deps.laneWaitMs ?? LANE_WAIT_MS);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([before.then(() => true), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Type one logged message into its pane, and write how it ended. `answered`: the Send Protocol answered. */
+  private async type(record: LogRecord, pane: WalkyPane, answered: () => void = () => undefined): Promise<void> {
     const { message, target } = record;
     if (!pane.terminal) {
       this.deps.log.update(this.next(record, "inbox-only", "no terminal"));
@@ -457,6 +515,7 @@ export class WalkyDeliverer {
     } catch (err) {
       result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
     }
+    answered();
     await this.settle(record, pane.session, pane.paneId, sendId, result);
   }
 

@@ -291,11 +291,12 @@ this machine knows this pane" means another Collie owns the pane. The error "no 
 answers" means the bridge is down: run `collie status`.
 
 **The message sits in the inbox and was not typed.** `collie walky status <id>` prints "waiting in the
-inbox, not typed" and the reason. "dialog open" means the agent waits on a question or a permission,
-and Collie never types over a dialog. "held past 10 minutes" means the pane stayed busy and its
-harness has no queue. "no terminal" and "bridge restarted" are the other two. Answer the dialog, then
-run `collie walky inbox` in that pane, or open Messages in the pane's menu on the phone. Collie does
-not type the message again.
+inbox, not typed" and the reason. "held past 10 minutes" means the pane stayed busy, or a dialog
+stayed open, for the whole 10-minute hold: Collie never types into a dialog. "draft present" means the
+box holds your own text. "box not free" means Collie could not read a free input box. "pane busy"
+means an earlier message was still being typed there after 2 minutes. "no terminal" and "bridge
+restarted" are the other two. Run `collie walky inbox` in that pane, or open Messages in the pane's
+menu on the phone. Collie does not type the message again.
 
 **A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
 the screen text, and this machine's log holds no message with that id. Someone or something typed

@@ -156,7 +156,7 @@ describe("send", () => {
     expect(d.io.stdout).toEqual([
       "wt_aaaaaaaaaaa1",
       "to local/%2, agent-y, repo#two",
-      "waiting in the inbox, not typed: dialog open",
+      "waiting in the inbox, not typed: box not free",
       "check later: collie walky status wt_aaaaaaaaaaa1",
     ]);
   });
