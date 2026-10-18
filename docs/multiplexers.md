@@ -392,8 +392,8 @@ instead. So does a message that finds the input box not free, for example under 
 screen that changes between Collie's two reads, or a probe character that failed and that one
 Backspace took back out of a box Collie read clean again. Such a message goes after five free polls over ten
 seconds, or after a turn Collie sees. A command there is still refused, and so is a send on a
-screen you confirmed with Type here. A send on a pane with no profile is never held. Collie keeps the text and shows a row above the text box: "Queued. Sends when the turn
-ends." The row shows the text and a Cancel button. Collie sends it after the turn ends, once the
+screen you confirmed with Type here. A send on a pane with no profile is never held. Collie keeps the text and shows a card that floats over the bottom of the terminal view: "Queued.
+Sends when the turn ends." The card shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
 command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits for a
@@ -403,7 +403,8 @@ later message on that pane waits behind the held ones. A held text lasts 30 minu
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
 `/resume`, `/logout` and every `!` line. A held send survives a restart of Collie. Cancel works
-until the send starts to go out, and only on this machine's own panes. Collie keeps the held text on
+until the send starts to go out, and only on this machine's own panes. With two or more held sends the
+card shows a count and the first text, and Show all lists each send with its own Cancel. Collie keeps the held text on
 disk in plain form, in a file only your user can read (mode 0600). It deletes the text when the send
 goes out, and at most one hour after the hold ends.
 
