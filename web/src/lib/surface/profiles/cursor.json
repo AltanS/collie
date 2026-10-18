@@ -8,9 +8,9 @@
   "versions": [
     {
       "range": "2026.10.14 - 2026.10.16",
-      "status": "verified",
-      "verifiedThrough": "2026.10.16",
-      "verifiedOn": "2026-10-17"
+      "status": "provisional",
+      "verifiedThrough": null,
+      "verifiedOn": null
     }
   ],
   "idle": {
