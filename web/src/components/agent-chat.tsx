@@ -2901,6 +2901,7 @@ export function AgentChat({
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
+                  instance={agent?.instance}
                   // What owns the agent's keyboard, as the bridge read it (M56 spec 06). See
                   // `composerSurface` above for the facts folded in before any read.
                   surface={composerSurface}

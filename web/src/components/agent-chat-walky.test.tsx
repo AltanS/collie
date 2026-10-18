@@ -1,5 +1,5 @@
 import { useState, type ComponentProps } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
@@ -13,9 +13,10 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => liveness.live,
 }));
 
-import { fixtureAgents, fixtureWalkyAgent, paneTextWithDraft } from "@/test/handlers";
+import { fixtureAgents, fixtureWalkyAgent, paneTextWithDraft, recordedWalkyPosts } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import type { AgentView } from "@/lib/types";
+import type { WalkyRow } from "@/lib/walky";
 import { AgentChat } from "./agent-chat";
 import { WalkyLogProvider } from "./walky-log";
 
@@ -26,13 +27,13 @@ beforeAll(() => {
 const agent = fixtureAgents[0]!;
 
 /** The pane view under the pane's walky list, with a handle that takes the agent away (the pane is gone). */
-function renderPane(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
+function renderPane(overrides: Partial<ComponentProps<typeof AgentChat>> = {}, rows: readonly WalkyRow[] = [fixtureWalkyAgent]) {
   let setAgent: (next: AgentView | undefined) => void = () => {};
   function Harness() {
     const [shown, set] = useState<AgentView | undefined>(overrides.agent ?? agent);
     setAgent = set;
     return (
-      <WalkyLogProvider rows={[fixtureWalkyAgent]} reads={1}>
+      <WalkyLogProvider rows={rows} reads={1}>
         <AgentChat
           paneId={agent.paneId}
           agents={shown === undefined ? [] : [shown]}
@@ -72,6 +73,28 @@ describe("the pane's Messages row and sheet", () => {
     await user.click(screen.getByRole("button", { name: "Pane actions" }));
     expect(await screen.findByRole("button", { name: "Find in output" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Messages" })).toBeNull();
+  });
+
+  it("sends a Reply to the sender's address as it stands, token included", async () => {
+    const user = userEvent.setup();
+    const row = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, address: "bluefin/w6:p3#k3f9" } };
+    renderPane({}, [row]);
+    await openMessages(user);
+    await user.click(await screen.findByRole("button", { name: "Reply to collie-workspace#fix-465" }));
+    await user.type(await screen.findByPlaceholderText(/type a reply/i), "Merge it");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "bluefin/w6:p3#k3f9", replyTo: row.id, body: "Merge it" });
+  });
+
+  it("addresses a message from the pane to its own session instance", async () => {
+    const user = userEvent.setup();
+    renderPane({ agent: { ...agent, instance: "k3f9" } });
+    await user.type(await screen.findByPlaceholderText(/type a reply/i), "Stop and report");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Send as message" }));
+    await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+    expect(recordedWalkyPosts()[0]?.to).toBe(`local/${agent.paneId}#k3f9`);
   });
 
   it("takes Reply away once the pane is gone, while the sheet stands open", async () => {

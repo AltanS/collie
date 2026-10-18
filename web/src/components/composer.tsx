@@ -99,6 +99,8 @@ export interface ComposerHandle {
 
 interface ComposerProps {
   paneId: string;
+  /** The pane's current session instance (`AgentView.instance`). "Send as message" addresses it. */
+  instance?: string | undefined;
   /**
    * The pane's input surface as the bridge last read it (M56 spec 06): what owns the agent's keyboard.
    * The Send slot is a pure function of this and the three facts below (`lib/send-slot.ts`). The
@@ -348,7 +350,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -737,6 +739,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the pane's Messages sheet. The draft goes when the bridge took the message, as a reply's does.
   const walky = useWalkyComposer({
     paneId,
+    instance,
     scope,
     onTaken: () => {
       clearComposedDraft();

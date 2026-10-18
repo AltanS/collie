@@ -10,6 +10,7 @@ import { fetchWalkyWho } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
+  bareAddress,
   isReachable,
   stateWord,
   targetWord,
@@ -44,7 +45,8 @@ const ALL = "all";
 
 /** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else its {@link targetWord}. */
 function labelOf(listed: readonly WalkyTarget[] | null, address: string): string {
-  const known = listed?.find((r) => r.address === address);
+  // A receipt's target never carries a token, and a `who` address may, so the two meet on the bare form.
+  const known = listed?.find((r) => bareAddress(r.address) === address);
   return known === undefined ? targetWord(address) : `${known.label} (${address})`;
 }
 
