@@ -1,5 +1,5 @@
-import type { ComponentProps } from "react";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -12,9 +12,10 @@ import type { HeldRow } from "@/lib/surface/send";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
-// M56 spec 15 on the composer: the sends the bridge holds for a pane show as queued rows above the
-// box, each with the control its state allows. The rows come from the snapshot (the `held` prop); the
-// composer only draws them and calls the bridge.
+// M56 spec 15 on the composer: the sends the bridge holds for a pane show as ONE card that floats over
+// the mirror's bottom edge (ADR 0061, amended 2026-10-18), each row with the control its state allows.
+// The rows come from the snapshot (the `held` prop); the composer only draws them and calls the bridge.
+// One row shows whole; two or more collapse to a head and the first text until Show all.
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -99,32 +100,102 @@ function fakeSend(body: (posted: Posted) => object) {
   return sends;
 }
 
-describe("the held rows above the composer box", () => {
-  it("draws one queued row per held entry, oldest first, with its text; a held one offers Cancel", async () => {
+/** The Show all / Show less toggle, found by the words it shows. */
+const showAll = () => screen.getByRole("button", { name: "Show all queued messages" });
+const showLess = () => screen.getByRole("button", { name: "Show less of the queue" });
+
+describe("the held-send card", () => {
+  it("one row: its label, its Cancel, its text clamped to three lines", () => {
+    renderComposer({ held: [row("req00001", "held")] });
+    const found = document.querySelectorAll('[data-slot="held-row"]');
+    expect(found).toHaveLength(1);
+    expect(found[0]).toHaveTextContent("Queued. Sends when the turn ends.");
+    expect(screen.getByText("text of req00001")).toHaveClass("line-clamp-3");
+    expect(screen.getAllByRole("button", { name: "Cancel the queued message" })).toHaveLength(1);
+    // Nothing to fold with one row, so no toggle.
+    expect(screen.queryByRole("button", { name: /show all|show less/i })).toBeNull();
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "single");
+  });
+
+  it("two held rows start collapsed: a count, the first text on two lines, a Show all toggle and no Cancel", () => {
     renderComposer({ held: [row("req00001", "held"), row("req00002", "held", { text: "second\nline" })] });
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    expect(card).toHaveAttribute("data-mode", "collapsed");
+    expect(card).toHaveTextContent("2 queued. Sends when the turn ends.");
+    expect(screen.getByText("text of req00001")).toHaveClass("line-clamp-2");
+    expect(screen.queryByText(/second/)).toBeNull();
+    expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
+    // The visible words, and an accessible name that starts with them.
+    expect(showAll()).toHaveTextContent("Show all");
+    expect(showAll()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("Show all lists every row, oldest first, each with its Cancel; Show less collapses again", async () => {
+    const user = userEvent.setup();
+    renderComposer({ held: [row("req00001", "held"), row("req00002", "held", { text: "second\nline" })] });
+    await user.click(showAll());
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    expect(card).toHaveAttribute("data-mode", "expanded");
     const found = document.querySelectorAll('[data-slot="held-row"]');
     expect(found).toHaveLength(2);
     expect(found[0]).toHaveTextContent("Queued. Sends when the turn ends.");
     expect(found[0]).toHaveTextContent("text of req00001");
     expect(found[1]).toHaveTextContent("second line");
     expect(screen.getAllByRole("button", { name: "Cancel the queued message" })).toHaveLength(2);
+    // Each row is a single row as today: its text clamped to three lines, inside a list that scrolls in the card.
+    expect(screen.getByText("text of req00001")).toHaveClass("line-clamp-3");
+    const list = card.querySelector('[data-slot="held-list"]')!;
+    expect(list.className).toMatch(/(?:^|\s)max-h-\[45vh\](?=\s|$)/);
+    expect(list.className).toMatch(/(?:^|\s)overflow-y-auto(?=\s|$)/);
+    expect(list.contains(found[0] ?? null)).toBe(true);
+    expect(showLess()).toHaveTextContent("Show less");
+    expect(showLess()).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(showLess());
+    expect(card).toHaveAttribute("data-mode", "collapsed");
+    expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
   });
 
-  it("Cancel calls DELETE for that request on this pane and refreshes the snapshot", async () => {
+  it("a Cancel in the open list calls DELETE for that row only", async () => {
     const user = userEvent.setup();
     const calls = fakeDelete({ body: { result: "cancelled" } });
-    const props = renderComposer({ scope: { session: "demo" }, held: [row("req00001", "held")] });
-    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
-    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1&session=demo"]));
+    const props = renderComposer({ scope: { session: "demo" }, held: [row("req00001", "held"), row("req00002", "held")] });
+    await user.click(showAll());
+    const second = document.querySelectorAll<HTMLElement>('[data-slot="held-row"]')[1]!;
+    await user.click(within(second).getByRole("button", { name: "Cancel the queued message" }));
+    await waitFor(() => expect(calls).toEqual(["req00002?pane=w1%3Ap1&session=demo"]));
     await waitFor(() => expect(props.onSent).toHaveBeenCalled());
   });
 
-  it("a Cancel that came too late says so, and is not an error", async () => {
+  it("mixed rows: the head wears the first row's own label, not a count", () => {
+    renderComposer({ held: [row("req00001", "ended", { outcome: "expired" }), row("req00002", "held"), row("req00003", "held")] });
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    expect(card).toHaveAttribute("data-mode", "collapsed");
+    expect(card).toHaveTextContent("Not sent. The turn did not end within 30 minutes.");
+    expect(card).not.toHaveTextContent("queued. Sends when the turn ends.");
+    expect(screen.getByText("text of req00001")).toBeInTheDocument();
+    // Collapsed, even an ended row's Resend and Dismiss wait for Show all.
+    expect(screen.queryByRole("button", { name: "Dismiss the message" })).toBeNull();
+  });
+
+  it("a queue whose first row is going out now: that label heads the card, and its row has no button", async () => {
     const user = userEvent.setup();
-    fakeDelete({ status: 409, body: { result: "refused", reason: "busy" } });
-    renderComposer({ held: [row("req00001", "held")] });
-    await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
-    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("It is going out now. Cancel came too late."));
+    renderComposer({ held: [row("req00001", "running"), row("req00002", "held")] });
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    // Mixed (one is going out now): the first row's label.
+    expect(card).toHaveTextContent("Sending now.");
+    await user.click(showAll());
+    const found = document.querySelectorAll<HTMLElement>('[data-slot="held-row"]');
+    expect(within(found[0]!).queryAllByRole("button")).toHaveLength(0);
+    expect(within(found[1]!).getByRole("button", { name: "Cancel the queued message" })).toBeInTheDocument();
+  });
+
+  it("an empty queue draws no card", () => {
+    renderComposer({ held: [] });
+    expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
+    expect(document.querySelector('[data-slot="floating-cards"]')).toBeNull();
   });
 
   it("a request going out now says so and has no button", () => {
@@ -244,15 +315,28 @@ describe("the held rows above the composer box", () => {
     expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
   });
 
-  it("a crew member's pane shows its rows with no buttons: the cancel route does not cross a link", () => {
+  it("a crew member's pane shows its rows with no row buttons, collapsed or open: the cancel route does not cross a link", async () => {
+    const user = userEvent.setup();
     renderComposer({ scope: { host: "badger" }, held: [row("req00001", "held"), row("req00002", "ended", { outcome: "expired" })] });
+    expect(screen.queryByRole("button", { name: /cancel|resend|dismiss|submit|discard/i })).toBeNull();
+    // Show all is a view, not an act on the queue, so it stays and the rows can still be read.
+    await user.click(showAll());
     expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /queued message|the message/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /cancel|resend|dismiss|submit|discard/i })).toBeNull();
   });
 
   it("a locked composer shows its rows with no buttons", () => {
     renderComposer({ readOnly: true, held: [row("req00001", "held")] });
     expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
+  });
+
+  it("a locked composer with several rows: no row buttons open or collapsed", async () => {
+    const user = userEvent.setup();
+    renderComposer({ readOnly: true, held: [row("req00001", "held"), row("req00002", "held")] });
+    expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
+    await user.click(showAll());
+    expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
   });
 
@@ -268,5 +352,156 @@ describe("the held rows above the composer box", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Queued. Sends when the turn ends."));
     expect(document.querySelector('[data-slot="composer-refusal"]')).toBeNull();
     expect(screen.queryByTestId("send-offers")).toBeNull();
+  });
+});
+
+// The card holds no space (ADR 0061, amended 2026-10-18): it is placed in the floating notice slot, or
+// floated above the composer's own top edge, and never in the composer's flow above the box.
+describe("the held-send card floats", () => {
+  it("alone, it floats above the composer's top edge: absolute, pass-through wrapper, no Collapse", () => {
+    renderComposer({ held: [row("req00001", "held")] });
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    const column = card.closest('[data-slot="floating-cards"]')!;
+    expect(column.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)bottom-full(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    // The card takes touches back, and is a uniform dashed box with no left accent.
+    expect(card.className).toMatch(/(?:^|\s)pointer-events-auto(?=\s|$)/);
+    expect(card.className).toMatch(/(?:^|\s)border(?=\s|$)/);
+    expect(card.className).toMatch(/(?:^|\s)border-dashed(?=\s|$)/);
+    expect(card.className).not.toMatch(/border-l/);
+    expect(card.closest('[data-slot="collapse"]')).toBeNull();
+    // Absolute, so it takes no row of the composer's flow above the box (the old `held-rows` strip is gone).
+    expect(card.parentElement).toBe(column);
+    expect(document.querySelector('[data-slot="held-rows"]')).toBeNull();
+  });
+
+  it("portals into the slot it is handed, and nowhere else", () => {
+    const slot = document.createElement("div");
+    document.body.append(slot);
+    try {
+      renderComposer({ draftNoticeSlot: slot, held: [row("req00001", "held"), row("req00002", "held")] });
+      const card = slot.querySelector('[data-slot="held-card"]');
+      expect(card).not.toBeNull();
+      expect(document.querySelectorAll('[data-slot="held-card"]')).toHaveLength(1);
+      // In the slot, the column is only the pass-through: the slot does the positioning.
+      const column = slot.querySelector('[data-slot="floating-cards"]')!;
+      expect(column.className).not.toMatch(/(?:^|\s)absolute(?=\s|$)/);
+      expect(column.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    } finally {
+      slot.remove();
+    }
+  });
+
+  it("with the terminal-draft notice also due, both float in one column: the held card first, the notice nearest the belt", () => {
+    const slot = document.createElement("div");
+    document.body.append(slot);
+    try {
+      renderComposer({
+        draftNoticeSlot: slot,
+        terminalDraft: "typed in the terminal",
+        rawTerminalDraft: "typed in the terminal",
+        held: [row("req00001", "held")],
+      });
+      const column = slot.querySelector('[data-slot="floating-cards"]')!;
+      const children = Array.from(column.children);
+      expect(children).toHaveLength(2);
+      expect(children[0]).toHaveAttribute("data-slot", "held-card");
+      expect(children[1]).toHaveAttribute("data-slot", "terminal-draft-notice");
+      expect(children[1]).toHaveTextContent("typed in the terminal");
+      expect(column.className).toMatch(/(?:^|\s)flex-col(?=\s|$)/);
+      expect(column.className).toMatch(/(?:^|\s)gap-1\.5(?=\s|$)/);
+    } finally {
+      slot.remove();
+    }
+  });
+
+  it("with no draft notice, the held card is the column's only child", () => {
+    renderComposer({ held: [row("req00001", "held")] });
+    const column = document.querySelector('[data-slot="floating-cards"]')!;
+    expect(column.children).toHaveLength(1);
+  });
+});
+
+/**
+ * The composer with a queue and a pane that two hidden controls change, the way the parent changes them
+ * across polls: `rows-control` sets how many of `ROWS` the bridge holds, `pane-control` the pane id.
+ */
+const ROWS: readonly HeldRow[] = [row("req00001", "held"), row("req00002", "held"), row("req00003", "held")];
+function renderChangingQueue(initialCount: number) {
+  function Host() {
+    const [count, setCount] = useState(initialCount);
+    const [paneId, setPaneId] = useState("w1:p1");
+    return (
+      <>
+        <input data-testid="rows-control" defaultValue={String(initialCount)} onChange={(e) => setCount(Number(e.target.value))} />
+        <input data-testid="pane-control" defaultValue="w1:p1" onChange={(e) => setPaneId(e.target.value)} />
+        <Composer
+          paneId={paneId}
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={{ revision: 1, turn: "running", modal: "none", composer: "empty" }}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          held={ROWS.slice(0, count)}
+        />
+      </>
+    );
+  }
+  render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Host /> }])} />);
+}
+const setQueue = (count: number) => fireEvent.change(screen.getByTestId("rows-control"), { target: { value: String(count) } });
+const setPane = (paneId: string) => fireEvent.change(screen.getByTestId("pane-control"), { target: { value: paneId } });
+
+describe("Show all lives in memory, per pane", () => {
+  it("collapses by itself once the rows drop to one, and the next queue starts collapsed", async () => {
+    const user = userEvent.setup();
+    renderChangingQueue(3);
+    await user.click(showAll());
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "expanded");
+
+    setQueue(1);
+    const card = document.querySelector('[data-slot="held-card"]')!;
+    expect(card).toHaveAttribute("data-mode", "single");
+
+    setQueue(3);
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "collapsed");
+    expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(0);
+  });
+
+  it("collapses when the queue empties and refills", async () => {
+    const user = userEvent.setup();
+    renderChangingQueue(2);
+    await user.click(showAll());
+    setQueue(0);
+    expect(document.querySelector('[data-slot="held-card"]')).toBeNull();
+    setQueue(2);
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "collapsed");
+  });
+
+  it("stays open while the queue changes between two and more", async () => {
+    const user = userEvent.setup();
+    renderChangingQueue(3);
+    await user.click(showAll());
+    setQueue(2);
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "expanded");
+    expect(document.querySelectorAll('[data-slot="held-row"]')).toHaveLength(2);
+  });
+
+  it("a pane switch starts the next pane's card collapsed", async () => {
+    const user = userEvent.setup();
+    markLive("w1:p2");
+    renderChangingQueue(3);
+    await user.click(showAll());
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "expanded");
+
+    setPane("w1:p2");
+    expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "collapsed");
   });
 });

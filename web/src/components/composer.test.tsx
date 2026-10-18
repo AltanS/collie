@@ -1693,9 +1693,13 @@ describe("Composer — terminal-draft preview", () => {
     strandDraft("floating");
     await screen.findByText(/draft in terminal/i);
 
+    // The floating column does the positioning (it is shared with the held-send card); the notice's
+    // own wrapper is only the pass-through.
     const wrapper = screen.getByText("floating").closest('[data-slot="terminal-draft-notice"]')!;
-    expect(wrapper.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
     expect(wrapper.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    const column = wrapper.closest('[data-slot="floating-cards"]')!;
+    expect(column.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
     // No Collapse around it: nothing in the composer's flow grows when it arrives.
     expect(wrapper.closest('[data-slot="collapse"]')).toBeNull();
     // The notice itself takes touches back from the pass-through wrapper.
