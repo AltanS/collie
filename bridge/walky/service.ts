@@ -10,7 +10,7 @@
 import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { isFanOut, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
+import { isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
 import type { LogRecord, WalkyLog } from "./log.ts";
 import type { RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
@@ -231,7 +231,8 @@ export class WalkyService {
     // left `accepted` is an answer of its own (a member that refused the whole leg, a crew leg that
     // ended `unknown`), so it stays.
     const panes = records.filter((record) => !isFanOut(record.target) || record.receipt.state !== "accepted");
-    const shown = (panes.length > 0 ? panes : records).map((record) => record.receipt);
+    // A `<member>/all` leg whose panes answer for it (a slow member's report) is not shown twice.
+    const shown = withoutAnsweredLegs((panes.length > 0 ? panes : records).map((record) => record.receipt));
     const self = this.deps.memberId;
     const elsewhere =
       this.deps.outcomesOnLead === true

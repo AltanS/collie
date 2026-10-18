@@ -554,7 +554,13 @@ describe("a member that never answers", () => {
     const late: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p8", state: "delivered", verified: "lead", at: AT + 9000, by: "laptop" };
     expect(mergeReport(lead.log, "laptop", [late])).toBe(1);
     await lead.service.deliverer.settled();
-    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => `${receipt.target} ${receipt.state}`)).toContain("laptop/w1:p8 delivered");
+    const shown = lead.service.status("wt_aaaaaaaaaaa1").receipts.map((receipt) => `${receipt.target} ${receipt.state}`);
+    expect(shown).toContain("laptop/w1:p8 delivered");
+    // The pane answers for the leg: `laptop/all: unknown` is gone from `status` and from the phone's
+    // retry of the same id.
+    expect(shown.some((line) => line.startsWith("laptop/all"))).toBe(false);
+    const retry = await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect((retry.ok ? retry.receipts : []).map((receipt) => receipt.target).toSorted()).toEqual(["all", "desk/w1:p1", "laptop/w1:p8", "other/w2:p1"]);
   });
 });
 
