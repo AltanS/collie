@@ -1489,6 +1489,29 @@ describe("paneLoader and the walky talky list (M62)", () => {
     expect(again.walky).toEqual([fixtureWalkyAgent]);
   });
 
+  it("keeps the last list and its read count when the MIRROR read fails, so a card does not turn back into text", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const first = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(first.walky).toEqual([fixtureWalkyAgent]);
+    failPane();
+    const degraded = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(degraded.error).toBe(true);
+    expect(degraded.walky).toEqual([fixtureWalkyAgent]);
+    expect(degraded.walkyReads).toBeGreaterThanOrEqual(first.walkyReads ?? 0);
+  });
+
+  it("shows a device refused for want of pairing no kept message when the mirror read fails", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    (await import("./pairing")).markNotPaired();
+    failPane();
+    const refused = await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    expect(refused.error).toBe(true);
+    expect(refused.walky).toBeNull();
+  });
+
   it("counts each answered read, keeps the list's identity across a quiet poll, and does not count a failed one", async () => {
     setWalkyRows([fixtureWalkyAgent]);
     const { paneLoader } = await import("./loaders");
