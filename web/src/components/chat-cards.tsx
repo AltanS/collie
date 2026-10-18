@@ -32,7 +32,7 @@
 // translated: a path, a command, a query, a URL, a sub-agent's name, a tool's own name and a
 // harness's own name are the agent's words or the machine's, and they go through as they arrived.
 
-import { createContext, memo, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowRightLeft,
   Bot,
@@ -118,6 +118,25 @@ export interface CardWaiting {
  * prop would have to be threaded through a component whose job has nothing to do with it.
  */
 export const CardWaitingCtx = createContext<Record<string, CardWaiting>>({});
+
+/** What the subagent bottom sheet needs when a `task` card is tapped. */
+export interface SubagentTarget {
+  readonly cardKey: string;
+  readonly agent: string;
+  readonly summary: string;
+  readonly agentId?: string;
+  readonly status: ChatToolStatus;
+  readonly output?: string;
+}
+
+export interface SubagentSheetHandle {
+  readonly activeCardKey: string | null;
+  readonly open: (target: SubagentTarget) => void;
+  readonly sync: (target: SubagentTarget) => void;
+}
+
+/** Supplied by `SubagentSheet` on the pane route; `null` in unit tests that mount `ToolCard` bare. */
+export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
 
 // ---------- items ----------
 
@@ -693,9 +712,29 @@ export function ToolCard({
   preview?: boolean;
 }) {
   useLocale();
+  const subagentSheet = useContext(SubagentSheetCtx);
   // `data-waiting` lets a host find the card of the thing it is waiting on (scroll to it, see if it
   // is on screen).
   const anchor = waiting?.id;
+  const subagentCardKey = anchor ?? (tool.kind === "task" ? `${tool.agent}:${tool.summary}` : "");
+  const taskAgent = tool.kind === "task" ? tool.agent : "";
+  const taskSummary = tool.kind === "task" ? tool.summary : "";
+  const taskAgentId = tool.kind === "task" ? tool.agentId : undefined;
+  const taskOutput = tool.kind === "task" ? tool.output : undefined;
+  const isActiveSubagent =
+    tool.kind === "task" && subagentSheet !== null && subagentSheet.activeCardKey === subagentCardKey;
+  const syncSubagent = subagentSheet?.sync;
+  useEffect(() => {
+    if (!isActiveSubagent || syncSubagent === undefined) return;
+    syncSubagent({
+      cardKey: subagentCardKey,
+      agent: taskAgent,
+      summary: taskSummary,
+      agentId: taskAgentId,
+      status,
+      output: taskOutput,
+    });
+  }, [isActiveSubagent, syncSubagent, subagentCardKey, taskAgent, taskSummary, taskAgentId, status, taskOutput]);
   // A card waiting on the reader recolours the edge it always has (DESIGN.md §2): the border is in
   // every card's base, so the body arriving changes paint, not the box.
   const held = waiting?.body !== undefined && "border-status-blocked";
@@ -795,6 +834,20 @@ export function ToolCard({
           <span className="font-content min-w-0 truncate text-muted-foreground">{tool.summary}</span>
         );
       const body = (tool.kind === "task" || tool.kind === "other") && tool.summary.includes("\n") ? tool.summary : null;
+      const onTap =
+        tool.kind === "task" &&
+        subagentSheet !== null &&
+        (tool.agentId !== undefined || output !== undefined || status === "running")
+          ? () =>
+              subagentSheet.open({
+                cardKey: subagentCardKey,
+                agent: tool.agent,
+                summary: tool.summary,
+                agentId: tool.agentId,
+                status,
+                output,
+              })
+          : undefined;
       return (
         <LineTool
           anchor={anchor}
@@ -804,6 +857,7 @@ export function ToolCard({
           output={output}
           body={body}
           waiting={waiting}
+          onTap={onTap}
         >
           {subject}
         </LineTool>
@@ -956,6 +1010,7 @@ function LineTool({
   output,
   body,
   waiting,
+  onTap,
   children,
 }: {
   anchor?: string;
@@ -965,17 +1020,24 @@ function LineTool({
   output?: string;
   body?: string | null;
   waiting?: CardWaiting;
+  onTap?: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const interactive = onTap !== undefined || output !== undefined;
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 font-medium text-muted-foreground">{label}</span>
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       <StatusSlot status={status} />
-      {output !== undefined && (
-        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+      {interactive && (
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            onTap === undefined && open && "rotate-90",
+          )}
+        />
       )}
     </>
   );
@@ -984,11 +1046,11 @@ function LineTool({
       data-waiting={anchor}
       className={cn("rounded-md border border-transparent", waiting?.body !== undefined && "border-status-blocked bg-card")}
     >
-      {output !== undefined ? (
+      {interactive ? (
         <button
           type="button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          aria-expanded={onTap === undefined ? open : undefined}
+          onClick={() => (onTap !== undefined ? onTap() : setOpen(!open))}
           className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {row}
@@ -997,7 +1059,7 @@ function LineTool({
         <div className="flex min-h-7 min-w-0 items-center gap-2 px-2 text-xs">{row}</div>
       )}
       {body && <p className="font-content whitespace-pre-wrap break-words px-2 pb-1.5 text-sm">{body}</p>}
-      {open && output !== undefined && (
+      {onTap === undefined && open && output !== undefined && (
         <pre className="mx-2 mb-2 max-h-80 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] whitespace-pre-wrap break-words">
           <PathText text={output} />
         </pre>

@@ -562,6 +562,8 @@ export const zh: Dictionary = {
   "chat.card.delete": "删除",
   "chat.card.move": "移动",
   "chat.card.agent": "代理 · {agent}",
+  "chat.subagent.prompt": "派工指令",
+  "chat.subagent.report": "返回报告",
   "chat.card.thinking": "思考过程",
   "chat.card.lines": "第 {from}–{to} 行",
   "chat.card.searchIn": "在 {where} 中",

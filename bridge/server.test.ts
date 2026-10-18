@@ -3366,8 +3366,8 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All TWENTY-TWO session-scoped route handlers (tab create, workspace create, launch, this host's launcher
-    // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
+    // All TWENTY-THREE session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // rows, this host's folder list and a star on it, one journal blob, a Claude subagent transcript, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
     // by pane or workspace (ADR 0090), tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
     // branch plan and create from a folder (ADR 0093), and the
@@ -3376,7 +3376,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11)) reach
     // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(22);
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(23);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -5132,8 +5132,9 @@ describe("journalRefOf — which session the history and chat routes read", () =
   // reported ref and every case above still passes while the resumed session goes unread again.
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // history and chat, each handing discovery the hints built for the pane (screen and argv)
-    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(2);
+    // history, chat and the subagent transcript read, each handing discovery the hints built for the
+    // pane (screen and argv)
+    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(3);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });

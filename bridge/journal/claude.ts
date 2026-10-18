@@ -80,6 +80,14 @@ export function isSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
 }
 
+/** A subagent id as Claude writes it (`agent-<id>.jsonl`): `a` followed by 6–32 hex digits. */
+const AGENT_ID_RE = /^a[0-9a-f]{6,32}$/i;
+
+/** Guard used before any subagent path work. Rejects traversal and internal `acompact-*` files. */
+export function isAgentId(value: string): boolean {
+  return AGENT_ID_RE.test(value);
+}
+
 /** Inner text of the first `<tag>…</tag>`, trimmed; null when the tag isn't present. */
 function inner(tag: string, text: string): string | null {
   const m = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(text);
@@ -224,6 +232,10 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
   } else if (call.kind === "execute") {
     const code = raw.exitCode ?? raw.exit_code ?? raw.returnCode;
     if (typeof code === "number" && Number.isFinite(code)) call.exitCode = code;
+  } else if (call.kind === "task") {
+    if (typeof raw.agentId === "string" && isAgentId(raw.agentId)) {
+      call.agentId = raw.agentId;
+    }
   } else if (call.kind === "question") {
     // AskUserQuestion's `answers` is an object keyed by the question's own text, one string each:
     // `{"Which fruit?": "Apple"}` (verified in a real 2.1.x log). A multi-select answer is ONE string
@@ -657,6 +669,9 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
   // tool_use id → the part awaiting its result and the turn it went out in, so a `tool_result` row
   // lands on the call that made it and can name where that call is drawn.
   const pendingTools = new Map<string, PendingTool>();
+  // `async_launched` Agent calls awaiting their `<task-notification>`, keyed by both `tool_use_id`
+  // and `agentId` so a completion or a resumed notification folds its report back onto the card.
+  const asyncTasks = new Map<string, PendingTool>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(CLAUDE_KNOWN);
   // The message queue, which is state and not a turn — one per generation, thrown away with the
@@ -694,10 +709,35 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     // At the READ, not in the branch that declined: `CLAUDE_KNOWN.rows` holds every name below and
     // the counter drops those, so a type nobody has listed is the one thing that lands in the tally.
     unknown.row(type);
+    const foldTaskNotification = (raw: string): Reduction | null => {
+      const clean = stripAnsi(raw);
+      if (!isEnvelope("task-notification", clean)) return null;
+      const toolUseId = inner("tool-use-id", clean);
+      const taskId = inner("task-id", clean);
+      const taskTarget =
+        (toolUseId !== null ? asyncTasks.get(toolUseId) : undefined) ??
+        (taskId !== null ? asyncTasks.get(taskId) : undefined);
+      if (taskTarget === undefined) return null;
+      const status = inner("status", clean);
+      const report = inner("result", clean) ?? inner("summary", clean) ?? "";
+      const isError = status !== null && status !== "completed";
+      const next = toolResult(report, isError);
+      const prev = taskTarget.part.result;
+      if (prev !== undefined && prev.text === next.text && prev.isError === next.isError) {
+        return NO_CHANGE;
+      }
+      taskTarget.part.result = next;
+      changed.add(taskTarget.uuid);
+      return reduction(entries, changed);
+    };
     // The one bookkeeping row that is READ rather than merely counted, and it makes no turn: what the
     // operator has typed and the agent has not started on. See {@link createQueueTracker}.
     if (type === "queue-operation") {
       queue.apply(row);
+      if (typeof row.content === "string") {
+        const folded = foldTaskNotification(row.content);
+        if (folded !== null) return folded;
+      }
       return NO_CHANGE;
     }
     // A message absorbed into a running turn leaves this attachment right after its `remove`: proof
@@ -712,7 +752,9 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
       const command = queuedCommand(row);
       if (command === null) return NO_CHANGE;
       queue.delivered(command.text);
-      if (!command.drawn) return NO_CHANGE;
+      if (!command.drawn) {
+        return foldTaskNotification(command.text) ?? NO_CHANGE;
+      }
       // ONE message, ONE row. The identity is Claude Code's own `delivery_id`, then `source_uuid`; the
       // row's `uuid` also keys the turn on the wire, so a replay would only replace it in place.
       if (command.key !== null) {
@@ -779,6 +821,8 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
     let roleOverride: "note" | undefined = row.isMeta === true ? "note" : undefined;
 
     if (typeof content === "string") {
+      const folded = foldTaskNotification(content);
+      if (folded !== null) return folded;
       // A string content is the HUMAN-turn carrier — but Claude Code also routes injected plumbing
       // through it, so classify before believing it (see classifyUserText).
       const classified = classifyUserText(content);
@@ -838,10 +882,27 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
           const resultText = stripAnsi(toolResultText(b.content));
           if (target) {
             pendingTools.delete(id);
-            target.part.result = toolResult(resultText, b.is_error === true);
             // `toolUseResult` rides on the ROW, not on the content block: it is Claude's own record of
-            // what the call did, and it is the only place a diff or an exit code ever appears.
+            // what the call did, and it is the only place a diff, an exit code or an agentId appears.
             if (target.part.call) enrichCall(target.part.call, row.toolUseResult);
+            const tur = row.toolUseResult;
+            const asyncLaunch =
+              target.part.call?.kind === "task" &&
+              tur !== null &&
+              tur !== undefined &&
+              typeof tur === "object" &&
+              !Array.isArray(tur) &&
+              (tur.status === "async_launched" || tur.isAsync === true);
+            if (asyncLaunch) {
+              // An `async_launched` subagent is still running: its `tool_result` is internal launch
+              // metadata, and the real report arrives in `<task-notification>`. Keep `result` absent
+              // so the card shows `running` until the notification folds in.
+              if (id !== "") rememberPending(asyncTasks, id, target);
+              const aid = target.part.call?.kind === "task" ? target.part.call.agentId : undefined;
+              if (aid !== undefined) rememberPending(asyncTasks, aid, target);
+            } else {
+              target.part.result = toolResult(resultText, b.is_error === true);
+            }
             // The mutation above landed in a turn that went out rows ago. Name it.
             changed.add(target.uuid);
           } else if (resultText.trim() !== "") {
@@ -1002,6 +1063,28 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       if (real === null) continue;
       this.pathCache.set(sessionId, { path: real, root });
       return this.follow(real, root);
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a subagent's own JSONL log (`<session-uuid>/subagents/agent-<agentId>.jsonl`) beside
+   * the parent session's log. `agentId` is checked against {@link isAgentId} before touching fs,
+   * and the candidate goes through {@link containedRealpath} against the parent log's directory.
+   */
+  async resolveSubagent(ref: AgentSessionRef, agentId: string): Promise<string | null> {
+    if (ref.kind !== "id" || !isSessionId(ref.value) || !isAgentId(agentId)) return null;
+    const mainPath = await this.resolve(ref);
+    if (mainPath === null) return null;
+    const projectDir = dirname(mainPath);
+    const mainStem = mainPath.endsWith(".jsonl") ? mainPath.slice(0, -".jsonl".length) : null;
+    const fallbackStem = join(projectDir, ref.value);
+    const stems = mainStem !== null && mainStem !== fallbackStem ? [mainStem, fallbackStem] : [fallbackStem];
+    for (const stem of stems) {
+      const candidate = join(stem, "subagents", `agent-${agentId}.jsonl`);
+      if (!(await exists(candidate))) continue;
+      const real = await containedRealpath(candidate, stem);
+      if (real !== null) return real;
     }
     return null;
   }
@@ -1196,6 +1279,26 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     // 3.6b or zellij 0.44.2, which deliver it as a plain Enter (mux/keys.ts `EXTENDED_ONLY_CHORDS`);
     // the chat route drops this list there (server.ts `chatBodyForMux`).
     sendQueuedNow: ["ctrl+Enter"],
+  };
+}
+
+/**
+ * Read and parse one Claude subagent's JSONL log (`<session-uuid>/subagents/agent-<agentId>.jsonl`)
+ * for the session `ref` names. Returns `null` when the adapter's source is not a
+ * {@link ClaudeTranscriptSource}, the id is invalid, or the subagent file does not exist.
+ */
+export async function readClaudeSubagent(
+  adapter: JournalAdapter,
+  ref: AgentSessionRef,
+  agentId: string,
+): Promise<{ entries: TranscriptEntry[]; fileTruncated: boolean } | null> {
+  if (!(adapter.source instanceof ClaudeTranscriptSource)) return null;
+  const subPath = await adapter.source.resolveSubagent(ref, agentId);
+  if (subPath === null) return null;
+  const loaded = await adapter.source.load(subPath);
+  return {
+    entries: parseClaudeTranscript(loaded.text, { includeSidechains: true }),
+    fileTruncated: !loaded.complete,
   };
 }
 

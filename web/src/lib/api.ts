@@ -38,6 +38,7 @@ import type {
   ChatAfter,
   ChatBefore,
   PaneChatResponse,
+  PaneSubagentResponse,
   CreateResponse,
   DismissScope,
   DevicesResponse,
@@ -1173,6 +1174,20 @@ export async function fetchFilesExist(
   const asked = new Set(paths);
   const exists = Array.isArray(got.exists) ? got.exists : [];
   return exists.map(asJsonString).filter((p): p is string => p !== undefined && asked.has(p));
+}
+
+/**
+ * GET /api/pane/:id/subagent/:agentId: one Claude subagent's own JSONL transcript, read on demand
+ * when the operator opens a subagent card's sheet.
+ */
+export function fetchSubagentTranscript(
+  paneId: string,
+  agentId: string,
+  scope?: Scope,
+  signal?: AbortSignal,
+): Promise<PaneSubagentResponse> {
+  const path = `/api/pane/${encodeURIComponent(paneId)}/subagent/${encodeURIComponent(agentId)}`;
+  return req<PaneSubagentResponse>(withScope(path, scope), { signal, timeoutMs: GET_TIMEOUT_MS });
 }
 
 /**
