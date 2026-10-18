@@ -19,6 +19,7 @@ import { type ServerSummary } from "@/lib/types";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
+import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
 import { offersFor, SEND_REASONS, type SendReason } from "@/lib/surface/send";
 import { WAY_OUT_STATES, type WayOutState } from "@/lib/way-out";
 import { wayOutCase } from "@/test/way-out-states";
@@ -822,6 +823,32 @@ describe("Composer — typing into the terminal", () => {
     await waitFor(() =>
       expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
+  });
+
+  it.each(["idle lock", "catch-up"])("disarms behind the %s cover and never restores automatically", (cover) => {
+    renderComposer();
+    startDirectTyping();
+    try {
+      act(() => {
+        if (cover === "idle lock") setLocked(true);
+        else beginCatchUp();
+      });
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+      // A named choice cannot re-arm while the view is still covered, even if invoked directly.
+      fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+      act(() => {
+        setLocked(false);
+        endCatchUp();
+      });
+      expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+      expect(startDirectTyping()).toBeInTheDocument();
+    } finally {
+      act(() => {
+        setLocked(false);
+        endCatchUp();
+      });
+    }
   });
 
   // The mirror stops tracking the pane when the page is backgrounded, so the next keystroke would

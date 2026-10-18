@@ -72,6 +72,7 @@ import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
+import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
@@ -640,17 +641,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const fileRef = useRef<HTMLInputElement>(null);
   // The camera-roll half of the picker. See the two inputs below.
   const photoRef = useRef<HTMLInputElement>(null);
+  // The idle cover leaves this composer mounted. Its inert wrapper blocks new DOM input, but
+  // cannot revoke keys already waiting in direct mode's sender; the mode must disarm explicitly.
+  const idleLocked = useLocked();
+  const catchingUp = useCatchingUp();
+  const directSuspended = locked || idleLocked || catchingUp;
   const direct = useDirectTyping({
     paneKey: `${scopeId}\0${paneId}`,
     inputRef,
     // The ref, not `input`: the password-prompt handoff clears the draft and arms in one tick.
     replyDraft: () => inputValueRef.current,
-    canActivate: () => !(locked || sending || uploading),
-    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
-    // deliberately not added here: the mode already disarms on a failed batch, which is the same
-    // event observed directly rather than inferred from a timer, and it fires whether or not any
-    // banner has decided the connection counts as lost yet.
-    suspended: locked,
+    canActivate: () => !(directSuspended || sending || uploading),
+    // Field locks and the idle cover both revoke direct mode. A LOST CONNECTION is deliberately
+    // not added here: the mode already disarms on a failed batch, the same event observed directly
+    // rather than inferred from a timer, whether or not a banner has declared the connection lost.
+    suspended: directSuspended,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();

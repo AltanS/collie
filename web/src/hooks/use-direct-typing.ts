@@ -162,6 +162,9 @@ export function useDirectTyping({
 
   /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */
   function resetMode() {
+    // Disarming revokes the entire armed session, including keys waiting behind a slow batch.
+    // The batch already on the wire cannot be recalled; its late failure must not disarm a re-arm.
+    sender.reset();
     cancelIdleTimer();
     activeRef.current = false;
     setActive(false);
@@ -243,10 +246,9 @@ export function useDirectTyping({
   const lifecycle = useRef({ clearMode, dropKeyboard, resetMode });
   lifecycle.current = { clearMode, dropKeyboard, resetMode };
 
-  // The sender's members are destructured rather than reached through `sender.x` in a dependency
-  // list: the hook returns a fresh object each render (its `busy` flag changes as keys fly), so the
-  // OBJECT is not the dependency — these two stable callbacks are.
-  const { enqueue: enqueueKeys, reset: resetSender } = sender;
+  // The stable enqueue callback, not the sender's fresh object, belongs in the native listener's
+  // dependency list. Resetting the sender is part of resetMode on every disarm, not only pane changes.
+  const { enqueue: enqueueKeys } = sender;
 
   // Arming dies with the view it belongs to. A backgrounded tab, an idle pause and a lost bridge
   // all mean the same thing: the mirror on screen has stopped tracking the pane, and the next
@@ -304,8 +306,7 @@ export function useDirectTyping({
     // was backgrounded" over a pane the mode was never armed on.
     cancelPendingBlur();
     backgrounded.current = false;
-    resetSender();
-  }, [paneKey, resetSender]);
+  }, [paneKey]);
 
   // The agent under the pane changed: the arming belonged to the old session
   // (the agent exited and the pane fell back to a shell), so the mode disarms
@@ -337,11 +338,12 @@ export function useDirectTyping({
     const inputEl = inputRef.current;
     if (!active || inputEl === null) return;
     const onBeforeInput = (event: InputEvent) => {
+      if (!activeRef.current) return;
       const key = keyForInputType(event.inputType);
       if (key === null) return;
       // Backspace inside an active IME edits the candidate; Enter commits/submits and must still reach
       // the terminal. Gboard commonly marks that insertParagraph event as composing.
-      if (event.isComposing && key === "Backspace") return;
+      if ((event.isComposing || composing.current) && key === "Backspace") return;
       event.preventDefault();
       enqueueKeys([key]);
       pokeIdleTimer();
@@ -351,6 +353,7 @@ export function useDirectTyping({
   }, [active, inputRef, enqueueKeys]);
 
   function onChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    if (!activeRef.current) return;
     const next = event.target.value;
     setValue(next);
     // SAFETY: a React `change` on a <textarea> is backed by the DOM `input` event, whose interface
@@ -381,11 +384,13 @@ export function useDirectTyping({
   }
 
   function onCompositionStart() {
+    if (!activeRef.current) return;
     composing.current = true;
     committedComposition.current = null;
   }
 
   function onCompositionEnd(event: ReactCompositionEvent<HTMLTextAreaElement>) {
+    if (!activeRef.current) return;
     composing.current = false;
     const committed = event.currentTarget.value || event.data;
     if (committed.length === 0) return;
@@ -396,6 +401,10 @@ export function useDirectTyping({
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (!activeRef.current) return;
+    // Candidate editing/confirmation belongs to the IME, not the terminal. Safari may report the
+    // confirming key AFTER compositionend with isComposing false, but still marks it as keyCode 229.
+    if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     const key = keyForKeyDown(event.key);
     if (key === undefined) return;
     event.preventDefault();
