@@ -1,0 +1,16 @@
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[0m[38;5;13mDefault[0m · auto · [0m[38;5;2m◔[0m [0m[38;5;2m1%[0m · [0m[38;5;2mStatus: 18h 40m[0m                                                          [0m[38;5;13m/tmp/kiro-fixture/demo[0m
+
+› /[0m[7m [0m
+[0m[1m[38;5;5m/agent        [0m    List or switch agents (tab for sub-commands)
+/autonomous       Turn autonomous mode on or off (tab for sub-commands)
+/changelog        Show recent release notes
+/chat             Load a previous session, save, or start a new one (tab for sub-commands)
+/clear            Clear the conversation and start a fresh session
+/code             Code intelligence status, initialization, and codebase overview (tab for sub-commands)
+/compact          Compact conversation history to reduce context usage
+/config           View configured agents, MCP servers, powers, steering, skills, and hooks (tab for sub-commands)
+(+35 more)
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to cancel · ↑↓ to navigate · ↵ to select
+                                                                                                                      

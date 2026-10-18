@@ -2311,6 +2311,26 @@
    "version": "2.32.0",
    "state": "running"
   },
+  "kiro--v3-slash-help-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-menu-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-model-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-quit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
   "kiro--v3-write-allow-w120.txt": {
    "harness": "kiro",
    "version": "2.32.0",
