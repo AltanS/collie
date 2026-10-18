@@ -131,6 +131,29 @@ describe("the playground's card handles", () => {
   );
 });
 
+// The held-send cards (numbers 14 to 18 of the composer states, ADR 0061 amended 2026-10-18): the real
+// composer, with the card floating in a slot at the mirror's bottom edge. Show all is the real tap, taken
+// for you on card 16, so the page shows the open list without a click.
+describe("the held-send cards", () => {
+  it(
+    "draws one row, a collapsed queue, an open queue, a mixed queue, and the card over the draft notice",
+    async () => {
+      const { container } = render(<PlaygroundApp tab="composer-states" />);
+      const card = (state: string) => container.querySelector<HTMLElement>(`[data-state="${state}"]`)!;
+      const held = (state: string) => card(state).querySelector<HTMLElement>('[data-slot="held-card"]');
+      await waitFor(() => expect(held("held-three-expanded")?.getAttribute("data-mode")).toBe("expanded"), SLOW);
+
+      expect(held("held-one-row")?.getAttribute("data-mode")).toBe("single");
+      expect(held("held-three-collapsed")?.getAttribute("data-mode")).toBe("collapsed");
+      expect(card("held-three-expanded").querySelectorAll('[data-slot="held-row"]')).toHaveLength(3);
+      expect(held("held-mixed")?.getAttribute("data-mode")).toBe("collapsed");
+      const stacked = card("held-with-draft-notice").querySelector('[data-slot="floating-cards"]')!;
+      expect(Array.from(stacked.children).map((child) => child.getAttribute("data-slot"))).toEqual(["held-card", "terminal-draft-notice"]);
+    },
+    30_000,
+  );
+});
+
 // The tab bar: the URL hash selects a section (and, with `#<id>/<card>`, scrolls a card into view),
 // the last tab is remembered across visits, and it is a real ARIA tab list — roving focus included.
 //
