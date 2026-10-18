@@ -2801,6 +2801,71 @@ describe("walky talky in a crew of four, on the real wire", () => {
     }
   }, 60_000);
 
+  test("the phone reads a member pane's list through the lead, from the member's own log, and replies to a message in it", async () => {
+    // What the phone's pane loader asks for a pane on a member (web/src/lib/api.ts `fetchPaneWalky`).
+    const listOn = (member: Instance): Promise<Response> => wl.api(`/api/pane/${encodeURIComponent(member.paneId)}/walky?limit=50&host=${idOf(member)}`);
+    const rowsOf = async (res: Response): Promise<JsonValue[]> => {
+      expect(res.status).toBe(200);
+      // SAFETY: the route answers JSON (`{ messages }`, server.ts `walkyPaneRoute`), read field by field here.
+      const messages = asJsonObject((await res.json()) as JsonValue)?.messages;
+      return Array.isArray(messages) ? messages : [];
+    };
+    // B's list holds what A sent it through the lead, with B's own receipt and B's own word for the sender.
+    const onB = await rowsOf(await listOn(wb));
+    expect(onB).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "wt_a2bpane00001",
+          kind: "agent",
+          from: expect.objectContaining({ memberId: idOf(wa), address: tokened(wa) }),
+          receipt: expect.objectContaining({ target: paneOf(wb), by: idOf(wb), verified: "origin" }),
+        }),
+      ]),
+    );
+    // A's list holds the lead's own agent's message, checked by A against the lead's certificate, and
+    // the message A's agent SENT to B, with the outcome the lead pushed back to A.
+    expect(await rowsOf(await listOn(wa))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "wt_l2apane00001", receipt: expect.objectContaining({ by: idOf(wa), verified: "origin" }) }),
+        expect.objectContaining({ id: "wt_a2bpane00001", from: expect.objectContaining({ address: tokened(wa) }), receipt: expect.objectContaining({ target: paneOf(wb), by: idOf(wb) }) }),
+      ]),
+    );
+
+    // Reply from B's pane, the way the Messages sheet hands it to the composer: the sender's address, and
+    // `replyTo`, on the lead's own `POST /api/walky`. The lead routed the message, so it knows the sender.
+    const row = asJsonObject(onB.find((entry) => asJsonObject(entry)?.id === "wt_a2bpane00001"));
+    const to = asJsonString(asJsonObject(row?.from)?.address);
+    expect(to).toMatch(new RegExp(`^${paneOf(wa)}#[a-z0-9]{4}$`, "u"));
+    const id = "wt_replyfromb01";
+    const res = await wl.apiWrite("/api/walky", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, to, body: "seen on b's pane", replyTo: "wt_a2bpane00001" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ receipt: { id, target: paneOf(wa), by: idOf(wa), verified: "origin" } });
+    await waitFor(async () => typedFor(wa, id).length > 0, 15_000, async () => `A's pane never got the reply; writes: ${JSON.stringify(wa.herdr!.writes)}`);
+    expect(typedFor(wa, id)[0]).toContain(`[walky-talky ${id}] from operator (drill) reply to wt_a2bpane00001`);
+    // …and the member's list, read through the lead again, holds the reply where A's log put it.
+    expect(await rowsOf(await listOn(wa))).toEqual(expect.arrayContaining([expect.objectContaining({ id, replyTo: "wt_a2bpane00001" })]));
+
+    // A member the lead knows to predate walky talky is answered by the lead with no dial: `wo` runs
+    // this very build and would answer 200, so the 404 can only be the lead's own.
+    const older = await listOn(wo);
+    expect(older.status).toBe(404);
+    expect(await older.text()).toContain("older than walky talky");
+
+    // A member that is down is a refusal the phone reads as a list it could not read.
+    await wa.stop();
+    try {
+      const down = await listOn(wa);
+      expect(down.status).toBe(503);
+      expect(await down.json()).toMatchObject({ code: "host_unreachable", host: idOf(wa) });
+    } finally {
+      await wa.start();
+    }
+  }, 90_000);
+
   test("a member's report rides every snapshot answer until a sweep carries the lead's ack, then it is gone", async () => {
     // LAST in this block: it stops the lead, so nothing but this test reads B's report while it runs.
     const leadData = wl.store()!;

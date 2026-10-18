@@ -75,11 +75,15 @@ const FORWARDABLE: readonly RegExp[] = [
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
   /^pane\/[^/]+\/files\/image$/,
   /^workspace\/[^/]+\/files\/image$/,
-  // A walky talky message the LEAD routes to the member that owns the pane (CREW_PROTOCOL.md §21),
-  // `pane/<id>/walky`, or `pane/all/walky` for every agent pane there. Mirrors `WALKY_PANE_ROUTE` in
-  // bridge/server.ts one-for-one. A WRITE, sent by the lead itself and never by a phone: the browser
-  // path answers only the GET there, and the member answers the POST only from its lead, with the
-  // lead's attestation in the body. Additive-optional (§7.1): a member that predates it answers 404.
+  // Walky talky on the pane that owns the messages (CREW_PROTOCOL.md §21), `pane/<id>/walky`. Mirrors
+  // `WALKY_PANE_ROUTE` in bridge/server.ts one-for-one, and carries two requests:
+  //   - the POST: a message the LEAD routes to the member that owns the pane, or `pane/all/walky` for
+  //     every agent pane there. A WRITE, sent by the lead itself and never by a phone: the browser path
+  //     refuses a POST there, and the member answers it only from its lead, with the lead's attestation
+  //     in the body;
+  //   - the GET: the pane's list of messages, a READ the phone makes with `?host=` (added 2026-10-18),
+  //     answered from the member's own log ({@link forwardKind} tells the two apart by method).
+  // Additive-optional (§7.1): a member that predates either answers 404.
   /^pane\/[^/]+\/walky$/,
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
@@ -182,12 +186,26 @@ export function apiPathFor(route: string): string | null {
 /** A forwarded read (proxied byte-for-byte, §9.1) or a forwarded write (§10.3, §12). */
 export type ForwardKind = "read" | "write";
 
+/** A pane's walky talky route: a GET there is the pane's list, a POST is a message (§21). */
+const WALKY_ROUTE = /^pane\/[^/]+\/walky$/;
+
+/** Whether a request on `route` is the GET of a pane's walky talky list, the one read on that route. */
+function isWalkyList(route: string, method: string | undefined): boolean {
+  return method === "GET" && WALKY_ROUTE.test(route);
+}
+
 /**
  * Read or write, decided the way bridge/server.ts decides it and for the same reason: `history` is a
  * READ despite being an action segment — it only ever reads a log off disk — and everything else with
  * an action segment types into or restructures a terminal.
+ *
+ * `method` matters for one route only, `pane/<id>/walky`, where a GET is the pane's list and a POST is
+ * a message. Absent, the route is judged as the write it was first added as.
  */
-export function forwardKind(route: string): ForwardKind {
+export function forwardKind(route: string, method?: string): ForwardKind {
+  // A pane's walky list changes nothing on the member (§21): a read like `chat`, on the poll path, so
+  // it is attempted against a stale member too and never refused before it is tried (§10.3).
+  if (isWalkyList(route, method)) return "read";
   // A GET that changes nothing, exactly like `pane/:id/history` — attempted even against a member
   // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
   // dead member is still attempted").
@@ -240,7 +258,9 @@ export function forwardPaneId(route: string): string | undefined {
  * (keystrokes, replies, uploads, pane and tab lifecycle), so the peer writes no line for it and the
  * lead's line would have nothing to be read against.
  */
-export function forwardAuditAction(route: string): string | null {
+export function forwardAuditAction(route: string, method?: string): string | null {
+  // The pane's walky list is a read, audited on neither side (§21).
+  if (isWalkyList(route, method)) return null;
   if (route === "tab") return "tab.create";
   if (route === "workspace") return "workspace.create";
   // `launch` writes either `workspace.launch` or `tab.launch`, decided by the body a route string
@@ -736,7 +756,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     });
   }
 
-  const kind = forwardKind(route);
+  const kind = forwardKind(route, req.method);
   if (kind === "write") {
     const refusal = refuseWriteBeforeAttempt(deps.state);
     if (refusal !== null) return refusal;
@@ -811,7 +831,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     init,
     kind === "write" ? WRITE_BUDGET_MS : undefined,
   );
-  const action = forwardAuditAction(route);
+  const action = forwardAuditAction(route, req.method);
   const paneId = forwardPaneId(route);
   const session = url.searchParams.get("session");
   const record = (result: string): void => {

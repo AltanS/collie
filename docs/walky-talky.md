@@ -227,18 +227,24 @@ shows the sender's kind (`agent` or `operator`), the message body, and "reply to
 A small word says how the sender was known: "signed by" a machine, "relayed by the lead", "this
 machine", or "not verified".
 
-The card appears only when the bridge's own log holds that message. A header that an agent merely
-prints stays plain text, with the quiet mark "no log record on this machine"
-([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from the bridge's log
-at once, also for a message from another agent that its pane has not read yet.
+The card appears only when the log of the machine that owns the pane holds that message. For a pane
+on a crew member, the lead reads that member's log. A header that an agent merely prints stays plain
+text, with the quiet mark "no log record on this machine"
+([Troubleshooting](troubleshooting.md#walky-talky)). The card shows the body from that log at once,
+also for a message from another agent that its pane has not read yet.
+
+When the phone cannot read the log, it claims nothing: no card and no mark. This happens on a member
+older than 1.23.0, and on a member the lead cannot reach.
 
 Each receipt state shows the words in the table above, with the reason after "not sent" and
 "waiting in the inbox, not typed".
 
-- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. A message
-  from an agent has a "Reply" button, and the reply keeps the token of the sender's address. A pane of a member has no Messages row, only the lead's own
-  panes have one. An empty sheet says "No messages for this pane yet." A machine that cannot
-  keep messages says "This machine does not keep messages yet."
+- **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane. The
+  Messages sheet lists what the pane received and what it sent. A message from an agent has a
+  "Reply" button, and the reply keeps the token of the sender's address. A pane on a crew member has
+  the row too, and its list comes from that member's own log. A reply from it goes through the lead
+  like any message. An empty sheet says "No messages for this pane yet." A
+  machine whose log the phone cannot read says "This machine does not keep messages yet."
 - **Send as message.** Write the text, press and hold the Send button, then tap "Send as message".
   The text goes to this pane as a message from you. The phone adds the pane's token to the address,
   so the text reaches the session you are looking at. If another pane has taken the id since, the
@@ -361,7 +367,9 @@ CLI on that machine still sends. These are the limits that stay on:
   open dialog is held: nothing enters the dialog, the message is typed after the dialog is answered,
   and it waits in the inbox only if the 10-minute hold runs out.
 - **A reply goes back to the pane that sent the message.** Collie finds that pane from the session
-  and pane the bridge logged. The address in the reply plays no part.
+  and pane the bridge logged. The address in the reply plays no part. One case differs: your reply
+  from the phone to a message that only a member's log holds. The address then takes the reply to
+  that member, and the member's log finds the pane.
 - **The refusals are counted**, per reason, in `<stateDir>/walky/refusals.json`, with no body and
   no sender. `collie doctor` shows them in the row `walky-refusals`. The Crew page shows them under
   a broadcast.
@@ -383,7 +391,8 @@ messages.
 
 Across a crew, a message rides the crew link that already exists, through the lead. A member posts
 it to the lead. The lead posts it to the member that owns the pane. The lead then pushes each
-outcome back to the sender's machine, on `POST /crew/v1/walky/outcomes`. A member keeps the
+outcome back to the sender's machine, on `POST /crew/v1/walky/outcomes`. The phone reads a member
+pane's list through the lead, which forwards the read to that member. A member keeps the
 outcomes it reports in memory until the lead acks them, and drops them after 10 minutes. The routes
 are in [`CREW_PROTOCOL.md` §21](../CREW_PROTOCOL.md).
 

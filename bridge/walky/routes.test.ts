@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog } from "../audit.ts";
-import { walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT } from "../server.ts";
+import { walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
 import type { WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { WalkyService } from "./service.ts";
@@ -131,9 +131,38 @@ describe("the reads", () => {
     expect(await walkyPaneRoute(replaced, "main", "w1:p1", null, null).json()).toEqual({ messages: [] });
   });
 
+  test("a pane's list holds what it sent too, with the receipt; the inbox stays what it received", async () => {
+    const walky = service();
+    const agent = { kind: "agent" as const, pane: panes[0]! };
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p2", body: "from p1", replyTo: null }, agent);
+    await walky.send({ id: "wt_aaaaaaaaaaa2", to: "local/w1:p1", body: "to p1", replyTo: null }, { kind: "operator", label: "cli" });
+    await walky.deliverer.settled();
+    expect(await walkyPaneRoute(walky, "main", "w1:p1", null, null).json()).toMatchObject({
+      messages: [
+        { id: "wt_aaaaaaaaaaa2", receipt: { target: "local/w1:p1" } },
+        { id: "wt_aaaaaaaaaaa1", from: { address: "local/w1:p1#aaaa" }, receipt: { target: "local/w1:p2", state: "delivered" } },
+      ],
+    });
+    expect(walky.inbox("main", "w1:p1", "aaaa", true).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa2"]);
+    expect(walky.inbox("main", "w1:p1", "aaaa", false).map((entry) => entry.id)).not.toContain("wt_aaaaaaaaaaa1");
+  });
+
   test("a bad pane id or limit is a 400", () => {
     expect(walkyPaneRoute(service(), "main", "..", null, null).status).toBe(400);
     expect(walkyPaneRoute(service(), "main", "w1:p1", "0", null).status).toBe(400);
     expect(walkyPaneRoute(service(), "main", "w1:p1", "201", null).status).toBe(400);
+  });
+});
+
+describe("a crew member pane's list on the lead (§21, added 2026-10-18)", () => {
+  test("a member the lead knows to predate walky talky is a 404 with no dial; any other is forwarded", async () => {
+    const older = walkyOlderMemberAnswer("1.22.6", "1.23.0");
+    expect(older?.status).toBe(404);
+    expect(await older?.text()).toBe(WALKY_OLDER_MEMBER_TEXT);
+    // At the floor, above it, and a member that reported no version or no release: asked, never guessed.
+    for (const version of ["1.23.0", "1.24.1", null, "unknown"]) expect(walkyOlderMemberAnswer(version, "1.23.0")).toBeNull();
+    // A development lead below 1.23.0 takes its own version as the floor, as the message route does.
+    expect(walkyOlderMemberAnswer("1.22.5", "1.22.6")?.status).toBe(404);
+    expect(walkyOlderMemberAnswer("1.22.6", "1.22.6")).toBeNull();
   });
 });

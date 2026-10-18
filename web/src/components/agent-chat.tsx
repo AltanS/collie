@@ -3148,9 +3148,9 @@ export function AgentChat({
           // On a pane with no screen only for its Recent sends: the cache switch is not drawn there, because a
           // program has no prompt cache to warn about (M56 spec 14).
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
-          // The pane's walky talky messages (M62), a read row with the others. The lead's own panes
-          // only: it reads no member's list in 1.23.0, so the sheet there could only say something untrue.
-          onMessages={agent && isLead(scope) ? () => setDrawer("messages") : undefined}
+          // The pane's walky talky messages (M62), a read row with the others. A member's pane too: the
+          // lead forwards its list from that member's own log (CREW_PROTOCOL.md §21).
+          onMessages={agent ? () => setDrawer("messages") : undefined}
           // A durable conversation: the writes only, and Close names what it closes.
           conversation={gridless}
           openInRename={renameOnOpen}
