@@ -2254,11 +2254,9 @@ export const it: Dictionary = {
   "walky.sheet.unavailable": "This machine does not keep messages yet.",
   "walky.sheet.reply": "Reply",
   "walky.sheet.replyAria": "Reply to {label}",
-  "walky.sheet.from": "{kind}: {label}",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Send options",
   "walky.composer.sendAsMessage": "Send as message",
-  "walky.composer.to": "Message to {label}",
   "walky.composer.toThisPane": "this pane",
   "walky.composer.replyTo": "Reply to {label}",
   "walky.composer.cancel": "Send as a plain reply again",
