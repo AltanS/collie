@@ -278,9 +278,11 @@ collie walky who
 ```
 
 A member sends the message to the lead. The lead checks the member's signature, then passes the
-message on to the machine that the address names, and that machine checks the lead's. A member's own
-`who` lists its own panes only. The outcome of a message to another machine is known on the lead:
-run `collie walky status <id>` there ([Across a crew](walky-talky.md#across-a-crew)).
+message on to the machine that the address names, and that machine checks the lead's. The lead also
+sends the sender's certificate, so that machine checks the sender's signature too. A member's own
+`who` lists its own panes only. The lead learns the outcome of every message, and sends it back to the
+member that sent it. Run `collie walky status <id>` on the sender's machine or on the lead
+([Across a crew](walky-talky.md#across-a-crew)).
 
 > **Note.** A member needs Collie 1.23.0 to take a message. A message to an older member is refused
 > `not sent: older member`, and a member under an older lead gets `not sent: older lead`. Run

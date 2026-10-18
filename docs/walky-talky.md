@@ -151,7 +151,8 @@ Every verb takes `--json` for a script.
 In a crew, a message for another machine always goes through the lead. A member sends it to the
 lead. The lead types it on its own panes, or passes it on to the machine the address names. The
 lead checks the sender's signature against the key it pinned for that machine. The machine that
-receives the message then checks the lead's own signature on it.
+receives the message then checks the lead's own signature on it. The lead also sends the sender's
+certificate with its own word for it, so the receiving machine checks the sender's signature too.
 
 - **`who` on the lead** lists the agent panes of every machine. **`who` on a member** lists its own
   panes, then this line:
@@ -160,10 +161,12 @@ receives the message then checks the lead's own signature on it.
   other machines: run `collie walky who` on the lead (bluefin), or use the phone
   ```
 
-- **The outcome lives on the lead.** The machine that types a message reports the outcome to the lead
-  with its next crew update. On a member, a message to another machine shows
-  `queued (outcome known on the lead)`, and `send` does not wait for more. Run
-  `collie walky status <id>` on the lead, or open the pane on the phone, to see "typed into the pane".
+- **The outcome comes back to the sender.** The machine that types a message reports the outcome to
+  the lead with its crew updates, until the lead confirms it got it. The lead then sends the outcome
+  on to the member that sent the message. So `send` on a member waits as it does for a local pane,
+  up to 15 seconds, and prints "typed into the pane". `collie walky status <id>` on the member shows
+  the same. Under an older lead, a member still shows `queued (outcome known on the lead)`. Then run
+  `collie walky status <id>` on the lead, or open the pane on the phone.
 - **A slow machine does not hold up a broadcast.** The lead gives each machine 8 seconds. A machine
   that takes longer shows `may have arrived, will not be sent again (member slow)`, and its next
   crew update fills in the outcome.
@@ -174,7 +177,8 @@ receives the message then checks the lead's own signature on it.
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
 was checked. `lead` means the lead checked it, and this machine trusts the lead. A member sees
-`lead` for a message from another member.
+`origin` for a message from another member: the lead sends that member's certificate, and the
+receiving machine checks the sender's signature against it. A member under an older lead sees `lead`.
 
 ## Receipts
 
