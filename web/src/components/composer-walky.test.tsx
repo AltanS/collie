@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadDraft } from "@/lib/drafts";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
 import { recordedWalkyPosts } from "@/test/handlers";
@@ -104,9 +104,17 @@ describe("Send as message (the Send button's long-press menu)", () => {
     expect(loadDraft(undefined, "w1:p1")).toBe("again");
   });
 
-  it("offers no menu on a locked field", async () => {
+  it("offers no menu on a locked field, even with a draft in the box and a press on Send", async () => {
+    // A draft kept from before the device lost write access: the box holds text, so Send is drawn.
+    saveDraft(undefined, "w1:p1", "Stop and report");
     renderComposer(createRef<ComposerHandle>(), { readOnly: true });
+    const send = await screen.findByRole("button", { name: "Send" });
+    fireEvent.contextMenu(send);
+    fireEvent.pointerDown(send, { button: 0, clientX: 5, clientY: 5 });
+    await act(() => new Promise((r) => setTimeout(r, 520)));
+    fireEvent.pointerUp(send);
     expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();
+    expect(recordedWalkyPosts()).toEqual([]);
   });
 });
 
