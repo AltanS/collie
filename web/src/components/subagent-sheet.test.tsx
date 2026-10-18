@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToolCard } from "@/components/chat-cards";
 import { SubagentSheet } from "@/components/subagent-sheet";
@@ -229,5 +229,44 @@ describe("SubagentSheet", () => {
       </SubagentSheet>,
     );
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("asks a crew member's pane once: after the lead's 501 it stops polling and does not ask again on reopen", async () => {
+    let asked = 0;
+    server.use(
+      http.get("/api/pane/w1%3Ap1/subagent/af52a45b4a25847ac", () => {
+        asked++;
+        return HttpResponse.json(
+          { error: "route /api/pane/w1:p1/subagent/af52a45b4a25847ac is not available across a crew link", code: "route_not_federated" },
+          { status: 501 },
+        );
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(
+        <SubagentSheet paneId="w1:p1" scope={{ host: "laptop" }}>
+          <ToolCard
+            tool={{ kind: "task", agent: "Explore", summary: "Remote subagent", agentId: "af52a45b4a25847ac" }}
+            status="running"
+          />
+        </SubagentSheet>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Explore/i }));
+      await screen.findByRole("dialog");
+      await waitFor(() => expect(asked).toBe(1));
+      // Running, sheet open: the 2 s poll would ask four more times here.
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(asked).toBe(1);
+      // Close and reopen: the pane is remembered as not federated, so no new request.
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      fireEvent.click(screen.getByRole("button", { name: /Explore/i }));
+      await screen.findByRole("dialog");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(asked).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -11,7 +11,7 @@ import { MarkdownText } from "@/components/markdown-text";
 import { StatusDot } from "@/components/status-badge";
 import { BottomSheet, TALL_SHEET_CLEARANCE } from "@/components/ui/sheet";
 import { useLocale } from "@/hooks/use-locale";
-import { fetchSubagentTranscript } from "@/lib/api";
+import { fetchSubagentTranscript, isApiErrorStatus } from "@/lib/api";
 import { itemsOf, type ChatItem, type ChatToolStatus } from "@/lib/chat-items";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
@@ -86,6 +86,11 @@ export function SubagentSheet({
   const session = scope?.session;
   const paneAddress = `${host ?? ""}\0${session ?? ""}\0${paneId}`;
   const [openedAtAddress, setOpenedAtAddress] = useState(paneAddress);
+  // A pane on a crew member: the route is not forwardable, so the lead answers 501 (bridge/server.ts,
+  // `PANE_SUBAGENT_ROUTE`). Remembered per pane address, so the sheet stops polling and asks no more
+  // for that pane; it shows the report folded onto the card instead.
+  const [unfederatedAt, setUnfederatedAt] = useState<string | null>(null);
+  const unfederated = unfederatedAt === paneAddress;
 
   if (target !== null && openedAtAddress !== paneAddress) {
     setTarget(null);
@@ -97,28 +102,31 @@ export function SubagentSheet({
       setOpenedAtAddress(paneAddress);
       setTarget(next);
       setPromptOpen(false);
-      setLoadState(next.agentId === undefined ? { kind: "unavailable" } : { kind: "loading" });
+      setLoadState(next.agentId === undefined || unfederated ? { kind: "unavailable" } : { kind: "loading" });
     },
-    [paneAddress],
+    [paneAddress, unfederated],
   );
 
-  const sync = useCallback((next: SubagentTarget) => {
-    setTarget((prev) => {
-      if (prev === null || prev.cardKey !== next.cardKey) return prev;
-      if (
-        prev.agentId === next.agentId &&
-        prev.status === next.status &&
-        prev.output === next.output &&
-        prev.summary === next.summary
-      ) {
-        return prev;
-      }
-      if (prev.agentId === undefined && next.agentId !== undefined) {
-        setLoadState({ kind: "loading" });
-      }
-      return next;
-    });
-  }, []);
+  const sync = useCallback(
+    (next: SubagentTarget) => {
+      setTarget((prev) => {
+        if (prev === null || prev.cardKey !== next.cardKey) return prev;
+        if (
+          prev.agentId === next.agentId &&
+          prev.status === next.status &&
+          prev.output === next.output &&
+          prev.summary === next.summary
+        ) {
+          return prev;
+        }
+        if (prev.agentId === undefined && next.agentId !== undefined && !unfederated) {
+          setLoadState({ kind: "loading" });
+        }
+        return next;
+      });
+    },
+    [unfederated],
+  );
 
   const close = useCallback(() => {
     setTarget(null);
@@ -155,9 +163,14 @@ export function SubagentSheet({
   const running = target?.status === "running";
 
   useEffect(() => {
-    if (agentId === undefined) return;
+    if (agentId === undefined || unfederated) return;
     let cancelled = false;
     const ac = new AbortController();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
 
     const load = async () => {
       try {
@@ -168,19 +181,24 @@ export function SubagentSheet({
         } else {
           setLoadState({ kind: "unavailable" });
         }
-      } catch {
-        if (!cancelled) setLoadState({ kind: "unavailable" });
+      } catch (error) {
+        if (cancelled) return;
+        if (isApiErrorStatus(error, 501)) {
+          stop();
+          setUnfederatedAt(paneAddress);
+        }
+        setLoadState({ kind: "unavailable" });
       }
     };
 
     void load();
-    const timer = running ? setInterval(() => void load(), SUBAGENT_POLL_MS) : null;
+    if (running) timer = setInterval(() => void load(), SUBAGENT_POLL_MS);
     return () => {
       cancelled = true;
       ac.abort();
-      if (timer !== null) clearInterval(timer);
+      stop();
     };
-  }, [paneId, agentId, running, host, session, scope]);
+  }, [paneId, agentId, running, host, session, scope, unfederated, paneAddress]);
 
   const handle = useMemo<SubagentSheetHandle>(
     () => ({
