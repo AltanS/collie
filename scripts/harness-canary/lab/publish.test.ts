@@ -67,9 +67,13 @@ describe("moveProfile", () => {
     expect(changed).toHaveLength(3);
   });
 
-  test("a version that is not newer is refused", () => {
-    expect(() => moveProfile(PROFILE, "2.1.296", "2026-10-16")).toThrow(/not newer/);
-    expect(() => moveProfile(PROFILE, "2.1.100", "2026-10-16")).toThrow(/not newer/);
+  test("a version older than verifiedThrough is refused", () => {
+    expect(() => moveProfile(PROFILE, "2.1.295", "2026-10-16")).toThrow(/older than verifiedThrough/);
+    expect(() => moveProfile(PROFILE, "2.1.100", "2026-10-16")).toThrow(/older than verifiedThrough/);
+  });
+
+  test("a version the range already reaches leaves the text as it is, with the person's date", () => {
+    expect(moveProfile(PROFILE, "2.1.296", "2026-10-18")).toBe(PROFILE);
   });
 });
 
@@ -98,6 +102,34 @@ describe("publishPass", () => {
     // The repo it branched from is untouched: still on main, still clean, still at the old version.
     expect(realGit(repo, ["status", "--porcelain"]).stdout.trim()).toBe("");
     expect(JSON.parse(readFileSync(join(repo, LEDGER_REL), "utf8")).agents.claude.version).not.toBe("2.1.301");
+  });
+
+  test("a profile that already reaches the version: the commit moves the row alone and says so", () => {
+    const repo = makeRepo();
+    const labRoot = temp();
+    const profilePath = join(repo, profileRel("claude"));
+    writeFileSync(profilePath, moveProfile(PROFILE, "2.1.301", "2026-10-14"));
+    const git = (...args: string[]): void => {
+      const done = realGit(repo, ["-c", "user.name=t", "-c", "user.email=t@t", ...args]);
+      if (done.code !== 0) throw new Error(done.stderr);
+    };
+    git("commit", "--quiet", "-am", "a person moved the range by hand");
+    const done = publishPass(input(repo, labRoot));
+    expect(done.files).toEqual([LEDGER_REL]);
+    const files = realGit(done.worktree, ["show", "--name-only", "--format=", "HEAD"]).stdout.trim().split("\n");
+    expect(files).toEqual([LEDGER_REL]);
+    expect(realGit(done.worktree, ["log", "-1", "--format=%B"]).stdout).toContain("This commit moves one file: the verified-versions row.");
+    expect(readFileSync(join(done.worktree, profileRel("claude")), "utf8")).toContain('"verifiedOn": "2026-10-14"');
+  });
+
+  test("a pass that cannot commit leaves no branch and no worktree, so the next try is not refused", () => {
+    const repo = makeRepo();
+    const labRoot = temp();
+    expect(() => publishPass({ ...input(repo, labRoot), version: "2.1.100" })).toThrow(/older than verifiedThrough/);
+    expect(realGit(repo, ["branch", "--list", "harness-lab/*"]).stdout.trim()).toBe("");
+    expect(existsSync(join(labRoot, "worktrees", "claude-2.1.100"))).toBe(false);
+    expect(realGit(repo, ["worktree", "list"]).stdout.trim().split("\n")).toHaveLength(1);
+    expect(() => publishPass({ ...input(repo, labRoot), version: "2.1.100" })).toThrow(/older than verifiedThrough/);
   });
 
   test("a second run on the same pair refuses and changes nothing", () => {

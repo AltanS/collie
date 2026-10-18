@@ -208,6 +208,8 @@ The lab refuses a `--repo` under `~/apps` and a checkout with a detached HEAD.
 **What a pass leaves.** One commit on the branch `harness-lab/<harness>-<version>`, in the lab clone.
 A scratch worktree sits under `~/.cache/collie-lab/harness-lab/worktrees/`.
 The commit touches two files: `web/src/lib/harness/verified-versions.json` and the profile's verified range.
+When a person already moved the profile's range to that version, it touches the first file alone.
+A pass that cannot commit removes its branch and its scratch worktree, and settles the row as `failed`.
 The run log is the commit body, and the body states the real send and ask results.
 The script never pushes. A person reads the branch and merges it.
 A pass whose commit fails writes a `failed` row with the reason, not a `pass` row.
