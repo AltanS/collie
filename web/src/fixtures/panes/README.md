@@ -2328,7 +2328,16 @@ holds a numbered list, a menu and a `(y/n)` line was refused `not_free`, or type
 | `claude--v2302-turn-ending-stop-hooks--w119.txt` | The last read of a turn: the whole answer drawn, a numbered list, the menu `41. Apple`, `42. Pear`, `43. Quit` and `Confirm (y/n)` above `✢ Simmering… (running Stop hooks… 0/2 · 5s · ↓ 621 tokens)`. Labelled `running`; the screen alone reads free, since the words before the timer keep the running sign off (listed in `knownMismatches`) |
 | `claude--v2302-turn-ended-yn--w119.txt` | The next read, 112 ms later: the same rows with `✻ Churned for 5s · done 12:17 PM` in the spinner's place. The turn is over and the `(y/n)` line is the agent's text, not a dialog: the box is free. Reads `idle`. The pair is the round-3 field case: a send typed between the two reads must still be sent |
 | `claude--v2302-working-agents-panel--w119.txt` | A running turn (`✶ Noodling… (7s · ↓ 592 tokens)`) after two background agents started, with the last turns' list, menu and `Confirm (y/n)` above, and the agents panel (`● main`, two `◯ general-purpose` rows with timers) under the box. Reads `running` |
-| `claude--v2302-notice-over-agents-panel--w69.txt` | A running turn (`✶ Hashing… · tool use (4s · thinking with high effort)`) at 69 columns with the `✦ You should know · ` notice above the box, its three wrapped rows and the key row `1: Learn more   2: Knew this already   0: Dismiss`, then the box, two status rows, and the agents panel (`● main`, three `◯ general-purpose` rows) under them. The notice and the agents panel are vanilla Claude Code; the spinner's ` · tool use` suffix, the `[-]` row over the notice and the reply boxes come from a theme plugin (ui-themes). The panel is the footer run the input frame names, so it is not counted against the six-row tail and the notice lifts its card (ADR 0109). **Derived** from a bridge read: the transcript and the statusline had their letters replaced by neutral words of the same width; the notice, the spinner and the panel are as captured. Labelled `running` |
+
+## The notice over the agents panel, 69 columns (derived, Claude Code 2.1.302, PR 493)
+
+**Derived** from a bridge read, not kept byte for byte: the transcript and the statusline had their
+letters replaced by neutral words of the same width. The notice, the spinner and the panel are as
+captured.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2302-notice-over-agents-panel--w69.txt` | A running turn (`✶ Hashing… · tool use (4s · thinking with high effort)`) at 69 columns with the `✦ You should know · ` notice above the box, its three wrapped rows and the key row `1: Learn more   2: Knew this already   0: Dismiss`, then the box, two status rows, and the agents panel (`● main`, three `◯ general-purpose` rows) under them. The notice and the agents panel are vanilla Claude Code; the spinner's ` · tool use` suffix, the `[-]` row over the notice and the reply boxes come from a theme plugin (ui-themes). The panel is the footer run the Claude profile names (`frame.volatile.named`), so it is not counted against the six-row tail and the notice lifts its card (ADR 0109). Labelled `running` |
 
 ## The slash list under the box, 2.1.302 (reconstructed 2026-10-17, not captured)
 
