@@ -12,6 +12,8 @@ import { server } from "@/test/setup";
 import { recordedSends } from "@/test/handlers";
 import { entry } from "@/test/sent-fixtures";
 import type { SentAnswer, SentEntry } from "@/lib/types";
+import { commandsFor, suggestCommands } from "@/lib/agent-commands";
+import { SUGGEST_LIMIT } from "@/lib/sent-suggest";
 import { Composer } from "./composer";
 
 // Sent in the composer of a shell pane (M61 spec 02): the belt's button and the suggestion strip above
@@ -318,6 +320,16 @@ describe("Composer: one strip, two sources (#475)", () => {
     expect(screen.queryByRole("group", SENT)).toBeNull();
     expect(screen.queryByRole("button", { name: "All sent lines" })).toBeNull();
     expect(asked).toEqual([]);
+  });
+
+  it("caps the commands at Sent's twelve chips, best matches first, so a bare `/` shows the first twelve", async () => {
+    renderComposer({ isShell: false, agent: "claude" });
+    await userEvent.type(box(), "/");
+    await waitFor(() => expect(isOpen(COMMANDS)).toBe(true));
+    const ranked = suggestCommands("/", commandsFor("claude")).map((c) => c.command);
+    expect(ranked.length).toBeGreaterThan(SUGGEST_LIMIT);
+    const chips = Array.from(screen.getByRole("group", COMMANDS).querySelectorAll("button")).map((b) => b.textContent);
+    expect(chips).toEqual(ranked.slice(0, SUGGEST_LIMIT));
   });
 
   it("offers Sent rows on a shell pane, and no commands", async () => {

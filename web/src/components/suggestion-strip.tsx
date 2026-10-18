@@ -7,7 +7,7 @@ import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { useLocale } from "@/hooks/use-locale";
 import type { AgentCommand } from "@/lib/agent-commands";
 import { t } from "@/lib/i18n";
-import { segmentsOf, suggest, type Suggestion, type SuggestionLine } from "@/lib/sent-suggest";
+import { segmentsOf, suggest, SUGGEST_LIMIT, type Suggestion, type SuggestionLine } from "@/lib/sent-suggest";
 import { cn } from "@/lib/utils";
 
 // THE SUGGESTION STRIP: one row of chips directly above the composer's text box, the way a phone
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 //   Settings switch `sentSuggestions` governs this source and only this one.
 // - COMMANDS, on an agent pane (#475). The agent's own command list (the shipped catalog, or the
 //   operator's `commands.toml` rows where they address the pane), filtered by the typed `/` or `$`
-//   token (lib/agent-commands.ts `suggestCommands` ranks them). A tap fills the box with the command
+//   token (lib/agent-commands.ts `suggestCommands` ranks them), at most SUGGEST_LIMIT chips. A tap fills the box with the command
 //   and a trailing space, and the trailing space closes the row. Nothing here reads a file on disk.
 //
 // IT MUST NEVER TAKE THE KEYBOARD AWAY. A tap on a button moves focus off the text box, and that
@@ -93,7 +93,9 @@ function chipsOf(source: SuggestionSource, sentOffered: readonly Suggestion[]): 
       pick: () => source.onPick(suggestion.line),
     }));
   }
-  return source.commands.map((command) => ({
+  // The same cap as Sent's: the best matches first, in the order `suggestCommands` ranked them. A bare
+  // `/` therefore shows the first twelve, and the Agent palette stays the place for the full list.
+  return source.commands.slice(0, SUGGEST_LIMIT).map((command) => ({
     key: command.command,
     suggestion: { line: command.command, marks: [] },
     pick: () => source.onPick(command),
