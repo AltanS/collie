@@ -151,7 +151,7 @@ describe("one message to one pane", () => {
     r.host.answer = { outcome: "refused", reason: "not_free" };
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
     await r.service.deliverer.settled();
-    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "dialog open" });
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "box not free" });
     expect(r.service.inbox("main", "w1:p1", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
   });
 
@@ -381,6 +381,63 @@ describe("reasons", () => {
     expect(reasonOf({ outcome: "refused", reason: "turn_running" })).toBe("turn running");
     expect(reasonOf({ outcome: "typed_not_submitted", reason: "mismatch" })).toBe("typed, not submitted");
     expect(reasonOf({ outcome: "expired" })).toBe("expired");
+    // Each its own words: a pane busy typing is not a box that is not free, and neither is a dialog.
+    expect(reasonOf({ outcome: "refused", reason: "busy" })).toBe("pane busy");
+    expect(reasonOf({ outcome: "refused", reason: "not_free" })).toBe("box not free");
+  });
+});
+
+describe("two messages to one pane", () => {
+  /** A Send Protocol that answers each send only when the test says, and refuses `busy` while one types. */
+  class SlowHost extends FakeHost {
+    readonly events: string[] = [];
+    private typing = 0;
+    readonly finish: Array<() => void> = [];
+    override async send(target: WalkyPane, sendId: string, text: string): Promise<SendResult> {
+      this.sends.push({ pane: target.paneId, id: sendId, text });
+      if (this.typing > 0) {
+        this.events.push(`busy ${sendId}`);
+        return { outcome: "refused", reason: "busy" };
+      }
+      this.typing += 1;
+      this.events.push(`start ${sendId}`);
+      await new Promise<void>((resolve) => this.finish.push(resolve));
+      this.events.push(`end ${sendId}`);
+      this.typing -= 1;
+      this.states.set(sendId, { outcome: "sent" });
+      return { outcome: "sent" };
+    }
+  }
+
+  test("the second waits for the first to be answered, then is typed: never into it, never parked", async () => {
+    const host = new SlowHost([pane("w1:p1")]);
+    const r = rig([], { host });
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1", "first"), operator);
+    await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p1", "second"), operator);
+    await Bun.sleep(5);
+    // The second is not sent while the first types; its receipt stays `accepted`, as a hold's does.
+    expect(host.events).toEqual([`start ${sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1")}`]);
+    expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "accepted" });
+    host.finish.shift()!();
+    await Bun.sleep(5);
+    host.finish.shift()!();
+    await r.service.deliverer.settled();
+    const [one, two] = [sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1"), sendIdOf("wt_aaaaaaaaaaa2", "local/w1:p1")];
+    expect(host.events).toEqual([`start ${one}`, `end ${one}`, `start ${two}`, `end ${two}`]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "delivered" });
+    expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "delivered" });
+  });
+
+  test("a message still waiting after the bound is `inbox-only: pane busy`, and sends nothing", async () => {
+    const host = new SlowHost([pane("w1:p1")]);
+    const r = rig([], { host, laneWaitMs: 10 });
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1", "first"), operator);
+    await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p1", "second"), operator);
+    await Bun.sleep(40);
+    expect(r.service.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "inbox-only", reason: "pane busy" });
+    expect(host.sends.map((sent) => sent.id)).toEqual([sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1")]);
+    host.finish.shift()!();
+    await r.service.deliverer.settled();
   });
 });
 
