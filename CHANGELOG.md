@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **The phone offers an update only once its release is published.** The release check reads each release's `collie-release.json`, and a tag whose file answers 404 is not offered yet, so the banner, the update sheet and the push wait until the release is out. `collie update` in that window says the release is not published yet, and the phone shows the same reason instead of a generic one. A slow or failed read still offers the update. Thanks @viniciosrab (#503).
+- **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
 
 ## [1.22.6] - 2026-10-18
 

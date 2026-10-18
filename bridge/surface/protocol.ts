@@ -13,7 +13,8 @@
 //   write   the whole text in one write per line (a bracketed paste where the multiplexer and the
 //           profile allow it); a line break is the profile's newline key, through the gate
 //   S1      (6, 2500) read until the box holds exactly the predicted text (or the profile's collapse
-//           form) and nothing else moved; else `typed_not_submitted`
+//           form) and nothing else moved; else `typed_not_submitted`. A turn that started after an
+//           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
 //   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`
 // A request past the sum of the bounds ends `unknown` and releases the lock. Escape is never sent.
@@ -896,6 +897,31 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
   return null;
 }
 
+/**
+ * The turn rule of a manual send on a harness whose Enter does not queue (it steers the turn, or no lab
+ * run measured it): no box was found to read the turn from, so any running sign on the screen counts.
+ * Then a command the profile never lets wait is refused first, and otherwise the send takes the queue
+ * key (`"queue"`), or is refused when the profile names none (or the turn holds a command). Null when
+ * the rule does not apply or no running sign shows. Enter never steers a turn by accident.
+ */
+function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
+  const profile = state.match?.profile;
+  if (profile === undefined || profile.keys.enterWhileRunning === "queues" || state.request.mode === "discard") return null;
+  const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+  const runs = snap.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
+  if (!runs) return null;
+  const leads = profile.reservedLeads;
+  const isCommand = state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null;
+  // The never-held check comes first, as in turnRefusal: the refusal after it would be held.
+  if (isCommand && neverHeldEntry(state.request.text, state.match) !== null) {
+    state.neverHold = true;
+    return new Ended("refused", "turn_running", { surface: snap.surface, detail: NEVER_HELD });
+  }
+  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: TURN_RUNNING });
+  if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: COMMAND_IN_TURN });
+  return "queue";
+}
+
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
 const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may have taken it. Check the transcript.";
 
@@ -974,6 +1000,8 @@ function typedDetail(reason: SendReason): string | undefined {
 }
 /** The detail of a typed command whose list over or under the box pointed at another command: Enter would have run that one. */
 const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
+/** The detail of a send whose S1 read showed a turn that started after S0, one the turn rule would refuse or hold (PR 491). */
+const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
 
 /**
  * Whether a read shows a command typed into the box while the harness's command list under it points
@@ -2567,29 +2595,37 @@ export class SendProtocol {
     return frame;
   }
 
-  /**
-   * The manual path on a harness whose Enter does not queue (it steers the turn, or no lab run measured
-   * it): S0 found no box to read the turn from, so any running sign on the screen counts. Then a command
-   * the profile never lets wait is refused first, and otherwise the send takes the queue key, or is
-   * refused when the profile names none (or the turn holds a command). Enter never steers a turn by
-   * accident.
-   */
+  /** The manual path's turn rule at S0 ({@link steeringTurn}): a refusal ends the send, a queued send takes the queue key. */
   private gateSteeringTurn(state: RunState, s0: Snap): void {
-    const profile = state.match?.profile;
-    if (profile === undefined || profile.keys.enterWhileRunning === "queues" || state.request.mode === "discard") return;
-    const signs = (profile.idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
-    const runs = s0.texts.some((row) => isRunningRow(row) || signs.some((sign) => sign.test(row.trimEnd())));
-    if (!runs) return;
-    const leads = profile.reservedLeads;
-    const isCommand = state.request.mode === "command" || state.command || reservedLead(state.request.text, leads) !== null;
-    // The never-held check comes first, as in turnRefusal: the refusal after it would be held.
-    if (isCommand && neverHeldEntry(state.request.text, state.match) !== null) {
-      state.neverHold = true;
-      throw new Ended("refused", "turn_running", { surface: s0.surface, detail: NEVER_HELD });
+    const verdict = steeringTurn(state, s0);
+    if (verdict instanceof Ended) throw verdict;
+    if (verdict === "queue") state.queued = true;
+  }
+
+  /**
+   * The turn rule again on the S1 read that passed (PR 491, 2026-10-18). S0 read no turn, but one may
+   * start in the few hundred milliseconds before the commit key, and the S1 compare lets that through
+   * where the turn draws only in the band over the box. So the read the commit is bound to meets the
+   * rule S0 applies to a running turn: {@link turnRefusal} when the Surface reads the turn running over
+   * a found box, else the running-sign rule of a manual send ({@link steeringTurn}). A send the rule
+   * refuses or would hold gets no commit key: it ends `typed_not_submitted` with its text in the box
+   * ({@link TURN_STARTED}), and nothing is held or typed again. A send the rule allows goes ahead as
+   * before; on a harness whose Enter does not queue it takes the queue key, as at S0, so Enter never
+   * steers the turn. The rule's cue part reads S0's rows, as in aboveMovedInTurn: what may stand at the
+   * box once the text is typed is the S1 compare's to say (a command's own list under the box is no
+   * dialog). A send S0 already put on the queued path met the rule there and skips this.
+   */
+  private turnAtS1(state: RunState, s0: Snap, s1: Snap): void {
+    if (state.queued) return;
+    // The box as S0 read it: what goes out is the text plus what the box held then (Add to it).
+    const frame = s1.surface.turn === "running" && s1.frame !== null ? s0.frame : null;
+    const verdict = frame !== null ? (turnRefusal(state, s0, frame, "below") ?? "queue") : state.manual ? steeringTurn(state, s1) : null;
+    if (verdict === null) return;
+    if (verdict instanceof Ended) {
+      state.marks.s1 = s1;
+      throw new Ended("typed_not_submitted", "changed", sawNote(s1, { framed: s0.frame !== null, rowsHash: s1.rowsHash, detail: TURN_STARTED }));
     }
-    if (!queuesInTurn(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: TURN_RUNNING });
-    if (isCommand && !commandQueues(state.match)) throw new Ended("refused", "turn_running", { surface: s0.surface, detail: COMMAND_IN_TURN });
-    state.queued = true;
+    if (state.match?.profile.keys.enterWhileRunning !== "queues") state.streamed = true;
   }
 
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
@@ -3079,7 +3115,10 @@ export class SendProtocol {
       why = "mismatch";
       return "wait";
     });
-    if (result.verdict === "pass" && result.snap !== null) return result.snap;
+    if (result.verdict === "pass" && result.snap !== null) {
+      this.turnAtS1(state, s0, result.snap);
+      return result.snap;
+    }
     // A dialog that took the box's place leaves no frame to claim it at: the last read's Surface says
     // so when it reads an ask or an unreadable dialog (a screen it cannot read is `unknown`, not one).
     const endedOn = (): SendReason => why; // set inside the poll's callback, so read through a closure
