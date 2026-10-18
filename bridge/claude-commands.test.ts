@@ -3,7 +3,15 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { claudeConfigDir, discoverClaudeCommands, parseFrontmatter, type DiscoveryIo } from "./claude-commands.ts";
+import {
+  claudeConfigDir,
+  discoverClaudeCommands,
+  discoveryDiskIo,
+  MAX_COMMANDS,
+  MAX_SCAN_OPS,
+  parseFrontmatter,
+  type DiscoveryIo,
+} from "./claude-commands.ts";
 
 interface FakeTree {
   readonly [path: string]: string;
@@ -230,6 +238,101 @@ describe("discoverClaudeCommands", () => {
       // A cwd outside home is ignored for project discovery.
       const outsideRows = await discoverClaudeCommands({ home, cwd: outside, configDir });
       expect(outsideRows.map((r) => r.command)).toEqual(["/dotfiles-skill"]);
+    } finally {
+      await rm(sandbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("discoverClaudeCommands: the bounds a reader of the operator's disk keeps", () => {
+  test("command folders are read four levels down and no deeper", async () => {
+    const { names } = await run({
+      "/h/.claude/commands/a/b/c/d/at-limit.md": "x",
+      "/h/.claude/commands/a/b/c/d/e/too-deep.md": "x",
+    });
+    expect(names).toEqual(["/a:b:c:d:at-limit"]);
+  });
+
+  test("a folder of many files costs at most MAX_SCAN_OPS reads and returns at most MAX_COMMANDS rows", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < MAX_SCAN_OPS + 500; i++) files[`/h/.claude/commands/c${String(i).padStart(5, "0")}.md`] = "x";
+    const inner = fakeIo(files);
+    let reads = 0;
+    const counting: DiscoveryIo = {
+      ...inner,
+      read: (path, roots, opts) => {
+        reads += 1;
+        return inner.read(path, roots, opts);
+      },
+    };
+    const rows = await discoverClaudeCommands({
+      home: native("/h"),
+      cwd: null,
+      configDir: native("/h/.claude"),
+      io: counting,
+      warn: () => {},
+    });
+    expect(reads).toBeLessThanOrEqual(MAX_SCAN_OPS);
+    expect(rows.length).toBeLessThanOrEqual(MAX_COMMANDS);
+    expect(rows.length).toBeLessThan(MAX_SCAN_OPS + 500);
+  });
+
+  test("real disk: one folder lists at most 256 entries, and a file is read only to its 64 KiB head", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "collie-claude-bounds-"));
+    try {
+      const home = join(sandbox, "home");
+      const configDir = join(home, ".claude");
+      const commands = join(configDir, "commands");
+      await mkdir(commands, { recursive: true });
+      for (let i = 0; i < 300; i++) await writeFile(join(commands, `c${String(i).padStart(3, "0")}.md`), "x");
+      const big = join(commands, "zz-big.md");
+      const secretBody = "SECRET-BODY-LINE ".repeat(20_000);
+      await writeFile(big, `---\ndescription: head only\n---\n${secretBody}`);
+
+      const listed = await discoveryDiskIo.list(commands, [configDir]);
+      expect(listed?.length).toBe(256);
+
+      const head = await discoveryDiskIo.read(big, [configDir]);
+      expect(head).not.toBeNull();
+      expect(head!.length).toBeLessThanOrEqual(64 * 1024);
+      expect(head!.length).toBeLessThan(secretBody.length);
+
+      const rows = await discoverClaudeCommands({ home, cwd: null, configDir });
+      expect(rows.length).toBeLessThanOrEqual(256);
+      for (const row of rows) {
+        expect(Object.keys(row).toSorted()).toEqual(["argHint", "command", "description"]);
+        expect(JSON.stringify(row)).not.toContain("SECRET-BODY-LINE");
+      }
+    } finally {
+      await rm(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === "win32")("real disk: a symlink to /etc, in a project or in the personal folders, yields no row", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "collie-claude-etc-"));
+    try {
+      const home = join(sandbox, "home");
+      const configDir = join(home, ".claude");
+      const repo = join(home, "code", "app");
+      await mkdir(join(configDir, "skills"), { recursive: true });
+      await mkdir(join(configDir, "commands"), { recursive: true });
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, ".claude", "skills"), { recursive: true });
+      await mkdir(join(repo, ".claude", "commands"), { recursive: true });
+      // A whole folder, and one file, each pointing at /etc.
+      await symlink("/etc", join(configDir, "skills", "etc-skill"));
+      await symlink("/etc", join(configDir, "commands", "etc"));
+      await symlink("/etc/hostname", join(configDir, "commands", "hostname.md"));
+      await symlink("/etc", join(repo, ".claude", "skills", "etc-skill"));
+      await symlink("/etc", join(repo, ".claude", "commands", "etc"));
+      await symlink("/etc/hostname", join(repo, ".claude", "commands", "hostname.md"));
+      // The settings file too: a link to /etc/passwd is not parsed as skill settings.
+      await symlink("/etc/passwd", join(repo, ".claude", "settings.json"));
+
+      const warns: string[] = [];
+      const rows = await discoverClaudeCommands({ home, cwd: repo, configDir, warn: (m) => warns.push(m) });
+      expect(rows).toEqual([]);
+      expect(warns).toEqual([]);
     } finally {
       await rm(sandbox, { recursive: true, force: true });
     }
