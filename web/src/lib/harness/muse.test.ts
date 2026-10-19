@@ -52,7 +52,9 @@ const PINNED = [
   "muse--ask-toppings-notes-open.txt",
   "muse--ask-toppings-review.txt",
   "muse--ask-toppings.txt",
+  "muse--done-1410.txt",
   "muse--done.txt",
+  "muse--draft-1410.txt",
   "muse--draft-blank-row.txt",
   "muse--draft-image-chip.txt",
   "muse--draft-paste-token.txt",
@@ -60,6 +62,7 @@ const PINNED = [
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
+  "muse--idle-1410.txt",
   "muse--palette-exact.txt",
   "muse--palette-hint-moved.txt",
   "muse--palette-hint-skills.txt",
@@ -67,9 +70,13 @@ const PINNED = [
   "muse--palette-partial.txt",
   "muse--palette-skill.txt",
   "muse--palette-typed-arg.txt",
+  "muse--probe-draft-1410.txt",
   "muse--quoted-dialogs-bare.txt",
   "muse--resume-picker-moved.txt",
   "muse--resume-picker.txt",
+  "muse--running-checking-1410.txt",
+  "muse--running-command-1410.txt",
+  "muse--slash-palette-1410.txt",
   "muse--tasks-popup-approval.txt",
   "muse--tasks-popup-draft.txt",
   "muse--tasks-popup.txt",
@@ -126,6 +133,10 @@ const allOpencodeFixtures = readdirSync(PANES_DIR)
   .toSorted();
 
 describeAdapterConformance(museAdapter, {
+  // Muse 1.4.10 paints the bare-`/` slash palette between the box and the bottom rule (measured
+  // live 2026-10-18): the composer is ready, but the prompt row sits more than the bridge's tail
+  // window above the rule, so no region can bind and the sweep goes out unbound there.
+  unboundComposerFixtures: ["muse--slash-palette-1410.txt"],
   ownFixtures,
   foreignFixtures: [
     ...allClaudeFixtures,

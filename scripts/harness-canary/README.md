@@ -156,6 +156,16 @@ bun scripts/harness-canary/watch.ts              # the same lab, for an installe
 A feed is a plain HTTPS GET with no token. omp has a lab spec but no feed, so the nightly run never picks it.
 Name its version by hand: `--version omp=18.12.1`. `watch.ts` runs it for an installed omp that is newer than the ledger.
 
+**Muse has no lab spec, measured 2026-10-18 on Muse Code 1.4.10 (#519).** Two things the lab assumes do not hold.
+The lab installs with `npm install <pkg>@<version>` (`lab/ports.ts`); Muse is not on npm. Its launcher resolves a
+channel manifest (`https://api.meta.ai/muse-code/channels/muse-stable`, a plain GET that names the exact version) and
+downloads the binary from Meta with an auth header, with no way to pin an older version. And a login cannot be seeded
+the way `lab/seed.ts` seeds one: `~/.config/muse/auth.json` holds no token (`mechanism: oauth`, `storage: keychain`,
+`obtained_via: device_code`), so there is no file to copy with the refresh token stripped. An isolated-`HOME` run on
+the person's own machine would either sign in through the same keychain — and a refresh there could turn over the real
+login, the one thing `seed.ts` exists to prevent — or stop at a device-code login no lab leg can answer. Muse stays
+capture-grade until the lab grows a non-npm install and a login seeding that cannot touch the real keychain entry.
+
 **One run.** The lab installs the binary at that version with `npm install` into its own folder, never global.
 It starts a throwaway tmux server with `tmux -f /dev/null -L harness-lab-<pid>`. The person's tmux server is never touched.
 Claude gets an isolated `CLAUDE_CONFIG_DIR` under `~/.cache/collie-lab/harness-lab/<harness>-<version>/`.
