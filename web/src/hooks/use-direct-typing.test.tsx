@@ -18,9 +18,11 @@ interface HarnessProps {
   suspended?: boolean;
   agentKey?: string;
   paneKey?: string;
+  /** Receives the verdict `sendPaneKeys` answers for a tap on the dock button. */
+  onDock?: (ok: boolean) => void;
 }
 
-function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "pane-1" }: HarnessProps) {
+function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "pane-1", onDock }: HarnessProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const direct = useDirectTyping({
     paneKey,
@@ -37,7 +39,7 @@ function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "
     <>
       <button type="button" onClick={direct.activate}>Start typing</button>
       <button type="button" onClick={direct.deactivate}>Stop typing</button>
-      <button type="button" onClick={direct.notePaneKeys}>Dock key</button>
+      <button type="button" onClick={() => void direct.sendPaneKeys(["Tab"]).then(onDock)}>Dock key</button>
       <output aria-label="Typing mode">{direct.active ? "active" : "inactive"}</output>
       <textarea
         aria-label="Terminal input"
@@ -411,16 +413,49 @@ describe("useDirectTyping: the line-end rule, pastes, graphemes and the keyboard
     },
   );
 
-  it("a Keys dock key ends the line too, without this hook sending the dock's key", async () => {
-    const sendKeys = mockSend();
+  it("a Keys dock key ends the line too, and queues behind the text a batch in flight still holds", async () => {
+    const first = deferred<boolean>();
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>()
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValue(true);
     render(<Harness sendKeys={sendKeys} />);
     const box = startTyping();
     fireEvent.change(box, { target: { value: "git" } });
+    expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["g", "i", "t"]);
+    // " sta" waits behind the batch on the wire; the dock's Tab must not overtake it (issue 534).
+    fireEvent.change(box, { target: { value: "git sta" } });
     fireEvent.click(screen.getByRole("button", { name: "Dock key" }));
     expect(box).toHaveValue("");
+    expect(sendKeys).toHaveBeenCalledTimes(1);
+    await act(async () => first.resolve(true));
+    expect(sent(sendKeys)).toEqual(["g", "i", "t", "Space", "s", "t", "a", "Tab"]);
+    // The field holds only what follows the Tab from here.
     fireEvent.change(box, { target: { value: "s" } });
     await act(async () => {});
-    expect(sent(sendKeys)).toEqual(["g", "i", "t", "s"]);
+    expect(sent(sendKeys)).toEqual(["g", "i", "t", "Space", "s", "t", "a", "Tab", "s"]);
+  });
+
+  it("a Keys dock key sends a composition still open before the key, and empties the field", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "git " } });
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "git sta" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dock key" }));
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["g", "i", "t", "Space", "s", "t", "a", "Tab"]);
+    expect(box).toHaveValue("");
+  });
+
+  it("outside Type mode a Keys dock key takes the plain path and answers its verdict", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(false);
+    const onDock = vi.fn<(ok: boolean) => void>();
+    render(<Harness sendKeys={sendKeys} onDock={onDock} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dock key" }));
+    await act(async () => {});
+    expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["Tab"]);
+    expect(onDock).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it("a paste with line breaks sends the text and its Enters, and keeps the line after the last break", async () => {

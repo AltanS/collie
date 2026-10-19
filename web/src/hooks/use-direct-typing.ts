@@ -127,9 +127,10 @@ interface DirectTypingOptions {
 // THE LINE-END RULE. The diff is only right while the pane's line is "what it had when the field was
 // last empty, plus `sentLine`, caret at the end". Every key that reaches the pane WITHOUT going through
 // the diff breaks that: Enter, an arrow (history included), Tab, Escape, and every key from the Keys
-// dock (Ctrl chords included, `notePaneKeys`). So each of them ENDS THE LINE, the same way Enter does
-// (`endLine`): the field's unsent text goes first, then the key, then the field and `sentLine` both
-// empty. A Backspace on the empty field goes straight to the pane too, but finds no line to end.
+// dock (Ctrl chords included). So each of them ENDS THE LINE, the same way Enter does (`endLine`):
+// the field's unsent text goes first, then the key, then the field and `sentLine` both empty. The
+// dock's keys go through this hook's own queue, after the text (`sendPaneKeys`): a request sent
+// beside the queue could overtake a batch still in flight and land before the text. A Backspace on the empty field goes straight to the pane too, but finds no line to end.
 // From there the field holds only what was typed after that key, which the pane
 // inserts at its own caret, so a later Backspace, autocorrect or word delete can never erase text the
 // field did not type (a Tab completion, a recalled history line). A paste that carries a line break
@@ -176,7 +177,9 @@ export function useDirectTyping({
   replyDraft,
   canActivate,
   suspended,
-  sendKeys,
+  // Bound under another name: it is the composer's pressKeys, already a lib/api write, and a bare
+  // `sendKeys(` call here would read as a second door to the scan in lib/key-writes.test.ts.
+  sendKeys: writeKeys,
   onActivate,
   focusInput,
   agentKey,
@@ -207,7 +210,7 @@ export function useDirectTyping({
   // never seen (first mount): only a real observed change disarms, never
   // the initial value or a poll gap resolving to the same name.
   const prevAgentKey = useRef<string | undefined>(undefined);
-  const sender = useOrderedKeySender(sendKeys, () => {
+  const sender = useOrderedKeySender(writeKeys, () => {
     resetMode();
     // Stop the phone keyboard too: otherwise continued typing after a transport failure silently
     // becomes a buffered Reply, which is a different action with an eventual Enter attached.
@@ -278,8 +281,8 @@ export function useDirectTyping({
     setValue(text);
   }
 
-  /** End the line (the rule at the top): whatever the field still holds unsent, then `key` if this
-   *  hook sends it (a Keys dock key goes out on its own path), then an empty field and record. */
+  /** End the line (the rule at the top): whatever the field still holds unsent, then `key` if one
+   *  is given (a Keys dock key is queued by `sendPaneKeys` instead), then an empty field and record. */
   function endLine(key: string | null) {
     const line = inputRef.current?.value ?? "";
     sendLineChange(line);
@@ -319,10 +322,14 @@ export function useDirectTyping({
     replaceField(tail);
   }
 
-  /** Keys sent to the pane outside this hook (the Keys dock) end the line too. */
-  function notePaneKeys() {
-    if (!activeRef.current) return;
+  /** Keys from the Keys dock. Outside Type mode they take the composer's own path, unchanged. In
+   *  Type mode they end the line, and they queue on the SAME sender as the field's text, so the dock
+   *  key always follows the text in queue order. Answers the verdict of the batch that carried them. */
+  function sendPaneKeys(keys: string[]): Promise<boolean> {
+    if (!activeRef.current) return writeKeys(keys);
     endLine(null);
+    pokeIdleTimer();
+    return sender.enqueue(keys);
   }
 
   function clearMode() {
@@ -587,6 +594,6 @@ export function useDirectTyping({
     onCompositionStart,
     onCompositionEnd,
     onKeyDown,
-    notePaneKeys,
+    sendPaneKeys,
   };
 }

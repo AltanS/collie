@@ -777,6 +777,20 @@ describe("Composer: password prompt", () => {
     expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
     expectLeaving(screen.queryByRole("button", { name: /use type/i }));
   });
+
+  it("the handoff masks the Type mode field, because the next line is the secret", async () => {
+    const user = userEvent.setup();
+    refuseUnconfirmed();
+    renderComposerWithStatus({ isShell: true, agent: undefined, surface: SHELL, text: SUDO });
+    const box = screen.getByPlaceholderText(/shell command/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: /use type/i }));
+
+    const typeBox = await screen.findByPlaceholderText(/type into the terminal/i);
+    expect(typeBox).toHaveClass("[-webkit-text-security:disc]");
+  });
 });
 
 describe("Composer — typing into the terminal", () => {
@@ -1137,9 +1151,10 @@ describe("Composer — typing into the terminal", () => {
     await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
     expect(keyCalls.flat()).not.toContain("Enter");
     expect(replyCalls).toBe(0);
-    // The field keeps the line until Enter (issue 534), masked so a password typed here is not shown.
+    // The field keeps the line until Enter (issue 534). Type mode armed by hand shows clear text,
+    // so a command can be read back; only the password handoff masks it.
     expect(box).toHaveValue("b a");
-    expect(box).toHaveClass("[-webkit-text-security:disc]");
+    expect(box).not.toHaveClass("[-webkit-text-security:disc]");
     expect(screen.getByTestId("status")).toHaveTextContent(/typing into the terminal/i);
   });
 

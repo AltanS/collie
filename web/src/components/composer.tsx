@@ -641,6 +641,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the outcome lands, not on the render after. `noticeNoEcho` is the only writer of both — go through
   // it, or the two disagree and the gap is measured in stored passwords.
   const [noEcho, setNoEcho] = useState<{ prompt: string; typed: boolean } | null>(null);
+  // True while Type mode was armed by the password-prompt handoff: the field then shows dots.
+  // `noEcho` cannot gate that, because arming clears the notice and it also gates draft saves and
+  // the refusal strip. Set in the handoff, cleared by the effect after useDirectTyping below.
+  const [handoffMask, setHandoffMask] = useState(false);
   // Why the last text did not go, or what became of it: the sentence, what the bridge saw on the screen,
   // its own words, and the way on (the card, the screen, the Keys dock). It stands at the Send slot until
   // the next send, a tap on an offer, or the strip's x. Every outcome that is not a send lands here and
@@ -723,6 +727,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // falls back to shell) — a change there disarms with a notice.
     agentKey: agent ?? "shell",
   });
+  // The mask belongs to the handoff's armed session only. A refused arm, a Stop or any disarm ends
+  // it, so a later Type mode armed by hand shows clear text.
+  useEffect(() => {
+    if (handoffMask && !direct.active) setHandoffMask(false);
+  }, [direct.active, handoffMask]);
 
   // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
   //
@@ -1825,11 +1834,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // refused chord greys its own button instead of being discovered by a failed send.
               unsupportedKeys={unsupportedKeys}
               // A dock key moves or ends the pane's line behind Type mode's field (use-direct-typing.ts,
-              // the line-end rule), so the field lets go of its line first.
-              onSend={(keys) => {
-                direct.notePaneKeys();
-                return pressKeys(keys);
-              }}
+              // the line-end rule). In Type mode it queues behind the field's unsent text on the hook's
+              // own sender, so it can never overtake it; outside Type mode it goes out through pressKeys.
+              onSend={(keys) => direct.sendPaneKeys(keys)}
               presets={keyPresets}
               board={keyBoard}
               onQueueChange={setQueuedKeys}
@@ -2139,6 +2146,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // spot.
                       updateInput("");
                       requestDrawer(null);
+                      setHandoffMask(true);
                       direct.activate();
                     }
               }
@@ -2406,9 +2414,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               hand === "left" && "pr-2",
-              // Type mode keeps the line in the field until Enter (issue 534), and the password
-              // prompt hands off to it, so the field shows dots. The mirror above shows the echo.
-              direct.active && "[-webkit-text-security:disc]",
+              // Dots only for the handoff from a password prompt. Type mode keeps the line in the
+              // field until Enter (issue 534), so there the field would hold the secret in clear.
+              // A Type mode the operator armed by hand shows clear text, as every release before
+              // did, so a command can be read back while it is typed.
+              direct.active && handoffMask && "[-webkit-text-security:disc]",
               // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
               // family the mirror above it renders in, not the app's chrome face. `font-mono` is
               // the mirror's own default; the style below follows the operator's mirror-family
