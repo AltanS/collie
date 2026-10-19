@@ -20,6 +20,8 @@ export const de: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "Darstellung",
   "settings.section.appearance.blurb": "Design, Sprache, Schriften",
+  "settings.section.harnesses.title": "Harness-Konfiguration",
+  "settings.section.harnesses.blurb": "Statuszeile je Agent",
   "settings.section.device.title": "Gerät",
   "settings.section.device.blurb": "Haptik, Zen-Modus",
   "settings.section.voice.title": "Spracheingabe",
@@ -94,6 +96,8 @@ export const de: Dictionary = {
   "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
   "settings.harnessBar.title": "Harness-Tastenkürzel",
   "settings.harnessBar.description": "Eine Leiste mit den eigenen Befehlen des laufenden Agenten über den Tasten.",
+  "settings.harnesses.statusLine.label": "Statuszeile anzeigen",
+  "settings.harnesses.statusLine.description": "Die eigene Statuszeile des Agenten, unter dem Chat angezeigt. Schalte sie aus, wenn die Pillen der Leiste es schon sagen.",
   "settings.beltSize.title": "Größe der Aktionsleiste",
   "settings.beltSize.description": "Wie hoch die Zeile mit Aktionen über der Eingabe ist und wie groß deren Symbole und Wörter sind.",
   "settings.beltSize.option.default": "Standard",

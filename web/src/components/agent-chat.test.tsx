@@ -29,6 +29,7 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
+import { __resetHarnessPrefs, setHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { noPromptsConfirmed, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -74,6 +75,8 @@ beforeEach(() => {
   // Same shape, same reason: a case that folds the strips would otherwise leave every later case
   // rendering a bead bar it never asked for.
   __resetStripsCollapsed();
+  // And the per-harness status line switch: a case that turns a strip off must not blank the next.
+  __resetHarnessPrefs();
   // Same shape once more: launchers.toml's rows are cached for the life of the page (one successful
   // /api/config read), so a case that declares launchers would otherwise leak them into every case
   // that comes after it.
@@ -4594,6 +4597,82 @@ describe("AgentChat — the model label and a footer that already names it", () 
     });
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
     expect(tag(container)?.textContent).toContain("Sonnet 4.5");
+  });
+});
+
+// Settings → Harness configurations. The switch is per harness and only DRAWS less: the strip, and for
+// Claude Code the background-agents block, leave the Chat view, and the model label comes back above
+// the belt because nothing on screen names the model any more.
+describe("AgentChat — the status line switch of Harness configurations", () => {
+  const pane = (name: string) => readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", name), "utf8");
+  const tag = (container: HTMLElement) => container.querySelector('[data-slot="model-tag"]');
+  const on = (agent: string, model: string, extra: Partial<AgentView> = {}): AgentView => ({
+    ...fixtureAgents[0]!,
+    agent,
+    model,
+    ...extra,
+  });
+  const strip = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("div")).find((el) => el.className.includes("max-h-[18dvh]"));
+  const chat = () =>
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "chat", showToolCalls: true }));
+
+  it("on (the default): the strip is drawn and the label stands down", async () => {
+    chat();
+    const { container } = renderChat({
+      text: STATUS_TEXT,
+      agent: on("claude", "claude-opus-4-8", { hasSession: true }),
+    });
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText("[Opus 4.8] ~/webapp · main")).toBeInTheDocument();
+    expect(strip(container)).toBeDefined();
+    expect(tag(container)).toBeNull();
+  });
+
+  it("off for the pane's harness: no strip, and the model label returns", async () => {
+    chat();
+    setHarnessStatusLineShown("claude", false);
+    const { container } = renderChat({
+      text: STATUS_TEXT,
+      agent: on("claude", "claude-opus-4-8", { hasSession: true }),
+    });
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
+    expect(strip(container)).toBeUndefined();
+    expect(tag(container)?.textContent).toContain("Opus 4.8");
+  });
+
+  it("off for another harness: this pane's strip stays", async () => {
+    chat();
+    setHarnessStatusLineShown("codex", false);
+    const { container } = renderChat({
+      text: STATUS_TEXT,
+      agent: on("claude", "claude-opus-4-8", { hasSession: true }),
+    });
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText("[Opus 4.8] ~/webapp · main")).toBeInTheDocument();
+    expect(tag(container)).toBeNull();
+  });
+
+  it("off: Claude Code's background-agents block stays out, on: it is drawn", async () => {
+    chat();
+    const text = pane("claude--draft-footer-single.txt");
+    renderChat({ text, agent: on("claude", "claude-opus-4-8", { hasSession: true }) });
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText(/worker:scout/)).toBeInTheDocument();
+    cleanup();
+    setHarnessStatusLineShown("claude", false);
+    renderChat({ text, agent: on("claude", "claude-opus-4-8", { hasSession: true }) });
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.queryByText(/worker:scout/)).toBeNull();
+  });
+
+  it("off: the Terminal body still shows the real rows", () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    setHarnessStatusLineShown("claude", false);
+    const { container } = renderChat({ text: STATUS_TEXT, agent: on("claude", "claude-opus-4-8") });
+    expect(strip(container)).toBeUndefined();
+    expect(tag(container)?.textContent).toContain("Opus 4.8");
   });
 });
 

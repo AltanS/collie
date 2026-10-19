@@ -20,6 +20,8 @@ export const zh: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "外观",
   "settings.section.appearance.blurb": "主题、语言、字体",
+  "settings.section.harnesses.title": "Harness 配置",
+  "settings.section.harnesses.blurb": "按 agent 设置状态行",
   "settings.section.device.title": "设备",
   "settings.section.device.blurb": "触感、禅模式",
   "settings.section.voice.title": "语音",
@@ -94,6 +96,8 @@ export const zh: Dictionary = {
   "settings.install.iosHint": "在 iPhone 或 iPad 上，点击浏览器分享按钮，选择“添加到主屏幕”。",
   "settings.harnessBar.title": "Harness 快捷键",
   "settings.harnessBar.description": "按键上方显示一排运行中 agent 自己的命令。",
+  "settings.harnesses.statusLine.label": "显示状态行",
+  "settings.harnesses.statusLine.description": "agent 自己的状态行，显示在聊天下方。操作栏上的标签已经说明时，可以关闭。",
   "settings.beltSize.title": "操作栏尺寸",
   "settings.beltSize.description": "输入框上方操作行的高度，以及其中图标和文字的大小。",
   "settings.beltSize.option.default": "默认",

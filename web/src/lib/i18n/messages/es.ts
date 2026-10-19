@@ -19,6 +19,8 @@ export const es: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "Apariencia",
   "settings.section.appearance.blurb": "Tema, idioma, fuentes",
+  "settings.section.harnesses.title": "Configuración de arneses",
+  "settings.section.harnesses.blurb": "Línea de estado, por agente",
   "settings.section.device.title": "Dispositivo",
   "settings.section.device.blurb": "Vibración, modo zen",
   "settings.section.voice.title": "Voz",
@@ -93,6 +95,8 @@ export const es: Dictionary = {
   "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
   "settings.harnessBar.title": "Accesos directos del harness",
   "settings.harnessBar.description": "Una fila con los comandos propios del agente en ejecución sobre las teclas.",
+  "settings.harnesses.statusLine.label": "Mostrar la línea de estado",
+  "settings.harnesses.statusLine.description": "La línea de estado propia del agente, mostrada bajo el chat. Desactívala cuando las píldoras de la barra ya lo dicen.",
   "settings.beltSize.title": "Tamaño de la barra de acciones",
   "settings.beltSize.description": "La altura de la fila de acciones sobre la entrada y el tamaño de sus iconos y palabras.",
   "settings.beltSize.option.default": "Predeterminado",

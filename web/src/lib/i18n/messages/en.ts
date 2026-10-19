@@ -38,6 +38,8 @@ export const en = {
   // answers "is it in here?" without being opened. Keep it short: it truncates on a narrow phone.
   "settings.section.appearance.title": "Appearance",
   "settings.section.appearance.blurb": "Theme, language, fonts",
+  "settings.section.harnesses.title": "Harness configurations",
+  "settings.section.harnesses.blurb": "Status line, per agent",
   "settings.section.device.title": "Device",
   "settings.section.device.blurb": "Haptics, zen mode",
   "settings.section.voice.title": "Voice",
@@ -115,6 +117,8 @@ export const en = {
   "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
   "settings.harnessBar.title": "Harness shortcuts",
   "settings.harnessBar.description": "A row of the running agent's own commands above the keys.",
+  "settings.harnesses.statusLine.label": "Show the status line",
+  "settings.harnesses.statusLine.description": "The agent's own status line, lifted under Chat. Off, when the belt pills already say it.",
   "settings.beltSize.title": "Action belt size",
   "settings.beltSize.description": "How tall the row of actions above the input is, and how large its icons and words are.",
   "settings.beltSize.option.default": "Default",

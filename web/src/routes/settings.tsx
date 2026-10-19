@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, Bell, ChevronRight, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowLeft, Bell, Bot, ChevronRight, FlaskConical, Mic, Palette, Server, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { RouteHeader } from "@/components/app-header";
@@ -68,6 +68,13 @@ const ROWS: Row[] = [
     icon: Palette,
     title: "settings.section.appearance.title",
     blurb: "settings.section.appearance.blurb",
+  },
+  {
+    id: "harnesses",
+    to: (scope) => settingsSectionPath("harnesses", scope),
+    icon: Bot,
+    title: "settings.section.harnesses.title",
+    blurb: "settings.section.harnesses.blurb",
   },
   {
     id: "device",

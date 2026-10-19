@@ -19,6 +19,8 @@ export const ja: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "外観",
   "settings.section.appearance.blurb": "テーマ、言語、フォント",
+  "settings.section.harnesses.title": "ハーネスの設定",
+  "settings.section.harnesses.blurb": "ステータスラインをエージェントごとに",
   "settings.section.device.title": "デバイス",
   "settings.section.device.blurb": "触覚、ゼンモード",
   "settings.section.voice.title": "音声",
@@ -93,6 +95,8 @@ export const ja: Dictionary = {
   "settings.install.iosHint": "iOS または iPadOS では、ブラウザの共有メニューから「ホーム画面に追加」を選択します。",
   "settings.harnessBar.title": "Harnessショートカット",
   "settings.harnessBar.description": "キーの上に、実行中のエージェント固有のコマンドが並びます。",
+  "settings.harnesses.statusLine.label": "ステータスラインを表示",
+  "settings.harnesses.statusLine.description": "エージェント自身のステータスラインを、チャットの下に表示します。ベルトのピルがすでに伝えているときは、オフにします。",
   "settings.beltSize.title": "アクションベルトのサイズ",
   "settings.beltSize.description": "入力欄の上にあるアクション行の高さ、およびそのアイコンと文字の大きさ。",
   "settings.beltSize.option.default": "デフォルト",

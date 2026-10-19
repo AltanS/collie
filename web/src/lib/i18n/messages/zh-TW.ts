@@ -20,6 +20,8 @@ export const zhTW: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "外觀",
   "settings.section.appearance.blurb": "主題、語言、字型",
+  "settings.section.harnesses.title": "Harness 設定",
+  "settings.section.harnesses.blurb": "依 agent 設定狀態列",
   "settings.section.device.title": "裝置",
   "settings.section.device.blurb": "觸覺回饋、禪模式",
   "settings.section.voice.title": "語音",
@@ -93,6 +95,8 @@ export const zhTW: Dictionary = {
   "settings.install.iosHint": "在 iPhone 或 iPad 上，點選瀏覽器分享按鈕，選擇「加入主畫面」。",
   "settings.harnessBar.title": "Harness 捷徑",
   "settings.harnessBar.description": "按鍵上方一列執行中 agent 本身的指令。",
+  "settings.harnesses.statusLine.label": "顯示狀態列",
+  "settings.harnesses.statusLine.description": "agent 自己的狀態列，顯示在聊天下方。動作列上的標籤已經說明時，可以關閉。",
   "settings.beltSize.title": "動作列大小",
   "settings.beltSize.description": "輸入區上方動作列的高度，以及其圖示與文字的大小。",
   "settings.beltSize.option.default": "預設",

@@ -58,6 +58,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:locale:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:haptics:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:harness-bar:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
+  ["collie:harness-prefs:v1", { area: "local", prefix: false, fate: "kept", why: "preference, per harness (status line shown)" }],
   ["collie:strips-collapsed:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:stt-hands-free:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
   ["collie:stt-engine:v1", { area: "local", prefix: false, fate: "kept", why: "preference, Host or This phone for speech (ADR 0096)" }],

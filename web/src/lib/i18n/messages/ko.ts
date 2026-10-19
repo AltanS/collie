@@ -22,6 +22,8 @@ export const ko: Dictionary = {
   // --- settings sections ---
   "settings.section.appearance.title": "화면",
   "settings.section.appearance.blurb": "테마, 언어, 글꼴",
+  "settings.section.harnesses.title": "하네스 설정",
+  "settings.section.harnesses.blurb": "에이전트별 상태 표시줄",
   "settings.section.device.title": "기기",
   "settings.section.device.blurb": "햅틱, 젠 모드",
   "settings.section.voice.title": "음성",
@@ -96,6 +98,8 @@ export const ko: Dictionary = {
   "settings.install.iosHint": "iPhone 및 iPad에서는 브라우저 공유 메뉴에서 \"홈 화면에 추가\"를 선택하여 설치합니다.",
   "settings.harnessBar.title": "Harness 바로가기",
   "settings.harnessBar.description": "키 위에 표시되는 실행 중인 에이전트의 자체 명령 행입니다.",
+  "settings.harnesses.statusLine.label": "상태 표시줄 표시",
+  "settings.harnesses.statusLine.description": "에이전트 자체의 상태 표시줄을 채팅 아래에 표시합니다. 벨트의 알약이 이미 알려 주면 끕니다.",
   "settings.beltSize.title": "작업 벨트 크기",
   "settings.beltSize.description": "입력창 위 액션 행의 높이와 해당 아이콘 및 텍스트의 크기를 설정합니다.",
   "settings.beltSize.option.default": "기본값",
