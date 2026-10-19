@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import {
   commonAncestor,
   isAbsoluteFolder,
+  rootForPane,
   rootOfWorkspace,
   withinBound,
   workspaceRoot,
@@ -160,6 +161,34 @@ describe("workspaceRoot — which folder a workspace's Changes list reads", () =
   });
 });
 
+describe("rootForPane — a workspace root as one pane sees it (#509)", () => {
+  const linux = hostFor("linux");
+  const win = hostFor("win32");
+
+  test("a pane at or below the root keeps it; anywhere else discards it", () => {
+    expect(rootForPane("/home/dev/ws", "/home/dev/ws", linux)).toBe("/home/dev/ws");
+    expect(rootForPane("/home/dev/ws", "/home/dev/ws/one/deep/", linux)).toBe("/home/dev/ws");
+    expect(rootForPane("/home/dev/ws", "/private/tmp/scratch", linux)).toBeNull();
+    expect(rootForPane("/home/dev/ws", "/home/dev/other", linux)).toBeNull();
+    // A shared name prefix is not inside, and a folder above the root is outside it too.
+    expect(rootForPane("/home/dev/ws", "/home/dev/ws-two", linux)).toBeNull();
+    expect(rootForPane("/home/dev/ws", "/home/dev", linux)).toBeNull();
+  });
+
+  test("an unknown cwd cannot discard a root; no root stays no root", () => {
+    expect(rootForPane("/home/dev/ws", "", linux)).toBe("/home/dev/ws");
+    expect(rootForPane("/home/dev/ws", "  ", linux)).toBe("/home/dev/ws");
+    expect(rootForPane("/home/dev/ws", "relative/x", linux)).toBe("/home/dev/ws");
+    expect(rootForPane(null, "/home/dev/ws/one", linux)).toBeNull();
+  });
+
+  test("on Windows paths: case and slash spellings are inside, another drive is not", () => {
+    expect(rootForPane("C:\\Users\\pat\\ws", "c:/users/PAT/Ws/one", win)).toBe("C:\\Users\\pat\\ws");
+    expect(rootForPane("C:\\Users\\pat\\ws", "D:\\scratch", win)).toBeNull();
+    expect(rootForPane("C:\\Users\\pat\\ws", "", win)).toBe("C:\\Users\\pat\\ws");
+  });
+});
+
 // ── The same rules on Windows paths, pinned with path.win32 so Linux CI runs them ───────────────
 
 describe("the root rules on Windows paths (path.win32)", () => {
@@ -287,6 +316,8 @@ function git(cwd: string, ...args: string[]) {
 describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
   let home: string;
   let ws: string;
+  let scratch: string;
+  let elsewhere: string;
   let snap: RootSnapshot;
   const engine = { current: () => snap };
   const req = new Request("http://x/");
@@ -305,6 +336,18 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
       git(dir, "commit", "-q", "-m", "init");
       writeFileSync(join(dir, "a.txt"), `${name} change\n`);
     }
+    // #509: a pane in the same workspace can sit OUTSIDE that folder — in a plain scratch folder
+    // with no repo, or in a different repo altogether.
+    scratch = join(home, "scratch");
+    mkdirSync(scratch, { recursive: true });
+    writeFileSync(join(scratch, "notes.txt"), "no repo here\n");
+    elsewhere = join(home, "elsewhere");
+    mkdirSync(elsewhere, { recursive: true });
+    git(elsewhere, "init", "-q");
+    writeFileSync(join(elsewhere, "a.txt"), "a\n");
+    git(elsewhere, "add", "-A");
+    git(elsewhere, "commit", "-q", "-m", "init");
+    writeFileSync(join(elsewhere, "a.txt"), "elsewhere change\n");
     snap = {
       agents: [pane("w1:p1", "w1", join(ws, "one", "deep", "er"))],
       shellPanes: [pane("w1:p2", "w1", join(ws, "two")), pane("w2:p1", "w2", home)],
@@ -352,6 +395,50 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
     snap = saved;
     expect(res.repos.map((r: { relPath: string }) => r.relPath)).toEqual(["."]);
     expect(basename(res.root)).toBe("two");
+  });
+
+  test("a pane outside the workspace folder shows its own folder, never the workspace repo (#509)", async () => {
+    // The same workspace folder under a linked name: a different spelling, not a different place.
+    const wsLink = join(home, "ws-link");
+    symlinkSync(ws, wsLink, "dir");
+    const saved = snap;
+    snap = {
+      agents: [
+        pane("w1:p1", "w1", join(ws, "one")),
+        pane("w1:p3", "w1", scratch),
+        pane("w1:p4", "w1", elsewhere),
+        pane("w1:p5", "w1", join(wsLink, "one")),
+        pane("w1:p6", "w1", home),
+      ],
+      shellPanes: [],
+      workspaces: [space("w1", "ws", ws), space("w2", "home")],
+    };
+    const inside = await (await paneChanges(engine, "w1:p1", at(), req, home)).json();
+    const outside = await (await paneChanges(engine, "w1:p3", at(), req, home)).json();
+    const outsideDiff = await (await paneChanges(engine, "w1:p3", at("?repo=one&path=a.txt"), req, home)).json();
+    const other = await (await paneChanges(engine, "w1:p4", at(), req, home)).json();
+    const linked = await (await paneChanges(engine, "w1:p5", at(), req, home)).json();
+    const parked = await (await paneChanges(engine, "w1:p6", at(), req, home)).json();
+    const byWs = await (await workspaceChanges(engine, "w1", at(), req, home)).json();
+    snap = saved;
+    // A pane inside the workspace folder keeps the workspace picture (ADR 0065).
+    expect(inside.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
+    // The scratch pane's own folder holds no repo: an empty list under its own root, not the
+    // workspace's repos, and no diff out of them either.
+    expect(outside).toMatchObject({ paneId: "w1:p3", workspaceId: "w1", available: true, repos: [] });
+    expect(basename(outside.root)).toBe("scratch");
+    expect(outside.paneRepo).toBeUndefined();
+    expect(outsideDiff.available).toBe(false);
+    // A pane in a different repo shows THAT repo.
+    expect(other.repos.map((r: { relPath: string }) => r.relPath)).toEqual(["."]);
+    expect(basename(other.root)).toBe("elsewhere");
+    expect(other.paneRepo).toBe(".");
+    // A pane inside the workspace folder under a linked spelling keeps the workspace picture.
+    expect(linked.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
+    // A pane parked in home itself is outside the root and too wide to scan: it says so.
+    expect(parked).toMatchObject({ paneId: "w1:p6", available: false, reason: "no-folder" });
+    // The workspace route is untouched: asked by workspace, it still reads the workspace folder.
+    expect(byWs.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
   });
 
   test("at home: the pane route falls back to the pane's folder, the workspace route says no-folder", async () => {
