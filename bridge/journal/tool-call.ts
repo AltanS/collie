@@ -221,7 +221,13 @@ function readQuestions(o: JsonObject): ToolQuestion[] | undefined {
       if (description !== undefined) entry.description = description;
       options.push(entry);
     }
-    const parsed: ToolQuestion = { question, multiple: q.multiple === true || q.multiSelect === true, options };
+    // Muse spells multi-select as a nested `selection: {mode: "multiple", …}` instead of a flag.
+    const selectionMultiple = isRecord(q.selection) && q.selection.mode === "multiple";
+    const parsed: ToolQuestion = {
+      question,
+      multiple: q.multiple === true || q.multiSelect === true || selectionMultiple,
+      options,
+    };
     const header = text(q.header, MAX_HEADER_CHARS);
     if (header !== undefined) parsed.header = header;
     questions.push(parsed);

@@ -153,6 +153,30 @@ describe("classifyToolCall: a question is recognised by its input", () => {
     expect(classifyToolCall("q", { questions: "nope" }, "s").kind).toBe("other");
   });
 
+  test("Muse's `selection.mode` means multiple", () => {
+    const multi = classifyToolCall(
+      "request_user_input",
+      {
+        questions: [
+          {
+            id: "fruit",
+            question: "Which fruit?",
+            options: [{ label: "Apple" }, { label: "Banana" }],
+            selection: { mode: "multiple", min_selections: 1, max_selections: 2 },
+          },
+        ],
+      },
+      "",
+    );
+    expect(multi.kind === "question" && multi.questions[0]).toMatchObject({ multiple: true });
+    const single = classifyToolCall(
+      "request_user_input",
+      { questions: [{ id: "fruit", question: "Q?", options: ["a"], selection: { mode: "single" } }] },
+      "",
+    );
+    expect(single.kind === "question" && single.questions[0]?.multiple).toBe(false);
+  });
+
   test("a runaway input is capped", () => {
     const options = Array.from({ length: 50 }, (_, i) => ({ label: `o${String(i)}` }));
     const questions = Array.from({ length: 30 }, () => ({ question: "q".repeat(2000), options }));

@@ -56,7 +56,8 @@ import {
 import { containedRealpath, exists, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { resolveImageUrl } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
-import { classifyToolCall } from "./tool-call.ts";
+import { parseUnifiedDiff } from "./diff.ts";
+import { answerLabels, classifyToolCall, questionKey, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   DiscoverHints,
@@ -152,6 +153,95 @@ function unwrapResultText(text: string, toolName: string): UnwrappedResult {
     return { text: parsed.summary };
   }
   return { text };
+}
+
+/**
+ * Fold what a batch result proves about its call onto the classified call, in place.
+ *
+ * Two kinds carry anything here, both measured over the on-disk corpus on 2026-10-18:
+ *
+ * - an `edit_file` success answers `edited` / `changed lines: …` / `--- original` /
+ *   `+++ updated` / a bare `@@`, then only `-`/`+` lines (3,060 of 3,114 results) — a
+ *   unified diff the shared reader already parses. Counts can undercount where Muse
+ *   itself elided the diff (107 of 3,114 carry an ellipsis/truncation marker); that is
+ *   the log's own clipping, reported as written. `write_file` answers only
+ *   `wrote N bytes to <path>` — no diff, and nothing anywhere tells a create from an
+ *   overwrite — so neither `diff` nor `created` is ever set for it.
+ * - a `request_user_input` answer is JSON `{status, answers}` whose entries are keyed
+ *   by question ID (`selected_label`, `selected_labels`, or `free_text`). The same
+ *   answers are duplicated in `run/user_input_prompt_settled`; the batch copy is read
+ *   because it is already joined to the call. An `interrupted` status, or any question
+ *   left unanswered, sets nothing — `answers` means the call completed with answers.
+ */
+function enrichCallFromBatch(
+  call: ToolCall | undefined,
+  questionIds: readonly (string | undefined)[] | undefined,
+  rawText: string,
+  unwrappedText: string,
+): void {
+  if (call === undefined) return;
+  if (call.kind === "edit") {
+    if (!unwrappedText.startsWith("edited")) return;
+    const fold = parseUnifiedDiff(unwrappedText);
+    if (fold.hunks.length === 0) return;
+    call.diff = fold.hunks;
+    call.added = fold.added;
+    call.removed = fold.removed;
+    return;
+  }
+  if (call.kind !== "question") return;
+  let parsed: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    parsed = JSON.parse(rawText) as JsonValue;
+  } catch {
+    return;
+  }
+  if (!isObj(parsed) || !Array.isArray(parsed.answers)) return;
+  if (parsed.status !== undefined && parsed.status !== "answered") return;
+  const byId = new Map<string, string[]>();
+  for (const answer of parsed.answers) {
+    if (!isObj(answer) || typeof answer.id !== "string") continue;
+    const multi = answerLabels(answer.selected_labels);
+    const single = answerLabels(answer.selected_label);
+    const labels = multi.length > 0 ? multi : single.length > 0 ? single : answerLabels(answer.free_text);
+    if (labels.length > 0) byId.set(answer.id, labels);
+  }
+  const chosen: string[][] = [];
+  for (let i = 0; i < call.questions.length; i++) {
+    const id = questionIds?.[i];
+    const labels = id === undefined ? undefined : byId.get(id);
+    if (labels === undefined) return;
+    chosen.push(labels);
+  }
+  call.answers = chosen;
+}
+
+/**
+ * A question call's question ids, aligned with its classified questions.
+ *
+ * `ToolQuestion` carries no id — the shared card does not need one — but Muse keys its
+ * answers by it, so the adapter holds the ids beside the pending call. Alignment walks
+ * the raw questions in order matching on the classified question text (via the
+ * classifier's own {@link questionKey} clamp), because the classifier may have dropped
+ * a malformed entry the raw list still holds.
+ */
+function questionIdsFor(call: ToolCall, input: JsonValue | undefined): (string | undefined)[] | undefined {
+  if (call.kind !== "question" || !isObj(input) || !Array.isArray(input.questions)) return undefined;
+  const raw = input.questions.filter(isObj);
+  const ids: (string | undefined)[] = [];
+  let at = 0;
+  for (const question of call.questions) {
+    let id: string | undefined;
+    while (at < raw.length) {
+      const entry = raw[at++]!;
+      if (questionKey(entry.question) !== question.question) continue;
+      id = typeof entry.id === "string" && entry.id !== "" ? entry.id : undefined;
+      break;
+    }
+    ids.push(id);
+  }
+  return ids;
 }
 
 /**
@@ -293,6 +383,7 @@ export function parseMuseTranscript(text: string): TranscriptEntry[] {
  * State the reducer keeps across rows: calls waiting for results (pendingTools), task→call
  * linkage for failure flags (taskToCall), calls refused or failed before their result row
  * (deniedCalls, failedCalls), image urls that arrived before their result did (imageForCall),
+ * a question call's question ids for its id-keyed answers (questionIdsByCall),
  * and the live queue. Every map is `rememberPending`-bounded — the keys all originate in a file
  * a process we do not control — and the queue keeps the newest QUEUE_MAX.
  */
@@ -302,6 +393,7 @@ export function createMuseReducer(): RowReducer {
   const failedCalls = new Map<string, true>();
   const deniedCalls = new Map<string, true>();
   const imageForCall = new Map<string, string>();
+  const questionIdsByCall = new Map<string, (string | undefined)[]>();
   const queue: string[] = [];
   const unknown = createUnknownCounter(MUSE_KNOWN);
 
@@ -354,8 +446,11 @@ export function createMuseReducer(): RowReducer {
       if (texts.length === 0 && assets === 0) return NO_CHANGE;
       // An asset is a content hash, not bytes — the picture lives outside the log and the pure
       // parser cannot resolve it. A marked placeholder keeps the turn from rendering empty (or
-      // vanishing, for an image-only turn) without inventing pixels.
-      for (let i = 0; i < assets; i++) texts.push("[image attached]");
+      // vanishing, for an image-only turn) without inventing pixels. Only the deficit is
+      // added: Muse's own text already carries an `[Image #n]` placeholder per pasted
+      // picture (every asset turn in the measured corpus), and naming it twice is noise.
+      const alreadyNamed = texts.join("\n\n").split("[Image").length - 1;
+      for (let i = alreadyNamed; i < assets; i++) texts.push("[image attached]");
       entries.push({
         uuid: rowId,
         ts,
@@ -433,6 +528,8 @@ export function createMuseReducer(): RowReducer {
           if (callId !== "") {
             part.id = callId;
             rememberPending(pendingTools, callId, { part, uuid: rowId });
+            const questionIds = part.call === undefined ? undefined : questionIdsFor(part.call, input);
+            if (questionIds !== undefined) rememberPending(questionIdsByCall, callId, questionIds);
           }
           parts.push(part);
         }
@@ -468,6 +565,13 @@ export function createMuseReducer(): RowReducer {
             if (target.part.call !== undefined && target.part.call.kind === "execute" && unwrapped.exitCode !== undefined) {
               target.part.call.exitCode = unwrapped.exitCode;
             }
+            enrichCallFromBatch(
+              target.part.call,
+              callId === "" ? undefined : questionIdsByCall.get(callId),
+              str(item.text),
+              unwrapped.text,
+            );
+            if (callId !== "") questionIdsByCall.delete(callId);
             // The mutation above landed in a turn that went out rows ago. Name it.
             changed.add(target.uuid);
           } else if (result.text.trim() !== "" || result.imageUrl !== undefined) {
