@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
 - **The harness lab runs Codex, OpenCode and omp to the end.** Codex 0.163.0 no longer stops at once on a missing `CODEX_HOME`: the lab makes the folder, copies an API key login and trusts its one project. Codex, OpenCode and omp may now spend the send and ask turns, each run presses its own decline button, and omp gets a lab spec that signs in with an OpenRouter key from the environment.
 - **A lab pass commits when the profile already reaches the version.** The pass moves the verified-versions row alone then, and keeps the date a person wrote. A pass that cannot commit removes its branch and worktree, so the next try is not refused with "exists already".
+- **Muse's `/effort` and `/hud` pickers read as a dialog, with Escape as the way out.** Their filter field takes every typed character — a digit is filter text, never an answer — so the phone keeps its composer closed and offers no buttons whose taps would type into the filter; the unread-dialog card's Escape leaves the picker without changing a setting (#519).
 
 ## [1.22.6] - 2026-10-18
 

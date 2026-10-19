@@ -51,6 +51,10 @@
 //      there accepts the suggestion rather than submitting the typed text.
 //   3. An open `Note (optional):` row declines its dialog to raw (it owns the keyboard — probed) and
 //      fails the composer gate, so the phone shows the mirror and the keys pad, never buttons.
+//      The filter pickers (/effort, /hud) get the same floor on purpose (DIALOG_NOTES.md §7):
+//      their field swallows every character as filter text — digits included — so they are
+//      recognised as Muse's modal (modalOnScreen) and refused a composer, never lifted into
+//      buttons whose taps would type into the filter.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
@@ -65,7 +69,7 @@ import {
   regionReachesTail,
   stripChrome,
 } from "./chrome";
-import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, locateTail, regionSignature, rstrip } from "./markers";
+import { askHeaderDirectlyAbove, boxHoldsNoDraft, hasFilterPickerTail, isVoiceRule, locateTail, regionSignature, rstrip } from "./markers";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
@@ -178,9 +182,15 @@ function lift(lines: StyledLine[], startLine: number, region: string, dialog: Bl
  * exit (`muse resume <id>`) and the banner Muse paints before its composer have neither, so the card
  * no longer flashes over them (harness canary 2026-10-12, Muse 1.4.6). `composerReady` has already
  * answered false by the time this is asked, so the frame is there and its box does not hold the keys.
+ *
+ * The filter pickers (/effort, /hud — DIALOG_NOTES.md §7) break that geometry: they paint under the
+ * bottom rule where the statusline sat (/effort) or between it and the rule (/hud), so `locateTail`
+ * finds no tail and, before this clause, no card either. Their own tail shape
+ * ({@link hasFilterPickerTail}) is the same positive evidence in the other geometry: the screen is
+ * Muse's modal, its field owns every key, and the card's Escape is the live-proven way out.
  */
 function museModalOnScreen(lines: StyledLine[]): boolean {
-  return locateTail(lines) !== null;
+  return locateTail(lines) !== null || hasFilterPickerTail(lines);
 }
 
 /**

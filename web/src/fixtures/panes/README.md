@@ -2013,6 +2013,10 @@ signature.
 | `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
 | `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
 | `muse--palette-skill.txt` | `/plan` typed: its one suggestion is a built-in skill row, `  /plan · built-in · default skill  On an explicit…`, tags between the command and the gap. The read is `/plan`. Visible-screen read 2026-10-15, cwd swapped for the sandbox path and model label renamed `mini` | `idle` |
+| `muse--filter-effort.txt` | `/effort` open: bare `❯`, bottom rule, `Effort  |  Select Meta reasoning effort`, `filter`, five rows with `⟩ xhigh … current`, footer `↑↓ move · type to filter · enter confirm · esc go back`; the statusline is gone (the picker holds its slot). Not lifted: the composer refuses and the unread-dialog card offers Escape (MUSE-16) | `blocked` |
+| `muse--filter-effort-typed.txt` | Same picker after typing `xh`: `filter: xh`, one matching row left, the `❯` above still bare — typed text lands in the filter, never the box | `blocked` |
+| `muse--filter-effort-nomatch.txt` | After typing `1` next: `filter: xh1`, `no matches for "xh1" — Backspace to clear`, no pointed row — the digit-is-filter-text proof | `blocked` |
+| `muse--filter-hud.txt` | `/hud` open: `filter` under the rule, toggle rows, footer `↑↓ move · enter/space toggle · type to filter · esc close`, and the statusline still painted below the picker. (Its typed twin is not a fixture — see the provenance note below; the adapter test rebuilds it from these rows) | `blocked` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -2025,6 +2029,19 @@ The four `muse--palette-*` rows of 2026-10-15 are visible-screen captures of Mus
 throwaway Herdr session (`herdr pane read --source visible --format ansi`). The statusline's
 shortened cwd was swapped for `/private/tmp/collie-muse-sandbox`, the same 32 characters, and its
 model label renamed `mini`. Nothing was submitted while capturing.
+
+The four `muse--filter-*` files of 2026-10-18 (MUSE-16, issue 519) are visible-screen reads
+(`herdr pane read --source visible`, plain text — no SGR, and the adapter matches shape, never
+colour) of a scratch Muse pane in `/private/tmp/collie-audit/work`, cut at the Voice rule: the
+transcript above it held account/billing panes and was dropped, so each file is the probed tail
+verbatim and nothing more. The probe typed only filter text and arrows inside the pickers and
+left both with Escape; effort (`xhigh`) and every HUD flag were verified unchanged afterwards,
+and Enter was never pressed inside a picker. The typed `/hud` screen (`filter: eff`, two rows
+left) was probed but is deliberately not a fixture: under a foreign Surface profile its few
+under-rule rows walk as a statusline and the generic corpus reads it free (its own profile
+reads it unreadable, and the Muse adapter refuses it), so the adapter test rebuilds that
+geometry from `muse--filter-hud.txt` instead. Full probe log:
+[`DIALOG_NOTES.md`](../../lib/harness/muse/DIALOG_NOTES.md) §7.
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)

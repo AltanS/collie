@@ -380,6 +380,54 @@ Re-probed recipes (key sent → screen after):
 - Trust: `2` alone quit to the shell; `1` alone trusted and started
   the session.
 
+## 7. The filter pickers — recognised, never lifted (added 2026-10-18, MUSE-16 / #519)
+
+Probed keystroke-by-keystroke in a scratch Herdr pane (`/private/tmp/collie-audit/work`) on
+2026-10-18. Fixtures: `muse--filter-effort.txt`, `muse--filter-effort-typed.txt`,
+`muse--filter-effort-nomatch.txt`, `muse--filter-hud.txt` —
+the probed tails verbatim from the Voice rule down (plain-text visible reads; the transcript
+above held account panes and was cut). Both pickers paint BELOW the composer's bottom rule:
+
+```
+── Voice input (⌥ + v to start) ──…
+❯
+─────────────────…
+  Effort  |  Select Meta reasoning effort
+  filter: xh
+
+⟩ xhigh                 current
+
+  ↑↓ move · type to filter · enter confirm · esc go back
+```
+
+`/effort` replaces the statusline outright (the footer is the screen's last row). `/hud`
+(`↑↓ move · enter/space toggle · type to filter · esc close`) keeps the statusline below its
+footer. Either way `locateTail` finds no tail, so without §7's clause the screen read raw with
+no card — the composer already refused on geometry alone, but nothing owned the keyboard.
+
+What was measured, key by key:
+
+- Typing routes to the filter, always. `xh` narrowed /effort to its sole row while the `❯`
+  above stayed bare; `eff` narrowed /hud to `Effort` + `Permissions` (fuzzy, not prefix-only).
+  Focus is not a mode: the whole screen is the focused field.
+- **A digit is filter text, never a shortcut.** `1` turned `filter: xh` into `filter: xh1` +
+  `no matches for "xh1" — Backspace to clear`, with no pointed row. Any card tap emitting a
+  digit or letter would corrupt the filter, and an Enter tap in the no-match state has no
+  pointed row to confirm — Enter inside a picker was deliberately never pressed, so its
+  no-match behaviour stays unmeasured.
+- Arrows move the pointer concurrently with the filter focus, wrapping (`Down` from the last
+  row landed on the first), never clamping.
+- One `Escape` exits the picker entirely (it does not merely clear the filter) and commits
+  nothing: effort stayed `xhigh` and every HUD flag was unchanged after each exit.
+
+So the pickers are NOT lifted. `hasFilterPickerTail` (markers.ts) recognises the tail —
+bare `❯`, bottom rule, `filter[: text]` row, `type to filter` footer closing the screen —
+and that shape only ever refuses: `composerReady` answers false, the draft reads null, and
+`modalOnScreen` answers true so the unread-dialog card offers the declared Escape alone.
+A future menu lift would need its commit suppressed in the no-match state and the same
+never-a-digit rule; nothing here assumes it. `/skills` and other pickers of this family were
+not probed and are not claimed.
+
 ## Decisions the adapter rests on
 
 - **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto
@@ -444,5 +492,7 @@ Re-probed recipes (key sent → screen after):
   tolerated as chrome, never lifted, because the composer stays live under it.)
 - File/peer approval variants: no capture showed them; they ride along only
   if a future capture shows the approval shape above. (Network graduated to §1b on its capture.)
+- The filter pickers (`/effort`, `/hud`): measured in §7 and deliberately kept unlifted —
+  recognised as a modal and refused a composer, Escape alone.
 - Plan approval: Muse 1.3.0 showed no plan-approval dialog shape to lift.
 - The `!`-shell escape and voice-input rule: chrome/tips, never dialogs.

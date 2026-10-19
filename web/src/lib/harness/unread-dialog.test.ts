@@ -253,11 +253,18 @@ const CARD_FIXTURES = {
     notModals: [],
   },
   muse: {
-    // README: the per-question note input, open and typed — real dialogs
+    // README: the per-question note input, open and typed — real dialogs. The filter pickers
+    // (/effort, /hud) joined them with MUSE-16: their field swallows every typed character
+    // as filter text, so no grammar lifts them and Escape (probed to exit without
+    // committing) is the way out.
     modals: [
       "muse--ask-color-notes-open.txt",
       "muse--ask-color-notes-typed.txt",
       "muse--ask-toppings-notes-open.txt",
+      "muse--filter-effort-nomatch.txt",
+      "muse--filter-effort-typed.txt",
+      "muse--filter-effort.txt",
+      "muse--filter-hud.txt",
     ],
     notModals: [],
   },
