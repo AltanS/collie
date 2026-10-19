@@ -286,13 +286,13 @@ const PINNED_PILL =
   "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad) hover:bg-foreground/8 active:bg-foreground/15 active:scale-[0.92] motion-reduce:active:scale-100 duration-[120ms]";
 
 /**
- * The corner badge a pinned mark wears, ONE placement and one disc for both that exist: the Switch
- * mark's needs-you triangle (top right) and the agents mark's count (top left; Altan, 2026-10-19: "move
- * it to the top left, same spot where the agent indicator is shown on the layers icon"). Absolutely
- * placed, so it never moves the glyph or the belt; the chrome-coloured disc and its ring cut it out of
- * the glyph it overlaps. Each caller adds only its corner and its size, so the two cannot drift.
+ * The corner badge a pinned mark wears, ONE corner and one disc for both that exist: the Switch mark's
+ * needs-you triangle and the agents mark's count, both at the top right (Altan, 2026-10-19: "same spot
+ * where the agent indicator is shown on the layers icon", then "I meant top right"). Absolutely placed,
+ * so it never moves the glyph or the belt; the chrome-coloured disc and its ring cut it out of the glyph
+ * it overlaps. Each caller adds only its size, so the two cannot drift.
  */
-const PINNED_MARK_BADGE = "pointer-events-none absolute top-0.5 rounded-full bg-chrome ring-2 ring-chrome";
+const PINNED_MARK_BADGE = "pointer-events-none absolute top-0.5 right-0.5 rounded-full bg-chrome ring-2 ring-chrome";
 
 /** Extra air between the last scrolling pill and the pinned block at full scroll-right, added to the
  *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */
@@ -494,9 +494,9 @@ export interface ActionsRowProps {
    * THE AGENTS MARK (Altan, from the lane, 2026-10-19: "it should be subtle and show up next to files
    * and session layers icon with a number of the currently active agents"; then "agents count should
    * be above the agent icon, it should have a smooth appear/disappear animation and be to the right of
-   * the x"; then "move it to the top left, same spot where the agent indicator is shown on the layers
-   * icon"). An icon-only pill in the pinned block, right of the X and left of Files and the Switch
-   * mark: the Bot glyph with the count of the pane's running subagents as a small badge at its top left, in
+   * the x"; then "same spot where the agent indicator is shown on the layers icon", "I meant top
+   * right"). An icon-only pill in the pinned block, right of the X and left of Files and the Switch
+   * mark: the Bot glyph with the count of the pane's running subagents as a small badge at its top right, in
    * the same ink as its neighbours, no fill and no accent. Pinned, so it never scrolls away and a mark
    * that comes or goes moves nothing in the scroller; it eases in and out through `Collapse` on its x
    * axis. The composer passes it only while the count is above zero. A tap opens the Agents sheet.
@@ -778,32 +778,42 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 ONE element in both modes: only the glyph and the name change, so the swap cannot
                 move a pixel, and a screen reader's focus stays on the button and hears the new name.
                 `onMouseDown` refuses the press's focus move, which keeps the field focused and the
-                phone keyboard up; the `clear` prop says why it is not `onPointerDown`. */}
-            {clear && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-belt-clear=""
-                aria-label={clear.label}
-                aria-disabled={clear.inert === true ? true : undefined}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  if (clear.inert !== true) clear.onClick();
-                }}
-                className={cn(
-                  `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                  pinnedReach(true, !agents && !changes && !handle, hand),
-                  clear.inert === true && "opacity-50",
-                )}
-              >
-                {clear.mode === "undo" ? (
-                  <Undo2 className={cn(BELT_ICON, "text-primary")} />
-                ) : (
-                  <X className={cn(BELT_ICON, "text-primary")} />
-                )}
-              </Button>
-            )}
+                phone keyboard up; the `clear` prop says why it is not `onPointerDown`.
+                It comes and goes through `Collapse` on its x axis, as the agents mark below does and
+                with the same gap trick (Altan, 2026-10-19: "the x icon should appear smoothly not
+                immediately"): it eases in with the first character and out when the box empties.
+                The Collapse's `open` is PRESENCE only, so a swap between X and Undo is a new child
+                inside an open box and runs no transition. `appear`, because this block mounts only
+                once something is pinned, and the X may be what brings it. */}
+            <Collapse axis="x" appear open={clear !== undefined} className="-mr-1.5">
+              {clear && (
+                <span className="flex items-center pr-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-belt-clear=""
+                    aria-label={clear.label}
+                    aria-disabled={clear.inert === true ? true : undefined}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (clear.inert !== true) clear.onClick();
+                    }}
+                    className={cn(
+                      `${STRIP_ROW_PILL} ${PINNED_PILL}`,
+                      pinnedReach(true, !agents && !changes && !handle, hand),
+                      clear.inert === true && "opacity-50",
+                    )}
+                  >
+                    {clear.mode === "undo" ? (
+                      <Undo2 className={cn(BELT_ICON, "text-primary")} />
+                    ) : (
+                      <X className={cn(BELT_ICON, "text-primary")} />
+                    )}
+                  </Button>
+                </span>
+              )}
+            </Collapse>
             {/* THE AGENTS MARK (the `agents` prop): right of the X, left of Files. It comes and goes
                 through `Collapse` on its x axis (ui/collapse.tsx), so it eases open and shut instead
                 of popping, and the neighbours move with it only during that motion, the one in-flow
@@ -813,8 +823,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 pays it back as `pr-1.5` inside; shut, the mark leaves exactly one gap behind.
                 The glyph sits where Files and the Switch mark sit theirs, centred, with nothing in
                 flow beside it. The count is the corner badge the Switch mark's alert wears
-                (`PINNED_MARK_BADGE`), top left, in `tabular-nums` (DESIGN.md §5). */}
-            <Collapse axis="x" open={agents !== undefined} className="-mr-1.5">
+                (`PINNED_MARK_BADGE`), top right, in `tabular-nums` (DESIGN.md §5). `appear`, for the
+                reason the X gives: the mark may be what mounts the block. */}
+            <Collapse axis="x" appear open={agents !== undefined} className="-mr-1.5">
               {agents && (
                 <span className="flex items-center pr-1.5">
                   <Button
@@ -833,7 +844,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                       data-slot="belt-agents-count"
                       className={cn(
                         PINNED_MARK_BADGE,
-                        "left-0.5 flex h-2.5 min-w-2.5 items-center justify-center text-[9px] leading-none font-semibold tabular-nums text-primary",
+                        "flex h-2.5 min-w-2.5 items-center justify-center text-[9px] leading-none font-semibold tabular-nums text-primary",
                       )}
                     >
                       {agents.count}
@@ -888,7 +899,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 {handle.alert === true && (
                   <StatusDot
                     status="blocked"
-                    className={cn(PINNED_MARK_BADGE, "right-0.5 size-2.5")}
+                    className={cn(PINNED_MARK_BADGE, "size-2.5")}
                   />
                 )}
               </Button>

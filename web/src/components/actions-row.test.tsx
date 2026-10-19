@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Keyboard, Terminal } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import { ActionsRow, switchPillInset, type ActionsRowProps, type GeneralAction } from "./actions-row";
+import { COLLAPSE_MS } from "./ui/collapse";
 
 afterEach(() => {
   __resetHarnessBar();
@@ -382,18 +383,17 @@ describe("ActionsRow — the agents mark's glyph and count", () => {
     expect(others[0]).toHaveClass("absolute");
   });
 
-  it("puts the count in the corner badge the Switch mark's alert wears, at the top left", () => {
+  it("puts the count in the corner badge the Switch mark's alert wears, in the same top right corner", () => {
     const { agents, handle } = renderMarks();
     const count = agents.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
     const alert = handle.querySelector<HTMLElement>(".text-status-blocked")!;
     expect(count.textContent).toBe("3");
-    // The shared part, the same on both: placement from the top, the chrome disc and its ring.
-    const shared = ["pointer-events-none", "absolute", "top-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome"];
+    // The same badge on both: the top right corner, the chrome disc and its ring.
+    const shared = ["pointer-events-none", "absolute", "top-0.5", "right-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome"];
     expect(count).toHaveClass(...shared);
     expect(alert).toHaveClass(...shared);
-    // Only the corner differs: the count top left, the alert top right.
-    expect(count).toHaveClass("left-0.5", "tabular-nums");
-    expect(alert).toHaveClass("right-0.5");
+    expect(count).toHaveClass("tabular-nums");
+    expect(count.className).not.toMatch(/left-/);
   });
 });
 
@@ -401,6 +401,11 @@ describe("ActionsRow — the agents mark's glyph and count", () => {
 // pinned block, directly left of the Changes pill, left of the Switch mark without one, alone when
 // neither shows. The composer decides WHEN (a draft in the box, or the Undo window after a tap);
 // this file decides WHERE and how it is drawn.
+/** The box a pinned mark that comes and goes stands in: its Collapse, or the element itself. */
+function slotOf(el: HTMLElement): Element {
+  return el.closest('[data-slot="collapse"]') ?? el;
+}
+
 describe("ActionsRow — the composer's clear slot", () => {
   const handle = () => ({ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" });
   const changes = () => ({ onClick: vi.fn(), label: "Changes" });
@@ -438,7 +443,8 @@ describe("ActionsRow — the composer's clear slot", () => {
     const x = screen.getByRole("button", { name: "Clear message" });
     const changesPill = screen.getByRole("button", { name: "Changes" });
     const grip = screen.getByRole("button", { name: "Switch pane" });
-    expect(x.nextElementSibling).toBe(changesPill);
+    // The X stands in its Collapse (it eases in and out); the box is what sits beside Changes.
+    expect(slotOf(x).nextElementSibling).toBe(changesPill);
     expect(changesPill.nextElementSibling).toBe(grip);
     // Icon-only: the accessible name is the only name it has.
     expect(x.textContent).toBe("");
@@ -455,7 +461,7 @@ describe("ActionsRow — the composer's clear slot", () => {
   it("stands directly left of the Switch mark when the pane has no Changes pill", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} clear={clearX()} />);
     const x = screen.getByRole("button", { name: "Clear message" });
-    expect(x.nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
+    expect(slotOf(x).nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
   });
 
   it("stands alone when neither shows, and still pins a block to stand on", () => {
@@ -529,7 +535,46 @@ describe("ActionsRow — the composer's clear slot", () => {
     expect(undo.textContent).toBe(before.text);
     expect(spacerStyle(container)).toBe(before.spacer);
     expect(undo.querySelector("svg")!.getAttribute("class")).not.toBe(before.icon);
-    expect(undo.nextElementSibling).toBe(screen.getByRole("button", { name: "Changes" }));
+    expect(slotOf(undo).nextElementSibling).toBe(screen.getByRole("button", { name: "Changes" }));
+  });
+
+  it("eases in and out through Collapse on its x axis; a swap between X and Undo runs no transition", () => {
+    vi.useFakeTimers();
+    try {
+      const row = (clear?: NonNullable<ActionsRowProps["clear"]>) => (
+        <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} changes={changes()} {...(clear ? { clear } : {})} />
+      );
+      const { rerender } = render(row());
+      expect(screen.queryByRole("button", { name: "Clear message" })).toBeNull();
+
+      // The first character: the X mounts CLOSED and opens two frames later, so it slides in.
+      rerender(row(clearX()));
+      const box = slotOf(screen.getByRole("button", { name: "Clear message" }));
+      expect(box).toHaveAttribute("data-axis", "x");
+      expect(box).toHaveAttribute("data-state", "closed");
+      expect(box).toHaveClass("grid-cols-[0fr]");
+      act(() => {
+        vi.advanceTimersByTime(64);
+      });
+      expect(box).toHaveAttribute("data-state", "open");
+      expect(box).toHaveClass("grid-cols-[1fr]");
+
+      // X to Undo: the same box, still open, never back through closed.
+      rerender(row(clearX({ mode: "undo", label: "Undo clear" })));
+      expect(slotOf(screen.getByRole("button", { name: "Undo clear" }))).toBe(box);
+      expect(box).toHaveAttribute("data-state", "open");
+
+      // The box empties: it heads closed at once, and the held Undo cannot be pressed on its way out.
+      rerender(row());
+      expect(box).toHaveAttribute("data-state", "closed");
+      expect(box.firstElementChild).toHaveAttribute("inert");
+      act(() => {
+        vi.advanceTimersByTime(COLLAPSE_MS + 1);
+      });
+      expect(screen.queryByRole("button", { name: /Undo clear|Clear message/ })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("wears the Changes pill's shape and tap feedback", () => {
