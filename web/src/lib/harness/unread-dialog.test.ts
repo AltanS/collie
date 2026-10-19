@@ -265,6 +265,7 @@ const CARD_FIXTURES = {
       "muse--filter-effort-typed.txt",
       "muse--filter-effort.txt",
       "muse--filter-hud.txt",
+      "muse--menu-effort-filter.txt",
     ],
     notModals: [],
   },
