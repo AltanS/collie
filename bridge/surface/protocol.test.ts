@@ -52,7 +52,7 @@ function framelessProfile(): Profile {
 }
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
 
-type Mode = "claude" | "generic" | "codex";
+type Mode = "claude" | "generic" | "codex" | "muse";
 
 /** A pane that reacts to text and keys like a harness's input box, with knobs for every failure. */
 class FakePane {
@@ -113,8 +113,9 @@ class FakePane {
   beforeWrite: ((pane: FakePane, what: string) => Promise<void> | void) | null = null;
 
   /**
-   * Codex mode only: the rows Codex 0.163.0 draws for messages queued with Tab during a turn, the
-   * header, one `↳` row per text and the edit hint (lab, M56 spec 13, 2026-10-16).
+   * Codex and Muse modes: the texts queued with Tab during a turn. Codex 0.163.0 draws a header, one
+   * `↳` row per text and the edit hint (lab, M56 spec 13, 2026-10-16); Muse Code 1.4.10 draws its
+   * `◆ Queued input` header over one `└` row for the text (lab, 2026-10-18; several at once unmeasured).
    */
   queued: string[] = [];
   /** Codex mode only: the status row under the box. One with no ` · ` in it leaves the box unframed. */
@@ -139,7 +140,7 @@ class FakePane {
 
   constructor(readonly mode: Mode = "claude") {}
 
-  /** Codex mode: a turn runs while a running row stands over the box, or while {@link turn} says so. */
+  /** Codex and Muse modes: a turn runs while a running row stands over the box, or while {@link turn} says so. */
   private running(): boolean {
     return this.turn ?? this.over.some((row) => row.includes("esc to interrupt"));
   }
@@ -195,7 +196,9 @@ class FakePane {
       if (this.height !== null && this.pinned !== null) return [this.pinned, ...rows.slice(-(this.height - 1))].join("\n");
       return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
     }
-    rows.push(...this.over, RULE, ...this.boxRows(), RULE);
+    // Muse mode: the queued block between the running rows and the box (muse--queued-input-1410.txt).
+    const museQueued = this.mode === "muse" && this.queued.length > 0 ? ["", "◆ Queued input · ↑ to edit", ...this.queued.map((text) => `└ ${text}`)] : [];
+    rows.push(...this.over, ...museQueued, RULE, ...this.boxRows(), RULE);
     if (this.mode === "generic") rows.push(this.footer);
     else rows.push(...(this.popup ?? (this.box.length > 0 && this.statusWithText !== null ? this.statusWithText : this.status)));
     return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
@@ -274,6 +277,12 @@ class FakePane {
         if (this.box.length > 0 && this.running()) this.queued.push(this.box.replace(/\n/gu, " "));
         else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
+      } else if (key === "Tab" && this.mode === "muse") {
+        // Muse Code 1.4.10 (lab, 2026-10-18): Tab queues a draft during a turn and does nothing to an idle draft.
+        if (this.box.length > 0 && this.running()) {
+          this.queued.push(this.box.replace(/\n/gu, " "));
+          this.box = "";
+        }
       } else if (key === "Enter" && this.mode === "codex" && this.takesEnter()) {
         // Enter during a Codex turn steers: the text joins the running turn, above the running row.
         if (this.box.length > 0 && this.running()) this.over = [`› ${this.box.replace(/\n/gu, " ")}`, "", ...this.over];
@@ -1524,6 +1533,136 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(manual.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+describe("muse: Tab queues in a turn, Enter steers it (MUSE-06/07, #519)", () => {
+  // Lab, Muse Code 1.4.10 (1.4.10-R6427.1), 2026-10-18, live pane: Enter during a turn steered it
+  // (the text joined the running turn and answered before it); Tab during a turn queued natively —
+  // `◆ Queued input · ↑ to edit` over `└ <text>` over the box (muse--queued-input-1410.txt), the turn
+  // undisturbed, the text submitted by Muse once the turn ended; Tab on an idle draft did nothing.
+  // A slash command during a turn was not measured, so muse.json declares no `commandWhileRunning`:
+  // commands stay Collie-held, and the never-held spellings refuse before any queueing (MUSE-08).
+  const MUSE_RUNNING = ["◈ Running command · Run sleep 60 — running (19s · esc to interrupt)", "└ (ctrl+b to send to background)"];
+  const muse = (options: Parameters<typeof rig>[0] = {}): Rig => {
+    const r = rig({ pane: new FakePane("muse"), harness: "muse", version: "1.4.10", ...options });
+    r.pane.placeholder = "Start a message with ! to run a shell command yourself";
+    return r;
+  };
+
+  test("a free Muse box: Enter sends, no queued field, Tab never pressed", async () => {
+    const { pane, send } = muse();
+    const answer = await send("please list the files in this folder");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "muse", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt && "queued" in answer.receipt).toBe(false);
+    expect(pane.transcript.at(-1)).toBe("> please list the files in this folder");
+    expect(pane.keysSeen).not.toContain("Tab");
+    neverEscape(pane);
+  });
+
+  test("a running turn: probed, Tab only, and the queued rows Muse draws make the receipt say queued (MUSE-07)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const { pane, send } = muse({ holds });
+    pane.over = [...MUSE_RUNNING];
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(pane.box).toBe("");
+    // The harness's own queue holds it: Collie holds nothing.
+    expect(holds.list()).toEqual([]);
+    expect(pane.render().split("\n")).toEqual(expect.arrayContaining(["◆ Queued input · ↑ to edit", "└ then add a short summary"]));
+    neverEscape(pane);
+  });
+
+  test("a second send into the same Muse turn queues too, under the standing queued rows", async () => {
+    const { pane, send } = muse();
+    pane.over = [...MUSE_RUNNING];
+    expect((await send("first follow-up")).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect((await send("second follow-up")).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toEqual([]);
+    expect(pane.keysSeen.filter((key) => key === "Tab")).toHaveLength(2);
+    expect(pane.queued).toEqual(["first follow-up", "second follow-up"]);
+  });
+
+  test("the Muse witness needs the Queued input header, and the row under it must carry the sent text", async () => {
+    const noHeader = muse();
+    noHeader.pane.over = [...MUSE_RUNNING];
+    noHeader.pane.afterInput = (p, what) => {
+      if (what === "keys:Tab") {
+        p.queued = [];
+        p.over = [...MUSE_RUNNING, "└ then add a short summary"];
+      }
+    };
+    expect((await noHeader.send("then add a short summary")).receipt?.queued).toBeUndefined();
+    const other = muse();
+    other.pane.over = [...MUSE_RUNNING];
+    other.pane.afterInput = (p, what) => {
+      if (what === "keys:Tab") p.queued = ["another message"];
+    };
+    expect((await other.send("then add a short summary")).receipt?.queued).toBeUndefined();
+  });
+
+  test("a command in a Muse turn is Collie-held, not queued by Muse: Tab never pressed (commands unmeasured)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const { pane, send } = muse({ holds });
+    pane.over = [...MUSE_RUNNING];
+    const answer = await send("/compact", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(holds.list().map((entry) => entry.text)).toEqual(["/compact"]);
+    expect(pane.queued).toEqual([]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a never-held Muse command in a turn refuses before any queueing, and ordinary text still queues (MUSE-08)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const { pane, send } = muse({ holds });
+    pane.over = [...MUSE_RUNNING];
+    for (const text of ["/clear", "!git status"]) {
+      const answer = await send(text, { mode: "command" });
+      expect(answer.receipt, text).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail, text).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    }
+    expect(holds.list()).toEqual([]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.queued).toEqual(["then add a short summary"]);
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("Tab queues only in a turn: a turn that ends before Tab leaves the text in the box, and S2 ends it unknown, never sent", async () => {
+    // Unlike Codex's Tab, Muse's does not submit at idle (lab, 2026-10-18), so the box keeps the text
+    // and the standing S2 rule for a commit key that did not empty it applies; the draft survives.
+    const { pane, send } = muse();
+    pane.over = [...MUSE_RUNNING];
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:then")) p.over = [];
+    };
+    const answer = await send("then add a short summary");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter", keys: ["probe", "Backspace", "Tab"] });
+    expect(answer.detail).toBe("The submit key did not reach the box. A dialog may have taken it. Check the transcript.");
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.box).toBe("then add a short summary");
+    expect(pane.queued).toEqual([]);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a Muse screen with no box and a running row: the two-tap send presses Tab, never Enter; with no box there is no witness, so no queued label", async () => {
+    const frameless = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, frame: { ...profile.idle.frame, top: { ...profile.idle.frame.top, pattern: "(?!)" } } } });
+    const { pane, send } = muse({ edit: frameless });
+    pane.over = [...MUSE_RUNNING];
+    const first = await send("then add a short summary");
+    expect(first.receipt?.keys).toEqual([]);
+    expect(first.rowsHash).toEqual(expect.any(String));
+    const manual = await send("then add a short summary", { rowsHash: first.rowsHash! });
+    expect(manual.receipt).toMatchObject({ outcome: "sent" });
+    expect(manual.receipt?.keys.at(-1)).toBe("Tab");
+    expect(manual.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["then add a short summary"]);
   });
 });
 
@@ -3019,6 +3158,14 @@ describe("real screens from the fixture corpus", () => {
     expect(prepared.offers).toEqual([]);
   });
 
+  // Muse Code 1.4.10 with a message in its own queue (lab, 2026-10-18): the `Queued input` rows over
+  // the box are the MUSE-07 witness drawing, and the screen still reads a running turn, never free.
+  test("Muse 1.4.10 drawing a queued input reads a running turn over an empty box (muse--queued-input-1410)", async () => {
+    const { protocol } = rig({ pane: still(fixture("muse--queued-input-1410.txt")), harness: "muse", version: "1.4.10" });
+    const prepared = await protocol.handle({ id: "fixture-muse-queue-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "muse" });
+    expect(prepared.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
   test("an unreadable overlay keeps the manual Send: unconfirmed first, and a hotkey screen fails the probe on commit (M56 spec 06)", async () => {
     const pane = still(fixture("claude--menu-effort-slider--w40-low.txt"));
     const { send } = rig({ pane });
@@ -4303,7 +4450,6 @@ describe("a frameless manual send in a turn is refused where Enter is not known 
   const cases = [
     { harness: "grok", version: "1.0.46", rows: ["  Ctrl+e:expand thinking  │  Space:prompt  │  Esc:cancel  │  Ctrl+b:send to bg  │  Ctrl+.:shortcuts"] },
     { harness: "agy", version: "1.1.17", rows: ["⣟  Generating...", "└ Tip: Use /btw to ask a question without breaking context.", "esc to cancel     accept-edits · Gemini 3.7 Flash · low"] },
-    { harness: "muse", version: "1.4.7", rows: ["◇ Double checking (2m 40s · esc to interrupt)"] },
   ];
   for (const c of cases) {
     test(`${c.harness}: a running sign and no box, two taps: refused turn_running, nothing typed, no Enter`, async () => {
