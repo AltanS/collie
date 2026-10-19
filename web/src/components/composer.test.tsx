@@ -1097,7 +1097,9 @@ describe("Composer — typing into the terminal", () => {
     await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
     expect(keyCalls.flat()).not.toContain("Enter");
     expect(replyCalls).toBe(0);
-    expect(box).toHaveValue("");
+    // The field keeps the line until Enter (issue 534), masked so a password typed here is not shown.
+    expect(box).toHaveValue("b a");
+    expect(box).toHaveClass("[-webkit-text-security:disc]");
     expect(screen.getByTestId("status")).toHaveTextContent(/typing into the terminal/i);
   });
 
