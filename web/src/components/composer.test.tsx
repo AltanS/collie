@@ -4560,8 +4560,11 @@ describe("Composer tasks dock", () => {
 });
 
 describe("Composer agents mark and sheet", () => {
+  // A fixed instant, not the wall clock: a slow CI shard once crossed a minute boundary between the
+  // fixture and the render and read "6m" for a fixture written as five minutes.
+  const NOW = Date.parse("2026-10-19T12:00:00.000Z");
   const RUNNING: PaneSubagent[] = [
-    { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(Date.now() - 5 * 60_000).toISOString(), spawnDepth: 1 },
+    { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(NOW - 5 * 60_000).toISOString(), spawnDepth: 1 },
     { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Palette lists plugin skills", spawnDepth: 1 },
   ];
 
@@ -4641,26 +4644,33 @@ describe("Composer agents mark and sheet", () => {
   });
 
   it("opens a sheet over the page titled with the count, listing each subagent with its label, task and age", async () => {
-    const user = userEvent.setup();
-    renderComposer({ subagents: RUNNING });
-    const pill = screen.getByRole("button", { name: "Agents 2" });
-    expect(pill).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Agents pill on the belt")).not.toBeInTheDocument();
+    // Pinned to NOW, so the age is five minutes plus a few milliseconds whatever the runner's speed.
+    // The sheet's own timers need the clock to tick (`shouldAdvanceTime`), or the click never settles.
+    vi.useFakeTimers({ now: NOW, shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderComposer({ subagents: RUNNING });
+      const pill = screen.getByRole("button", { name: "Agents 2" });
+      expect(pill).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Agents pill on the belt")).not.toBeInTheDocument();
 
-    await user.click(pill);
-    expect(pill).toHaveAttribute("aria-expanded", "true");
-    const sheet = screen.getByRole("dialog", { name: "Agents 2" });
-    const rows = within(sheet).getAllByRole("button").filter((b) => b.dataset.slot === "belt-subagent");
-    expect(rows).toHaveLength(2);
-    // The model names the first; `inherit` names nothing, so the second reads by its type.
-    expect(within(rows[0]!).getByText("Agent · opus")).toBeInTheDocument();
-    expect(within(rows[0]!).getByText("Agents pill on the belt")).toBeInTheDocument();
-    expect(within(rows[0]!).getByText("5m")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("Agent · Explore")).toBeInTheDocument();
+      await user.click(pill);
+      expect(pill).toHaveAttribute("aria-expanded", "true");
+      const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+      const rows = within(sheet).getAllByRole("button").filter((b) => b.dataset.slot === "belt-subagent");
+      expect(rows).toHaveLength(2);
+      // The model names the first; `inherit` names nothing, so the second reads by its type.
+      expect(within(rows[0]!).getByText("Agent · opus")).toBeInTheDocument();
+      expect(within(rows[0]!).getByText("Agents pill on the belt")).toBeInTheDocument();
+      expect(within(rows[0]!).getByText("5m")).toBeInTheDocument();
+      expect(within(rows[1]!).getByText("Agent · Explore")).toBeInTheDocument();
 
-    await user.click(within(sheet).getByRole("button", { name: "Close" }));
-    expect(pill).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+      await user.click(within(sheet).getByRole("button", { name: "Close" }));
+      expect(pill).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("moves nothing in flow: the box and Keys keep their nodes, and every new element sits in the fixed sheet", async () => {
