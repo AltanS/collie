@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,7 +16,8 @@ import { CrewProvider } from "./crew-provider";
 import { Composer } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
-import { type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { type PaneSubagent, type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
@@ -4537,6 +4538,115 @@ describe("Composer tasks dock", () => {
     } finally {
       setLocale("en");
     }
+  });
+});
+
+describe("Composer agents dock", () => {
+  const RUNNING: PaneSubagent[] = [
+    { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(Date.now() - 5 * 60_000).toISOString(), spawnDepth: 1 },
+    { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Palette lists plugin skills", spawnDepth: 1 },
+  ];
+
+  /** The pane route's subagent sheet, faked: it records what it was asked to open and to sync. */
+  function SheetHost({ subagents, open, sync }: { subagents: readonly PaneSubagent[]; open: (t: SubagentTarget) => void; sync: (t: SubagentTarget) => void }) {
+    const [active, setActive] = useState<string | null>(null);
+    const handle = useMemo<SubagentSheetHandle>(
+      () => ({
+        activeCardKey: active,
+        open: (target) => {
+          open(target);
+          setActive(target.cardKey);
+        },
+        sync,
+      }),
+      [active, open, sync],
+    );
+    return (
+      <SubagentSheetCtx.Provider value={handle}>
+        <Composer
+          paneId="w1:p1"
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={FREE}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          subagents={subagents}
+        />
+      </SubagentSheetCtx.Provider>
+    );
+  }
+
+  it("has no Agents pill when the pane carries no subagents", () => {
+    renderComposer();
+    expect(screen.queryByRole("button", { name: /^Agents / })).not.toBeInTheDocument();
+    cleanup();
+    renderComposer({ subagents: [] });
+    expect(screen.queryByRole("button", { name: /^Agents / })).not.toBeInTheDocument();
+  });
+
+  it("shows the count, and the dock lists each running subagent with its label, task and age", async () => {
+    const user = userEvent.setup();
+    renderComposer({ subagents: RUNNING });
+    const pill = screen.getByRole("button", { name: "Agents 2" });
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Agents pill on the belt")).not.toBeInTheDocument();
+
+    await user.click(pill);
+    expect(pill).toHaveAttribute("aria-expanded", "true");
+    const rows = document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]');
+    expect(rows).toHaveLength(2);
+    // The model names the first; `inherit` names nothing, so the second reads by its type.
+    expect(within(rows[0]!).getByText("Agent · opus")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("Agents pill on the belt")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("5m")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("Agent · Explore")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close Agents 2" }));
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("a row tap opens the subagent sheet for that agent, sends nothing, and closes the dock", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn<(t: SubagentTarget) => void>();
+    const sync = vi.fn<(t: SubagentTarget) => void>();
+    const router = createMemoryRouter([{ path: "/", element: <SheetHost subagents={RUNNING} open={open} sync={sync} /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    const rows = document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]');
+    await user.click(rows[1]!);
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0]![0]).toMatchObject({ agentId: "a71a608a981ceee4a", agent: "Explore", summary: "Palette lists plugin skills", status: "running" });
+    expect(recordedSends()).toHaveLength(0);
+    expect(document.querySelector('[data-slot="belt-subagent"]')).toBeNull();
+  });
+
+  it("tells the open sheet the subagent ended once it leaves the running list", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn<(t: SubagentTarget) => void>();
+    const sync = vi.fn<(t: SubagentTarget) => void>();
+    let setList: (next: readonly PaneSubagent[]) => void = () => {};
+    function Live() {
+      const [list, set] = useState<readonly PaneSubagent[]>(RUNNING);
+      setList = set;
+      return <SheetHost subagents={list} open={open} sync={sync} />;
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Live /> }]);
+    render(<RouterProvider router={router} />);
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    await user.click(document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]')[0]!);
+    expect(sync).not.toHaveBeenCalled();
+
+    act(() => setList([RUNNING[1]!]));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]![0]).toMatchObject({ agentId: "acc7972eef92651f4", status: "done" });
   });
 });
 

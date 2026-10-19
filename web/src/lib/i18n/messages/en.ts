@@ -342,6 +342,7 @@ export const en = {
   "composer.controls.quick": "Quick",
   "composer.controls.agent": "Agent",
   "composer.controls.tasks": "Tasks {done}/{total}",
+  "composer.controls.agents": "Agents {count}",
   "composer.controls.displayAria": "Display settings",
   "composer.controls.display": "Display",
   "composer.controls.screenAria": "Show the screen rows, without cards",

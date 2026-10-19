@@ -176,6 +176,12 @@ export interface AgentView {
    */
   todos?: PaneTodo[];
   /**
+   * The subagents of this pane's session that have not finished yet. Mirrors `PaneSubagent` in
+   * bridge/subagents.ts; Claude Code only today. **Absent, never a placeholder**, when none is running
+   * or on an older bridge. Text only, never markup.
+   */
+  subagents?: PaneSubagent[];
+  /**
    * The model this pane's agent is on, in the harness's own words. Mirrors `PaneWire.model` in
    * bridge/types.ts. **Absent, never a placeholder**, and text only: read it through `modelLabel`
    * (lib/model-label.ts), which shortens it and drops anything that is not a name.
@@ -327,6 +333,19 @@ export interface PaneTodo {
   text: string;
   status: PaneTodoStatus;
   activeForm?: string;
+}
+
+/** One running subagent of a pane's session. Mirrors `PaneSubagent` in bridge/subagents.ts. */
+export interface PaneSubagent {
+  /** The id `GET /api/pane/<id>/subagent/<agentId>` takes, the same one an Agent card opens. */
+  agentId: string;
+  agentType?: string;
+  model?: string;
+  /** The call's short description, one line. Empty when Claude Code wrote no meta file for it. */
+  description: string;
+  /** ISO 8601. */
+  startedAt?: string;
+  spawnDepth?: number;
 }
 
 /**

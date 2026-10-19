@@ -159,6 +159,16 @@ export interface TranscriptSource {
    */
   pending?(ref: AgentSessionRef): Promise<string | null>;
   /**
+   * The real folders that hold this session's subagent logs, for the subagent tracker
+   * (bridge/subagents.ts). Each one is contained in the adapter's own roots; the tracker only lists
+   * and reads inside them.
+   *
+   * Optional, and only Claude has it: Claude Code writes `<session>/subagents/agent-<id>.jsonl` and a
+   * `.meta.json` beside it. No other harness writes subagent files today. A harness that starts to
+   * gives its source this method, and its panes get the belt's Agents pill with no other change.
+   */
+  subagentDirs?(ref: AgentSessionRef): Promise<string[]>;
+  /**
    * Size + mtime of a log, WITHOUT reading it — the store's cache-validity check.
    *
    * Split out from `load` on purpose: a journal can be 32 MB, and paging back through a long

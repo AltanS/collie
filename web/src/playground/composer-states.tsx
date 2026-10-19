@@ -1,5 +1,6 @@
-// The composer's thirteen states of the way out (M56 spec 07), one numbered card each, and the five
-// states of the held-send card (14 to 18, ADR 0061 amended 2026-10-18); the section that shows them is
+// The composer's thirteen states of the way out (M56 spec 07), one numbered card each, the five
+// states of the held-send card (14 to 18, ADR 0061 amended 2026-10-18), and the belt's Agents pill
+// beside Tasks with its dock (19 and 20); the section that shows them is
 // sections/composer-states.tsx. See app.tsx's header for the page's own rules, and test/way-out-states.ts for the table every way-out card is drawn from:
 // the same table the way-out tests read, so a card, a test and a placeholder talk about one state.
 //
@@ -8,7 +9,7 @@
 // a Send tap answers "No answer" at the thumb, which is itself a state worth seeing; the Keys dock and
 // the Screen pill are real and answer in one tap.
 //
-// Cards are numbered, 1 to 18, so a worker can be briefed by number ("card 4 is modal unreadable").
+// Cards are numbered, 1 to 20, so a worker can be briefed by number ("card 4 is modal unreadable").
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -16,6 +17,9 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
+import { SubagentSheet } from "@/components/subagent-sheet";
+import { t } from "@/lib/i18n";
+import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { markLive } from "@/lib/liveness";
 import type { HeldRow } from "@/lib/surface/send";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
@@ -262,6 +266,94 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showA
   );
 }
 
+// ── THE BELT'S LISTS (19 and 20) ────────────────────────────────────────────────────────────────────
+// The Agents pill beside Tasks: the subagents of the pane's session that have not finished yet. The
+// real Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent
+// card in Chat opens. There is no bridge behind this page, so the sheet answers that it cannot read
+// the transcript; that is the sheet's own state for an unreadable log.
+
+const BELT_TODOS: PaneTodo[] = [
+  { id: "1", text: "Read the todo tracker", status: "completed" },
+  { id: "2", text: "Wire the subagent tracker", status: "in_progress" },
+  { id: "3", text: "Run the gates", status: "pending" },
+];
+
+const BELT_SUBAGENTS: PaneSubagent[] = [
+  { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(Date.now() - 12 * 60_000).toISOString(), spawnDepth: 1 },
+  { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Find every caller of the todo tracker and say which ones read it at serialise time", startedAt: new Date(Date.now() - 40_000).toISOString(), spawnDepth: 1 },
+];
+
+function BeltListsComposer({ paneId }: { paneId: string }) {
+  return (
+    <SubagentSheet paneId={paneId}>
+      <ChromeBlock>
+        <Composer
+          paneId={paneId}
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={{ revision: 1, turn: "running", modal: "none", composer: "empty" }}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={PREFS}
+          display={{ open: false, onToggle: () => {} }}
+          onSent={() => {}}
+          todos={BELT_TODOS}
+          subagents={BELT_SUBAGENTS}
+        />
+      </ChromeBlock>
+    </SubagentSheet>
+  );
+}
+
+function BeltListsPhone({ paneId, open = false }: { paneId: string; open?: boolean }) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const stamp = () => markLive(paneId);
+    stamp();
+    const timer = setInterval(stamp, RENEW_MS);
+    return () => clearInterval(timer);
+  }, [paneId]);
+  // The open dock is the real Agents tap, taken once for you when the belt has mounted.
+  useEffect(() => {
+    if (!open || host === null) return;
+    const label = t("composer.controls.agents", { count: BELT_SUBAGENTS.length });
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      const pill = Array.from(host.querySelectorAll<HTMLButtonElement>('button[aria-expanded="false"]')).find((b) => b.getAttribute("aria-label") === label);
+      if (pill !== undefined) pill.click();
+      if (pill !== undefined || tries >= 100) clearInterval(timer);
+    }, 50);
+    return () => clearInterval(timer);
+  }, [open, host]);
+  const [router] = useState(() => createMemoryRouter([{ path: "/", element: <BeltListsComposer paneId={paneId} /> }], { initialEntries: ["/"] }));
+  return (
+    <PhoneMock>
+      <div ref={setHost}>
+        <div className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">terminal output above the belt</div>
+        <RouterProvider router={router} />
+      </div>
+    </PhoneMock>
+  );
+}
+
+function BeltListsCase({ n, state, title, reach, note, paneId, open }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean }) {
+  return (
+    <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
+      <CardControls className="flex items-center gap-3">
+        <NumberBadge n={n} />
+        <p className="text-sm font-semibold text-foreground">
+          {n}: {title}
+        </p>
+      </CardControls>
+      <BeltListsPhone paneId={paneId} {...(open === undefined ? {} : { open })} />
+    </Card>
+  );
+}
+
 /**
  * The section's groups, as elements for `Section` to take as direct children (a group is a sub-page of
  * its section, and the bar reads them off the children). The section itself is `sections/composer-states.tsx`
@@ -330,6 +422,24 @@ export function wayOutGroups(): ReactNode[] {
         paneId="held:draft"
         held={ONE_HELD}
         draft="bun run build -- --watch"
+      />
+    </Group>,
+    <Group key="belt-lists" title="The belt's lists">
+      <BeltListsCase
+        n={19}
+        state="belt-agents-pill"
+        title="Agents pill beside Tasks"
+        reach="A Claude Code session with two subagents still running. The pill counts them; with none running it is not drawn."
+        paneId="belt:agents-pill"
+      />
+      <BeltListsCase
+        n={20}
+        state="belt-agents-dock"
+        title="Agents dock open"
+        reach="Tap the Agents pill. Each row is the label an Agent card uses, the task, and how long it has run. A tap opens the subagent sheet and sends nothing."
+        note="The Agents tap is taken for you once the belt has mounted. With no bridge behind this page, a row opens the sheet in its unreadable state."
+        paneId="belt:agents-dock"
+        open
       />
     </Group>,
   ];

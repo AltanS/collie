@@ -1,8 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Bot, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -83,7 +83,9 @@ import { useLive } from "@/lib/liveness";
 import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
-import type { PaneTodo } from "@/lib/types";
+import type { PaneSubagent, PaneTodo } from "@/lib/types";
+import { agentLabel, SubagentSheetCtx, type SubagentTarget } from "@/components/chat-cards";
+import { timeAgoShort } from "@/lib/format";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { VoiceTakeover } from "@/components/voice-takeover";
 import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
@@ -248,6 +250,11 @@ interface ComposerProps {
   screen?: { on: boolean; onToggle: () => void };
   /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
   todos?: readonly PaneTodo[];
+  /**
+   * The pane's subagents that have not finished yet (bridge/subagents.ts), drawn as the Agents pill
+   * beside Tasks and an in-flow dock when non-empty. A finished one leaves the list and stays in Chat.
+   */
+  subagents?: readonly PaneSubagent[];
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -263,7 +270,18 @@ interface ComposerProps {
 // decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
-type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | null;
+type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | "agents" | null;
+
+/** The card key a subagent sheet opened from the belt carries. No Chat card uses it. */
+const BELT_SUBAGENT_KEY = "belt-subagent:";
+
+/**
+ * The name the Agents dock draws for a subagent: its model, else its type. `inherit` names no model,
+ * so the type stands in. The dock and the sheet read it through `agentLabel`, as an Agent card does.
+ */
+function subagentName(subagent: PaneSubagent): string | undefined {
+  return subagent.model !== undefined && subagent.model !== "inherit" ? subagent.model : subagent.agentType;
+}
 
 
 // Grace window after a send during which a terminal draft matching what we just sent is treated as
@@ -369,7 +387,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1117,6 +1135,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     todoList.length > 0
       ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
       : "";
+  // The running subagents: the Agents pill and its dock. A tap on a row opens the SAME sheet an Agent
+  // card in Chat opens (subagent-sheet.tsx), through the context the pane route provides.
+  const subagentList = subagents ?? [];
+  const agentsLabel =
+    subagentList.length > 0 ? translate("composer.controls.agents", { count: subagentList.length }) : "";
+  const subagentSheet = useContext(SubagentSheetCtx);
+  const beltSubagent = useRef<SubagentTarget | null>(null);
+  const openSubagent = (subagent: PaneSubagent) => {
+    if (subagentSheet === null) return;
+    // `agent` is the name `agentLabel` draws; absent, the sheet reads plain "Agent", as a card does.
+    const target: SubagentTarget = {
+      cardKey: `${BELT_SUBAGENT_KEY}${subagent.agentId}`,
+      agent: subagentName(subagent),
+      summary: subagent.description,
+      agentId: subagent.agentId,
+      status: "running",
+    };
+    beltSubagent.current = target;
+    // The sheet covers the composer, so the dock closes first rather than waiting under it.
+    requestDrawer(null);
+    subagentSheet.open(target);
+  };
+  // A sheet opened from the belt has no Chat card to tell it the subagent ended. When the subagent
+  // leaves the running list, the sheet hears it from here, stops polling and shows the report.
+  const runningIds = subagentList.map((s) => s.agentId).join(" ");
+  const activeSheetKey = subagentSheet?.activeCardKey ?? null;
+  const syncSubagent = subagentSheet?.sync;
+  useEffect(() => {
+    const target = beltSubagent.current;
+    if (target === null || syncSubagent === undefined || activeSheetKey !== target.cardKey) return;
+    if (target.agentId !== undefined && runningIds.split(" ").includes(target.agentId)) return;
+    syncSubagent({ ...target, status: "done" });
+  }, [activeSheetKey, runningIds, syncSubagent]);
   // The suggestions above the box read the agent's command list only (the shipped catalog, or the
   // operator's rows): never the skill and command files the palette finds on disk.
   const commandSuggestions = locked || direct.active || isShell ? [] : suggestCommands(input, commandsFor(agent, operatorCommands));
@@ -1819,6 +1870,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </ul>
           </ComposerDock>
         )}
+        {drawer === "agents" && subagentList.length > 0 && (
+          <ComposerDock title={agentsLabel} onClose={closeDrawer}>
+            <ul className="mt-2 divide-y divide-border border-t border-border">
+              {subagentList.map((subagent) => {
+                const started = subagent.startedAt === undefined ? Number.NaN : Date.parse(subagent.startedAt);
+                return (
+                  <li key={subagent.agentId}>
+                    {/* A row is one 44px tap (DESIGN.md §6): it opens the subagent's sheet and sends nothing. */}
+                    <button
+                      type="button"
+                      data-slot="belt-subagent"
+                      onClick={() => openSubagent(subagent)}
+                      className="flex min-h-11 w-full items-start gap-2.5 px-3 py-2 text-left text-sm leading-snug transition-colors active:bg-accent"
+                    >
+                      <StatusDot status="working" surface="bg-background" className="mt-1" />
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="truncate text-xs font-medium text-muted-foreground">
+                          {agentLabel(subagentName(subagent))}
+                        </span>
+                        {subagent.description !== "" && (
+                          <span className="font-content break-words">{subagent.description}</span>
+                        )}
+                      </span>
+                      {Number.isFinite(started) && (
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgoShort(started)}</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </ComposerDock>
+        )}
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -1976,6 +2060,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       on: drawer === "todos",
                       expanded: drawer === "todos",
                       onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
+                    },
+                  ]
+                : []),
+              // The running subagents, beside Tasks and built the same way: withdrawn when none runs,
+              // a dock toggle when some do. It sends nothing.
+              ...(subagentList.length > 0
+                ? [
+                    {
+                      id: "agents",
+                      icon: Bot,
+                      label: agentsLabel,
+                      on: drawer === "agents",
+                      expanded: drawer === "agents",
+                      onSelect: () => requestDrawer(drawer === "agents" ? null : "agents"),
                     },
                   ]
                 : []),

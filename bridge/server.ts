@@ -169,6 +169,7 @@ import {
   maskPaneRead,
   maskSnapshotTitles,
   maskTerminalTitle,
+  maskSubagentList,
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
@@ -1229,6 +1230,11 @@ export function startServer(opts: {
    */
   todos?: { get(pane: AgentView): AgentView["todos"] };
   /**
+   * Each pane's running subagents (bridge/subagents.ts), read synchronously at serialise time like
+   * `todos`. Absent means no pane carries a `subagents` key.
+   */
+  subagents?: { get(pane: AgentView): AgentView["subagents"] };
+  /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
    * carries a `gitHead` key, which is every test that builds this server by hand.
@@ -1572,9 +1578,13 @@ export function startServer(opts: {
       const readTodos = opts.todos?.get(p);
       const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
       const withTodos = todos === undefined ? withCache : { ...withCache, todos };
+      // The running subagents' descriptions are words the agent wrote too, so they take the same mask.
+      const readSubagents = opts.subagents?.get(p);
+      const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
+      const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withTodos : { ...withTodos, gitHead };
+      return gitHead === undefined ? withSubagents : { ...withSubagents, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

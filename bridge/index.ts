@@ -197,6 +197,7 @@ import {
 import { bootSources, ENV_SOURCE_NAME, planPrograms, PROGRAMS_OFF_LOG, programsOff, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
 import {
   bridgeStampSync,
@@ -791,6 +792,8 @@ const paneCache =
     ? null
     : new CacheTracker(journals, { overrides: () => cacheRulesReader() }, () => Date.now());
 const todos = journals === null ? null : new TodoTracker(journals, Date.now);
+// Each pane's running subagents (bridge/subagents.ts), read on the same poll as the todo list.
+const subagents = journals === null ? null : new SubagentTracker(journals, Date.now);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -1504,6 +1507,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   }
   if (todos !== null) {
     engine.onUpdate((s) => void todos.refresh(s.agents, { session: name }).catch(() => {}));
+  }
+  if (subagents !== null) {
+    engine.onUpdate((s) => void subagents.refresh(s.agents, { session: name }).catch(() => {}));
   }
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
@@ -2784,6 +2790,7 @@ const server = startServer({
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
   todos: todos ?? undefined,
+  subagents: subagents ?? undefined,
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   walky,
