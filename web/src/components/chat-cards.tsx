@@ -162,11 +162,20 @@ export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
 // ---------- items ----------
 
 /**
- * A step that is never folded: a delegated agent call, and a question the agent put to the person.
+ * A step that is never folded: a delegated agent call, a question the agent put to the person, and
+ * the agent's own walky talky `send` or `reply` (its card carries the sent message and its receipt).
  * `groupRuns` splits a run around it, and the stream draws it as a card even while tool calls are off.
+ *
+ * The walky test is `parseWalkyCommand`, the same parser `ToolCard` uses to pick its card, so the
+ * step that draws as a walky card is the step that stands alone. `who`, `status` and `inbox` stay
+ * ordinary commands: a received message has its own card already.
  */
 export function standsAlone(item: ChatItem): boolean {
-  return item.kind === "tool" && (item.tool.kind === "task" || item.tool.kind === "question");
+  if (item.kind !== "tool") return false;
+  if (item.tool.kind === "task" || item.tool.kind === "question") return true;
+  const line = shellLineOf(item.tool);
+  const walky = line === null ? null : parseWalkyCommand(line);
+  return walky?.verb === "send" || walky?.verb === "reply";
 }
 
 /**
