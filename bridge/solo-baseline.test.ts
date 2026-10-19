@@ -789,6 +789,10 @@ describe("solo zero-tax — routes", () => {
       // forwards to the member whose folders they are. A solo instance registers both and answers
       // about its own `folders.json`, which it writes only once the operator uses it (see §6 below).
       "/api/folders",
+      // The New page's folder browser (#467) — a SOLO read beside them, named here rather than
+      // exempted. It lists folder names under home on the Files view's bound and gate (ADR 0083),
+      // writes nothing, and forwards with `?host=` like the list.
+      "/api/folders/browse",
       "/api/folders/star",
       // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local

@@ -701,7 +701,9 @@ don't drop a `-c` there without reading the module header. The Files view (`brid
 root comes off the snapshot, never the request, and its real path must pass the same bound; the
 client's path is relative, refused on its shape before any disk call, and its real path must sit
 inside the root's through `containedRealpath`; `.git` and the bridge's state and config folders are
-denied on top. It needs an authorised device (`device-read`), and its bytes go out as JSON, never as
+denied on top. The New page's folder browser (`bridge/folder-browse.ts`, #467) is the same place
+with home as the root: folder names only, the same shape check, containment, deny list, refusal and
+gate, and no new rule. It needs an authorised device (`device-read`), and its bytes go out as JSON, never as
 a document, with one exception: `files/image` ([ADR 0090](./.adr/0090-files-shows-images.md)) sends a
 picture's raw bytes, typed by `sniffImageType` from the bytes alone (PNG, JPEG, GIF, WebP, AVIF; no
 SVG), with `no-store` and a `default-src 'none'; sandbox` CSP, through the same `readFile` checks. `GET /api/fonts/<basename>` does not become a fourth such place: the request's name is **looked up** in the rows the operator's own

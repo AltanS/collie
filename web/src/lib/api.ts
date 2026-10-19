@@ -47,6 +47,7 @@ import type {
   CacheRulesResponse,
   CacheWatchListResponse,
   CacheWatchState,
+  FolderBrowseResponse,
   FoldersResponse,
   LaunchersResponse,
   LaunchCheckResponse,
@@ -2053,6 +2054,19 @@ export function renameAddedLauncher(id: string, label: string, scope?: Scope): P
  */
 export function fetchFolders(scope?: Scope): Promise<FoldersResponse> {
   return req<FoldersResponse>(withScope("/api/folders", scope));
+}
+
+/**
+ * GET /api/folders/browse — the sub-folders of the folder the New page's Folder field names, on THIS
+ * scope's host (#467). `text` is the field as typed: the bridge resolves it with the New page's own
+ * rule, walks up to the nearest folder that exists, and answers the rest as a name filter. Read with
+ * the Files view's bound and gate (ADR 0083), so it answers as a Files read does: `unknown-path` for
+ * a text it will not browse, `stale` for a machine that predates the route, the two 403s for a device
+ * the gate refuses.
+ */
+export function fetchFolderBrowse(text: string, scope?: Scope, signal?: AbortSignal): Promise<FilesAnswer<FolderBrowseResponse>> {
+  const q = text === "" ? "" : `?${new URLSearchParams({ path: text }).toString()}`;
+  return filesRead<FolderBrowseResponse>(`/api/folders/browse${q}`, scope, signal);
 }
 
 /** POST /api/folders/star body — a named contract so `starFolder` infers against it. */

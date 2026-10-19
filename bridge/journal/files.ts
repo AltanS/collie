@@ -50,8 +50,11 @@
 // snapshot (never a root of its own), the relative path is refused on its shape before any disk call
 // (absolute, `..`, `.`, an empty segment, NUL, a backslash, over 4096 bytes), and the real path of the
 // target must lie inside the real path of the root — through this function. A `.git` segment, the
-// bridge's own state folder and its config folder are refused on top. A new reader may reuse this
-// function; it may not become a fourth place without an ADR that says why and names its bound.
+// bridge's own state folder and its config folder are refused on top. The New page's folder browser
+// (bridge/folder-browse.ts, #467) is this same place pointed at home: the client's text is resolved
+// under home, refused on the same shape, contained on real paths through this function, denied the
+// same folders, and answered with folder names only (ADR 0083's header names it). A new reader may
+// reuse this function; it may not become a fourth place without an ADR that says why and names its bound.
 
 import { realpath as realpathNativeCb } from "node:fs";
 import { realpath, stat } from "node:fs/promises";

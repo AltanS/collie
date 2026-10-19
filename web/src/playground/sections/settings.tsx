@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { LauncherHowSheet } from "@/components/launcher-how-sheet";
 import { CommandPicker } from "@/components/new-command-picker";
+import { FolderBrowse } from "@/components/new-space-browse";
 import { NoPromptsSheet } from "@/components/no-prompts-sheet";
 import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { SpaceOverview } from "@/components/space-overview";
@@ -13,7 +14,7 @@ import { CodexConsentSheet, SpeechCards, type SpeechCardsProps } from "@/compone
 import { DEFAULT_THEME_ID, type Theme } from "@/lib/theme/schema";
 import { addImported, removeImported, shippedThemes } from "@/lib/theme/store";
 import { commandChoice, commandKey, commandOptions, offerFor, pickOfKey } from "@/lib/new-page";
-import type { LauncherItem, RecentRun, SttCapability, SttHostStatus, WhistleStatus } from "@/lib/types";
+import type { FolderBrowseResponse, LauncherItem, RecentRun, SttCapability, SttHostStatus, WhistleStatus } from "@/lib/types";
 import {
   devicesPaired,
   devicesUnpaired,
@@ -83,6 +84,64 @@ function CommandPickerDemo({ run, pick, line = "" }: { run: boolean; pick: strin
         typed={command.kind === "typed" ? { line: typed, onLine: setTyped, onGo: () => {} } : null}
         recent={command.kind === "run" ? { busy: false, onRemove: () => {}, onClear: () => {} } : null}
       />
+    </div>
+  );
+}
+
+// ── The New page's Browse row (#467) ──────────────────────────────────────────────────────────────
+
+const BROWSE_HOME = "/home/op";
+/** A small disk for the card: each folder's sub-folders, `*` marking a repository. */
+const BROWSE_TREE = new Map<string, readonly string[]>([
+  [BROWSE_HOME, ["docs", "src", "notes"]],
+  [`${BROWSE_HOME}/docs`, []],
+  [`${BROWSE_HOME}/notes`, []],
+  [`${BROWSE_HOME}/src`, ["*collie", "*plektra-api", "plektra-web", "*website"]],
+  [`${BROWSE_HOME}/src/collie`, []],
+  [`${BROWSE_HOME}/src/plektra-api`, []],
+  [`${BROWSE_HOME}/src/plektra-web`, []],
+  [`${BROWSE_HOME}/src/website`, []],
+]);
+
+/**
+ * The bridge's walk over {@link BROWSE_TREE}: the text resolved under home, the nearest folder that
+ * exists, the rest as a case-insensitive name filter. Outside home is the bridge's `unknown-path`.
+ */
+const browseFixture: NonNullable<Parameters<typeof FolderBrowse>[0]["read"]> = (text) => {
+  const raw = text.trim();
+  const abs = (raw === "" || raw === "~" ? BROWSE_HOME : raw.startsWith("~/") ? `${BROWSE_HOME}/${raw.slice(2)}` : raw.startsWith("/") ? raw : `${BROWSE_HOME}/${raw}`).replace(/\/+$/u, "");
+  if (abs !== BROWSE_HOME && !abs.startsWith(`${BROWSE_HOME}/`)) return Promise.resolve({ outcome: "unknown-path" });
+  const parts = abs.slice(BROWSE_HOME.length).split("/").filter(Boolean);
+  for (let depth = parts.length; depth >= 0; depth--) {
+    const path = [BROWSE_HOME, ...parts.slice(0, depth)].join("/");
+    const subs = BROWSE_TREE.get(path);
+    if (subs === undefined) continue;
+    const filter = parts.slice(depth).join("/");
+    const folders = subs
+      .map((s) => ({ name: s.replace(/^\*/u, ""), git: s.startsWith("*") }))
+      .filter((f) => f.name.toLowerCase().startsWith(filter.toLowerCase()));
+    const parent = depth === 0 ? null : [BROWSE_HOME, ...parts.slice(0, depth - 1)].join("/");
+    const body: FolderBrowseResponse = { path, parent, folders, filter, truncated: false };
+    return Promise.resolve({ outcome: "body", body });
+  }
+  return Promise.resolve({ outcome: "unknown-path" });
+};
+
+/** The Folder field and the Browse row under it, over the fixed tree. Use this folder only fills the field. */
+function BrowseDemo({ initial }: { initial: string }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <div className="flex flex-col gap-2 p-4">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="~ (home dir)"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        className="h-11 rounded-md border border-border bg-background px-3 font-mono text-sm"
+      />
+      <FolderBrowse value={value} home={BROWSE_HOME} scope={undefined} onNavigate={setValue} onUse={setValue} read={browseFixture} />
     </div>
   );
 }
@@ -720,6 +779,17 @@ export function SettingsSection() {
           <PhoneFrameCard height={640}>
             <NewRouter home={homeSolo} />
           </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="new-page-browse"
+          label="New page, Browse folders"
+          reach="on the New page, tap Browse under the Folder field, beside Favourites and Recent."
+          note="The sub-folders of what the field holds, on the chosen machine, read by name under home with the Files view's limits. Tap a folder to go in (the field follows), Up or a crumb to go back, Use this folder to fill the field and move on to Start. Typing narrows the list after a pause: try ~/src/ple. A folder that is a repository carries a git badge. This card reads a fixed tree, not the bridge."
+        >
+          <Stage height={560}>
+            <BrowseDemo initial="~/src" />
+          </Stage>
         </Card>
 
         <Card
