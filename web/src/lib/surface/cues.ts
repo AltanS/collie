@@ -408,8 +408,8 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
  * the sides the profile names ({@link commandListNear}). Null when the profile names no list or neither
  * side holds one.
  */
-export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined): CommandListRead | null {
-  return commandListNear(texts, frame.top, frame.bottom, list);
+export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined, rows?: readonly FrameRow[]): CommandListRead | null {
+  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt);
 }
 
 /**
@@ -419,10 +419,10 @@ export function commandListAt(texts: readonly string[], frame: Frame, list: Comm
  * so the list is no dialog and its rows are read for no cue. A list that points at another command, or
  * at none, is read as before.
  */
-export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): CommandListRead | null {
+export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null, styled?: readonly FrameRow[]): CommandListRead | null {
   if (frame === null || idle === null || frame.placeholder) return null;
   const rows = idle.volatile.below.commandList;
-  const list = commandListAt(texts, frame, rows);
+  const list = commandListAt(texts, frame, rows, styled);
   return list !== null && pointsAt(list, frame.interior.text, rows) ? list : null;
 }
 
@@ -454,7 +454,7 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle));
+  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows));
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.

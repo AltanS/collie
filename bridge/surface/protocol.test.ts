@@ -5491,6 +5491,82 @@ describe("omp 18.11's box composer (issue 497)", () => {
   });
 });
 
+describe("a slash command over Muse's own slash palette inside the box (MUSE-03, #519)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const capture = (name: string): string[] => readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+
+  /**
+   * The capture `name` while the box holds `shown`. Any other box text draws the capture's box
+   * (its top rule, one prompt row, its bottom rule and status row) with that text in it and no
+   * palette rows, as Muse draws a box with no list open. Enter takes the text out of the box
+   * into a transcript row over it.
+   */
+  const scene = (pane: FakePane, name: string, shown: string): void => {
+    const rows = capture(name);
+    const prompt = rows.findLastIndex((row) => plain(row).startsWith("❯"));
+    const bottom = rows.findIndex((row, i) => i > prompt && /^─+$/u.test(plain(row).trim()));
+    expect(prompt).toBeGreaterThan(0);
+    expect(bottom).toBeGreaterThan(prompt);
+    const top = prompt - 1;
+    const above: string[] = [];
+    let taken: string | null = null;
+    pane.beforeWrite = (p, what) => {
+      if (what === "keys:Enter" && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      if (taken === null || what !== "keys:Enter") return;
+      above.push(` ${taken}`, "");
+      taken = null;
+      p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      if (p.box === shown && above.length === 0) {
+        p.fixed = rows.join("\n");
+        return;
+      }
+      const head = rows.slice(0, top);
+      p.fixed = [...head.slice(above.length), ...above, rows[top]!, p.box === "" ? "❯" : `❯ ${p.box}`, rows[bottom]!, ...rows.slice(bottom + 1)].join("\n");
+    };
+  };
+
+  const sendOn = async (
+    name: string,
+    text: string,
+    id?: string,
+  ): Promise<{ answer: SendAnswer; pane: FakePane; deps: Rig["deps"] }> => {
+    const pane = new FakePane("generic");
+    const { send, deps } = rig({ pane, harness: "muse", version: "1.4.7" });
+    scene(pane, name, text);
+    const answer = await send(text, id === undefined ? { mode: "command" } : { id, mode: "command" });
+    return { answer, pane, deps };
+  };
+
+  test("/plan as a command is sent, the palette's bold entry on /plan is its own list; only Enter follows the text", async () => {
+    const { answer, pane } = await sendOn("muse--palette-skill.txt", "/plan");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+    neverEscape(pane);
+  });
+
+  test("/resume as a command is sent under its argument hint, the bold entry on /resume", async () => {
+    const { answer, pane } = await sendOn("muse--palette-hint-skills.txt", "/resume");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+    neverEscape(pane);
+  });
+
+  test("/resume typed while the bold entry moved to /resume-claude is left typed, no Enter, and the detail says the list points elsewhere", async () => {
+    const { answer, pane, deps } = await sendOn("muse--palette-hint-moved.txt", "/resume", "muse-list-elsewhere-1");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe("/resume");
+    expect(deps.store.get("muse-list-elsewhere-1")?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
+    neverEscape(pane);
+  });
+});
+
 describe("S1 reads the turn again before the commit key (PR 491): a turn starts between S0 and the Enter", () => {
   const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
 

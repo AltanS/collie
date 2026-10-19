@@ -2753,7 +2753,7 @@ export class SendProtocol {
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
-    const ownList = ownCommandList(texts, frame, idle);
+    const ownList = ownCommandList(texts, frame, idle, rows);
     const bare = withoutNamedRows(withoutCommandList(rows, ownList), frame);
     // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
     // box holding one of its digits, so its key row is no prompt that holds the keys.
@@ -2786,7 +2786,7 @@ export class SendProtocol {
       notice,
       below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
-      commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList),
+      commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.

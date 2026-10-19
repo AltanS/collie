@@ -265,6 +265,22 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(omp.pointer("│ ❯ ⬢ All models          34 │  All available models")).toBeNull();
   });
 
+  it("muse: the slash palette inside the box names its entries, its pointer bold paint (MUSE-03, #519)", () => {
+    const list = loadProfiles().get("muse")!.idle.volatile.below.commandList!;
+    const commandOf = (source: string, text: string): string | null => new RegExp(source, "u").exec(text)?.groups?.["command"] ?? null;
+    expect(list).toMatchObject({ sides: ["inside"], pointerBold: true, argumentHint: true });
+    // 1.4.10 at 138 columns: the description in a second column; 1.4.8: a skill's tags before the gap.
+    expect(commandOf(list.entry, `  /bug${" ".repeat(51)}Report a bug to the team`)).toBe("/bug");
+    expect(commandOf(list.entry, "  /plan · built-in · default skill  On an explicit planning request")).toBe("/plan");
+    expect(commandOf(list.entry, "  /usage  Show session usage")).toBe("/usage");
+    expect(new RegExp(list.wrapped, "u").test("  ↓ 72 more")).toBe(true);
+    // Not a list row: the box's prompt, a dialog's pointed option, a wrapped prose row, the statusline.
+    expect(commandOf(list.entry, "❯ /model")).toBeNull();
+    expect(commandOf(list.entry, " ❯ 1. Yes")).toBeNull();
+    expect(commandOf(list.entry, "  some wrapped draft text")).toBeNull();
+    expect(commandOf(list.entry, "  muse-wonder-full-1.0 · xhigh · /tmp · YOLO")).toBeNull();
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -712,6 +728,8 @@ describe("parseProfile names the failing field", () => {
     ["no command list side", ["idle", "volatile", "below", "commandList", "sides"], [], "idle.volatile.below.commandList.sides"],
     ["an unknown command list side", ["idle", "volatile", "below", "commandList", "sides"], ["under", "left"], "idle.volatile.below.commandList.sides[1]"],
     ["a command list side named twice", ["idle", "volatile", "below", "commandList", "sides"], ["under", "under"], "idle.volatile.below.commandList.sides[1]"],
+    ["a command list pointerBold that is no boolean", ["idle", "volatile", "below", "commandList", "pointerBold"], "yes", "idle.volatile.below.commandList.pointerBold"],
+    ["a command list argumentHint that is no boolean", ["idle", "volatile", "below", "commandList", "argumentHint"], "yes", "idle.volatile.below.commandList.argumentHint"],
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],

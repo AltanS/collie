@@ -53,7 +53,17 @@
       },
       "below": {
         "maxRows": 2,
-        "footerMaxRows": 2
+        "footerMaxRows": 2,
+        "commandList": {
+          "pointer": "^  (?<command>/\\S+)(?: · [^·]+?)* {2,}\\S.*$",
+          "entry": "^  (?<command>/\\S+)(?: · [^·]+?)* {2,}\\S.*$",
+          "wrapped": "^  ↓ \\d+ more$",
+          "sides": [
+            "inside"
+          ],
+          "pointerBold": true,
+          "argumentHint": true
+        }
       }
     },
     "dialogsInBox": true,

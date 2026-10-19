@@ -14,7 +14,7 @@
 // from nothing but the rows.
 
 import { displayWidth } from "../text-width";
-import { listedBottom, ownListUnder } from "./command-list";
+import { insideList, listedBottom, ownListUnder } from "./command-list";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
@@ -384,6 +384,30 @@ function hintStart(row: FrameRow, piece: DraftPiece, colours: ReadonlySet<string
   return null;
 }
 
+/** A bracketed run and nothing else: an argument hint's shape (`[<model-id>]`). */
+const BRACKETED = /^\[[^\]]+\]$/u;
+
+/**
+ * Where a bracketed argument hint starts in the prompt row's hole (`commandList.argumentHint`), or
+ * null when the hole ends in none: the hole's last visible run opens with a space, is bracketed and
+ * nothing else, wears the bottom rule's foreground colour, and follows one of the inside list's
+ * entries as the whole text before it. A bracketed run typed as an argument wears the draft's own
+ * colour, so it stays draft text and a box that shows more than was sent still stops a send.
+ */
+function argumentHintStart(row: FrameRow, text: string, holeStart: number, holeEnd: number, rule: FrameRow | undefined, entries: readonly string[]): number | null {
+  const ruleFg = rule?.segments.find((segment) => segment.text.trim() !== "")?.fg;
+  if (ruleFg === undefined) return null;
+  let from = 0;
+  let last: { readonly run: FrameRun; readonly at: number } | null = null;
+  for (const run of row.segments) {
+    if (from >= holeStart && from < holeEnd && run.text.trim() !== "") last = { run, at: from };
+    from += run.text.length;
+  }
+  if (last === null || last.at <= holeStart) return null;
+  if (last.run.fg !== ruleFg || !last.run.text.startsWith(" ") || !BRACKETED.test(last.run.text.trim())) return null;
+  return entries.includes(text.slice(holeStart, last.at).trim()) ? last.at : null;
+}
+
 /**
  * The draft as one line: each piece's text joined with one space, with the profile's ghost text cut off
  * the end of the last piece ({@link hintStart}).
@@ -561,10 +585,24 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   const hole = promptMatch.groups?.draft;
   const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
   if (hole !== undefined) anchorsHit.push("draft");
+  // A list drawn inside the box under the prompt row (`commandList` side `inside`) is no draft:
+  // its rows stay out of the text, but only under a hole that opens with the entries' own first
+  // character (the list opens for that input alone), so a wrapped prose draft whose rows happen
+  // to be entry-shaped keeps them.
+  const inside = insideList(texts, prompt, bottom, idle.volatile.below.commandList, rows);
+  const listed = inside !== null && (hole ?? "").trim().startsWith(inside.entries[0]!.charAt(0)) ? inside : null;
+  // A bracketed argument hint after a complete entry (`commandList.argumentHint`) is no draft
+  // either: the hole ends where the hint starts, so the read is the command as typed.
+  let holeEnd = holeStart + (hole ?? "").length;
+  if (listed !== null && idle.volatile.below.commandList?.argumentHint === true) {
+    const cut = argumentHintStart(rows[prompt]!, texts[prompt]!, holeStart, holeEnd, rows[bottom], listed.entries);
+    if (cut !== null) holeEnd = cut;
+  }
   const pieces: DraftPiece[] = [];
-  const holePiece = trimmedPiece(prompt, texts[prompt]!, holeStart, holeStart + (hole ?? "").length);
+  const holePiece = trimmedPiece(prompt, texts[prompt]!, holeStart, holeEnd);
   if (holePiece !== null) pieces.push(holePiece);
   for (let j = prompt + 1; j < bottom; j++) {
+    if (listed !== null && j >= listed.first && j <= listed.last) continue;
     const piece = trimmedPiece(j, texts[j]!, 0, texts[j]!.length);
     if (piece !== null) pieces.push(piece);
   }
