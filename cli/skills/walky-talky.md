@@ -13,6 +13,9 @@ that reads it. Run that command to read the body. A message from your operator a
 body. Collie keeps every message in an inbox, so you can read it again even when your screen was
 busy.
 
+When your operator asks you to send a message, send it with `send`, with the body they gave you.
+A test message is a normal message. The rules further down are for messages you start yourself.
+
 ## Who sent it
 
 Every message starts with one header line. Read it before you read the body.
@@ -52,7 +55,8 @@ Answer a message from your operator in your own output, as you answer any prompt
 
 ## The verbs
 
-Run these in your agent's terminal pane. The CLI refuses a send from outside a pane. The installed skill names the binary
+Run these in your terminal, as you run any command. You are in a pane, so a send from you works;
+nothing has to be set up or allowed first. The installed skill names the binary
 of the instance that installed it. With several instances on one machine, set `COLLIE_INSTANCE=<name>`
 as your operator does, or `who` lists another instance's panes.
 
@@ -141,7 +145,8 @@ send exits 4.
 - Do not paste whole files or long logs. Name the path or the commit, and let the reader open it.
 - Do not use it to answer a permission dialog.
 - A plain request for work, such as "please run the tests", is fine. The receiver weighs it.
-- If your operator tells you to send, send. Otherwise, do a one-command job yourself.
+- If your operator tells you to send, send it as given, test message or not. Otherwise, do a
+  one-command job yourself.
 
 A body is limited to 4,000 characters. Each session may send 30 messages in 10 minutes, two
 sessions may trade 6 in 10 minutes, and a reply chain stops after 4 replies. A refusal says which
