@@ -70,6 +70,17 @@ describe("clampScroll: the pan bounds", () => {
   it("scrolls nowhere when the scaled text is smaller than the viewport", () => {
     expect(clampScroll({ x: 10, y: 10 }, { width: 100, height: 100 }, viewport, 2)).toEqual({ x: 0, y: 0 });
   });
+
+  it("follows the unwrapped text's real width: a row wider than the screen pans to its end, at 1× and zoomed", () => {
+    const wide = { width: 1200, height: 2000 };
+    expect(clampScroll({ x: 9999, y: 0 }, wide, viewport, 1)).toEqual({ x: 810, y: 0 });
+    expect(clampScroll({ x: 9999, y: 0 }, wide, viewport, 3)).toEqual({ x: 3210, y: 0 });
+    // A pinch about a point on that wide row still lands it under the fingers, inside the bounds.
+    const from: ZoomView = { scale: 1, scroll: { x: 600, y: 0 } };
+    const next = zoomAbout(from, { x: 200, y: 300 }, 2);
+    expect(contentPointAt(next, { x: 200, y: 300 })).toEqual(contentPointAt(from, { x: 200, y: 300 }));
+    expect(clampScroll(next.scroll, wide, viewport, next.scale)).toEqual(next.scroll);
+  });
 });
 
 describe("pinch", () => {
