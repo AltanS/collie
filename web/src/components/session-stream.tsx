@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
 
-import { ItemView, PendingTurn, ToolGroup, groupRuns } from "@/components/chat-cards";
+import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -663,8 +663,9 @@ export function SessionStream({
       {blocks.map((group, index) => (
         <div key={group[0]!.id} data-block data-n={group.length} className={STREAM_BLOCK}>
           {/* A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
-              that one folds too, or "off" would leave every single-step turn drawn in full. */}
-          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
+              that one folds too, or "off" would leave every single-step turn drawn in full. An agent
+              call and a question never fold (`standsAlone`), so they are drawn either way. */}
+          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!)) ? (
             <ItemView item={group[0]!} />
           ) : (
             <ToolGroup items={group} liveOpens={showToolCalls} />
