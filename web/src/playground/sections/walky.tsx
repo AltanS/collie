@@ -81,6 +81,22 @@ const TURNS: readonly ChatItem[] = [
 // Both directions: two messages that reached this pane, and one it sent (its receipt names the other pane).
 const LOG: readonly WalkyRow[] = [fixtureWalkySent, fixtureWalkyOperator, fixtureWalkyAgent, LONG_ROW];
 
+// A reply from a session on another machine that carries the same label as this one.
+const REMOTE_ROW: WalkyRow = {
+  ...fixtureWalkyAgent,
+  id: "wt_r3m0te000001",
+  from: { memberId: "minibuch", address: "minibuch/w11:p4#8h9h", harness: "claude", label: "walky-live" },
+  signer: "minibuch",
+  body: "Got it. The standby door answers on minibuch.",
+};
+const REMOTE_TURN: ChatItem = {
+  id: "pg-remote",
+  kind: "user",
+  ts: "2026-10-17T09:33:00Z",
+  text: `[walky-talky wt_r3m0te000001] from agent minibuch/w11:p4#8h9h (claude, walky-live)\n${REMOTE_ROW.body}`,
+  walky: { id: "wt_r3m0te000001", kind: "agent", replyTo: null },
+};
+
 const SCREEN = [
   "● I will wait for the review.",
   "",
@@ -196,6 +212,22 @@ export function WalkySection() {
                 ))}
               </div>
             </ReadTwice>
+          </Stage>
+        </Card>
+
+        <Card
+          state="walky-card-remote"
+          label="a message from a session on another machine that carries the same label: the head names the machine"
+          reach="have a session on another crew machine send to this pane while this pane has the same label. The head reads Message from <label> on <machine>; the small print still says who signed it."
+        >
+          <Stage height={160}>
+            <WalkyLogProvider rows={[REMOTE_ROW]} reads={1}>
+              <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+                <div className="p-3">
+                  <ItemView item={REMOTE_TURN} />
+                </div>
+              </WalkyOpenProvider>
+            </WalkyLogProvider>
           </Stage>
         </Card>
 

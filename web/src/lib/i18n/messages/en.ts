@@ -2675,6 +2675,7 @@ export const en = {
   // A message card in Chat. `{label}` is the sender's own label from the log (`repo#branch`, a pane
   // title, or a device label) and is never translated.
   "walky.card.title": "Message from {label}",
+  "walky.card.titleRemote": "Message from {label} on {machine}",
   "walky.card.replyTo": "reply to {id}",
   "walky.card.notInLog": "no log record on this machine",
   // Screen-reader words after the card's text: the card is one button that opens the Messages sheet on it.

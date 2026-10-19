@@ -14,6 +14,7 @@ import {
   NUDGE_MARK,
   mirrorHeaderId,
   paneAddress,
+  remoteMachineOf,
   parseEnvelopeHeader,
   signerOf,
   standingOf,
@@ -414,5 +415,24 @@ describe("directionOf", () => {
   it("reads a broadcast receipt (`all`) from this pane as sent", () => {
     const broadcast = { ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, target: "all" } };
     expect(directionOf(broadcast, fixtureWalkySelf)).toBe("sent");
+  });
+});
+
+describe("remoteMachineOf", () => {
+  const away = { ...fixtureWalkyAgent, from: { ...fixtureWalkyAgent.from, memberId: "minibuch", address: "minibuch/w11:p4#8h9h" } };
+
+  it("names the sender's machine when it is not the pane's own", () => {
+    expect(remoteMachineOf(away, fixtureWalkySelf)).toBe("minibuch");
+  });
+
+  it("is null for the pane's own machine, with or without a token on either address", () => {
+    expect(remoteMachineOf(fixtureWalkyAgent, fixtureWalkySelf)).toBeNull();
+    expect(remoteMachineOf(fixtureWalkyAgent, `${fixtureWalkySelf}#aaaa`)).toBeNull();
+  });
+
+  it("is null for an operator, a solo sender, and a mount with no self", () => {
+    expect(remoteMachineOf(fixtureWalkyOperator, fixtureWalkySelf)).toBeNull();
+    expect(remoteMachineOf({ ...away, from: { ...away.from, memberId: null, address: null } }, fixtureWalkySelf)).toBeNull();
+    expect(remoteMachineOf(away, undefined)).toBeNull();
   });
 });

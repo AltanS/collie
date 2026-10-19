@@ -98,6 +98,57 @@ describe("a walky talky turn with its id in the log", () => {
   });
 });
 
+describe("the card's head names a machine that is not the pane's own", () => {
+  const SAME_LABEL: WalkyRow = {
+    ...fixtureWalkyAgent,
+    from: { ...fixtureWalkyAgent.from, label: "walky-live" },
+  };
+  const OTHER_MACHINE: WalkyRow = {
+    ...SAME_LABEL,
+    from: { ...SAME_LABEL.from, memberId: "minibuch", address: "minibuch/w11:p4#8h9h" },
+    signer: "minibuch",
+  };
+
+  function inPane(row: WalkyRow, self: string | undefined) {
+    return render(
+      <WalkyLogProvider rows={[row]} reads={0}>
+        <WalkyOpenProvider open={null} self={self}>
+          <ItemView item={turn(`[walky-talky ${row.id}] from agent ${row.from.address ?? ""}\nHi.`, row.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+  }
+
+  it("keeps 'Message from <label>' when the sender is on the pane's own machine", () => {
+    inPane(SAME_LABEL, fixtureWalkySelf);
+    expect(within(theCard()).getByText("Message from walky-live")).toBeInTheDocument();
+  });
+
+  it("says 'on <machine>' when the sender is on another machine, and keeps the footer", () => {
+    inPane(OTHER_MACHINE, fixtureWalkySelf);
+    const inside = within(theCard());
+    expect(inside.getByText("Message from walky-live on minibuch")).toBeInTheDocument();
+    expect(inside.getByText("· signed by minibuch")).toBeInTheDocument();
+  });
+
+  it("says nothing of a machine on a mount that cannot name its pane", () => {
+    inPane(OTHER_MACHINE, undefined);
+    expect(within(theCard()).getByText("Message from walky-live")).toBeInTheDocument();
+  });
+
+  it("leaves the operator card as it is, whatever machine it came from", () => {
+    const operator: WalkyRow = { ...fixtureWalkyOperator, from: { ...fixtureWalkyOperator.from, memberId: "minibuch" } };
+    render(
+      <WalkyLogProvider rows={[operator]} reads={0}>
+        <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+          <ItemView item={turn("[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan)\nStop.", operator.id, "operator")} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(within(theCard()).getByText("Message from phone-altan")).toBeInTheDocument();
+  });
+});
+
 describe("a walky talky turn the log does not hold", () => {
   const item = () => turn(`${HEADER_AGENT}\nTests are green.`, "wt_k3f9x2m8q1a0");
 

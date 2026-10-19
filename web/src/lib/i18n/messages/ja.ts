@@ -2482,6 +2482,7 @@ export const ja: Dictionary = {
   // A message card in Chat. `{label}` is the sender's own label from the log (`repo#branch`, a pane
   // title, or a device label) and is never translated.
   "walky.card.title": "{label} からのメッセージ",
+  "walky.card.titleRemote": "{machine} の {label} からのメッセージ",
   "walky.card.replyTo": "{id} に返信",
   "walky.card.notInLog": "このマシンにログレコードがありません",
   "walky.card.open": "{sheet} で開く",

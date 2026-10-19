@@ -429,6 +429,22 @@ export function directionOf(row: Pick<WalkyRow, "from" | "receipt">, self: strin
   return bareAddress(row.from.address) === me ? "sent" : "received";
 }
 
+/**
+ * The machine a received message came from, when it is not the machine of the pane at address `self`, else
+ * null. The sender's machine is the member id of its address (`<memberId>/<paneId>`), and the pane's own
+ * machine is the same part of `self` (see {@link paneAddress}: the scope's host, the lead's id, or `local`).
+ * An operator message, a solo install (no member id) and a mount with no `self` all read as this machine.
+ */
+export function remoteMachineOf(row: Pick<WalkyRow, "kind" | "from">, self: string | undefined): string | null {
+  if (row.kind !== "agent" || self === undefined) return null;
+  const slashAt = row.from.address?.indexOf("/") ?? -1;
+  const sender = slashAt > 0 && row.from.address !== null ? row.from.address.slice(0, slashAt) : row.from.memberId;
+  if (sender === null || sender === "") return null;
+  const slash = self.indexOf("/");
+  if (slash <= 0) return null;
+  return sender === self.slice(0, slash) ? null : sender;
+}
+
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 /** The largest byte that maps evenly onto the 36-letter alphabet (36 * 7 = 252), so no letter is likelier. */
 const ID_FAIR_BELOW = 252;
