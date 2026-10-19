@@ -4601,7 +4601,7 @@ describe("Composer agents mark and sheet", () => {
     return Array.from(block.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
   }
 
-  it("puts the agents mark in the belt's fixed block, not in the scroller, with the count above the glyph", () => {
+  it("puts the agents mark in the belt's fixed block, not in the scroller, with the count at the glyph's top left", () => {
     renderComposer({
       todos: [{ id: "1", text: "Run tests", status: "pending" }],
       subagents: RUNNING,
@@ -4612,9 +4612,9 @@ describe("Composer agents mark and sheet", () => {
     expect(mark).toHaveAttribute("data-slot", "belt-agents");
     const count = mark.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
     expect(count.textContent).toBe("2");
-    // ABOVE the glyph, centred, and absolutely placed so a count that steps moves nothing.
-    expect(count).toHaveClass("absolute", "top-[3px]", "left-1/2", "-translate-x-1/2", "tabular-nums");
-    expect(count.className).not.toMatch(/bottom-/);
+    // The corner badge at the glyph's top left, absolutely placed so a count that steps moves nothing.
+    expect(count).toHaveClass("absolute", "top-0.5", "left-0.5", "tabular-nums");
+    expect(count.className).not.toMatch(/bottom-|translate/);
     // The fixed block, not the scroller: the mark, then Files, then the Switch mark.
     expect(fixedBlock()).toEqual(["Agents 2", "Files", "Switch pane"]);
     const scroller = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!.parentElement!;
