@@ -2146,6 +2146,27 @@ export interface FoldersResponse {
   home: string;
 }
 
+/** One sub-folder in a browse answer: its name only, and whether it holds a `.git` entry (#467). */
+export interface FolderBrowseEntry {
+  name: string;
+  git: boolean;
+}
+
+/**
+ * GET /api/folders/browse — the New page's folder browser (#467, bridge/folder-browse.ts). `path` is
+ * the nearest folder that exists at or above the asked text, spelled under home as the text was;
+ * `filter` is the rest of the text after it ("" when the text named a folder); `folders` are the
+ * sub-folders of `path` whose names start with `filter`, case-insensitive, sorted by name, at most
+ * 200; `parent` is the folder above `path`, or `null` at home, the bound.
+ */
+export interface FolderBrowseResponse {
+  path: string;
+  parent: string | null;
+  folders: FolderBrowseEntry[];
+  filter: string;
+  truncated: boolean;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;

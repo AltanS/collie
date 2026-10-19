@@ -3436,7 +3436,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All TWENTY-SIX session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // All TWENTY-SEVEN session-scoped route handlers (tab create, workspace create, launch, this host's launcher
     // rows, this host's folder list and a star on it, one journal blob, a Claude subagent transcript, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
     // by pane or workspace (ADR 0090), the Claude commands a pane would load, tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
@@ -3445,9 +3445,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // writes on this machine's one-off command history, served by one function (ADR 0095), and the
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
-    // writes, served by one function with one resolve for the read and one for the writes (ADR 0107)) reach
-    // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(26);
+    // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
+    // and the New page's folder browser (#467)) reach their runtime through the caller's resolver and
+    // nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(27);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -4524,7 +4525,7 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
   test("the session dispatch reaches the folder routes through this one function", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
-    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders\)/g)]).toHaveLength(1);
+    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders, folderBrowse\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
     expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
   });

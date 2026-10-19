@@ -6,6 +6,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { RouteHeader } from "@/components/app-header";
 import { useCrew } from "@/components/crew-provider";
 import { CommandPicker } from "@/components/new-command-picker";
+import { FolderBrowse } from "@/components/new-space-browse";
 import { FolderSections } from "@/components/new-space-folders";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
 import { StatusArea } from "@/components/status-area";
@@ -673,6 +674,8 @@ function NewPage({ search }: { search: string }) {
               />
             </label>
             <FolderSections folders={folders} onUse={pickFolder} onStar={(f, s) => void star(f, s)} />
+            {/* Browse (#467): the sub-folders of what the field holds, on the chosen machine. */}
+            <FolderBrowse value={cwd} home={home} scope={target} onNavigate={editCwd} onUse={pickFolder} />
           </div>
         ) : pinned !== undefined ? (
           <p className="text-xs text-muted-foreground">{t("newPage.where.pinned", { folder: shortenHome(pinned, home) })}</p>

@@ -125,6 +125,10 @@ const FORWARDABLE: readonly RegExp[] = [
   // phone reads that as "no list", never as an error.
   /^folders$/,
   /^folders\/star$/,
+  // The New page's folder browser (#467): the sub-folders of one folder under THAT member's home,
+  // read off its own disk with the Files view's bound and gate (ADR 0083). Additive-optional
+  // (§7.1): a member that predates it answers 404, which the phone reads as "update this machine".
+  /^folders\/browse$/,
   // A blob is bytes on ONE machine's disk: the journal that named it is that member's journal, and
   // the lead holds no copy. So a `?host=` blob read is proxied byte for byte exactly like
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
@@ -221,6 +225,8 @@ export function forwardKind(route: string, method?: string): ForwardKind {
   // refuses it before it is tried (§10.3), as a read-only device does on the member itself.
   if (route === "folders") return "read";
   if (route === "folders/star") return "write";
+  // The folder browser reads names off the member's disk and changes nothing: a read, like Files.
+  if (route === "folders/browse") return "read";
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
@@ -275,7 +281,7 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route === "sent/remove") return "sent.remove";
   if (route === "sent/clear") return "sent.clear";
   if (route === "sent") return null;
-  if (route === "folders" || route === "folders/star") return null; // a read, and a preference
+  if (route === "folders" || route === "folders/star" || route === "folders/browse") return null; // reads, and a preference
   if (route.startsWith("blobs/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read
   if (route.startsWith("durable/")) return route.endsWith("/reopen") ? "durable.reopen" : null; // the list and the items are reads

@@ -5,9 +5,10 @@ import { join } from "node:path";
 
 import type { RootSnapshot } from "./changes-root.ts";
 import { loadConfig } from "./config.ts";
-import { guard, paneFiles, workspaceFiles } from "./server.ts";
+import { type FolderRouteCaller, guard, paneFiles, serveFolderRoute, workspaceFiles } from "./server.ts";
+import type { SessionRuntime } from "./sessions.ts";
 import type { AgentView, WorkspaceView } from "./types.ts";
-import { fetchFileText, fetchFilesDir } from "../web/src/lib/api.ts";
+import { fetchFileText, fetchFilesDir, fetchFolderBrowse } from "../web/src/lib/api.ts";
 
 // THE FILES VIEW'S TWO HALVES, ASKED OF EACH OTHER (ADR 0083).
 //
@@ -192,5 +193,41 @@ describe("the phone's Files fetchers read the bridge's real answers", () => {
     expect(got.outcome).toBe("body");
     expect(seen[0]!.searchParams.get("dir")).toBe("docs");
     expect(seen[0]!.searchParams.get("host")).toBe("laptop");
+  });
+});
+
+describe("the phone's folder browser reads the bridge's real answer (#467)", () => {
+  // SAFETY: the folder routes only test `rt instanceof Response` and never read a member of it.
+  const local = {} as SessionRuntime;
+  const caller: FolderRouteCaller = { gate: () => null, resolve: () => Promise.resolve(local) };
+  const bridge = async (url: URL): Promise<Response> =>
+    (await serveFolderRoute(new Request(url), url.pathname, caller, undefined, { home, privateFolders: [] })) ??
+    new Response("not found", { status: 404 });
+
+  test("the field's text rides as ?path=, and a partial name comes back as the filter", async () => {
+    const seen: URL[] = [];
+    serveFromBridge((url) => {
+      seen.push(url);
+      return bridge(url);
+    });
+    const got = await fetchFolderBrowse("~/w", { host: "laptop" });
+    expect(seen[0]!.pathname).toBe("/api/folders/browse");
+    expect(seen[0]!.searchParams.get("path")).toBe("~/w");
+    expect(seen[0]!.searchParams.get("host")).toBe("laptop");
+    expect(got).toEqual({ outcome: "body", body: { path: home, parent: null, folders: [{ name: "ws", git: false }], filter: "w", truncated: false } });
+    const repo = await fetchFolderBrowse("repo");
+    expect(repo).toMatchObject({ outcome: "body", body: { path: join(home, "repo"), parent: home, filter: "" } });
+    // `.git` is never a row, and `node_modules` is a folder like any other.
+    if (repo.outcome !== "body") throw new Error("expected a listing");
+    expect(repo.body.folders).toEqual([{ name: "node_modules", git: false }]);
+    // The empty text is home, with no query at all.
+    await fetchFolderBrowse("");
+    expect(seen.at(-1)!.search).toBe("");
+  });
+
+  test("outside home is the Files view's one refusal, read as `unknown-path`", async () => {
+    serveFromBridge(bridge);
+    expect(await fetchFolderBrowse(base)).toEqual({ outcome: "unknown-path" });
+    expect(await fetchFolderBrowse("~/../x")).toEqual({ outcome: "unknown-path" });
   });
 });

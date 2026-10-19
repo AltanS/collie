@@ -41,6 +41,7 @@ import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
+import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
@@ -231,6 +232,7 @@ import type {
   OperatorFontRow,
   OperatorQuickReplyRow,
   CrewStatusResponse,
+  FolderBrowseResponse,
   FoldersResponse,
   Launcher,
   LaunchersResponse,
@@ -1827,7 +1829,9 @@ export function startServer(opts: {
     // This machine's folder list for the new-space sheet, and a star on one of its folders. A list
     // per MACHINE, but session-scoped for `/api/launchers`' reason: the same `?host=` forward reaches
     // the peer whose folders they are, and a list from the lead would name folders on the wrong disk.
-    const folderAnswer = await serveFolderRoute(req, pathname, caller, folders);
+    // The folder browser (#467) reads under home with the Files view's private folders denied.
+    const folderBrowse: FolderBrowseContext = { home: homedir(), privateFolders: filesPrivateFolders(cfg) };
+    const folderAnswer = await serveFolderRoute(req, pathname, caller, folders, folderBrowse);
     if (folderAnswer !== null) return folderAnswer;
     // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
     //
@@ -6447,14 +6451,33 @@ export function parseStarFolderRequest(v: JsonValue | undefined): { folder: stri
   return { folder: o.folder, starred: o.starred };
 }
 
-/** The folder routes, or `null` when `pathname` is neither. `folders` absent answers both with 404. */
+/** The folder routes, or `null` when `pathname` is none of them. `folders` absent answers the list and the star with 404, `browse` absent the browser. */
 export async function serveFolderRoute(
   req: Request,
   pathname: string,
   caller: FolderRouteCaller,
   folders: FolderSurface | undefined,
+  browse?: FolderBrowseContext,
 ): Promise<Response | null> {
   const ae = req.headers.get("accept-encoding");
+  // The folder browser (#467, bridge/folder-browse.ts): the sub-folders of the folder the field names,
+  // under home, with the Files view's bound and its gate (`device-read`, ADR 0083), because it shows
+  // what is on the disk rather than what this bridge recorded. Session-scoped for `/api/folders`'
+  // reason: `?host=` lists THAT member's disk. The text goes through the New page's own resolver.
+  if (pathname === "/api/folders/browse" && req.method === "GET") {
+    const denied = caller.gate("device-read");
+    if (denied) return denied;
+    const rt = await caller.resolve();
+    if (rt instanceof Response) return rt;
+    if (browse === undefined) return text("not found", 404);
+    const raw = new URL(req.url).searchParams.get("path") ?? "";
+    if (raw.length > MAX_FOLDER_CHARS) return unknownPath();
+    const asked = askedFolder(raw, browse.home);
+    if (asked === false) return unknownPath();
+    const answer = await browseFolders(browse, asked ?? browse.home);
+    if (answer === UNKNOWN_PATH) return unknownPath();
+    return json(answer satisfies FolderBrowseResponse, ae);
+  }
   if (pathname === "/api/folders" && req.method === "GET") {
     const denied = caller.gate("read");
     if (denied) return denied;

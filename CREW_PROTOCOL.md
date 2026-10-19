@@ -280,6 +280,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/sent/clear` | `POST /api/sent/clear` | forwarded, additive-optional (§7.1), since 1.23.0 (ADR 0107). Empties that member's `sent.jsonl`, as above, audited as `sent.clear` |
 | `GET` | `/crew/v1/folders` | `GET /api/folders` | forwarded — additive-optional (§7.1), added 2026-09-27 (M40/02, #289). That member's own new-space folder list, `{ recent, favourites, home }` off its own `folders.json`: a folder exists on one machine, so the list is read where the folder is and the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does, which the phone reads as "no list" and never as an error |
 | `POST` | `/crew/v1/folders/star` | `POST /api/folders/star` | forwarded — additive-optional (§7.1), same pairing as above. A WRITE on that member's own `folders.json`, `{ folder, starred }`, refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). Not audited on either side: it is a preference, like `notifications/prefs`, and touches no terminal |
+| `GET` | `/crew/v1/folders/browse` | `GET /api/folders/browse` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-19 (#467). The New page's folder browser: the sub-folders of one folder under **the member's own home**, by name, with a `git` bit, off its own disk (`bridge/folder-browse.ts`, ADR 0083's bound with home as the root); `?path=` rides through untouched and the member resolves it by its own New page rule. A READ for forwarding (attempted against a stale member, read budget, audited on neither side, never masked: names only), answered only for a device the member's **own** device policy authorises, as the Files read is (§12, `crewGate`'s write branch). A refusal is the Files view's `404 { "error": "unknown-path" }`; a peer that predates it answers a plain 404, which the phone reads as "update this member" |
 | `GET` | `/crew/v1/blobs/:hash` | `GET /api/blobs/:hash` | proxied byte-for-byte — additive-optional (§7.1). The image an agent's own journal named, off the disk that holds it; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
 | `GET` | `/crew/v1/hello` | — (new) | consumed by the lead: liveness + version + member id |
@@ -1699,7 +1700,8 @@ happened on the peer's terminals.
 - **A peer is never asked to trust the lead's authorisation decision in place of its own.** The peer
   applies its own write-level checks to a crew request; the lead's gate does not stand in for them.
 - **One read borrows the write's device check** (added 2026-10-05, ADR 0083): `files` on the pane and
-  workspace routes, and `files/image` beside them (added 2026-10-07, ADR 0090). It is still a read
+  workspace routes, `files/image` beside them (added 2026-10-07, ADR 0090), and `folders/browse` (added
+  2026-10-19, #467), which lists folder names under the member's home on the same bound. It is still a read
   on the link (forwarded on the read budget, audited on neither side), but the peer answers it only
   when `X-Crew-Device` names a device its own allowlist holds, the same branch of `crewGate` a write
   takes. Additive inside protocol version 2: the routes are new, so no request that crossed the link
