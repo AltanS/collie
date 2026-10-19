@@ -1,6 +1,6 @@
 // The composer's thirteen states of the way out (M56 spec 07), one numbered card each, the five
 // states of the held-send card (14 to 18, ADR 0061 amended 2026-10-18), and the belt's Agents pill
-// at 2 with its dock, and at 0 (19 to 21); the section that shows them is
+// at 2 with its dock, at 0, and right of the X with a draft in the box (19 to 22); the section that shows them is
 // sections/composer-states.tsx. See app.tsx's header for the page's own rules, and test/way-out-states.ts for the table every way-out card is drawn from:
 // the same table the way-out tests read, so a card, a test and a placeholder talk about one state.
 //
@@ -9,7 +9,7 @@
 // a Send tap answers "No answer" at the thumb, which is itself a state worth seeing; the Keys dock and
 // the Screen pill are real and answer in one tap.
 //
-// Cards are numbered, 1 to 21, so a worker can be briefed by number ("card 4 is modal unreadable").
+// Cards are numbered, 1 to 22, so a worker can be briefed by number ("card 4 is modal unreadable").
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -21,6 +21,7 @@ import { SubagentSheet } from "@/components/subagent-sheet";
 import { t } from "@/lib/i18n";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { markLive } from "@/lib/liveness";
+import { saveDraft } from "@/lib/drafts";
 import type { HeldRow } from "@/lib/surface/send";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
 import type { WayOutState } from "@/lib/way-out";
@@ -267,9 +268,11 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showA
 }
 
 // ── THE BELT'S LISTS (19 to 21) ─────────────────────────────────────────────────────────────────────
-// The agents mark: the count of the pane's subagents that have not finished yet, a small Bot glyph
-// first in the belt's fixed block, left of Files and the Switch mark. Tasks stays on the scrolling run.
-// Card 21 is the same belt with no subagent running, so the mark is absent and nothing else moves. The
+// The agents mark: the count of the pane's subagents that have not finished yet, above a small Bot
+// glyph in the belt's fixed block, right of the X and left of Files and the Switch mark. Tasks stays on
+// the scrolling run. Card 21 is the same belt with no subagent running, so the mark is absent and
+// nothing else moves; card 22 has a draft in the box, so the X stands left of the mark. Card 19 has a
+// toggle that takes the subagents away and brings them back, to watch the mark ease out and in. The
 // real Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent
 // card in Chat opens. There is no bridge behind this page, so the sheet answers that it cannot read
 // the transcript; that is the sheet's own state for an unreadable log.
@@ -285,7 +288,11 @@ const BELT_SUBAGENTS: PaneSubagent[] = [
   { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Find every caller of the todo tracker and say which ones read it at serialise time", startedAt: new Date(Date.now() - 40_000).toISOString(), spawnDepth: 1 },
 ];
 
-function BeltListsComposer({ paneId, agents }: { paneId: string; agents: boolean }) {
+/** Whether a belt card's subagents are running; card 19's toggle flips it, through this context. */
+const BeltAgentsContext = createContext(true);
+
+function BeltListsComposer({ paneId }: { paneId: string }) {
+  const agents = useContext(BeltAgentsContext);
   return (
     <SubagentSheet paneId={paneId}>
       <ChromeBlock>
@@ -314,8 +321,9 @@ function BeltListsComposer({ paneId, agents }: { paneId: string; agents: boolean
   );
 }
 
-function BeltListsPhone({ paneId, open = false, agents = true }: { paneId: string; open?: boolean; agents?: boolean }) {
+function BeltListsPhone({ paneId, open = false, agents = true, draft }: { paneId: string; open?: boolean; agents?: boolean; draft?: string }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const stamp = () => markLive(paneId);
     stamp();
@@ -335,18 +343,26 @@ function BeltListsPhone({ paneId, open = false, agents = true }: { paneId: strin
     }, 50);
     return () => clearInterval(timer);
   }, [open, host]);
-  const [router] = useState(() => createMemoryRouter([{ path: "/", element: <BeltListsComposer paneId={paneId} agents={agents} /> }], { initialEntries: ["/"] }));
+  const [router] = useState(() => {
+    // A draft in the box is what puts the X on the fixed block. Saved before the composer mounts, so
+    // it loads it as a draft the operator left there.
+    if (draft !== undefined) saveDraft(undefined, paneId, draft);
+    return createMemoryRouter([{ path: "/", element: <BeltListsComposer paneId={paneId} /> }], { initialEntries: ["/"] });
+  });
   return (
     <PhoneMock>
       <div ref={setHost}>
         <div className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">terminal output above the belt</div>
-        <RouterProvider router={router} />
+        <BeltAgentsContext.Provider value={agents}>
+          <RouterProvider router={router} />
+        </BeltAgentsContext.Provider>
       </div>
     </PhoneMock>
   );
 }
 
-function BeltListsCase({ n, state, title, reach, note, paneId, open, agents }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean; agents?: boolean }) {
+function BeltListsCase({ n, state, title, reach, note, paneId, open, agents = true, draft, toggle = false }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean; agents?: boolean; draft?: string; toggle?: boolean }) {
+  const [running, setRunning] = useState(agents);
   return (
     <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
       <CardControls className="flex items-center gap-3">
@@ -354,8 +370,13 @@ function BeltListsCase({ n, state, title, reach, note, paneId, open, agents }: {
         <p className="text-sm font-semibold text-foreground">
           {n}: {title}
         </p>
+        {toggle && (
+          <button type="button" className="ml-auto min-h-11 rounded-sm border border-border px-3 text-sm" onClick={() => setRunning((on) => !on)}>
+            {running ? "Finish them" : "Start them"}
+          </button>
+        )}
       </CardControls>
-      <BeltListsPhone paneId={paneId} {...(open === undefined ? {} : { open })} {...(agents === undefined ? {} : { agents })} />
+      <BeltListsPhone paneId={paneId} agents={running} {...(open === undefined ? {} : { open })} {...(draft === undefined ? {} : { draft })} />
     </Card>
   );
 }
@@ -435,8 +456,10 @@ export function wayOutGroups(): ReactNode[] {
         n={19}
         state="belt-agents-mark"
         title="Agents mark at 2"
-        reach="A Claude Code session with two subagents still running. A small Bot mark with the count stands first in the belt's fixed block, left of Files and the Switch mark; Tasks stays on the scrolling run."
+        reach="A Claude Code session with two subagents still running. A small Bot mark with the count above it stands in the belt's fixed block, left of Files and the Switch mark; Tasks stays on the scrolling run."
         paneId="belt:agents-mark"
+        note="Finish them and Start them take the subagents away and bring them back, so the mark eases out and in."
+        toggle
       />
       <BeltListsCase
         n={20}
@@ -454,6 +477,14 @@ export function wayOutGroups(): ReactNode[] {
         reach="No subagent running. The mark is not drawn; Files and the Switch mark stand alone, and the scrolling run is the same as on card 19."
         paneId="belt:agents-none"
         agents={false}
+      />
+      <BeltListsCase
+        n={22}
+        state="belt-agents-with-clear"
+        title="Agents mark right of the X"
+        reach="Type in the box while two subagents run. The fixed block reads X, the agents mark, Files, the Switch mark."
+        paneId="belt:agents-clear"
+        draft="Check the belt at 390px"
       />
     </Group>,
   ];

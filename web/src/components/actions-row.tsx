@@ -3,6 +3,7 @@ import { Bot, Layers, ListTree, Undo2, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
 import {
   DurableBar,
   HarnessBar,
@@ -482,12 +483,13 @@ export interface ActionsRowProps {
   };
   /**
    * THE AGENTS MARK (Altan, from the lane, 2026-10-19: "it should be subtle and show up next to files
-   * and session layers icon with a number of the currently active agents"). An icon-only pill, FIRST
-   * in the pinned block, left of the X, Files and the Switch mark: the Bot glyph with the count of the
-   * pane's running subagents as a small numeral at its corner, in the same ink as its neighbours, no
-   * fill and no accent. Pinned, so it never scrolls away and a mark that comes or goes moves nothing
-   * in the scroller; the block grows to the left over the scroller's end, as it does for the X.
-   * The composer passes it only while the count is above zero. A tap opens the composer's Agents dock.
+   * and session layers icon with a number of the currently active agents"; then "agents count should
+   * be above the agent icon, it should have a smooth appear/disappear animation and be to the right of
+   * the x"). An icon-only pill in the pinned block, right of the X and left of Files and the Switch
+   * mark: the Bot glyph with the count of the pane's running subagents as a small numeral above it, in
+   * the same ink as its neighbours, no fill and no accent. Pinned, so it never scrolls away and a mark
+   * that comes or goes moves nothing in the scroller; it eases in and out through `Collapse` on its x
+   * axis. The composer passes it only while the count is above zero. A tap opens the Agents dock.
    */
   agents?: {
     /** How many subagents are running. Above zero whenever the prop is passed. */
@@ -767,30 +769,6 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 move a pixel, and a screen reader's focus stays on the button and hears the new name.
                 `onMouseDown` refuses the press's focus move, which keeps the field focused and the
                 phone keyboard up; the `clear` prop says why it is not `onPointerDown`. */}
-            {/* THE AGENTS MARK (the `agents` prop): first in the block, so it grows the block to the
-                left and nothing to its right moves. The numeral sits on the glyph's bottom-right corner,
-                absolutely placed so a count that steps moves nothing, in `tabular-nums` (DESIGN.md §5). */}
-            {agents && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-slot="belt-agents"
-                aria-label={agents.label}
-                aria-expanded={agents.expanded}
-                onClick={agents.onClick}
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(true, !clear && !changes && !handle, hand))}
-              >
-                <Bot className={cn(BELT_ICON, "text-primary")} />
-                <span
-                  aria-hidden
-                  data-slot="belt-agents-count"
-                  className="pointer-events-none absolute right-0.5 bottom-0.5 text-[9px] leading-none font-semibold tabular-nums text-primary"
-                >
-                  {agents.count}
-                </span>
-              </Button>
-            )}
             {clear && (
               <Button
                 type="button"
@@ -805,7 +783,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 }}
                 className={cn(
                   `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                  pinnedReach(!agents, !changes && !handle, hand),
+                  pinnedReach(true, !agents && !changes && !handle, hand),
                   clear.inert === true && "opacity-50",
                 )}
               >
@@ -816,6 +794,40 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 )}
               </Button>
             )}
+            {/* THE AGENTS MARK (the `agents` prop): right of the X, left of Files. It comes and goes
+                through `Collapse` on its x axis (ui/collapse.tsx), so it eases open and shut instead
+                of popping, and the neighbours move with it only during that motion, the one in-flow
+                move DESIGN.md §2 allows through the primitive. A count that steps changes no width
+                and animates nothing: the numeral is absolutely placed. The block's `gap-1.5` beside
+                a zero-width item would still count, so the box cancels one gap with `-mr-1.5` and
+                pays it back as `pr-1.5` inside; shut, the mark leaves exactly one gap behind.
+                The count sits ABOVE the glyph, centred, in `tabular-nums` (DESIGN.md §5), and the
+                glyph steps 3px down to make the room, inside the 37px box so nothing clips. */}
+            <Collapse axis="x" open={agents !== undefined} className="-mr-1.5">
+              {agents && (
+                <span className="flex items-center pr-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-slot="belt-agents"
+                    aria-label={agents.label}
+                    aria-expanded={agents.expanded}
+                    onClick={agents.onClick}
+                    className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !changes && !handle, hand))}
+                  >
+                    <Bot className={cn(BELT_ICON, "translate-y-[3px] text-primary")} />
+                    <span
+                      aria-hidden
+                      data-slot="belt-agents-count"
+                      className="pointer-events-none absolute top-[3px] left-1/2 -translate-x-1/2 text-[9px] leading-none font-semibold tabular-nums text-primary"
+                    >
+                      {agents.count}
+                    </span>
+                  </Button>
+                </span>
+              )}
+            </Collapse>
             {/* EXPERIMENT (operator, 2026-09-23): the Changes entry, moved here from the pane actions
                 sheet. Same box as the Switch mark beside it; it navigates rather than opening a sheet,
                 so no `aria-haspopup`. Revert with the `changes` prop above. */}

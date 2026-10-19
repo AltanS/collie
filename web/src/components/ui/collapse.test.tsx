@@ -69,6 +69,36 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(container.firstElementChild).toHaveClass("grid-rows-[0fr]", "opacity-0");
   });
 
+  it("runs sideways on axis x: columns instead of rows, the same exit and the same unmount", () => {
+    // The belt's agents mark (actions-row.tsx) comes and goes inside a row, so it grows a WIDTH.
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <Collapse axis="x" open>
+        <button type="button">mark</button>
+      </Collapse>,
+    );
+    const box = container.firstElementChild!;
+    expect(box).toHaveAttribute("data-axis", "x");
+    expect(box).toHaveClass("grid-cols-[1fr]", "opacity-100");
+    expect(box.className).not.toMatch(/grid-rows-/);
+
+    rerender(
+      <Collapse axis="x" open={false}>
+        <button type="button">mark</button>
+      </Collapse>,
+    );
+    expect(box).toHaveAttribute("data-state", "closed");
+    expect(box).toHaveClass("grid-cols-[0fr]", "opacity-0");
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS - 1);
+    });
+    expect(screen.getByRole("button", { name: "mark" })).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(screen.queryByRole("button", { name: "mark" })).toBeNull();
+  });
+
   it("does not animate a notice that was already true at first paint", () => {
     // ReadOnly and HostStale are usually known at loader time, so the notice is part of the FIRST
     // frame. There is no shift to smooth over there, and animating it would manufacture one.

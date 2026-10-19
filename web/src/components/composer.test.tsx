@@ -25,6 +25,7 @@ import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
 import { offersFor, SEND_REASONS, type SendReason } from "@/lib/surface/send";
 import { WAY_OUT_STATES, type WayOutState } from "@/lib/way-out";
 import { wayOutCase } from "@/test/way-out-states";
+import { COLLAPSE_MS } from "./ui/collapse";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
@@ -4591,19 +4592,29 @@ describe("Composer agents dock", () => {
     expect(document.querySelector('[data-slot="belt-agents"]')).toBeNull();
   });
 
-  it("puts the agents mark in the belt's fixed block, not in the scroller, with the count beside the glyph", () => {
+  /** The names of the buttons in the belt's fixed block, left to right, found from the Files button. */
+  function fixedBlock(): (string | null)[] {
+    const files = screen.getByRole("button", { name: "Files" });
+    const block = files.parentElement!;
+    return Array.from(block.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
+  }
+
+  it("puts the agents mark in the belt's fixed block, not in the scroller, with the count above the glyph", () => {
     renderComposer({
       todos: [{ id: "1", text: "Run tests", status: "pending" }],
       subagents: RUNNING,
       changesPill: { onClick: vi.fn(), label: "Files" },
+      pullHandle: { ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" },
     });
     const mark = screen.getByRole("button", { name: "Agents 2" });
     expect(mark).toHaveAttribute("data-slot", "belt-agents");
-    expect(mark.querySelector('[data-slot="belt-agents-count"]')?.textContent).toBe("2");
-    // The fixed block, not the scroller: the mark is first, left of Files.
-    const files = screen.getByRole("button", { name: "Files" });
-    expect(mark.parentElement).toBe(files.parentElement);
-    expect(mark.nextElementSibling).toBe(files);
+    const count = mark.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
+    expect(count.textContent).toBe("2");
+    // ABOVE the glyph, centred, and absolutely placed so a count that steps moves nothing.
+    expect(count).toHaveClass("absolute", "top-[3px]", "left-1/2", "-translate-x-1/2", "tabular-nums");
+    expect(count.className).not.toMatch(/bottom-/);
+    // The fixed block, not the scroller: the mark, then Files, then the Switch mark.
+    expect(fixedBlock()).toEqual(["Agents 2", "Files", "Switch pane"]);
     const scroller = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!.parentElement!;
     expect(scroller.contains(mark)).toBe(false);
     // The Tasks pill stays on the scrolling run of controls, where PR 476 put it.
@@ -4631,6 +4642,68 @@ describe("Composer agents dock", () => {
 
     await user.click(screen.getByRole("button", { name: "Close Agents 2" }));
     expect(pill).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("stands right of the X: clear, agents, Files, Switch pane, with a draft in the box", async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      subagents: RUNNING,
+      changesPill: { onClick: vi.fn(), label: "Files" },
+      pullHandle: { ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" },
+    });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "a draft");
+    expect(fixedBlock()).toEqual(["Clear message", "Agents 2", "Files", "Switch pane"]);
+  });
+
+  it("comes and goes through Collapse on its x axis, and unmounts after the exit", () => {
+    vi.useFakeTimers();
+    try {
+      const props = {
+        paneId: "w1:p1",
+        agent: "claude",
+        isShell: false,
+        gone: false,
+        readOnly: false,
+        surface: FREE,
+        text: "pane output",
+        terminalDraft: null,
+        rawTerminalDraft: null,
+        prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
+        display: { open: false, onToggle: vi.fn() },
+        onSent: vi.fn(),
+        changesPill: { onClick: vi.fn(), label: "Files" },
+      } satisfies ComponentProps<typeof Composer>;
+      let setList: (next: readonly PaneSubagent[]) => void = () => {};
+      function Live() {
+        const [list, set] = useState<readonly PaneSubagent[]>(RUNNING);
+        setList = set;
+        return <Composer {...props} subagents={list} />;
+      }
+      const router = createMemoryRouter([{ path: "/", element: <Live /> }]);
+      render(<RouterProvider router={router} />);
+      const mark = screen.getByRole("button", { name: "Agents 2" });
+      const box = mark.closest<HTMLElement>('[data-slot="collapse"]')!;
+      expect(box).toHaveAttribute("data-axis", "x");
+      expect(box).toHaveAttribute("data-state", "open");
+
+      // A count that steps changes the numeral and nothing else: the same box, still open.
+      act(() => setList([RUNNING[0]!]));
+      expect(screen.getByRole("button", { name: "Agents 1" }).closest('[data-slot="collapse"]')).toBe(box);
+      expect(box).toHaveAttribute("data-state", "open");
+
+      act(() => setList([]));
+      expect(box).toHaveAttribute("data-state", "closed");
+      expect(box).toHaveClass("grid-cols-[0fr]");
+      // Held through the exit, gone after it.
+      expect(screen.getByRole("button", { name: "Agents 1" })).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(COLLAPSE_MS + 1);
+      });
+      expect(screen.queryByRole("button", { name: /^Agents / })).toBeNull();
+      expect(document.querySelector('[data-slot="collapse"][data-axis="x"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a row tap opens the subagent sheet for that agent, sends nothing, and closes the dock", async () => {
