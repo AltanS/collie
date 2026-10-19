@@ -36,6 +36,20 @@ function keyForInputType(inputType: string): string | null {
   return null;
 }
 
+/**
+ * The keys that turn the line already sent into `next`: a Backspace for every character after the
+ * longest shared prefix, then the characters `next` adds past it. Code points, not UTF-16 units,
+ * so an emoji or a surrogate pair is one Backspace and one key.
+ */
+export function keysForLineChange(sent: string, next: string): string[] {
+  const before = Array.from(sent);
+  const after = Array.from(next);
+  let shared = 0;
+  while (shared < before.length && shared < after.length && before[shared] === after[shared]) shared++;
+  const erase = Array.from({ length: before.length - shared }, () => "Backspace");
+  return [...erase, ...textToKeySequence(after.slice(shared).join(""))];
+}
+
 function keyForKeyDown(key: string): string | undefined {
   if (key === "Backspace") return "Backspace";
   if (key === "Enter") return "Enter";
@@ -68,8 +82,16 @@ interface DirectTypingOptions {
 }
 
 // The composer textarea's direct-terminal mode: what you type goes to the pane as keystrokes,
-// with no trailing Enter. This hook owns the armed state, the transient Android IME composition
-// value, the pane-boundary reset, special-key capture, and the lifecycle rules that disarm it.
+// with no trailing Enter. This hook owns the armed state, the line typed since the last Enter, the
+// pane-boundary reset, special-key capture, and the lifecycle rules that disarm it.
+//
+// WHY THE FIELD KEEPS THE LINE. A phone keyboard keeps its own copy of the text before the caret and
+// edits that copy, not the field. This hook used to empty the field after every key, and SwiftKey
+// then committed the word it still believed was there a second time, so `cd cd` reached the shell as
+// `cdcd cdcdcd` (issue 534). The field now holds everything typed since the last Enter, `sentLine`
+// holds what the pane has already received of it, and each settled change sends only the difference
+// (keysForLineChange). Enter is the one point where the field empties: the keyboard has committed
+// everything by then. Don't go back to clearing the field per key.
 // Transport ordering stays in useOrderedKeySender so this hook never permits concurrent one-shot
 // Herdr writes.
 //
@@ -118,7 +140,8 @@ export function useDirectTyping({
   const composing = useRef(false);
   // When the last composition ended, for the Safari confirm window. -Infinity means none yet.
   const compositionEndedAt = useRef(Number.NEGATIVE_INFINITY);
-  const committedComposition = useRef<string | null>(null);
+  // The part of the field the pane has already received, as typed since the last Enter.
+  const sentLine = useRef("");
   const pendingBlur = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Idle watchdog: one 60s one-shot, re-armed on every keystroke (commits
   // and special keys — not composition intermediates). A mode nobody has
@@ -151,8 +174,8 @@ export function useDirectTyping({
     // and this cancellation is what keeps it from landing on the session that replaced it.
     cancelPendingBlur();
     setValue("");
+    sentLine.current = "";
     composing.current = false;
-    committedComposition.current = null;
     activeRef.current = true;
     setActive(true);
     setStatus(t("directTyping.status.armed"), "success");
@@ -178,9 +201,31 @@ export function useDirectTyping({
     activeRef.current = false;
     setActive(false);
     setValue("");
+    sentLine.current = "";
     composing.current = false;
     compositionEndedAt.current = Number.NEGATIVE_INFINITY;
-    committedComposition.current = null;
+  }
+
+  /** Send what the field holds beyond what the pane already has. */
+  function sendLineChange(next: string) {
+    const keys = keysForLineChange(sentLine.current, next);
+    sentLine.current = next;
+    if (keys.length === 0) return;
+    sender.enqueue(keys);
+    pokeIdleTimer();
+  }
+
+  /** Send a key that ends the line (Enter), after whatever the field still holds unsent. The field
+   *  empties here, and synchronously: a compositionend still on its way reads the DOM value, and a
+   *  stale one would be sent again. */
+  function sendLineEnd(key: string) {
+    const inputEl = inputRef.current;
+    if (inputEl !== null) sendLineChange(inputEl.value);
+    sender.enqueue([key]);
+    pokeIdleTimer();
+    sentLine.current = "";
+    if (inputEl !== null) inputEl.value = "";
+    setValue("");
   }
 
   function clearMode() {
@@ -253,8 +298,8 @@ export function useDirectTyping({
   // are re-created every render, so naming them as dependencies would re-run — and in the pane-key
   // effect, re-RESET — on every render instead. A latest-value ref says that intent outright, and
   // keeps each effect calling the current closure rather than a stale capture.
-  const lifecycle = useRef({ clearMode, dropKeyboard, resetMode });
-  lifecycle.current = { clearMode, dropKeyboard, resetMode };
+  const lifecycle = useRef({ clearMode, dropKeyboard, resetMode, sendLineEnd });
+  lifecycle.current = { clearMode, dropKeyboard, resetMode, sendLineEnd };
 
   // The stable enqueue callback, not the sender's fresh object, belongs in the native listener's
   // dependency list. Resetting the sender is part of resetMode on every disarm, not only pane changes.
@@ -360,6 +405,14 @@ export function useDirectTyping({
       // Backspace inside an active IME edits the candidate; Enter commits/submits and must still reach
       // the terminal. Gboard commonly marks that insertParagraph event as composing.
       if ((event.isComposing || composing.current) && key === "Backspace") return;
+      if (key === "Enter") {
+        event.preventDefault();
+        lifecycle.current.sendLineEnd(key);
+        return;
+      }
+      // A Backspace over typed text is the field's own edit, and the change it makes sends the
+      // Backspace. Only an empty field has nothing to delete, so there the key goes to the pane.
+      if (inputEl.value.length > 0) return;
       event.preventDefault();
       enqueueKeys([key]);
       pokeIdleTimer();
@@ -381,44 +434,23 @@ export function useDirectTyping({
     // `Event` for the synthetic ChangeEvent, which is the only reason this is written down.
     const inputEvent = event.nativeEvent as InputEvent;
     if (inputEvent.isComposing || composing.current) return;
-
-    // Gboard can follow compositionend with one ordinary input carrying the same committed word.
-    // Drop that prefix rather than sending a swipe twice, while preserving any suffix typed in the
-    // same event (commonly the auto-inserted space before the next swiped word).
-    const committed = committedComposition.current;
-    if (committed !== null) {
-      committedComposition.current = null;
-      const remainder = next.startsWith(committed) ? next.slice(committed.length) : next;
-      if (remainder.length > 0) {
-        sender.enqueue(textToKeySequence(remainder));
-        pokeIdleTimer();
-      }
-      setValue("");
-      return;
-    }
-
-    if (next.length === 0) return;
-    sender.enqueue(textToKeySequence(next));
-    pokeIdleTimer();
-    setValue("");
+    // Gboard can follow compositionend with one ordinary input carrying the same committed word;
+    // the line already holds it, so only what that input adds (often the space) is sent.
+    sendLineChange(next);
   }
 
   function onCompositionStart() {
     if (!activeRef.current) return;
     composing.current = true;
-    committedComposition.current = null;
   }
 
   function onCompositionEnd(event: ReactCompositionEvent<HTMLTextAreaElement>) {
     if (!activeRef.current) return;
     composing.current = false;
     compositionEndedAt.current = Date.now();
-    const committed = event.currentTarget.value || event.data;
-    if (committed.length === 0) return;
-    committedComposition.current = committed;
-    sender.enqueue(textToKeySequence(committed));
-    pokeIdleTimer();
-    setValue("");
+    const line = event.currentTarget.value;
+    setValue(line);
+    sendLineChange(line);
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -435,7 +467,12 @@ export function useDirectTyping({
     }
     const key = keyForKeyDown(event.key);
     if (key === undefined) return;
+    if (key === "Backspace" && event.currentTarget.value.length > 0) return;
     event.preventDefault();
+    if (key === "Enter") {
+      sendLineEnd(key);
+      return;
+    }
     sender.enqueue([key]);
     pokeIdleTimer();
   }

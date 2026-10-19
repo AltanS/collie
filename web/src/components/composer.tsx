@@ -2434,6 +2434,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               hand === "left" && "pr-2",
+              // Type mode keeps the line in the field until Enter (issue 534), and the password
+              // prompt hands off to it, so the field shows dots. The mirror above shows the echo.
+              direct.active && "[-webkit-text-security:disc]",
               // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
               // family the mirror above it renders in, not the app's chrome face. `font-mono` is
               // the mirror's own default; the style below follows the operator's mirror-family
