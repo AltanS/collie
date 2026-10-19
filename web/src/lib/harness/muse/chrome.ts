@@ -23,6 +23,7 @@
 import { isBlank, lineText, type StyledLine } from "../../blocks";
 import { detectApprovalRegion } from "./approval";
 import { detectCheckboxRegion } from "./checkbox";
+import { detectMenuRegion } from "./menu";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 import {
@@ -129,6 +130,9 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 export function extractInputDraft(lines: StyledLine[]): string | null {
   if (detectApprovalRegion(lines) !== null) return null;
   if (detectTrustRegion(lines) !== null) return null;
+  // A below-box picker replaces the statusline, so locateTail already fails below; named here
+  // like approval/trust so a future chrome change cannot silently re-open it (menu.ts).
+  if (detectMenuRegion(lines) !== null) return null;
   if (hasOpenNote(lines)) return null;
   if (boxIsBare(lines) && liveDialogOwnsKeyboard(lines)) return null;
   const tail = locateTail(lines);
@@ -219,6 +223,7 @@ export function hasComposer(lines: StyledLine[]): boolean {
 export function composerReady(lines: StyledLine[]): boolean {
   if (detectApprovalRegion(lines) !== null) return false;
   if (detectTrustRegion(lines) !== null) return false;
+  if (detectMenuRegion(lines) !== null) return false;
   if (hasOpenNote(lines)) return false;
   if (boxIsBare(lines) && liveDialogOwnsKeyboard(lines)) return false;
   if (tasksPopupHoldsStopKey(lines)) return false;

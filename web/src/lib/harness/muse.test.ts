@@ -60,6 +60,10 @@ const PINNED = [
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
   "muse--fresh-idle.txt",
+  "muse--menu-effort-filter.txt",
+  "muse--menu-export.txt",
+  "muse--menu-model-moved.txt",
+  "muse--menu-model.txt",
   "muse--palette-exact.txt",
   "muse--palette-hint-moved.txt",
   "muse--palette-hint-skills.txt",
@@ -103,6 +107,9 @@ const LIFTED = [
   "muse--ask-toppings-checked.txt",
   "muse--ask-toppings-review.txt",
   "muse--ask-toppings.txt",
+  "muse--menu-export.txt",
+  "muse--menu-model-moved.txt",
+  "muse--menu-model.txt",
   "muse--resume-picker-moved.txt",
   "muse--resume-picker.txt",
   "muse--tasks-popup-approval.txt",
@@ -115,6 +122,9 @@ const NOT_READY = [
   "muse--ask-color-notes-open.txt",
   "muse--ask-color-notes-typed.txt",
   "muse--ask-toppings-notes-open.txt",
+  // The /effort picker stays raw (its filter field owns typed keys, MUSE-16) but its box is
+  // still not a composer: the picker replaced the statusline and owns the keyboard.
+  "muse--menu-effort-filter.txt",
 ];
 
 const ownFixtures = LIFTED;
@@ -152,9 +162,7 @@ describe("submitSettleMs — Muse 1.4.4 swallows an Enter sent right behind the 
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(
-    neutralFixtures.filter(
-      (f) => !f.includes("notes-open") && !f.includes("notes-typed"),
-    ),
+    neutralFixtures.filter((f) => !NOT_READY.includes(f)),
   )("%s: the composer is on screen ⇒ true", (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
     expect(museAdapter.composerReady!(lines)).toBe(true);
