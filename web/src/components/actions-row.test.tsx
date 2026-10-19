@@ -732,3 +732,131 @@ describe("ActionsRow — hand", () => {
     expect(scroller().className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
   });
 });
+
+// THE OUTPUT, ZOOMED: an icon-only pill directly left of the Switch mark, on the pinned block. The
+// pane decides whether there is one (agent-chat.tsx); this file draws it and makes room for it.
+describe("ActionsRow — the Zoom pill", () => {
+  const handle = () => ({ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" });
+  const changes = () => ({ onClick: vi.fn(), label: "Changes" });
+  const zoomPill = (onClick = vi.fn()) => ({ onClick, label: "Zoom output" });
+  const clearX = () => ({ mode: "clear" as const, label: "Clear message", onClick: vi.fn() });
+  const spacerStyle = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>(".overflow-x-auto")!.lastElementChild!.getAttribute("style");
+
+  it("stands directly left of the Switch mark, outside the scroller, and opens the view on a tap", async () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} changes={changes()} zoom={zoomPill(onClick)} />,
+    );
+    const pill = screen.getByRole("button", { name: "Zoom output" });
+    expect(screen.getByRole("button", { name: "Changes" }).nextElementSibling).toBe(pill);
+    expect(pill.nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
+    expect(pill.textContent).toBe("");
+    expect(pill).not.toHaveAttribute("aria-haspopup");
+    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(belt.querySelector(".overflow-x-auto")!.contains(pill)).toBe(false);
+    await userEvent.click(pill);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("is beside the Switch mark on a pane with no Changes pill too", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} zoom={zoomPill()} />);
+    expect(screen.getByRole("button", { name: "Zoom output" }).nextElementSibling).toBe(
+      screen.getByRole("button", { name: "Switch pane" }),
+    );
+  });
+
+  it("has no Zoom pill without the prop", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} />);
+    expect(screen.queryByRole("button", { name: "Zoom output" })).not.toBeInTheDocument();
+  });
+
+  it("wears the pinned pills' box and tap feedback", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} zoom={zoomPill()} />);
+    const pill = screen.getByRole("button", { name: "Zoom output" });
+    for (const cls of [
+      /(?:^|\s)w-\(--belt-pill\)(?=\s|$)/,
+      /(?:^|\s)min-w-\(--belt-pill\)(?=\s|$)/,
+      /(?:^|\s)border-0(?=\s|$)/,
+      /(?:^|\s)px-0(?=\s|$)/,
+      /(?:^|\s)active:bg-foreground\/15(?=\s|$)/,
+      /(?:^|\s)motion-reduce:active:scale-100(?=\s|$)/,
+    ]) {
+      expect(pill.className).toMatch(cls);
+    }
+  });
+
+  it("widens the first-frame fallback by one pill, up to four: 85 + 4 × 37 + 3 × 6 = 251", () => {
+    const { container, unmount } = render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={handle()} zoom={zoomPill()} />,
+    );
+    expect(spacerStyle(container)).toBe("width: 181px;");
+    unmount();
+    const four = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        zoom={zoomPill()}
+        clear={clearX()}
+      />,
+    );
+    expect(spacerStyle(four.container)).toBe("width: 267px;");
+    expect([4, 5].map((n) => switchPillInset(1, n))).toEqual([231, 269]);
+    // Five with the agents mark beside them: 85 + 5 × 37 + 4 × 6 = 294 at the default scale.
+    expect([1, 2, 3, 4, 5].map((n) => switchPillInset(1.15, n))).toEqual([122, 165, 208, 251, 294]);
+  });
+
+  it("gives each of four pinned pills a hit box by its place", () => {
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        zoom={zoomPill()}
+        clear={clearX()}
+      />,
+    );
+    const reach = (name: string) => {
+      const cls = screen.getByRole("button", { name }).className;
+      return [cls.match(/before:-left-\[(\d+)px\]/)?.[1], cls.match(/before:-right-\[(\d+)px\]/)?.[1]];
+    };
+    expect(reach("Clear message")).toEqual(["7", "3"]);
+    expect(reach("Changes")).toEqual(["3", "3"]);
+    expect(reach("Zoom output")).toEqual(["3", "3"]);
+    expect(reach("Switch pane")).toEqual(["3", "7"]);
+  });
+
+  it("keeps Zoom beside the Switch mark with the agents mark and Files in the block too, each reach by its place", () => {
+    const { container } = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={handle()}
+        changes={changes()}
+        zoom={zoomPill()}
+        clear={clearX()}
+        agents={{ count: 2, onClick: vi.fn(), label: "Agents 2", expanded: false }}
+      />,
+    );
+    const pill = screen.getByRole("button", { name: "Zoom output" });
+    expect(pill.previousElementSibling).toBe(screen.getByRole("button", { name: "Changes" }));
+    expect(pill.nextElementSibling).toBe(screen.getByRole("button", { name: "Switch pane" }));
+    const reach = (name: string) => {
+      const cls = screen.getByRole("button", { name }).className;
+      return [cls.match(/before:-left-\[(\d+)px\]/)?.[1], cls.match(/before:-right-\[(\d+)px\]/)?.[1]];
+    };
+    expect(reach("Clear message")).toEqual(["7", "3"]);
+    expect(reach("Agents 2")).toEqual(["3", "3"]);
+    expect(reach("Changes")).toEqual(["3", "3"]);
+    expect(reach("Zoom output")).toEqual(["3", "3"]);
+    expect(reach("Switch pane")).toEqual(["3", "7"]);
+    // All five pinned: 294 + 16 of end air.
+    expect(spacerStyle(container)).toBe("width: 310px;");
+  });
+});

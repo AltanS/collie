@@ -50,6 +50,7 @@ import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
+import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, hasDialogCard } from "@/components/card-dock";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
@@ -194,6 +195,12 @@ interface AgentChatProps {
    * `onBack` and never glides.
    */
   onBackArrow?: () => void;
+  /**
+   * The output, zoomed (components/output-zoom.tsx): `open` while the route is `/pane/:id/zoom`,
+   * `onOpen` the belt's Zoom pill (a step down), `onClose` its ✕ (an up). Absent, no pill and no view:
+   * a caller that is not the pane route, as in this component's own tests.
+   */
+  zoom?: { open: boolean; onOpen: () => void; onClose: () => void };
   onSelect: (paneId: string) => void;
 }
 
@@ -250,6 +257,7 @@ export function AgentChat({
   noSavedCopy = false,
   onBack,
   onBackArrow,
+  zoom,
   onSelect,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
@@ -2999,6 +3007,22 @@ export function AgentChat({
                       ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }
                       : undefined
                   }
+                  // The output, zoomed: the pill beside the switcher mark opens it full screen. The
+                  // field gives up focus first, so the soft keyboard is not left standing over a view
+                  // with no input in it (the reason `enterZen` blurs).
+                  zoomPill={
+                    zoom
+                      ? {
+                          onClick: () => {
+                            // SAFETY: as in `enterZen` — the optional call is the narrowing for a
+                            // non-HTMLElement or null `activeElement`.
+                            (document.activeElement as HTMLElement | null)?.blur();
+                            zoom.onOpen();
+                          },
+                          label: t("zoom.open"),
+                        }
+                      : undefined
+                  }
                   draftNoticeSlot={draftNoticeSlot}
                 />
                 )}
@@ -3250,6 +3274,25 @@ export function AgentChat({
         />
         {/* "Start without prompts?" for a Launch row that skips permission prompts. */}
         {noPromptsSheet}
+        {/* The output, zoomed (`/pane/:id/zoom`). Mounted here, a sibling of the sheets, for their
+            reason: it is a `fixed` element with no portal, so it must not sit inside the animating
+            Collapse or the sticky header. It reads the LIVE text, not the mirror's frozen `display`:
+            a reader who scrolled the mirror up still gets the pane as it is now. The grammars do not
+            run there, so a dialog the dock lifted reads in place as the rows it was. */}
+        {zoom?.open && !gridless && (
+          <OutputZoom
+            text={text}
+            logicalText={logicalText}
+            wrap={prefs.wrap}
+            fontSize={prefs.fontSize}
+            agent={agent?.agent}
+            nativeMirror={mirrorOverride}
+            face={mirrorFace}
+            title={name}
+            hand={handOf(prefs)}
+            onClose={zoom.onClose}
+          />
+        )}
       </div>
     </CompactStripLabels>
   );

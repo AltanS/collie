@@ -28,6 +28,15 @@ export function historyPath(paneId: string, scope?: Scope): string {
 }
 
 /**
+ * A pane's output, zoomed: the mirror's text alone, full screen, for pinch and pan. A child path of
+ * the pane, like History, so it is a level and the phone's back closes it (ADR 0067). It reads the
+ * pane's own loader and never moves the pane (ADR 0008).
+ */
+export function zoomPath(paneId: string, scope?: Scope): string {
+  return `/pane/${encodeURIComponent(paneId)}/zoom${scopeSearch(scope)}`;
+}
+
+/**
  * A pane's Changes view (ADR 0065): the list, or with `file` one file's diff. The file rides in the
  * query (`repo`, `path`) beside the scope, so browser back walks from a diff to the list.
  */
@@ -410,7 +419,7 @@ const ANY_PANE = "/pane/*";
  *   L0 `/`
  *   L1 `/space/:id`, `/settings`, `/crew`, `/new` (from the dashboard, a space or a pane)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
- *   L3 `/settings/voice/host`, `/settings/voice/model`, `/pane/:id/history`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *   L3 `/settings/voice/host`, `/settings/voice/model`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`
@@ -440,7 +449,7 @@ export function ancestorsOf(pathname: string): string[] {
     return [`/pane/${id}/changes`, `/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "pane" && seg.length === 2) return [ANY_SPACE, "/"];
-  if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {
+  if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "zoom" || leaf === "changes")) {
     return [`/pane/${id}`, ANY_SPACE, "/"];
   }
   if (head === "settings" && seg.length === 1) return ["/"];
@@ -668,7 +677,7 @@ export function parentChain(pathname: string, search: string): string[] {
     return [...chain, filesUnder(list), ...filesFolders(at).slice(0, at.path !== undefined ? undefined : -1).map((dir) => filesUnder(list, { dir }))];
   }
   if (head === "pane" && seg.length === 2) return [home];
-  if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "changes")) {
+  if (head === "pane" && seg.length === 3 && (leaf === "history" || leaf === "zoom" || leaf === "changes")) {
     const pane = `/pane/${id}${q}`;
     return file ? [home, pane, `/pane/${id}/changes${q}`] : [home, pane];
   }

@@ -2072,6 +2072,11 @@ export const ko: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "파일",
+  "zoom.open": "출력 확대",
+  "zoom.title": "확대한 출력",
+  "zoom.in": "확대",
+  "zoom.out": "축소",
+  "zoom.reset": "확대 초기화 ({scale})",
   "chat.model.aria": "모델 {name}",
   "files.title": "파일",
   "branch.aria": "브랜치 {name}",

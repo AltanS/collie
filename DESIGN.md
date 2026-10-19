@@ -851,8 +851,8 @@ On a phone the edge swipe is history back, so the history stack must be the leve
 ([ADR 0067](./.adr/0067-back-goes-up-one-level.md)). Navigate through `useNav()`
 (`web/src/hooks/use-nav.ts`), never a bare `navigate(path)`:
 
-- **Down** (`nav.down`) pushes and records `from`. Opening a space, a pane, History, Changes,
-  Settings, Crew, Updates, New.
+- **Down** (`nav.down`) pushes and records `from`. Opening a space, a pane, History, Changes, the
+  zoomed output, Settings, Crew, Updates, New.
 - **Sideways** (`nav.side`) replaces and carries `from`. Pane to pane, tab to tab, space chip to
   space chip, the machine and session switchers. `nav.open` picks down or sideways for a new pane.
 - **Up** (`nav.up(parent)`, `nav.upTo(parent)`) steps back when the entry behind is a legitimate
@@ -860,9 +860,12 @@ On a phone the edge swipe is history back, so the history stack must be the leve
   and every automatic exit. Never push a parent.
 - **A new route** gets its place in `ancestorsOf` and `parentChain` (`web/src/lib/nav.ts`) in the
   same change.
-- **A sheet owns no history entry.** It opens and closes without navigating.
+- **A sheet owns no history entry.** It opens and closes without navigating. A full-screen view the
+  phone's back must close is a level instead, with a path of its own: the zoomed output is
+  `/pane/:id/zoom`, a child of the pane route so the pane stays mounted under it.
 - **On phones, a screen below a pane repeats its Back at the bottom on the thumb side.** The header
-  arrow is out of reach of a thumb on a large phone. The bottom Back (`ui/bottom-bar.tsx`) takes the
+  arrow is out of reach of a thumb on a large phone. The bottom Back (`BackBar` in
+  `components/back-bar.tsx`, on `ui/bottom-bar.tsx`) takes the
   same handler and the same name as the arrow, from one object, so the two cannot drift; it sits at
   the right end, or the left with the `hand` pref on `left`, and it hides while the keyboard is up.
   The arrow stays at every width.

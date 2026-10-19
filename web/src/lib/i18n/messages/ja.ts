@@ -2080,6 +2080,11 @@ export const ja: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "ファイル",
+  "zoom.open": "出力を拡大",
+  "zoom.title": "拡大した出力",
+  "zoom.in": "拡大",
+  "zoom.out": "縮小",
+  "zoom.reset": "ズームをリセット（{scale}）",
   "chat.model.aria": "モデル {name}",
   "files.title": "ファイル",
   "branch.aria": "ブランチ {name}",

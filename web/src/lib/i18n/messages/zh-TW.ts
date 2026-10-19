@@ -2056,6 +2056,11 @@ export const zhTW: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "檔案",
+  "zoom.open": "放大輸出",
+  "zoom.title": "放大的輸出",
+  "zoom.in": "放大",
+  "zoom.out": "縮小",
+  "zoom.reset": "重設縮放（{scale}）",
   "chat.model.aria": "模型 {name}",
   "files.title": "檔案",
   "branch.aria": "分支 {name}",

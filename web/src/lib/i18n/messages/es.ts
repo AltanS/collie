@@ -2090,6 +2090,11 @@ export const es: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Archivos",
+  "zoom.open": "Ampliar la salida",
+  "zoom.title": "Salida ampliada",
+  "zoom.in": "Acercar",
+  "zoom.out": "Alejar",
+  "zoom.reset": "Restablecer el zoom ({scale})",
   "chat.model.aria": "Modelo {name}",
   "files.title": "Archivos",
   "branch.aria": "Rama {name}",
