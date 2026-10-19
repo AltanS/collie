@@ -10,7 +10,7 @@
 //    directory symlinked out of the root cannot become a way to read arbitrary files;
 //  - reads are byte-capped, so a pathological log can't balloon the bridge's memory — twice over
 //    since the live read landed: `MAX_TRANSCRIPT_BYTES` bounds a History page, and the smaller
-//    `FIRST_TAIL_BYTES` bounds the live window's opening read and every catch-up after a gap.
+//    `FIRST_TAIL_BYTES` bounds the live window's opening read and every reset; `CATCH_UP_BYTES` bounds the gap a resume may read as an append.
 //
 // The live read (`readSinceFile`, at the foot of this file) adds no filesystem surface: it takes
 // the path `resolve` already validated, and a cursor whose only power is to name a byte offset
@@ -217,6 +217,18 @@ export async function tailBytes(
 export const FIRST_TAIL_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
+ * How far behind a resume may fall and still be an append.
+ *
+ * NOT {@link FIRST_TAIL_BYTES}. The window's size and the gap a poll may bridge are two bounds. Claude
+ * Code writes an attached image into the log as one row of about a megabyte, so three phone
+ * screenshots are about 3 MB in one second, more than the window, and an ordinary poll must not read
+ * that as a lost position. A gap under this bound is read and folded as an append, and the window
+ * trims itself by weight afterwards (`LiveWindow.trim`). A bigger gap still resets, so a resume that
+ * fell tens of megabytes behind never reads the whole gap into memory.
+ */
+export const CATCH_UP_BYTES = 8 * 1024 * 1024; // 8 MB
+
+/**
  * The same bound for the two harnesses that answer in ROWS rather than bytes.
  *
  * opencode and hermes are SQLite, so their first read is a `limit`, not a byte offset — and the
@@ -255,6 +267,7 @@ export async function readSinceFile(
   path: string,
   cursor: Cursor,
   firstBytes = FIRST_TAIL_BYTES,
+  catchUpBytes = CATCH_UP_BYTES,
 ): Promise<ReadSince> {
   const st = await statFile(path);
   // Gone between resolve and read. NOT a reset: blanking a screen because one stat lost a race is a
@@ -263,10 +276,11 @@ export async function readSinceFile(
   if (st === null) return { lines: [], cursor, reset: false, fromStart: false };
 
   const at = decodeCursor(cursor, "bytes", path);
-  // A resume that fell more than one window behind cannot be an append: reading the gap would put
-  // tens of megabytes in memory to catch up, which is the one thing a bounded window exists to
-  // prevent. It becomes a reset, and the caller replaces its window instead of extending it.
-  const behind = at !== null && st.size - at > firstBytes;
+  // A resume that fell more than the catch-up bound behind cannot be an append: reading the gap would
+  // put tens of megabytes in memory to catch up, which is the one thing a bounded window exists to
+  // prevent. It becomes a reset, and the caller replaces its window instead of extending it. The
+  // bound is wider than the window ({@link CATCH_UP_BYTES}), so a few screenshots do not trip it.
+  const behind = at !== null && st.size - at > catchUpBytes;
   const reset = at === null || at > st.size || behind;
   const from = reset ? Math.max(0, st.size - firstBytes) : at;
   // Only a reset can claim the start, and only one that the bound did not move off byte 0.

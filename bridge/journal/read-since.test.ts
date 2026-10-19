@@ -161,16 +161,53 @@ describe("readSinceFile", () => {
     await f.clean();
   });
 
-  test("a cursor left more than one window behind resets instead of reading the gap", async () => {
+  test("a cursor left more than the catch-up bound behind resets instead of reading the gap", async () => {
     const f = await lab();
     await f.write(`${row(1)}\n`);
-    const first = await readSinceFile(f.path, NO_CURSOR, 20);
+    const first = await readSinceFile(f.path, NO_CURSOR, 20, 20);
 
     for (const n of [2, 3, 4, 5]) await f.append(`${row(n)}\n`);
-    const next = await readSinceFile(f.path, first.cursor, 20);
+    const next = await readSinceFile(f.path, first.cursor, 20, 20);
     expect(next.reset).toBe(true);
     // The newest rows that fit in the window, and no half row with them.
     expect(next.lines).toEqual([row(4), row(5)]);
+
+    await f.clean();
+  });
+
+  // Three phone screenshots land in the log as three rows of about a megabyte inside one second. The
+  // window is 2 MB, the gap is 3 MB, and the thread must stay: a catch-up bound apart from the window.
+  test("a gap past the window but under the catch-up bound is an append", async () => {
+    const f = await lab();
+    const big = (n: number) => `{"i":${n},"pad":"${"x".repeat(1024 * 1024 - 20)}"}`;
+    await f.write(`${row(1)}\n`);
+    const first = await readSinceFile(f.path, NO_CURSOR);
+
+    const gap = [big(2), big(3), big(4)];
+    for (const line of gap) await f.append(`${line}\n`);
+    // Default parameters: a 2 MB window and an 8 MB catch-up bound against a gap of about 3 MB.
+    const next = await readSinceFile(f.path, first.cursor);
+    expect(next.reset).toBe(false);
+    expect(next.lines).toEqual(gap);
+
+    await f.clean();
+  });
+
+  test("a gap past the catch-up bound resets and reads only the last window", async () => {
+    const f = await lab();
+    await f.write(`${row(1)}\n`);
+    const first = await readSinceFile(f.path, NO_CURSOR, 20, 40);
+
+    for (const n of [2, 3, 4, 5, 6, 7]) await f.append(`${row(n)}\n`);
+    // 48 bytes of gap against a 40-byte catch-up bound resets; the read is the 20-byte window.
+    const next = await readSinceFile(f.path, first.cursor, 20, 40);
+    expect(next.reset).toBe(true);
+    expect(next.lines).toEqual([row(6), row(7)]);
+
+    // The same gap under a wider catch-up bound is an append of every row, in order.
+    const wide = await readSinceFile(f.path, first.cursor, 20, 100);
+    expect(wide.reset).toBe(false);
+    expect(wide.lines).toEqual([2, 3, 4, 5, 6, 7].map(row));
 
     await f.clean();
   });
