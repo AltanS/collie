@@ -229,6 +229,7 @@ export const en = {
     "A device is already using that name. Pick a different one. The code is still good.",
   "settings.devices.pair.failure.badRequest":
     "The code or the name wasn’t usable. A name is 1–48 characters.",
+  "settings.devices.pair.failure.identityRequired": "Pairing needs your Tailscale identity, which this address doesn’t send. Open Collie at its tailnet address and pair there. Your code wasn’t tried, so it is still good.",
 
   // --- settings.connection ---
   "settings.connection.title": "Connection",
@@ -1843,6 +1844,7 @@ export const en = {
   "updates.entry.status.peersBehind.other": "{count} peers behind",
   "updates.entry.status.available": "{version} available",
   "updates.entry.status.upToDate": "Up to date",
+  "updates.entry.status.unknown": "Unknown, can’t reach Collie",
 
   // --- updateRibbon (the ONE top-of-app update band), M16/02 ---
   // Every string in this block is held to a 40-CHARACTER BUDGET in all six locales, enforced by

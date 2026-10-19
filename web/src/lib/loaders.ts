@@ -811,7 +811,9 @@ export interface DevicesData {
  * What a route renders when the loader did not run or threw. Exported because two callers need the
  * same fallback: the Settings System page's `useLoaderData()` default, and its tests.
  */
-export const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: false };
+// `error: true`, because this shape means "nobody asked the bridge" (#512): as a clean answer it
+// would render an empty registry as the fact that nothing is paired.
+export const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: true };
 
 export async function devicesLoader({ request }: { request?: Request } = {}): Promise<DevicesData> {
   try {
