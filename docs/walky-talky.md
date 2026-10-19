@@ -87,7 +87,7 @@ loses its token, so the next pane that takes its id gets a new one. A send to a 
 closed is refused `pane replaced`, and never reaches the new pane. Run `collie walky who` again for
 the new address.
 
-An address with no token still works. It means the pane that holds that id now, whatever it is.
+An address works with or without the token: the token pins the session, so a pane that was replaced is refused. An address with no token means the pane that holds that id now, whatever it is.
 The `to` line of `send` shows the pane as `who` lists it. `status` and the receipt name the pane
 without the token, for example `collie-04rj6a/w54:p1G`.
 

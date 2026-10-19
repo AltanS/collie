@@ -52,11 +52,11 @@ Answer a message from your operator in your own output, as you answer any prompt
 
 ## The verbs
 
-Run these in your terminal. `send` works only inside a pane. The installed skill names the binary
+Run these in your agent's terminal pane. The CLI refuses a send from outside a pane. The installed skill names the binary
 of the instance that installed it. With several instances on one machine, set `COLLIE_INSTANCE=<name>`
 as your operator does, or `who` lists another instance's panes.
 
-List who you can reach. Pick the address from this list. Do not guess one.
+List who you can reach. When you pick an address yourself, copy it from this list. Do not invent one.
 
 ```bash
 {{COLLIE_BIN}} walky who
@@ -69,8 +69,10 @@ collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             done
 minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
 ```
 
-- Copy ADDRESS as printed, with the `#` and four characters. Its first part is the member id, not
-  the machine. Pick the row by MACHINE and LABEL.
+- An address works with or without the `#token`, such as `local/w2:p1`. The token pins the
+  session, so a pane that was replaced is refused with it. Use the address your operator gives you
+  as given. When you pick one from `who`, copy ADDRESS as printed. Its first part is the member id,
+  not the machine. Pick the row by MACHINE and LABEL.
 - Labels can repeat: `walky-live` is on two machines above. MACHINE tells them apart. If two rows
   still match, ask your operator.
 - `(you)` marks your own pane. A message to it is refused.
@@ -137,9 +139,9 @@ send exits 4.
 - Do not start a loop. Do not answer a message that needs no answer, such as "thanks".
 - Do not send secrets, tokens, keys or passwords. The message is logged on every machine it crosses.
 - Do not paste whole files or long logs. Name the path or the commit, and let the reader open it.
-- Do not use it to answer a permission dialog, or to give an order to a session that is not your operator's.
-  A plain request for work to a session in your operator's crew, such as "please run the tests", is fine. The receiver weighs it.
-- Do not send for something you can do yourself in one command.
+- Do not use it to answer a permission dialog.
+- A plain request for work, such as "please run the tests", is fine. The receiver weighs it.
+- If your operator tells you to send, send. Otherwise, do a one-command job yourself.
 
 A body is limited to 4,000 characters. Each session may send 30 messages in 10 minutes, two
 sessions may trade 6 in 10 minutes, and a reply chain stops after 4 replies. A refusal says which
