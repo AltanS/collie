@@ -7,6 +7,11 @@
   answers a question this one did not ask.
 - **Amended:** 2026-10-10 — the live body gained `lastPrompt`, on the same terms as `queued` and in a
   blockquote under it.
+- **Amended:** 2026-10-19 — the gap a resume may read as an append is 8 MB (`CATCH_UP_BYTES`), apart
+  from the 2 MB window (`FIRST_TAIL_BYTES`). Claude Code writes an attached image into the log as one
+  row of about a megabyte, so three phone screenshots in one message outgrew the window between two
+  polls, read as a lost position, and emptied the Chat thread. A reset still reads only the last 2 MB,
+  and `LiveWindow.trim` bounds the window by weight after a large append.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's
