@@ -4611,6 +4611,32 @@ describe("Composer agents dock", () => {
     expect(pill).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("puts Tasks and Agents in one sticky group, the last child of the belt scroller, after the controls", () => {
+    renderComposer({
+      todos: [{ id: "1", text: "Run tests", status: "pending" }],
+      subagents: RUNNING,
+    });
+    const group = document.querySelector<HTMLElement>('[data-slot="composer-state-pills"]')!;
+    expect(group).not.toBeNull();
+    // jsdom measures no sticky offset, so the class is the claim: sticky, pinned to the end edge, over the scroller.
+    expect(group.className).toMatch(/(^|\s)sticky(\s|$)/);
+    expect(group.className).toMatch(/(^|\s)right-0(\s|$)/);
+    expect(group.className).toMatch(/(^|\s)ml-auto(\s|$)/);
+    expect(group.className).toMatch(/(^|\s)z-10(\s|$)/);
+    const scroller = group.parentElement!;
+    expect(scroller.lastElementChild).toBe(group);
+    expect(scroller.querySelector('[data-slot="composer-controls"]')).not.toBeNull();
+    expect(within(group).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Tasks 0/1", "Agents 2"]);
+    // Neither pill stands in the controls run, so one that comes or goes moves none of them.
+    const controls = scroller.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+    expect(within(controls).queryByRole("button", { name: /^(Tasks|Agents) / })).toBeNull();
+  });
+
+  it("draws no state group when both counts are zero", () => {
+    renderComposer({ todos: [], subagents: [] });
+    expect(document.querySelector('[data-slot="composer-state-pills"]')).toBeNull();
+  });
+
   it("a row tap opens the subagent sheet for that agent, sends nothing, and closes the dock", async () => {
     const user = userEvent.setup();
     const open = vi.fn<(t: SubagentTarget) => void>();

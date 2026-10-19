@@ -1,6 +1,6 @@
 // The composer's thirteen states of the way out (M56 spec 07), one numbered card each, the five
 // states of the held-send card (14 to 18, ADR 0061 amended 2026-10-18), and the belt's Agents pill
-// beside Tasks with its dock (19 and 20); the section that shows them is
+// beside Tasks with its dock, and the same belt without them (19 to 21); the section that shows them is
 // sections/composer-states.tsx. See app.tsx's header for the page's own rules, and test/way-out-states.ts for the table every way-out card is drawn from:
 // the same table the way-out tests read, so a card, a test and a placeholder talk about one state.
 //
@@ -9,7 +9,7 @@
 // a Send tap answers "No answer" at the thumb, which is itself a state worth seeing; the Keys dock and
 // the Screen pill are real and answer in one tap.
 //
-// Cards are numbered, 1 to 20, so a worker can be briefed by number ("card 4 is modal unreadable").
+// Cards are numbered, 1 to 21, so a worker can be briefed by number ("card 4 is modal unreadable").
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -267,7 +267,9 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showA
 }
 
 // ── THE BELT'S LISTS (19 and 20) ────────────────────────────────────────────────────────────────────
-// The Agents pill beside Tasks: the subagents of the pane's session that have not finished yet. The
+// The Agents pill beside Tasks: the subagents of the pane's session that have not finished yet. Both
+// pills pin to the belt's end edge, so at rest they show over the belt's right end while the controls
+// scroll under them; card 21 is the same belt without them, so Keys can be compared across the two. The
 // real Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent
 // card in Chat opens. There is no bridge behind this page, so the sheet answers that it cannot read
 // the transcript; that is the sheet's own state for an unreadable log.
@@ -283,7 +285,7 @@ const BELT_SUBAGENTS: PaneSubagent[] = [
   { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Find every caller of the todo tracker and say which ones read it at serialise time", startedAt: new Date(Date.now() - 40_000).toISOString(), spawnDepth: 1 },
 ];
 
-function BeltListsComposer({ paneId }: { paneId: string }) {
+function BeltListsComposer({ paneId, pills }: { paneId: string; pills: boolean }) {
   return (
     <SubagentSheet paneId={paneId}>
       <ChromeBlock>
@@ -300,15 +302,15 @@ function BeltListsComposer({ paneId }: { paneId: string }) {
           prefs={PREFS}
           display={{ open: false, onToggle: () => {} }}
           onSent={() => {}}
-          todos={BELT_TODOS}
-          subagents={BELT_SUBAGENTS}
+          todos={pills ? BELT_TODOS : undefined}
+          subagents={pills ? BELT_SUBAGENTS : undefined}
         />
       </ChromeBlock>
     </SubagentSheet>
   );
 }
 
-function BeltListsPhone({ paneId, open = false }: { paneId: string; open?: boolean }) {
+function BeltListsPhone({ paneId, open = false, pills = true }: { paneId: string; open?: boolean; pills?: boolean }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const stamp = () => markLive(paneId);
@@ -329,7 +331,7 @@ function BeltListsPhone({ paneId, open = false }: { paneId: string; open?: boole
     }, 50);
     return () => clearInterval(timer);
   }, [open, host]);
-  const [router] = useState(() => createMemoryRouter([{ path: "/", element: <BeltListsComposer paneId={paneId} /> }], { initialEntries: ["/"] }));
+  const [router] = useState(() => createMemoryRouter([{ path: "/", element: <BeltListsComposer paneId={paneId} pills={pills} /> }], { initialEntries: ["/"] }));
   return (
     <PhoneMock>
       <div ref={setHost}>
@@ -340,7 +342,7 @@ function BeltListsPhone({ paneId, open = false }: { paneId: string; open?: boole
   );
 }
 
-function BeltListsCase({ n, state, title, reach, note, paneId, open }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean }) {
+function BeltListsCase({ n, state, title, reach, note, paneId, open, pills }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean; pills?: boolean }) {
   return (
     <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
       <CardControls className="flex items-center gap-3">
@@ -349,7 +351,7 @@ function BeltListsCase({ n, state, title, reach, note, paneId, open }: { n: numb
           {n}: {title}
         </p>
       </CardControls>
-      <BeltListsPhone paneId={paneId} {...(open === undefined ? {} : { open })} />
+      <BeltListsPhone paneId={paneId} {...(open === undefined ? {} : { open })} {...(pills === undefined ? {} : { pills })} />
     </Card>
   );
 }
@@ -429,7 +431,7 @@ export function wayOutGroups(): ReactNode[] {
         n={19}
         state="belt-agents-pill"
         title="Agents pill beside Tasks"
-        reach="A Claude Code session with two subagents still running. The pill counts them; with none running it is not drawn."
+        reach="A Claude Code session with a task list and two subagents still running. Both pills pin to the belt's right edge, so they stay in view while the controls scroll under them; with a count of zero a pill is not drawn."
         paneId="belt:agents-pill"
       />
       <BeltListsCase
@@ -440,6 +442,14 @@ export function wayOutGroups(): ReactNode[] {
         note="The Agents tap is taken for you once the belt has mounted. With no bridge behind this page, a row opens the sheet in its unreadable state."
         paneId="belt:agents-dock"
         open
+      />
+      <BeltListsCase
+        n={21}
+        state="belt-no-state-pills"
+        title="The same belt, no state pills"
+        reach="No task list and no running subagent. Keys, Screen and Type stand where they stand on card 19: the state pills overlay the belt's end, they do not push."
+        paneId="belt:no-state-pills"
+        pills={false}
       />
     </Group>,
   ];

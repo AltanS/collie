@@ -364,9 +364,26 @@ export interface GeneralAction {
   onSelect: () => void;
 }
 
+/** No state pills: one stable empty list, so the default is the same array on every render. */
+const NO_STATE: readonly GeneralAction[] = [];
+
 export interface ActionsRowProps {
   /** Collie's own actions, in the order the thumb should meet them. */
   general: readonly GeneralAction[];
+  /**
+   * THE STATE PILLS: Tasks and Agents, each present only while its count is above zero. They say what
+   * the pane is doing, so they must be seen at a glance, and the belt scrolls: in the general run at
+   * 390px they landed past the right edge, out of view.
+   *
+   * So they stand in ONE group, the last thing in the scroller before the trailing spacer, and that
+   * group is `position: sticky` against the scroller's end edge (the right, or the left under
+   * `hand="left"`), just short of the pinned block when there is one. At rest it sits over the
+   * belt's end with the belt's own ground and a fade on its inner side, so the scrolled controls pass
+   * under it; scrolled to the end, it sits in flow after the last control. It OVERLAYS, it does not
+   * push: a pill that comes or goes changes nothing left of it, so Keys, Screen and Type never move
+   * (DESIGN.md §2). Absent or empty draws nothing.
+   */
+  state?: readonly GeneralAction[];
   /** The focused pane's agent — picks the harness section and its brand colour. */
   agent: string | undefined | null;
   /** The snapshot's `operatorCommands`; the `bar = true` ones replace the shipped bar (ADR 0043). */
@@ -473,7 +490,7 @@ export interface ActionsRowProps {
   };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear }: ActionsRowProps) {
+export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -491,10 +508,15 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
   const pinnedSpacer = pinned ? (
     <span aria-hidden className="h-full shrink-0" style={{ width: switchInset + BELT_END_AIR }} />
   ) : null;
+  // The state pills' sticky offset: the spacer's own width, so at rest they stop exactly where they
+  // stand in flow at the scroller's end, clear of the pinned block and its fade. With nothing pinned
+  // they stick to the scroller's end edge itself.
+  const stateInset = pinned ? switchInset + BELT_END_AIR : 0;
+  const hasState = state.length > 0;
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
-  if (general.length === 0 && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
+  if (general.length === 0 && !hasState && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
 
   return (
     <div
@@ -588,7 +610,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
           SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
           and 6px at the larger two, and the pills' `::before` reaches exactly that far again
           (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
-      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none">
+      {/* With state pills, the end edge is theirs: they paint their own fade, so this primitive's end
+          mask would only fade them out. Only the start edge is masked then, as with a pinned block. */}
+      <OverflowEdges edges={pinned || hasState ? (left ? "right" : "left") : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
@@ -642,6 +666,52 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
+            {/* THE STATE PILLS, STICKY AT THE SCROLLER'S END (`state` above says why). The group is
+                `pointer-events-none` and each pill switches it back on, so the fade's lead-in never
+                takes a tap meant for a control scrolling under it, the same trade the Switch block
+                makes. Its ground is the belt's own three layers (chrome, the belt's wash, the
+                scroller's tint), stacked under one mask that fades them in over the first 1.5rem, so
+                the controls read as passing under it rather than stopping against a patch. */}
+            {hasState && (
+              <div
+                data-slot="composer-state-pills"
+                className={cn(
+                  "pointer-events-none sticky z-10 flex shrink-0 items-center gap-1.5 self-stretch",
+                  left ? "left-0 mr-auto pr-6 pl-1.5 [direction:rtl]" : "right-0 ml-auto pl-6 pr-1.5",
+                )}
+                style={left ? { left: stateInset } : { right: stateInset }}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "pointer-events-none absolute inset-0 bg-chrome",
+                    left
+                      ? "[mask-image:linear-gradient(to_left,transparent,black_1.5rem)]"
+                      : "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
+                  )}
+                >
+                  <span className="absolute inset-0 bg-foreground/6" />
+                  <span className="absolute inset-0 bg-primary/10" />
+                </span>
+                {state.map((action) => (
+                  <Button
+                    key={action.id}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={action.disabled}
+                    aria-label={action.label}
+                    aria-expanded={action.expanded}
+                    aria-pressed={action.pressed}
+                    onClick={action.onSelect}
+                    className={cn(`${STRIP_ROW_PILL} pointer-events-auto gap-1.5`, action.on === true ? ON : OFF, left && "[direction:ltr]")}
+                  >
+                    <action.icon className={BELT_ICON} />
+                    {action.word ?? action.label}
+                  </Button>
+                ))}
+              </div>
+            )}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
                 row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the

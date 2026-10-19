@@ -2051,32 +2051,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     },
                   ]
                 : []),
-              ...(todoList.length > 0
-                ? [
-                    {
-                      id: "todos",
-                      icon: ListTodo,
-                      label: todoLabel,
-                      on: drawer === "todos",
-                      expanded: drawer === "todos",
-                      onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
-                    },
-                  ]
-                : []),
-              // The running subagents, beside Tasks and built the same way: withdrawn when none runs,
-              // a dock toggle when some do. It sends nothing.
-              ...(subagentList.length > 0
-                ? [
-                    {
-                      id: "agents",
-                      icon: Bot,
-                      label: agentsLabel,
-                      on: drawer === "agents",
-                      expanded: drawer === "agents",
-                      onSelect: () => requestDrawer(drawer === "agents" ? null : "agents"),
-                    },
-                  ]
-                : []),
               // Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view
               // state, so a read-only device or a gone pane can still make its mirror readable.
               {
@@ -2093,6 +2067,37 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   display.onToggle();
                 },
               },
+          ]}
+          // The state pills, Tasks then Agents, each only while its count is above zero. They are not
+          // in `general`: the belt pins them to its end edge so they stay in view while it scrolls,
+          // and a pill that comes or goes moves none of the controls (actions-row.tsx, `state`).
+          state={[
+            ...(todoList.length > 0
+              ? [
+                  {
+                    id: "todos",
+                    icon: ListTodo,
+                    label: todoLabel,
+                    on: drawer === "todos",
+                    expanded: drawer === "todos",
+                    onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
+                  },
+                ]
+              : []),
+            // The running subagents, beside Tasks and built the same way. A tap opens the dock and
+            // sends nothing.
+            ...(subagentList.length > 0
+              ? [
+                  {
+                    id: "agents",
+                    icon: Bot,
+                    label: agentsLabel,
+                    on: drawer === "agents",
+                    expanded: drawer === "agents",
+                    onSelect: () => requestDrawer(drawer === "agents" ? null : "agents"),
+                  },
+                ]
+              : []),
           ]}
           agent={agent}
           mine={operatorCommands}
