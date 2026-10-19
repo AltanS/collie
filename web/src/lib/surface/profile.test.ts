@@ -284,6 +284,14 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
   });
 
+  it("a list of commands that run at once in a turn parses with its note; omp ships /goal", () => {
+    const keys = parseProfile(change(change(rawCodex(), ["keys", "commandsRunInTurn"], ["/status", "/model"]), ["keys", "commandsRunInTurnNote"], "Lab note.")).keys;
+    expect(keys.commandsRunInTurn).toEqual(["/status", "/model"]);
+    expect(keys.commandsRunInTurnNote).toBe("Lab note.");
+    expect(parseProfile(rawCodex()).keys.commandsRunInTurn).toBeUndefined();
+    expect(loadProfiles().get("omp")?.keys.commandsRunInTurn).toEqual(["/goal"]);
+  });
+
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
     ["codex: Enter as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
@@ -298,6 +306,12 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
     ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
     ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
+    ["codex: no command that runs in a turn", ["keys", "commandsRunInTurn"], [], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with a space in it", ["keys", "commandsRunInTurn"], ["/goal pause"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn of one character", ["keys", "commandsRunInTurn"], ["!"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with no reserved lead", ["keys", "commandsRunInTurn"], ["goal"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn and is never held", ["keys", "commandsRunInTurn"], ["/quit"], "keys.commandsRunInTurn"],
+    ["codex: a note on commands that run in a turn that is no text", ["keys", "commandsRunInTurnNote"], 3, "keys.commandsRunInTurnNote"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {

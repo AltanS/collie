@@ -192,6 +192,10 @@
     },
     "enterWhileRunning": "steers",
     "queueKey": "ctrl+q",
+    "commandsRunInTurn": [
+      "/goal"
+    ],
+    "commandsRunInTurnNote": "Lab 2026-10-19: measured on OMP 18.12.2 through Herdr 0.9.5 with the probe, the text and Enter while a goal turn streamed: /goal status, /goal pause, /goal resume and a bare /goal each ran at once (a status line, Goal mode paused, Goal mode resumed, the goal menu) and none became a steering row; a prompt-template command (/labnote) became a Steering row.",
     "queuedRow": {
       "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",

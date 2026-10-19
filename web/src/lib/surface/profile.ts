@@ -425,6 +425,18 @@ export interface Profile {
      * line that starts with it; a longer one names the command word. Optional.
      */
     readonly neverHeld?: readonly string[];
+    /**
+     * The command words the harness runs at once while a turn runs, as the lab measured them: the
+     * harness takes the command before its turn and acts on it, never as text that steers the turn
+     * or waits for its end (OMP's `/goal`). Such a command in a turn goes in with the command keys
+     * (`commandSubmit`, else `submit`) instead of being held, and is probed like every send into a
+     * turn. Each entry is one command word that starts with a reserved lead (`/goal`), matched alone
+     * or followed by a space (`/goal pause`, never `/goals`). Never a word in `neverHeld`. Optional:
+     * without it every command in a turn takes `commandWhileRunning` or Collie's hold.
+     */
+    readonly commandsRunInTurn?: readonly string[];
+    /** Where `commandsRunInTurn` was measured: the versions and commands the lab ran. Optional, prose only. */
+    readonly commandsRunInTurnNote?: string;
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -974,6 +986,19 @@ export function parseProfile(raw: JsonValue): Profile {
   const collapse = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
 
   const reservedLeads = textList(field(root, "reservedLeads", ""), "reservedLeads", 1);
+  // Read after the leads: each entry is one command word that starts with one of them.
+  if (keysNode.commandsRunInTurn !== undefined) {
+    const commandsRunInTurn = textList(keysNode.commandsRunInTurn, "keys.commandsRunInTurn", 1);
+    for (const entry of commandsRunInTurn) {
+      if (/\s/u.test(entry) || [...entry].length < 2) fail("keys.commandsRunInTurn", `${entry} must be one command word, with no space`);
+      if (!reservedLeads.some((lead) => entry.startsWith(lead))) fail("keys.commandsRunInTurn", `${entry} must start with a reserved lead`);
+      if (keys.neverHeld?.includes(entry) === true) fail("keys.commandsRunInTurn", `${entry} is in keys.neverHeld`);
+    }
+    keys = { ...keys, commandsRunInTurn };
+  }
+  if (keysNode.commandsRunInTurnNote !== undefined) {
+    keys = { ...keys, commandsRunInTurnNote: text(keysNode.commandsRunInTurnNote, "keys.commandsRunInTurnNote") };
+  }
 
   const probeNode = object(field(root, "probe", ""), "probe");
   const probe = {
