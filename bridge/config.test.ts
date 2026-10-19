@@ -250,7 +250,8 @@ describe("loadConfig", () => {
 
   test("Hermes's root follows HERMES_HOME, and the Collie override wins", () => {
     process.env.HERMES_HOME = "/srv/hermes-home";
-    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes-home"]);
+    // `hermesHome` resolves the value to compare it with ~/.hermes, so on Windows it gains a drive.
+    expect(loadConfig().journalRoots.hermes).toEqual([resolve("/srv/hermes-home")]);
     process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
     expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
   });

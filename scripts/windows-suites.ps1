@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 141 in all, each one named, with its reason:
-#              bridge 80. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 5 the walky ones, 30 are the
+#              Today, 142 in all, each one named, with its reason:
+#              bridge 81. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
 #                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
@@ -31,6 +31,9 @@
 #                to end > a 13 s WAV becomes text through a real child of this Collie". It runs only
 #                where COLLIE_TEST_WHISTLE_DIR holds the measured model, which is never committed, so
 #                no CI job or VM has it (Linux CI skips it too).
+#              The /etc link scan, bridge (1). In bridge/claude-commands.test.ts, "discoverClaudeCommands: the bounds
+#                a reader of the operator's disk keeps". Windows has no /etc, and a file symlink needs a privilege there:
+#                - "real disk: a symlink to /etc, in a project or in the personal folders, yields no row" (POSIX links to /etc)
 #              The hold socket, bridge (4). Windows builds no hold socket yet, so every permission there stays a
 #                screen ask (CHANGELOG, M56 spec 12). The four tests of the "the hold socket" block in
 #                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
@@ -87,7 +90,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 80,
+  [int]$MaxSkipsBridge = 81,
   [int]$MaxSkipsCli = 36,
   [int]$MaxSkipsScripts = 25
 )

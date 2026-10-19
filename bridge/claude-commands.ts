@@ -394,7 +394,10 @@ function installedPlugins(
 /** A manifest path (`./x` or `.`) as an absolute path inside the plugin root; null when it is neither. */
 function insidePlugin(root: string, raw: JsonValue | undefined): string | null {
   if (typeof raw !== "string" || (raw !== "." && !raw.startsWith("./"))) return null;
-  const full = resolve(root, raw);
+  // `join`, not `resolve`: `root` is already absolute and real, and on Windows `resolve` puts the
+  // current drive in front of a root that has none, so the path no longer names the plugin's files.
+  // The trailing "." drops a trailing separator (`./x/`), so the same folder is spelled one way.
+  const full = join(root, raw, ".");
   return isInside(HOST, full, root) ? full : null;
 }
 

@@ -14,8 +14,6 @@ import type { FolderBrowseResponse } from "./types.ts";
 // text forms the New page accepts, the walk up, a link out, the deny list, the cap. Every refusal must
 // be the same `unknown-path`.
 
-const POSIX = process.platform !== "win32";
-
 let base: string;
 let home: string;
 let outside: string;
@@ -38,11 +36,11 @@ beforeAll(() => {
   mkdirSync(join(home, "many"));
   for (let i = 0; i < MAX_BROWSE_FOLDERS + 5; i++) mkdirSync(join(home, "many", `d${String(i).padStart(3, "0")}`));
   mkdirSync(join(home, "many", "zz-last"));
-  if (POSIX) {
-    symlinkSync(outside, join(home, "out"));
-    symlinkSync(join(home, "src"), join(home, "code"));
-    symlinkSync(join(home, "nowhere"), join(home, "dangling"));
-  }
+  // Every link is to a folder. Windows makes it a junction, which needs no privilege, so the three
+  // link tests below run there too; POSIX ignores the type.
+  symlinkSync(outside, join(home, "out"), "junction");
+  symlinkSync(join(home, "src"), join(home, "code"), "junction");
+  symlinkSync(join(home, "nowhere"), join(home, "dangling"), "junction");
   ctx = { home, privateFolders: [join(home, ".local/state/collie"), join(home, ".config/collie")] };
 });
 
@@ -105,7 +103,7 @@ describe("the text, read the way the New page reads a folder", () => {
       expect(names(r)).not.toContain("notes.txt");
       expect(names(r)).not.toContain(".hidden");
       expect(names(r)).not.toContain(".config");
-      expect(names(r)).toEqual(POSIX ? ["code", "docs", "many", "src"] : ["docs", "many", "src"]);
+      expect(names(r)).toEqual(["code", "docs", "many", "src"]);
     }
   });
 
@@ -164,7 +162,7 @@ describe("the text, read the way the New page reads a folder", () => {
 });
 
 describe("the Files view's bound, with home as the root", () => {
-  test.skipIf(!POSIX)("a symlink that leads out of home is never followed, listed or walked past", async () => {
+  test("a symlink that leads out of home is never followed, listed or walked past", async () => {
     await refused("~/out");
     await refused("~/out/secret-project");
     await refused("~/out/secret-");
@@ -172,14 +170,14 @@ describe("the Files view's bound, with home as the root", () => {
     expect(names(await ok("~/ou"))).toEqual([]);
   });
 
-  test.skipIf(!POSIX)("a symlink to a folder inside home is listed and browsed under its own name", async () => {
+  test("a symlink to a folder inside home is listed and browsed under its own name", async () => {
     const r = await ok("~/code");
     expect(r.path).toBe(join(home, "code"));
     expect(names(r)).toEqual(["other", "plektra-api", "Plektra-web"]);
     expect(r.folders.find((f) => f.name === "plektra-api")?.git).toBe(true);
   });
 
-  test.skipIf(!POSIX)("a dangling link is refused, not walked past", async () => {
+  test("a dangling link is refused, not walked past", async () => {
     await refused("~/dangling");
     expect(names(await ok(""))).not.toContain("dangling");
   });

@@ -432,14 +432,15 @@ describe("discoverClaudeCommands: installed plugins", () => {
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({
         name: "p",
-        skills: ["./extra", "../../other/skills", "/etc", "elsewhere"],
+        skills: ["./extra", "../../other/skills", "/etc", "elsewhere", "./../../other/skills"],
       }),
       [`${cache}/p/1.0.0/skills/default/SKILL.md`]: skill("x"),
       [`${cache}/p/1.0.0/extra/custom/SKILL.md`]: skill("x"),
       [`${cache}/other/skills/stolen/SKILL.md`]: skill("x"),
     });
     expect(names).toEqual(["/p:default", "/p:custom"]);
-    expect(warns).toHaveLength(3);
+    // Four refusals: the `./../` spelling passes the prefix check and is caught by the containment.
+    expect(warns).toHaveLength(4);
     expect(warns.join("\n")).toContain("../../other/skills");
   });
 
