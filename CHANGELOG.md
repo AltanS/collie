@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A sent walky talky message always shows in Chat.** The agent's own send command was folded into the steps row with the other commands, so the sent message and its receipt were out of sight; the card now stands on its own, like a received message.
 - **A subagent card always shows in Chat.** A turn's tool steps fold into one row such as "18 commands, 2 reads", and a delegated Agent call was folded in with them, so its summary and its report were out of sight and the fold's label did not count it. An Agent card now stands on its own between the folds, with the steps before and after it folded as before.
 - **An Agent call that names no type is labelled plain Agent.** A call that names no agent type is labelled plain Agent, or with its model, no longer Agent · agent.
+- **Crew update from a lead on a development build no longer waits on itself.** A lead built from a commit past the release tag counted as behind, so crew update ran the lead's own updater first, that updater said it was already current and started nothing, and the verb then waited for a run that never came while the members stayed untouched. A development build at or past the release is ahead, not behind, and a lead whose updater reports current moves straight on to the members.
 
 ## [1.22.6] - 2026-10-18
 

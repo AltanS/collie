@@ -13,6 +13,7 @@ import type { CrewUpdateRow } from "../bridge/update-action.ts";
 import {
   answersThisBuild,
   cmdCrewUpdate,
+  leadIsBehind,
   peerReportLines,
   packagedMembers,
   type CrewUpdateDeps,
@@ -106,10 +107,13 @@ interface HarnessOptions {
   preflight?: PreflightReport;
   /** What the running bridge banked off the crew link (§19). Absent ⇒ it knows nothing. */
   peerReported?: readonly CrewUpdateRow[];
-  /** What this LEAD answers with. Absent ⇒ the build being pushed, so the lead is not behind. */
+  /**
+   * What this LEAD answers with. Absent ⇒ the build being pushed, so the lead is not behind.
+   * A `+<sha>` half is written to the stamp as its `sha` field, the way a real build writes it.
+   */
   leadVersion?: string;
   /** This lead's own update: what `start` returns, and the records its runner writes, in order. */
-  lead?: { start?: number; records?: readonly (UpdateRun | null)[] };
+  lead?: { start?: number | "current"; records?: readonly (UpdateRun | null)[] };
   /** Which members answer `hello`, and with which version. `false` ⇒ it does not answer at all. */
   hello?: Record<string, string | false>;
   bundle?: string | null;
@@ -151,7 +155,8 @@ function harness(opts: HarnessOptions = {}) {
   // lead is behind the commit it is about to hand out.
   const seeded: SeededFiles = { [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n` };
   if (opts.leadVersion !== undefined) {
-    seeded[`${ROOT}/web/dist/build-info.json`] = JSON.stringify({ version: opts.leadVersion });
+    const [version, sha] = opts.leadVersion.split("+");
+    seeded[`${ROOT}/web/dist/build-info.json`] = JSON.stringify(sha === undefined ? { version } : { version, sha });
   }
 
   const exec = fakeExec({
@@ -720,6 +725,30 @@ describe("the lead goes first", () => {
     expect(legs(h)).toEqual(["nas.example:probe"]);
   });
 
+  // 2026-10-19 on the dev lane: a lead built from a commit past the release tag stamps
+  // `<version>-dev+<sha>`, which never answers as the commit it pushes. It counted as behind, its own
+  // updater said "already current" and started nothing, and the verb then waited minutes on a record
+  // that never came while the member sat untouched.
+  test("a development lead at the version it hands out is ahead: no lead update, the member batch runs", async () => {
+    const h = harness({ leadVersion: `${VERSION}-dev+c7ac1e91`, lead: { records: [null] } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.events).toEqual(["nas.example:probe", "nas.example:install", "nas.example:restart"]);
+    expect(h.confirms[0]).not.toContain("this lead first");
+    expect(text(h.io)).not.toContain("this lead:");
+  });
+
+  test("a lead whose own updater answers current says so in one line and moves on to the members", async () => {
+    // Behind by the stamp, current by the updater: the updater is the authority, and no record is
+    // read at all, because none is coming.
+    const h = harness({ leadVersion: OLD_VERSION, lead: { start: "current", records: [null] } });
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.events).toEqual(["nas.example:probe", "lead", "nas.example:install", "nas.example:restart"]);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`already current — this lead keeps ${OLD_VERSION}, the peers take ${VERSION}.`);
+    expect(rendered).not.toContain("did not finish");
+    expect(rendered).not.toContain("✓ this lead is running");
+  });
+
   test("a lead whose update will not even start stops the run", async () => {
     const h = harness({ leadVersion: OLD_VERSION, lead: { start: EXIT.FAIL } });
     expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
@@ -908,6 +937,37 @@ describe("a member's turn: push, restart, verify", () => {
     expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
     expect(legs(h).filter((l) => l.endsWith("install"))).toEqual([]);
     expect(text(h.io)).toContain("not attempted — the bundle failed here");
+  });
+});
+
+describe("leadIsBehind", () => {
+  test("a lead answering as the pushed build is not behind", () => {
+    expect(leadIsBehind(`${VERSION}+${SHORT}`, VERSION, COMMIT)).toBe(false);
+    expect(leadIsBehind(VERSION, VERSION, COMMIT)).toBe(false);
+  });
+
+  test("a release build at an older version, or of another commit, is behind", () => {
+    expect(leadIsBehind(`${OLD_VERSION}+0000fee`, VERSION, COMMIT)).toBe(true);
+    expect(leadIsBehind(OLD_VERSION, VERSION, COMMIT)).toBe(true);
+    expect(leadIsBehind(`${VERSION}+beefbee`, VERSION, COMMIT)).toBe(true);
+  });
+
+  test("a development build at or past the version is ahead, not behind", () => {
+    expect(leadIsBehind(`${VERSION}-dev+c7ac1e91`, VERSION, COMMIT)).toBe(false);
+    expect(leadIsBehind(`${VERSION}-dev+${SHORT}`, VERSION, COMMIT)).toBe(false);
+    expect(leadIsBehind(`${VERSION}-dev+c7ac1e91-dirty`, VERSION, COMMIT)).toBe(false);
+    expect(leadIsBehind("1.3.0-dev+c7ac1e91", VERSION, COMMIT)).toBe(false);
+    expect(leadIsBehind(`${VERSION}-dev`, VERSION, COMMIT)).toBe(false);
+  });
+
+  test("a development build on an older version is still behind", () => {
+    expect(leadIsBehind(`${OLD_VERSION}-dev+c7ac1e91`, VERSION, COMMIT)).toBe(true);
+    expect(leadIsBehind("1.2.3-beta.4-dev+c7ac1e91", VERSION, COMMIT)).toBe(true);
+  });
+
+  test("a stamp nobody can read is behind, as before", () => {
+    expect(leadIsBehind("unknown", VERSION, COMMIT)).toBe(true);
+    expect(leadIsBehind("-dev+c7ac1e91", VERSION, COMMIT)).toBe(true);
   });
 });
 

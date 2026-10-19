@@ -953,7 +953,9 @@ describe("update", () => {
   test("nothing to take and the install is intact: no build, no restart, and the verdict stands", async () => {
     const h = noop();
     stamp(h, "0.32.0");
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(built(h)).toBe(false);
     expect(h.restarts).toBe(0);
     expect(h.io.stdout.join("\n")).toContain("already current");
@@ -2003,7 +2005,10 @@ describe("collie update on a binary install", () => {
 
   test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {
     const h = binaryHarness();
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    // A binary update that hands off is not "nothing to take".
+    expect(told).toBe(0);
     expect(h.exec.calls).toContain(`tar -xzf ${INST}/.staging/${PAYLOAD}.tar.gz -C ${INST}/.staging/x`);
   });
 
@@ -2145,7 +2150,9 @@ describe("collie update on a binary install", () => {
 
   test("already current reads exactly as it does on a checkout — the paths are indistinguishable", async () => {
     const h = binaryHarness({ tags: apiTags("v1.0.0") });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is the newest release of major 1.");
     expect(h.restarts).toBe(0);
   });
@@ -2763,6 +2770,13 @@ describe("the staged checkout path", () => {
     expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
   });
 
+  test("a staged update that hands off is not reported as nothing to take", async () => {
+    const h = legacyClone();
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(0);
+  });
+
   test("prune after health, never during staging: an update removes no version directory", async () => {
     // Pruning here would destroy the rollback target of the very update that may need it. The order
     // is stage, flip, restart, health passes (spec 04), THEN prune.
@@ -2773,7 +2787,10 @@ describe("the staged checkout path", () => {
 
   test("a staged install that is already current stages nothing at all", async () => {
     const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    // The hook is how a lead's `crew update` tells "nothing to take" from "handed off": same exit code.
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(h.io.stdout.join("\n")).toContain("already current");
     expect(h.exec.calls.join("\n")).not.toContain("worktree add");
     expect(h.link.ops).toEqual([]);

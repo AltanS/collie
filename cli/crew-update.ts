@@ -6,8 +6,8 @@ import { parseCrewRows, type CrewUpdateRow } from "../bridge/update-action.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import type { TrustedMember, TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
-import { parsePrereleaseTag } from "../bridge/update.ts";
-import { answersThisBuild } from "../bridge/version.ts";
+import { compareSemver, parsePrereleaseTag } from "../bridge/update.ts";
+import { answersThisBuild, developmentBase } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
 import { INSTALLER_SH } from "./installer-embed.ts";
@@ -101,8 +101,11 @@ export { answersThisBuild };
 
 /** How this lead's OWN update is asked for and watched — `collie update`'s detached runner (M15/04). */
 export interface LeadUpdate {
-  /** Stage and hand off, exactly as `collie update` does. `EXIT.OK` ⇒ the runner is away. */
-  start(): Promise<number>;
+  /**
+   * Stage and hand off, exactly as `collie update` does. `EXIT.OK` ⇒ the runner is away.
+   * `"current"` ⇒ the updater found nothing to take and started no run, so no record will follow.
+   */
+  start(): Promise<number | "current">;
   /** That runner's record as of now, through the one staleness rule. Null ⇒ nothing has been written. */
   record(): UpdateRun | null;
 }
@@ -271,9 +274,15 @@ function lazyLead(io: Io): LeadUpdate {
   let resolved: LeadUpdate | null = null;
   const real = (): LeadUpdate => {
     if (resolved === null) {
-      const deps = updateDeps(io);
+      // The updater is the authority on whether this lead needs the release. Its exit code cannot
+      // say "nothing to take" apart from "handed off", so it says so through this hook instead.
+      let current = false;
+      const deps = { ...updateDeps(io), nothingToTake: () => void (current = true) };
       resolved = {
-        start: () => cmdUpdate(deps, []),
+        start: async () => {
+          const code = await cmdUpdate(deps, []);
+          return code === EXIT.OK && current ? "current" : code;
+        },
         record: () =>
           readRun(deps.files, deps.ctx.stateDir, deps.now(), (pid) => deps.exec.processCommand(pid) !== null),
       };
@@ -353,7 +362,9 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     // 3. THE ONE CONSENT, and it names the lead when the lead is part of what is being consented to.
     //    A binary or packaged lead is never behind what it is handing out: the release it hands out
     //    IS the one it is running, so there is nothing for its own updater to do first.
-    const behind = build.route === "bundle" && leadIsBehind(deps, version, build.commit);
+    const behind =
+      build.route === "bundle" &&
+      leadIsBehind(collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)), version, build.commit);
     const consent = await confirmBatch(deps, ready, outcomes, build, behind);
     if (consent !== EXIT.OK) return consent;
 
@@ -865,10 +876,17 @@ const nMembers = (n: number): string => `${n} member${n === 1 ? "" : "s"}`;
  *
  * The question is asked of what this machine ANSWERS with, not of what its checkout says: a checkout
  * that has advanced without being built is exactly the case where the peers would end up on a build
- * their lead has never run.
+ * their lead has never run. A development build is the exception, see below: it is past the release,
+ * and the only thing the lead's updater could do for it is a release it already has.
  */
-function leadIsBehind(deps: Wired, version: string, commit: string): boolean {
-  return !answersThisBuild(collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)), version, commit);
+export function leadIsBehind(reported: string, version: string, commit: string): boolean {
+  if (answersThisBuild(reported, version, commit)) return false;
+  // A DEVELOPMENT build at or past the version being handed out is ahead of that release, not behind
+  // it: the lead's own updater takes releases only, so it has nothing to give this lead and starts no
+  // run (2026-10-19, a `1.22.6-dev+c7ac1e91` lead waited minutes on a record that never came). A dev
+  // build on an OLDER version is still behind, and so is a release build that is not this one.
+  const base = developmentBase(reported);
+  return base === null || compareSemver(base, version) < 0;
 }
 
 /**
@@ -887,6 +905,12 @@ async function updateLead(deps: Wired, version: string): Promise<boolean> {
   line(deps, "");
   line(deps, `this lead: ${ours} — it takes ${version} first, before any peer does.`);
   const started = await deps.lead.start();
+  if (started === "current") {
+    // The lead's own updater is the authority: it found nothing to take, so no record is coming and
+    // waiting for one would be minutes of silence. The peers still take what was confirmed.
+    line(deps, `  already current — this lead keeps ${ours}, the peers take ${version}.`);
+    return true;
+  }
   if (started !== EXIT.OK) {
     deps.io.err(`error: this lead's own update would not start (exit ${started}) — no peer was touched.`);
     deps.io.err("       Run `collie update` here, then re-run this command.");

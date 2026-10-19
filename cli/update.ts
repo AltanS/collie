@@ -138,6 +138,21 @@ export interface UpdateDeps extends BuildDeps {
   /** `process.execPath` — the binary THIS process is executing, and the one the detached runner is
    *  launched as. See {@link runnerBinary} for why it is not simply `<root>/bin/collie`. */
   execPath: string;
+  /**
+   * Told when the verb ends on a NOTHING-TO-TAKE verdict: no run was started, nothing on disk changed,
+   * and no record will follow. Absent ⇒ nobody is listening, which is every terminal run.
+   *
+   * The exit code cannot say this, because `EXIT.OK` also means "the detached runner is away". A lead's
+   * `crew update` needs the difference: it waits on the run record after a hand-off, and a record
+   * that is never written is minutes of silence before a timeout (`cli/crew-update.ts`, `lazyLead`).
+   */
+  nothingToTake?: () => void;
+}
+
+/** End the verb on a nothing-to-take verdict, and tell whoever asked ({@link UpdateDeps.nothingToTake}). */
+function nothingTaken(deps: UpdateDeps): number {
+  deps.nothingToTake?.();
+  return EXIT.OK;
 }
 
 // One predicate for the checkout shape, one for "is this a git checkout at all", both in
@@ -1427,7 +1442,7 @@ async function updateInPlace(deps: UpdateDeps, args: readonly string[]): Promise
   // the verdict alone may never be what skips the build.
   if (!advanced.moved && installIsIntact(deps)) {
     closeWithMajor(deps, advanced.higher);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   // A managed advance already proved and carried this exact Bun before its fetch. A repair of an
   // incomplete, already-current checkout still needs the same proof, but intact no-ops above remain
@@ -1912,17 +1927,17 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const plan = pinnedBinary.plan;
   if (plan.kind === "no-higher-major") {
     printNoHigherMajor(deps, plan.major);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   if (plan.kind === "no-release") {
     printNoRelease(deps, plan.major, "leaving this install where it is");
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   if (plan.kind === "current") {
     printCurrent(deps, plan.at);
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   const target = plan.kind === "unknown-version" ? plan.newest : plan.target;
   if (target === null) {
@@ -2678,12 +2693,12 @@ async function updateStagedCheckout(
 
   if (plan.kind === "no-higher-major") {
     printNoHigherMajor(deps, plan.major);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   if (plan.kind === "no-release") {
     printNoRelease(deps, plan.major, "leaving this checkout where it is");
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   // "Nothing to take" ends the verb only when what is on disk is whole. On a staged install that
   // means `current` resolves to a COMPLETE version; on one that has not migrated yet it is the same
@@ -2695,7 +2710,7 @@ async function updateStagedCheckout(
   if (plan.kind === "current" && whole) {
     printCurrent(deps, plan.at);
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return nothingTaken(deps);
   }
   const target = plan.kind === "current" ? plan.at : plan.kind === "unknown-version" ? plan.newest : plan.target;
   if (target === null) {
@@ -2721,7 +2736,7 @@ async function updateStagedCheckout(
     if (stagedCurrent(deps, layout)?.complete === true) {
       deps.io.out(`already current — ${dir} is staged and \`current\` points at it.`);
       announceMajor(deps, higher);
-      return EXIT.OK;
+      return nothingTaken(deps);
     }
     deps.io.err(`error: ${dir} is what \`current\` points at, and it is incomplete — re-staging it`);
     deps.io.err("       would remove the running install. Roll back first, or remove it by hand.");
