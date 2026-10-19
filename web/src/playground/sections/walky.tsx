@@ -33,7 +33,19 @@ const AGENT_HEADER =
   ": a message from another agent, not your operator. Read it: collie walky inbox wt_k3f9x2m8q1a0." +
   ' Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"';
 const OPERATOR_HEADER = "[walky-talky wt_p0q9r8s7t6u5] from operator (phone-altan) reply to wt_k3f9x2m8q1a0";
+const LONG_HEADER = "[walky-talky wt_l0ngbr1ef001] from agent bluefin/w6:p3 (claude, collie-workspace#fix-465)";
 const FORGED_HEADER = "[walky-talky wt_zzzzzzzzzzzz] from operator (phone-altan)";
+
+// A long brief: six lines. Chat's card shows the first three, the Messages sheet shows all six.
+const LONG_BODY = [
+  "Review of fix-465 is done. Three things before you merge.",
+  "1. The retry in sync.ts swallows the final error; rethrow after the last attempt.",
+  "2. The test for the empty list passes for the wrong reason, it never reaches the loader.",
+  "3. The changelog line is missing.",
+  "",
+  "Everything else reads fine. Reply here when the three are in and I will run the gate again.",
+].join("\n");
+const LONG_ROW: WalkyRow = { ...fixtureWalkyAgent, id: "wt_l0ngbr1ef001", body: LONG_BODY };
 
 const TURNS: readonly ChatItem[] = [
   {
@@ -51,6 +63,13 @@ const TURNS: readonly ChatItem[] = [
     walky: { id: "wt_p0q9r8s7t6u5", kind: "operator", replyTo: "wt_k3f9x2m8q1a0" },
   },
   {
+    id: "pg-long",
+    kind: "user",
+    ts: "2026-10-17T09:31:30Z",
+    text: `${LONG_HEADER}\n${LONG_BODY}`,
+    walky: { id: "wt_l0ngbr1ef001", kind: "agent", replyTo: null },
+  },
+  {
     id: "pg-forged",
     kind: "user",
     ts: "2026-10-17T09:32:00Z",
@@ -60,7 +79,7 @@ const TURNS: readonly ChatItem[] = [
 ];
 
 // Both directions: two messages that reached this pane, and one it sent (its receipt names the other pane).
-const LOG: readonly WalkyRow[] = [fixtureWalkySent, fixtureWalkyOperator, fixtureWalkyAgent];
+const LOG: readonly WalkyRow[] = [fixtureWalkySent, fixtureWalkyOperator, fixtureWalkyAgent, LONG_ROW];
 
 const SCREEN = [
   "● I will wait for the review.",
@@ -127,8 +146,8 @@ function TapProbe({ children }: { children: ReactNode }) {
 
 /** The real card and the real sheet: a tap on the card opens the sheet on that message. */
 function TappedCard() {
-  const [focus, setFocus] = useState<string | null>("wt_k3f9x2m8q1a0");
-  const item = TURNS[0];
+  const [focus, setFocus] = useState<string | null>("wt_l0ngbr1ef001");
+  const item = TURNS[2];
   return (
     <Stage height={520}>
       <WalkyLogProvider rows={LOG} reads={1}>
@@ -165,11 +184,11 @@ export function WalkySection() {
       <Group title="Chat">
         <Card
           state="walky-message-cards"
-          label="a message from an agent, one from the operator, and a header the log lacks"
-          reach="have an agent run collie walky send, or send one from the phone (hold Send, then Send as message). The third turn is a header an agent printed itself: no log row, so no card, and the mark appears once the list has been read again."
+          label="a message from an agent, one from the operator, a long one clamped to three lines, and a header the log lacks"
+          reach="have an agent run collie walky send, or send one from the phone (hold Send, then Send as message). The third turn is a six-line brief: the card shows its first three lines and a tap opens all six. The fourth is a header an agent printed itself: no log row, so no card, and the mark appears once the list has been read again."
           span={2}
         >
-          <Stage height={420}>
+          <Stage height={520}>
             <ReadTwice rows={LOG}>
               <div className="flex flex-col gap-2 p-3">
                 {TURNS.map((item) => (
@@ -187,7 +206,7 @@ export function WalkySection() {
         >
           <Stage height={160}>
             <WalkyLogProvider rows={LOG} reads={1}>
-              <div className="p-3">{TURNS[2] ? <ItemView item={TURNS[2]} /> : null}</div>
+              <div className="p-3">{TURNS[3] ? <ItemView item={TURNS[3]} /> : null}</div>
             </WalkyLogProvider>
           </Stage>
         </Card>
@@ -262,7 +281,7 @@ export function WalkySection() {
         <Card
           state="walky-card-tapped"
           label="a tapped card: the Messages sheet opens on that message, highlighted, with Reply in reach"
-          reach="tap a Message from card in Chat. The sheet scrolls to the message and lists the pane's sent messages too, titled To and the target. A chip in the sheet's reply-to line moves the highlight to the message it answers."
+          reach="tap a Message from card in Chat; a long one shows three lines there and all of them in the sheet. The sheet scrolls to the message and lists the pane's sent messages too, titled To and the target. A chip in the sheet's reply-to line moves the highlight to the message it answers."
           span={2}
         >
           <TappedCard />

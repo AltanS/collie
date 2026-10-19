@@ -277,3 +277,62 @@ describe("the card's screen-reader words", () => {
     expect(screen.getByText("Open in Messages")).toBeInTheDocument();
   });
 });
+
+describe("the card's body is clamped to three lines", () => {
+  const FIVE = "one\ntwo\nthree\nfour\nfive";
+
+  function row(body: string): WalkyRow {
+    return { ...fixtureWalkyAgent, body };
+  }
+
+  function bodyOf(): HTMLElement {
+    const el = theCard().querySelector('[data-slot="walky-body"]');
+    if (!(el instanceof HTMLElement)) throw new Error("no walky body");
+    return el;
+  }
+
+  it("clamps a five-line body to three, keeps its line breaks, and keeps every line in the DOM", () => {
+    const r = row(FIVE);
+    inLog([r], turn(`${HEADER_AGENT}\nx`, r.id));
+    const el = bodyOf();
+    expect(el).toHaveClass("line-clamp-3");
+    expect(el).toHaveClass("whitespace-pre-wrap");
+    expect(el.textContent).toBe(FIVE);
+    expect(screen.getByText(/five/)).toBeInTheDocument();
+  });
+
+  it("puts the same class on a one-line body: three lines or fewer paint exactly as before", () => {
+    inLog([fixtureWalkyAgent], turn(`${HEADER_AGENT}\nx`, fixtureWalkyAgent.id));
+    const el = bodyOf();
+    expect(el).toHaveClass("line-clamp-3");
+    expect(el.textContent).toBe(fixtureWalkyAgent.body);
+  });
+
+  it("clamps the plain box too, where there is no sheet to open", () => {
+    const r = row(FIVE);
+    render(
+      <WalkyLogProvider rows={[r]}>
+        <WalkyOpenProvider open={null}>
+          <ItemView item={turn(`${HEADER_AGENT}\nx`, r.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    expect(theCard().tagName).toBe("DIV");
+    expect(bodyOf()).toHaveClass("line-clamp-3");
+  });
+
+  it("still opens the sheet on the message id when a clamped card is tapped", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    const r = row(FIVE);
+    render(
+      <WalkyLogProvider rows={[r]}>
+        <WalkyOpenProvider open={open}>
+          <ItemView item={turn(`${HEADER_AGENT}\nx`, r.id)} />
+        </WalkyOpenProvider>
+      </WalkyLogProvider>,
+    );
+    await user.click(bodyOf());
+    expect(open).toHaveBeenCalledExactlyOnceWith(r.id);
+  });
+});
