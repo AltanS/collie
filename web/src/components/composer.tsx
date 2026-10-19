@@ -272,6 +272,10 @@ interface ComposerProps {
    *  switcher mark (actions-row.tsx's `changes`). Absent when the pane reports no folder. */
   changesPill?: { onClick: () => void; label: string };
 
+  /** The output, zoomed: the Zoom pill on the belt's pinned block, directly left of the switcher
+   *  mark (actions-row.tsx's `zoom`). Absent where there is no screen to zoom. */
+  zoomPill?: { onClick: () => void; label: string };
+
   /**
    * The parent drew this pane from the on-device cache (M46 spec 10), so nothing it shows is proven
    * current. Together with a lapsed liveness stamp (lib/liveness.ts) it turns the SEND paths off while
@@ -456,7 +460,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, floatingHint, screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, zoomPill, stale, hand = "right", aboveBelt, floatingHint, screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -2414,6 +2418,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 }
               : undefined
           }
+          // The output, zoomed: a pill directly left of the Switch mark (actions-row.tsx's `zoom`).
+          zoom={zoomPill}
           hand={hand}
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.

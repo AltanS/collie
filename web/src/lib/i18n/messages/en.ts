@@ -2395,6 +2395,13 @@ export const en = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Files",
+  // The output, zoomed (components/output-zoom.tsx): the belt pill's name, the view's own name,
+  // its two step buttons, and the scale readout that resets it. `{scale}` is the readout ("2.5×").
+  "zoom.open": "Zoom output",
+  "zoom.title": "Zoomed output",
+  "zoom.in": "Zoom in",
+  "zoom.out": "Zoom out",
+  "zoom.reset": "Reset zoom ({scale})",
   // What a screen reader says for the small model label above the belt; {name} is the harness's own.
   "chat.model.aria": "Model {name}",
   "chat.usage.context": "ctx",

@@ -231,8 +231,18 @@ becomes Undo, which puts the text and the attachments back. Undo stays until you
 keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
 belt keeps it.
 
-Left-handed? Set **Settings → Appearance → Hand** to **Left**. The belt turns round: the Switch button
-and the X move to its left end, still above Send, and Keys becomes the rightmost button, with the rest
+A Zoom button, the magnifier with a plus, sits directly left of the Switch button. It opens the
+pane's output on its own, over the whole screen, and the text keeps updating while it is open.
+
+Pinch with two fingers to make the text bigger, up to six times, and drag with one finger to move
+around it. Double-tap to zoom in on a line, and double-tap again to go back to the normal size. The
+minus and plus buttons at the top do the same in steps, and the number between them resets it.
+
+The X at the top, the Back button at the bottom on a phone, and the phone's own back gesture all
+close it. Zooming changes nothing on the computer: the pane keeps its size in the terminal.
+
+Left-handed? Set **Settings → Appearance → Hand** to **Left**. The belt turns round: the Switch, Zoom
+and X buttons move to its left end, still above Send, and Keys becomes the rightmost button, with the rest
 scrolling off toward the left. Send and Attach move to the left of the reply box. The setting is per
 device and applies the next time you open a pane.
 
