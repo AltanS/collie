@@ -34,10 +34,15 @@
 // first and says when it ended, so it is the one source.
 //
 // COST. A session folder can hold hundreds of files, so this follows the todo tracker's discipline
-// (bridge/todos.ts): a pane is read at most once per floor; a read lists each folder once, stats only
-// what can still be running, and re-parses a meta only when its mtime moved. A meta that said
-// `finished: true` is remembered and never touched again: Claude Code does not write it after that.
-// A meta-less log found stale is remembered the same way.
+// (bridge/todos.ts): a pane is read at most once per floor; a read lists each folder once, stats every
+// meta file, and re-parses a meta only when its mtime or size moved. A log is statted only for a meta
+// that is not finished.
+//
+// A FINISHED META IS NOT FINAL. SendMessage can resume a subagent after it finished, and Claude Code
+// then writes its meta again WITHOUT `finished` (seen on 2026-10-19: `afaccaef48d594a12` of session
+// `21fc21e5`, meta rewritten at 11:51:47, log written at 11:52:01, its siblings still finished). So
+// every meta is statted on every read past the floor, and one that turns unfinished with a fresh log
+// is running again. That is one readdir plus one stat per meta; the parse is what the cache saves.
 //
 // SAFETY. The folders come from the journal adapter's own `subagentDirs` (bridge/journal/claude.ts),
 // contained in its roots; the file names come from `readdir`, and an id that fails `isAgentId` is
@@ -134,7 +139,7 @@ export function parseSubagentMeta(text: string): ParsedMeta | null {
 /** The file system this tracker touches, injectable so a test counts calls instead of guessing. */
 export interface SubagentFs {
   readdir(dir: string): Promise<string[]>;
-  stat(path: string): Promise<{ mtimeMs: number; birthtimeMs: number } | null>;
+  stat(path: string): Promise<{ mtimeMs: number; size: number; birthtimeMs: number } | null>;
   readText(path: string, maxBytes: number): Promise<string>;
 }
 
@@ -143,7 +148,7 @@ const nodeFs: SubagentFs = {
   stat: async (path) => {
     try {
       const st = await stat(path);
-      return { mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs };
+      return { mtimeMs: st.mtimeMs, size: st.size, birthtimeMs: st.birthtimeMs };
     } catch {
       return null;
     }
@@ -156,12 +161,15 @@ export interface SubagentTrackerOptions {
   fs?: SubagentFs;
 }
 
-/** What is remembered about one subagent id in one folder, between reads. */
-type Seen =
-  /** Ended for good: a `finished: true` meta, or a meta-less log found stale. Never touched again. */
-  | { kind: "done" }
-  /** A meta parsed at this mtime that did not say finished (or did not parse). */
-  | { kind: "meta"; mtimeMs: number; meta: ParsedMeta | null };
+/**
+ * What is remembered about one subagent's meta file between reads: the parse at this mtime and size,
+ * finished or not, or null when it did not parse. Nothing here is final (see FINISHED META in the header).
+ */
+interface Seen {
+  mtimeMs: number;
+  size: number;
+  meta: ParsedMeta | null;
+}
 
 interface Entry {
   session: string | undefined;
@@ -269,13 +277,8 @@ export class SubagentTracker {
         files.set(id, has);
       }
       for (const [id, has] of files) {
-        const prior = before.get(id);
-        if (prior?.kind === "done") {
-          after.set(id, prior);
-          continue;
-        }
         const found = has.meta
-          ? await this.readMeta(dir, id, has.log, prior, at)
+          ? await this.readMeta(dir, id, has.log, before.get(id), at)
           : await this.readMetaless(dir, id, at);
         if (found.seen !== undefined) after.set(id, found.seen);
         if (found.running !== undefined && !running.has(id)) running.set(id, found.running);
@@ -301,7 +304,7 @@ export class SubagentTracker {
     const st = await this.fs.stat(metaPath);
     if (st === null) return {};
     let meta: ParsedMeta | null;
-    if (prior?.kind === "meta" && prior.mtimeMs === st.mtimeMs) {
+    if (prior !== undefined && prior.mtimeMs === st.mtimeMs && prior.size === st.size) {
       meta = prior.meta;
     } else {
       try {
@@ -310,15 +313,15 @@ export class SubagentTracker {
         return {};
       }
     }
-    if (meta?.finished === true) return { seen: { kind: "done" } };
-    const seen: Seen = { kind: "meta", mtimeMs: st.mtimeMs, meta };
-    // A meta that does not parse is not shown, and is read again when its mtime moves.
-    if (meta === null) return { seen };
+    const seen: Seen = { mtimeMs: st.mtimeMs, size: st.size, meta };
+    // A finished meta is not shown, and a meta that does not parse is not shown either. Both are read
+    // again when the file moves: a resumed subagent's meta loses `finished`.
+    if (meta === null || meta.finished) return { seen };
     const log = hasLog ? await this.statLog(dir, id) : null;
     const lastWrite = Math.max(st.mtimeMs, log?.mtimeMs ?? 0);
     if (at - lastWrite >= QUIET_RUNNING_MS) return { seen };
-    // The unfinished meta has not been written since the start, so its mtime is the start when the
-    // file system keeps no birth time for the log.
+    // The log's birth is the first start, also for a resumed subagent. With no birth time on this
+    // file system, the unfinished meta's mtime stands in: the start, or the resume.
     const started = log !== null && log.birthtimeMs > 0 ? log.birthtimeMs : st.mtimeMs;
     return { seen, running: toPaneSubagent(id, meta, started) };
   }
@@ -326,13 +329,13 @@ export class SubagentTracker {
   private async readMetaless(dir: string, id: string, at: number): Promise<{ seen?: Seen; running?: PaneSubagent }> {
     const log = await this.statLog(dir, id);
     if (log === null) return {};
-    if (at - log.mtimeMs >= METALESS_RUNNING_MS) return { seen: { kind: "done" } };
+    if (at - log.mtimeMs >= METALESS_RUNNING_MS) return {};
     const running: PaneSubagent = { agentId: id, description: "" };
     if (log.birthtimeMs > 0) running.startedAt = new Date(log.birthtimeMs).toISOString();
     return { running };
   }
 
-  private async statLog(dir: string, id: string): Promise<{ mtimeMs: number; birthtimeMs: number } | null> {
+  private async statLog(dir: string, id: string): Promise<{ mtimeMs: number; size: number; birthtimeMs: number } | null> {
     const logPath = await containedRealpath(join(dir, `agent-${id}.jsonl`), dir);
     return logPath === null ? null : this.fs.stat(logPath);
   }

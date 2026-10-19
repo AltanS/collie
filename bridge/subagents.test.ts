@@ -121,7 +121,7 @@ function countingFs(): CountingFs {
         calls.stat += 1;
         try {
           const st = await stat(path);
-          return { mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs };
+          return { mtimeMs: st.mtimeMs, size: st.size, birthtimeMs: st.birthtimeMs };
         } catch {
           return null;
         }
@@ -287,11 +287,11 @@ describe("SubagentTracker", () => {
     await tracker.refresh([pane()]);
     expect(counted.calls).toEqual({ readdir: 1, stat: 3, read: 2 });
 
-    // Past the floor with nothing changed: one listing, the running meta and its log statted, no read.
-    // The finished meta is remembered and not touched at all.
+    // Past the floor with nothing changed: one listing, every meta statted, the running one's log too,
+    // and nothing re-parsed.
     c.advance(5000);
     await tracker.refresh([pane()]);
-    expect(counted.calls).toEqual({ readdir: 2, stat: 5, read: 2 });
+    expect(counted.calls).toEqual({ readdir: 2, stat: 6, read: 2 });
     expect(tracker.get(pane())?.[0]?.description).toBe("first words");
 
     f.meta("a71a608a981ceee4a", { description: "second words" }, c.now() - 500);
@@ -300,15 +300,32 @@ describe("SubagentTracker", () => {
     expect(counted.calls.read).toBe(3);
     expect(tracker.get(pane())?.[0]?.description).toBe("second words");
 
-    // It finishes: it leaves the list, and the next read does not stat it again.
+    // It finishes: it leaves the list. The next read still stats both metas, reads no log, parses nothing.
     f.meta("a71a608a981ceee4a", { description: "second words", finished: true }, c.now());
     c.advance(5000);
     await tracker.refresh([pane()]);
     expect(tracker.get(pane())).toBeUndefined();
-    const statsAfterFinish = counted.calls.stat;
+    const before = { ...counted.calls };
     c.advance(5000);
     await tracker.refresh([pane()]);
-    expect(counted.calls.stat).toBe(statsAfterFinish);
+    expect(counted.calls).toEqual({ readdir: before.readdir + 1, stat: before.stat + 2, read: before.read });
+  });
+
+  test("a finished subagent that SendMessage resumes lists as running again", async () => {
+    const c = clock();
+    const f = folder();
+    f.meta("afaccaef48d594a12", { agentType: "general-purpose", description: "Harness settings: hide status line", model: "sonnet", finished: true }, c.now() - 20 * 60_000);
+    f.log("afaccaef48d594a12", c.now() - 20 * 60_000);
+    const tracker = new SubagentTracker({ claude: adapterOver(() => [f.dir]) }, c.now, { floorMs: 5000 });
+    await tracker.refresh([pane()]);
+    expect(tracker.get(pane())).toBeUndefined();
+
+    // Claude Code writes the same meta again without `finished`, then the log moves on.
+    f.meta("afaccaef48d594a12", { agentType: "general-purpose", description: "Harness settings: hide status line", model: "sonnet" }, c.now() - 14_000);
+    f.log("afaccaef48d594a12", c.now() - 1_000);
+    c.advance(5000);
+    await tracker.refresh([pane()]);
+    expect(tracker.get(pane())?.map((s) => s.agentId)).toEqual(["afaccaef48d594a12"]);
   });
 
   test("reads nothing for a pane whose harness source has no subagent folders", async () => {
