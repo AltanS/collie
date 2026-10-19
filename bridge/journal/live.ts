@@ -39,6 +39,7 @@ import { NO_CURSOR } from "./cursor.ts";
 import type { RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
+import { LIVE_TURNS, MAX_PAGE_ROWS, pageStart } from "./turns.ts";
 import { redactText } from "../redact.ts";
 import { clamp, redactEntry } from "./text.ts";
 
@@ -87,8 +88,14 @@ export const WINDOW_IDLE_MS = 120_000;
  */
 export const MAX_WINDOWS = 8;
 
-/** Turns in a first answer, when the client holds no cursor. */
+/**
+ * The fewest rows in a first answer, when the client holds no cursor. A page reaches back over the
+ * last {@link LIVE_TURNS} prompts, and never holds fewer rows than this.
+ */
 export const DEFAULT_CHAT_LIMIT = 40;
+
+// A page is counted in turns, with `DEFAULT_CHAT_LIMIT` as its floor in rows (journal/turns.ts).
+export { LIVE_TURNS, MAX_PAGE_ROWS };
 
 /** Ceiling for `?limit=`. Past this a first paint is not a first paint, it is a History page. */
 export const MAX_CHAT_LIMIT = 200;
@@ -561,14 +568,15 @@ class LiveWindow {
    * from what it holds, which is the wrong end. The window is already bounded, so there is nothing
    * left for a second cap to protect.
    *
-   * A reader holding nothing, or another generation, gets the newest `limit` turns instead. That is a
-   * first paint, and a first paint is a screenful.
+   * A reader holding nothing, or another generation, gets the last {@link LIVE_TURNS} prompts and
+   * everything after each instead, held to `limit` rows at least and {@link MAX_PAGE_ROWS} at most
+   * (`journal/turns.ts`). That is a first paint.
    */
   body(after: ChatAfter | null, limit: number): ChatWindowBody {
     const rows =
       after !== null && after.gen === this.gen
         ? this.rows.filter((row) => row.rev > after.rev)
-        : this.rows.slice(-limit);
+        : this.rows.slice(pageStart(this.rows.length, limit, (i) => this.rows[i]!.entry));
     const body: ChatWindowBody = {
       page: "live",
       gen: this.gen,
@@ -685,7 +693,7 @@ export class LiveWindows {
     const key = await adapter.source.resolve(ref);
     if (key === null) return null;
     const window = this.reach(key, adapter);
-    const page = await this.store.page(adapter, ref, { limit, before: before.uuid });
+    const page = await this.store.page(adapter, ref, { limit, before: before.uuid, turns: true });
     if (page === null) return null;
     // Numbered from the END of the page backwards, so the newest turn in it sits immediately before
     // the one the client named. A short page (the log's own start) therefore begins higher, which is
