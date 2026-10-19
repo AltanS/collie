@@ -5,7 +5,8 @@
 //   12 "Message all agents" from the Crew page: the sheet counts 2 agents on 2 machines, the operator
 //      confirms, both panes get the header and the body, both receipts reach `delivered` on the lead
 //      (the member's through its sweep report), the member's pane opened on the phone through the
-//      lead (`?h=`) shows the header line, and each agent answers.
+//      lead (`?h=`) shows the message card (head "Message from <device>", the body, "signed by rig-lead"),
+//      and each agent answers.
 //   13 lead agent to member agent through the skill: Claude runs `collie walky who` and sends to pi's
 //      address as `who` printed it, with its pane instance token (`#` and four characters); pi's pane
 //      gets the one-line nudge, pi's `collie walky inbox <id>` shows the body, pi replies with
@@ -66,7 +67,7 @@ import {
   type Session,
   type TapLog,
 } from "./leg";
-import { LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
+import { DEVICE_LABEL, LEAD_ID, MEMBER_ID, askWalky, paneClose, sleep } from "./rig-lib";
 import { PHONE, REPLY_MS, cliSend, escape, firstRow, mintId, operatorHeader, refusalCount, settledWalky, startExtraAgent, wrapped } from "./walky-lib";
 
 const RIG_TS = join(import.meta.dirname, "rig.ts");
@@ -233,15 +234,21 @@ test.describe("walky talky across a crew", () => {
         // The member's pane on the phone, opened through the lead with its host address.
         const memberPhone = await phoneOn(browser, rig, piPane, PHONE, MEMBER_ID);
         try {
-          const header = memberPhone.page.getByText(operatorHeader(id), { exact: false }).last();
-          const shown = await header
+          // The phone draws the log's row as the 1.23.0 walky card, never the printed envelope: the card is
+          // pinned by its message id, its head names the device, its body is the text, its footer names the signer.
+          const card = memberPhone.page.locator(`[data-slot="walky-card"][data-id="${id}"]`).last();
+          const shown = await card
             .waitFor({ state: "visible", timeout: 20_000 })
             .then(() => true)
             .catch(() => false);
-          if (shown) await header.scrollIntoViewIfNeeded();
-          notes.push(shown ? "the member's pane on the phone (?h=) shows the operator header line" : "the member's pane on the phone shows NO header line");
+          if (shown) await card.scrollIntoViewIfNeeded();
+          const cardText = shown ? ((await card.textContent().catch(() => null)) ?? "") : "";
+          const headOk = cardText.includes(message("walky.card.title", { label: DEVICE_LABEL }));
+          const bodyOk = shown && (await card.locator('[data-slot="walky-body"]').textContent().catch(() => null)) === body;
+          const signedOk = shown && (await card.locator('[data-slot="walky-verified"]').textContent().catch(() => null))?.includes(message("walky.verified.signedBy", { member: LEAD_ID })) === true;
+          notes.push(shown ? `the member's pane on the phone (?h=) shows the message card, head ${headOk ? "ok" : "WRONG"}, body ${bodyOk ? "ok" : "WRONG"}, signed by ${LEAD_ID} ${signedOk ? "ok" : "WRONG"}` : "the member's pane on the phone shows NO message card");
           trail.captures.push(await capture(memberPhone.page, "walky-12-member-pane"));
-          const verdict = sent.reachShown && sent.questionShown && sent.rows === 2 && oneEach && leadTyped && memberTyped && bothDelivered && leadRow === "delivered" && claudeAnswered && piAnswered && shown && trail.log.every((l) => l.worked) ? "pass" : "fail";
+          const verdict = sent.reachShown && sent.questionShown && sent.rows === 2 && oneEach && leadTyped && memberTyped && bothDelivered && leadRow === "delivered" && claudeAnswered && piAnswered && shown && headOk && bodyOk && signedOk && trail.log.every((l) => l.worked) ? "pass" : "fail";
           return { verdict, taps: trail.log.length, minTaps: 3, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
         } finally {
           await memberPhone.context.close();
