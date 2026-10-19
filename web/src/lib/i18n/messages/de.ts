@@ -566,6 +566,8 @@ export const de: Dictionary = {
   "chat.mode.terminal": "Terminal-Ansicht",
   "chat.mode.noChat": "{reason} Das Terminal bleibt hier.",
   "chat.stream.empty": "Zum Starten eine Nachricht senden.",
+  "chat.empty.sharedFolder":
+    "Zwei {harness}-Sitzungen teilen sich diesen Ordner, daher kann Collie nicht erkennen, welche zu diesem Pane gehört. Den Agenten mit seinem Resume-Befehl und der Sitzungs-ID starten, dann liest Collie die richtige.",
   "chat.stream.working": "Arbeitet noch…",
   "chat.stream.questionPending": "Im Terminal wartet eine Frage. Deine nächste Nachricht beantwortet sie.",
   "chat.stream.queued": "Wartet auf Senden",

@@ -1299,7 +1299,19 @@ export type ReopenConversationResponse =
  * with no session; a 404 is the answer for a bridge with no route.
  */
 export type PaneChatResponse =
-  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: false;
+      reason: "disabled" | "no-session" | "no-log";
+      /**
+       * Why a `no-session` answer has no session, when the bridge knows a reason the person can act
+       * on. `shared-folder`: another pane runs the same harness in the same folder, and this pane's
+       * command line names no session, so Collie will not guess which log is this pane's (#508).
+       * Additive-optional (CREW_PROTOCOL.md §7.1): absent on every other answer and from an older
+       * member, and a phone that predates it reads the plain `no-session`.
+       */
+      detail?: "shared-folder";
+    }
   | ({ paneId: string; available: true } & ChatBody);
 
 /**

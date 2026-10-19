@@ -560,6 +560,8 @@ export const ja: Dictionary = {
   "chat.mode.terminal": "ターミナル表示",
   "chat.mode.noChat": "{reason} ここではターミナルのままです。",
   "chat.stream.empty": "メッセージを送信して始めましょう。",
+  "chat.empty.sharedFolder":
+    "このフォルダーでは {harness} のセッションが 2 つ動いているため、Collie はどちらがこのペインのものか判断できません。再開コマンドとセッション ID を付けてエージェントを起動すると、Collie は正しいセッションを読み込みます。",
   "chat.stream.working": "処理中…",
   "chat.stream.questionPending": "ターミナルで質問への回答を待機しています。次のメッセージが回答になります。",
   "chat.stream.queued": "送信待ち",

@@ -184,6 +184,19 @@ describe("mergeChat — the two empty answers are different facts", () => {
     expect(uuids(mergeChat(before, stale))).toEqual(["a", "b", "c"]);
   });
 
+  // #508: the bridge's reason behind a no-session rides on the status, and a reason that comes or
+  // goes is a status that moved.
+  it("carries a shared-folder detail, and a detail that moves moves the status", () => {
+    const shared: ChatAnswer = {
+      outcome: "body",
+      body: { paneId: "w1:p1", available: false, reason: "no-session", detail: "shared-folder" },
+    };
+    const once = mergeChat(EMPTY_CHAT_WINDOW, shared);
+    expect(once.status).toEqual({ kind: "unavailable", reason: "no-session", detail: "shared-folder" });
+    expect(mergeChat(once, shared)).toBe(once);
+    expect(mergeChat(once, unavailable).status).toEqual({ kind: "unavailable", reason: "no-session" });
+  });
+
   it("stays the same object when the status did not actually move", () => {
     const once = mergeChat(EMPTY_CHAT_WINDOW, stale);
     expect(mergeChat(once, stale)).toBe(once);

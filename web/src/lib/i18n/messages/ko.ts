@@ -561,6 +561,8 @@ export const ko: Dictionary = {
   "chat.mode.terminal": "터미널 보기",
   "chat.mode.noChat": "{reason} 이 창은 터미널 보기로 표시합니다.",
   "chat.stream.empty": "메시지를 보내 시작하세요.",
+  "chat.empty.sharedFolder":
+    "이 폴더를 {harness} 세션 두 개가 함께 쓰고 있어 Collie가 어느 쪽이 이 창의 세션인지 알 수 없습니다. 재개 명령과 세션 ID로 에이전트를 시작하면 Collie가 올바른 세션을 읽습니다.",
   "chat.stream.working": "계속 작업 중…",
   "chat.stream.questionPending": "터미널에서 질문에 대한 답변을 기다리고 있습니다. 다음 메시지는 이 질문의 답변으로 전달됩니다.",
   "chat.stream.queued": "전송 대기 중",

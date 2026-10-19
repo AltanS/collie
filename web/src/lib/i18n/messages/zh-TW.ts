@@ -549,6 +549,8 @@ export const zhTW: Dictionary = {
   "chat.mode.terminal": "終端機檢視",
   "chat.mode.noChat": "{reason} 這裡維持終端機檢視。",
   "chat.stream.empty": "傳送一則訊息即可開始。",
+  "chat.empty.sharedFolder":
+    "此資料夾中有兩個 {harness} 工作階段，Collie 無法判斷哪一個屬於目前窗格。請用恢復指令加上工作階段 ID 啟動該 Agent，Collie 就會讀取正確的工作階段。",
   "chat.stream.working": "仍在處理…",
   "chat.stream.questionPending": "終端機中有一個等待回答的問題。你的下一則訊息將作為回答。",
   "chat.stream.queued": "等待傳送",

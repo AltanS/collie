@@ -64,6 +64,7 @@ function renderStream(
       fontSize={14}
       listRef={listRef}
       onSendQueuedNow={onSendQueuedNow}
+      agent="muse"
     />,
   );
 }
@@ -116,6 +117,27 @@ describe("SessionStream", () => {
     renderStream(feedOf({ status: { kind: "unavailable", reason: "no-log" } }));
     expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
     expect(screen.queryByText("Send a message to start.")).toBeNull();
+  });
+
+  // #508: the bridge refused to guess between two Muse sessions in one folder. The empty Chat says
+  // why and how to fix it, on a new pane too, since nothing will appear on its own.
+  it("names a shared folder and its remedy under the empty state, and only when the bridge says so", () => {
+    const line =
+      "Two Muse sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.";
+    for (const starting of [false, true]) {
+      const r = renderStream(
+        feedOf({ status: { kind: "unavailable", reason: "no-session", detail: "shared-folder" } }),
+        true,
+        false,
+        starting,
+      );
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expect(screen.getByText(/no agent session/)).toBeInTheDocument();
+      expect(screen.queryByText("Send a message to start.")).toBeNull();
+      r.unmount();
+    }
+    renderStream(feedOf({ status: { kind: "unavailable", reason: "no-session" } }));
+    expect(screen.queryByText(/share this folder/)).toBeNull();
   });
 
   // ADR 0073 point 7: a 404 means "update this member", never "this pane has nothing to show".

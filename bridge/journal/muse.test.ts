@@ -647,6 +647,31 @@ describe("museJournal discover", () => {
     ).resolves.toEqual({ kind: "id", value: UUID_A });
   });
 
+  // #508: with another muse pane in the folder, the newest log may be that pane's.
+  test("a shared folder with no argv session reads no session, never the newest log", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(adapter.discover?.("/same", { shared: true })).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse"] }] }),
+    ).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse", "resume", "--last"] }] }),
+    ).resolves.toBeNull();
+  });
+
+  test("a shared folder still reads the session the pane's argv names", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse", "resume", UUID_A] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+
   test("the first argv match wins", async () => {
     const root = await fixtureRoot();
     sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);

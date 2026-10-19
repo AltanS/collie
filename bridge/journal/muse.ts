@@ -33,9 +33,13 @@
 //
 // WHERE THE SESSION COMES FROM: Herdr ships no muse integration and drops custom-source session
 // reports (probed 2026-10-02 on herdr 0.9.0: an explicit report-agent-session never surfaces in
-// pane.get), so muse panes carry no agentSession. `discover` finds the log instead: the newest
-// session.jsonl whose metadata workspace_root equals the pane's cwd. Two panes sharing one cwd can
-// cross-wire (newest wins); the ref is re-derived per tap so it self-heals when one ends.
+// pane.get; herdr 0.9.4 still lists no muse integration), so muse panes carry no agentSession.
+// `discover` finds the log instead: a `muse resume <uuid>` in the pane's foreground argv names it
+// exactly; otherwise the newest session.jsonl whose metadata workspace_root equals the pane's cwd.
+// That walk cannot tell two panes in one folder apart, so with another muse pane in the folder an
+// unnamed pane reads NO session rather than maybe its neighbour's (#508). Nothing else per pane
+// is known to name the session: Herdr gives argv and pid only, and no pid or lock file beside a
+// Muse log is known that a pid could be matched against.
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -694,11 +698,13 @@ export class MuseTranscriptSource implements TranscriptSource {
    * Find the session running in `cwd` without a reported ref.
    *
    * Herdr reports no session for muse panes (see the header), so the history and chat routes ask
-   * here when the pane names none. Two rules, in order. First, the pane's own foreground argv: a
-   * `muse … resume <uuid>` there names the session exactly, so two tabs in one workspace each
-   * read their own transcript. Otherwise — no argv, a fresh `muse` with no resume, or a
-   * multiplexer that offers none — the newest session.jsonl whose metadata workspace_root
-   * equals the cwd, read from the file's head (the metadata record sits on line 2). The walk is
+   * here when the pane names none. Three rules, in order. First, the pane's own foreground argv:
+   * a `muse … resume <uuid>` there names the session exactly, so two tabs in one workspace each
+   * read their own transcript. Second, when another muse pane shares the folder (`hints.shared`),
+   * NO session: the walk below would hand both panes the same newest log, and one of them would
+   * read the other's conversation as its own (#508). Otherwise — no argv, a fresh `muse` with no
+   * resume, or a multiplexer that offers none — the newest session.jsonl whose metadata
+   * workspace_root equals the cwd, read from the file's head (the metadata record sits on line 2). The walk is
    * newest-first with an early exit, so the common case costs a few directory reads; the caps
    * below bound the worst case. Subagent logs are excluded by construction — only a
    * `<uuid>/session.jsonl` at exactly that depth is ever a candidate.
@@ -713,6 +719,7 @@ export class MuseTranscriptSource implements TranscriptSource {
   ): Promise<AgentSessionRef | null> {
     const named = sessionFromArgv(hints?.processes);
     if (named !== null) return { kind: "id", value: named };
+    if (hints?.shared === true) return null;
     if (cwd.trim() === "") return null;
     for (const root of this.roots) {
       const hit = await this.findByRoot(root, cwd);
@@ -832,5 +839,6 @@ export function museJournal(roots: string | readonly string[]): JournalAdapter {
     parse: parseMuseTranscript,
     reducer: createMuseReducer,
     discover: (cwd: string, hints?: DiscoverHints) => source.discoverSession(cwd, hints),
+    sharedFolderBlind: true,
   };
 }

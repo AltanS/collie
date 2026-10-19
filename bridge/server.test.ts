@@ -50,6 +50,7 @@ import {
   reopenConversation,
   hasSplitUrl,
   paneReadResponse,
+  paneChat,
   paneHistory,
   readPane,
   parsePairRequest,
@@ -142,6 +143,7 @@ import { computeEtag } from "./http-cache.ts";
 import { grokJournal } from "./journal/grok.ts";
 import { museJournal } from "./journal/muse.ts";
 import { TranscriptStore } from "./journal/store.ts";
+import { LiveWindows } from "./journal/live.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import {
   MUX_LOGO_PATH,
@@ -5228,6 +5230,39 @@ describe("journalRefOf — which session the history and chat routes read", () =
     });
   });
 
+  // #508: a folder walk cannot tell two same-harness panes in one folder apart, so discovery is told.
+  describe("discovery hears about a same-harness neighbour in the folder", () => {
+    const seen: unknown[] = [];
+    const a = adapter({
+      discover: async (_cwd, hint) => {
+        seen.push(hint);
+        return null;
+      },
+    });
+    const mine = pane({});
+    const processes = [{ argv: ["muse"] }];
+
+    test("a neighbour adds shared: true beside the foreground hint", async () => {
+      seen.length = 0;
+      await journalRefOf(a, mine, [mine, pane({ paneId: "w1:p2" })], { processes });
+      expect(seen).toEqual([{ processes, shared: true }]);
+    });
+
+    test("a neighbour with no other hint still says shared", async () => {
+      seen.length = 0;
+      await journalRefOf(a, mine, [mine, pane({ paneId: "w1:p2" })]);
+      expect(seen).toEqual([{ shared: true }]);
+    });
+
+    test("a pane in another folder or another harness is no neighbour", async () => {
+      seen.length = 0;
+      const elsewhere = pane({ paneId: "w1:p2", cwd: "/home/op/elsewhere" });
+      const shell = pane({ paneId: "w1:p3", agent: "shell" });
+      await journalRefOf(a, mine, [mine, elsewhere, shell], { processes });
+      expect(seen).toEqual([{ processes }]);
+    });
+  });
+
   // The screen is a thunk the route hands over untouched: discovery decides whether to read it.
   test("discovery receives the pane's screen beside its folder, and only reads it when it asks", async () => {
     let reads = 0;
@@ -5574,6 +5609,79 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
       expect(JSON.stringify(a.entries)).not.toContain("beta from session B");
       expect(JSON.stringify(b.entries)).toContain("beta from session B");
       expect(JSON.stringify(b.entries)).not.toContain("alpha from session A");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // #508: two fresh `muse` panes name no session in argv, and the folder walk would hand both the
+  // newest log. Neither may read a conversation that could be the other's.
+  test("two panes whose argv names no session read no session, not the newest log", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      await sessionLog(base, UUID_B, [metadata("/same"), accepted("beta from session B")]);
+      const journals = { muse: museJournal([base]) };
+      const transcripts = new TranscriptStore();
+      const stub: Partial<StateEngine> = {
+        current: () => ({
+          agents: [view("w1:p1"), view("w1:p2")],
+          shellPanes: [],
+          workspaces: [],
+          tabs: [],
+          bridge: "connected",
+        }),
+      };
+      // SAFETY: paneHistory reaches only `current()` (for the pane lookup) — the one member
+      // present above, mirroring the engine stubs elsewhere in this suite.
+      const engine = stub as StateEngine;
+      const mux = {
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      for (const paneId of ["w1:p1", "w1:p2"]) {
+        const url = new URL(`http://x/api/pane/${paneId}/history`);
+        const res = await paneHistory(cfg(), journals, transcripts, engine, mux, paneId, url, new Request(url));
+        // SAFETY: the bridge's own JSON, served by the call above.
+        const body = (await res.json()) as { available: boolean; reason?: string };
+        expect(body).toMatchObject({ available: false, reason: "no-session" });
+      }
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // #508: the chat route says WHY there is no session, so the phone can name the remedy.
+  test("the chat route names a shared folder, and only for the pane that shares one", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      const journals = { muse: museJournal([base]) };
+      const live = new LiveWindows(new TranscriptStore());
+      let agents: AgentView[] = [view("w1:p1"), view("w1:p2")];
+      const stub: Partial<StateEngine> = {
+        current: () => ({ agents, shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+      };
+      // SAFETY: paneChat reaches only `current()` (for the pane lookup) on the paths read here.
+      const engine = stub as StateEngine;
+      const mux = {
+        capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }),
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      const read = async () => {
+        const url = new URL("http://x/api/pane/w1:p1/chat");
+        const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url));
+        // SAFETY: the bridge's own JSON, served by the call above.
+        return (await res.json()) as { paneId: string; available: boolean; reason?: string; detail?: string };
+      };
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session", detail: "shared-folder" });
+      // Alone in the folder, the same pane reads the folder's log: no reason to give.
+      agents = [view("w1:p1")];
+      expect(await read()).toMatchObject({ available: true });
+      // A neighbour in ANOTHER folder is no reason either: no log there means the plain no-session.
+      agents = [{ ...view("w1:p1"), cwd: "/empty" }, view("w1:p2")];
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session" });
     } finally {
       await rm(base, { recursive: true, force: true });
     }

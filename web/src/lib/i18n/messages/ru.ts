@@ -501,6 +501,8 @@ export const ru: Dictionary = {
   "chat.mode.terminal": "Вид терминала",
   "chat.mode.noChat": "{reason} Терминал остается здесь.",
   "chat.stream.empty": "Отправьте сообщение, чтобы начать.",
+  "chat.empty.sharedFolder":
+    "Две сессии {harness} используют эту папку, поэтому Collie не может понять, какая из них принадлежит этой панели. Запустите агента командой возобновления с ID сессии, и Collie прочитает нужную.",
   "chat.stream.working": "Выполняется…",
   "chat.stream.questionPending": "В терминале ожидает вопрос. Ваше следующее сообщение ответит на него.",
   "chat.stream.queued": "Ожидание отправки",

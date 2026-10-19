@@ -495,6 +495,8 @@ export const tr: Dictionary = {
   "chat.mode.terminal": "Terminal görünümü",
   "chat.mode.noChat": "{reason} Terminal burada kalır.",
   "chat.stream.empty": "Başlamak için bir mesaj gönderin.",
+  "chat.empty.sharedFolder":
+    "Bu klasörü iki {harness} oturumu paylaşıyor, bu yüzden Collie hangisinin bu bölmeye ait olduğunu anlayamıyor. Aracıyı devam komutu ve oturum kimliğiyle başlatın, Collie doğru olanı okusun.",
   "chat.stream.working": "Hâlâ çalışıyor…",
   "chat.stream.questionPending": "Uçbirimde bir soru bekliyor. Bir sonraki iletiniz bu soruyu yanıtlar.",
   "chat.stream.queued": "Göndermek için bekleniyor",
