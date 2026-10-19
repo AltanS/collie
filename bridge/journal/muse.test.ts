@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -482,6 +482,13 @@ function metadataRow(root: string): string {
   });
 }
 
+function routeFactsRow(cwd: string, pid: number): string {
+  return row("route-1", "runtime.session.route_facts", {
+    kind: "route_facts",
+    record: { cwd, pid, terminal_title_identity: "63b022ee", local_runtime_command_socket_path: "/tmp/muse.sock" },
+  });
+}
+
 describe("MuseTranscriptSource resolve", () => {
   test("resolves a session id to its log, newest date first", async () => {
     const root = await fixtureRoot();
@@ -543,22 +550,20 @@ describe("museJournal discover", () => {
     await expect(adapter.discover?.("")).resolves.toBeNull();
   });
 
-  test("two sessions sharing one cwd resolve to the newest", async () => {
+  test("two sessions sharing one cwd resolve to no session rather than the newest (#508)", async () => {
     const root = await fixtureRoot();
     sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
-    const { utimesSync } = await import("node:fs");
     const oldPath = join(root, "2026", "09", "14", UUID_A, "session.jsonl");
     const past = new Date("2026-09-14T00:00:00Z");
     utimesSync(oldPath, past, past);
     sessionLog(root, "2026-09-14", UUID_B, [metadataRow("/same")]);
     const adapter = museJournal([root]);
-    await expect(adapter.discover?.("/same")).resolves.toEqual({ kind: "id", value: UUID_B });
+    await expect(adapter.discover?.("/same")).resolves.toBeNull();
   });
 
   test("a newer subagent log never shadows its session", async () => {
     const root = await fixtureRoot();
     sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
-    const { utimesSync } = await import("node:fs");
     utimesSync(
       join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
       new Date("2026-09-14T00:00:00Z"),
@@ -575,7 +580,6 @@ describe("museJournal discover", () => {
   test("foreground argv names the pane's own session across a shared cwd", async () => {
     const root = await fixtureRoot();
     sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
-    const { utimesSync } = await import("node:fs");
     utimesSync(
       join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
       new Date("2026-09-14T00:00:00Z"),
@@ -592,6 +596,45 @@ describe("museJournal discover", () => {
         processes: [{ argv: ["/Users/op/.local/bin/muse-bin-1.4.4-R5419.1", "resume", UUID_B] }],
       }),
     ).resolves.toEqual({ kind: "id", value: UUID_B });
+  });
+
+  test("foreground pid names a fresh pane's own session across a shared cwd (#508)", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same"), routeFactsRow("/same", 111)]);
+    utimesSync(
+      join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
+      new Date("2026-09-14T00:00:00Z"),
+      new Date("2026-09-14T00:00:00Z"),
+    );
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same"), routeFactsRow("/same", 222)]);
+    const adapter = museJournal([root]);
+    // A fresh `muse` names no session in argv; its pid is the exact identity. Without it both
+    // panes would read the newest log (B).
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse"], pid: 111 }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse"], pid: 222 }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_B });
+  });
+
+  test("two sessions sharing one cwd with no exact match resolve to no session (#508)", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same"), routeFactsRow("/same", 111)]);
+    utimesSync(
+      join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
+      new Date("2026-09-14T00:00:00Z"),
+      new Date("2026-09-14T00:00:00Z"),
+    );
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same"), routeFactsRow("/same", 222)]);
+    const adapter = museJournal([root]);
+    await expect(adapter.discover?.("/same")).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse"], pid: 999 }] }),
+    ).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse"] }] }),
+    ).resolves.toBeNull();
   });
 
   test.each([
@@ -619,10 +662,9 @@ describe("museJournal discover", () => {
     { label: "an empty foreground group", argvs: [] },
   ];
   for (const { label, argvs } of FALLBACKS) {
-    test(`falls back to newest-wins on ${label}`, async () => {
+    test(`falls back to no session on ${label} when the cwd is ambiguous`, async () => {
       const root = await fixtureRoot();
       sessionLog(root, "2026-09-14", UUID_A, [metadataRow("/same")]);
-      const { utimesSync } = await import("node:fs");
       utimesSync(
         join(root, "2026", "09", "14", UUID_A, "session.jsonl"),
         new Date("2026-09-14T00:00:00Z"),
@@ -631,12 +673,21 @@ describe("museJournal discover", () => {
       sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
       const adapter = museJournal([root]);
       const processes = argvs.map((argv) => ({ argv }));
-      await expect(adapter.discover?.("/same", { processes })).resolves.toEqual({
-        kind: "id",
-        value: UUID_B,
-      });
+      // Neither pane's identity is in this argv, and the cwd cannot settle it: guessing the
+      // newest is exactly the #508 cross-wire, so the answer is no session.
+      await expect(adapter.discover?.("/same", { processes })).resolves.toBeNull();
     });
   }
+
+  test("a single same-cwd session still resolves on an unusable argv", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", { processes: [{ argv: ["muse"] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+    await expect(adapter.discover?.("/same")).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
 
   test("an upper-case uuid from argv is lower-cased", async () => {
     const root = await fixtureRoot();
