@@ -18,8 +18,10 @@ import { useEffect, useState } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { HarnessBarControl } from "@/components/harness-bar-control";
+import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { DURABLE_BAR } from "@/lib/harness-bar";
 import { __resetHarnessBar } from "@/lib/harness-bar-pref";
+import { __resetHarnessPrefs } from "@/lib/harness-prefs";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
 import { took, useRoomyActions } from "./shared";
@@ -76,7 +78,13 @@ export function ActionsRowSection() {
   // off in the last card empties the harness section in every card above it too, which is exactly
   // what it does on a real phone. Reset on the way out so leaving this tab does not leave the rest
   // of the playground switched off.
-  useEffect(() => () => __resetHarnessBar(), []);
+  useEffect(
+    () => () => {
+      __resetHarnessBar();
+      __resetHarnessPrefs();
+    },
+    [],
+  );
 
   return (
     <Section def={DEF}>
@@ -166,6 +174,16 @@ export function ActionsRowSection() {
             <HarnessBarControl />
             <Roomy agent="claude" />
           </div>
+        </Card>
+
+        <Card
+          state="harness-status-line-switches"
+          label="Harness configurations: one status line switch per harness, Claude Code first"
+          reach="Settings → Harness configurations. Per device, one row for every harness the app has an adapter for."
+          note="The real card over the real store; the rows come from the adapter registry, so a new adapter adds one. Flip a switch off and that harness's pane draws no status line under Chat, and no background-agents block for Claude Code. The model label returns above the belt instead. The Terminal view is unchanged. Every harness starts on."
+          span={2}
+        >
+          <HarnessPrefsControl />
         </Card>
 
         <Card

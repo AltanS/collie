@@ -36,6 +36,7 @@ import { savedAtLabel } from "@/lib/format";
 import { settleAfterSend } from "@/lib/harness/guard";
 import { setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing } from "@/lib/poll-intent";
+import { useHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
@@ -766,6 +767,12 @@ export function AgentChat({
       grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(splitLines(parseAnsi(display))) ?? [] : [],
     [display, agent?.agent, grammarsOn],
   );
+  // Settings → Harness configurations: whether this device draws the lifted status line, and for
+  // Claude Code the background-agents block under it, for THIS pane's harness (lib/harness-prefs.ts).
+  // Keyed by the same exact agent string `adapterFor` takes. Only the DRAWING is gated: the parses
+  // above still run and the Terminal body still shows the real rows, which is why the strip's
+  // `Collapse` below closes instead of the lines being dropped here.
+  const statusLineShown = useHarnessStatusLineShown(agent?.agent);
 
   // The background-agents block the harness paints under its statusline (issue #242). stripChrome
   // peels it off the mirror with the box, and the strip stops above it, so this is its one surface.
@@ -1069,14 +1076,16 @@ export function AgentChat({
   // holds the answer across frames so a dialog or a redraw cannot blink the label.
   const modelWords = modelLabel(agent?.model);
   const footerLifted = grammarsOn && adapterFor(agent?.agent) !== undefined;
+  // The same goes for a strip the operator turned off for this harness (`statusLineShown`): it draws
+  // no footer, so nothing names the model and the label comes back, exactly as in zen.
   const footerRows = useMemo(() => {
-    if (footerLifted) return statusLines.map(rowText);
+    if (footerLifted) return statusLineShown ? statusLines.map(rowText) : NO_ROWS;
     if (chatShown) return NO_ROWS; // Chat draws no raw footer, so there is nothing to parse
     return splitLines(parseAnsi(display)).slice(-RAW_FOOTER_ROWS).map(rowText);
-  }, [footerLifted, statusLines, display, chatShown]);
+  }, [footerLifted, statusLineShown, statusLines, display, chatShown]);
   const modelOnScreen = useModelOnScreen(
     `${paneId}|${modelWords ?? ""}`,
-    footerLifted ? !zen : !chatShown,
+    footerLifted ? !zen && statusLineShown : !chatShown,
     footerRows,
     modelWords,
   );
@@ -2799,8 +2808,8 @@ export function AgentChat({
                   arrives or leaves — a bare conditional here is the §2 fault at its full height, the
                   mirror teleporting 50px twice per message. `Collapse` also UNMOUNTS at the end of the
                   exit, so nothing is left focusable behind a row that is not on screen. */}
-              <Collapse open={!composing && statusLines.length > 0}>
-                {statusLines.length > 0 && (
+              <Collapse open={!composing && statusLineShown && statusLines.length > 0}>
+                {statusLineShown && statusLines.length > 0 && (
                 <div
                   className={cn(
                     "max-h-[18dvh] overflow-y-auto overscroll-contain border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
@@ -2840,8 +2849,8 @@ export function AgentChat({
               {/* Background agents, under the statusline as the TUI drew them. Its own element and its
                   own budget, one row until tapped (agents-footer.tsx). Stands down with the strip
                   while the keyboard is up, through `Collapse` for the same DESIGN.md reason. */}
-              <Collapse open={!composing && agentsFooter.length > 0}>
-                {agentsFooter.length > 0 && <AgentsFooter rows={agentsFooter} face={mirrorFace} />}
+              <Collapse open={!composing && statusLineShown && agentsFooter.length > 0}>
+                {statusLineShown && agentsFooter.length > 0 && <AgentsFooter rows={agentsFooter} face={mirrorFace} />}
               </Collapse>
 
               {/* THE PANE SWITCHER'S MARK IS NOT A ROW ANY MORE. It was a 30px full-width band here,

@@ -260,7 +260,7 @@ export function readNewAt(search: string): NewAt {
  * `lib/experiments.ts` holds something. Its path needs nothing here — the two ladders below already
  * read every `/settings/<x>` as a child of the index.
  */
-export type SettingsSection = "appearance" | "device" | "voice" | "alerts" | "system" | "experiments";
+export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "experiments";
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {
