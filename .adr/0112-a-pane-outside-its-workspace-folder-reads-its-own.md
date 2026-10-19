@@ -1,4 +1,4 @@
-# 0110 — A pane outside its workspace folder reads its own
+# 0112 — A pane outside its workspace folder reads its own
 
 - **Status:** Proposed
 - **Date:** 2026-10-18

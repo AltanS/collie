@@ -119,7 +119,7 @@ import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-cha
 // read-only. Two routes share it: `/pane/:paneId/changes` (the bridge resolves the pane's workspace)
 // and `/space/:spaceId/changes` (the workspace asked directly). Every pane inside a workspace's
 // folder shows the same list; a pane parked outside it shows its own folder's instead (#509, ADR
-// 0110), and the header names the workspace and its folder so the scope is never a guess.
+// 0112), and the header names the workspace and its folder so the scope is never a guess.
 //
 // ONE SCREEN, TWO BODIES (ADR 0083, 2026-10-06). By default the body is the root folder as a tree,
 // one folder at a time, with every change marked on its row: a changed file wears its status letter
