@@ -50,6 +50,7 @@ import {
   reopenConversation,
   hasSplitUrl,
   paneReadResponse,
+  paneChat,
   paneHistory,
   readPane,
   parsePairRequest,
@@ -142,6 +143,7 @@ import { computeEtag } from "./http-cache.ts";
 import { grokJournal } from "./journal/grok.ts";
 import { museJournal } from "./journal/muse.ts";
 import { TranscriptStore } from "./journal/store.ts";
+import { LiveWindows } from "./journal/live.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import {
   MUX_LOGO_PATH,
@@ -5643,6 +5645,42 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
         const body = (await res.json()) as { available: boolean; reason?: string };
         expect(body).toMatchObject({ available: false, reason: "no-session" });
       }
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // #508: the chat route says WHY there is no session, so the phone can name the remedy.
+  test("the chat route names a shared folder, and only for the pane that shares one", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      const journals = { muse: museJournal([base]) };
+      const live = new LiveWindows(new TranscriptStore());
+      let agents: AgentView[] = [view("w1:p1"), view("w1:p2")];
+      const stub: Partial<StateEngine> = {
+        current: () => ({ agents, shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+      };
+      // SAFETY: paneChat reaches only `current()` (for the pane lookup) on the paths read here.
+      const engine = stub as StateEngine;
+      const mux = {
+        capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }),
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      const read = async () => {
+        const url = new URL("http://x/api/pane/w1:p1/chat");
+        const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url));
+        // SAFETY: the bridge's own JSON, served by the call above.
+        return (await res.json()) as { paneId: string; available: boolean; reason?: string; detail?: string };
+      };
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session", detail: "shared-folder" });
+      // Alone in the folder, the same pane reads the folder's log: no reason to give.
+      agents = [view("w1:p1")];
+      expect(await read()).toMatchObject({ available: true });
+      // A neighbour in ANOTHER folder is no reason either: no log there means the plain no-session.
+      agents = [{ ...view("w1:p1"), cwd: "/empty" }, view("w1:p2")];
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session" });
     } finally {
       await rm(base, { recursive: true, force: true });
     }

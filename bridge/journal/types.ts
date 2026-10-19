@@ -287,6 +287,14 @@ export interface JournalAdapter {
    */
   reconcile?(ref: AgentSessionRef, cwd: string): Promise<AgentSessionRef>;
   /**
+   * This adapter's `discover` answers null whenever `hints.shared` is set and nothing else names the
+   * pane's session (Muse, #508). The chat route then says WHY there is no session
+   * (`detail: "shared-folder"`), so the phone can name the remedy. OPTIONAL and set only where it is
+   * true: an adapter that reads a screen (OpenClaw) can still answer in a shared folder, and its
+   * null there means something else.
+   */
+  readonly sharedFolderBlind?: true;
+  /**
    * The prompt-cache reading for one session, off the same log `parse` reads — or null when there is
    * nothing to read yet.
    *

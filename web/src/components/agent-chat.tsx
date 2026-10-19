@@ -83,7 +83,7 @@ import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { chatStatusKey, SavedCopyRow, SessionStream } from "@/components/session-stream";
+import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
 import { paneAddress } from "@/lib/walky";
@@ -1103,6 +1103,10 @@ export function AgentChat({
   // The multiplexer's own words come first where it has any, because a multiplexer that keeps no
   // agent session log at all is not Collie's fault and Collie does not say it is. A device on the
   // terminal reads exactly the row it read before the gate existed.
+  // The bridge refused to guess this pane's session because another pane runs the same harness in
+  // its folder (#508). Said wherever the pane says why it has no Chat, in place of "no transcript
+  // file", which would be wrong: nothing is missing, the bridge will not pick.
+  const sharedFolder = sharedFolderLine(chatStatus, agent?.agent);
   const chatReason = !sessionLog.capable
     ? sessionLog.note || t("history.unavailable.noLog")
     : chatChosen
@@ -1112,7 +1116,7 @@ export function AgentChat({
           ? // The server's own reason: reading switched off, or a member older than the chat route.
             t(chatStatusKey(chatStatus) ?? "history.unavailable.disabled")
           : agent?.hasSession && journal === "missing"
-            ? t("history.unavailable.noLog")
+            ? (sharedFolder ?? t("history.unavailable.noLog"))
             : t("history.unavailable.noSession")
       : historyAvailable
         ? null
@@ -2481,6 +2485,7 @@ export function AgentChat({
                   // A new pane with nothing to read yet: one line that says how to begin, never the
                   // "no transcript file" reading, which is only true of a pane that should have one.
                   starting={body === "start"}
+                  agent={agent?.agent}
                   // A pane with no screen is a durable conversation: its thread shows the person's line at once,
                   // a working row while the program thinks, and a cursor on a reply still being written.
                   durable={gridless}
@@ -2607,7 +2612,7 @@ export function AgentChat({
                       for that reading, on the body the operator now has. */}
                   {noLogFallback && (
                     <p className="mb-2 px-2 py-1 text-center text-xs leading-snug text-muted-foreground">
-                      {t("history.unavailable.noLog")}
+                      {sharedFolder ?? t("history.unavailable.noLog")}
                     </p>
                   )}
                   {/* The newest reply in full, standing IN PLACE OF the rows it covers (the mirror

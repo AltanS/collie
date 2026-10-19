@@ -4084,6 +4084,28 @@ export async function discoveryHints(
   return { screen: paneScreen(mux, paneId), processes: await discoverProcesses(mux, paneId) };
 }
 
+/** Another pane running `adapter`'s harness sits in `pane`'s folder. */
+function sharesFolder(adapter: JournalAdapter, pane: AgentView, panes: readonly AgentView[]): boolean {
+  return panes.some(
+    (other) => other.paneId !== pane.paneId && other.agent === adapter.agent && other.cwd === pane.cwd,
+  );
+}
+
+/**
+ * The chat route's `detail` for a pane that resolved no session: `shared-folder` when the adapter
+ * refuses a shared folder and this pane shares one, so the phone can say why and how to fix it
+ * (#508). Read only after {@link journalRefOf} answered null; a pane that reports a session never
+ * reaches discovery, so it never earns this.
+ */
+export function noSessionDetail(
+  adapter: JournalAdapter,
+  pane: AgentView,
+  panes: readonly AgentView[],
+): "shared-folder" | undefined {
+  if (pane.agentSession !== undefined || adapter.sharedFolderBlind !== true) return undefined;
+  return sharesFolder(adapter, pane, panes) ? "shared-folder" : undefined;
+}
+
 /**
  * The session a pane's journal routes read: the reported ref (corrected by an adapter that knows its
  * multiplexer can keep a stale one, while the pane still runs that harness), else a discovered one.
@@ -4103,9 +4125,7 @@ export async function journalRefOf(
   const reported = pane.agentSession;
   // Another pane running the same harness in the same folder: whatever a folder walk finds there
   // could be that pane's session.
-  const neighbour = panes.some(
-    (other) => other.paneId !== pane.paneId && other.agent === adapter.agent && other.cwd === pane.cwd,
-  );
+  const neighbour = sharesFolder(adapter, pane, panes);
   if (reported === undefined) {
     // Discovery hears about the neighbour, so a folder-keyed adapter answers no session rather than
     // the neighbour's (#508). The flag rides only when true; otherwise the hints pass untouched.
@@ -4353,8 +4373,11 @@ export async function paneChat(
   req: Request,
 ): Promise<Response> {
   const accept = req.headers.get("accept-encoding");
-  const unavailable = (reason: "disabled" | "no-session" | "no-log") =>
-    json({ paneId, available: false, reason } satisfies PaneChatResponse, accept);
+  const unavailable = (reason: "disabled" | "no-session" | "no-log", detail?: "shared-folder") =>
+    json(
+      (detail === undefined ? { paneId, available: false, reason } : { paneId, available: false, reason, detail }) satisfies PaneChatResponse,
+      accept,
+    );
 
   if (!cfg.transcript || live === null || journals === null) return unavailable("disabled");
 
@@ -4371,7 +4394,7 @@ export async function paneChat(
   // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
   // the resolved path below is what the live window holds.
   const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
-  if (ref === null) return unavailable("no-session");
+  if (ref === null) return unavailable("no-session", noSessionDetail(adapter, pane, panes));
 
   const params = chatParams(url);
   try {

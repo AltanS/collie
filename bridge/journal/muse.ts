@@ -839,5 +839,6 @@ export function museJournal(roots: string | readonly string[]): JournalAdapter {
     parse: parseMuseTranscript,
     reducer: createMuseReducer,
     discover: (cwd: string, hints?: DiscoverHints) => source.discoverSession(cwd, hints),
+    sharedFolderBlind: true,
   };
 }

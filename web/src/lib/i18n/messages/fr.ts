@@ -495,6 +495,8 @@ export const fr: Dictionary = {
   "chat.mode.terminal": "Vue Terminal",
   "chat.mode.noChat": "{reason} Le terminal reste ici.",
   "chat.stream.empty": "Envoyez un message pour commencer.",
+  "chat.empty.sharedFolder":
+    "Deux sessions {harness} partagent ce dossier, Collie ne peut donc pas savoir laquelle appartient à ce volet. Démarrez l'agent avec sa commande de reprise et l'ID de session, et Collie lira la bonne.",
   "chat.stream.working": "Toujours en cours…",
   "chat.stream.questionPending": "Une question est en attente dans le terminal. Votre prochain message y répond.",
   "chat.stream.queued": "En attente d'envoi",

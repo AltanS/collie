@@ -625,6 +625,8 @@ export const en = {
 
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
+  "chat.empty.sharedFolder":
+    "Two {harness} sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.",
   "chat.stream.working": "Still working…",
   "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Waiting to send",

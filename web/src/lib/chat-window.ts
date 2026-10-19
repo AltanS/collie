@@ -35,6 +35,9 @@ import type {
 /** Why the bridge had nothing to show. Taken off the wire type so the two can never drift. */
 type ChatUnavailableReason = Extract<PaneChatResponse, { available: false }>["reason"];
 
+/** The bridge's reason behind a `no-session`, when it gave one (`shared-folder`, #508). */
+type ChatUnavailableDetail = NonNullable<Extract<PaneChatResponse, { available: false }>["detail"]>;
+
 /**
  * What the last answer said this pane's session is.
  *
@@ -47,7 +50,7 @@ export type ChatStatus =
   /** The window answered. `entries` are its turns. */
   | { kind: "live" }
   /** An ordinary empty answer: a shell pane, an agent with no session, a log that cannot be read. */
-  | { kind: "unavailable"; reason: ChatUnavailableReason }
+  | { kind: "unavailable"; reason: ChatUnavailableReason; detail?: ChatUnavailableDetail }
   /**
    * A 404. This machine's Collie predates the route — NOT an empty session.
    *
@@ -204,7 +207,13 @@ export function mergeChat(held: ChatWindow, answer: ChatAnswer): ChatWindow {
   // skew does not unsay them.
   if (answer.outcome === "stale") return restate(held, STALE);
   const body = answer.body;
-  if (!body.available) return restate(held, { kind: "unavailable", reason: body.reason });
+  if (!body.available) {
+    const status: ChatStatus =
+      body.detail === undefined
+        ? { kind: "unavailable", reason: body.reason }
+        : { kind: "unavailable", reason: body.reason, detail: body.detail };
+    return restate(held, status);
+  }
   return body.page === "older" ? mergeOlder(held, body) : mergeLive(held, body);
 }
 
@@ -214,7 +223,9 @@ function restate(held: ChatWindow, status: ChatStatus): ChatWindow {
 }
 
 function sameStatus(held: ChatStatus, next: ChatStatus): boolean {
-  if (held.kind === "unavailable" && next.kind === "unavailable") return held.reason === next.reason;
+  if (held.kind === "unavailable" && next.kind === "unavailable") {
+    return held.reason === next.reason && held.detail === next.detail;
+  }
   return held.kind === next.kind;
 }
 

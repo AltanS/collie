@@ -1668,7 +1668,17 @@ export interface ChatBefore {
  * no route at all, and the honest reading there is "update this machine". Mirrors bridge/types.ts.
  */
 export type PaneChatResponse =
-  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: false;
+      reason: "disabled" | "no-session" | "no-log";
+      /**
+       * Why a `no-session` answer has no session, when the bridge knows a reason the person can act
+       * on (bridge/types.ts). `shared-folder`: another pane runs the same harness in this folder and
+       * this pane's command line names no session (#508). Absent from an older bridge.
+       */
+      detail?: "shared-folder";
+    }
   | ({ paneId: string; available: true } & ChatBody);
 
 /** GET /api/pane/:id/subagent/:agentId — one Claude subagent's own JSONL transcript. */
