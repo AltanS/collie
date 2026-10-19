@@ -2575,6 +2575,30 @@ its time where the pi glyph sits (`U+E0B6 ⠏ 14s U+E0B1 …`).
 | `omp--v18-12-nerd-band-running--w130.txt`, `--w80.txt` | A bash call runs: the band reads `⠋ 14s` where the pi glyph sits. Labelled `running` |
 | `omp--v18-12-nerd-band-running-minute--w130.txt` | The same turn past a minute: `⠼ 1m`. Labelled `running` |
 | `omp--v18-12-nerd-band-done--w130.txt`, `--w80.txt` | The turn ended (`Done.`), the empty box under the band: the follow-up send's screen. Labelled `idle` |
+
+## omp 18.11.1 band, any status line style (captured 2026-10-19, oh-my-pi `omp` v18.11.1, scratch Herdr pane, issue 505)
+
+Read with `herdr pane read <id> --source recent --format ansi` from a scratch Herdr tab, 120 columns, CRLF
+normalised to LF. omp ran stock (`--no-extensions`) under `env -i` from an isolated npm prefix, with a scratch
+`HOME` and `PI_CODING_AGENT_DIR` whose `config.yml` set `setupVersion: 2`, `startup.checkUpdate: false` and the
+style in the name. The project folder is a fresh `git init` at `/tmp/omp-18-11/project`. No model is set up,
+so the band reads `no-model`. No home path, host or account appears.
+
+The composer is omp's default `band`. The stock row (`nerd` preset, `powerline-thin` separator) closes its
+segments with U+E0B0 before the `─` run, which the profile already read. `statusLine.transparent: true` drops
+the caps: no U+E0B6 in front and no U+E0B0 before the `─` run, the shape the issue's row shows. The `slash`
+separator draws U+E0BB and no closer. The `minimal` preset has no pi glyph and opens on the folder icon. The
+`ascii` preset writes ` pi > … >---`. Before this fix only the stock row was read as the top edge.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18.11.1-powerline-idle--w120.txt` | Stock band, empty `╰─` row. Labelled `idle` |
+| `omp--v18.11.1-powerline-draft--w120.txt` | Stock band, the box holds `please check the build` with the ghost `ing`. Labelled `draft` |
+| `omp--v18.11.1-powerline-transparent-idle--w120.txt` | `statusLine.transparent: true`, empty box. Labelled `idle` |
+| `omp--v18.11.1-powerline-transparent-draft--w120.txt` | The same with `please check the build` and the ghost `ing`. Labelled `draft` |
+| `omp--v18.11.1-slash-idle--w120.txt` | `statusLine.separator: slash`, empty box. Labelled `idle` |
+| `omp--v18.11.1-minimal-idle--w120.txt` | `statusLine.preset: minimal`, empty box. Labelled `idle` |
+| `omp--v18.11.1-ascii-idle--w120.txt` | `symbolPreset: ascii`, empty box. Labelled `idle` |
 ## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
 
 `hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a

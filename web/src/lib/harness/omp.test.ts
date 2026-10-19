@@ -215,6 +215,14 @@ const DECLINED = new Set([
   "omp--v18-12-nerd-band-two-lines--w80.txt",
   "omp--v18-12-nerd-band-wrapped--w130.txt",
   "omp--v18-12-nerd-band-wrapped--w80.txt",
+  // omp 18.11.1's band, stock and with a transparent, slash, minimal or ascii status line (issue 505).
+  "omp--v18.11.1-ascii-idle--w120.txt",
+  "omp--v18.11.1-minimal-idle--w120.txt",
+  "omp--v18.11.1-powerline-draft--w120.txt",
+  "omp--v18.11.1-powerline-idle--w120.txt",
+  "omp--v18.11.1-powerline-transparent-draft--w120.txt",
+  "omp--v18.11.1-powerline-transparent-idle--w120.txt",
+  "omp--v18.11.1-slash-idle--w120.txt",
   "omp--v18-4-composer-idle.txt",
   "omp--v18-10-draft-blank-line.txt",
   "omp--v18-10-draft-indented.txt",
@@ -482,6 +490,13 @@ describe("the omp corpus", () => {
     "omp--v18-rule-effort-hint.txt",
     "omp--v18-rule-idle.txt",
     "omp--v18-rule-wrapped.txt",
+    "omp--v18.11.1-ascii-idle--w120.txt",
+    "omp--v18.11.1-minimal-idle--w120.txt",
+    "omp--v18.11.1-powerline-draft--w120.txt",
+    "omp--v18.11.1-powerline-idle--w120.txt",
+    "omp--v18.11.1-powerline-transparent-draft--w120.txt",
+    "omp--v18.11.1-powerline-transparent-idle--w120.txt",
+    "omp--v18.11.1-slash-idle--w120.txt",
     "omp--working.txt",
   ];
 
@@ -636,6 +651,14 @@ const COMPOSER_FIXTURES = [
   "omp--v18-12-nerd-band-two-lines--w80.txt",
   "omp--v18-12-nerd-band-wrapped--w130.txt",
   "omp--v18-12-nerd-band-wrapped--w80.txt",
+  // omp 18.11.1's band, stock and with a transparent, slash, minimal or ascii status line (issue 505).
+  "omp--v18.11.1-ascii-idle--w120.txt",
+  "omp--v18.11.1-minimal-idle--w120.txt",
+  "omp--v18.11.1-powerline-draft--w120.txt",
+  "omp--v18.11.1-powerline-idle--w120.txt",
+  "omp--v18.11.1-powerline-transparent-draft--w120.txt",
+  "omp--v18.11.1-powerline-transparent-idle--w120.txt",
+  "omp--v18.11.1-slash-idle--w120.txt",
   // omp 18.6.1's open box with the slash palette under it (lab, 2026-10-17).
   "omp--v18-6-slash-mod-partial--w120.txt",
   "omp--v18-6-slash-model-list--w120.txt",

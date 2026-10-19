@@ -106,6 +106,14 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-nerd-band-two-lines--w80.txt",
   "omp--v18-12-nerd-band-wrapped--w130.txt",
   "omp--v18-12-nerd-band-wrapped--w80.txt",
+  // omp 18.11.1's band, stock and with a transparent, slash, minimal or ascii status line (issue 505).
+  "omp--v18.11.1-ascii-idle--w120.txt",
+  "omp--v18.11.1-minimal-idle--w120.txt",
+  "omp--v18.11.1-powerline-draft--w120.txt",
+  "omp--v18.11.1-powerline-idle--w120.txt",
+  "omp--v18.11.1-powerline-transparent-draft--w120.txt",
+  "omp--v18.11.1-powerline-transparent-idle--w120.txt",
+  "omp--v18.11.1-slash-idle--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -205,6 +213,14 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-12-nerd-band-two-lines--w80.txt", top: 11, bottom: 12, suggestEnd: 14, draftEnd: 14 },
     { fixture: "omp--v18-12-nerd-band-wrapped--w130.txt", top: 11, bottom: 12, suggestEnd: 14, draftEnd: 14 },
     { fixture: "omp--v18-12-nerd-band-wrapped--w80.txt", top: 11, bottom: 12, suggestEnd: 15, draftEnd: 15 },
+    // omp 18.11.1's band (issue 505), stock and with other status line styles: the band is the top row.
+    { fixture: "omp--v18.11.1-ascii-idle--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
+    { fixture: "omp--v18.11.1-minimal-idle--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
+    { fixture: "omp--v18.11.1-powerline-draft--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
+    { fixture: "omp--v18.11.1-powerline-idle--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
+    { fixture: "omp--v18.11.1-powerline-transparent-draft--w120.txt", top: 15, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18.11.1-powerline-transparent-idle--w120.txt", top: 15, bottom: 16, suggestEnd: 17 },
+    { fixture: "omp--v18.11.1-slash-idle--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -302,7 +318,8 @@ describe("extractStatusLines", () => {
   // row runs on into a context meter (`▶─2%───┃─1.1M`) and names branch `main`. The three 18.10 draft
   // captures run on into the same meter (`▶───5%───…128K─`). The 18.11 captures run in a scratch folder
   // with no branch, and the nerd preset draws no `π` and no `▶`. The 18.12 band captures run on into
-  // the meter too, and name branch `main`.
+  // the meter too, and name branch `main`. The 18.11.1 band captures draw no `π` either, bar the ascii
+  // one, which writes `pi`.
   it.each(
     BOX_COMPOSER_FIXTURES.filter(
       (f) =>
@@ -313,7 +330,8 @@ describe("extractStatusLines", () => {
         !f.startsWith("omp--v18-10-draft-") &&
         !f.startsWith("omp--v18-6-") &&
         !f.startsWith("omp--v18-11-") &&
-        !f.startsWith("omp--v18-12-"),
+        !f.startsWith("omp--v18-12-") &&
+        !f.startsWith("omp--v18.11.1-"),
     ),
   )(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",
