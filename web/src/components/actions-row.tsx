@@ -489,7 +489,7 @@ export interface ActionsRowProps {
    * mark: the Bot glyph with the count of the pane's running subagents as a small numeral above it, in
    * the same ink as its neighbours, no fill and no accent. Pinned, so it never scrolls away and a mark
    * that comes or goes moves nothing in the scroller; it eases in and out through `Collapse` on its x
-   * axis. The composer passes it only while the count is above zero. A tap opens the Agents dock.
+   * axis. The composer passes it only while the count is above zero. A tap opens the Agents sheet.
    */
   agents?: {
     /** How many subagents are running. Above zero whenever the prop is passed. */
@@ -497,7 +497,7 @@ export interface ActionsRowProps {
     onClick: () => void;
     /** ALREADY TRANSLATED. "Agents 2": the accessible name, the count in words a reader hears. */
     label: string;
-    /** The Agents dock is open: `aria-expanded`, like the dock toggles on the scrolling run. */
+    /** The Agents sheet is open: `aria-expanded`, as on the other controls that open a surface. */
     expanded: boolean;
   };
 }

@@ -4542,7 +4542,7 @@ describe("Composer tasks dock", () => {
   });
 });
 
-describe("Composer agents dock", () => {
+describe("Composer agents mark and sheet", () => {
   const RUNNING: PaneSubagent[] = [
     { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(Date.now() - 5 * 60_000).toISOString(), spawnDepth: 1 },
     { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Palette lists plugin skills", spawnDepth: 1 },
@@ -4623,7 +4623,7 @@ describe("Composer agents dock", () => {
     expect(within(controls).queryByRole("button", { name: /^Agents / })).toBeNull();
   });
 
-  it("shows the count, and the dock lists each running subagent with its label, task and age", async () => {
+  it("opens a sheet over the page titled with the count, listing each subagent with its label, task and age", async () => {
     const user = userEvent.setup();
     renderComposer({ subagents: RUNNING });
     const pill = screen.getByRole("button", { name: "Agents 2" });
@@ -4632,7 +4632,8 @@ describe("Composer agents dock", () => {
 
     await user.click(pill);
     expect(pill).toHaveAttribute("aria-expanded", "true");
-    const rows = document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]');
+    const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+    const rows = within(sheet).getAllByRole("button").filter((b) => b.dataset.slot === "belt-subagent");
     expect(rows).toHaveLength(2);
     // The model names the first; `inherit` names nothing, so the second reads by its type.
     expect(within(rows[0]!).getByText("Agent · opus")).toBeInTheDocument();
@@ -4640,8 +4641,37 @@ describe("Composer agents dock", () => {
     expect(within(rows[0]!).getByText("5m")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("Agent · Explore")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Close Agents 2" }));
+    await user.click(within(sheet).getByRole("button", { name: "Close" }));
     expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+  });
+
+  it("moves nothing in flow: the box and Keys keep their nodes, and every new element sits in the fixed sheet", async () => {
+    // Altan, 2026-10-19: "we hate layout shifts. agents list should be a sheet or overlay". The list
+    // was an in-flow dock that pushed the composer; now it floats, so opening it adds nothing in flow.
+    const user = userEvent.setup();
+    renderComposer({ subagents: RUNNING, changesPill: { onClick: vi.fn(), label: "Files" } });
+    const container = document.body;
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const keys = screen.getByRole("button", { name: /^Keys/ });
+    const before = new Set(container.querySelectorAll("*"));
+
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+    expect(sheet).toHaveClass("fixed");
+    // The same nodes, still in the document: nothing re-mounted them.
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBe(box);
+    expect(screen.getByRole("button", { name: /^Keys/ })).toBe(keys);
+    // Every element that was not there before is the sheet or inside it.
+    const added = Array.from(container.querySelectorAll("*")).filter((el) => !before.has(el));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.filter((el) => !sheet.contains(el))).toEqual([]);
+    // And nothing that was there before has gone.
+    expect(Array.from(before).filter((el) => !container.contains(el))).toEqual([]);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+    expect(new Set(container.querySelectorAll("*"))).toEqual(before);
   });
 
   it("stands right of the X: clear, agents, Files, Switch pane, with a draft in the box", async () => {
@@ -4706,7 +4736,7 @@ describe("Composer agents dock", () => {
     }
   });
 
-  it("a row tap opens the subagent sheet for that agent, sends nothing, and closes the dock", async () => {
+  it("a row tap opens the subagent transcript over the list, sends nothing, and the list stays under it", async () => {
     const user = userEvent.setup();
     const open = vi.fn<(t: SubagentTarget) => void>();
     const sync = vi.fn<(t: SubagentTarget) => void>();
@@ -4720,7 +4750,11 @@ describe("Composer agents dock", () => {
     expect(open).toHaveBeenCalledTimes(1);
     expect(open.mock.calls[0]![0]).toMatchObject({ agentId: "a71a608a981ceee4a", agent: "Explore", summary: "Palette lists plugin skills", status: "running" });
     expect(recordedSends()).toHaveLength(0);
-    expect(document.querySelector('[data-slot="belt-subagent"]')).toBeNull();
+    // A second layer, not a step away: the list is still open under the transcript.
+    expect(screen.getByRole("dialog", { name: "Agents 2" })).toBeInTheDocument();
+    // One Escape is heard by both sheets; the list ignores it while the transcript stands over it.
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Agents 2" })).toBeInTheDocument();
   });
 
   it("tells the open sheet the subagent ended once it leaves the running list", async () => {

@@ -1,6 +1,6 @@
 // The composer's thirteen states of the way out (M56 spec 07), one numbered card each, the five
 // states of the held-send card (14 to 18, ADR 0061 amended 2026-10-18), and the belt's Agents pill
-// at 2 with its dock, at 0, and right of the X with a draft in the box (19 to 22); the section that shows them is
+// at 2, its sheet, at 0, and right of the X with a draft in the box (19 to 22); the section that shows them is
 // sections/composer-states.tsx. See app.tsx's header for the page's own rules, and test/way-out-states.ts for the table every way-out card is drawn from:
 // the same table the way-out tests read, so a card, a test and a placeholder talk about one state.
 //
@@ -267,14 +267,15 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, showA
   );
 }
 
-// ── THE BELT'S LISTS (19 to 21) ─────────────────────────────────────────────────────────────────────
+// ── THE BELT'S LISTS (19 to 22) ─────────────────────────────────────────────────────────────────────
 // The agents mark: the count of the pane's subagents that have not finished yet, above a small Bot
 // glyph in the belt's fixed block, right of the X and left of Files and the Switch mark. Tasks stays on
 // the scrolling run. Card 21 is the same belt with no subagent running, so the mark is absent and
 // nothing else moves; card 22 has a draft in the box, so the X stands left of the mark. Card 19 has a
-// toggle that takes the subagents away and brings them back, to watch the mark ease out and in. The
-// real Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent
-// card in Chat opens. There is no bridge behind this page, so the sheet answers that it cannot read
+// toggle that takes the subagents away and brings them back, to watch the mark ease out and in. Card
+// 20 is the tap on the mark: the Agents sheet over the page, with nothing in flow moving. The real
+// Composer inside the real subagent sheet's provider, so a row tap opens the same sheet an Agent card
+// in Chat opens, over the list. There is no bridge behind this page, so the sheet answers that it cannot read
 // the transcript; that is the sheet's own state for an unreadable log.
 
 const BELT_TODOS: PaneTodo[] = [
@@ -321,8 +322,7 @@ function BeltListsComposer({ paneId }: { paneId: string }) {
   );
 }
 
-function BeltListsPhone({ paneId, open = false, agents = true, draft }: { paneId: string; open?: boolean; agents?: boolean; draft?: string }) {
-  const [host, setHost] = useState<HTMLDivElement | null>(null);
+function BeltListsPhone({ paneId, agents = true, draft }: { paneId: string; agents?: boolean; draft?: string }) {
 
   useEffect(() => {
     const stamp = () => markLive(paneId);
@@ -330,19 +330,6 @@ function BeltListsPhone({ paneId, open = false, agents = true, draft }: { paneId
     const timer = setInterval(stamp, RENEW_MS);
     return () => clearInterval(timer);
   }, [paneId]);
-  // The open dock is the real tap on the agents mark, taken once for you when the belt has mounted.
-  useEffect(() => {
-    if (!open || host === null) return;
-    const label = t("composer.controls.agents", { count: BELT_SUBAGENTS.length });
-    let tries = 0;
-    const timer = setInterval(() => {
-      tries += 1;
-      const pill = Array.from(host.querySelectorAll<HTMLButtonElement>('button[aria-expanded="false"]')).find((b) => b.getAttribute("aria-label") === label);
-      if (pill !== undefined) pill.click();
-      if (pill !== undefined || tries >= 100) clearInterval(timer);
-    }, 50);
-    return () => clearInterval(timer);
-  }, [open, host]);
   const [router] = useState(() => {
     // A draft in the box is what puts the X on the fixed block. Saved before the composer mounts, so
     // it loads it as a draft the operator left there.
@@ -351,7 +338,7 @@ function BeltListsPhone({ paneId, open = false, agents = true, draft }: { paneId
   });
   return (
     <PhoneMock>
-      <div ref={setHost}>
+      <div>
         <div className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">terminal output above the belt</div>
         <BeltAgentsContext.Provider value={agents}>
           <RouterProvider router={router} />
@@ -361,7 +348,7 @@ function BeltListsPhone({ paneId, open = false, agents = true, draft }: { paneId
   );
 }
 
-function BeltListsCase({ n, state, title, reach, note, paneId, open, agents = true, draft, toggle = false }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; open?: boolean; agents?: boolean; draft?: string; toggle?: boolean }) {
+function BeltListsCase({ n, state, title, reach, note, paneId, agents = true, draft, toggle = false }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; agents?: boolean; draft?: string; toggle?: boolean }) {
   const [running, setRunning] = useState(agents);
   return (
     <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
@@ -376,7 +363,7 @@ function BeltListsCase({ n, state, title, reach, note, paneId, open, agents = tr
           </button>
         )}
       </CardControls>
-      <BeltListsPhone paneId={paneId} agents={running} {...(open === undefined ? {} : { open })} {...(draft === undefined ? {} : { draft })} />
+      <BeltListsPhone paneId={paneId} agents={running} {...(draft === undefined ? {} : { draft })} />
     </Card>
   );
 }
@@ -463,12 +450,11 @@ export function wayOutGroups(): ReactNode[] {
       />
       <BeltListsCase
         n={20}
-        state="belt-agents-dock"
-        title="Agents dock open"
-        reach="Tap the agents mark. Each row is the label an Agent card uses, the task, and how long it has run. A tap opens the subagent sheet and sends nothing."
-        note="The tap on the mark is taken for you once the belt has mounted. With no bridge behind this page, a row opens the sheet in its unreadable state."
-        paneId="belt:agents-dock"
-        open
+        state="belt-agents-sheet"
+        title="Agents sheet"
+        reach="Tap the agents mark. A sheet titled Agents 2 opens over the page and the belt does not move. Each row is the label an Agent card uses, the task, and how long it has run. A tap on a row opens the subagent transcript over the list, and sends nothing; closing it comes back to the list."
+        note="With no bridge behind this page, a row opens the transcript sheet in its unreadable state."
+        paneId="belt:agents-sheet"
       />
       <BeltListsCase
         n={21}
