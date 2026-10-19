@@ -440,6 +440,11 @@ export interface Profile {
   readonly paste?: {
     /** The harness takes a bracketed paste as text, so a send may paste where the multiplexer can. */
     readonly bracketed: boolean;
+    /**
+     * A harness that swallows a submit key sent too soon after the text (Muse, #507) names the pause,
+     * in ms, a send waits after the write before the reads that can send it. Optional.
+     */
+    readonly settleMs?: number;
   };
   /** How the bridge keeps an ask (M56 spec 08). Optional: a profile without it uses the default lifetime. */
   readonly ask?: {
@@ -983,7 +988,11 @@ export function parseProfile(raw: JsonValue): Profile {
     const pasteNode = object(root.paste, "paste");
     const bracketed = pasteNode.bracketed;
     if (bracketed !== true && bracketed !== false) fail("paste.bracketed", "must be true or false");
-    paste = { bracketed: bracketed === true };
+    const settleMs = asJsonNumber(pasteNode.settleMs);
+    if (pasteNode.settleMs !== undefined && (settleMs === undefined || !Number.isInteger(settleMs) || settleMs < 1 || settleMs > 5000)) {
+      fail("paste.settleMs", "must be a whole number of ms from 1 to 5000");
+    }
+    paste = settleMs === undefined ? { bracketed: bracketed === true } : { bracketed: bracketed === true, settleMs };
   }
 
   let ask: Profile["ask"];

@@ -79,6 +79,14 @@ class FakePane {
   dropLastChar = false;
   enterSubmits = true;
   /**
+   * A harness that swallows a too-soon Enter (#507, Muse): an Enter within this many ms of the last
+   * text write does nothing. Null takes every Enter at once. Reads the rig's clock through {@link now}.
+   */
+  swallowEnterWithinMs: number | null = null;
+  /** The rig's clock, for {@link swallowEnterWithinMs}; the test wires it. */
+  now: (() => number) | null = null;
+  private lastWriteAt: number | null = null;
+  /**
    * Enter during a turn draws Claude Code 2.1.301's queued shape: the text on a pointer row with the
    * "ctrl+enter to send now" hint under it, both over the running row, instead of a transcript row.
    */
@@ -191,7 +199,15 @@ class FakePane {
     return (this.height === null ? rows : rows.slice(-this.height)).join("\n");
   }
 
+  /** Whether an Enter now submits: a too-soon Enter is swallowed where {@link swallowEnterWithinMs} says so. */
+  private takesEnter(): boolean {
+    if (!this.enterSubmits) return false;
+    if (this.swallowEnterWithinMs === null || this.now === null || this.lastWriteAt === null) return true;
+    return this.now() - this.lastWriteAt >= this.swallowEnterWithinMs;
+  }
+
   private take(text: string, pasted: boolean): void {
+    if (this.now !== null) this.lastWriteAt = this.now();
     if (this.swallow || this.dialog !== null) return;
     if (this.echo !== null) {
       this.echo.field += text;
@@ -256,12 +272,12 @@ class FakePane {
         if (this.box.length > 0 && this.running()) this.queued.push(this.box.replace(/\n/gu, " "));
         else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
-      } else if (key === "Enter" && this.mode === "codex" && this.enterSubmits) {
+      } else if (key === "Enter" && this.mode === "codex" && this.takesEnter()) {
         // Enter during a Codex turn steers: the text joins the running turn, above the running row.
         if (this.box.length > 0 && this.running()) this.over = [`› ${this.box.replace(/\n/gu, " ")}`, "", ...this.over];
         else if (this.box.length > 0) this.transcript.push(`› ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
-      } else if (key === "Enter" && this.enterSubmits) {
+      } else if (key === "Enter" && this.takesEnter()) {
         if (this.drawsQueuedRow && this.box.length > 0) this.over = [`❯ ${this.box.replace(/\n/gu, " ")}`, "  ctrl+enter to send now", ...this.over];
         else if (this.box.length > 0) this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
         this.box = "";
@@ -493,6 +509,37 @@ describe("a send that goes through", () => {
       if (what.includes("then summarize the changes")) p.over = [LIVE_ROW];
     };
     expect((await queuing.send("then summarize the changes")).receipt?.outcome).toBe("sent");
+  });
+});
+
+describe("a harness that swallows a too-soon Enter takes the send with its profile settle (#507)", () => {
+  // Muse on 1.4.10: the checked send wrote the text and sent Enter ~85 ms later, the box never
+  // emptied, and the receipt read unknown/no_evidence with keys [probe, Backspace, Enter]. The fake
+  // pane below swallows an Enter within 350 ms of the text write, the way the reply route measured
+  // on Muse 1.4.4 (fails at <=50 ms, smallest success 411 ms).
+  const swallowRig = (options: { edit?: (profile: Profile) => Profile } = {}) => {
+    const clock = { now: 1_000_000 };
+    const pane = new FakePane("claude");
+    pane.now = () => clock.now;
+    pane.swallowEnterWithinMs = 350;
+    return rig({ pane, clock, harness: "muse", version: "1.4.5", ...(options.edit === undefined ? {} : { edit: options.edit }) });
+  };
+
+  test("muse: the settle holds Enter past the swallow window and the send goes through", async () => {
+    const { pane, send } = swallowRig();
+    const answer = await send("please fix the parser test");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.gapsMs.s1).toBeGreaterThanOrEqual(350);
+    expect(pane.box).toBe("");
+    neverEscape(pane);
+  });
+
+  test("with no settle the same pane swallows Enter: unknown/no_evidence, the text still in the box", async () => {
+    const { pane, send } = swallowRig({ edit: (profile) => ({ ...profile, paste: { bracketed: true } }) });
+    const answer = await send("please fix the parser test");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.box).toBe("please fix the parser test");
+    neverEscape(pane);
   });
 });
 

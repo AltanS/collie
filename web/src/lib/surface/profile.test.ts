@@ -360,6 +360,8 @@ interface Spec14Case {
   readonly enterWhileRunning: "queues" | "steers" | undefined;
   /** The key that queues a message in a turn, where Enter does not queue. */
   readonly queueKey?: string;
+  /** The pause after the text write the profile names (`paste.settleMs`, #507), where it names one. */
+  readonly pasteSettleMs?: number;
 }
 
 const SPEC14_CASES: readonly Spec14Case[] = [
@@ -451,6 +453,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     submit: ["Enter"],
     probeStatus: "provisional",
     enterWhileRunning: undefined,
+    pasteSettleMs: 350,
   },
   {
     id: "omp",
@@ -585,7 +588,7 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
     expect(p.keys.queueKey).toBe(c.queueKey);
     expect(p.reservedLeads).toEqual(c.reservedLeads ?? ["/", "!", "@"]);
     expect(p.probe.char.length).toBeGreaterThan(0);
-    expect(p.paste).toEqual({ bracketed: true });
+    expect(p.paste).toEqual(c.pasteSettleMs === undefined ? { bracketed: true } : { bracketed: true, settleMs: c.pasteSettleMs });
     expect(p.hooks).toBeDefined();
   });
 
@@ -729,6 +732,9 @@ describe("parseProfile names the failing field", () => {
     ["Escape as the clear key", ["keys", "clear", "key"], "Escape", "keys.clear.key"],
     ["a probe of two characters", ["probe", "char"], "ab", "probe.char"],
     ["a paste flag that is not a boolean", ["paste", "bracketed"], "yes", "paste.bracketed"],
+    ["a paste settle that is not a whole number", ["paste", "settleMs"], 1.5, "paste.settleMs"],
+    ["a paste settle below its floor", ["paste", "settleMs"], 0, "paste.settleMs"],
+    ["a paste settle above its ceiling", ["paste", "settleMs"], 99_999, "paste.settleMs"],
     ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
     ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
