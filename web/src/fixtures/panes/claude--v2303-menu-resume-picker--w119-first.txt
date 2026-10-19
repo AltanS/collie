@@ -1,0 +1,40 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.303[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSonnet 5.5 with high effort · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m~/projects/sample-workspace[0m
+
+
+
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;2;177;185;249mResume session[0m[1m[38;2;153;153;153m (1 of 50)[0m
+   [0m[2m╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+   [0m[2m│[0m [0m[38;2;153;153;153m⌕ Search…[0m                                                                                                     [0m[2m│[0m
+   [0m[2m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+     [0m[38;2;153;153;153msample-workspace[0m
+
+   [0m[38;2;177;185;249m❯ website refactoring[0m
+     [0m[38;2;153;153;153m30 seconds ago · main · 26.6MB[0m
+
+     1.23.0
+     [0m[38;2;153;153;153m4 minutes ago · main · 70.5MB · sample/forge1#528[0m
+
+     walky talky
+     [0m[38;2;153;153;153m22 hours ago · main · 9.1MB[0m
+
+     atuin
+     [0m[38;2;153;153;153m22 hours ago · main · 1.8MB[0m
+
+     Library first-day download counts
+     [0m[38;2;153;153;153m22 hours ago · main · 521.3KB[0m
+
+     Slow test suite performance
+     [0m[38;2;153;153;153m1 day ago · main · 1.8MB · sample/forge1#492[0m
+
+     tracker: nightly-lab-pass due, run: tracker run start nightly-lab-pass now
+     [0m[38;2;153;153;153m1 day ago · main · 3.8KB[0m
+
+   [0m[38;2;153;153;153m↓ [0m/model
+     [0m[38;2;153;153;153m1 day ago · main · 3.6KB[0m
+     
+     [0m[38;2;153;153;153mCtrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type [0m
+     [0m[38;2;153;153;153mto search · Esc to cancel[0m

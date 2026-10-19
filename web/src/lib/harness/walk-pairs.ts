@@ -70,6 +70,10 @@ export const WALK_PAIRS: readonly WalkPair[] = [
     "claude--menu-resume-picker--w120-first.txt",
     "claude--menu-resume-picker--w120-third.txt",
   ],
+  // Claude Code 2.1.303 on a long list: the title counts the pointer, `(1 of 50)` against `(2 of 50)`,
+  // which `coreSignature` blanks and the card's title drops (2026-10-19). Two widths.
+  ["claude", "claude--v2303-menu-resume-picker--w119-first.txt", "claude--v2303-menu-resume-picker--w119-second.txt"],
+  ["claude", "claude--v2303-menu-resume-picker--w160-first.txt", "claude--v2303-menu-resume-picker--w160-second.txt"],
   // Claude "Switch model?" confirmation (2.1.289), two widths: the pointer on `Yes` against on `No`.
   // The 50-column pair also prints the edge row both ways (labelled, then bare), which
   // `coreSignature` leaves out of the identity.

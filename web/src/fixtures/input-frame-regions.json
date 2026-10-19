@@ -1390,6 +1390,22 @@
   }
  },
  {
+  "fixture": "claude--v2303-menu-resume-picker--w119-first.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2303-menu-resume-picker--w119-second.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2303-menu-resume-picker--w160-first.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2303-menu-resume-picker--w160-second.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
   "frame": null
  },

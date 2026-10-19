@@ -936,6 +936,26 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2303-menu-resume-picker--w119-first.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "dialog"
+  },
+  "claude--v2303-menu-resume-picker--w119-second.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "dialog"
+  },
+  "claude--v2303-menu-resume-picker--w160-first.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "dialog"
+  },
+  "claude--v2303-menu-resume-picker--w160-second.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "dialog"
+  },
   "claude--v2303-permission-bash-bg-agent-rm--w160.txt": {
    "harness": "claude",
    "version": "2.1.303",

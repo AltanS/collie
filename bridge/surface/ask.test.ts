@@ -36,6 +36,8 @@ const UNREAD = fx("claude-lab--tasks-panel--w40.txt");
 const W82 = fx("claude-lab--permission-bash-v2291--w82.txt");
 const BG_RM = fx("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
 const BG_RM_W80 = fx("claude--v2303-permission-bash-bg-agent-rm--w80.txt");
+const RESUME_FIRST = fx("claude--v2303-menu-resume-picker--w160-first.txt");
+const RESUME_SECOND = fx("claude--v2303-menu-resume-picker--w160-second.txt");
 
 const HARNESS = "claude";
 const PANE = "%1";
@@ -302,6 +304,24 @@ describe("a background agent's Bash permission with a tall command", () => {
     const reply = await answer(ask, idOf(ask, label));
     expect(reply.receipt).toMatchObject({ outcome: "sent", keys: [key] });
     expect(pane.keysSeen).toEqual([key]);
+  });
+});
+
+// The 2026-10-19 incident (2.1.303, 160 columns): the /resume picker's title counts the pointer,
+// `(1 of 50)` then `(2 of 50)` after one Down, and the verify read refused the walked tap
+// `ask_mismatch` with no Enter.
+describe("the /resume picker with a counted title", () => {
+  test("a tap on the second session walks Down, reads the pointer back on it, and sends Enter", async () => {
+    const { pane, poll, answer } = rig(RESUME_FIRST, HARNESS, "2.1.303");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down") p.screen = RESUME_SECOND;
+      if (keys.join(",") === "Enter") p.screen = IDLE;
+    };
+    const ask = poll()!;
+    expect(ask.kind).toBe("question");
+    const reply = await answer(ask, idOf(ask, "website refactoring"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+    expect(pane.keysSeen).toEqual(["Down", "Enter"]);
   });
 });
 

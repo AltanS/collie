@@ -93,8 +93,9 @@ describe("the real captures lift as a list of sessions", () => {
 
   it("w120-all-sanitized: the all-projects title, a `now` age, and the `↓` scroll row as a session", () => {
     const model = detectResumePicker(load("claude--menu-resume-picker--w120-all-sanitized.txt"))!;
-    expect(model.question).toBe("Resume session (1 of 50)");
-    expect(model.caption).toBe("Resume session (1 of 50)");
+    // The counter is the pointer's place, so the card's title drops it (2.1.303, 2026-10-19).
+    expect(model.question).toBe("Resume session");
+    expect(model.caption).toBe("Resume session");
     expect(model.options).toHaveLength(10);
     expect(model.options[0]!.description).toBe(
       "now · main · 1.1MB · /home/user/projects/example-company-platform",
@@ -124,7 +125,7 @@ describe("the real captures lift as a list of sessions", () => {
     expect(texts.some((t) => t.startsWith("  Resume session (1 of 41)"))).toBe(true);
     expect(texts.some((t) => t.startsWith("▔"))).toBe(false);
     const model = detectResumePicker(load("claude-lab--menu-resume-picker-v2291--w83.txt"))!;
-    expect(model.question).toBe("Resume session (1 of 41)");
+    expect(model.question).toBe("Resume session");
     expect(model.options).toHaveLength(13);
     expect(model.options[0]).toMatchObject({
       label: "README.md review",
@@ -247,6 +248,45 @@ describe("a relative age ticks without a key, and the verify step of a walked ta
     const after = detectResumePicker(fromTexts(aged))!;
     expect(promptsSameIdentity(before, after)).toBe(true);
     expect(promptsEqual(before, after)).toBe(false);
+  });
+});
+
+// Claude Code 2.1.303 puts the pointer's place in the title once the list scrolls:
+// `Resume session (1 of 50)` becomes `Resume session (2 of 50)` after one Down. The walked tap's
+// verify read compares the identity, and the title was its question, so every walked tap on a long
+// list was refused `ask_mismatch` after the arrows (2026-10-19, 160 columns). Captured in a lab pane
+// at 119 columns (Herdr) and 160 columns (tmux), before and after one Down.
+describe("the 2.1.303 picker counts the pointer in its title", () => {
+  const pairs = [
+    ["claude--v2303-menu-resume-picker--w119-first.txt", "claude--v2303-menu-resume-picker--w119-second.txt"],
+    ["claude--v2303-menu-resume-picker--w160-first.txt", "claude--v2303-menu-resume-picker--w160-second.txt"],
+  ] as const;
+
+  it.each(pairs)("%s and the screen after one Down are one dialog", (first, second) => {
+    expect(textsOf(first).some((t) => t.trim() === "Resume session (1 of 50)")).toBe(true);
+    expect(textsOf(second).some((t) => t.trim() === "Resume session (2 of 50)")).toBe(true);
+    const a = detectResumePicker(load(first))!;
+    const b = detectResumePicker(load(second))!;
+    expect(a.options.map((o) => o.label)).toEqual(b.options.map((o) => o.label));
+    expect(a.options[0]!.keyLabel).toBe("❯");
+    expect(b.options[1]!.keyLabel).toBe("❯");
+    expect(b.options[1]!.keys).toEqual(["Enter"]);
+    // The walk's verify read holds; the entry guard still sees the moved pointer.
+    expect(promptsSameIdentity(a, b)).toBe(true);
+    expect(promptsEqual(a, b)).toBe(false);
+    // The card's title does not move with the pointer either.
+    expect(a.question).toBe("Resume session");
+    expect(a.caption).toBe("Resume session");
+    expect(b.question).toBe(a.question);
+  });
+
+  it("a changed total is another list: `(2 of 51)` breaks the identity", () => {
+    const [first, second] = pairs[1];
+    const a = detectResumePicker(load(first))!;
+    const grown = textsOf(second).map((t) => t.replace("Resume session (2 of 50)", "Resume session (2 of 51)"));
+    const b = detectResumePicker(fromTexts(grown))!;
+    expect(b).not.toBeNull();
+    expect(promptsSameIdentity(a, b)).toBe(false);
   });
 });
 

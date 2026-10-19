@@ -31,6 +31,7 @@
 // a walked tap compares (ADR 0080 point 5), blanks the `❯` column and each session's age token
 // (`44 seconds ago` becomes `1 minute ago` with no key pressed). Only the token that `META_AGE` finds
 // at the head of the grammar's own meta row is blanked: size, branch and the rest of the row stay.
+// It blanks the N of a title's `(N of M)` counter too: N is the pointer's place, and moves with it.
 //
 // TWIN ROWS KEEP THEIR AGES. Two sessions with the same title and the same meta row apart from the
 // age (same size, branch, marks) are told apart only by the age. With ages blanked, a re-sort that
@@ -58,8 +59,16 @@ import { coreRegionSignature, pointerWalk, regionSignature, type PromptRegion } 
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { readKeyHintFooter } from "../menu-hints";
 
-/** The dialog's own title: `Resume session`, or `Resume session (1 of 50)` in the all-projects view. */
+/** The dialog's own title: `Resume session`, or `Resume session (1 of 50)` once the list scrolls. */
 const TITLE = /^Resume session(?: \(\d+ of \d+\))?$/;
+
+/** The title's counter, `(N of M)`. N is the POINTER's place in the list: Claude Code 2.1.303 prints
+ *  `(2 of 50)` after one Down from `(1 of 50)`. So it is not part of what the dialog is: the card's
+ *  title drops the counter, and `coreSignature` blanks N and keeps M, the length of the list. */
+const TITLE_COUNTER = /^(Resume session) \((\d+) of (\d+)\)$/;
+
+/** What `coreSignature`'s title row carries in place of the pointer's place. */
+const POSITION_TOKEN = "<position>";
 
 /** The footer's way out, in either of the two states the picker prints: the list (`Esc to cancel`)
  *  and a typed search (`Esc to clear`). Required as evidence, and it is the card's Cancel. */
@@ -177,7 +186,8 @@ export function detectResumePickerRegion(lines: StyledLine[]): PromptRegion | nu
   // `PromptModel` has no actions field, so it rides as the last row, with the footer's key name.
   options.push({ label: escape.label, keys: escape.keys, keyLabel: "Esc" });
 
-  const title = texts[titleAt]!.trim();
+  // The title without its pointer counter: the same words before and after a walk (2026-10-19).
+  const title = texts[titleAt]!.trim().replace(TITLE_COUNTER, "$1");
   const model: PromptModel = {
     question: title,
     // The card's caption is this dialog's own title, not the generic "Choose an option" every other
@@ -194,7 +204,7 @@ export function detectResumePickerRegion(lines: StyledLine[]): PromptRegion | nu
     // session's age, which ticks (`1 minute ago` to `2 minutes ago`) between a walked tap's arrows and
     // its verify read (ADR 0080 point 5). Only the age token is blanked, found by this grammar's own
     // meta-row parse; size, branch and the rest of the row stay.
-    coreSignature: coreRegionSignature(blankAges(texts, sessions), titleAt, footerAt.endLine, new Set()),
+    coreSignature: coreRegionSignature(blankPosition(blankAges(texts, sessions), titleAt), titleAt, footerAt.endLine, new Set()),
   };
   return { model, startLine: titleAt };
 }
@@ -248,6 +258,17 @@ function blankAges(texts: string[], sessions: Session[]): string[] {
     const row = texts[s.metaRow]!;
     out[s.metaRow] = row.slice(0, s.metaColumn) + AGE_TOKEN + row.slice(s.metaColumn + s.age.length);
   }
+  return out;
+}
+
+/** `texts` with the pointer's place in the title counter replaced by {@link POSITION_TOKEN}. The total
+ *  stays: a list that grew or shrank is another dialog. A title with no counter is left as it is. */
+function blankPosition(texts: string[], titleAt: number): string[] {
+  const row = texts[titleAt]!;
+  const m = TITLE_COUNTER.exec(row.trim());
+  if (m === null) return texts;
+  const out = [...texts];
+  out[titleAt] = row.replace(`(${m[2]} of ${m[3]})`, `(${POSITION_TOKEN} of ${m[3]})`);
   return out;
 }
 
