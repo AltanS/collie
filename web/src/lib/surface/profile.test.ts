@@ -622,6 +622,12 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });
   });
 
+  it("muse (issue 510): the placeholder is named by its colour as well as its texts", () => {
+    const muse = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "muse.json"), "utf8"))!);
+    expect(muse.idle.placeholders.fg).toEqual(["rgb(175,177,179)"]);
+    expect(muse.idle.placeholders.texts).toContain("/loop 10m <prompt> schedules a recurring prompt");
+  });
+
   it("omp 18.11 (issue 497): the prompt and continuation rows leave the box's right border out of the draft", () => {
     const omp = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!);
     const prompt = new RegExp(omp.idle.frame.prompt.pattern, "u");
@@ -719,6 +725,11 @@ describe("parseProfile names the failing field", () => {
     ["an inline hint colour written as hex", ["idle", "inlineHint"], { fg: ["#6b7280"] }, "idle.inlineHint.fg[0]"],
     ["an inline hint colour out of range", ["idle", "inlineHint"], { fg: ["rgb(107,114,256)"] }, "idle.inlineHint.fg[0]"],
     ["an inline hint colour named twice", ["idle", "inlineHint"], { fg: ["rgb(1,2,3)", "rgb(1,2,3)"] }, "idle.inlineHint.fg[1]"],
+    ["placeholder colours that are no list", ["idle", "placeholders", "fg"], "rgb(175,177,179)", "idle.placeholders.fg"],
+    ["no placeholder colour", ["idle", "placeholders", "fg"], [], "idle.placeholders.fg"],
+    ["a placeholder colour written as hex", ["idle", "placeholders", "fg"], ["#afb1b3"], "idle.placeholders.fg[0]"],
+    ["a placeholder colour out of range", ["idle", "placeholders", "fg"], ["rgb(175,177,256)"], "idle.placeholders.fg[0]"],
+    ["a placeholder colour named twice", ["idle", "placeholders", "fg"], ["rgb(1,2,3)", "rgb(1,2,3)"], "idle.placeholders.fg[1]"],
     ["a hold on an event hooks does not list as an ask", ["hold", "event"], "Stop", "hold.event"],
     ["a hold tool event hooks does not list as an edge", ["hold", "toolEvent"], "PermissionRequest", "hold.toolEvent"],
     ["a hold limit at the hook timeout", ["hold", "limitMs"], 300000, "hold.limitMs"],

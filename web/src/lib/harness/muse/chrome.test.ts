@@ -101,6 +101,9 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     expect(extractInputDraft(lines("muse--tip-loop.txt"))).toBeNull();
     // The tip rotates per context: the paste variant is a placeholder too (#278).
     expect(extractInputDraft(lines("muse--tip-paste.txt"))).toBeNull();
+    // A prompt suggestion's words are the model's, in no text list: the placeholder colour alone
+    // keeps it from reading as a stranded draft (#510).
+    expect(extractInputDraft(lines("muse--prompt-hint.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-ls.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-network.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color.txt"))).toBeNull();

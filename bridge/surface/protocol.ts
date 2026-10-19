@@ -2822,11 +2822,13 @@ export class SendProtocol {
     if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
     if (belowMovedAlone(first, second)) state.belowMoved = true;
     // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
-    // count, a statusline) move on their own while a turn runs. The box is compared with its faint
-    // runs dropped: a placeholder that changes on an empty box (Claude Code's "Press up to edit
-    // queued messages" going as the queue is taken) is not a moved box. With no frame the bottom
-    // window is compared with its running rows masked, for the same reason.
+    // count, a statusline) move on their own while a turn runs. A box that holds no draft compares
+    // by its two edges alone: its placeholder may appear, go or change between the reads (Claude
+    // Code's "Press up to edit queued messages" going as the queue is taken, a prompt suggestion
+    // painted in the placeholder's own colour) without the box having moved. With no frame the
+    // bottom window is compared with its running rows masked, for the same reason.
     const key = (snap: Snap): string => {
+      if (snap.frame !== null && boxText(snap.frame) === "") return `${snap.plain[snap.frame.top] ?? ""}\n${snap.plain[snap.frame.bottom] ?? ""}`;
       if (snap.frame !== null) return snap.plain.slice(snap.frame.top, snap.frame.bottom + 1).join("\n");
       const win = bottomWindow(snap.plain);
       return snap.plain.slice(win.first, win.end).join("\n");
