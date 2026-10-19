@@ -66,6 +66,15 @@ describe("harness-prefs", () => {
     expect(harnessStatusLineShown("codex")).toBe(true);
   });
 
+  it("stores agy as antigravity, and reads either string from the one value", () => {
+    setHarnessStatusLineShown("agy", false);
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({ antigravity: { statusLine: false } });
+    expect(harnessStatusLineShown("agy")).toBe(false);
+    expect(harnessStatusLineShown("antigravity")).toBe(false);
+    setHarnessStatusLineShown("antigravity", true);
+    expect(harnessStatusLineShown("agy")).toBe(true);
+  });
+
   it("does not read an inherited key as a stored one", () => {
     expect(harnessStatusLineShown("constructor")).toBe(true);
     expect(harnessStatusLineShown("__proto__")).toBe(true);

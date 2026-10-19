@@ -69,19 +69,31 @@ function load(): Prefs {
   }
 }
 
+// One product, two agent strings: Herdr reports Google's agent as `agy` or as `antigravity`, and the
+// registry holds an adapter under each. A switch is for the product, so `agy` is stored and read as
+// `antigravity` and Settings shows one row. `canonicalAgent()` (lib/operator-scope.ts) keeps the two
+// apart ON PURPOSE, because command catalogs are scoped by the exact string; that is a different
+// question, so it is not reused here.
+const ALIASES = new Map([["agy", "antigravity"]]);
+
+/** The key a harness's pref is stored under. Applied before every read and write. */
+export function prefKey(harnessId: string): string {
+  return ALIASES.get(harnessId) ?? harnessId;
+}
+
 let prefs = load();
 const listeners = new Set<() => void>();
 
 /** Whether the status line is drawn for this harness. `undefined` (no agent) and the unknown read ON. */
 export function harnessStatusLineShown(harnessId: string | undefined): boolean {
   if (harnessId === undefined) return true;
-  return prefs[harnessId]?.statusLine !== false;
+  return prefs[prefKey(harnessId)]?.statusLine !== false;
 }
 
 export function setHarnessStatusLineShown(harnessId: string, on: boolean): void {
   const next: Record<string, HarnessPref> = Object.create(null);
   Object.assign(next, prefs);
-  next[harnessId] = { statusLine: on };
+  next[prefKey(harnessId)] = { statusLine: on };
   prefs = next;
   try {
     storage()?.setItem(STORAGE_KEY, JSON.stringify(prefs));

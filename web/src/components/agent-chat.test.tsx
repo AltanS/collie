@@ -29,6 +29,7 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
+import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { __resetHarnessPrefs, setHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { noPromptsConfirmed, rememberNoPromptsConfirm } from "@/lib/no-prompts";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
@@ -4666,6 +4667,24 @@ describe("AgentChat — the status line switch of Harness configurations", () =>
     expect(await screen.findByText("what changed today?")).toBeInTheDocument();
     expect(screen.queryByText(/worker:scout/)).toBeNull();
   });
+
+  it.each(["agy", "antigravity"])(
+    "the Antigravity row turns the strip off for a pane whose agent is %s",
+    async (agentString) => {
+      localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+      const text = pane("agy--done.txt");
+      const before = renderChat({ text, agent: on(agentString, "gemini-3") });
+      expect(strip(before.container)).toBeDefined();
+      cleanup();
+
+      render(<HarnessPrefsControl />);
+      await userEvent.click(screen.getByRole("switch", { name: /Antigravity/ }));
+      cleanup();
+
+      const after = renderChat({ text, agent: on(agentString, "gemini-3") });
+      expect(strip(after.container)).toBeUndefined();
+    },
+  );
 
   it("off: the Terminal body still shows the real rows", () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
