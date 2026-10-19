@@ -12,12 +12,19 @@
   row of about a megabyte, so three phone screenshots in one message outgrew the window between two
   polls, read as a lost position, and emptied the Chat thread. A reset still reads only the last 2 MB,
   and `LiveWindow.trim` bounds the window by weight after a large append.
+- **Amended:** 2026-10-19 — a page is counted in turns, not rows. The first answer and each `?before=`
+  page cover the last six prompts (`LIVE_TURNS`, a `user` row a person sent) and everything after each,
+  at least `DEFAULT_CHAT_LIMIT` (40) rows and at most `MAX_PAGE_ROWS` (400). A Claude Code turn with
+  many tool calls is many assistant rows, so a forty-row page was one or two prompts, and every thread
+  opened truncated and needed "Load older" at once (four panes measured on 2026-10-19 held 35 assistant
+  rows, 3 prompts and 2 notes, in a window of 137 rows). The window bound and the `?after=` delta are
+  unchanged. `bridge/journal/turns.ts` holds the rule.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's
   own log, not a screen. [ADR 0031](./0031-freshness-is-a-declared-promise.md) is unchanged: this
   route declares nothing new about freshness, it rides the poll that is already declared.
-- **Trail:** `bridge/journal/live.ts` · `bridge/journal/cursor.ts` · `bridge/journal/reduce.ts` ·
+- **Trail:** `bridge/journal/live.ts` · `bridge/journal/turns.ts` · `bridge/journal/cursor.ts` · `bridge/journal/reduce.ts` ·
   `bridge/server.ts` (§ `paneChat`) · `bridge/crew/forward.ts` ·
   [CREW_PROTOCOL.md §5, §7.1, §9.1, §10.1](../CREW_PROTOCOL.md) ·
   `.tracker/M41-chat-reads-one-journal/08-the-live-window-and-the-cursor-route.md`
