@@ -1,9 +1,15 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
-import { isMuseSessionId, museJournal, parseMuseTranscript, createMuseReducer } from "./muse.ts";
+import {
+  isMuseSessionId,
+  museJournal,
+  museSessionNameReader,
+  parseMuseTranscript,
+  createMuseReducer,
+} from "./muse.ts";
 import type { JsonValue } from "../json.ts";
 
 // Row builders mirroring the verified on-disk shape (bridge/journal/muse.ts header): the envelope
@@ -657,5 +663,113 @@ describe("museJournal discover", () => {
         processes: [{ argv: ["muse", "resume", UUID_A] }, { argv: ["muse", "resume", UUID_B] }],
       }),
     ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+});
+
+// The pane-name reader (MUSE-36). A Muse session's user-given name lives only in its own log:
+// the last `session.name.changed` row, and only when that change came from the user — every
+// session also carries an automatic name (`icy-chromosphere` and friends) that Muse never paints
+// or titles, so surfacing it would name every pane at random. The reader binds a pane to a log
+// ONLY exactly — a reported ref or a `resume <uuid>` argv — never the cwd walk `discover` falls
+// back to, because a name read off a neighbouring session's log is worse than no name.
+function nameRow(sessionId: string, newName: string | null, source: "user" | "automatic"): string {
+  return row(`name-${newName ?? "none"}-${source}`, "session.name.changed", {
+    authority_id: "auth-1",
+    operation_id: "op-1",
+    session_id: sessionId,
+    previous_name: null,
+    new_name: newName,
+    source,
+  });
+}
+
+describe("museSessionNameReader", () => {
+  test("reads the user-given name from the pane's own log, bound by resume argv", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "cerulean-mirach", "automatic"),
+      nameRow(UUID_A, "landing-page", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader(undefined, [{ argv: ["muse", "resume", UUID_A] }])).resolves.toBe("landing-page");
+  });
+
+  test("reads it from a reported ref with no foreground argv at all", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_A, "landing-page", "user")]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBe("landing-page");
+  });
+
+  test("an automatic name alone is no name: the session reads unnamed", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "cerulean-mirach", "automatic"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("no exact binding says nothing, however many named logs share the folder", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same"), nameRow(UUID_A, "not-yours", "user")]);
+    const reader = museSessionNameReader([root]);
+    // A fresh `muse` (bare argv) names no session, and the reader takes no cwd to guess from.
+    await expect(reader(undefined, [{ argv: ["muse"] }])).resolves.toBeUndefined();
+    await expect(reader(undefined, undefined)).resolves.toBeUndefined();
+  });
+
+  test("a rename appended after the first read is picked up on the next one", async () => {
+    const root = await fixtureRoot();
+    const path = sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "first-name", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    const ref = { kind: "id", value: UUID_A } as const;
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, `${nameRow(UUID_A, "second-name", "user")}\n`);
+    await expect(reader(ref, undefined)).resolves.toBe("second-name");
+  });
+
+  test("a torn final row is not read until its newline lands", async () => {
+    const root = await fixtureRoot();
+    const path = sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "first-name", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    const ref = { kind: "id", value: UUID_A } as const;
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, nameRow(UUID_A, "torn-name", "user")); // no newline yet
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, "\n");
+    await expect(reader(ref, undefined)).resolves.toBe("torn-name");
+  });
+
+  test("the last change wins: an automatic change after a user rename unnames the session", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "landing-page", "user"),
+      nameRow(UUID_A, "fresh-auto", "automatic"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("a name row naming another session is ignored", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_B, "someone-else", "user")]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("an exact id with no log on disk says nothing, not unnamed", async () => {
+    const root = await fixtureRoot();
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeUndefined();
   });
 });
