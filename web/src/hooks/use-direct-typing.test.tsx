@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { clearStatus } from "@/lib/status";
-import { useDirectTyping } from "./use-direct-typing";
+import { graphemes, keysForLineChange, useDirectTyping } from "./use-direct-typing";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,6 +37,7 @@ function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "
     <>
       <button type="button" onClick={direct.activate}>Start typing</button>
       <button type="button" onClick={direct.deactivate}>Stop typing</button>
+      <button type="button" onClick={direct.notePaneKeys}>Dock key</button>
       <output aria-label="Typing mode">{direct.active ? "active" : "inactive"}</output>
       <textarea
         aria-label="Terminal input"
@@ -357,5 +358,160 @@ describe("useDirectTyping: the field keeps the line the keyboard believes is the
     expect(fireEvent.keyDown(box, { key: "Backspace" })).toBe(false);
     await act(async () => {});
     expect(sent(sendKeys)).toEqual(["x", "Backspace", "Backspace", "Backspace"]);
+  });
+});
+
+describe("useDirectTyping: the line-end rule, pastes, graphemes and the keyboard's write-back", () => {
+  function sent(sendKeys: { mock: { calls: [string[]][] } }) {
+    return sendKeys.mock.calls.flatMap(([keys]) => keys);
+  }
+  function mockSend() {
+    return vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+  }
+  function composingEnter(box: HTMLElement) {
+    return fireEvent(box, new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertParagraph",
+      isComposing: true,
+    }));
+  }
+
+  it("a Tab ends the line, so a later edit never erases the completion the shell typed", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "cd Doc" } });
+    expect(fireEvent.keyDown(box, { key: "Tab" })).toBe(false);
+    expect(box).toHaveValue("");
+    // The shell now holds "cd Documents/". Autocorrect or a word delete only reaches what follows.
+    fireEvent.change(box, { target: { value: "teh" } });
+    fireEvent.change(box, { target: { value: "the" } });
+    fireEvent.change(box, { target: { value: "" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual([
+      "c", "d", "Space", "D", "o", "c", "Tab",
+      "t", "e", "h", "Backspace", "Backspace", "h", "e", "Backspace", "Backspace", "Backspace",
+    ]);
+  });
+
+  it.each([["ArrowLeft", "Left"], ["ArrowUp", "Up"], ["Escape", "Escape"]])(
+    "%s ends the line like Enter: unsent text first, then the key, then an empty field",
+    async (key, wire) => {
+      const sendKeys = mockSend();
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      fireEvent.change(box, { target: { value: "ab" } });
+      expect(fireEvent.keyDown(box, { key })).toBe(false);
+      expect(box).toHaveValue("");
+      fireEvent.change(box, { target: { value: "x" } });
+      fireEvent.change(box, { target: { value: "" } });
+      await act(async () => {});
+      expect(sent(sendKeys)).toEqual(["a", "b", wire, "x", "Backspace"]);
+    },
+  );
+
+  it("a Keys dock key ends the line too, without this hook sending the dock's key", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "git" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dock key" }));
+    expect(box).toHaveValue("");
+    fireEvent.change(box, { target: { value: "s" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["g", "i", "t", "s"]);
+  });
+
+  it("a paste with line breaks sends the text and its Enters, and keeps the line after the last break", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "echo a" } });
+    fireEvent.change(box, { target: { value: "echo a\r\nls -l\npw" } });
+    expect(box).toHaveValue("pw");
+    fireEvent.change(box, { target: { value: "p" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual([
+      "e", "c", "h", "o", "Space", "a",
+      "Enter", "l", "s", "Space", "-", "l", "Enter", "p", "w",
+      "Backspace",
+    ]);
+  });
+
+  it("deleting one emoji sends one Backspace, whatever code points it is made of", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "ok 👍🏽" } });
+    sendKeys.mockClear();
+    fireEvent.change(box, { target: { value: "ok " } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["Backspace"]);
+    expect(keysForLineChange("a👨‍👩‍👧🇩🇪", "a")).toEqual(["Backspace", "Backspace"]);
+    expect(keysForLineChange("cafe\u0301", "caf")).toEqual(["Backspace"]);
+  });
+
+  it("falls back to code points where the engine has no Intl.Segmenter", () => {
+    const own = Object.getOwnPropertyDescriptor(Intl, "Segmenter");
+    Reflect.deleteProperty(Intl, "Segmenter");
+    try {
+      expect(graphemes("a👍🏽")).toEqual(["a", "👍", "🏽"]);
+      expect(keysForLineChange("👍🏽", "")).toEqual(["Backspace", "Backspace"]);
+    } finally {
+      if (own !== undefined) Object.defineProperty(Intl, "Segmenter", own);
+    }
+  });
+
+  it("Enter during a composition sends the word once: the compositionend after it writes nothing back", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.compositionStart(box);
+    fireEvent.input(box, { target: { value: "cd" }, inputType: "insertCompositionText", isComposing: true });
+    expect(composingEnter(box)).toBe(false);
+    expect(box).toHaveValue("");
+    // The keyboard finishes the composition it still believes is open, into the emptied field.
+    fireEvent.input(box, { target: { value: "cd" }, inputType: "insertCompositionText", isComposing: true });
+    fireEvent.compositionEnd(box, { data: "cd" });
+    expect(box).toHaveValue("");
+    compose(box, "ls");
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["c", "d", "Enter", "l", "s"]);
+  });
+
+  it("drops a keyboard re-committing the last word in a fresh composition right after Enter", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    compose(box, "cd");
+    fireEvent.change(box, { target: { value: "cd " } });
+    compose(box, "cd cd");
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    compose(box, "cd");
+    expect(box).toHaveValue("");
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["c", "d", "Space", "c", "d", "Enter"]);
+  });
+
+  it("still sends the same word typed again after the write-back window, or on a hardware keyboard", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const sendKeys = mockSend();
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      fireEvent.change(box, { target: { value: "ls" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      // A hardware keyboard does not compose, so a fast repeat is the person's.
+      fireEvent.change(box, { target: { value: "ls" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      // A composing keyboard past the window: a person, not a write-back.
+      now.mockReturnValue(1_000_000 + 600);
+      compose(box, "ls");
+      await act(async () => {});
+      expect(sent(sendKeys)).toEqual(["l", "s", "Enter", "l", "s", "Enter", "l", "s"]);
+    } finally {
+      now.mockRestore();
+    }
   });
 });

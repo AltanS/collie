@@ -1824,7 +1824,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
               // refused chord greys its own button instead of being discovered by a failed send.
               unsupportedKeys={unsupportedKeys}
-              onSend={pressKeys}
+              // A dock key moves or ends the pane's line behind Type mode's field (use-direct-typing.ts,
+              // the line-end rule), so the field lets go of its line first.
+              onSend={(keys) => {
+                direct.notePaneKeys();
+                return pressKeys(keys);
+              }}
               presets={keyPresets}
               board={keyBoard}
               onQueueChange={setQueuedKeys}
