@@ -80,7 +80,18 @@
       "down": "Down",
       "confirm": "Enter",
       "cancel": "Escape"
-    }
+    },
+    "neverHeld": [
+      "/clear",
+      "/new",
+      "/exit",
+      "/quit",
+      "/logout",
+      "/resume",
+      "/fork",
+      "/rewind",
+      "!"
+    ]
   },
   "collapse": {
     "pattern": "\\[(?:Pasted Content \\d+ chars|Image #\\d+)\\]"
