@@ -1000,7 +1000,7 @@ username, hostname, home path or real project path appears in any file: the sess
 | `claude-lab--statusline-numbered-rows--w82.txt` | 82 × 49 | statusline rows holding '1. ' items and the words 'Esc to'; still a statusline, box is live |
 | `claude-lab--statusline-prompt-row--w82.txt` | 82 × 49 | statusline whose first row starts with '❯ ' — a frame mark below the box [2.1.291: the box holds a ghost suggestion (draft null).] |
 | `claude-lab--statusline-rule-row--w82.txt` | 82 × 49 | statusline whose first row is '─ main ─────' — a rule below the box [2.1.291: the box holds a ghost suggestion (draft null).] |
-| `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291; the 2.1.278 bytes stay.] |
+| `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291; the 2.1.278 bytes stay.] [2026-10-19: a notice since the ADR 0109 addendum: reads free, lifts a card with four buttons; labelled `idle`.] |
 | `claude-lab--tasks-panel--w40.txt` | 40 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, key-hint footer wrapped onto two rows |
 | `claude-lab--tasks-panel--w82.txt` | 82 × 49 | /tasks background-task panel (new in Claude Code 2.1.277): ▔ top rule, 'Background' title, empty-state row, one-line key-hint footer [2026-10-06: kept at its 2.1.278 bytes because other suites pin them; the 2.1.291 capture is `claude-lab--tasks-panel-v2291--w82.txt`.] |
 | `claude-lab--tasks-panel-v2291--w82.txt` | 82 × 49 | /tasks panel on 2.1.291 (82 columns): the ▔ top edge is now a ─ rule and rows are indented two spaces (were three); the 'Background' title, empty-state row and one-line footer are unchanged. |
@@ -2464,14 +2464,15 @@ top edge already reads a label (`(?<label>…)` in claude.json, `isInputBoxTopBo
 reader), so all four read their box with the label `1.23.0`, and the name is never draft or transcript.
 The field case: every send to that pane was refused `unconfirmed` with `modal: "unreadable"`. The cause
 was the rating survey, not the name: its key row stood on the update row right over the edge, one run of
-rows with it, so the single-key cue reads it (ADR 0109 keeps the survey unreadable on purpose).
+rows with it, so the single-key cue read it. The same day the survey became a notice (ADR 0109 addendum)
+and the update row a notice gap, so the screen now reads free and lifts the survey's card.
 
 | Fixture | State / what's in it |
 |---|---|
 | `claude--v2303-titled-edge-working--w160.txt` | As captured: `✻ Zigzagging… (3m 21s · ↓ 11.6k tokens · still thinking with high effort)`, the update row, the titled edge, an empty `❯`, the bottom rule, three statusline rows, a blank row, and the agents panel (`● main`, three `◯ general-purpose` rows). Reads `running`, free of any modal. Labelled `running` |
 | `claude--v2303-titled-edge-idle--w160.txt` | **Derived**: the spinner row replaced by the field screen's own `✻ Brewed for 4m 14s · done 6:51 AM · 1 shell still running`. Reads idle and free. Labelled `idle` |
 | `claude--v2303-titled-edge-draft--w160.txt` | **Derived** from the idle file: the box holds `ok merge the five, running the crew update now`. Reads the draft without the name. Labelled `draft` |
-| `claude--v2303-titled-edge-survey--w160.txt` | **Derived** from the idle file to the layout of the field read (the masked rows in the lane's refusal example): a blank row, `● How is Claude doing this session? (optional)` and `  1: Bad    2: Fine   3: Good   0: Dismiss` right on the update row. Reads `idle`, `unreadable`, `empty`, the field receipt's verdict, and reads the same with a plain edge. Labelled `dialog` |
+| `claude--v2303-titled-edge-survey--w160.txt` | **Derived** from the idle file to the layout of the field read (the masked rows in the lane's refusal example): a blank row, `● How is Claude doing this session? (optional)` and `  1: Bad    2: Fine   3: Good   0: Dismiss` right on the update row. The field receipt read `idle`, `unreadable`, `empty`; since the ADR 0109 addendum it reads `idle`, `none`, `empty`, the same with a plain edge or a blank row under the keys, and lifts a card with Bad, Fine, Good and Dismiss. Labelled `idle` |
 
 ## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
 

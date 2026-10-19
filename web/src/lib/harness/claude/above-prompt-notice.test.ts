@@ -193,7 +193,57 @@ describe("the notice above the box", () => {
     });
   });
 
-  it("does not lift the rating survey over the box", () => {
-    expect(claudeBuildBlocks(lines("claude-lab--survey-rating-above-box--w82.txt")).some((b) => b.kind === "menu")).toBe(false);
+});
+
+// Decided 2026-10-19 (ADR 0109): Claude Code's rating survey is a notice like Heads up. On lane 8788 it
+// stood over the box and every send was refused until it went; the owner ruled that it must not block
+// sends and that the phone shows it as a card. Until then "does not lift the rating survey over the box"
+// stood here.
+describe("the rating survey above the box", () => {
+  const FIELD = "claude--v2303-titled-edge-survey--w160.txt";
+  const OLD = "claude-lab--survey-rating-above-box--w82.txt";
+  const SURVEY_KEYS = [
+    { label: "Bad", keys: ["1"] },
+    { label: "Fine", keys: ["2"] },
+    { label: "Good", keys: ["3"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const cardOf = (input: StyledLine[]) => {
+    const card = claudeBuildBlocks(input).find((b) => b.kind === "menu");
+    if (card?.kind !== "menu") throw new Error("no menu");
+    return card;
+  };
+
+  it("lifts the field screen's survey as a card with its four buttons, over the update row and the titled edge", () => {
+    const card = cardOf(lines(FIELD));
+    expect(card.menu.title).toBe("How is Claude doing this session? (optional)");
+    expect(card.menu.actions).toEqual(SURVEY_KEYS);
+    expect(card.menu.liveBox).toEqual({ draft: false });
+    expect(card.lines.map(lineText).map((text) => text.trimEnd())).toEqual(["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"]);
+    // The binding region runs from the head through the update row and the titled edge to the bottom edge.
+    const region = card.menu.signature.split("\n").map((row) => row.trimEnd());
+    expect(region[2]).toMatch(/^ +✔ Update installed · Restart to update$/u);
+    expect(region.at(-3)).toMatch(/^─+ 1\.23\.0 ─$/u);
+    expect(region.at(-1)).toMatch(/^─+$/u);
+  });
+
+  it("leaves the box live under the survey: the composer is ready and the card owns no keyboard", () => {
+    const blocks = claudeBuildBlocks(lines(FIELD));
+    expect(claudeAdapter.composerReady?.(lines(FIELD))).toBe(true);
+    expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+    expect(dialogNounOf(blocks)).toBeNull();
+  });
+
+  it("lifts the same card with a blank row between the survey and the update row", () => {
+    const rows = lines(FIELD);
+    const keys = rows.findIndex((line) => lineText(line).startsWith("  1: Bad"));
+    const gapped = [...rows.slice(0, keys + 1), splitLines(parseAnsi(""))[0] ?? { segments: [] }, ...rows.slice(keys + 1)];
+    expect(cardOf(gapped).menu.actions).toEqual(SURVEY_KEYS);
+  });
+
+  it("lifts the 2.1.278 capture's survey the same way", () => {
+    const card = cardOf(lines(OLD));
+    expect(card.menu.title).toBe("How is Claude doing this session? (optional)");
+    expect(card.menu.actions).toEqual(SURVEY_KEYS);
   });
 });

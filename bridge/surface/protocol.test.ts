@@ -3140,6 +3140,55 @@ describe("real screens from the fixture corpus", () => {
     expect(pane.transcript.at(-1)).toBe("> hello");
   });
 
+  // Lane 8788, 2026-10-19: Claude Code's rating survey stood on the update row right over the box, and
+  // every send was refused `unconfirmed` (modal unreadable) until it went. The survey is a notice now
+  // (ADR 0109) and the update row a gap the profile names: a sentence goes on one tap, a digit takes the
+  // notice path. The field record: ~/.local/state/collie-next/surface/examples/01792385882274-*.json.
+  const SURVEY_ROWS = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
+  const UPDATE_ROW = `${" ".repeat(40)}✔ Update installed · Restart to update`;
+
+  test("on the rating survey over the update row: a sentence goes on one tap, with or without a blank row between", async () => {
+    for (const between of [[UPDATE_ROW], ["", UPDATE_ROW]]) {
+      const { pane, send } = rig();
+      pane.over = [...SURVEY_ROWS, ...between];
+      const answer = await send("ok merge the five, running the crew update now");
+      expect(answer.receipt, JSON.stringify(between)).toMatchObject({ outcome: "sent" });
+      expect(answer.cause).toBeUndefined();
+      expect(pane.transcript.at(-1)).toBe("> ok merge the five, running the crew update now");
+    }
+  });
+
+  test("on the rating survey over the update row: a digit takes the notice path and answers the survey without Enter", async () => {
+    for (const digit of ["0", "1", "2", "3"]) {
+      const { pane, send } = rig();
+      pane.over = [...SURVEY_ROWS, UPDATE_ROW];
+      const first = await send(digit);
+      expect(first.receipt, digit).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.cause).toBe("notice_key");
+      expect(first.offers).toEqual(["commit", "keys"]);
+      pane.afterInput = answersDigit;
+      const commit = await send(digit, { rowsHash: first.rowsHash! });
+      expect(commit.receipt).toMatchObject({ outcome: "sent", keys: [] });
+      expect(pane.calls).toEqual([`paste:${digit}`]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+    // A digit the survey does not print is an ordinary message.
+    const { pane, send } = rig();
+    pane.over = [...SURVEY_ROWS, UPDATE_ROW];
+    expect((await send("4")).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> 4");
+  });
+
+  test("the field screen's capture reads free with the survey over the titled box, and a digit is refused to the notice path", async () => {
+    const captured = rig({ pane: still(fixture("claude--v2303-titled-edge-survey--w160.txt")) });
+    const prepared = await captured.protocol.handle({ id: "fixture-survey-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const digit = await captured.send("2");
+    expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(digit.cause).toBe("notice_key");
+    expect(captured.pane.calls).toEqual([]);
+  });
+
   /** The notice's plugin: a box holding one of its digits alone answers it, clearing the box and the notice. */
   function answersDigit(pane: FakePane, what: string): void {
     if (/^(?:type|paste):\d$/u.test(what) && pane.over.length > 0) {
