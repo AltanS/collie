@@ -94,4 +94,17 @@ describe("SessionChip — an operator label", () => {
     );
     expect(screen.getByLabelText("In session: Box work")).toBeInTheDocument();
   });
+
+  it("never borrows another machine's label when the pane's machine lists no such session", () => {
+    const sessions: SessionSummary[] = [
+      { ...registry[0]!, host: "lead" },
+      { ...registry[1]!, host: "lead", label: "Lead work" },
+    ];
+    render(
+      <CrewProvider servers={undefined} sessions={sessions}>
+        <SessionChip session="work" host="box" />
+      </CrewProvider>,
+    );
+    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+  });
 });

@@ -180,7 +180,8 @@ export function sessionDisplayName(session: Pick<SessionSummary, "name" | "label
 /**
  * The label of the session called `name`, for a surface that holds only the name (a pane's address).
  * On a crew two machines may each run a session of that name, so `host` (the pane's own, when it
- * has one) picks the machine's entry; with no match the name itself is returned.
+ * has one) picks the machine's entry and never borrows another machine's; with no match the name
+ * itself is returned.
  */
 export function sessionDisplayNameOf(
   name: string,
@@ -188,7 +189,7 @@ export function sessionDisplayNameOf(
   host?: string,
 ): string {
   const named = (sessions ?? []).filter((s) => s.name === name);
-  const entry = (host === undefined ? undefined : named.find((s) => s.host === host)) ?? named[0];
+  const entry = host === undefined ? named[0] : named.find((s) => s.host === host);
   return entry === undefined ? name : sessionDisplayName(entry);
 }
 
