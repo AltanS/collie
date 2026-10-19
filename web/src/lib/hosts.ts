@@ -167,6 +167,32 @@ export function primarySession(
 }
 
 /**
+ * What the phone PRINTS for a session: the operator's `sessions.toml` label when there is one, else
+ * the registry name. Display-only — every address, `?s=` included, keeps carrying `name`. The bridge
+ * cleans and caps the label (bridge/operator-session-labels.ts); an empty one reads as none. It is
+ * rendered as a text node either way.
+ */
+export function sessionDisplayName(session: Pick<SessionSummary, "name" | "label">): string {
+  const label = session.label;
+  return label === undefined || label === "" ? session.name : label;
+}
+
+/**
+ * The label of the session called `name`, for a surface that holds only the name (a pane's address).
+ * On a crew two machines may each run a session of that name, so `host` (the pane's own, when it
+ * has one) picks the machine's entry; with no match the name itself is returned.
+ */
+export function sessionDisplayNameOf(
+  name: string,
+  sessions: readonly SessionSummary[] | undefined,
+  host?: string,
+): string {
+  const named = (sessions ?? []).filter((s) => s.name === name);
+  const entry = (host === undefined ? undefined : named.find((s) => s.host === host)) ?? named[0];
+  return entry === undefined ? name : sessionDisplayName(entry);
+}
+
+/**
  * The {@link hostKey} the CURRENT scope resolves to: its `?h=`, or the lead's id when absent. This
  * is the value a pane's own `host` has to equal for the pane to be the one you are addressing.
  */

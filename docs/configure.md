@@ -125,7 +125,7 @@ Without this setting, the UI will load as an empty page. See
 ## Your own slash commands
 
 Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a custom `/deploy`, in
-`commands.toml`. This is one of six config files that share the same reader and load pattern:
+`commands.toml`. This is one of seven config files that share the same reader and load pattern:
 
 | file | scope | confirm/danger flag | live reload |
 | --- | --- | --- | --- |
@@ -135,6 +135,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `theme.toml` | none, the faces are a device setting | none | yes, on the next page reload |
 | `launchers.toml` | none, matched by exact command instead; `[phone]` switches the rows a phone adds | none | yes, but an already-open tab re-reads the rows only on its next load |
 | `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
+| `sessions.toml` | none, matched by exact session name instead | none | yes, within a few seconds |
 
 These files are unchanged by the config file. They share the instance `config.toml`'s
 directory, they keep their own formats and their own live reload, and nothing merges them into it.
@@ -793,6 +794,43 @@ By default, one Collie instance serves every Herdr session it finds.
 config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serves only the primary
 Herdr session. Every discovered Herdr session is accessible through the same URL, including private or sandbox
 sessions. [Security](security.md) lists this behavior as a sharp edge.
+
+### Your own session labels
+
+Give a session a label of your own in `sessions.toml`, next to `keys.toml`:
+
+```bash
+cp sessions.toml.example ~/.config/collie/sessions.toml
+```
+
+A session is named by the folder its socket lives in, so `<config root>/sessions/project-yt/`
+shows as `project-yt`. A label replaces that name in the session switcher, on its trigger, on the
+session tag of a row in **All sessions**, and on a durable agent's row. The switcher keeps the folder
+name under the label.
+
+```toml
+[labels]
+"project-yt" = "Video"
+default = "Home"
+```
+
+The key is the session name the switcher shows today, and `default` is the primary session. Quote a
+name that holds anything but letters, digits, `-` and `_`.
+
+> **Note.** A label is display-only. Links (`?s=`), notifications, the crew and the terminal keep
+> using the session name, so a label can change at any time without breaking a bookmark.
+
+Collie applies a few rules to every row:
+
+| rule | what happens |
+| --- | --- |
+| a name no session has | the row is kept and never shown |
+| a value that is not a string, or is blank | the row is dropped and logged |
+| a control or invisible format character, tab or line break | replaced by a space |
+| more than 48 characters | cut to 48 and logged |
+
+A dropped row never costs you the rest of the file. Edits show within a few seconds, with no
+restart. In a crew, each machine labels its own sessions in its own `sessions.toml`.
 
 ## Dark mode / light mode
 

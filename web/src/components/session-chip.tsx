@@ -1,7 +1,7 @@
 import { Layers } from "lucide-react";
 
 import { AddressTag } from "@/components/ui/address-tag";
-import { primarySession } from "@/lib/hosts";
+import { primarySession, sessionDisplayNameOf } from "@/lib/hosts";
 import { useCrew } from "@/components/crew-provider";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -9,6 +9,8 @@ import { useLocale } from "@/hooks/use-locale";
 interface SessionChipProps {
   /** The session this row's pane lives in — `PaneWire.session`. Undefined = nothing to say. */
   session: string | undefined;
+  /** The machine the pane lives on, when the row knows it: on a crew it picks whose label to print. */
+  host?: string | undefined;
   className?: string;
 }
 
@@ -35,17 +37,19 @@ interface SessionChipProps {
 // without a router, so reading the root loader is not available (crew-provider.tsx states that
 // argument at length); a prop chain reaching every list, sheet and row is a prop chain someone will
 // break. With no provider the registry is empty, which reads as "nothing to say".
-export function SessionChip({ session, className }: SessionChipProps) {
+export function SessionChip({ session, host, className }: SessionChipProps) {
   useLocale();
   const { sessions } = useCrew();
   if (session === undefined || session === primarySession(sessions)) return null;
+  // The operator's label when sessions.toml gives one, else the registry name. Display-only.
+  const shown = sessionDisplayNameOf(session, sessions, host);
   return (
     <AddressTag
       // As with the host chip, the inner text is aria-hidden, so this one label has to carry the
       // MEANING: a bare session name is a noun with no verb.
-      aria-label={t("connection.session.ariaIn", { name: session })}
+      aria-label={t("connection.session.ariaIn", { name: shown })}
       glyph={<Layers className="size-3 shrink-0" aria-hidden />}
-      name={session}
+      name={shown}
       className={className}
     />
   );

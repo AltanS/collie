@@ -76,7 +76,7 @@ export function PaneMeta({ host, cache, session, onOpenCache, className }: PaneM
       className={cn("flex h-3 shrink-0 items-baseline gap-1.5", className)}
     >
       <HostChip host={host} variant="bare" />
-      <SessionChip session={session} />
+      <SessionChip session={session} host={host} />
       {/* THE SEPARATOR IS THE CSS'S TO DECIDE, NOT A PREDICATE'S. The dot belongs between the
           address and the reading and nowhere else, and asking "is the host shown?" here would be a
           second copy of a hide rule that already lives inside each chip (host-chip.tsx says so in

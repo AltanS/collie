@@ -696,6 +696,12 @@ export function muxFaultOf(message: string): MuxFault | undefined {
 export interface SessionSummary {
   /** Registry name, e.g. "default" or "collie-demo". Client passes this back as `?session=`. */
   name: string;
+  /**
+   * The operator's display label from `sessions.toml` (bridge/operator-session-labels.ts), already
+   * cleaned of controls and capped. Display-only: {@link name} stays the identity. Absent when the
+   * operator gave this session none, so an install without the file sends the bytes it always did.
+   */
+  label?: string;
   /** The session cfg.socketPath points at — all pre-multi-session behaviour maps to it. */
   isPrimary: boolean;
   /** Whether this session's last poll succeeded (a stale/unreachable socket reads false). */

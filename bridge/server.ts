@@ -38,6 +38,7 @@ import type { GitHeadSurface } from "./git-head.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
+import { createSessionLabels, withSessionLabels } from "./operator-session-labels.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
@@ -1497,6 +1498,11 @@ export function startServer(opts: {
   };
   // The sixth on that contract: the operator's own prompt-cache TTLs, cache-rules.toml off the hot path.
   const operatorCacheRules = createCacheRulesReader(cfg.cacheRulesFile);
+  // The seventh: the operator's display labels for their sessions, sessions.toml. `localSnapshot` is
+  // synchronous, so the reader holds the labels and each snapshot refreshes them behind its answer:
+  // an edit shows on the next poll, browser and crew sweep alike. The first read starts here.
+  const sessionLabels = createSessionLabels(cfg.sessionsFile ?? null);
+  void sessionLabels.refresh();
   // ONE registry for the process, built by the caller so the cache tracker probes through the same
   // adapters (and therefore the same memoised path caches) the history route reads.
   const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots)) : null;
@@ -1548,6 +1554,7 @@ export function startServer(opts: {
   ): SnapshotResponse | undefined => {
     const rt = registry.get(sessionName);
     if (!rt) return undefined;
+    void sessionLabels.refresh();
     const { workspaces, tabs, bridge, muxFault } = rt.engine.current();
     // Attach each pane's activity timestamps. Done here rather than in the state engine so the
     // engine stays a pure Herdr-poller with no knowledge of the ledger — and so the two numbers
@@ -1664,7 +1671,8 @@ export function startServer(opts: {
       shellPanes: paneList((from) => from.engine.current().shellPanes),
       workspaces,
       tabs,
-      sessions: registry.list(),
+      // A label is display-only: `name` stays the identity the phone sends back as `?session=`.
+      sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),
       notifications: { snoozedUntil: snooze.until() },
       update: updateStatusWithPeers(),
       ts: Date.now(),

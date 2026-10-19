@@ -1,0 +1,23 @@
+# Your own labels for Collie's sessions. Copy to your plugin config dir, next to `.env`:
+#   cp sessions.toml.example "$(herdr plugin config-dir herdr.collie)/sessions.toml"
+#
+# A session is named by the folder its socket lives in: `<config root>/sessions/project-yt/` is the
+# session `project-yt`, and the primary session is `default`. A label replaces that name in the
+# session switcher, on the session tag of a row in "All sessions" and on a durable agent's row; the
+# switcher keeps the folder name under the label.
+#
+# A LABEL IS DISPLAY-ONLY. Links (`?s=`), notifications, the crew and the terminal keep using the
+# session name, so a label can change at any time without breaking anything.
+#
+# Edits are picked up live — no restart. The phone shows them within a few seconds.
+#
+# Rules: the key is the session name, quoted when it holds anything but letters, digits, `-` and `_`.
+# The value is any string. A name no session has is ignored; a value that is not a string, or is
+# blank, drops that row with a line in the log, never the rest of the file. Control characters,
+# invisible format characters, tabs and line breaks become spaces, and a label longer than 48
+# characters is cut to 48.
+
+# [labels]
+# default = "Home"
+# "project-yt" = "Video"
+# "ai-system-setup" = "Agent setup"
