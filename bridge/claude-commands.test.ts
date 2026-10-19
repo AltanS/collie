@@ -405,6 +405,19 @@ describe("discoverClaudeCommands: installed plugins", () => {
     ]);
   });
 
+  test("the plugin cap counts enabled plugins only: two enabled past 64 disabled ones are listed", async () => {
+    const names = Array.from({ length: 70 }, (_, i) => `p${String(i)}`);
+    const { names: listed, warns } = await runOn({
+      "/h/.claude/plugins/installed_plugins.json": installed(
+        Object.fromEntries(names.map((name) => [`${name}@mk`, [entry(name)]])),
+      ),
+      "/h/.claude/settings.json": JSON.stringify({ enabledPlugins: { "p68@mk": true, "p69@mk": true } }),
+      ...Object.fromEntries(names.map((name) => [`${cache}/${name}/1.0.0/skills/a/SKILL.md`, skill("x")])),
+    });
+    expect(listed).toEqual(["/p68:a", "/p69:a"]);
+    expect(warns).toEqual([]);
+  });
+
   test("a manifest defaultEnabled does not turn an unnamed plugin on", async () => {
     const { names } = await run({
       "/h/.claude/plugins/installed_plugins.json": installed({ "loud@mk": [entry("loud")] }),

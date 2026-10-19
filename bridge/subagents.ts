@@ -21,9 +21,12 @@
 //      Code, or ones that died with their session (a killed terminal, a crash) before the second write.
 //      So an unfinished meta alone is not enough. It counts as running only while the subagent's log
 //      (or the meta itself) was written in the last {@link QUIET_RUNNING_MS}. A live subagent writes
-//      its log on every step; the longest it goes quiet is one tool call, and a Bash call is capped
-//      at ten minutes. Thirty minutes covers that with room, and a ghost leaves the pill thirty
-//      minutes after its last line instead of never.
+//      its log on every step, but it can go quiet for longer than one tool call: a Bash call (ten
+//      minutes by default, longer with BASH_MAX_TIMEOUT_MS), a permission it waits on while the
+//      operator is away, a rate-limit retry, a nested subagent it waits for. Thirty minutes is a
+//      trade. A subagent quiet for longer leaves the pill while it still runs, and a ghost leaves
+//      it thirty minutes after its last line instead of never. The bound is one constant
+//      (`QUIET_RUNNING_MS`), so it can move once real sessions show which way it errs.
 //   3. A log with NO meta file beside it is a Claude Code from before meta files. None exist on this
 //      machine (7,540 logs, 7,540 metas), so this is a fallback only: such a log counts as running
 //      while it was written in the last {@link METALESS_RUNNING_MS}, the window the feature was

@@ -334,7 +334,7 @@ async function commandsIn(
   return out;
 }
 
-/** Installed plugins read in one response. */
+/** Enabled plugins read in one response. Disabled ones never take a slot. */
 const MAX_PLUGINS = 64;
 
 interface InstalledPlugin {
@@ -349,10 +349,12 @@ interface InstalledPlugin {
  * The install `installed_plugins.json` records for each plugin. A key can hold several entries (one
  * per scope). A `project` or `local` entry counts only when its `projectPath` is one of the folders
  * of this pane's project, and then it wins; otherwise the entry with the newest `installedAt` wins,
- * which in practice is the `user` install.
+ * which in practice is the `user` install. Only enabled plugins are returned, and the cap counts
+ * them alone, so a disabled plugin can never push an enabled one out of the list.
  */
 function installedPlugins(
   doc: JsonObject,
+  enabledPlugins: ReadonlyMap<string, boolean>,
   projectFolders: readonly string[],
   warn: (m: string) => void,
 ): InstalledPlugin[] {
@@ -361,8 +363,15 @@ function installedPlugins(
     warn("installed_plugins.json has no `plugins` map, so no plugin is listed");
     return [];
   }
+  // ASSUMPTION, checked with `claude plugin list`: a plugin that no settings file sets to `true`
+  // is off. The marketplace install step writes the `enabledPlugins` entry (it is where the
+  // manifest's `defaultEnabled` applies), so Collie does not second-guess an absent key.
+  const enabled = Object.entries(plugins).filter(([key]) => enabledPlugins.get(key) === true);
+  if (enabled.length > MAX_PLUGINS) {
+    warn(`${String(enabled.length)} enabled plugins, the first ${String(MAX_PLUGINS)} are listed`);
+  }
   const out: InstalledPlugin[] = [];
-  for (const [key, value] of Object.entries(plugins).slice(0, MAX_PLUGINS)) {
+  for (const [key, value] of enabled.slice(0, MAX_PLUGINS)) {
     const name = key.split("@")[0] ?? "";
     if (!NAME_SEGMENT.test(name) || !Array.isArray(value)) continue;
     let best: { path: string; local: boolean; at: number } | null = null;
@@ -395,7 +404,7 @@ function manifestPaths(value: JsonValue | undefined): JsonValue[] {
 
 /**
  * The rows of one plugin: its `skills` folders and its `commands`, every name carrying `<plugin>:`.
- * The caller has already checked that the merged `enabledPlugins` maps say `true` for it.
+ * `installedPlugins` has already checked that the merged `enabledPlugins` maps say `true` for it.
  *
  * Not read yet: the single-skill plugin form (a root SKILL.md with no `skills/` folder and no
  * `skills` key in the manifest).
@@ -575,12 +584,8 @@ export async function discoverClaudeCommands(opts: DiscoverOptions): Promise<Cla
     "no plugin is listed",
   );
   if (installed !== null) {
-    for (const item of installedPlugins(installed, dirs, warn)) {
+    for (const item of installedPlugins(installed, enabledPlugins, dirs, warn)) {
       if (budget.ops <= 0) break;
-      // ASSUMPTION, checked with `claude plugin list`: a plugin that no settings file sets to `true`
-      // is off. The marketplace install step writes the `enabledPlugins` entry (it is where the
-      // manifest's `defaultEnabled` applies), so Collie does not second-guess an absent key.
-      if (enabledPlugins.get(item.key) !== true) continue;
       plugin.push(...(await pluginRows(io, item, personalRoots, budget, warn)));
     }
   }
