@@ -778,32 +778,42 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 ONE element in both modes: only the glyph and the name change, so the swap cannot
                 move a pixel, and a screen reader's focus stays on the button and hears the new name.
                 `onMouseDown` refuses the press's focus move, which keeps the field focused and the
-                phone keyboard up; the `clear` prop says why it is not `onPointerDown`. */}
-            {clear && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-belt-clear=""
-                aria-label={clear.label}
-                aria-disabled={clear.inert === true ? true : undefined}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  if (clear.inert !== true) clear.onClick();
-                }}
-                className={cn(
-                  `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                  pinnedReach(true, !agents && !changes && !handle, hand),
-                  clear.inert === true && "opacity-50",
-                )}
-              >
-                {clear.mode === "undo" ? (
-                  <Undo2 className={cn(BELT_ICON, "text-primary")} />
-                ) : (
-                  <X className={cn(BELT_ICON, "text-primary")} />
-                )}
-              </Button>
-            )}
+                phone keyboard up; the `clear` prop says why it is not `onPointerDown`.
+                It comes and goes through `Collapse` on its x axis, as the agents mark below does and
+                with the same gap trick (Altan, 2026-10-19: "the x icon should appear smoothly not
+                immediately"): it eases in with the first character and out when the box empties.
+                The Collapse's `open` is PRESENCE only, so a swap between X and Undo is a new child
+                inside an open box and runs no transition. `appear`, because this block mounts only
+                once something is pinned, and the X may be what brings it. */}
+            <Collapse axis="x" appear open={clear !== undefined} className="-mr-1.5">
+              {clear && (
+                <span className="flex items-center pr-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-belt-clear=""
+                    aria-label={clear.label}
+                    aria-disabled={clear.inert === true ? true : undefined}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (clear.inert !== true) clear.onClick();
+                    }}
+                    className={cn(
+                      `${STRIP_ROW_PILL} ${PINNED_PILL}`,
+                      pinnedReach(true, !agents && !changes && !handle, hand),
+                      clear.inert === true && "opacity-50",
+                    )}
+                  >
+                    {clear.mode === "undo" ? (
+                      <Undo2 className={cn(BELT_ICON, "text-primary")} />
+                    ) : (
+                      <X className={cn(BELT_ICON, "text-primary")} />
+                    )}
+                  </Button>
+                </span>
+              )}
+            </Collapse>
             {/* THE AGENTS MARK (the `agents` prop): right of the X, left of Files. It comes and goes
                 through `Collapse` on its x axis (ui/collapse.tsx), so it eases open and shut instead
                 of popping, and the neighbours move with it only during that motion, the one in-flow
@@ -813,8 +823,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 pays it back as `pr-1.5` inside; shut, the mark leaves exactly one gap behind.
                 The glyph sits where Files and the Switch mark sit theirs, centred, with nothing in
                 flow beside it. The count is the corner badge the Switch mark's alert wears
-                (`PINNED_MARK_BADGE`), top right, in `tabular-nums` (DESIGN.md §5). */}
-            <Collapse axis="x" open={agents !== undefined} className="-mr-1.5">
+                (`PINNED_MARK_BADGE`), top right, in `tabular-nums` (DESIGN.md §5). `appear`, for the
+                reason the X gives: the mark may be what mounts the block. */}
+            <Collapse axis="x" appear open={agents !== undefined} className="-mr-1.5">
               {agents && (
                 <span className="flex items-center pr-1.5">
                   <Button

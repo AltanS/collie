@@ -4714,6 +4714,12 @@ describe("Composer agents mark and sheet", () => {
       const mark = screen.getByRole("button", { name: "Agents 2" });
       const box = mark.closest<HTMLElement>('[data-slot="collapse"]')!;
       expect(box).toHaveAttribute("data-axis", "x");
+      // `appear`: the mark may be what mounts the pinned block, so it starts closed and opens after
+      // two frames rather than popping in.
+      expect(box).toHaveAttribute("data-state", "closed");
+      act(() => {
+        vi.advanceTimersByTime(64);
+      });
       expect(box).toHaveAttribute("data-state", "open");
 
       // A count that steps changes the numeral and nothing else: the same box, still open.
