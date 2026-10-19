@@ -349,6 +349,54 @@ describe("ActionsRow — the switcher mark's alert", () => {
 });
 
 
+// THE AGENTS MARK'S GLYPH AND COUNT (Altan, 2026-10-19: "this shoved the icon down now it's off
+// center, move it to the top left, same spot where the agent indicator is shown on the layers icon").
+describe("ActionsRow — the agents mark's glyph and count", () => {
+  function renderMarks() {
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        agents={{ count: 3, onClick: vi.fn(), label: "Agents 3", expanded: false }}
+        changes={{ onClick: vi.fn(), label: "Files" }}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane", alert: true }}
+      />,
+    );
+    return {
+      agents: screen.getByRole("button", { name: "Agents 3" }),
+      files: screen.getByRole("button", { name: "Files" }),
+      handle: screen.getByRole("button", { name: "Switch pane" }),
+    };
+  }
+
+  it("draws the Bot glyph exactly as Files and the Switch mark draw theirs: same classes, no offset", () => {
+    const { agents, files, handle } = renderMarks();
+    const glyph = (el: HTMLElement) => el.querySelector("svg.lucide")!.getAttribute("class")!.split(" ").filter((c) => !c.startsWith("lucide"));
+    expect(glyph(agents)).toEqual(glyph(files));
+    expect(glyph(agents)).toEqual(glyph(handle));
+    expect(glyph(agents).join(" ")).not.toMatch(/translate|mt-|mb-/);
+    // Nothing in flow beside the glyph: its only other child is the absolutely placed count.
+    const others = Array.from(agents.children).filter((c) => c.tagName.toLowerCase() !== "svg");
+    expect(others).toHaveLength(1);
+    expect(others[0]).toHaveClass("absolute");
+  });
+
+  it("puts the count in the corner badge the Switch mark's alert wears, at the top left", () => {
+    const { agents, handle } = renderMarks();
+    const count = agents.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
+    const alert = handle.querySelector<HTMLElement>(".text-status-blocked")!;
+    expect(count.textContent).toBe("3");
+    // The shared part, the same on both: placement from the top, the chrome disc and its ring.
+    const shared = ["pointer-events-none", "absolute", "top-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome"];
+    expect(count).toHaveClass(...shared);
+    expect(alert).toHaveClass(...shared);
+    // Only the corner differs: the count top left, the alert top right.
+    expect(count).toHaveClass("left-0.5", "tabular-nums");
+    expect(alert).toHaveClass("right-0.5");
+  });
+});
+
 // THE COMPOSER'S CLEAR SLOT (M40 spec 04, issue #291; Altan, 2026-09-26/27): an icon-only X on the
 // pinned block, directly left of the Changes pill, left of the Switch mark without one, alone when
 // neither shows. The composer decides WHEN (a draft in the box, or the Undo window after a tap);

@@ -285,6 +285,15 @@ function pinnedReach(first: boolean, last: boolean, hand: Hand = "right"): strin
 const PINNED_PILL =
   "relative w-(--belt-pill) min-w-(--belt-pill) border-0 px-0 has-[>svg]:px-0 before:-inset-y-(--belt-pad) hover:bg-foreground/8 active:bg-foreground/15 active:scale-[0.92] motion-reduce:active:scale-100 duration-[120ms]";
 
+/**
+ * The corner badge a pinned mark wears, ONE placement and one disc for both that exist: the Switch
+ * mark's needs-you triangle (top right) and the agents mark's count (top left; Altan, 2026-10-19: "move
+ * it to the top left, same spot where the agent indicator is shown on the layers icon"). Absolutely
+ * placed, so it never moves the glyph or the belt; the chrome-coloured disc and its ring cut it out of
+ * the glyph it overlaps. Each caller adds only its corner and its size, so the two cannot drift.
+ */
+const PINNED_MARK_BADGE = "pointer-events-none absolute top-0.5 rounded-full bg-chrome ring-2 ring-chrome";
+
 /** Extra air between the last scrolling pill and the pinned block at full scroll-right, added to the
  *  trailing spacer. Altan, from his phone, 2026-09-23: "add a wider margin right to the belt content". */
 const BELT_END_AIR = 16;
@@ -485,8 +494,9 @@ export interface ActionsRowProps {
    * THE AGENTS MARK (Altan, from the lane, 2026-10-19: "it should be subtle and show up next to files
    * and session layers icon with a number of the currently active agents"; then "agents count should
    * be above the agent icon, it should have a smooth appear/disappear animation and be to the right of
-   * the x"). An icon-only pill in the pinned block, right of the X and left of Files and the Switch
-   * mark: the Bot glyph with the count of the pane's running subagents as a small numeral above it, in
+   * the x"; then "move it to the top left, same spot where the agent indicator is shown on the layers
+   * icon"). An icon-only pill in the pinned block, right of the X and left of Files and the Switch
+   * mark: the Bot glyph with the count of the pane's running subagents as a small badge at its top left, in
    * the same ink as its neighbours, no fill and no accent. Pinned, so it never scrolls away and a mark
    * that comes or goes moves nothing in the scroller; it eases in and out through `Collapse` on its x
    * axis. The composer passes it only while the count is above zero. A tap opens the Agents sheet.
@@ -801,8 +811,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 and animates nothing: the numeral is absolutely placed. The block's `gap-1.5` beside
                 a zero-width item would still count, so the box cancels one gap with `-mr-1.5` and
                 pays it back as `pr-1.5` inside; shut, the mark leaves exactly one gap behind.
-                The count sits ABOVE the glyph, centred, in `tabular-nums` (DESIGN.md §5), and the
-                glyph steps 3px down to make the room, inside the 37px box so nothing clips. */}
+                The glyph sits where Files and the Switch mark sit theirs, centred, with nothing in
+                flow beside it. The count is the corner badge the Switch mark's alert wears
+                (`PINNED_MARK_BADGE`), top left, in `tabular-nums` (DESIGN.md §5). */}
             <Collapse axis="x" open={agents !== undefined} className="-mr-1.5">
               {agents && (
                 <span className="flex items-center pr-1.5">
@@ -816,11 +827,14 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                     onClick={agents.onClick}
                     className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !changes && !handle, hand))}
                   >
-                    <Bot className={cn(BELT_ICON, "translate-y-[3px] text-primary")} />
+                    <Bot className={cn(BELT_ICON, "text-primary")} />
                     <span
                       aria-hidden
                       data-slot="belt-agents-count"
-                      className="pointer-events-none absolute top-[3px] left-1/2 -translate-x-1/2 text-[9px] leading-none font-semibold tabular-nums text-primary"
+                      className={cn(
+                        PINNED_MARK_BADGE,
+                        "left-0.5 flex h-2.5 min-w-2.5 items-center justify-center text-[9px] leading-none font-semibold tabular-nums text-primary",
+                      )}
                     >
                       {agents.count}
                     </span>
@@ -874,7 +888,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
                 {handle.alert === true && (
                   <StatusDot
                     status="blocked"
-                    className="pointer-events-none absolute top-0.5 right-0.5 size-2.5 rounded-full bg-chrome ring-2 ring-chrome"
+                    className={cn(PINNED_MARK_BADGE, "right-0.5 size-2.5")}
                   />
                 )}
               </Button>
