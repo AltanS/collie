@@ -107,8 +107,34 @@ describe("readAboveNotice", () => {
     expect(noticeOf(screen(["✦ Heads up ·", "  on your main PC.", KEYS]))?.text).toBe("Heads up · on your main PC.");
   });
 
-  it("does not read the rating survey over the box", () => {
-    expect(noticeOf(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"))).toBeNull();
+  // Decided 2026-10-19 (ADR 0109, after every send on lane 8788 was refused under it): the rating survey
+  // is a notice the profile names. This case read null until then.
+  it("reads the rating survey over the box as a notice, with its four printed keys", () => {
+    for (const name of ["claude-lab--survey-rating-above-box--w82.txt", "claude--v2303-titled-edge-survey--w160.txt"]) {
+      const notice = noticeOf(fixtureRows(name));
+      expect(notice?.text, name).toBe("How is Claude doing this session? (optional)");
+      expect(notice?.keys, name).toEqual([
+        { key: "1", label: "Bad" },
+        { key: "2", label: "Fine" },
+        { key: "3", label: "Good" },
+        { key: "0", label: "Dismiss" },
+      ]);
+    }
+  });
+
+  it("reads the survey over the update row, and the same with a blank row between them", () => {
+    const survey = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
+    const update = `${" ".repeat(20)}✔ Update installed · Restart to update`;
+    for (const between of [[update], ["", update], [update, ""]]) {
+      const notice = noticeOf(screen([...survey, ...between]));
+      expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
+    }
+  });
+
+  it("does not read the survey's head when the agent's prose quotes it with other rows under it", () => {
+    const quoted = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss", "  That is the survey row I saw."];
+    expect(noticeOf(screen(quoted))).toBeNull();
+    expect(noticeOf(screen(["● The survey said: How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"]))).toBeNull();
   });
 
   it("reads nothing with no notice shapes", () => {

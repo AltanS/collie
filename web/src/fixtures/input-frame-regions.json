@@ -1390,6 +1390,82 @@
   }
  },
  {
+  "fixture": "claude--v2303-titled-edge-draft--w160.txt",
+  "frame": {
+   "top": 10,
+   "prompt": 11,
+   "bottom": 12,
+   "label": "1.23.0",
+   "text": "ok merge the five, running the crew update now",
+   "placeholder": false,
+   "status": {
+    "first": 13,
+    "last": 15
+   },
+   "footer": {
+    "first": 17,
+    "last": 20
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2303-titled-edge-idle--w160.txt",
+  "frame": {
+   "top": 10,
+   "prompt": 11,
+   "bottom": 12,
+   "label": "1.23.0",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 13,
+    "last": 15
+   },
+   "footer": {
+    "first": 17,
+    "last": 20
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2303-titled-edge-survey--w160.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": "1.23.0",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 18
+   },
+   "footer": {
+    "first": 20,
+    "last": 23
+   }
+  }
+ },
+ {
+  "fixture": "claude--v2303-titled-edge-working--w160.txt",
+  "frame": {
+   "top": 10,
+   "prompt": 11,
+   "bottom": 12,
+   "label": "1.23.0",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 13,
+    "last": 15
+   },
+   "footer": {
+    "first": 17,
+    "last": 20
+   }
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

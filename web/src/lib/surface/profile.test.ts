@@ -707,7 +707,10 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "notices", 0, "head"], "^\\s*$")).path).toBe("idle.notices[0].head");
     expect(failure(change(rawClaude(), ["idle", "notices"], "no list")).path).toBe("idle.notices");
     expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
-    expect(parseProfile(rawClaude()).idle.notices).toEqual([{ head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)" }]);
+    expect(parseProfile(rawClaude()).idle.notices).toEqual([
+      { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)" },
+      { head: "^● How is Claude doing this session\\? \\(optional\\)$" },
+    ]);
     expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
   });
 

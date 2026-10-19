@@ -10,6 +10,13 @@
 // model says so (`liveBox`): it owns no keyboard, and its buttons are the printed digits alone, in the
 // printed order (ADR 0009: a key comes only from what the row prints). The shape itself is read once,
 // by surface/notice.ts, the same reader the Surface and the bridge's send gate use.
+//
+// The session rating survey is the second shape the profile names (ADR 0109 addendum, 2026-10-19):
+//
+//   ● How is Claude doing this session? (optional)
+//     1: Bad    2: Fine   3: Good   0: Dismiss
+//
+// often with the update row (`✔ Update installed · Restart to update`) between its keys and the box.
 
 import { lineText, type StyledLine } from "../../blocks";
 import { readCuesFor } from "../../surface/cues";

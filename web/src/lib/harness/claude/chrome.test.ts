@@ -1043,6 +1043,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2302-wizard-review-long-q--w140", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2302-working-agents-panel--w119", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "v2302-working-list-echo--w119", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2303-titled-edge-draft--w160", statusRows: 3, draft: "ok merge the five, running the crew update now", stripped: 11 },
+    { fixture: "v2303-titled-edge-idle--w160", statusRows: 3, draft: null, stripped: 11 },
+    { fixture: "v2303-titled-edge-survey--w160", statusRows: 3, draft: null, stripped: 11 },
+    { fixture: "v2303-titled-edge-working--w160", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-final", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-pointer-next", statusRows: 0, draft: null, stripped: 0 },
@@ -1080,5 +1084,26 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
       expect(extractInputDraft(lines)).toContain(draft);
     }
     expect(lines.length - stripChrome(lines).length).toBe(stripped);
+  });
+});
+
+// Claude Code 2.1.303 writes a named session's name into the box's top edge (`──── 1.23.0 ─`).
+describe("a session name in the box's top edge (2.1.303, 160 columns)", () => {
+  it("strips the titled box with its statusline and agents panel, and never keeps the name as transcript", () => {
+    for (const state of ["working", "idle", "draft", "survey"]) {
+      const lines = fixtureLines(`claude--v2303-titled-edge-${state}--w160.txt`);
+      const kept = joined(stripChrome(lines));
+      expect(hasInputBox(lines), state).toBe(true);
+      expect(kept, state).not.toContain("1.23.0");
+      expect(kept, state).not.toContain("bypass permissions");
+      expect(kept, state).toContain("Update installed");
+      expect(statusText(lines), state).toHaveLength(3);
+      expect(extractAgentsFooter(lines), state).toHaveLength(4);
+    }
+  });
+
+  it("reads the draft under the titled edge, without the name", () => {
+    expect(extractInputDraft(fixtureLines("claude--v2303-titled-edge-draft--w160.txt"))).toBe("ok merge the five, running the crew update now");
+    expect(extractInputDraft(fixtureLines("claude--v2303-titled-edge-idle--w160.txt"))).toBeNull();
   });
 });

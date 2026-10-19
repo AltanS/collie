@@ -231,6 +231,10 @@ describe("the pipeline lifts the kind the screen shows", () => {
     // the model's own. The ban is on a GENERIC MENU synthesising one the screen never named.
     for (const entry of ENTRIES) {
       if (entry.expected.blockKind !== "menu") continue;
+      // A notice over a live box (ADR 0109, the rating survey since 2026-10-19) sends the digits its own
+      // key row prints, which is what .adr/0009 allows: no generic menu synthesised them.
+      const block = lifted(load(entry.fixture));
+      if (block?.kind === "menu" && block.menu.liveBox !== undefined) continue;
       for (const key of entry.expected.keys ?? []) {
         expect(/\d/.test(key), `${entry.fixture}: ${key}`).toBe(false);
       }

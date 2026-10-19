@@ -56,10 +56,13 @@ describe("quoted dialogs in a transcript", () => {
 });
 
 describe("the bottom cluster", () => {
-  it("reads a rating survey over a live box as a single-key prompt", () => {
+  // Decided 2026-10-19 (ADR 0109): the rating survey over a live box is a notice, so its key row is no
+  // single-key prompt. Until then this case read it as one, and the screen as unreadable.
+  it("passes over the rating survey over a live box: the profile names it as a notice", () => {
     const read = readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", IDLE);
-    expect(read.cues?.cues.map((cue) => cue.kind)).toContain("single-key");
-    expect(read.surface.modal).toBe("unreadable");
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("single-key");
+    expect(read.cues?.strength).toBe("none");
+    expect(read.surface.modal).toBe("none");
   });
 
   it("passes over the profile's notice above a live box: its key row is no single-key prompt", () => {

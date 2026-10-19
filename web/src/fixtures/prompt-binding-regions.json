@@ -275,6 +275,21 @@
     "region": "✦ You should know · One of the notes says the payroll export\n  runs on an unencrypted laptop that goes home every night and\n  holds every employee's bank account number.\n  1: Learn more   2: Knew this already   0: Dismiss\n  \n─────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--working.txt",
+    "detector": "menu",
+    "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── collie upgrades ──\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2303-titled-edge-survey--w160.txt",
+    "detector": "menu",
+    "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n                                                                                                                        ✔ Update installed · Restart to update\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1.23.0 ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude-lab--survey-rating-above-box--w82.txt",
+    "detector": "menu",
+    "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n──────────────────────────────────────────────────────────────────────────────────\n❯ git add docs/lab-notes.md and commit\n──────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude--wizard-multiselect-checked.txt",
     "detector": "multi-select",
     "region": "←  ☒ Toppings  ☐ Crust  ✔ Submit  →\n\nWhich toppings would you like on your pizza?\n\n❯ 1. [✔] Pepperoni\n  Classic cured pork-and-beef slices that crisp at the edges.\n  2. [ ] Mushrooms\n  Earthy sliced creminis that soften into the cheese.\n  3. [✔] Bell peppers\n  Sweet, slightly crunchy strips of red and green pepper.\n  4. [ ] Extra cheese\n  A double layer of mozzarella for a richer, stretchier bite.\n  5. [ ] Type something\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this"

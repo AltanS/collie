@@ -26,8 +26,9 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 // in-flight-send captures — a `❯ …` input box (with or without a slash-autocomplete menu above it) is
 // composer chrome, not a dialog, so it must stay raw. The wrapped-draft capture is the same: a
 // (multi-line) input box, stripped as chrome, never lifted.
+// `claude--working.txt` left this set on 2026-10-19: the rating survey over its box is a notice now
+// (ADR 0109), and lifts its card.
 const NEUTRAL = new Set([
-  "claude--working.txt",
   // The default footer's own hints ("esc to interrupt", "↓ to manage") sit under a live box.
   "claude--working-esc-to-interrupt.txt",
   "claude--idle-background-shell.txt",
@@ -128,6 +129,11 @@ const NEUTRAL = new Set([
   // panel. An ordinary box, no dialog: the list is the agent's text, not a picker.
   "claude--v2302-working-agents-panel--w119.txt",
   "claude--v2302-working-list-echo--w119.txt",
+  // Claude Code 2.1.303 with a session name in the box's top edge (lane 8788, 2026-10-19): a running
+  // turn, the idle box and a draft. An ordinary box. (The survey file of the set lifts the notice card.)
+  "claude--v2303-titled-edge-draft--w160.txt",
+  "claude--v2303-titled-edge-idle--w160.txt",
+  "claude--v2303-titled-edge-working--w160.txt",
   // Claude Code 2.1.302's slash list drawn OVER the box on a tall pane (lane 8788, 2026-10-17): the box
   // holds `/model` and its statusline stands under it. The autocomplete reader looks under the box only,
   // so nothing lifts; the Surface reads the list as the command's own typeahead, not a dialog.

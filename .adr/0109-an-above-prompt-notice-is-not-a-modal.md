@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-17
-- **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixture `claude--v2302-heads-up-above-box--w142.txt` · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
+- **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixtures `claude--v2302-heads-up-above-box--w142.txt` and `claude--v2303-titled-edge-survey--w160.txt` · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
 
 ## Context
 
@@ -16,7 +16,7 @@ The single-key cue read the key row as a single-key prompt, so the screen folded
 
 **An above-prompt notice whose keys act only on a one-character box leaves the box free for the Send Protocol.** A profile names the notice by its head row (`idle.notices`). One pure reader, `readAboveNotice`, reads the exact shape: the head, up to three continuation rows indented by two spaces, one key row of `<digit>: <label>` items only, then only blank rows down to the box's top edge.
 
-Anything else returns null, and the modal cues read the rows as before, so a block that is nearly a notice keeps its strong cue. The rating survey over the box (`● How is Claude doing this session?`) is not this shape and stays `unreadable`.
+Anything else returns null, and the modal cues read the rows as before, so a block that is nearly a notice keeps its strong cue. The rating survey over the box (`● How is Claude doing this session? (optional)`) is the second shape the profile names, since 2026-10-19 (see the addendum).
 
 **A one-digit message still goes manual.** A digit answers the notice only when the box is otherwise empty, so the rule runs only where a send would go ahead on an empty box. When S0 shows a notice, the box is empty, and a send's whole text, trimmed, is one of the notice's printed keys, `gateSend` takes the manual Send: the first tap is refused `unconfirmed`, and the commit goes on the same rows hash. The answer carries `cause: "notice_key"`, which the phone shows as its own translated sentence ("That number would answer the notice above the box…"); an older phone shows its generic manual-Send note.
 
@@ -35,3 +35,9 @@ Typed into that box, the digit answers the notice instead of reaching the agent,
 ## Consequences
 
 A screen with the notice reads free, and sends that are not one of its digits go on one tap. The notice's own answer is one tap on the card. A head the plugin draws in another word, or a key row with any other item, falls back to the strong cue and the manual Send, which fails closed.
+
+## Addendum — 2026-10-19: the rating survey is a second notice shape
+
+Status is unchanged. On 2026-10-19 every send to a Claude Code 2.1.303 pane on lane 8788 was refused `unconfirmed`, with the screen read as `modal: "unreadable"`, until the session rating survey went away. The lane's refusal record (`~/.local/state/collie-next/surface/examples/01792385882274-refused-2026-10-19-09d71f6524a96b-unconfirmed.json`) shows the screen: `● How is Claude doing this session? (optional)`, its key row `1: Bad    2: Fine   3: Good   0: Dismiss`, and right under it, with no blank row, the right-aligned `✔ Update installed · Restart to update` row on the box's top edge. The single-key cue read the key row, so every send took the two-tap manual Send.
+
+The owner ruled that the survey must not block sends, and that the phone shows it as a card. So the survey is a notice like Heads up. `idle.notices` names its head row by the whole text, the `●` glyph and the `(optional)` tail included, so an agent's own `●` row that only mentions the survey is no head. `idle.noticeGaps` names the update row, so the reader skips it like a blank row, with or without a blank row next to it. All the rules above apply unchanged: the reader takes only the exact shape over the box, a sentence goes on one tap, a send of exactly `0`, `1`, `2` or `3` takes the manual Send with `cause: "notice_key"`, and the phone shows a card with the four printed keys (Bad, Fine, Good, Dismiss).

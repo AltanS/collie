@@ -946,6 +946,26 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2303-titled-edge-working--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "running"
+  },
+  "claude--v2303-titled-edge-idle--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "idle"
+  },
+  "claude--v2303-titled-edge-draft--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "draft"
+  },
+  "claude--v2303-titled-edge-survey--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.303",
+   "state": "idle"
+  },
   "claude--v2302-turn-ended-yn--w119.txt": {
    "harness": "claude",
    "version": "2.1.302",
@@ -1639,7 +1659,7 @@
   "claude-lab--survey-rating-above-box--w82.txt": {
    "harness": "claude",
    "version": "2.1.291",
-   "state": "dialog"
+   "state": "idle"
   },
   "claude-lab--tasks-panel--w40.txt": {
    "harness": "claude",
