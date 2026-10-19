@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { registeredAgents } from "@/lib/harness/registry";
 import {
   CardWaitingCtx,
   Disclosure,
@@ -142,7 +143,18 @@ describe("shortPath", () => {
 describe("harnessLabel", () => {
   it("gives a harness its own name, and hands back anything it has not been taught", () => {
     expect(harnessLabel("claude")).toBe("Claude Code");
-    expect(harnessLabel("grok")).toBe("grok");
+    expect(harnessLabel("not-a-harness")).toBe("not-a-harness");
+  });
+
+  // Settings → Harness configurations names its rows with this table. The lower-case brands are written
+  // that way by their products and in this repo; every other registry key needs a name of its own.
+  it("names every registered adapter, keeping only the lower-case brands as they are", () => {
+    const lowerCaseBrands = new Set(["opencode", "pi", "omp"]);
+    for (const key of registeredAgents()) {
+      if (lowerCaseBrands.has(key)) expect(harnessLabel(key)).toBe(key);
+      else expect(harnessLabel(key), key).not.toBe(key);
+    }
+    expect(harnessLabel("hermes")).toBe("Hermes Agent");
   });
 });
 
