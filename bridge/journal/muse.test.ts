@@ -49,6 +49,14 @@ function textBlock(text: string): JsonValue {
   return { kind: "text", text };
 }
 
+/** The on-disk slash-command row: a bare `/name` under `record.command`, no args or output field. */
+function commandInvoked(id: string, command: JsonValue): string {
+  return row(id, "command.invoked", {
+    kind: "command_invoked",
+    record: { schema_version: 1, session_id: UUID_A, command },
+  });
+}
+
 describe("isMuseSessionId", () => {
   test.each([
     [UUID_A, true],
@@ -192,6 +200,118 @@ describe("parseMuseTranscript turns", () => {
       },
     });
     expect(parseMuseTranscript(line)).toEqual([]);
+  });
+});
+
+describe("parseMuseTranscript slash commands", () => {
+  test("a command.invoked row renders once, as the operator's own line", () => {
+    const entries = parseMuseTranscript(commandInvoked("row-1", "/model"));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      uuid: "row-1",
+      ts: "2026-10-02T01:25:54.495Z",
+      role: "user",
+      parts: [{ kind: "text", text: "/model" }],
+    });
+  });
+
+  test("a command between turns does not double with the accepted prompt beside it", () => {
+    const entries = parseMuseTranscript(
+      [
+        accepted("row-1", [textBlock("do it")]),
+        commandInvoked("row-2", "/compact"),
+        runEvent("row-3", { kind: "assistant_message_committed", message_id: "m1", text: "done" }),
+      ].join("\n"),
+    );
+    expect(entries.map((e) => e.uuid)).toEqual(["row-1", "row-2", "row-3"]);
+    expect(entries[1]).toMatchObject({ role: "user", parts: [{ kind: "text", text: "/compact" }] });
+  });
+
+  test("malformed command rows render nothing", () => {
+    const entries = parseMuseTranscript(
+      [
+        commandInvoked("row-1", ""),
+        commandInvoked("row-2", "   "),
+        commandInvoked("row-3", "model"),
+        commandInvoked("row-4", 42),
+        row("row-5", "command.invoked", { kind: "command_invoked" }),
+        row("row-6", "command.invoked", {}),
+      ].join("\n"),
+    );
+    expect(entries).toEqual([]);
+  });
+
+  test("command_intake plumbing is not a slash command and renders nothing", () => {
+    const entries = parseMuseTranscript(
+      [
+        row("row-1", "runtime.command_intake.received", {
+          kind: "command_intake",
+          record: { kind: "received", command_id: "c1", command: { kind: "session_start" } },
+        }),
+        row("row-2", "runtime.command_intake.settled", {
+          kind: "command_intake",
+          record: { kind: "settled", command_id: "c1", outcome: { kind: "accepted" } },
+        }),
+      ].join("\n"),
+    );
+    expect(entries).toEqual([]);
+  });
+});
+
+describe("parseMuseTranscript plain-text results carry no exit code (data-absent)", () => {
+  // On disk, a numeric exit code exists ONLY inside the JSON-envelope result text; the batch item
+  // itself is {tool_call_index, tool_call_id, text} and nothing else. A plain-text result therefore
+  // renders verbatim with no code and no error flag — pinned here so a future log format that DOES
+  // record one shows up as a failing test instead of a silently missed field.
+  test("a plain-text bash result renders verbatim, with no exitCode and no isError", () => {
+    const entries = parseMuseTranscript(
+      [
+        runEvent("row-1", {
+          kind: "assistant_tool_calls_committed",
+          message_id: "m1",
+          tool_calls: [
+            { id: "fc_0", call_id: "call_1", name: "bash", args: JSON.stringify({ command: "ls" }) },
+          ],
+        }),
+        runEvent("row-2", {
+          kind: "tool_result_batch_committed",
+          message_id: "m1",
+          results: [{ tool_call_index: 0, tool_call_id: "call_1", text: "a\nb" }],
+        }),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "a\nb" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    expect(part != null && part.kind === "tool" && part.call?.kind === "execute" ? part.call.exitCode : "n/a").toBeUndefined();
+  });
+
+  test("an envelope without exit_code (the cancelled shape) unwraps its output, still no code", () => {
+    const entries = parseMuseTranscript(
+      [
+        runEvent("row-1", {
+          kind: "assistant_tool_calls_committed",
+          message_id: "m1",
+          tool_calls: [
+            { id: "fc_0", call_id: "call_1", name: "bash_input", args: JSON.stringify({ chars: "x" }) },
+          ],
+        }),
+        runEvent("row-2", {
+          kind: "tool_result_batch_committed",
+          message_id: "m1",
+          results: [
+            {
+              tool_call_index: 0,
+              tool_call_id: "call_1",
+              text: JSON.stringify({ terminal_status: "cancelled", terminal_reason: "stopped", output: "partial" }),
+            },
+          ],
+        }),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "partial" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
   });
 });
 
