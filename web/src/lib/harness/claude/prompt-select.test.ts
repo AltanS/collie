@@ -399,6 +399,51 @@ describe("detectPromptSelectRegion — the dialog's subject", () => {
     expect(model.subject![0]!.segments.find((s) => s.text.trim() !== "")!.bold).toBe(true);
   });
 
+  // The 2026-10-19 incident on 2.1.303: a background agent's Bash permission with the dangerous-rm
+  // warning and a 26-row script as its command. The dialog's `─` edge sat 33 rows above the question,
+  // past REGION_SCAN_WINDOW, so the card had no subject and the ask had no region: every tap was
+  // refused `no_plan`. The rows inside the `╌` fence around the command are the dialog's own.
+  it.each([
+    ["claude--v2303-permission-bash-bg-agent-rm--w160.txt"],
+    ["claude--v2303-permission-bash-bg-agent-rm--w80.txt"],
+  ])("2.1.303 background agent Bash permission with a tall command and the dangerous-rm warning: %s", (name) => {
+    const lines = fixtureLines(name);
+    const region = detectPromptSelectRegion(lines);
+    expect(region).not.toBeNull();
+    const { model, startLine } = region!;
+    expect(model.family).toBe("permission");
+    expect(model.question).toBe("Do you want to proceed?");
+    expect(model.options.map((o) => o.label)).toEqual(["Yes", "No"]);
+    expect(model.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
+    expect(lineText(lines[startLine]!)).toMatch(/^─+$/);
+    expect(model.askRegion).toBeDefined();
+    expect(model.askRegion).not.toBeNull();
+    expect(model.askRegion!.split("\n")[0]).toMatch(/^─+$/);
+
+    const subject = model.subject!.map((l) => l.segments.map((s) => s.text).join(""));
+    expect(subject[0]).toBe("Bash command · from the general-purpose agent");
+    expect(subject[1]).toBe("Install revised set, measure hits and level gaps");
+    expect(subject[2]!.startsWith("S=/var/home/devel/projects/sample-workspace/experiments/showreel;")).toBe(true);
+    expect(subject.join(" ")).toContain("rm -f $D/*.wav");
+    expect(subject.join(" ")).toContain("python3 /tmp/earshot-work/scripts/level.py");
+    expect(subject.find((t) => t.startsWith("Dangerous rm operation on possibly-empty variable path: $D/*.wav in"))).toBeDefined();
+    expect(subject.some((t) => /╌/.test(t))).toBe(false);
+    expect(subject.some((t) => /^\s*│/.test(t))).toBe(false);
+  });
+
+  it("a `╌` fence with no closing rule above it does not carry the edge scan past the window", () => {
+    // The w160 screen with the fence's upper `╌` rule removed: the lower one is the only dashed row,
+    // so nothing is fenced and the 33-row climb to the edge is past the window again, as before the fix.
+    const text = fixtureText("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+    const rows = text.split("\r\n");
+    const fence = rows.findIndex((row) => row.includes("╌".repeat(20)));
+    const unfenced = [...rows.slice(0, fence), ...rows.slice(fence + 1)].join("\r\n");
+    const region = detectPromptSelectRegion(splitLines(parseAnsi(unfenced)))!;
+    expect(region.model.options.map((o) => o.label)).toEqual(["Yes", "No"]);
+    expect(region.model.subject).toBeUndefined();
+    expect(region.model.askRegion).toBeNull();
+  });
+
   it("the subject plays no part in identity: signature and coreSignature are what they were", () => {
     const lines = fixtureLines("claude--v2291-permission-bash-subagent.txt");
     const { model } = detectPromptSelectRegion(lines)!;
@@ -535,6 +580,8 @@ describe("detectPromptSelectRegion — the dialog's subject", () => {
       "claude--v2283-permission-amend-no-off-row.txt",
       "claude--v2283-permission-amend-typed.txt",
       "claude--v2291-permission-bash-subagent.txt",
+      "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
+      "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
       "claude--trust-prompt.txt",
       "claude--trust-prompt-unnumbered.txt",
       "claude--v2283-trust--w50.txt",

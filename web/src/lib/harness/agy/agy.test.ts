@@ -46,7 +46,12 @@ const NEUTRAL = new Set([
 // subject, 2026-10-06). It is a named exception, not a silent one: the test below fails the day agy
 // stops claiming it, and then the entry is deleted. No agy pane paints this screen, and the agy
 // adapter only reads panes Herdr reports as agy.
-const KNOWN_FOREIGN_CLAIMS = new Set(["claude--v2291-permission-bash-subagent.txt"]);
+const KNOWN_FOREIGN_CLAIMS = new Set([
+  "claude--v2291-permission-bash-subagent.txt",
+  // The same shape on 2.1.303: a background agent's Bash permission with a tall command (2026-10-19).
+  "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
+  "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
+]);
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
 const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.has(f));

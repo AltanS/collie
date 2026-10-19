@@ -1144,6 +1144,35 @@ which fails the day agy stops claiming it.
 |---|---|---|
 | `claude--v2291-permission-bash-subagent.txt` | A subagent's Bash permission, pointer on `1. Yes`. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) from the `─` edge, with the header, the description, the three command rows and the warning as its subject, no `╌` row and no `│` gutter | `blocked` |
 
+## Claude Code 2.1.303 background agent permission with a tall command (reconstructed 2026-10-19)
+
+**Not a capture.** The incident of 2026-10-19 on the dev lane (instance `next`, 8788, a 160 x 45
+Herdr pane): a background general-purpose agent ran a Bash command that tripped Claude Code's
+dangerous-rm prompt. The phone showed `PERMISSION REQUIRED / Do you want to proceed? / 1 Yes / 2 No`
+with no subject, and both taps were refused `no_plan` with no key sent. The dialog was gone from
+the pane before anyone read it, so the screen is rebuilt: the command and its description are the
+agent transcript's own, byte for byte; the layout (the header, the `╌` fence around the command, the
+`│` gutter, the warning row, the bare `1. Yes` / `2. No` rows and the background-agents footer) and
+its ANSI are those of the 2.1.291 capture above, checked against the phone's screenshot of the live
+screen. The command is word-wrapped at the pane width minus four; at 160 columns the one long `sed`
+row breaks after `python3`, as on the screenshot. The transcript rows above the dialog are a neutral
+stand-in. One sanitization pass, length-preserving: `/var/home/<user>/projects/collie-workspace` to
+`/var/home/devel/projects/sample-workspace`.
+
+The command is 26 rows at 160 columns, so the dialog's `─` edge sits 33 rows above its question,
+past the 30-row bound (REGION_SCAN_WINDOW) the subject scan took. The rows inside the `╌` fence now
+count as one row against it. The 80-column file is the same screen re-wrapped; the dialog is then 47
+rows tall and fits only a pane of 50 rows or more, so on a real 80 x 45 pane its edge scrolls off and
+the ask stays refused, which is correct.
+
+Both name Claude nowhere, so agy's grammar claims them, the same named exception as the 2.1.291
+file (`KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`).
+
+| Fixture | State / what's in it | Grammar state |
+|---|---|---|
+| `claude--v2303-permission-bash-bg-agent-rm--w160.txt` | A background agent's Bash permission, pointer on `1. Yes`, a 26-row command and the warning `Dangerous rm operation on possibly-empty variable path: $D/*.wav in ...`. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) from the `─` edge, with the header, the description, the command and the warning as its subject; the ask has a region, so a tap sends its digit | `blocked` |
+| `claude--v2303-permission-bash-bg-agent-rm--w80.txt` | The same screen at 80 columns: a 33-row command and a three-row warning. Lifts the same way | `blocked` |
+
 ## Claude Code 2.1.296 closing rule (captured 2026-10-12, herdr 0.9.3, throwaway Herdr session)
 
 A session renamed with `/rename` (or started with `--name`) makes Claude Code 2.1.296 draw ONE more

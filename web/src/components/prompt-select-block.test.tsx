@@ -145,6 +145,19 @@ describe("PromptSelectBlock — the subject and the question are on the card", (
     }
   });
 
+  // 2026-10-19 on 2.1.303: the card read "PERMISSION REQUIRED / Do you want to proceed? / 1 Yes / 2 No",
+  // because a 26-row command put the dialog's edge out of the reader's reach.
+  it("2.1.303 background agent Bash permission with a tall command: the command and the dangerous-rm warning are on the card", () => {
+    const model = fixtureModel("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+    const { container } = render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    expect(container.querySelector('[data-slot="prompt-subject-title"]')!.textContent).toBe("Bash command · from the general-purpose agent");
+    const subject = container.querySelector('[data-slot="prompt-subject"] pre')!;
+    expect(subject.textContent).toContain("rm -f $D/*.wav $D/*.params.json");
+    expect(subject.textContent).toContain("Dangerous rm operation on possibly-empty variable path: $D/*.wav");
+    expect(subject.textContent).not.toMatch(/[╌│]/);
+    expect(within(container).getAllByRole("button").map((b) => b.textContent)).toEqual(["1Yes", "2No"]);
+  });
+
   // jsdom lays nothing out, so the measurements the fade reads (`scrollHeight`, `clientHeight`,
   // `scrollTop` on the scrolling <pre>) are stubbed, and this pins the structure only: whether the
   // fade element exists for each measured state. How it looks is for a real browser.

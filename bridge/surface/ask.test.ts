@@ -34,6 +34,8 @@ const EDIT = fx("claude--permission-edit.txt");
 const IDLE = fx("claude--v2301-idle.txt");
 const UNREAD = fx("claude-lab--tasks-panel--w40.txt");
 const W82 = fx("claude-lab--permission-bash-v2291--w82.txt");
+const BG_RM = fx("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+const BG_RM_W80 = fx("claude--v2303-permission-bash-bg-agent-rm--w80.txt");
 
 const HARNESS = "claude";
 const PANE = "%1";
@@ -266,6 +268,40 @@ describe("the ask binding covers the dialog block only", () => {
     expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "no_plan", keys: [] });
     expect(reply.detail).toBe(NO_EDGE_DETAIL);
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+// The 2026-10-19 incident (2.1.303): a background agent's Bash permission with the dangerous-rm
+// warning and a tall command. The dialog's edge sat past the old scan window, the lift had no region,
+// and both taps were refused `no_plan` with no key sent.
+describe("a background agent's Bash permission with a tall command", () => {
+  test.each([
+    ["w160", BG_RM],
+    ["w80", BG_RM_W80],
+  ])("%s: the lift has a region from the edge, and each option has a digit plan", (_width, screen) => {
+    const dialog = liftOf(screen);
+    expect(dialog.kind).toBe("permission");
+    expect(dialog.labels).toEqual(["Yes", "No"]);
+    expect(dialog.region).not.toBeNull();
+    expect(dialog.region!.split("\n")[0]).toMatch(/^─+$/u);
+    expect(dialog.region).toContain("Dangerous rm operation on possibly-empty variable path");
+    expect(planFor(dialog, 0)).toEqual({ walk: [], commit: ["1"], label: "Yes" });
+    expect(planFor(dialog, 1)).toEqual({ walk: [], commit: ["2"], label: "No" });
+  });
+
+  test.each([
+    ["Yes", "1"],
+    ["No", "2"],
+  ])("a tap on %s sends its digit through the gate", async (label, key) => {
+    const { pane, poll, answer } = rig(BG_RM, HARNESS, "2.1.303");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === key) p.screen = IDLE;
+    };
+    const ask = poll()!;
+    expect(ask.kind).toBe("permission");
+    const reply = await answer(ask, idOf(ask, label));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: [key] });
+    expect(pane.keysSeen).toEqual([key]);
   });
 });
 

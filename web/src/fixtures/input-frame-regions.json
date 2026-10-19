@@ -1390,6 +1390,14 @@
   }
  },
  {
+  "fixture": "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2303-titled-edge-draft--w160.txt",
   "frame": {
    "top": 10,
