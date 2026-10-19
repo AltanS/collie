@@ -137,3 +137,19 @@ export function answersThisBuild(reported: string, version: string, commit: stri
   const build = reported.slice(plus + 1);
   return build.length >= 4 && commit.toLowerCase().startsWith(build.toLowerCase());
 }
+
+/**
+ * The version a DEVELOPMENT build is built on, or null when `reported` is not one.
+ *
+ * `web/vite.config.ts` stamps a build off any commit that is not its version's tag as
+ * `<version>-dev`, and the `+<sha>` follows: `1.22.6-dev+c7ac1e91` → `1.22.6`. That build is the
+ * tag's code plus the commits after it, so the version it names is a floor, not a release. Split at
+ * the `+` exactly as {@link answersThisBuild} does, so the two never read one stamp differently.
+ */
+export function developmentBase(reported: string): string | null {
+  const plus = reported.indexOf("+");
+  const core = plus < 0 ? reported : reported.slice(0, plus);
+  return core.endsWith(DEV_MARKER) && core.length > DEV_MARKER.length ? core.slice(0, -DEV_MARKER.length) : null;
+}
+
+const DEV_MARKER = "-dev";
