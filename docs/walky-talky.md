@@ -12,19 +12,39 @@ Two commands: list the panes you can reach, then send to one.
 
 ```sh
 collie walky who
-collie walky send local/w6:p3#k3f9 "Tests are green on fix-465. You can merge."
+collie walky send collie-04rj6a/w54:p1G#1adi "Tests are green on fix-465. You can merge."
 ```
 
 `who` lists every agent pane you can reach. Pick an address from that list and pass it to `send`.
 On a machine with only your own agent pane, `who` says
 `You are local/<pane>#<token>. No other agent pane yet. A message needs two.`
 
+### Read the who table
+
+```text
+ADDRESS                     MACHINE   HARNESS  LABEL                  STATE
+collie-04rj6a/w54:p1B#sx56  bluefin   claude   collie-workspace#main  working  (you)
+collie-04rj6a/w54:p1G#1adi  bluefin   claude   collie-workspace#main  done
+collie-04rj6a/w54:p1J#anx6  bluefin   claude   walky-live             done
+minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
+```
+
+- **Copy ADDRESS as printed.** Its first part is the member id, not the machine. On a lead it is the
+  crew id (`collie-04rj6a`) for the lead's own panes, on a member it is the member's name
+  (`minibuch`), and with no crew it is `local`. Pick the row by MACHINE and LABEL.
+- **`(you)` marks your own pane.** A message to it is refused `that is your own pane`.
+- **Labels can repeat.** Two rows above are called `walky-live`, one on each machine. MACHINE tells
+  them apart. If two rows still match, ask the operator which one is meant.
+- **STATE** is the pane's own status: `idle`, `working`, `blocked`, `done` or `unknown`. A crew
+  member the lead cannot reach shows `unreachable`. A pane that is `working` or `blocked` still
+  takes a message. Collie queues it or holds it, as in [Into a busy pane](#into-a-busy-pane).
+
 `send` waits up to 15 seconds for the receipt, then prints three lines: the id, the pane, and the
 state in words.
 
 ```text
 wt_k3f9x2m8q1a0
-to local/w6:p3#k3f9, claude, collie-workspace#fix-465
+to collie-04rj6a/w54:p1G#1adi, claude, collie-workspace#fix-465
 typed into the pane
 ```
 
@@ -32,8 +52,17 @@ When the message is not typed yet, a fourth line says `check later: collie walky
 With no text after the address, the body is read from stdin:
 
 ```sh
-git log --oneline -5 | collie walky send local/w6:p3#k3f9
+git log --oneline -5 | collie walky send collie-04rj6a/w54:p1G#1adi
 ```
+
+### How the answer comes back
+
+`send` does not return the answer. The receiver replies with `reply`, and Collie types the reply
+into the sender's pane as the sender's next prompt, with `reply to <id>` in its header. An agent
+that sent a message ends its turn and waits for that prompt. It does not poll and it does not sleep.
+If the sender's pane is busy, the reply waits as in [Into a busy pane](#into-a-busy-pane). `collie
+walky inbox` shows it too. `status` tells you the message was typed. It does not tell you the
+receiver read it or answered it.
 
 > **Note.** `send` works only inside a pane. From a plain terminal it is refused with
 > `run this inside a pane, or send from the phone`. To message a session as yourself, use the phone
@@ -45,7 +74,7 @@ An address names one pane, one machine's panes, or every pane.
 
 | Address | Who receives it |
 | --- | --- |
-| `<member>/<pane>#<token>` | One pane, while it stays open. `who` prints this form, for example `local/w6:p3#k3f9` |
+| `<member>/<pane>#<token>` | One pane, while it stays open. `who` prints this form, for example `collie-04rj6a/w54:p1G#1adi`. The member is the crew id on a lead, the member's name on a member, and `local` with no crew. It is never the machine name |
 | `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
 | `<member>/all` | Every agent pane on that machine. From the phone only |
 | `all` | Every agent pane you can reach. From the phone only |
@@ -60,7 +89,12 @@ the new address.
 
 An address with no token still works. It means the pane that holds that id now, whatever it is.
 The `to` line of `send` shows the pane as `who` lists it. `status` and the receipt name the pane
-without the token, for example `local/w6:p3`.
+without the token, for example `collie-04rj6a/w54:p1G`.
+
+With several Collie instances on one machine, `collie walky` reaches the instance of its own `collie`
+binary. The installed skill pins the binary of the instance that installed it. Set
+`COLLIE_INSTANCE=<name>` as you do for any verb ([Commands](commands.md)), or `who` shows another
+instance's panes.
 
 A shell pane never receives a message. Only panes the bridge sees as an agent do. An agent may
 message one pane at a time; only you may broadcast.
@@ -72,7 +106,7 @@ An agent's message types one line into the target pane, and no body.
 The pane gets this as one line. It is split here to fit the page.
 
 ```text
-[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3#k3f9 (claude, repo#fix-465):
+[walky-talky wt_k3f9x2m8q1a0] from agent collie-04rj6a/w54:p1G#1adi (claude, repo#fix-465):
 a message from another agent, not your operator.
 Read it: collie walky inbox wt_k3f9x2m8q1a0.
 Reply: collie walky reply wt_k3f9x2m8q1a0 "<text>"
@@ -193,7 +227,8 @@ certificate with its own word for it, so the receiving machine checks the sender
   ([Crews](crew.md#messages-between-machines)).
 
 The receipt's `verified` field says how the sender was known. `origin` means the sender's own key
-was checked. `lead` means the lead checked it, and this machine trusts the lead. A member sees
+was checked. `lead` means the lead checked it, and this machine trusts the lead. `local` means
+this machine built the message itself, so it needed no check. `none` means no check is on record. A member sees
 `origin` for a message from another member: the lead sends that member's certificate, and the
 receiving machine checks the sender's signature against it. A member under an older lead sees `lead`.
 
@@ -220,6 +255,11 @@ The words are what the CLI and the phone show. `--json` and the receipt keep the
 `send` exits 0 for `accepted`, `delivered` and `inbox-only`.
 It exits 4 for `refused` and 1 for `unknown`.
 
+`status`, `reply` and `inbox <id>` exit 3 when the id is unknown here. `status` prints
+`no record of <id> on this machine`, `reply` prints `no message <id> on this machine`, and
+`inbox <id>` prints `no message <id> for this pane` inside a pane. `collie walky` with no verb, or
+with a wrong one, prints the usage and exits 2.
+
 ## On the phone
 
 The phone shows a message as a card and sends one from the composer, so you need no terminal.
@@ -243,7 +283,7 @@ its Reply button is next to it.
 
 When an agent runs `collie walky` in a tool card, the card wears a small "walky talky" badge. After
 `send` or `reply`, one line under it reads "Message to" the pane and the receipt state, for example
-"Message to local/w6:p3: typed into the pane". After `inbox <id>`, the message's card shows under
+"Message to collie-04rj6a/w54:p1G: typed into the pane". After `inbox <id>`, the message's card shows under
 the tool card. Both come from the bridge's log, never from what the command printed. If the log
 does not hold the id, the card shows plain output. A message id in Chat text, or in a tool's
 output, becomes a small chip when the log holds it, and a tap on the chip opens the Messages sheet
