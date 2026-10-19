@@ -740,6 +740,20 @@ A tap on a row fills the Folder field and starts nothing, so you can still chang
 beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
 star moves it back to the top of Recent.
 
+**Browse** sits under the two lists. A tap on it lists the sub-folders of the folder in the field, or
+of home when the field is blank. Tap a folder to go into it, and the field follows. **Up**, or a part
+of the path above the list, goes back. A folder that is a Git repository carries a `git` badge.
+**Use this folder** fills the field, like a tap on a Recent row.
+
+When the field holds a path that does not exist, such as `~/src/plektra-`, Browse opens at the
+nearest folder that does (`~/src`) and lists only the names that start with the rest (`plektra-`).
+So typing in the field narrows the list. A path outside your home shows "Nothing to browse here".
+
+Browse reads folder names only, under your home folder, with the limits of the Files view. It hides
+dot-folders unless you type the dot, never lists `.git` or Collie's own state and config folders,
+does not follow a link out of home, and shows at most 200 folders. It creates nothing, and it needs
+a paired device, as Files does.
+
 The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
 its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
 device you use sees the same list, and the file appears only after the first start in a folder or
@@ -748,7 +762,8 @@ folder the branch's own folder goes in.
 
 In a [crew](crew.md), each machine keeps the folders that exist on it, and the page shows the list
 of the machine you picked. A machine that runs an older Collie has no list, and the page then shows
-none for it.
+none for it. Browse lists the disk of the machine you picked too, and an older machine says it needs
+an update.
 
 ## Secret masking
 

@@ -47,8 +47,9 @@ a monitor or a load balancer asks, and `/api/pair`, which a device needs before 
 input box read as free, how often it could not be read, and how often a person sent by hand past a
 screen Collie could not read). The counts name no pane, no text and no person.
 
-The device header gates writes and one read, the [Files view](changes.md#files), which can show
-every file under a workspace's folder
+The device header gates writes and two reads: the [Files view](changes.md#files), which can show
+every file under a workspace's folder, and the New page's
+[Browse](configure.md#favourite-and-recent-folders), which lists folder names under home
 ([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
 
 ```bash
@@ -185,6 +186,10 @@ Key security boundaries and risks:
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
   ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
+- **The New page's Browse lists folder names under your home.** Names only, with the Files view's
+  limits: no dot-folders unless typed, no `.git`, no Collie state or config folder, no link out of
+  home, at most 200 rows. It needs an authorised device too
+  ([Favourite and recent folders](configure.md#favourite-and-recent-folders)).
 - **Every paired device can read files under the workspace's folder.** That includes `.env`
   files. Pair only the devices you trust with the shell itself.
 - **Credential files under a workspace's folder are readable.** A workspace opened in `~/.claude`,
