@@ -191,17 +191,17 @@ describe("stripEntries — a hidden machine's stand-in", () => {
     entries.map((e) => (e.kind === "machine" ? `[${e.host}:${e.panes.length}]` : e.group.label));
 
   it("is one chip per workspace when nothing is hidden", () => {
-    expect(names(stripEntries(crewGroups, new Set(), undefined))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
+    expect(names(stripEntries(crewGroups, new Set(), new Set()))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
   });
 
   it("folds a hidden machine's workspaces into one stand-in at its place, holding all its panes", () => {
-    const entries = stripEntries(crewGroups, new Set(["workshop"]), undefined);
+    const entries = stripEntries(crewGroups, new Set(["workshop"]), new Set());
     expect(names(entries)).toEqual(["ws1", "[workshop:2]", "ws1"]);
   });
 
   it("keeps an isolated workspace's chip, right after its machine's stand-in", () => {
     const isolated = crewGroups.find((g) => g.panes[0]!.host === "workshop" && g.label === "ws2")!;
-    expect(names(stripEntries(crewGroups, new Set(["workshop"]), isolated.key))).toEqual([
+    expect(names(stripEntries(crewGroups, new Set(["workshop"]), new Set([isolated.key])))).toEqual([
       "ws1",
       "[workshop:2]",
       "ws2",
@@ -209,7 +209,18 @@ describe("stripEntries — a hidden machine's stand-in", () => {
     ]);
   });
 
+  it("keeps every chosen workspace's chip after its machine's stand-in, in the list's order (issue #527)", () => {
+    const onWorkshop = crewGroups.filter((g) => g.panes[0]!.host === "workshop");
+    expect(names(stripEntries(crewGroups, new Set(["workshop"]), new Set(onWorkshop.map((g) => g.key).toReversed())))).toEqual([
+      "ws1",
+      "[workshop:2]",
+      "ws1",
+      "ws2",
+      "ws1",
+    ]);
+  });
+
   it("draws no stand-in for a hidden machine with no workspace", () => {
-    expect(names(stripEntries(crewGroups, new Set(["cellar"]), undefined))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
+    expect(names(stripEntries(crewGroups, new Set(["cellar"]), new Set()))).toEqual(["ws1", "ws1", "ws2", "ws1"]);
   });
 });

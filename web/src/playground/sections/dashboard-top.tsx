@@ -160,7 +160,7 @@ function DashHeader({ data }: { data: HomeData }) {
 /** One card's live list: called INSIDE the card's router, because the router freezes its children. */
 function LiveDashboard({ data }: { data: HomeData }) {
   const [order, setOrder] = useState<PaneOrder>("place");
-  const [isolated, setIsolated] = useState<string | null>(null);
+  const [isolated, setIsolated] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [needsYou, setNeedsYou] = useState(false);
   return (
