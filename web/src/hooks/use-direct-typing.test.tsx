@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { clearStatus } from "@/lib/status";
-import { useDirectTyping } from "./use-direct-typing";
+import { graphemes, keysForLineChange, useDirectTyping } from "./use-direct-typing";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,6 +37,7 @@ function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "
     <>
       <button type="button" onClick={direct.activate}>Start typing</button>
       <button type="button" onClick={direct.deactivate}>Stop typing</button>
+      <button type="button" onClick={direct.notePaneKeys}>Dock key</button>
       <output aria-label="Typing mode">{direct.active ? "active" : "inactive"}</output>
       <textarea
         aria-label="Terminal input"
@@ -58,6 +59,13 @@ afterEach(() => {
   if (visibility !== undefined) Object.defineProperty(document, "visibilityState", visibility);
   else Reflect.deleteProperty(document, "visibilityState");
 });
+
+// A browser has the composed text in the field by the time compositionend fires.
+function compose(box: HTMLElement, text: string) {
+  fireEvent.compositionStart(box);
+  fireEvent.input(box, { target: { value: text }, inputType: "insertCompositionText", isComposing: true });
+  fireEvent.compositionEnd(box, { data: text });
+}
 
 function startTyping() {
   fireEvent.click(screen.getByRole("button", { name: "Start typing" }));
@@ -172,8 +180,7 @@ describe("useDirectTyping: physical IME keys belong to the candidate", () => {
     const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
     render(<Harness sendKeys={sendKeys} />);
     const box = startTyping();
-    fireEvent.compositionStart(box);
-    fireEvent.compositionEnd(box, { data: "한" });
+    compose(box, "한");
     expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
     await act(async () => {});
     expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["한"]);
@@ -183,34 +190,38 @@ describe("useDirectTyping: physical IME keys belong to the candidate", () => {
     expect(sendKeys.mock.calls).toEqual([[["한"]], [["Enter"]]]);
   });
 
-  it.each([
-    ["Backspace", 8],
-    ["Enter", 13],
-  ])("sends a real %s (keyCode %i) right after compositionend", async (key, keyCode) => {
+  it("sends a real Enter (keyCode 13) right after compositionend", async () => {
     const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
     render(<Harness sendKeys={sendKeys} />);
     const box = startTyping();
-    fireEvent.compositionStart(box);
-    fireEvent.compositionEnd(box, { data: "한" });
-    expect(fireEvent.keyDown(box, { key, keyCode })).toBe(false);
+    compose(box, "한");
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 13 })).toBe(false);
     await act(async () => {});
-    expect(sendKeys.mock.calls).toEqual([[["한"]], [[key]]]);
+    expect(sendKeys.mock.calls).toEqual([[["한"]], [["Enter"]]]);
   });
 
-  it("sends a Backspace beforeinput right after compositionend", async () => {
-    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
-    render(<Harness sendKeys={sendKeys} />);
-    const box = startTyping();
-    fireEvent.compositionStart(box);
-    fireEvent.compositionEnd(box, { data: "한" });
-    expect(fireEvent(box, new InputEvent("beforeinput", {
-      bubbles: true,
-      cancelable: true,
-      inputType: "deleteContentBackward",
-    }))).toBe(false);
-    await act(async () => {});
-    expect(sendKeys.mock.calls).toEqual([[["한"]], [["Backspace"]]]);
-  });
+  // The composed text is in the field, so a real Backspace right after compositionend deletes it
+  // there, and that edit is what sends the Backspace.
+  it.each(["keydown", "beforeinput"] as const)(
+    "sends a real Backspace %s right after compositionend through the field's edit",
+    async (via) => {
+      const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      compose(box, "한");
+      const fired = via === "keydown"
+        ? fireEvent.keyDown(box, { key: "Backspace", keyCode: 8 })
+        : fireEvent(box, new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "deleteContentBackward",
+        }));
+      expect(fired).toBe(true);
+      fireEvent.change(box, { target: { value: "" } });
+      await act(async () => {});
+      expect(sendKeys.mock.calls).toEqual([[["한"]], [["Backspace"]]]);
+    },
+  );
 
   // Android Gboard reports keyCode 229 with key "Unidentified" for every virtual key; none of
   // those has a wire name, and the real Backspace and Enter arrive as beforeinput instead.
@@ -232,8 +243,7 @@ describe("useDirectTyping: physical IME keys belong to the candidate", () => {
       const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
       render(<Harness sendKeys={sendKeys} />);
       const box = startTyping();
-      fireEvent.compositionStart(box);
-      fireEvent.compositionEnd(box, { data: "한" });
+      compose(box, "한");
       await act(async () => {});
       expect(sendKeys).toHaveBeenCalledExactlyOnceWith(["한"]);
 
@@ -278,5 +288,230 @@ describe("useDirectTyping: physical IME keys belong to the candidate", () => {
     expect(fireEvent.keyDown(box, { key: "ArrowUp" })).toBe(false);
     await act(async () => {});
     expect(sendKeys.mock.calls).toEqual([[["Backspace"]], [["Up"]]]);
+  });
+});
+
+// Issue 534. A keyboard keeps its own copy of the text before the caret. Emptying the field under it
+// after every word made SwiftKey commit that copy again, so `cd cd` reached the shell as
+// `cdcd cdcdcd`. The field now keeps what was typed until Enter, and only the difference is sent.
+describe("useDirectTyping: the field keeps the line the keyboard believes is there", () => {
+  function sent(sendKeys: { mock: { calls: [string[]][] } }) {
+    return sendKeys.mock.calls.flatMap(([keys]) => keys);
+  }
+
+  it("sends a word once when the keyboard composes the next word over the whole line", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.compositionStart(box);
+    fireEvent.input(box, { target: { value: "cd" }, inputType: "insertCompositionText", isComposing: true });
+    fireEvent.compositionEnd(box, { data: "cd" });
+    fireEvent.change(box, { target: { value: "cd " } });
+    fireEvent.compositionStart(box);
+    fireEvent.input(box, { target: { value: "cd cd" }, inputType: "insertCompositionText", isComposing: true });
+    fireEvent.compositionEnd(box, { data: "cd" });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["c", "d", "Space", "c", "d"]);
+    expect(box).toHaveValue("cd cd");
+  });
+
+  it("sends only the characters a change adds, and a Backspace for each it removes", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "l" } });
+    fireEvent.change(box, { target: { value: "ls" } });
+    fireEvent.change(box, { target: { value: "l" } });
+    fireEvent.change(box, { target: { value: "la" } });
+    fireEvent.change(box, { target: { value: "ab" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["l", "s", "Backspace", "a", "Backspace", "Backspace", "a", "b"]);
+  });
+
+  it("empties the field at Enter, and a later word is not sent again", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "ls" } });
+    expect(box).toHaveValue("ls");
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(box).toHaveValue("");
+    fireEvent.change(box, { target: { value: "pwd" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["l", "s", "Enter", "p", "w", "d"]);
+  });
+
+  it("leaves a Backspace on typed text to the field, and sends one on an empty field", async () => {
+    const sendKeys = vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    const backspace = () => fireEvent(box, new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "deleteContentBackward",
+    }));
+    fireEvent.change(box, { target: { value: "x" } });
+    expect(backspace()).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Backspace" })).toBe(true);
+    fireEvent.change(box, { target: { value: "" } });
+    expect(backspace()).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Backspace" })).toBe(false);
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["x", "Backspace", "Backspace", "Backspace"]);
+  });
+});
+
+describe("useDirectTyping: the line-end rule, pastes, graphemes and the keyboard's write-back", () => {
+  function sent(sendKeys: { mock: { calls: [string[]][] } }) {
+    return sendKeys.mock.calls.flatMap(([keys]) => keys);
+  }
+  function mockSend() {
+    return vi.fn<(keys: string[]) => Promise<boolean>>().mockResolvedValue(true);
+  }
+  function composingEnter(box: HTMLElement) {
+    return fireEvent(box, new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertParagraph",
+      isComposing: true,
+    }));
+  }
+
+  it("a Tab ends the line, so a later edit never erases the completion the shell typed", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "cd Doc" } });
+    expect(fireEvent.keyDown(box, { key: "Tab" })).toBe(false);
+    expect(box).toHaveValue("");
+    // The shell now holds "cd Documents/". Autocorrect or a word delete only reaches what follows.
+    fireEvent.change(box, { target: { value: "teh" } });
+    fireEvent.change(box, { target: { value: "the" } });
+    fireEvent.change(box, { target: { value: "" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual([
+      "c", "d", "Space", "D", "o", "c", "Tab",
+      "t", "e", "h", "Backspace", "Backspace", "h", "e", "Backspace", "Backspace", "Backspace",
+    ]);
+  });
+
+  it.each([["ArrowLeft", "Left"], ["ArrowUp", "Up"], ["Escape", "Escape"]])(
+    "%s ends the line like Enter: unsent text first, then the key, then an empty field",
+    async (key, wire) => {
+      const sendKeys = mockSend();
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      fireEvent.change(box, { target: { value: "ab" } });
+      expect(fireEvent.keyDown(box, { key })).toBe(false);
+      expect(box).toHaveValue("");
+      fireEvent.change(box, { target: { value: "x" } });
+      fireEvent.change(box, { target: { value: "" } });
+      await act(async () => {});
+      expect(sent(sendKeys)).toEqual(["a", "b", wire, "x", "Backspace"]);
+    },
+  );
+
+  it("a Keys dock key ends the line too, without this hook sending the dock's key", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "git" } });
+    fireEvent.click(screen.getByRole("button", { name: "Dock key" }));
+    expect(box).toHaveValue("");
+    fireEvent.change(box, { target: { value: "s" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["g", "i", "t", "s"]);
+  });
+
+  it("a paste with line breaks sends the text and its Enters, and keeps the line after the last break", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "echo a" } });
+    fireEvent.change(box, { target: { value: "echo a\r\nls -l\npw" } });
+    expect(box).toHaveValue("pw");
+    fireEvent.change(box, { target: { value: "p" } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual([
+      "e", "c", "h", "o", "Space", "a",
+      "Enter", "l", "s", "Space", "-", "l", "Enter", "p", "w",
+      "Backspace",
+    ]);
+  });
+
+  it("deleting one emoji sends one Backspace, whatever code points it is made of", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.change(box, { target: { value: "ok 👍🏽" } });
+    sendKeys.mockClear();
+    fireEvent.change(box, { target: { value: "ok " } });
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["Backspace"]);
+    expect(keysForLineChange("a👨‍👩‍👧🇩🇪", "a")).toEqual(["Backspace", "Backspace"]);
+    expect(keysForLineChange("cafe\u0301", "caf")).toEqual(["Backspace"]);
+  });
+
+  it("falls back to code points where the engine has no Intl.Segmenter", () => {
+    const own = Object.getOwnPropertyDescriptor(Intl, "Segmenter");
+    Reflect.deleteProperty(Intl, "Segmenter");
+    try {
+      expect(graphemes("a👍🏽")).toEqual(["a", "👍", "🏽"]);
+      expect(keysForLineChange("👍🏽", "")).toEqual(["Backspace", "Backspace"]);
+    } finally {
+      if (own !== undefined) Object.defineProperty(Intl, "Segmenter", own);
+    }
+  });
+
+  it("Enter during a composition sends the word once: the compositionend after it writes nothing back", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    fireEvent.compositionStart(box);
+    fireEvent.input(box, { target: { value: "cd" }, inputType: "insertCompositionText", isComposing: true });
+    expect(composingEnter(box)).toBe(false);
+    expect(box).toHaveValue("");
+    // The keyboard finishes the composition it still believes is open, into the emptied field.
+    fireEvent.input(box, { target: { value: "cd" }, inputType: "insertCompositionText", isComposing: true });
+    fireEvent.compositionEnd(box, { data: "cd" });
+    expect(box).toHaveValue("");
+    compose(box, "ls");
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["c", "d", "Enter", "l", "s"]);
+  });
+
+  it("drops a keyboard re-committing the last word in a fresh composition right after Enter", async () => {
+    const sendKeys = mockSend();
+    render(<Harness sendKeys={sendKeys} />);
+    const box = startTyping();
+    compose(box, "cd");
+    fireEvent.change(box, { target: { value: "cd " } });
+    compose(box, "cd cd");
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    compose(box, "cd");
+    expect(box).toHaveValue("");
+    await act(async () => {});
+    expect(sent(sendKeys)).toEqual(["c", "d", "Space", "c", "d", "Enter"]);
+  });
+
+  it("still sends the same word typed again after the write-back window, or on a hardware keyboard", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const sendKeys = mockSend();
+      render(<Harness sendKeys={sendKeys} />);
+      const box = startTyping();
+      fireEvent.change(box, { target: { value: "ls" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      // A hardware keyboard does not compose, so a fast repeat is the person's.
+      fireEvent.change(box, { target: { value: "ls" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      // A composing keyboard past the window: a person, not a write-back.
+      now.mockReturnValue(1_000_000 + 600);
+      compose(box, "ls");
+      await act(async () => {});
+      expect(sent(sendKeys)).toEqual(["l", "s", "Enter", "l", "s", "Enter", "l", "s"]);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
