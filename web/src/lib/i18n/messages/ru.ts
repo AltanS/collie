@@ -255,6 +255,7 @@ export const ru: Dictionary = {
   "composer.controls.quick": "Быстрые",
   "composer.controls.agent": "Agent",
   "composer.controls.tasks": "Задачи {done}/{total}",
+  "composer.controls.agents": "Агенты {count}",
   "composer.controls.displayAria": "Настройки экрана",
   "composer.controls.display": "Экран",
   "composer.controls.screenAria": "Показывать строки экрана без карточек",

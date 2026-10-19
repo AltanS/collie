@@ -323,6 +323,9 @@ const PANE_WIRE_KEYS = {
   // The pane's active todo list (bridge/todos.ts). Not a crew dimension, and absent here: the
   // baseline builds no todo tracker, so no golden byte moved.
   todos: true,
+  // The pane's running subagents (bridge/subagents.ts). Not a crew dimension, and absent here: the
+  // baseline builds no subagent tracker, so no golden byte moved.
+  subagents: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
   // here for the same reason, so no golden byte moved.
   model: true,
@@ -520,6 +523,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "sessionName",
       "soleTabName",
       "status",
+      "subagents",
       "subtitle",
       "surface",
       "tabId",

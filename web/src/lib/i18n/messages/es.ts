@@ -308,6 +308,7 @@ export const es: Dictionary = {
   "composer.controls.quick": "Rápido",
   "composer.controls.agent": "Agente",
   "composer.controls.tasks": "Tareas {done}/{total}",
+  "composer.controls.agents": "Agentes {count}",
   "composer.controls.displayAria": "Ajustes de pantalla",
   "composer.controls.display": "Pantalla",
   "composer.controls.screenAria": "Mostrar las filas de la pantalla, sin tarjetas",

@@ -12,6 +12,7 @@ import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { SttWireIdentity } from "./stt/config.ts";
+import type { PaneSubagent } from "./subagents.ts";
 import type { PaneTodo } from "./todos.ts";
 import type { UpdateRun } from "./update-run.ts";
 
@@ -24,6 +25,7 @@ export type { CacheStateName, PaneCache } from "./cache/engine.ts";
 export type { Confidence } from "./cache/claims.ts";
 export type { GitHead } from "./git-head.ts";
 export type { PaneTodo, PaneTodoStatus } from "./todos.ts";
+export type { PaneSubagent } from "./subagents.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -184,6 +186,13 @@ export interface AgentView {
    * tasks carries no key at all.
    */
   todos?: PaneTodo[];
+  /**
+   * The subagents of this pane's session that have not finished yet, read from the session's
+   * subagent meta files by the subagent tracker (bridge/subagents.ts). Claude Code only in this
+   * release. Attached at serialise time and ABSENT, NEVER A PLACEHOLDER: a pane with none running
+   * carries no key at all, never `[]`.
+   */
+  subagents?: PaneSubagent[];
   /**
    * The model this pane's agent is on, as its harness names it: a `/model` chosen since the last turn
    * first (Claude), else the model that turn ran on (`claude-opus-5-5`, `provider:model` for opencode

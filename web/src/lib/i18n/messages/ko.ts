@@ -307,6 +307,7 @@ export const ko: Dictionary = {
   "composer.controls.quick": "빠른 답장",
   "composer.controls.agent": "에이전트",
   "composer.controls.tasks": "작업 {done}/{total}",
+  "composer.controls.agents": "에이전트 {count}",
   "composer.controls.displayAria": "표시 설정",
   "composer.controls.display": "표시",
   "composer.controls.screenAria": "카드 없이 화면 행 표시",

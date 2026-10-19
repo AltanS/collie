@@ -72,19 +72,37 @@ export function maskTodoList<T extends { text: string; activeForm?: string }>(to
   });
 }
 
-/** A pane with its program-set title and its todo list masked, whichever of them it carries. */
-function maskPaneWords<P extends { terminalTitle?: string; todos?: readonly { text: string; activeForm?: string }[] }>(pane: P): P {
+/**
+ * A pane's running subagents with their descriptions masked. The description is the text the agent
+ * wrote when it started the subagent, so it can hold a path, a command or a key. The id, the type,
+ * the model and the times are Claude Code's own.
+ */
+export function maskSubagentList<T extends { description: string }>(subagents: readonly T[]): T[] {
+  return subagents.map((subagent) => ({ ...subagent, description: redactText(subagent.description) }));
+}
+
+/** The pane fields an agent or a program wrote, which the mask reaches. */
+interface PaneWords {
+  terminalTitle?: string;
+  todos?: readonly { text: string; activeForm?: string }[];
+  subagents?: readonly { description: string }[];
+}
+
+/** A pane with its program-set title, its todo list and its subagents masked, whichever it carries. */
+function maskPaneWords<P extends PaneWords>(pane: P): P {
   const titled = maskTerminalTitle(pane);
-  return titled.todos === undefined ? titled : { ...titled, todos: maskTodoList(titled.todos) };
+  const listed = titled.todos === undefined ? titled : { ...titled, todos: maskTodoList(titled.todos) };
+  return listed.subagents === undefined ? listed : { ...listed, subagents: maskSubagentList(listed.subagents) };
 }
 
 /**
- * A snapshot with every pane's program-set title and todo list masked. The lead's merged snapshot
- * carries its members' panes as the members sent them, so a member that does not mask sent them in clear.
+ * A snapshot with every pane's program-set title, todo list and subagents masked. The lead's merged
+ * snapshot carries its members' panes as the members sent them, so a member that does not mask sent
+ * them in clear.
  */
 export function maskSnapshotTitles<
   S extends {
-    agents: readonly { terminalTitle?: string; todos?: readonly { text: string; activeForm?: string }[] }[];
+    agents: readonly PaneWords[];
     shellPanes: readonly { terminalTitle?: string }[];
   },
 >(snapshot: S): S {

@@ -253,6 +253,7 @@ export const fr: Dictionary = {
   "composer.controls.quick": "Accès rapide",
   "composer.controls.agent": "Agent",
   "composer.controls.tasks": "Tâches {done}/{total}",
+  "composer.controls.agents": "Agents {count}",
   "composer.controls.displayAria": "Paramètres d'affichage",
   "composer.controls.display": "Affichage",
   "composer.controls.screenAria": "Afficher les lignes de l'écran, sans cartes",
