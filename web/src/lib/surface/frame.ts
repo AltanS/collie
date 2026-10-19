@@ -45,7 +45,7 @@ export interface RowSpan {
 }
 
 /** Which profile anchor matched. `top`, `prompt` and `bottom` are on every frame. */
-export type FrameAnchorHit = "top" | "label" | "prompt" | "draft" | "bottom" | "placeholder-text" | "placeholder-sgr";
+export type FrameAnchorHit = "top" | "label" | "prompt" | "draft" | "bottom" | "placeholder-text" | "placeholder-sgr" | "placeholder-fg";
 
 export interface Frame {
   /** The row of the top edge. */
@@ -67,7 +67,8 @@ export interface Frame {
     readonly text: string;
   };
   /** True when the interior shows the profile's placeholder: one of its texts, or nothing but runs
-   *  in the placeholder's SGR attribute. An empty interior is not a placeholder. */
+   *  in the placeholder's SGR attribute, or nothing but runs in one of its foreground colours.
+   *  An empty interior is not a placeholder. */
   readonly placeholder: boolean;
   /** Rows a fold must ignore when it compares two reads. `above` is the band over the top edge;
    *  `status` and `footer` are the run under the bottom edge, when the rows there walk as one.
@@ -124,6 +125,8 @@ interface Compiled {
   readonly interior: CompiledInterior;
   /** The ghost text's colours (`idle.inlineHint`); null for a profile that names none. */
   readonly hint: ReadonlySet<string> | null;
+  /** The placeholder's colours (`idle.placeholders.fg`); null for a profile that names none. */
+  readonly placeholderFg: ReadonlySet<string> | null;
 }
 
 const compiledByIdle = new WeakMap<IdleProfile, Compiled>();
@@ -160,6 +163,7 @@ function compile(idle: IdleProfile): Compiled {
       underPainted: idle.frame.underPainted === true,
     },
     hint: idle.inlineHint === undefined ? null : new Set(idle.inlineHint.fg),
+    placeholderFg: idle.placeholders.fg === undefined ? null : new Set(idle.placeholders.fg),
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
@@ -268,13 +272,11 @@ function sgrFlag(sgr: number): keyof Omit<FrameRun, "text"> | null {
 }
 
 /**
- * Whether every visible character in the draft hole is drawn in the placeholder attribute. The prompt
- * row is read from the hole's offset, so the marker in front of it never counts; the rows under it
- * are read whole. False when the hole holds nothing visible.
+ * Whether every visible character in the draft hole passes `test` on its run. The prompt row is read
+ * from the hole's offset, so the marker in front of it never counts; the rows under it are read
+ * whole. False when the hole holds nothing visible.
  */
-function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, sgr: number): boolean {
-  const flag = sgrFlag(sgr);
-  if (flag === null) return false;
+function holeEvery(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, test: (run: FrameRun) => boolean): boolean {
   let sawContent = false;
   for (let j = prompt; j <= last; j++) {
     let offset = 0;
@@ -283,11 +285,22 @@ function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: numbe
       offset += run.text.length;
       const visible = run.text.slice(from);
       if (visible.trim().length === 0) continue;
-      if (run[flag] !== true) return false;
+      if (!test(run)) return false;
       sawContent = true;
     }
   }
   return sawContent;
+}
+
+/** Whether every visible character in the draft hole is drawn in the placeholder attribute. */
+function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, sgr: number): boolean {
+  const flag = sgrFlag(sgr);
+  return flag !== null && holeEvery(rows, prompt, holeStart, last, (run) => run[flag] === true);
+}
+
+/** Whether every visible character in the draft hole is drawn in one of the placeholder's colours. */
+function holeIsGhostColoured(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, colours: ReadonlySet<string> | null): boolean {
+  return colours !== null && holeEvery(rows, prompt, holeStart, last, (run) => run.fg !== undefined && colours.has(run.fg));
 }
 
 /** Whether a draft text is one of the profile's placeholder texts, or starts with one of its prefixes. */
@@ -295,6 +308,30 @@ function isPlaceholderText(text: string, idle: IdleProfile): boolean {
   if (text.length === 0) return false;
   if (idle.placeholders.texts.includes(text)) return true;
   return (idle.placeholders.prefixes ?? []).some((prefix) => text.startsWith(prefix));
+}
+
+/**
+ * Whether the hole shows the profile's placeholder, by its text, its attribute or its colours; each
+ * way that holds adds its anchor to `anchorsHit`. The three tests are whole-hole: one visible run
+ * that is neither faint nor ghost-coloured leaves the text a draft.
+ */
+function readPlaceholder(
+  rows: readonly FrameRow[],
+  prompt: number,
+  holeStart: number,
+  last: number,
+  text: string,
+  idle: IdleProfile,
+  colours: ReadonlySet<string> | null,
+  anchorsHit: FrameAnchorHit[],
+): boolean {
+  const byText = isPlaceholderText(text, idle);
+  const bySgr = holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr);
+  const byFg = holeIsGhostColoured(rows, prompt, holeStart, last, colours);
+  if (byText) anchorsHit.push("placeholder-text");
+  if (bySgr) anchorsHit.push("placeholder-sgr");
+  if (byFg) anchorsHit.push("placeholder-fg");
+  return byText || bySgr || byFg;
 }
 
 /** One piece of the draft: its row, and its first and past-last offset in the row's text. */
@@ -534,10 +571,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
   const text = draftText(rows, texts, pieces, c.hint);
   anchorsHit.push("bottom");
 
-  const byText = isPlaceholderText(text, idle);
-  const bySgr = holeIsFaint(rows, prompt, holeStart, bottom - 1, idle.placeholders.sgr);
-  if (byText) anchorsHit.push("placeholder-text");
-  if (bySgr) anchorsHit.push("placeholder-sgr");
+  const placeholder = readPlaceholder(rows, prompt, holeStart, bottom - 1, text, idle, c.placeholderFg, anchorsHit);
 
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
@@ -549,7 +583,7 @@ export function frameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePro
     bottom,
     label: label.length > 0 ? label : null,
     interior: { first: top + 1, prompt, last: bottom - 1, text },
-    placeholder: byText || bySgr,
+    placeholder,
     volatile: { above, status, footer, named },
     anchorsHit,
   };
@@ -665,10 +699,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   anchorsHit.push("prompt");
   if (hole !== undefined) anchorsHit.push("draft");
   anchorsHit.push("bottom");
-  const byText = isPlaceholderText(text, idle);
-  const bySgr = prompt <= last && holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr);
-  if (byText) anchorsHit.push("placeholder-text");
-  if (bySgr) anchorsHit.push("placeholder-sgr");
+  const placeholder = readPlaceholder(rows, prompt, holeStart, last, text, idle, c.placeholderFg, anchorsHit);
 
   let end = texts.length;
   while (end > bottom + 1 && isBlank(texts[end - 1]!)) end--;
@@ -681,7 +712,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     bottom,
     label: label.length > 0 ? label : null,
     interior: { first: top + 1, prompt, last: open ? bottom : bottom - 1, text },
-    placeholder: byText || bySgr,
+    placeholder,
     volatile: { above, status, footer, named },
     anchorsHit,
   };

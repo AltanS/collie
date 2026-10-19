@@ -2331,6 +2331,11 @@
    "version": "1.4.8",
    "state": "popup"
   },
+  "muse--prompt-hint.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "idle"
+  },
   "muse--quoted-dialogs-bare.txt": {
    "harness": "muse",
    "version": "unversioned",
@@ -2364,12 +2369,12 @@
   "muse--tip-loop.txt": {
    "harness": "muse",
    "version": "unversioned",
-   "state": "other"
+   "state": "idle"
   },
   "muse--tip-paste.txt": {
    "harness": "muse",
    "version": "unversioned",
-   "state": "draft"
+   "state": "idle"
   },
   "muse--trust-prompt-147.txt": {
    "harness": "muse",

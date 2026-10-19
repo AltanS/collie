@@ -21,6 +21,8 @@
 // reference). Pure; no pane access, no network.
 
 import { isBlank, lineText, type StyledLine } from "../../blocks";
+import { findInputFrame } from "../../surface/frame";
+import { requireProfile } from "../../surface/profile";
 import { detectApprovalRegion } from "./approval";
 import { detectCheckboxRegion } from "./checkbox";
 import { detectQuestionRegion } from "./question";
@@ -37,6 +39,9 @@ import {
   rstrip,
   tasksPopupNamesStopKey,
 } from "./markers";
+
+/** The Muse profile's idle anchors, for the frame module's placeholder read in {@link extractInputDraft}. */
+const MUSE_IDLE = requireProfile("muse").idle;
 
 // How far above the composer to scan for an open note row. The dialog sits directly above the box
 // (~15 rows); 40 has margin for wider layouts. A `Note (optional):` row anywhere in that window is a
@@ -169,6 +174,11 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
 
   const draft = parts.filter((p) => p.length > 0).join(" ");
   if (draft.length === 0 || INPUT_PLACEHOLDERS.has(draft)) return null;
+  // A prompt suggestion (tui.prompt_hint_enabled) is ghost text Muse paints in the empty box in its
+  // placeholder colour; its words are the model's, so no text list can name them. The surface frame
+  // reads the same box by colour: when it calls this very text a placeholder, there is no draft.
+  const frame = findInputFrame(lines, MUSE_IDLE);
+  if (frame !== null && frame.placeholder && frame.interior.text === draft) return null;
   return draft;
 }
 

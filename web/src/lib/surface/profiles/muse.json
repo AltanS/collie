@@ -38,9 +38,14 @@
     },
     "placeholders": {
       "texts": [
-        "Start a message with ! to run a shell command yourself"
+        "Start a message with ! to run a shell command yourself",
+        "/loop 10m <prompt> schedules a recurring prompt",
+        "Paste an image with Ctrl+V — file paths and URLs work too"
       ],
-      "sgr": 2
+      "sgr": 2,
+      "fg": [
+        "rgb(175,177,179)"
+      ]
     },
     "volatile": {
       "above": {
