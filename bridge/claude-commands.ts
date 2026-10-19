@@ -393,16 +393,20 @@ function manifestPaths(value: JsonValue | undefined): JsonValue[] {
   return Array.isArray(value) ? value : value === undefined ? [] : [value];
 }
 
-/** The rows of one plugin: its `skills` folders and its `commands`, every name carrying `<plugin>:`. */
+/**
+ * The rows of one plugin: its `skills` folders and its `commands`, every name carrying `<plugin>:`.
+ * The caller has already checked that the merged `enabledPlugins` maps say `true` for it.
+ *
+ * Not read yet: the single-skill plugin form (a root SKILL.md with no `skills/` folder and no
+ * `skills` key in the manifest).
+ */
 async function pluginRows(
   io: DiscoveryIo,
   plugin: InstalledPlugin,
-  enabled: boolean | undefined,
   personalRoots: readonly string[],
   budget: ScanBudget,
   warn: (m: string) => void,
 ): Promise<ClaudeCommand[]> {
-  if (enabled === false) return [];
   // The plugin folder is a personal location: it must resolve inside the config dir or the home.
   // Every read below is then contained in the plugin's own folder, so a link inside it cannot leave.
   const root = await io.realDir(plugin.installPath, personalRoots);
@@ -423,11 +427,6 @@ async function pluginRows(
       return [];
     }
   }
-  // ASSUMPTION: a plugin that no settings file names is enabled unless its manifest says
-  // `"defaultEnabled": false` (Claude Code's plugin manifest reference: the default is true). A
-  // marketplace entry can override that field; Collie does not read marketplaces.
-  if ((enabled ?? manifest.defaultEnabled !== false) === false) return [];
-
   const prefix = `${plugin.name}:`;
   const refuse = (field: string, raw: JsonValue) =>
     warn(`${plugin.key}: the ${field} path ${JSON.stringify(raw)} is not a ./ path inside the plugin folder, so it is left out`);
@@ -578,7 +577,11 @@ export async function discoverClaudeCommands(opts: DiscoverOptions): Promise<Cla
   if (installed !== null) {
     for (const item of installedPlugins(installed, dirs, warn)) {
       if (budget.ops <= 0) break;
-      plugin.push(...(await pluginRows(io, item, enabledPlugins.get(item.key), personalRoots, budget, warn)));
+      // ASSUMPTION, checked with `claude plugin list`: a plugin that no settings file sets to `true`
+      // is off. The marketplace install step writes the `enabledPlugins` entry (it is where the
+      // manifest's `defaultEnabled` applies), so Collie does not second-guess an absent key.
+      if (enabledPlugins.get(item.key) !== true) continue;
+      plugin.push(...(await pluginRows(io, item, personalRoots, budget, warn)));
     }
   }
 

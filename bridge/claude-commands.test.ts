@@ -343,6 +343,15 @@ describe("discoverClaudeCommands: installed plugins", () => {
   const cache = "/h/.claude/plugins/cache/mk";
   const installed = (plugins: Record<string, Array<Record<string, string>>>) =>
     JSON.stringify({ version: 2, plugins });
+  /** Like `run`, but a fixture with no user settings file enables every plugin it installs. */
+  const runOn = (files: FakeTree, cwd?: string | null) => {
+    const installedText = files["/h/.claude/plugins/installed_plugins.json"];
+    if (files["/h/.claude/settings.json"] !== undefined || installedText === undefined) return run(files, cwd);
+    // The keys are read by pattern, so a broken installed_plugins.json stays broken for the reader.
+    const keys = [...installedText.matchAll(/"([^"]+@[^"]+)":\s*\[/g)].map((m) => m[1]!);
+    const enabledPlugins = Object.fromEntries(keys.map((key) => [key, true] as const));
+    return run({ ...files, "/h/.claude/settings.json": JSON.stringify({ enabledPlugins }) }, cwd);
+  };
   const entry = (name: string, extra: Record<string, string> = {}) => ({
     scope: "user",
     installPath: native(`${cache}/${name}/1.0.0`),
@@ -351,7 +360,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
   });
 
   test("a plugin skill and command are listed with the plugin prefix, a description and a hint", async () => {
-    const { rows, warns } = await run({
+    const { rows, warns } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "dev-tools@mk": [entry("dev-tools")] }),
       [`${cache}/dev-tools/1.0.0/skills/log-off/SKILL.md`]: skill("End a session", 'argument-hint: "[note]"\n'),
       [`${cache}/dev-tools/1.0.0/skills/wordsmith/SKILL.md`]: skill("Polish prose", "name: wordsmith\n"),
@@ -365,45 +374,48 @@ describe("discoverClaudeCommands: installed plugins", () => {
     expect(warns).toEqual([]);
   });
 
-  test("enabledPlugins false leaves a plugin out, the project files win over the user file, and absent means enabled", async () => {
+  test("only a plugin the merged enabledPlugins maps set to true is listed; false and absent are skipped", async () => {
     const files = {
       "/h/.claude/plugins/installed_plugins.json": installed({
         "off@mk": [entry("off")],
         "on@mk": [entry("on")],
         "absent@mk": [entry("absent")],
         "project-off@mk": [entry("project-off")],
+        "project-on@mk": [entry("project-on")],
       }),
       [`${cache}/off/1.0.0/skills/a/SKILL.md`]: skill("x"),
       [`${cache}/on/1.0.0/skills/a/SKILL.md`]: skill("x"),
       [`${cache}/absent/1.0.0/skills/a/SKILL.md`]: skill("x"),
       [`${cache}/project-off/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/project-on/1.0.0/skills/a/SKILL.md`]: skill("x"),
       "/h/.claude/settings.json": JSON.stringify({
         enabledPlugins: { "off@mk": false, "on@mk": true, "project-off@mk": true },
       }),
       "/h/code/app/.git/HEAD": "ref",
-      "/h/code/app/.claude/settings.local.json": JSON.stringify({ enabledPlugins: { "project-off@mk": false, "off@mk": true } }),
+      "/h/code/app/.claude/settings.local.json": JSON.stringify({
+        enabledPlugins: { "project-off@mk": false, "off@mk": true, "project-on@mk": true },
+      }),
     };
-    expect((await run(files)).names).toEqual(["/off:a", "/on:a", "/absent:a"]);
-    expect((await run({ ...files, "/h/code/app/.claude/settings.local.json": "{}" })).names).toEqual([
+    // Narrowest wins: the local file turns off@mk on and project-off@mk off.
+    expect((await runOn(files)).names).toEqual(["/off:a", "/on:a", "/project-on:a"]);
+    // Without the local file, only the user map counts.
+    expect((await runOn({ ...files, "/h/code/app/.claude/settings.local.json": "{}" })).names).toEqual([
       "/on:a",
-      "/absent:a",
       "/project-off:a",
     ]);
   });
 
-  test("an unnamed plugin follows its manifest defaultEnabled, which is true when missing", async () => {
+  test("a manifest defaultEnabled does not turn an unnamed plugin on", async () => {
     const { names } = await run({
-      "/h/.claude/plugins/installed_plugins.json": installed({ "quiet@mk": [entry("quiet")], "loud@mk": [entry("loud")] }),
-      [`${cache}/quiet/1.0.0/.claude-plugin/plugin.json`]: '{"name":"quiet","defaultEnabled":false}',
-      [`${cache}/quiet/1.0.0/skills/a/SKILL.md`]: skill("x"),
-      [`${cache}/loud/1.0.0/.claude-plugin/plugin.json`]: '{"name":"loud"}',
+      "/h/.claude/plugins/installed_plugins.json": installed({ "loud@mk": [entry("loud")] }),
+      [`${cache}/loud/1.0.0/.claude-plugin/plugin.json`]: '{"name":"loud","defaultEnabled":true}',
       [`${cache}/loud/1.0.0/skills/a/SKILL.md`]: skill("x"),
     });
-    expect(names).toEqual(["/loud:a"]);
+    expect(names).toEqual([]);
   });
 
   test("plugin.json skills adds a folder to skills/, and a path that leaves the plugin is refused", async () => {
-    const { names, warns } = await run({
+    const { names, warns } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({
         name: "p",
@@ -419,7 +431,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
   });
 
   test("plugin.json commands replaces commands/, takes files and folders, and maps a name to a source", async () => {
-    const { rows } = await run({
+    const { rows } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({ name: "p", commands: ["./cmds", "./single.md"] }),
       [`${cache}/p/1.0.0/commands/ignored.md`]: "x",
@@ -427,7 +439,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
       [`${cache}/p/1.0.0/single.md`]: "---\ndescription: Single\n---\n",
     });
     expect(rows.map((r) => r.command)).toEqual(["/p:one", "/p:single"]);
-    const mapped = await run({
+    const mapped = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({
         name: "p",
@@ -447,7 +459,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
   });
 
   test("a nested plugin command carries the plugin and folder prefix", async () => {
-    const { names } = await run({
+    const { names } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/commands/git/commit.md`]: "x",
     });
@@ -461,7 +473,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
       "/h/code/app/.claude/skills/theirs/SKILL.md": skill("x"),
     };
     for (const bad of ["{ not json", '{"version":2}', '{"plugins":{"p@mk":"nope","q@mk":[{"installPath":3}]}}']) {
-      const { names, warns } = await run({ ...files, "/h/.claude/plugins/installed_plugins.json": bad });
+      const { names, warns } = await runOn({ ...files, "/h/.claude/plugins/installed_plugins.json": bad });
       expect(names).toEqual(["/mine", "/theirs"]);
       expect(warns.length).toBe(bad === '{"version":2}' || bad === "{ not json" ? 1 : 0);
       expect(warns.join("\n")).not.toContain("undefined");
@@ -469,7 +481,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
   });
 
   test("a broken plugin.json drops that plugin only", async () => {
-    const { names, warns } = await run({
+    const { names, warns } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "bad@mk": [entry("bad")], "good@mk": [entry("good")] }),
       [`${cache}/bad/1.0.0/.claude-plugin/plugin.json`]: "{ nope",
       [`${cache}/bad/1.0.0/skills/a/SKILL.md`]: skill("x"),
@@ -495,16 +507,16 @@ describe("discoverClaudeCommands: installed plugins", () => {
       [`${cache}/elsewhere/1.0.0/skills/elsewhere/SKILL.md`]: skill("x"),
       "/h/code/app/.git/HEAD": "ref",
     };
-    expect((await run(files)).names).toEqual(["/p:proj"]);
-    expect((await run(files, "/h/unrelated")).names).toEqual(["/p:new"]);
+    expect((await runOn(files)).names).toEqual(["/p:proj"]);
+    expect((await runOn(files, "/h/unrelated")).names).toEqual(["/p:new"]);
   });
 
   test("a skillOverrides off entry also hides a plugin row", async () => {
-    const { names } = await run({
+    const { names } = await runOn({
       "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
       [`${cache}/p/1.0.0/skills/a/SKILL.md`]: skill("x"),
       [`${cache}/p/1.0.0/skills/b/SKILL.md`]: skill("x"),
-      "/h/.claude/settings.json": JSON.stringify({ skillOverrides: { "p:a": "off" } }),
+      "/h/.claude/settings.json": JSON.stringify({ enabledPlugins: { "p@mk": true }, skillOverrides: { "p:a": "off" } }),
     });
     expect(names).toEqual(["/p:b"]);
   });
@@ -515,7 +527,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
     files["/h/.claude/skills/mine/SKILL.md"] = skill("x");
     files["/h/code/app/.git/HEAD"] = "ref";
     files["/h/code/app/.claude/skills/theirs/SKILL.md"] = skill("x");
-    expect((await run({ ...files, [`${cache}/p/1.0.0/skills/a/SKILL.md`]: skill("x") })).names).toEqual([
+    expect((await runOn({ ...files, [`${cache}/p/1.0.0/skills/a/SKILL.md`]: skill("x") })).names).toEqual([
       "/mine",
       "/p:a",
       "/theirs",
@@ -524,7 +536,7 @@ describe("discoverClaudeCommands: installed plugins", () => {
     for (let i = 0; i < 400; i++) files[`${cache}/p/1.0.0/commands/c${String(i).padStart(4, "0")}.md`] = "x";
     for (let i = 0; i < 400; i++) files[`${cache}/p/1.0.0/commands/d${String(i).padStart(4, "0")}.md`] = "x";
     for (let i = 0; i < 400; i++) files[`/h/.claude/commands/m${String(i).padStart(4, "0")}.md`] = "x";
-    const names = (await run(files)).names;
+    const names = (await runOn(files)).names;
     expect(names.length).toBeLessThanOrEqual(MAX_COMMANDS);
     expect(names).toContain("/mine");
     expect(names).toContain("/theirs");
@@ -561,6 +573,11 @@ describe("discoverClaudeCommands: installed plugins", () => {
             "linked@mk": [{ scope: "user", installPath: linked }],
           },
         }),
+      );
+
+      await writeFile(
+        join(configDir, "settings.json"),
+        JSON.stringify({ enabledPlugins: { "custom@mk": true, "foreign@mk": true, "linked@mk": true } }),
       );
 
       const warns: string[] = [];
