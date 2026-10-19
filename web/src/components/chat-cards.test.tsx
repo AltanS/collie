@@ -58,6 +58,16 @@ describe("groupRuns", () => {
     expect(groupRuns(items).map((g) => g.length)).toEqual([3]);
   });
 
+  it("never folds an agent call or a question: it stands alone and splits the run around it", () => {
+    const x = (id: string): ChatItem => tool({ kind: "execute", command: "ls" }, { id });
+    const agent = tool({ kind: "task", agent: "Explore", summary: "Look around" }, { id: "agent" });
+    const ask = tool({ kind: "question", name: "question", summary: "Which?", questions: [] }, { id: "ask" });
+    const items = [x("a"), x("b"), x("c"), x("d"), x("e"), agent, x("f"), x("g"), x("h"), ask, x("i")];
+    expect(groupRuns(items).map((g) => g.map((i) => i.id).join(""))).toEqual(["abcde", "agent", "fgh", "ask", "i"]);
+    expect(groupRuns([agent], 1).map((g) => g.length)).toEqual([1]);
+    expect(groupRuns([x("a"), agent, x("b")], 1).map((g) => g.length)).toEqual([1, 1, 1]);
+  });
+
   it("folds a lone step at minRun 1, which is how tool calls off is drawn", () => {
     expect(groupRuns([t("a")], 1).map((g) => g.length)).toEqual([1]);
     expect(groupRuns([t("a"), said("s")], 1).map((g) => g.length)).toEqual([1, 1]);

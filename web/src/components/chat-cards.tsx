@@ -156,6 +156,14 @@ export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
 // ---------- items ----------
 
 /**
+ * A step that is never folded: a delegated agent call, and a question the agent put to the person.
+ * `groupRuns` splits a run around it, and the stream draws it as a card even while tool calls are off.
+ */
+export function standsAlone(item: ChatItem): boolean {
+  return item.kind === "tool" && (item.tool.kind === "task" || item.tool.kind === "question");
+}
+
+/**
  * Split the stream into single items and runs of consecutive tool items.
  *
  * `minRun` is where a run becomes a fold. Three by default: two steps side by side read as two
@@ -164,6 +172,12 @@ export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
  * ONE means every step folds, including a lone one, and that is how "tool calls off" is drawn
  * (Settings → Appearance). The stream then carries one summary line where the cards were, which is
  * the same treatment collie's History page gives a turn's steps — one idea, one look, two surfaces.
+ *
+ * AN AGENT CALL AND A QUESTION NEVER JOIN A FOLD. A delegated `task` carries a summary and, later,
+ * a report the person came for (its card opens the subagent sheet), and a `question` is an event
+ * the person must see. Folded in with 18 commands both were out of sight, and the fold's label did
+ * not count the agent. Each stands alone and splits the run around it: the steps before it fold
+ * as one group (or stand as single cards, by `minRun`), then the card, then the steps after it.
  */
 export function groupRuns(items: ChatItem[], minRun = 3): ChatItem[][] {
   const out: ChatItem[][] = [];
@@ -174,7 +188,10 @@ export function groupRuns(items: ChatItem[], minRun = 3): ChatItem[][] {
     run = [];
   };
   for (const item of items) {
-    if (item.kind === "tool" || item.kind === "thinking") run.push(item);
+    if (standsAlone(item)) {
+      flush();
+      out.push([item]);
+    } else if (item.kind === "tool" || item.kind === "thinking") run.push(item);
     else {
       flush();
       out.push([item]);

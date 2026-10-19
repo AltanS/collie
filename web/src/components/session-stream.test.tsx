@@ -332,6 +332,68 @@ describe("SessionStream", () => {
     );
     expect(screen.getByText("Read")).toBeInTheDocument();
   });
+  describe("an agent call in a turn of steps", () => {
+    const exec = (n: number): ChatEntry["parts"][number] => ({
+      kind: "tool",
+      id: `x${n}`,
+      name: "Bash",
+      summary: `cmd ${n}`,
+      call: { kind: "execute", command: `cmd ${n}` },
+      result: { text: "" },
+    });
+    const agent = (result?: string): ChatEntry["parts"][number] => {
+      const part: ChatEntry["parts"][number] = {
+        kind: "tool",
+        id: "ag1",
+        name: "Agent",
+        summary: "Map the routes",
+        call: { kind: "task", agent: "Explore", summary: "Map the routes", agentId: "a1" },
+      };
+      if (result !== undefined) part.result = { text: result };
+      return part;
+    };
+    const turn = (middle: ChatEntry["parts"][number]) =>
+      feedOf({
+        status: { kind: "live" },
+        entries: [
+          entry("a", BASE, "", {
+            parts: [...[1, 2, 3, 4, 5].map(exec), middle, ...[6, 7, 8].map(exec)],
+          }),
+        ],
+      });
+
+    it("draws one fold of five, the agent card, then one fold of three, in that order", () => {
+      renderStream(turn(agent("Found 23 routes.")));
+      const blocks = [...document.querySelectorAll("[data-block]")];
+      expect(blocks).toHaveLength(3);
+      expect(blocks[0]).toHaveTextContent("5 commands");
+      expect(blocks[1]).toHaveTextContent("Agent · Explore");
+      expect(blocks[1]).toHaveTextContent("Map the routes");
+      expect(blocks[2]).toHaveTextContent("3 commands");
+      expect(screen.queryByText(/agent$/)).toBeNull();
+    });
+
+    it("shows a running agent as running, and a finished one as a tappable card with its report", () => {
+      const running = renderStream(turn(agent()));
+      expect(screen.getByRole("img", { name: /running/i })).toBeInTheDocument();
+      running.unmount();
+      renderStream(turn(agent("Found 23 routes.")));
+      expect(screen.queryByRole("img", { name: /running/i })).toBeNull();
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+    });
+
+    it("draws a turn of only an agent call as the card with no fold, with tool calls on or off", () => {
+      const only = feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "", { parts: [agent("Done.")] })] });
+      const on = renderStream(only, true);
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+      expect(screen.queryByText("1 agent")).toBeNull();
+      on.unmount();
+      renderStream(only, false);
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+      expect(screen.queryByText("1 agent")).toBeNull();
+    });
+  });
+
   // ── the tail row: a turn in flight ────────────────────────────────────────
   // The mirror shows the agent's own spinner; this body draws the record, and a record gains nothing
   // while a compaction runs. Without this row a compacting session looked exactly like a finished one.
