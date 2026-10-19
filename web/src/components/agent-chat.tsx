@@ -2941,6 +2941,9 @@ export function AgentChat({
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}
+                  // The Chat window's turns: the composer reads them only to settle a send that
+                  // ended `unknown` once its text lands as a user turn (#511).
+                  chatEntries={chatEntries}
                   // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
                   // word on a 14px band above its controls row; Altan asked for that band's status
                   // half to go, so the prop went with it. The state is stated up here instead — the

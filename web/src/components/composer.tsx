@@ -89,6 +89,8 @@ import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
 import { useSttRecorder } from "@/hooks/use-stt-recorder";
 import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import type { TranscriptEntry } from "@/lib/types";
+import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
 
 export interface ComposerHandle {
@@ -181,6 +183,13 @@ interface ComposerProps {
    * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
    */
   held?: readonly HeldRow[] | undefined;
+  /**
+   * The Chat window's journal turns, as AgentChat already read them. Their one job here is settling
+   * a send that ended `unknown` (#511, `lib/unknown-send.ts`): when the sent text lands as a new
+   * user turn, the kept draft and its notice retire as sent. Absent or empty until Chat is read —
+   * then nothing retires, which is the safe side.
+   */
+  chatEntries?: readonly TranscriptEntry[] | undefined;
 
   /**
    * The pane switcher, in two pieces: a Switch pill pinned at the actions belt's right end
@@ -359,7 +368,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -540,6 +549,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [sending, setSending] = useState(false);
   // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
   const protocolIntent = useRef<IntentId | null>(null);
+  // A send that ended `unknown`, remembered until the journal settles it (#511, lib/unknown-send.ts):
+  // the person may submit the stranded text by hand, and the user turn landing in Chat is then the
+  // proof it went through. Memory only, like the notice it retires; a new send replaces it.
+  const [pendingUnknown, setPendingUnknown] = useState<UnknownSend | null>(null);
+  // The journal as this render has it, for the send path to snapshot which turns predate a send.
+  const chatEntriesRef = useRef(chatEntries);
+  chatEntriesRef.current = chatEntries;
+  // The settling effect below must fire on the journal and the remembered send, not on every
+  // render's fresh closure — the latest-value ref says that outright, as `noticeNoEchoRef` does.
+  const clearComposedDraftRef = useRef(clearComposedDraft);
+  clearComposedDraftRef.current = clearComposedDraft;
   const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
@@ -970,6 +990,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }, [effectiveRaw]);
 
+  // The journal settling an `unknown` send (#511): the sent text has landed as a user turn, so it
+  // DID go through — however the person got it submitted. The notice and any offer retire, and the
+  // draft goes ONLY while the field still holds exactly what it held at the tap: words typed since
+  // are the person's next message, never this send's to clear. No "Sent ✓" and no preview — the
+  // phone never saw this send land; it only stops claiming the outcome is unknown. A stranded
+  // terminal line still echoing the same text is marked handled, as a verified send marks it, so
+  // the "Draft in terminal" preview drops instead of outliving its own submission.
+  useEffect(() => {
+    if (pendingUnknown === null || chatEntries === undefined) return;
+    if (findUnknownSendMatch(pendingUnknown, chatEntries) === undefined) return;
+    setPendingUnknown(null);
+    setProtocolOffer(null);
+    setSendRefusal(null);
+    if (pendingUnknown.isDraft && inputValueRef.current === pendingUnknown.draftText) clearComposedDraftRef.current();
+    if (effectiveRaw !== null && normalizeDraft(effectiveRaw) === normalizeDraft(pendingUnknown.sentText)) {
+      setHandledKey(normalizeDraft(effectiveRaw));
+      setPreviewLatched(false);
+    }
+  }, [pendingUnknown, chatEntries, effectiveRaw]);
+
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
   // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
   // streams straight into it (display-only; it can never write back into the phone-owned input). There
@@ -1242,6 +1282,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }): Promise<boolean> {
     setSending(true);
     setSendRefusal(null);
+    setPendingUnknown(null); // a new send supersedes the last one's open question (#511)
+    // What an `unknown` answer would have to be settled against (#511): when this send started,
+    // which journal turns already stood, and what the field held. Snapshotted before the request,
+    // so a turn landing while it is in flight still counts as this send's.
+    const sentAt = Date.now();
+    const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
+    const draftAtSend = inputValueRef.current;
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
@@ -1270,6 +1317,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const offered = reading.offers.length > 0 && resend === undefined;
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
       setSendRefusal(readingRefusal(reading), reply.surface ?? shownSurface, offered);
+      // An `unknown` outcome is an open question the journal can still answer (#511): remember the
+      // send, so its text landing as a user turn retires this notice and the kept draft. A resend
+      // carries no text of its own to recognise, so it is never remembered.
+      if (reading.note === "unknown" && resend === undefined) {
+        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+      }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
