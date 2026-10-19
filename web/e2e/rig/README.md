@@ -98,7 +98,7 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 2 | Permission card: Yes from the phone runs the command | claude, pi, omp | same |
 | 3 | Question card: pick-many on Claude, pick-one on pi and omp | claude, pi, omp | same |
 | 4 | A send while the agent streams a long reply | claude, pi, omp | same |
-| 5 | Load older with an empty phone cache | claude, pi, omp | same |
+| 5 | Load older with an empty phone cache: seven prompts, so the six-prompt cold page has an older page. The Load older row is attached, nothing covers its centre, a tap adds older rows, and the pin leaves the row free | claude, pi, omp | same |
 | 6 | Walky talky: hold Send, tap "Send as message". The pane gets one prompt, header and body. The receipt says `delivered`. Chat shows the "Message from" card with the operator badge | claude | `walky.spec.ts` |
 | 7 | The same operator message, to a pi pane and to an omp pane | pi, omp | `walky-harnesses.spec.ts` |
 | 8 | Agent to agent through the skill, pi to Claude and back: the receiver's pane gets a one-line nudge with no body, its `collie walky inbox <id>` output shows the body, `collie walky reply` comes back and the sender's pane shows the reply nudge; Claude's Chat draws the agent card | pi (with Claude) | `walky-harnesses.spec.ts` |
@@ -238,20 +238,21 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 ## Cost of one run
 
-- Claude: 17 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
-  request, the pick-many question, the long list plus one message sent while it streams, one prompt that
-  makes 48 Read calls, and 12 for walky talky: the operator's message (6), the nudge from pi (8), the
+- Claude: 23 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
+  request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
+  replies with a marker), and 12 for walky talky: the operator's message (6), the nudge from pi (8), the
   permission request, the message that waited behind it and the inbox read (9), the broadcast (10), the
   forged header (11, two), the long list and the message sent during it (16), and the question and the
-  message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 20 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
+  message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Walky talky adds 6 on pi (case 7,
+- pi and omp: 11 turns each on Haiku 4.5 with a key file, none without. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
   broadcast and the two of case 16). Their "Load older" history is
-  one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
+  seven prompts ("Reply with exactly DONE-n") and 45 shell lines (`!echo`) after the first, which run
+  without the model and pad the rows past the 40-row page floor. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
 - The crew leg (cases 12 to 15 and 19 to 21) adds 6 Claude turns and 4 pi turns, and about 4 minutes plus the rig's
-  start. A nightly run is therefore about 15 minutes, 23 Claude turns, 15 pi turns and 9 omp turns.
+  start. A nightly run is therefore about 15 minutes, 29 Claude turns, 21 pi turns and 15 omp turns.
 - Time: about 11 minutes for all three harnesses, about 3 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.
 
