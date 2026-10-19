@@ -2331,6 +2331,16 @@
    "version": "1.4.8",
    "state": "popup"
   },
+  "muse--prompt-hint-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "idle"
+  },
+  "muse--prompt-hint-typed-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "draft"
+  },
   "muse--prompt-hint.txt": {
    "harness": "muse",
    "version": "unversioned",
