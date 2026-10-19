@@ -16,7 +16,6 @@ afterEach(() => {
 function zoom(over: Partial<OutputZoomProps> = {}) {
   const props: OutputZoomProps = {
     text: "line one\nline two",
-    wrap: true,
     fontSize: 11,
     face: {},
     title: "build pane",
@@ -157,7 +156,7 @@ describe("OutputZoom", () => {
     const opened: string[] = [];
     render(
       <FileLinksProvider value={testFileOpener(opened)}>
-        <OutputZoom text="edited src/lib/nav.ts:12" wrap fontSize={11} face={{}} title="p" hand="right" onClose={vi.fn()} />
+        <OutputZoom text="edited src/lib/nav.ts:12" fontSize={11} face={{}} title="p" hand="right" onClose={vi.fn()} />
       </FileLinksProvider>,
     );
     const dialog = screen.getByRole("dialog");
@@ -165,11 +164,22 @@ describe("OutputZoom", () => {
     expect(dialog.querySelector("a")).toBeNull();
   });
 
-  it("with Wrap off, the <pre> is no scroller of its own: the viewport pans it", () => {
-    zoom({ wrap: false });
-    const pre = screen.getByRole("dialog").querySelector("pre")!;
+  it("never wraps: each terminal row is one line, as wide as it is, and nothing inside takes a sideways drag", () => {
+    // A row far wider than the phone, and a markdown table, which the wrapping mirror pans in a
+    // scroller of its own (lib/table-run.ts).
+    const wide = `LINE ${"x".repeat(300)} end`;
+    const table = ["| a | b |", "| --- | --- |", "| 1 | 2 |"].join("\n");
+    zoom({ text: `${wide}\n${table}` });
+    const dialog = screen.getByRole("dialog");
+    const pre = dialog.querySelector("pre")!;
+    expect(pre.className).toMatch(/(?:^|\s)whitespace-pre(?=\s|$)/);
+    expect(pre.className).not.toMatch(/(?:^|\s)whitespace-pre-wrap(?=\s|$)/);
+    // The <pre> is no scroller of its own and holds no table scroller: the viewport is the one.
     expect(pre.className).toMatch(/(?:^|\s)overflow-visible(?=\s|$)/);
-    expect(pre.className).not.toMatch(/(?:^|\s)overflow-x-auto(?=\s|$)/);
+    expect(dialog.querySelectorAll(".overflow-x-auto")).toHaveLength(0);
+    // The text box takes the longest row's width, which is what the pan bounds measure.
+    expect(pre.parentElement!.style.width).toBe("max-content");
+    expect(dialog).toHaveTextContent(wide);
   });
 
   it("repeats its Back at the bottom on a phone, on the thumb's side, with the ✕'s act and name", async () => {

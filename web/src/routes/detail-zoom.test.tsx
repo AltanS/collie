@@ -110,6 +110,29 @@ describe("the pane's output, zoomed", () => {
     expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
   });
 
+  it("unwraps the zoomed output with Wrap on, while the pane's own mirror keeps wrapping", async () => {
+    // Wrap is the display pref's default; pinned on here so the claim does not lean on it.
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ wrap: true }));
+    // The terminal body, not Chat, so the pane's own mirror is on screen under the view.
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    const user = userEvent.setup();
+    const router = makeRouter();
+    render(<RouterProvider router={router} />);
+    await user.click(await screen.findByRole("button", { name: "Zoom output" }));
+    const dialog = await screen.findByRole("dialog", { name: "Zoomed output" });
+    const zoomed = dialog.querySelector("pre")!;
+    expect(zoomed.className).toMatch(/(?:^|\s)whitespace-pre(?=\s|$)/);
+    expect(zoomed.className).not.toMatch(/(?:^|\s)whitespace-pre-wrap(?=\s|$)/);
+    const mirrors = [...document.querySelectorAll("pre")].filter((pre) => !dialog.contains(pre));
+    expect(mirrors.length).toBeGreaterThan(0);
+    for (const pre of mirrors) expect(pre.className).toMatch(/(?:^|\s)whitespace-pre-wrap(?=\s|$)/);
+
+    // And after the view closes, the mirror is still the wrapping one.
+    await user.click(within(dialog).getByRole("button", { name: "Back to the pane" }));
+    await waitFor(() => expect(zoomDialog()).toBeNull());
+    for (const pre of document.querySelectorAll("pre")) expect(pre.className).toMatch(/(?:^|\s)whitespace-pre-wrap(?=\s|$)/);
+  });
+
   it("keeps reading the pane loader while open", async () => {
     const user = userEvent.setup();
     const router = makeRouter();

@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
 // Paths the agent printed are not links here (an empty FileLinksProvider): a pinch that starts on
 // one must not open Files.
 //
-// THE MECHANICS. The text is laid out once, at the viewport's width (or its own, with Wrap off), and
+// THE MECHANICS. The text is laid out once, unwrapped (each terminal row one line), and
 // drawn scaled by a transform. Around it a box is sized to the scaled text, so the browser's own
 // scroller pans it, with its own momentum and its own bounds. A gesture therefore moves two numbers,
 // the scale and the scroll offset, and lib/zoom-gesture.ts holds every rule for them as pure
@@ -58,8 +58,8 @@ export interface OutputZoomProps {
   /** The pane's text, live: the pane loader's, never the mirror's frozen copy. */
   text: string;
   logicalText?: string;
-  /** The operator's Wrap and size, so 1× reads exactly as the mirror does. */
-  wrap: boolean;
+  /** The operator's terminal size, so 1× reads at the mirror's size. Wrap is not taken: the view
+   *  never wraps (see the AnsiOutput below). */
   fontSize: number;
   /** Picks the native mirror's colour space only; the grammars do not run here (see AgentChat). */
   agent?: string;
@@ -76,13 +76,13 @@ export interface OutputZoomProps {
 
 const NO_SIZE: Size = { width: 0, height: 0 };
 
-export function OutputZoom({ text, logicalText, wrap, fontSize, agent, nativeMirror, face, title, hand, onClose }: OutputZoomProps) {
+export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, face, title, hand, onClose }: OutputZoomProps) {
   useLocale();
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(MIN_ZOOM);
-  // The text's own laid-out size (a transform does not change it) and the viewport's width, which
-  // is the width the text wraps at.
+  // The text's own laid-out size (a transform does not change it) and the viewport's width, the
+  // narrowest the text box may be.
   const [natural, setNatural] = useState<Size>(NO_SIZE);
   const [viewportWidth, setViewportWidth] = useState(0);
   // The native listeners are attached once, so they read the live values through refs.
@@ -336,11 +336,13 @@ export function OutputZoom({ text, logicalText, wrap, fontSize, agent, nativeMir
           <div style={scaled ? { width: natural.width * scale, height: natural.height * scale } : undefined}>
             <div
               ref={contentRef}
-              // The route's own 8px gutter, inside the measured box, so it scales with the text and
-              // the wrap width at 1× is the mirror's.
+              // The route's own 8px gutter, inside the measured box, so it scales with the text.
+              // `max-content`: every terminal row is one line at its own length, and the box is as wide
+              // as the longest one, never narrower than the screen. That measured width is what the pan
+              // bounds and the pinch anchor use.
               className="px-2 py-1"
               style={{
-                width: wrap ? (viewportWidth > 0 ? viewportWidth : "100%") : "max-content",
+                width: "max-content",
                 minWidth: viewportWidth > 0 ? viewportWidth : "100%",
                 transform: scale === MIN_ZOOM ? undefined : `scale(${scale})`,
                 transformOrigin: "0 0",
@@ -350,14 +352,19 @@ export function OutputZoom({ text, logicalText, wrap, fontSize, agent, nativeMir
                 <AnsiOutput
                   text={text}
                   logicalText={logicalText}
-                  wrap={wrap}
+                  // NEVER WRAPPED, whatever the operator's Wrap setting says (the mirror still honours
+                  // it). A wrapped row reflows when its box changes, so a pinch would move the words
+                  // under the fingers; unwrapped, each terminal row stays one line, a pinch only scales
+                  // it, and a sideways pan reaches its end. Wrap off also builds no table-run scroller
+                  // (ansi-output.tsx), so nothing inside the view takes a sideways drag for itself.
+                  wrap={false}
                   fontSize={fontSize}
                   agent={agent}
                   grammars={false}
                   nativeMirror={nativeMirror}
-                  // With Wrap off the <pre> would be a scroller of its own; here the viewport is the
-                  // one scroller, so the <pre> takes its full width and lets it pan.
-                  className={wrap ? undefined : "w-max max-w-none overflow-visible"}
+                  // Unwrapped, the <pre> would be a scroller of its own; here the viewport is the one
+                  // scroller, so the <pre> takes its full width and lets the viewport pan it.
+                  className="w-max max-w-none overflow-visible"
                 />
               </FileLinksProvider>
             </div>
