@@ -64,6 +64,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Claude Code's session rating no longer blocks sends.** The "How is Claude doing this session?" row with its 1, 2, 3 and 0 keys sat above the box, and Collie read it as something open over the box, so every send was refused with "Collie cannot read this screen" until the row went away. It is now a notice like Heads up: the box stays sendable, the phone shows the rating as a card with its four buttons, and a single digit goes to the rating.
 - **A Chat thread opens on its last six prompts, not its last forty rows.** A Claude Code turn with many tool calls filled the forty-row page in minutes, so a thread opened on a sliver of itself and needed Load older at once. The live page and each older page now cover the last six prompts with everything the agent did after each, at least forty rows and at most four hundred.
 - **A subagent card always shows in Chat.** A turn's tool steps fold into one row such as "18 commands, 2 reads", and a delegated Agent call was folded in with them, so its summary and its report were out of sight and the fold's label did not count it. An Agent card now stands on its own between the folds, with the steps before and after it folded as before.
+- **An Agent call that names no type is labelled plain Agent.** A call that names no agent type is labelled plain Agent, or with its model, no longer Agent · agent.
 
 ## [1.22.6] - 2026-10-18
 

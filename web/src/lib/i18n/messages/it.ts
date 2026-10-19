@@ -512,6 +512,7 @@ export const it: Dictionary = {
   "chat.card.delete": "Elimina",
   "chat.card.move": "Sposta",
   "chat.card.agent": "Agente · {agent}",
+  "chat.card.agentPlain": "Agente",
   "chat.subagent.prompt": "Istruzione",
   "chat.subagent.report": "Rapporto",
   "chat.card.thinking": "Elaborazione",

@@ -89,6 +89,14 @@ describe("stepLine", () => {
     expect(stepLine({ kind: "move", path: "/a.ts", to: "/b.ts" }).verb).toBe("Moved");
   });
 
+  it("reads an agent call that names no type as plain Agent", () => {
+    expect(stepLine({ kind: "task", summary: "Read the corpus" })).toEqual({
+      verb: "Agent:",
+      subject: "Read the corpus",
+      mono: false,
+    });
+  });
+
   it("prefers a command's own description, and falls back to its first line in mono", () => {
     expect(stepLine({ kind: "execute", command: "ls -la", description: "List files" })).toEqual({
       verb: "",
@@ -226,6 +234,17 @@ describe("the host's waiting slot", () => {
     const { container } = withWaiting(<ToolGroup items={items} />, { c: { id: "ask-9", body: <p>Allow this?</p> } });
     expect(screen.getByText("Allow this?")).toBeInTheDocument();
     expect(container.querySelector('[data-waiting="ask-9"]')).not.toBeNull();
+  });
+});
+
+describe("an agent card", () => {
+  it("is labelled Agent · name with a name, and plain Agent without one", () => {
+    const named = render(<ToolCard tool={{ kind: "task", agent: "Explore", summary: "Look" }} status="done" />);
+    expect(screen.getByText("Agent · Explore")).toBeInTheDocument();
+    named.unmount();
+    render(<ToolCard tool={{ kind: "task", summary: "Look" }} status="done" />);
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.queryByText(/Agent · /)).toBeNull();
   });
 });
 

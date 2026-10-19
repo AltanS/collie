@@ -577,6 +577,7 @@ export const ja: Dictionary = {
   "chat.card.delete": "削除",
   "chat.card.move": "移動",
   "chat.card.agent": "エージェント · {agent}",
+  "chat.card.agentPlain": "エージェント",
   "chat.subagent.prompt": "指示プロンプト",
   "chat.subagent.report": "レポート",
   "chat.card.thinking": "思考",

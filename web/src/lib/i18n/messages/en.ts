@@ -646,6 +646,8 @@ export const en = {
   "chat.card.move": "Move",
   // `{agent}` is the sub-agent's own name, so it is not translated.
   "chat.card.agent": "Agent · {agent}",
+  // A call that named no agent type and no model: the card says what it is and nothing invented.
+  "chat.card.agentPlain": "Agent",
   "chat.subagent.prompt": "Prompt",
   "chat.subagent.report": "Report",
   "chat.card.thinking": "Thinking",

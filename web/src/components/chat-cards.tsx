@@ -134,10 +134,16 @@ export interface CardWaiting {
  */
 export const CardWaitingCtx = createContext<Record<string, CardWaiting>>({});
 
+/** The card's and the sheet's title: "Agent · {agent}" with a name, plain "Agent" without one. */
+export function agentLabel(agent: string | undefined): string {
+  return agent === undefined ? t("chat.card.agentPlain") : t("chat.card.agent", { agent });
+}
+
 /** What the subagent bottom sheet needs when a `task` card is tapped. */
 export interface SubagentTarget {
   readonly cardKey: string;
-  readonly agent: string;
+  /** Absent when the call named no agent type and no model; the card then reads plain "Agent". */
+  readonly agent?: string;
   readonly summary: string;
   readonly agentId?: string;
   readonly status: ChatToolStatus;
@@ -355,7 +361,7 @@ export function stepLine(call: ChatToolCall): StepLine {
       return { verb: t("chat.step.fetched"), subject: call.url, mono: true };
     // A sub-agent's name and a tool's own name are the harness's vocabulary, never a dictionary's.
     case "task":
-      return { verb: `${call.agent}:`, subject: call.summary, mono: false };
+      return { verb: call.agent === undefined ? `${t("chat.card.agentPlain")}:` : `${call.agent}:`, subject: call.summary, mono: false };
     case "question":
     case "other":
       return { verb: `${call.name}:`, subject: call.summary.split("\n")[0] ?? "", mono: false };
@@ -867,8 +873,8 @@ function ToolCardBody({
   // `data-waiting` lets a host find the card of the thing it is waiting on (scroll to it, see if it
   // is on screen).
   const anchor = waiting?.id;
-  const subagentCardKey = anchor ?? (tool.kind === "task" ? `${tool.agent}:${tool.summary}` : "");
-  const taskAgent = tool.kind === "task" ? tool.agent : "";
+  const subagentCardKey = anchor ?? (tool.kind === "task" ? `${tool.agent ?? ""}:${tool.summary}` : "");
+  const taskAgent = tool.kind === "task" ? tool.agent : undefined;
   const taskSummary = tool.kind === "task" ? tool.summary : "";
   const taskAgentId = tool.kind === "task" ? tool.agentId : undefined;
   const taskOutput = tool.kind === "task" ? tool.output : undefined;
@@ -960,7 +966,7 @@ function ToolCardBody({
           : tool.kind === "fetch"
             ? t("chat.card.fetch")
             : tool.kind === "task"
-              ? t("chat.card.agent", { agent: tool.agent })
+              ? agentLabel(tool.agent)
               : tool.kind === "other"
                 ? tool.name
                 : tool.kind === "delete"
