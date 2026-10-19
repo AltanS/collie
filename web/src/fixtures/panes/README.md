@@ -2013,6 +2013,7 @@ signature.
 | `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
 | `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
 | `muse--palette-skill.txt` | `/plan` typed: its one suggestion is a built-in skill row, `  /plan · built-in · default skill  On an explicit…`, tags between the command and the gap. The read is `/plan`. Visible-screen read 2026-10-15, cwd swapped for the sandbox path and model label renamed `mini` | `idle` |
+| `muse--slash-palette-1410.txt` | Bare `/` on Muse Code 1.4.10 (byte-faithful live capture, 2026-10-18, #519): seven command rows (`/bug` pointed, bold) and `↓ 72 more` painted inside the box between the prompt row and the bottom rule. The profile's inside `commandList` reads the palette pointing at `/bug`, so a bare `/` is no own list and the screen stays not-free; with the pointed command typed in full it reads as the typed command's own list (MUSE-03) | `idle` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`

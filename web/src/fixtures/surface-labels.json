@@ -2346,6 +2346,11 @@
    "version": "1.4.8",
    "state": "dialog"
   },
+  "muse--slash-palette-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "popup"
+  },
   "muse--tasks-popup-approval.txt": {
    "harness": "muse",
    "version": "unversioned",
