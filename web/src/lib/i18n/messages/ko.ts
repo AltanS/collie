@@ -578,6 +578,7 @@ export const ko: Dictionary = {
   "chat.card.delete": "삭제",
   "chat.card.move": "이동",
   "chat.card.agent": "에이전트 · {agent}",
+  "chat.card.agentPlain": "에이전트",
   "chat.subagent.prompt": "지시 프롬프트",
   "chat.subagent.report": "보고서",
   "chat.card.thinking": "사고 과정",

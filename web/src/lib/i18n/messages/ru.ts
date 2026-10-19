@@ -518,6 +518,7 @@ export const ru: Dictionary = {
   "chat.card.delete": "Удалить",
   "chat.card.move": "Переместить",
   "chat.card.agent": "Агент · {agent}",
+  "chat.card.agentPlain": "Агент",
   "chat.subagent.prompt": "Задание",
   "chat.subagent.report": "Отчёт",
   "chat.card.thinking": "Осмысление",

@@ -3,6 +3,7 @@ import { Bot, Check, ChevronRight } from "lucide-react";
 
 import {
   ItemView,
+  agentLabel,
   SubagentSheetCtx,
   type SubagentSheetHandle,
   type SubagentTarget,
@@ -213,7 +214,7 @@ export function SubagentSheet({
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <Bot className="size-3.5 shrink-0" />
-        <span className="truncate">{t("chat.card.agent", { agent: target.agent })}</span>
+        <span className="truncate">{agentLabel(target.agent)}</span>
         {running && (
           <StatusDot status="working" live label={t("chat.card.status.running")} className="size-2" />
         )}

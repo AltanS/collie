@@ -85,6 +85,23 @@ describe("classifyToolCall", () => {
     ).toEqual({ kind: "task", agent: "Explore", summary: "find the parser" });
   });
 
+  test("a subagent call names its type, else its model, else nothing, and never the word agent", () => {
+    const input = { description: "map the routes" };
+    expect(classifyToolCall("Agent", { ...input, subagent_type: "Explore", model: "opus" }, "x")).toEqual({
+      kind: "task",
+      agent: "Explore",
+      summary: "map the routes",
+    });
+    expect(classifyToolCall("Agent", { ...input, model: "sonnet" }, "x")).toEqual({
+      kind: "task",
+      agent: "sonnet",
+      summary: "map the routes",
+    });
+    const bare = classifyToolCall("Agent", input, "x");
+    expect(bare).toEqual({ kind: "task", summary: "map the routes" });
+    expect(Object.keys(bare)).toEqual(["kind", "summary"]);
+  });
+
   test("an absent optional field is absent, not `undefined`", () => {
     // A key holding `undefined` survives a deep compare and a structured clone, so it would travel to
     // the phone as a present-but-empty field.

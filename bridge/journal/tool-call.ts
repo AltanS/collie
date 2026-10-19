@@ -63,7 +63,7 @@ export type ToolCall =
   /** A file was removed or renamed. `to` is the destination of a move. */
   | { kind: "delete" | "move"; path: string; to?: string }
   /** A subagent ran. `agentId` names the subagent's own log when the harness records one. */
-  | { kind: "task"; agent: string; summary: string; agentId?: string }
+  | { kind: "task"; agent?: string; summary: string; agentId?: string }
   /**
    * The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is
    * the list of chosen labels for question `i`, present only once the call completed with answers.
@@ -290,12 +290,15 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
       if (to !== undefined) call.to = to;
       return call;
     }
-    case "task":
-      return {
-        kind: "task",
-        agent: str(o, "subagent_type", "agent", "agent_type") ?? "agent",
-        summary: str(o, "description", "task") ?? summary,
-      };
+    case "task": {
+      // NO WORD STANDS IN FOR A MISSING NAME. A Claude Code Agent call that names no subagent type
+      // carries its `model` ("opus", "sonnet") instead, and that says more than the word "agent" did.
+      // With neither, the field is absent and the card draws plain "Agent".
+      const call: ToolCall = { kind: "task", summary: str(o, "description", "task") ?? summary };
+      const agent = str(o, "subagent_type", "agent", "agent_type") ?? str(o, "model");
+      if (agent !== undefined) call.agent = agent;
+      return call;
+    }
     default:
       return { kind: "other", name, summary };
   }
