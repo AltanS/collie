@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_UNCHANGED,
   EMPTY_CHAT_WINDOW,
+  markSaved,
   mergeChat,
   type ChatAnswer,
   type ChatWindow,
@@ -187,6 +188,48 @@ describe("mergeChat — the two empty answers are different facts", () => {
   it("stays the same object when the status did not actually move", () => {
     const once = mergeChat(EMPTY_CHAT_WINDOW, stale);
     expect(mergeChat(once, stale)).toBe(once);
+  });
+});
+
+// pi `/new` (#526): the pane names the new session's file at once, but pi writes it only with the
+// first entry, so the route answers `no-log` while the turns held belong to the session before.
+describe("mergeChat — a log that does not exist yet clears the turns held", () => {
+  const unavailable = (reason: "no-log" | "no-session" | "disabled"): ChatAnswer => ({
+    outcome: "body",
+    body: { paneId: "w1:p1", available: false, reason },
+  });
+
+  it("drops the turns and the numbering on `no-log`", () => {
+    const next = mergeChat(held(), unavailable("no-log"));
+    expect(next.entries).toEqual([]);
+    expect(next.status).toEqual({ kind: "unavailable", reason: "no-log" });
+    expect(next.gen).toBe(0);
+    expect(next).toEqual({ ...EMPTY_CHAT_WINDOW, status: { kind: "unavailable", reason: "no-log" } });
+  });
+
+  it("drops a saved-copy mark with the turns", () => {
+    const next = mergeChat(markSaved(held(), 5), unavailable("no-log"));
+    expect(next.savedAt).toBeNull();
+  });
+
+  it("keeps the turns on `no-session`", () => {
+    expect(uuids(mergeChat(held(), unavailable("no-session")))).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps the turns on `disabled`", () => {
+    expect(uuids(mergeChat(held(), unavailable("disabled")))).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps the turns on a 404", () => {
+    expect(uuids(mergeChat(held(), { outcome: "stale" }))).toEqual(["a", "b", "c"]);
+  });
+
+  it("fills the new session from scratch once its log exists", () => {
+    const cleared = mergeChat(held(), unavailable("no-log"));
+    const next = mergeChat(cleared, live({ gen: GEN + 1, head: BASE + 9, oldest: BASE + 9, upserts: [entry("n", BASE + 9)] }));
+    expect(uuids(next)).toEqual(["n"]);
+    expect(next.status).toEqual({ kind: "live" });
+    expect(next.gen).toBe(GEN + 1);
   });
 });
 

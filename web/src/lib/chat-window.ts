@@ -23,6 +23,11 @@
 // behind" — the route is additive-optional over a crew link (ADR 0073 point 7). A client that draws
 // them alike tells an operator to wait for something that will never arrive, so they are two kinds
 // of {@link ChatStatus} and never one.
+//
+// Both keep the turns already held, with ONE exception: `available: false` for `no-log`. There the
+// pane names a session whose log has nothing in it yet (pi `/new` reports the new file at once and
+// writes it with the first entry), so the turns held belong to a session the pane no longer shows
+// (#526). That answer clears them.
 
 import type {
   ChatEntry,
@@ -204,7 +209,19 @@ export function mergeChat(held: ChatWindow, answer: ChatAnswer): ChatWindow {
   // skew does not unsay them.
   if (answer.outcome === "stale") return restate(held, STALE);
   const body = answer.body;
-  if (!body.available) return restate(held, { kind: "unavailable", reason: body.reason });
+  if (!body.available) {
+    const status: ChatStatus = { kind: "unavailable", reason: body.reason };
+    // `no-log` alone clears: the log the pane now names has nothing in it, and the turns held belong
+    // to a session the pane no longer shows (pi `/new`, #526). It is the empty window with this
+    // status, so `gen` is 0 (the next poll asks with no cursor) and no saved-copy mark lingers.
+    // Every other reason restates, as a 404 does.
+    if (body.reason === "no-log") {
+      return held.entries.length === 0 && held.gen === 0 && held.savedAt === null
+        ? restate(held, status)
+        : { ...EMPTY_CHAT_WINDOW, status };
+    }
+    return restate(held, status);
+  }
   return body.page === "older" ? mergeOlder(held, body) : mergeLive(held, body);
 }
 
