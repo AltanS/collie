@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { HOST, isInside } from "./host.ts";
 import { containedRealpath } from "./journal/files.ts";
@@ -7,8 +7,8 @@ import type { JsonObject, JsonValue } from "./json.ts";
 
 // The slash commands Claude Code loads from disk for a pane's working directory.
 //
-// A bounded scan of Claude Code's documented personal and project skill and command folders, not a
-// registry: the terminal's `/` menu stays the authority, and a row here proves only that a file exists
+// A bounded scan of Claude Code's documented personal and project skill and command folders, plus the
+// skills and commands of installed, enabled plugins, not a registry: the terminal's `/` menu stays the authority, and a row here proves only that a file exists
 // where Claude Code looks. Every path is built from the operator's home, the bridge's own environment
 // and the pane's cwd as the multiplexer reported it, never from a request, and every read resolves
 // through `containedRealpath` against its owning root (the personal config dir / home, or the
@@ -185,26 +185,35 @@ export function cleanDescription(raw: string | undefined): string {
   return flat.length > MAX_DESCRIPTION ? `${flat.slice(0, MAX_DESCRIPTION - 1)}…` : flat;
 }
 
-async function readSkillOverrides(
+/** One JSON file as an object; null when absent, oversized or unparseable (the last two reported). */
+async function readJsonObject(
   io: DiscoveryIo,
   path: string,
   roots: readonly string[],
   warn: (m: string) => void,
-): Promise<Map<string, OverrideState>> {
+  ignored = "its skill and plugin settings are ignored",
+): Promise<JsonObject | null> {
   const text = await io.read(path, roots, { maxBytes: MAX_SETTINGS_BYTES, truncate: false });
-  if (text === null) return new Map();
+  if (text === null) return null;
   if (Buffer.byteLength(text, "utf8") > MAX_SETTINGS_BYTES) {
-    warn(`${path} exceeds ${String(MAX_SETTINGS_BYTES)} bytes; its skill settings are ignored`);
-    return new Map();
+    warn(`${path} exceeds ${String(MAX_SETTINGS_BYTES)} bytes; ${ignored}`);
+    return null;
   }
   try {
-    // SAFETY: `JSON.parse` answers with a JSON value by definition, narrowed via asObject/stringEntries.
-    const doc = JSON.parse(text) as JsonValue;
-    return stringEntries(asObject(doc)?.skillOverrides);
+    // SAFETY: `JSON.parse` answers with a JSON value by definition, narrowed via asObject.
+    return asObject(JSON.parse(text) as JsonValue);
   } catch (err) {
-    warn(`${path} could not be parsed (${String(err)}); its skill settings are ignored`);
-    return new Map();
+    warn(`${path} could not be parsed (${String(err)}); ${ignored}`);
+    return null;
   }
+}
+
+function booleanEntries(value: JsonValue | undefined): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  for (const [key, entry] of Object.entries(asObject(value) ?? {})) {
+    if (typeof entry === "boolean") out.set(key, entry);
+  }
+  return out;
 }
 
 /**
@@ -270,6 +279,7 @@ async function skillsIn(
   roots: readonly string[],
   budget: ScanBudget,
   warn: (m: string) => void,
+  prefix = "",
 ): Promise<ClaudeCommand[]> {
   if (budget.ops <= 0) return [];
   budget.ops -= 1;
@@ -279,7 +289,7 @@ async function skillsIn(
   for (const entry of entries) {
     if (budget.ops <= 0 || out.length >= MAX_COMMANDS) break;
     if (!entry.dir || !NAME_SEGMENT.test(entry.name)) continue;
-    const row = await readCommandFile(io, join(root, entry.name, "SKILL.md"), entry.name, "", true, roots, budget, warn);
+    const row = await readCommandFile(io, join(root, entry.name, "SKILL.md"), entry.name, prefix, true, roots, budget, warn);
     if (row !== null) out.push(row);
   }
   return out;
@@ -320,6 +330,165 @@ async function commandsIn(
     if (!NAME_SEGMENT.test(name)) continue;
     const row = await readCommandFile(io, path, name, prefix, false, roots, budget, warn);
     if (row !== null) out.push(row);
+  }
+  return out;
+}
+
+/** Installed plugins read in one response. */
+const MAX_PLUGINS = 64;
+
+interface InstalledPlugin {
+  /** `<plugin>@<marketplace>`, the key `enabledPlugins` uses. */
+  key: string;
+  /** The part of the key before `@`: the prefix of every command the plugin offers. */
+  name: string;
+  installPath: string;
+}
+
+/**
+ * The install `installed_plugins.json` records for each plugin. A key can hold several entries (one
+ * per scope). A `project` or `local` entry counts only when its `projectPath` is one of the folders
+ * of this pane's project, and then it wins; otherwise the entry with the newest `installedAt` wins,
+ * which in practice is the `user` install.
+ */
+function installedPlugins(
+  doc: JsonObject,
+  projectFolders: readonly string[],
+  warn: (m: string) => void,
+): InstalledPlugin[] {
+  const plugins = asObject(doc.plugins);
+  if (plugins === null) {
+    warn("installed_plugins.json has no `plugins` map, so no plugin is listed");
+    return [];
+  }
+  const out: InstalledPlugin[] = [];
+  for (const [key, value] of Object.entries(plugins).slice(0, MAX_PLUGINS)) {
+    const name = key.split("@")[0] ?? "";
+    if (!NAME_SEGMENT.test(name) || !Array.isArray(value)) continue;
+    let best: { path: string; local: boolean; at: number } | null = null;
+    for (const item of value) {
+      const entry = asObject(item);
+      const path = asString(entry?.installPath);
+      if (entry === null || path === undefined || !isAbsolute(path)) continue;
+      const scope = asString(entry.scope);
+      const projectPath = asString(entry.projectPath);
+      const local = scope === "project" || scope === "local";
+      if (local && (projectPath === undefined || !projectFolders.some((dir) => resolve(dir) === resolve(projectPath)))) continue;
+      const at = Date.parse(asString(entry.installedAt) ?? "") || 0;
+      if (best === null || (local && !best.local) || (local === best.local && at > best.at)) best = { path, local, at };
+    }
+    if (best !== null) out.push({ key, name, installPath: best.path });
+  }
+  return out;
+}
+
+/** A manifest path (`./x` or `.`) as an absolute path inside the plugin root; null when it is neither. */
+function insidePlugin(root: string, raw: JsonValue | undefined): string | null {
+  if (typeof raw !== "string" || (raw !== "." && !raw.startsWith("./"))) return null;
+  const full = resolve(root, raw);
+  return isInside(HOST, full, root) ? full : null;
+}
+
+function manifestPaths(value: JsonValue | undefined): JsonValue[] {
+  return Array.isArray(value) ? value : value === undefined ? [] : [value];
+}
+
+/** The rows of one plugin: its `skills` folders and its `commands`, every name carrying `<plugin>:`. */
+async function pluginRows(
+  io: DiscoveryIo,
+  plugin: InstalledPlugin,
+  enabled: boolean | undefined,
+  personalRoots: readonly string[],
+  budget: ScanBudget,
+  warn: (m: string) => void,
+): Promise<ClaudeCommand[]> {
+  if (enabled === false) return [];
+  // The plugin folder is a personal location: it must resolve inside the config dir or the home.
+  // Every read below is then contained in the plugin's own folder, so a link inside it cannot leave.
+  const root = await io.realDir(plugin.installPath, personalRoots);
+  if (root === null) {
+    warn(`${plugin.key}: ${plugin.installPath} is not a folder inside the config dir or home, so the plugin is left out`);
+    return [];
+  }
+  const roots = [root];
+  const manifestPath = join(root, ".claude-plugin", "plugin.json");
+  const text = await io.read(manifestPath, roots, { maxBytes: MAX_SETTINGS_BYTES, truncate: false });
+  let manifest: JsonObject = {};
+  if (text !== null) {
+    try {
+      // SAFETY: `JSON.parse` answers with a JSON value by definition, narrowed via asObject.
+      manifest = asObject(JSON.parse(text) as JsonValue) ?? {};
+    } catch (err) {
+      warn(`${manifestPath} could not be parsed (${String(err)}); the plugin is left out`);
+      return [];
+    }
+  }
+  // ASSUMPTION: a plugin that no settings file names is enabled unless its manifest says
+  // `"defaultEnabled": false` (Claude Code's plugin manifest reference: the default is true). A
+  // marketplace entry can override that field; Collie does not read marketplaces.
+  if ((enabled ?? manifest.defaultEnabled !== false) === false) return [];
+
+  const prefix = `${plugin.name}:`;
+  const refuse = (field: string, raw: JsonValue) =>
+    warn(`${plugin.key}: the ${field} path ${JSON.stringify(raw)} is not a ./ path inside the plugin folder, so it is left out`);
+  const out: ClaudeCommand[] = [];
+
+  // `skills` adds to the default `skills/` folder. A listed folder holds <name>/SKILL.md folders or
+  // is itself one skill folder.
+  const skillDirs = [join(root, "skills")];
+  for (const raw of manifestPaths(manifest.skills)) {
+    const dir = insidePlugin(root, raw);
+    if (dir === null) refuse("skills", raw);
+    else if (!skillDirs.includes(dir)) skillDirs.push(dir);
+  }
+  for (const dir of skillDirs) {
+    const own = dir === root ? plugin.name : basename(dir);
+    const single = dir === join(root, "skills") ? null : await readCommandFile(io, join(dir, "SKILL.md"), own, prefix, true, roots, budget, warn);
+    if (single !== null) out.push(single);
+    out.push(...(await skillsIn(io, dir, roots, budget, warn, prefix)));
+  }
+
+  // `commands` replaces the default `commands/` folder: a folder, a flat .md file, or a name map.
+  const commands = manifest.commands;
+  const commandMap = Array.isArray(commands) ? null : asObject(commands);
+  if (commandMap !== null) {
+    for (const [name, spec] of Object.entries(commandMap).slice(0, MAX_DIR_ENTRIES)) {
+      const entry = asObject(spec);
+      if (entry === null || !NAME_SEGMENT.test(name)) continue;
+      const source = insidePlugin(root, entry.source);
+      let row: ClaudeCommand | null = null;
+      if (source !== null) {
+        row = await readCommandFile(io, source, name, prefix, false, roots, budget, warn);
+      } else if (entry.source !== undefined) {
+        refuse("commands", entry.source);
+      } else if (typeof entry.content === "string" && COMMAND_BODY.test(`${prefix}${name}`)) {
+        row = { command: `/${prefix}${name}`, description: "", argHint: "" };
+      }
+      if (row === null) continue;
+      const description = asString(entry.description);
+      const hint = asString(entry.argumentHint);
+      out.push({
+        ...row,
+        description: description === undefined ? row.description : cleanDescription(description),
+        argHint: hint === undefined ? row.argHint : cleanDescription(hint),
+      });
+    }
+  } else {
+    const listed = commands === undefined ? [join(root, "commands")] : manifestPaths(commands).map((raw) => {
+      const path = insidePlugin(root, raw);
+      if (path === null) refuse("commands", raw);
+      return path;
+    });
+    for (const path of listed) {
+      if (path === null) continue;
+      if (!path.endsWith(".md")) {
+        out.push(...(await commandsIn(io, path, prefix, roots, budget, warn)));
+        continue;
+      }
+      const name = basename(path).slice(0, -3);
+      const row = NAME_SEGMENT.test(name) ? await readCommandFile(io, path, name, prefix, false, roots, budget, warn) : null;
+      if (row !== null) out.push(row);
+    }
   }
   return out;
 }
@@ -367,35 +536,71 @@ export async function discoverClaudeCommands(opts: DiscoverOptions): Promise<Cla
 
   // Narrowest last, so it wins the merge: user, then the project root's shared and local files.
   const root = dirs.at(-1);
-  const overrides = await readSkillOverrides(io, join(configDir, "settings.json"), personalRoots, warn);
+  const settingsFiles: Array<{ path: string; roots: readonly string[] }> = [
+    { path: join(configDir, "settings.json"), roots: personalRoots },
+  ];
   if (root !== undefined) {
-    for (const [k, v] of await readSkillOverrides(io, join(root, ".claude", "settings.json"), [root], warn)) {
-      overrides.set(k, v);
-    }
-    for (const [k, v] of await readSkillOverrides(io, join(root, ".claude", "settings.local.json"), [root], warn)) {
-      overrides.set(k, v);
-    }
+    settingsFiles.push(
+      { path: join(root, ".claude", "settings.json"), roots: [root] },
+      { path: join(root, ".claude", "settings.local.json"), roots: [root] },
+    );
+  }
+  const overrides = new Map<string, OverrideState>();
+  const enabledPlugins = new Map<string, boolean>();
+  for (const file of settingsFiles) {
+    const settings = await readJsonObject(io, file.path, file.roots, warn);
+    for (const [k, v] of stringEntries(settings?.skillOverrides)) overrides.set(k, v);
+    for (const [k, v] of booleanEntries(settings?.enabledPlugins)) enabledPlugins.set(k, v);
   }
 
+  // Scan order is the budget's priority: personal and project rows are read before any plugin row,
+  // so a plugin-heavy machine cannot starve them. Precedence for a clashing name is the order below.
   const budget: ScanBudget = { ops: MAX_SCAN_OPS, visitedDirs: new Set() };
-  const ordered: ClaudeCommand[] = [
+  const personal: ClaudeCommand[] = [
     ...(await skillsIn(io, join(configDir, "skills"), personalRoots, budget, warn)),
     ...(await commandsIn(io, join(configDir, "commands"), "", personalRoots, budget, warn)),
   ];
+  const project: ClaudeCommand[] = [];
   for (const dir of dirs) {
     if (budget.ops <= 0) break;
     const projectRoots = [root ?? dir];
-    ordered.push(...(await skillsIn(io, join(dir, ".claude", "skills"), projectRoots, budget, warn)));
-    ordered.push(...(await commandsIn(io, join(dir, ".claude", "commands"), "", projectRoots, budget, warn)));
+    project.push(...(await skillsIn(io, join(dir, ".claude", "skills"), projectRoots, budget, warn)));
+    project.push(...(await commandsIn(io, join(dir, ".claude", "commands"), "", projectRoots, budget, warn)));
   }
-
-  const byName = new Map<string, ClaudeCommand>();
-  for (const row of ordered) {
-    if (overrides.get(row.command.slice(1)) === "off") continue;
-    if (!byName.has(row.command)) {
-      byName.set(row.command, row);
-      if (byName.size >= MAX_COMMANDS) break;
+  const plugin: ClaudeCommand[] = [];
+  const installed = await readJsonObject(
+    io,
+    join(configDir, "plugins", "installed_plugins.json"),
+    personalRoots,
+    warn,
+    "no plugin is listed",
+  );
+  if (installed !== null) {
+    for (const item of installedPlugins(installed, dirs, warn)) {
+      if (budget.ops <= 0) break;
+      plugin.push(...(await pluginRows(io, item, enabledPlugins.get(item.key), personalRoots, budget, warn)));
     }
   }
-  return [...byName.values()];
+
+  // Personal, then plugins, then project: a plugin's name carries its `plugin:` prefix, so a clash
+  // is rare, and the folders the operator owns still win one.
+  const byName = new Map<string, { row: ClaudeCommand; fromPlugin: boolean }>();
+  const sources: Array<[ClaudeCommand[], boolean]> = [[personal, false], [plugin, true], [project, false]];
+  for (const [rows, fromPlugin] of sources) {
+    for (const row of rows) {
+      if (overrides.get(row.command.slice(1)) === "off") continue;
+      if (!byName.has(row.command)) byName.set(row.command, { row, fromPlugin });
+    }
+  }
+  // One cap for the response: past it, plugin rows give way before personal and project rows do.
+  let room = MAX_COMMANDS;
+  let pluginRoom = MAX_COMMANDS - [...byName.values()].filter((e) => !e.fromPlugin).length;
+  const out: ClaudeCommand[] = [];
+  for (const { row, fromPlugin } of byName.values()) {
+    if (room <= 0) break;
+    if (fromPlugin && pluginRoom-- <= 0) continue;
+    room -= 1;
+    out.push(row);
+  }
+  return out;
 }

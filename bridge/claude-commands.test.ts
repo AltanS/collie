@@ -338,3 +338,238 @@ describe("discoverClaudeCommands: the bounds a reader of the operator's disk kee
     }
   });
 });
+
+describe("discoverClaudeCommands: installed plugins", () => {
+  const cache = "/h/.claude/plugins/cache/mk";
+  const installed = (plugins: Record<string, Array<Record<string, string>>>) =>
+    JSON.stringify({ version: 2, plugins });
+  const entry = (name: string, extra: Record<string, string> = {}) => ({
+    scope: "user",
+    installPath: native(`${cache}/${name}/1.0.0`),
+    installedAt: "2026-01-01T00:00:00.000Z",
+    ...extra,
+  });
+
+  test("a plugin skill and command are listed with the plugin prefix, a description and a hint", async () => {
+    const { rows, warns } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "dev-tools@mk": [entry("dev-tools")] }),
+      [`${cache}/dev-tools/1.0.0/skills/log-off/SKILL.md`]: skill("End a session", 'argument-hint: "[note]"\n'),
+      [`${cache}/dev-tools/1.0.0/skills/wordsmith/SKILL.md`]: skill("Polish prose", "name: wordsmith\n"),
+      [`${cache}/dev-tools/1.0.0/commands/ship.md`]: "---\ndescription: Ship it\n---\n",
+    });
+    expect(rows).toEqual([
+      { command: "/dev-tools:log-off", description: "End a session", argHint: "[note]" },
+      { command: "/dev-tools:wordsmith", description: "Polish prose", argHint: "" },
+      { command: "/dev-tools:ship", description: "Ship it", argHint: "" },
+    ]);
+    expect(warns).toEqual([]);
+  });
+
+  test("enabledPlugins false leaves a plugin out, the project files win over the user file, and absent means enabled", async () => {
+    const files = {
+      "/h/.claude/plugins/installed_plugins.json": installed({
+        "off@mk": [entry("off")],
+        "on@mk": [entry("on")],
+        "absent@mk": [entry("absent")],
+        "project-off@mk": [entry("project-off")],
+      }),
+      [`${cache}/off/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/on/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/absent/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/project-off/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      "/h/.claude/settings.json": JSON.stringify({
+        enabledPlugins: { "off@mk": false, "on@mk": true, "project-off@mk": true },
+      }),
+      "/h/code/app/.git/HEAD": "ref",
+      "/h/code/app/.claude/settings.local.json": JSON.stringify({ enabledPlugins: { "project-off@mk": false, "off@mk": true } }),
+    };
+    expect((await run(files)).names).toEqual(["/off:a", "/on:a", "/absent:a"]);
+    expect((await run({ ...files, "/h/code/app/.claude/settings.local.json": "{}" })).names).toEqual([
+      "/on:a",
+      "/absent:a",
+      "/project-off:a",
+    ]);
+  });
+
+  test("an unnamed plugin follows its manifest defaultEnabled, which is true when missing", async () => {
+    const { names } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "quiet@mk": [entry("quiet")], "loud@mk": [entry("loud")] }),
+      [`${cache}/quiet/1.0.0/.claude-plugin/plugin.json`]: '{"name":"quiet","defaultEnabled":false}',
+      [`${cache}/quiet/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/loud/1.0.0/.claude-plugin/plugin.json`]: '{"name":"loud"}',
+      [`${cache}/loud/1.0.0/skills/a/SKILL.md`]: skill("x"),
+    });
+    expect(names).toEqual(["/loud:a"]);
+  });
+
+  test("plugin.json skills adds a folder to skills/, and a path that leaves the plugin is refused", async () => {
+    const { names, warns } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
+      [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({
+        name: "p",
+        skills: ["./extra", "../../other/skills", "/etc", "elsewhere"],
+      }),
+      [`${cache}/p/1.0.0/skills/default/SKILL.md`]: skill("x"),
+      [`${cache}/p/1.0.0/extra/custom/SKILL.md`]: skill("x"),
+      [`${cache}/other/skills/stolen/SKILL.md`]: skill("x"),
+    });
+    expect(names).toEqual(["/p:default", "/p:custom"]);
+    expect(warns).toHaveLength(3);
+    expect(warns.join("\n")).toContain("../../other/skills");
+  });
+
+  test("plugin.json commands replaces commands/, takes files and folders, and maps a name to a source", async () => {
+    const { rows } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
+      [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({ name: "p", commands: ["./cmds", "./single.md"] }),
+      [`${cache}/p/1.0.0/commands/ignored.md`]: "x",
+      [`${cache}/p/1.0.0/cmds/one.md`]: "x",
+      [`${cache}/p/1.0.0/single.md`]: "---\ndescription: Single\n---\n",
+    });
+    expect(rows.map((r) => r.command)).toEqual(["/p:one", "/p:single"]);
+    const mapped = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
+      [`${cache}/p/1.0.0/.claude-plugin/plugin.json`]: JSON.stringify({
+        name: "p",
+        commands: {
+          status: { source: "./c/s.md", argumentHint: "[env]" },
+          about: { content: "Explain.", description: "About" },
+          bad: { source: "../x.md" },
+        },
+      }),
+      [`${cache}/p/1.0.0/c/s.md`]: "---\ndescription: From file\n---\n",
+    });
+    expect(mapped.rows).toEqual([
+      { command: "/p:status", description: "From file", argHint: "[env]" },
+      { command: "/p:about", description: "About", argHint: "" },
+    ]);
+    expect(mapped.warns).toHaveLength(1);
+  });
+
+  test("a nested plugin command carries the plugin and folder prefix", async () => {
+    const { names } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
+      [`${cache}/p/1.0.0/commands/git/commit.md`]: "x",
+    });
+    expect(names).toEqual(["/p:git:commit"]);
+  });
+
+  test("a broken installed_plugins.json is reported and the personal and project rows still load", async () => {
+    const files = {
+      "/h/.claude/skills/mine/SKILL.md": skill("x"),
+      "/h/code/app/.git/HEAD": "ref",
+      "/h/code/app/.claude/skills/theirs/SKILL.md": skill("x"),
+    };
+    for (const bad of ["{ not json", '{"version":2}', '{"plugins":{"p@mk":"nope","q@mk":[{"installPath":3}]}}']) {
+      const { names, warns } = await run({ ...files, "/h/.claude/plugins/installed_plugins.json": bad });
+      expect(names).toEqual(["/mine", "/theirs"]);
+      expect(warns.length).toBe(bad === '{"version":2}' || bad === "{ not json" ? 1 : 0);
+      expect(warns.join("\n")).not.toContain("undefined");
+    }
+  });
+
+  test("a broken plugin.json drops that plugin only", async () => {
+    const { names, warns } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "bad@mk": [entry("bad")], "good@mk": [entry("good")] }),
+      [`${cache}/bad/1.0.0/.claude-plugin/plugin.json`]: "{ nope",
+      [`${cache}/bad/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/good/1.0.0/skills/a/SKILL.md`]: skill("x"),
+    });
+    expect(names).toEqual(["/good:a"]);
+    expect(warns).toHaveLength(1);
+  });
+
+  test("with several installs of one plugin, a matching project install wins, else the newest", async () => {
+    const files = {
+      "/h/.claude/plugins/installed_plugins.json": installed({
+        "p@mk": [
+          entry("old", { installedAt: "2025-01-01T00:00:00.000Z" }),
+          entry("new", { installedAt: "2026-06-01T00:00:00.000Z" }),
+          entry("proj", { scope: "project", projectPath: native("/h/code/app"), installedAt: "2024-01-01T00:00:00.000Z" }),
+          entry("elsewhere", { scope: "local", projectPath: native("/h/other"), installedAt: "2027-01-01T00:00:00.000Z" }),
+        ],
+      }),
+      [`${cache}/old/1.0.0/skills/old/SKILL.md`]: skill("x"),
+      [`${cache}/new/1.0.0/skills/new/SKILL.md`]: skill("x"),
+      [`${cache}/proj/1.0.0/skills/proj/SKILL.md`]: skill("x"),
+      [`${cache}/elsewhere/1.0.0/skills/elsewhere/SKILL.md`]: skill("x"),
+      "/h/code/app/.git/HEAD": "ref",
+    };
+    expect((await run(files)).names).toEqual(["/p:proj"]);
+    expect((await run(files, "/h/unrelated")).names).toEqual(["/p:new"]);
+  });
+
+  test("a skillOverrides off entry also hides a plugin row", async () => {
+    const { names } = await run({
+      "/h/.claude/plugins/installed_plugins.json": installed({ "p@mk": [entry("p")] }),
+      [`${cache}/p/1.0.0/skills/a/SKILL.md`]: skill("x"),
+      [`${cache}/p/1.0.0/skills/b/SKILL.md`]: skill("x"),
+      "/h/.claude/settings.json": JSON.stringify({ skillOverrides: { "p:a": "off" } }),
+    });
+    expect(names).toEqual(["/p:b"]);
+  });
+
+  test("plugin rows come after personal ones and before project ones, and personal and project rows win the cap", async () => {
+    const files: Record<string, string> = {};
+    files["/h/.claude/plugins/installed_plugins.json"] = installed({ "p@mk": [entry("p")] });
+    files["/h/.claude/skills/mine/SKILL.md"] = skill("x");
+    files["/h/code/app/.git/HEAD"] = "ref";
+    files["/h/code/app/.claude/skills/theirs/SKILL.md"] = skill("x");
+    expect((await run({ ...files, [`${cache}/p/1.0.0/skills/a/SKILL.md`]: skill("x") })).names).toEqual([
+      "/mine",
+      "/p:a",
+      "/theirs",
+    ]);
+    // Enough plugin rows to fill the response: the project row is still read first and kept.
+    for (let i = 0; i < 400; i++) files[`${cache}/p/1.0.0/commands/c${String(i).padStart(4, "0")}.md`] = "x";
+    for (let i = 0; i < 400; i++) files[`${cache}/p/1.0.0/commands/d${String(i).padStart(4, "0")}.md`] = "x";
+    for (let i = 0; i < 400; i++) files[`/h/.claude/commands/m${String(i).padStart(4, "0")}.md`] = "x";
+    const names = (await run(files)).names;
+    expect(names.length).toBeLessThanOrEqual(MAX_COMMANDS);
+    expect(names).toContain("/mine");
+    expect(names).toContain("/theirs");
+    expect(names.some((n) => n.startsWith("/m0"))).toBe(true);
+  });
+
+  test("real disk: a custom install path in the home is read, one outside the home is refused, and a link out of the plugin is not followed", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "collie-claude-plugins-"));
+    try {
+      const home = join(sandbox, "home");
+      const configDir = join(home, ".claude");
+      const custom = join(home, "dev", "my-plugin");
+      const foreign = join(sandbox, "elsewhere", "foreign-plugin");
+      const linked = join(configDir, "plugins", "cache", "mk", "linked", "1.0.0");
+      const secret = join(home, "private-skill");
+
+      await mkdir(join(custom, "skills", "mine"), { recursive: true });
+      await writeFile(join(custom, "skills", "mine", "SKILL.md"), skill("custom path"));
+      await mkdir(join(foreign, "skills", "theirs"), { recursive: true });
+      await writeFile(join(foreign, "skills", "theirs", "SKILL.md"), skill("outside the home"));
+      await mkdir(join(linked, "skills"), { recursive: true });
+      await mkdir(secret, { recursive: true });
+      await writeFile(join(secret, "SKILL.md"), skill("not in the plugin"));
+      await symlink(secret, join(linked, "skills", "escape"));
+      await mkdir(join(linked, "skills", "inside"), { recursive: true });
+      await writeFile(join(linked, "skills", "inside", "SKILL.md"), skill("inside"));
+      await writeFile(
+        join(configDir, "plugins", "installed_plugins.json"),
+        JSON.stringify({
+          version: 2,
+          plugins: {
+            "custom@mk": [{ scope: "user", installPath: custom }],
+            "foreign@mk": [{ scope: "user", installPath: foreign }],
+            "linked@mk": [{ scope: "user", installPath: linked }],
+          },
+        }),
+      );
+
+      const warns: string[] = [];
+      const rows = await discoverClaudeCommands({ home, cwd: null, configDir, warn: (m) => warns.push(m) });
+      expect(rows.map((r) => r.command)).toEqual(["/custom:mine", "/linked:inside"]);
+      expect(warns).toHaveLength(1);
+      expect(warns[0]).toContain("foreign@mk");
+    } finally {
+      await rm(sandbox, { recursive: true, force: true });
+    }
+  });
+});
