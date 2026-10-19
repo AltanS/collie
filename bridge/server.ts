@@ -4091,7 +4091,8 @@ export async function discoveryHints(
  * `hints` goes to discovery untouched: the screen is a thunk the adapter may call, never a read made
  * here, so a discovering adapter that keys on the folder alone costs no multiplexer call, and the
  * foreground argv is already resolved by the caller (see {@link discoveryHints}), so this function
- * passes it through and never fetches.
+ * passes it through and never fetches. The one hint added here is `shared`, when another pane runs
+ * the same harness in the same folder: the panes list is this function's, not the caller's.
  */
 export async function journalRefOf(
   adapter: JournalAdapter,
@@ -4100,13 +4101,20 @@ export async function journalRefOf(
   hints?: DiscoverHints,
 ): Promise<AgentSessionRef | null> {
   const reported = pane.agentSession;
-  if (reported === undefined) return (await adapter.discover?.(pane.cwd, hints)) ?? null;
-  if (adapter.reconcile === undefined || pane.agent !== adapter.agent) return reported;
-  // A fresh pane's row may not be written yet. With another pane running the same harness in the
-  // same folder, the one live session found there could be that pane's, so the reported ref stands.
+  // Another pane running the same harness in the same folder: whatever a folder walk finds there
+  // could be that pane's session.
   const neighbour = panes.some(
     (other) => other.paneId !== pane.paneId && other.agent === adapter.agent && other.cwd === pane.cwd,
   );
+  if (reported === undefined) {
+    // Discovery hears about the neighbour, so a folder-keyed adapter answers no session rather than
+    // the neighbour's (#508). The flag rides only when true; otherwise the hints pass untouched.
+    const told: DiscoverHints | undefined = neighbour ? { ...hints, shared: true } : hints;
+    return (await adapter.discover?.(pane.cwd, told)) ?? null;
+  }
+  if (adapter.reconcile === undefined || pane.agent !== adapter.agent) return reported;
+  // A fresh pane's row may not be written yet; with a neighbour, the one live session found in the
+  // folder could be that pane's, so the reported ref stands.
   if (neighbour) return reported;
   return adapter.reconcile(reported, pane.cwd);
 }

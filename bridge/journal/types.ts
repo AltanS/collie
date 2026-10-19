@@ -205,6 +205,12 @@ export interface DiscoverHints {
   screen?: PaneScreen;
   /** The pane's foreground argv ({@link ForegroundProcess}). */
   processes?: readonly ForegroundProcess[];
+  /**
+   * True when another pane running the same harness sits in the same folder. Set only then, never
+   * `false`. A folder walk cannot tell those panes' sessions apart, so an adapter that answers by
+   * folder must answer null here rather than hand this pane a neighbour's session (#508).
+   */
+  shared?: true;
 }
 
 /**
@@ -259,7 +265,9 @@ export interface JournalAdapter {
    * `processes` is the pane's own foreground argv, when the multiplexer can say: several live
    * sessions may share one `cwd` (two tabs in one workspace), and newest-wins across them shows
    * every pane the same transcript. An adapter that can read its session out of argv answers
-   * exactly; one that cannot — or a multiplexer that offers none — falls back to the cwd walk.
+   * exactly; one that cannot — or a multiplexer that offers none — falls back to the cwd walk,
+   * but only while `shared` is unset: with a same-harness neighbour in the folder the walk's
+   * answer may be the neighbour's session, and no session beats another pane's (#508).
    * Absent is always a legal answer to ignore, never an error.
    *
    * The returned ref is an ordinary id ref: it goes through the same `resolve`, containment and
