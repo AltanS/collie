@@ -165,7 +165,7 @@ export interface TranscriptSource {
    *
    * Optional, and only Claude has it: Claude Code writes `<session>/subagents/agent-<id>.jsonl` and a
    * `.meta.json` beside it. No other harness writes subagent files today. A harness that starts to
-   * gives its source this method, and its panes get the belt's Agents pill with no other change.
+   * gives its source this method, and its panes get the belt's agents mark with no other change.
    */
   subagentDirs?(ref: AgentSessionRef): Promise<string[]>;
   /**

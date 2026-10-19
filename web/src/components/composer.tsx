@@ -2,7 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useStat
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Bot, Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -251,8 +251,8 @@ interface ComposerProps {
   /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
   todos?: readonly PaneTodo[];
   /**
-   * The pane's subagents that have not finished yet (bridge/subagents.ts), drawn as the Agents pill
-   * beside Tasks and an in-flow dock when non-empty. A finished one leaves the list and stays in Chat.
+   * The pane's subagents that have not finished yet (bridge/subagents.ts), drawn as the agents mark
+   * on the belt's fixed block and an in-flow dock when non-empty. A finished one leaves the list and stays in Chat.
    */
   subagents?: readonly PaneSubagent[];
 }
@@ -1135,8 +1135,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     todoList.length > 0
       ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
       : "";
-  // The running subagents: the Agents pill and its dock. A tap on a row opens the SAME sheet an Agent
-  // card in Chat opens (subagent-sheet.tsx), through the context the pane route provides.
+  // The running subagents: the agents mark on the belt's fixed block, and its dock. A tap on a row
+  // opens the SAME sheet an Agent card in Chat opens (subagent-sheet.tsx), through the context the
+  // pane route provides.
   const subagentList = subagents ?? [];
   const agentsLabel =
     subagentList.length > 0 ? translate("composer.controls.agents", { count: subagentList.length }) : "";
@@ -2051,6 +2052,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     },
                   ]
                 : []),
+              ...(todoList.length > 0
+                ? [
+                    {
+                      id: "todos",
+                      icon: ListTodo,
+                      label: todoLabel,
+                      on: drawer === "todos",
+                      expanded: drawer === "todos",
+                      onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
+                    },
+                  ]
+                : []),
               // Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view
               // state, so a read-only device or a gone pane can still make its mirror readable.
               {
@@ -2068,37 +2081,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 },
               },
           ]}
-          // The state pills, Tasks then Agents, each only while its count is above zero. They are not
-          // in `general`: the belt pins them to its end edge so they stay in view while it scrolls,
-          // and a pill that comes or goes moves none of the controls (actions-row.tsx, `state`).
-          state={[
-            ...(todoList.length > 0
-              ? [
-                  {
-                    id: "todos",
-                    icon: ListTodo,
-                    label: todoLabel,
-                    on: drawer === "todos",
-                    expanded: drawer === "todos",
-                    onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
-                  },
-                ]
-              : []),
-            // The running subagents, beside Tasks and built the same way. A tap opens the dock and
-            // sends nothing.
-            ...(subagentList.length > 0
-              ? [
-                  {
-                    id: "agents",
-                    icon: Bot,
-                    label: agentsLabel,
-                    on: drawer === "agents",
-                    expanded: drawer === "agents",
-                    onSelect: () => requestDrawer(drawer === "agents" ? null : "agents"),
-                  },
-                ]
-              : []),
-          ]}
           agent={agent}
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
@@ -2108,6 +2090,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
+          // The running subagents: a small mark with their count in the pinned block, left of Files
+          // and the Switch mark, only while the count is above zero. A tap opens the Agents dock.
+          agents={
+            subagentList.length > 0
+              ? {
+                  count: subagentList.length,
+                  label: agentsLabel,
+                  expanded: drawer === "agents",
+                  onClick: () => requestDrawer(drawer === "agents" ? null : "agents"),
+                }
+              : undefined
+          }
           hand={hand}
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.
