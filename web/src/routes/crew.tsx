@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { Activity, ArrowLeft, Crown, MessageSquare, Network, Shield } from "lucide-react";
+import { Activity, ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
 
 import { RouteHeader } from "@/components/app-header";
@@ -25,6 +25,7 @@ import { isReadOnly, type AgentView, type CrewMemberStatus, type CrewStatusRespo
 import { cn } from "@/lib/utils";
 import { BandMain } from "@/components/ui/strip-host";
 import { WalkyBroadcastSheet } from "@/components/walky-broadcast-sheet";
+import { WalkyIcon } from "@/components/walky-icon";
 
 // The crew census: the whole crew drawn as a FORMATION, and the answer to "how is my crew doing?".
 //
@@ -148,7 +149,7 @@ export function CrewRoute() {
               disabled={mayNotSend}
               aria-describedby={mayNotSend ? mayNotSendId : undefined}
             >
-              <MessageSquare className="size-4" aria-hidden="true" />
+              <WalkyIcon className="size-4" aria-hidden="true" />
               {t("walky.crew.open")}
             </Button>
             {mayNotSend && (

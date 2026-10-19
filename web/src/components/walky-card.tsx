@@ -1,7 +1,8 @@
-import { ChevronRight, MessageSquare } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { useWalkyOpen } from "@/components/walky-log";
+import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -54,7 +55,7 @@ export function WalkyCard({ row }: { row: WalkyRow }) {
   const body = (
     <>
       <span className={cn("mb-1 flex items-center gap-1.5 text-[11px] font-semibold", tone.head)}>
-        <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+        <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{t("walky.card.title", { label: row.from.label })}</span>
         <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-medium">
           {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
