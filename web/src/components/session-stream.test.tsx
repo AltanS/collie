@@ -394,6 +394,38 @@ describe("SessionStream", () => {
     });
   });
 
+  it("draws the agent's own walky talky send as its card between two folds, even with tool calls off", () => {
+    const exec = (n: number, command: string): ChatEntry["parts"][number] => ({
+      kind: "tool",
+      id: `w${n}`,
+      name: "Bash",
+      summary: command,
+      call: { kind: "execute", command },
+      result: { text: "" },
+    });
+    const feed = feedOf({
+      status: { kind: "live" },
+      entries: [
+        entry("a", BASE, "", {
+          parts: [
+            exec(1, "ls"),
+            exec(2, "pwd"),
+            exec(3, 'collie walky send bluefin/w6:p3 "Merged."'),
+            exec(4, "git status"),
+            exec(5, "git log"),
+          ],
+        }),
+      ],
+    });
+    renderStream(feed, false);
+    const blocks = [...document.querySelectorAll("[data-block]")];
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toHaveTextContent("2 commands");
+    expect(blocks[1]!.querySelector('[data-slot="walky-tool-badge"]')).not.toBeNull();
+    expect(blocks[1]).not.toHaveTextContent("command");
+    expect(blocks[2]).toHaveTextContent("2 commands");
+  });
+
   // ── the tail row: a turn in flight ────────────────────────────────────────
   // The mirror shows the agent's own spinner; this body draws the record, and a record gains nothing
   // while a compaction runs. Without this row a compacting session looked exactly like a finished one.

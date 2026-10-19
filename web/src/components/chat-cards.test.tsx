@@ -68,6 +68,17 @@ describe("groupRuns", () => {
     expect(groupRuns([x("a"), agent, x("b")], 1).map((g) => g.length)).toEqual([1, 1, 1]);
   });
 
+  it("never folds the agent's own walky talky send or reply, but folds who, status and inbox", () => {
+    const x = (id: string): ChatItem => tool({ kind: "execute", command: "ls" }, { id });
+    const walky = (id: string, command: string): ChatItem => tool({ kind: "execute", command }, { id });
+    const send = walky("send", 'collie walky send bluefin/w6:p3 "Merged."');
+    const items = [x("a"), x("b"), send, x("c"), x("d")];
+    expect(groupRuns(items, 2).map((g) => g.map((i) => i.id).join(""))).toEqual(["ab", "send", "cd"]);
+    expect(groupRuns([x("a"), x("b"), walky("reply", "collie walky reply wt_k3f9x2m8q1a0 ok"), x("c")], 1).map((g) => g.length)).toEqual([2, 1, 1]);
+    const quiet = [x("a"), walky("who", "collie walky who"), walky("st", "collie walky status"), walky("in", "collie walky inbox wt_k3f9x2m8q1a0")];
+    expect(groupRuns(quiet).map((g) => g.length)).toEqual([4]);
+  });
+
   it("folds a lone step at minRun 1, which is how tool calls off is drawn", () => {
     expect(groupRuns([t("a")], 1).map((g) => g.length)).toEqual([1]);
     expect(groupRuns([t("a"), said("s")], 1).map((g) => g.length)).toEqual([1, 1]);
