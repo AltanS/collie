@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Layers, ListTree, Undo2, X } from "lucide-react";
+import { Bot, Layers, ListTree, Undo2, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -208,12 +208,21 @@ const SWITCH_PILL_INSET_WITH_CHANGES = 155;
  *  Changes pill and the mark. 155 + 32 (the X) + 6 (its gap) = 193. */
 const SWITCH_PILL_INSET_WITH_CLEAR = 193;
 
-/** The three constants above, indexed by how many pills the block holds, less one. */
-const SWITCH_PILL_INSETS = [SWITCH_PILL_INSET, SWITCH_PILL_INSET_WITH_CHANGES, SWITCH_PILL_INSET_WITH_CLEAR] as const;
+/** The first-frame fallback with all FOUR pinned pills: the agents mark (see `agents` below), the X,
+ *  the Changes pill and the mark. 193 + 32 (the agents mark) + 6 (its gap) = 231. */
+const SWITCH_PILL_INSET_WITH_AGENTS = 231;
+
+/** The four constants above, indexed by how many pills the block holds, less one. */
+const SWITCH_PILL_INSETS = [
+  SWITCH_PILL_INSET,
+  SWITCH_PILL_INSET_WITH_CHANGES,
+  SWITCH_PILL_INSET_WITH_CLEAR,
+  SWITCH_PILL_INSET_WITH_AGENTS,
+] as const;
 
 /**
- * The first-frame fallback AT A BELT SCALE, for a block holding `pills` pinned pills (1 to 3). The
- * three constants above are the scale-1 arithmetic; only the icon-only pills grow with `--belt-scale`
+ * The first-frame fallback AT A BELT SCALE, for a block holding `pills` pinned pills (1 to 4). The
+ * constants above are the scale-1 arithmetic; only the icon-only pills grow with `--belt-scale`
  * (the hairline, the gaps, `pr-3` and the 64px fade do not), so each 32 in them becomes
  * `--belt-pill`, the same `round(2rem * scale)` index.css uses. Default scale 1.15: 85 + 37 = 122
  * for one pill, 85 + 37 + 6 + 37 = 165 for two, 85 + 3 × 37 + 2 × 6 = 208 for three.
@@ -364,26 +373,9 @@ export interface GeneralAction {
   onSelect: () => void;
 }
 
-/** No state pills: one stable empty list, so the default is the same array on every render. */
-const NO_STATE: readonly GeneralAction[] = [];
-
 export interface ActionsRowProps {
   /** Collie's own actions, in the order the thumb should meet them. */
   general: readonly GeneralAction[];
-  /**
-   * THE STATE PILLS: Tasks and Agents, each present only while its count is above zero. They say what
-   * the pane is doing, so they must be seen at a glance, and the belt scrolls: in the general run at
-   * 390px they landed past the right edge, out of view.
-   *
-   * So they stand in ONE group, the last thing in the scroller before the trailing spacer, and that
-   * group is `position: sticky` against the scroller's end edge (the right, or the left under
-   * `hand="left"`), just short of the pinned block when there is one. At rest it sits over the
-   * belt's end with the belt's own ground and a fade on its inner side, so the scrolled controls pass
-   * under it; scrolled to the end, it sits in flow after the last control. It OVERLAYS, it does not
-   * push: a pill that comes or goes changes nothing left of it, so Keys, Screen and Type never move
-   * (DESIGN.md §2). Absent or empty draws nothing.
-   */
-  state?: readonly GeneralAction[];
   /** The focused pane's agent — picks the harness section and its brand colour. */
   agent: string | undefined | null;
   /** The snapshot's `operatorCommands`; the `bar = true` ones replace the shipped bar (ADR 0043). */
@@ -488,16 +480,34 @@ export interface ActionsRowProps {
      *  and drop the keyboard. */
     inert?: boolean;
   };
+  /**
+   * THE AGENTS MARK (Altan, from the lane, 2026-10-19: "it should be subtle and show up next to files
+   * and session layers icon with a number of the currently active agents"). An icon-only pill, FIRST
+   * in the pinned block, left of the X, Files and the Switch mark: the Bot glyph with the count of the
+   * pane's running subagents as a small numeral at its corner, in the same ink as its neighbours, no
+   * fill and no accent. Pinned, so it never scrolls away and a mark that comes or goes moves nothing
+   * in the scroller; the block grows to the left over the scroller's end, as it does for the X.
+   * The composer passes it only while the count is above zero. A tap opens the composer's Agents dock.
+   */
+  agents?: {
+    /** How many subagents are running. Above zero whenever the prop is passed. */
+    count: number;
+    onClick: () => void;
+    /** ALREADY TRANSLATED. "Agents 2": the accessible name, the count in words a reader hears. */
+    label: string;
+    /** The Agents dock is open: `aria-expanded`, like the dock toggles on the scrolling run. */
+    expanded: boolean;
+  };
 }
 
-export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear, agents }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
   const { beltScale } = useDashPrefs().prefs;
   // Anything pinned at the pinned end (right, or left under `hand="left"`): the composer's X, the Changes pill, the Switch mark, in any
   // mix. The drag surface (`handle.ref`, `touch-pan-x`) stays tied to `handle` alone.
-  const pinnedCount = (clear ? 1 : 0) + (changes ? 1 : 0) + (handle ? 1 : 0);
+  const pinnedCount = (agents ? 1 : 0) + (clear ? 1 : 0) + (changes ? 1 : 0) + (handle ? 1 : 0);
   const pinned = pinnedCount > 0;
   const switchBlock = useSwitchBlockWidth(pinned);
   const switchInset = switchBlock.width ?? switchPillInset(beltScale, pinnedCount);
@@ -508,15 +518,10 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
   const pinnedSpacer = pinned ? (
     <span aria-hidden className="h-full shrink-0" style={{ width: switchInset + BELT_END_AIR }} />
   ) : null;
-  // The state pills' sticky offset: the spacer's own width, so at rest they stop exactly where they
-  // stand in flow at the scroller's end, clear of the pinned block and its fade. With nothing pinned
-  // they stick to the scroller's end edge itself.
-  const stateInset = pinned ? switchInset + BELT_END_AIR : 0;
-  const hasState = state.length > 0;
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
-  if (general.length === 0 && !hasState && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
+  if (general.length === 0 && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
 
   return (
     <div
@@ -610,9 +615,7 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
           SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
           and 6px at the larger two, and the pills' `::before` reaches exactly that far again
           (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
-      {/* With state pills, the end edge is theirs: they paint their own fade, so this primitive's end
-          mask would only fade them out. Only the start edge is masked then, as with a pinned block. */}
-      <OverflowEdges edges={pinned || hasState ? (left ? "right" : "left") : "both"} cue="none">
+      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
@@ -666,52 +669,6 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
-            {/* THE STATE PILLS, STICKY AT THE SCROLLER'S END (`state` above says why). The group is
-                `pointer-events-none` and each pill switches it back on, so the fade's lead-in never
-                takes a tap meant for a control scrolling under it, the same trade the Switch block
-                makes. Its ground is the belt's own three layers (chrome, the belt's wash, the
-                scroller's tint), stacked under one mask that fades them in over the first 1.5rem, so
-                the controls read as passing under it rather than stopping against a patch. */}
-            {hasState && (
-              <div
-                data-slot="composer-state-pills"
-                className={cn(
-                  "pointer-events-none sticky z-10 flex shrink-0 items-center gap-1.5 self-stretch",
-                  left ? "left-0 mr-auto pr-6 pl-1.5 [direction:rtl]" : "right-0 ml-auto pl-6 pr-1.5",
-                )}
-                style={left ? { left: stateInset } : { right: stateInset }}
-              >
-                <span
-                  aria-hidden
-                  className={cn(
-                    "pointer-events-none absolute inset-0 bg-chrome",
-                    left
-                      ? "[mask-image:linear-gradient(to_left,transparent,black_1.5rem)]"
-                      : "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
-                  )}
-                >
-                  <span className="absolute inset-0 bg-foreground/6" />
-                  <span className="absolute inset-0 bg-primary/10" />
-                </span>
-                {state.map((action) => (
-                  <Button
-                    key={action.id}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={action.disabled}
-                    aria-label={action.label}
-                    aria-expanded={action.expanded}
-                    aria-pressed={action.pressed}
-                    onClick={action.onSelect}
-                    className={cn(`${STRIP_ROW_PILL} pointer-events-auto gap-1.5`, action.on === true ? ON : OFF, left && "[direction:ltr]")}
-                  >
-                    <action.icon className={BELT_ICON} />
-                    {action.word ?? action.label}
-                  </Button>
-                ))}
-              </div>
-            )}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
                 row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the
@@ -810,6 +767,30 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
                 move a pixel, and a screen reader's focus stays on the button and hears the new name.
                 `onMouseDown` refuses the press's focus move, which keeps the field focused and the
                 phone keyboard up; the `clear` prop says why it is not `onPointerDown`. */}
+            {/* THE AGENTS MARK (the `agents` prop): first in the block, so it grows the block to the
+                left and nothing to its right moves. The numeral sits on the glyph's bottom-right corner,
+                absolutely placed so a count that steps moves nothing, in `tabular-nums` (DESIGN.md §5). */}
+            {agents && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-slot="belt-agents"
+                aria-label={agents.label}
+                aria-expanded={agents.expanded}
+                onClick={agents.onClick}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(true, !clear && !changes && !handle, hand))}
+              >
+                <Bot className={cn(BELT_ICON, "text-primary")} />
+                <span
+                  aria-hidden
+                  data-slot="belt-agents-count"
+                  className="pointer-events-none absolute right-0.5 bottom-0.5 text-[9px] leading-none font-semibold tabular-nums text-primary"
+                >
+                  {agents.count}
+                </span>
+              </Button>
+            )}
             {clear && (
               <Button
                 type="button"
@@ -824,7 +805,7 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
                 }}
                 className={cn(
                   `${STRIP_ROW_PILL} ${PINNED_PILL}`,
-                  pinnedReach(true, pinnedCount === 1, hand),
+                  pinnedReach(!agents, !changes && !handle, hand),
                   clear.inert === true && "opacity-50",
                 )}
               >
@@ -847,7 +828,7 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
                 onClick={changes.onClick}
                 // `PINNED_PILL` below, and a hit box set by where the pill stands (`pinnedReach`):
                 // 7px out on an end of the block, 3px toward a neighbour, so two reaches never meet.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear, !handle, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !agents, !handle, hand))}
               >
                 <ListTree className={cn(BELT_ICON, "text-primary")} />
               </Button>
@@ -871,7 +852,7 @@ export function ActionsRow({ general, state = NO_STATE, agent, mine, onRun, disa
                 // square with the pill's own scaled height, 37px at the default scale. Its hit box
                 // reaches 3px left (half the 6px gap to a pill beside it, 7px when it stands alone)
                 // and 7px right (into `pr-3`), 47px across.
-                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!clear && !changes, true, hand))}
+                className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !clear && !changes, true, hand))}
               >
                 <Layers className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
