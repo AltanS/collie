@@ -522,7 +522,9 @@ describe("a harness that swallows a too-soon Enter takes the send with its profi
     const pane = new FakePane("claude");
     pane.now = () => clock.now;
     pane.swallowEnterWithinMs = 350;
-    return rig({ pane, clock, harness: "muse", version: "1.4.5", ...(options.edit === undefined ? {} : { edit: options.edit }) });
+    const rigOptions: Parameters<typeof rig>[0] = { pane, clock, harness: "muse", version: "1.4.5" };
+    if (options.edit !== undefined) rigOptions.edit = options.edit;
+    return rig(rigOptions);
   };
 
   test("muse: the settle holds Enter past the swallow window and the send goes through", async () => {
