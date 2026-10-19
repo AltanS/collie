@@ -382,18 +382,17 @@ describe("ActionsRow — the agents mark's glyph and count", () => {
     expect(others[0]).toHaveClass("absolute");
   });
 
-  it("puts the count in the corner badge the Switch mark's alert wears, at the top left", () => {
+  it("puts the count in the corner badge the Switch mark's alert wears, in the same top right corner", () => {
     const { agents, handle } = renderMarks();
     const count = agents.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
     const alert = handle.querySelector<HTMLElement>(".text-status-blocked")!;
     expect(count.textContent).toBe("3");
-    // The shared part, the same on both: placement from the top, the chrome disc and its ring.
-    const shared = ["pointer-events-none", "absolute", "top-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome"];
+    // The same badge on both: the top right corner, the chrome disc and its ring.
+    const shared = ["pointer-events-none", "absolute", "top-0.5", "right-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome"];
     expect(count).toHaveClass(...shared);
     expect(alert).toHaveClass(...shared);
-    // Only the corner differs: the count top left, the alert top right.
-    expect(count).toHaveClass("left-0.5", "tabular-nums");
-    expect(alert).toHaveClass("right-0.5");
+    expect(count).toHaveClass("tabular-nums");
+    expect(count.className).not.toMatch(/left-/);
   });
 });
 
