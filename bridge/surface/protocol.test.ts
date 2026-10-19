@@ -4020,6 +4020,45 @@ describe("the held send (M56 spec 15)", () => {
     expect(holds.list().map((entry) => entry.text)).toEqual(["/compact"]);
   });
 
+  test("Muse: every measured session-acting command in a turn is refused, never held, and never typed after the turn ends (MUSE-08, #519)", async () => {
+    // Spellings measured live on Muse 1.4.10 (palette/help, nothing destructive executed):
+    // /clear and /new clear to a fresh session, /exit and /quit quit, /logout logs out and exits,
+    // /resume swaps session, /fork branches it, /rewind rewinds it, and ! is the shell escape.
+    const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+    const holds = new HoldStore(join(dir, "held"));
+    const r = rig({ harness: "muse", version: "1.4.7", holds });
+    r.pane.placeholder = "Start a message with ! to run a shell command yourself";
+    r.pane.over = ["◇ Double checking (2m 40s · esc to interrupt)"];
+    for (const text of ["/clear", "/new", "/exit", "/quit", "/logout", "/resume", "/fork", "/rewind", "!git status"]) {
+      const answer = await r.send(text, { mode: "command" });
+      expect(answer.receipt, text).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail, text).toBe(NEVER);
+    }
+    expect(holds.list()).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    // Nothing is delivered when the turn ends.
+    turnEnds(r.pane);
+    await freeTwice(r);
+    await tick(r);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.transcript.join("\n")).not.toContain("/clear");
+    // Ordinary sends in a Muse turn still hold and queue; /compact is not session-acting.
+    r.pane.over = ["◇ Double checking (2m 40s · esc to interrupt)"];
+    expect((await r.send("/compact", { mode: "command" })).receipt?.outcome).toBe("held");
+    // A never-held command sent behind an existing hold still refuses, never joins the queue.
+    expect((await r.send("/clear", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await r.send("then give it a title")).receipt?.outcome).toBe("held");
+    expect(holds.list().map((entry) => entry.text)).toEqual(["/compact", "then give it a title"]);
+    // The matcher is per spelling: unmeasured or non-session spellings are not caught.
+    const muse = profileFor("muse", "1.4.7", { log: () => undefined });
+    expect(loadProfiles().get("muse")?.keys.neverHeld).toEqual(["/clear", "/new", "/exit", "/quit", "/logout", "/resume", "/fork", "/rewind", "!"]);
+    expect(neverHeldEntry("/fork fix the parser", muse)).toBe("/fork");
+    expect(neverHeldEntry("/compact", muse)).toBeNull();
+    expect(neverHeldEntry("/branch", muse)).toBeNull();
+    expect(neverHeldEntry("/resume-claude", muse)).toBeNull();
+    expect(neverHeldEntry("/clearly", muse)).toBeNull();
+  });
+
   describe("a never-held command on a profile the turn cannot be trusted with (PR 491)", () => {
     const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
     const CODEX_WORKING = "• Working (4s • esc to interrupt)";
