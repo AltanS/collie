@@ -195,6 +195,7 @@ export const zh: Dictionary = {
   "settings.devices.pair.failure.badCode": "代码错误。请核对后重试，连续错误将作废该代码。",
   "settings.devices.pair.failure.duplicateLabel": "该设备名称已被占用。请更换名称，配对代码仍然有效。",
   "settings.devices.pair.failure.badRequest": "代码或名称格式错误。名称长度须为 1 到 48 个字符。",
+  "settings.devices.pair.failure.identityRequired": "配对需要你的 Tailscale 身份，而此地址不会发送该身份。请通过 tailnet 地址打开 Collie 并在那里配对。你的代码还没有被尝试过，所以仍然有效。",
 
   // --- settings.connection ---
   "settings.connection.title": "连接状态",
@@ -1701,6 +1702,7 @@ export const zh: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 个 Peer 节点落后",
   "updates.entry.status.available": "有可用版本 {version}",
   "updates.entry.status.upToDate": "已是最新版本",
+  "updates.entry.status.unknown": "未知，无法连接到 Collie",
   "updateRibbon.starting": "开始更新…",
   "updateRibbon.fetching": "正在更新至 {version}。获取中",
   "updateRibbon.building": "正在更新至 {version}。构建中",

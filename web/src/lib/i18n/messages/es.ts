@@ -206,6 +206,7 @@ export const es: Dictionary = {
     "Otro dispositivo ya usa ese nombre. Elige otro. El código sigue siendo válido.",
   "settings.devices.pair.failure.badRequest":
     "Código o nombre no válidos. El nombre debe tener entre 1 y 48 caracteres.",
+  "settings.devices.pair.failure.identityRequired": "El emparejamiento necesita tu identidad de Tailscale, que esta dirección no envía. Abre Collie en su dirección de tailnet y empareja allí. Tu código no se probó, así que sigue siendo válido.",
 
   // --- settings.connection ---
   "settings.connection.title": "Conexión",
@@ -1729,6 +1730,7 @@ export const es: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} pares desactualizados",
   "updates.entry.status.available": "{version} disponible",
   "updates.entry.status.upToDate": "Al día",
+  "updates.entry.status.unknown": "Desconocido, no se puede contactar con Collie",
   "updateRibbon.starting": "Iniciando actualización…",
   "updateRibbon.fetching": "Actualizando a {version}. Descargando",
   "updateRibbon.building": "Actualizando a {version}. Compilando",

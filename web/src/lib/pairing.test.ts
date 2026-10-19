@@ -334,6 +334,17 @@ describe("the pairing endpoints", () => {
     });
   });
 
+  it("returns the identity reason instead of throwing on the loopback 403 (#512)", async () => {
+    // `checkAccess` refuses before the claim is ever reached, as bare text, not the 400 JSON.
+    server.use(
+      http.post("/api/pair", () => new HttpResponse("identity required", { status: 403 })),
+    );
+    await expect(pairDevice("ABCD2345", "phone")).resolves.toEqual({
+      ok: false,
+      reason: "identity-required",
+    });
+  });
+
   it("still throws on a non-400 pair failure", async () => {
     server.use(http.post("/api/pair", () => new HttpResponse("boom", { status: 500 })));
     await expect(pairDevice("ABCD2345", "phone")).rejects.toThrow(/500/);

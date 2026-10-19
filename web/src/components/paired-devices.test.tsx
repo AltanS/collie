@@ -110,6 +110,34 @@ describe("PairedDevices — pairing", () => {
     expect(await screen.findByText(/no pairing code is waiting.*bin\/collie pair/i)).toBeInTheDocument();
   });
 
+  test("a 403 identity refusal names the tailnet remedy and says the code was not tried (#512)", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post("/api/pair", () => new HttpResponse("identity required", { status: 403 })),
+    );
+    render(<PairedDevices data={UNPAIRED} />);
+
+    await user.type(screen.getByLabelText(/pairing code/i), "ABCD2345");
+    await user.type(screen.getByLabelText(/name for this device/i), "my phone");
+    await user.click(screen.getByRole("button", { name: /pair this device/i }));
+
+    expect(await screen.findByText(/Tailscale identity/i)).toBeInTheDocument();
+    expect(screen.getByText(/tailnet address/i)).toBeInTheDocument();
+    expect(screen.getByText(/code wasn’t tried/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t reach the bridge to pair/i)).not.toBeInTheDocument();
+    expect(getDeviceToken()).toBeNull();
+  });
+
+  test("a failed registry load says unknown and offers no pair form over placeholder state (#512)", () => {
+    render(
+      <PairedDevices data={{ enforced: false, current: null, devices: [], error: true }} />,
+    );
+
+    expect(screen.getByText(/couldn’t load the paired devices/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/pairing code/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/this device is paired as/i)).not.toBeInTheDocument();
+  });
+
   test("the paired state names this device and drops the pairing form", () => {
     setDeviceToken("tok-secret");
     render(<PairedDevices data={PAIRED} />);

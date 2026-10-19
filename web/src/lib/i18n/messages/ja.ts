@@ -203,6 +203,7 @@ export const ja: Dictionary = {
   "settings.devices.pair.failure.duplicateLabel":
     "その名前は既に使用されています。別の名前を指定してください。コードはそのまま有効です。",
   "settings.devices.pair.failure.badRequest": "コードまたは名前が無効です。名前は1〜48文字で指定してください。",
+  "settings.devices.pair.failure.identityRequired": "ペアリングには Tailscale の本人情報が必要ですが、このアドレスからは送信されません。Collie を tailnet アドレスで開いて、そこでペアリングしてください。コードは試行されていないため、まだ有効です。",
 
   // --- settings.connection ---
   "settings.connection.title": "接続",
@@ -1719,6 +1720,7 @@ export const ja: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 台のピアが未更新",
   "updates.entry.status.available": "{version} が利用可能",
   "updates.entry.status.upToDate": "最新です",
+  "updates.entry.status.unknown": "不明（Collie に接続できません）",
   "updateRibbon.starting": "更新を開始中…",
   "updateRibbon.fetching": "{version} に更新中。取得中",
   "updateRibbon.building": "{version} に更新中。ビルド中",
