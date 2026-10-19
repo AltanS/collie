@@ -15,7 +15,7 @@ import { CrewProvider } from "./crew-provider";
 import { Composer } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
-import { type ServerSummary } from "@/lib/types";
+import { type ServerSummary, type TranscriptEntry } from "@/lib/types";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
@@ -173,6 +173,43 @@ function renderComposerWithStatus(
 }
 
 let lastContainer: HTMLElement | null = null;
+
+/** A composer whose Chat entries the test can land one at a time, as the journal read would. */
+function renderComposerWithEntries(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  let landEntry: (entry: TranscriptEntry) => void = () => undefined;
+  function Harness() {
+    const [entries, setEntries] = useState<readonly TranscriptEntry[]>([]);
+    landEntry = (entry) => setEntries((prev) => [...prev, entry]);
+    return (
+      <CrewProvider servers={undefined}>
+        <StatusSentinel />
+        <Composer
+          paneId="w1:p1"
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={FREE}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          {...overrides}
+          chatEntries={entries}
+        />
+      </CrewProvider>
+    );
+  }
+  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+  render(<RouterProvider router={router} />);
+  return { land: (entry: TranscriptEntry) => act(() => landEntry(entry)) };
+}
+
+function userTurn(text: string, uuid: string): TranscriptEntry {
+  return { uuid, ts: new Date().toISOString(), role: "user", parts: [{ kind: "text", text }] };
+}
 
 /** `renderComposerWithStatus`, plus the render's own container to query (DESIGN.md §9). */
 function renderWithContainer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
@@ -4209,6 +4246,45 @@ describe("outcome at the thumb", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
+  });
+
+  // #511: the person submits the stranded text by hand (Keys → Enter), the exchange lands in Chat,
+  // and the journal's own user turn is the evidence the send went through. The notice and the kept
+  // draft retire as sent; without that turn nothing is retired, and a draft edited since the send
+  // is the person's new work, not the send's.
+  async function sendUnknownWithEntries() {
+    server.use(...sendHandler(() => sendAnswer("x", "unknown", "no_evidence", { offers: ["keys"] })));
+    const user = userEvent.setup();
+    const { land } = renderComposerWithEntries();
+    await user.type(screen.getByRole("textbox"), "hello there");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(refusalText()).toMatch(/read the screen, then send again/i));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+    return { user, land };
+  }
+
+  it("unknown, then the text lands as a user turn in Chat: the notice and the draft retire as sent (#511)", async () => {
+    const { land } = await sendUnknownWithEntries();
+    land(userTurn("hello there", "turn-1"));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    await waitFor(() => expect(refusalText()).toBe(""));
+  });
+
+  it("unknown, then an unrelated user turn lands: the notice and the draft stay (#511)", async () => {
+    const { land } = await sendUnknownWithEntries();
+    land(userTurn("something typed at the desk", "turn-1"));
+    // Give a wrong retirement its chance to happen before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+    expect(refusalText()).toMatch(/read the screen, then send again/i);
+  });
+
+  it("unknown, the draft is edited, then the sent text lands: the notice retires, the edited draft stays (#511)", async () => {
+    const { user, land } = await sendUnknownWithEntries();
+    await user.type(screen.getByRole("textbox"), " plus more");
+    land(userTurn("hello there", "turn-1"));
+    await waitFor(() => expect(refusalText()).toBe(""));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there plus more");
   });
 
   it("no answer: says so at the thumb, keeps the draft and the request id, and the retry does not send twice", async () => {
