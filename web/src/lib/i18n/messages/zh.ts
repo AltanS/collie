@@ -2463,6 +2463,7 @@ export const zh: Dictionary = {
   // A message card in Chat. `{label}` is the sender's own label from the log (`repo#branch`, a pane
   // title, or a device label) and is never translated.
   "walky.card.title": "来自 {label} 的消息",
+  "walky.card.titleRemote": "来自 {machine} 上 {label} 的消息",
   "walky.card.replyTo": "回复 {id}",
   "walky.card.notInLog": "此机器上无日志记录",
   "walky.card.open": "在 {sheet} 中打开",

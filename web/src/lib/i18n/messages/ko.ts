@@ -2475,6 +2475,7 @@ export const ko: Dictionary = {
   // A message card in Chat. `{label}` is the sender's own label from the log (`repo#branch`, a pane
   // title, or a device label) and is never translated.
   "walky.card.title": "{label}의 메시지",
+  "walky.card.titleRemote": "{machine}의 {label}에서 온 메시지",
   "walky.card.replyTo": "{id}에 답장",
   "walky.card.notInLog": "이 머신에 로그 레코드 없음",
   "walky.card.open": "{sheet}에서 열기",

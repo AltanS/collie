@@ -1,12 +1,12 @@
 import { ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { useWalkyOpen } from "@/components/walky-log";
+import { useWalkyOpen, useWalkySelf } from "@/components/walky-log";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { signerOf, verifiedWord, type WalkyKind, type WalkyRow } from "@/lib/walky";
+import { remoteMachineOf, signerOf, verifiedWord, type WalkyKind, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 
 // A walky talky message, drawn as Chat's "Message from <label>" card (M62 spec 05).
@@ -17,6 +17,11 @@ import { cn } from "@/lib/utils";
 // (components/chat-cards.tsx decides), and then the card draws what the log says: its kind, its
 // label, its body and its reply link. A forged header that borrows a real id still shows the real
 // message, and one with no real id never gets here.
+//
+// ── THE HEAD NAMES A MACHINE THAT IS NOT THE PANE'S OWN ───────────────────────
+// Two sessions can carry one label on two machines, and "Message from walky-live" then reads as a
+// message from itself. When an agent's address names another machine than this pane's (`remoteMachineOf`),
+// the head says "Message from <label> on <machine>". The footer keeps its "signed by" word.
 //
 // ── TWO KINDS, TWO TONES ──────────────────────────────────────────────────────
 // `agent` is a peer's words and takes the cool info tone. `operator` is the reader's own side of the
@@ -51,12 +56,13 @@ const TONE = {
 export function WalkyCard({ row }: { row: WalkyRow }) {
   useLocale();
   const open = useWalkyOpen();
+  const machine = remoteMachineOf(row, useWalkySelf());
   const tone = TONE[row.kind];
   const body = (
     <>
       <span className={cn("mb-1 flex items-center gap-1.5 text-[11px] font-semibold", tone.head)}>
         <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">{t("walky.card.title", { label: row.from.label })}</span>
+        <span className="min-w-0 truncate">{machine === null ? t("walky.card.title", { label: row.from.label }) : t("walky.card.titleRemote", { label: row.from.label, machine })}</span>
         <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-medium">
           {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
         </Badge>
