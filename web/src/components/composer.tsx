@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, MessageSquare, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -46,6 +46,7 @@ import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
+import { WalkyIcon } from "@/components/walky-icon";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
@@ -2443,7 +2444,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={hand === "left" ? "right-auto left-0" : undefined}
           >
             <ActionRow
-              icon={<MessageSquare aria-hidden="true" className="size-4 shrink-0" />}
+              icon={<WalkyIcon aria-hidden="true" className="size-4 shrink-0" />}
               label={translate("walky.composer.sendAsMessage")}
               onClick={() => {
                 setSendMenu(false);

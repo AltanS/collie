@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, GitBranchPlus, Maximize2, MessageSquare, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
+import { Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
+import { WalkyIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
@@ -430,7 +431,7 @@ export function PaneActionsSheet({
               the looking rows. Close-then-act, for the reason the find row states. */}
           {onMessages && (
             <ActionRow
-              icon={<MessageSquare className="size-4 shrink-0 text-muted-foreground" />}
+              icon={<WalkyIcon className="size-4 shrink-0 text-muted-foreground" />}
               label={t("walky.sheet.row")}
               onClick={() => {
                 onClose();

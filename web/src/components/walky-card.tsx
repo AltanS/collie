@@ -1,7 +1,8 @@
-import { ChevronRight, MessageSquare } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { useWalkyOpen } from "@/components/walky-log";
+import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -21,6 +22,14 @@ import { cn } from "@/lib/utils";
 // `agent` is a peer's words and takes the cool info tone. `operator` is the reader's own side of the
 // conversation and takes the working orange the reader's own turns wear (chat-cards.tsx, UserTurn).
 // The badge says the kind in words, so colour is never the only carrier.
+//
+// ── THE BODY SHOWS ITS FIRST THREE LINES ──────────────────────────────────────
+// A brief between agents can run to a thousand characters, and the card sits in the flow of Chat. The
+// body takes `line-clamp-3` (display -webkit-box, overflow hidden) and keeps `whitespace-pre-wrap`, so
+// the author's line breaks still count as lines under the clamp. A body of one to three lines draws as
+// it always did; a longer one is cut at the third line. The cut is paint only: the whole text stays in
+// the DOM for a screen reader and for find, and the Messages sheet (walky-sheet.tsx) draws it in full.
+// The tap that opens the sheet is the way to the rest, so no "more" control is added.
 //
 // ── NOTHING MOVES ─────────────────────────────────────────────────────────────
 // The footer is always present (a `receipt` is always there), so a later receipt state changes a
@@ -46,14 +55,16 @@ export function WalkyCard({ row }: { row: WalkyRow }) {
   const body = (
     <>
       <span className={cn("mb-1 flex items-center gap-1.5 text-[11px] font-semibold", tone.head)}>
-        <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+        <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 truncate">{t("walky.card.title", { label: row.from.label })}</span>
         <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-medium">
           {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
         </Badge>
         {open !== null && <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
       </span>
-      <span className="font-content block whitespace-pre-wrap break-words text-sm">{row.body}</span>
+      <span className="font-content line-clamp-3 whitespace-pre-wrap break-words text-sm" data-slot="walky-body">
+        {row.body}
+      </span>
       <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
         <span className="tabular-nums">{clockTime(row.at)}</span>
         {row.replyTo !== null && <span>{`· ${t("walky.card.replyTo", { id: row.replyTo })}`}</span>}

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Send } from "lucide-react";
+import { Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIdChip } from "@/components/walky-id-chip";
 import { useWalkyLog } from "@/components/walky-log";
+import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -139,7 +140,7 @@ function WalkyListRow({
       className={cn("rounded-md border px-3 py-2 transition-colors", focused ? "border-status-working/60 bg-status-working/8" : "border-border")}
     >
       <div className="mb-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />}
+        {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
         {sent ? (
           <span data-slot="walky-sent-to" className="min-w-0 flex-1 truncate font-medium text-foreground">
             {t("walky.sheet.sentTo", { target: targetWord(row.receipt.target) })}

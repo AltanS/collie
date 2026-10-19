@@ -1,6 +1,5 @@
-import { MessageSquare } from "lucide-react";
-
 import { Notice } from "@/components/ui/notice";
+import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import type { WalkyAim, WalkyNote } from "@/hooks/use-walky-composer";
 import { t } from "@/lib/i18n";
@@ -17,7 +16,7 @@ export function WalkyAimStrip({ aim, onCancel }: { aim: WalkyAim; onCancel: () =
       tone="info"
       variant="box"
       className="mb-2"
-      icon={<MessageSquare />}
+      icon={<WalkyIcon />}
       onDismiss={onCancel}
       dismissLabel={t("walky.composer.cancel")}
     >
