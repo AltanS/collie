@@ -342,3 +342,59 @@ describe("a notice above a live box (Claude Code 2.1.302)", () => {
     expect(readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", CLAUDE).surface.modal).toBe("unreadable");
   });
 });
+
+// Claude Code 2.1.30x writes a named session's name into the right end of the box's top edge
+// (`──── 1.23.0 ─`). Lane 8788, 2026-10-19: every send to the named pane was refused `unconfirmed`
+// with `modal: "unreadable"`. The edge was not the cause: the rating survey stood on the update row
+// right over the box, one run with it, and the survey's key row is a single-key prompt (ADR 0109).
+describe("a session name in the box's top edge (Claude Code 2.1.303, lane 8788, 2026-10-19)", () => {
+  const name = (state: string) => `claude--v2303-titled-edge-${state}--w160.txt`;
+  const read = (rows: ReturnType<typeof fixtureRows>) => readScreen(rows, "claude", CLAUDE);
+  const textOf = (rows: ReturnType<typeof fixtureRows>) => rows.map((row) => row.segments.map((s) => s.text).join(""));
+  const topOf = (rows: ReturnType<typeof fixtureRows>) => textOf(rows).findIndex((text) => text.endsWith(" 1.23.0 ─"));
+  const withRow = (rows: ReturnType<typeof fixtureRows>, at: number, text: string) => rows.map((row, i) => (i === at ? rowsOf(text)[0]! : row));
+
+  it("reads the titled edge as the box's edge, the name as its label and never as the draft", () => {
+    for (const [state, turn, composer, text] of [
+      ["working", "running", "empty", ""],
+      ["idle", "idle", "empty", ""],
+      ["draft", "idle", "draft", "ok merge the five, running the crew update now"],
+    ] as const) {
+      const r = read(fixtureRows(name(state)));
+      expect(r.frame?.label, state).toBe("1.23.0");
+      expect(r.frame?.interior.text, state).toBe(text);
+      expect(r.surface, state).toEqual({ revision: 1, turn, modal: "none", composer });
+    }
+    expect(isFree(read(fixtureRows(name("idle"))).surface)).toBe(true);
+  });
+
+  it("reads a draft under the titled edge during a turn", () => {
+    const rows = fixtureRows(name("working"));
+    const r = read(withRow(rows, topOf(rows) + 1, "❯ hello there"));
+    expect(r.frame?.interior.text).toBe("hello there");
+    expect(r.surface).toMatchObject({ turn: "running", modal: "none", composer: "draft" });
+  });
+
+  it("the field screen: the survey on the update row over the box reads unreadable, with or without the name", () => {
+    const rows = fixtureRows(name("survey"));
+    const r = read(rows);
+    expect(r.surface).toEqual({ revision: 1, turn: "idle", modal: "unreadable", composer: "empty" });
+    expect(r.cues?.cues.map((cue) => cue.kind)).toEqual(["single-key"]);
+    expect(textOf(rows)[r.cues!.cues[0]!.row]).toMatch(/^ {2}1: Bad +2: Fine +3: Good +0: Dismiss$/);
+    // The same screen with a plain edge of the same width: the same verdict, so the name is not the cause.
+    const plain = withRow(rows, topOf(rows), "─".repeat(160));
+    expect(read(plain).frame?.label).toBeNull();
+    expect(read(plain).surface).toEqual(r.surface);
+    // And with the survey gone, the box is free.
+    expect(isFree(read(fixtureRows(name("idle"))).surface)).toBe(true);
+  });
+
+  it("folds the heads-up notice over a titled edge with no modal over the box", () => {
+    const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
+    const top = read(rows).frame!.top;
+    const r = read(withRow(rows, top, `${"─".repeat(132)} 1.23.0 ─`));
+    expect(r.frame?.top).toBe(top);
+    expect(r.frame?.label).toBe("1.23.0");
+    expect(r.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+});

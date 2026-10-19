@@ -138,6 +138,11 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
     "claude--v2302-working-list-echo--w119.txt",
+    // A session name in the top edge (lane 8788, 2026-10-19): the titled edge is the box's edge.
+    "claude--v2303-titled-edge-draft--w160.txt",
+    "claude--v2303-titled-edge-idle--w160.txt",
+    "claude--v2303-titled-edge-survey--w160.txt",
+    "claude--v2303-titled-edge-working--w160.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

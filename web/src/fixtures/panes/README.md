@@ -2452,6 +2452,27 @@ grammar now claims it with `pointer: "field"`, and a toggle first moves the poin
 |---|---|
 | `claude--v2302-multiselect-field-focused--w160.txt` | Stepper `←  ☒ Next step  ✔ Submit  →`, four `[✔]` options, `❯ 5. [ ] Type something`, `Submit`, a rule, `6. Chat about this`, footer `Enter to select · ↑/↓ to navigate · ctrl+g to edit in nano · Esc to cancel`. Lifts `multi-select` with the pointer on the field; the Surface reads `modal: ask`. Labelled `dialog` |
 
+## A session name in the box's top edge, 2.1.303 (captured 2026-10-19, lane 8788, Herdr)
+
+Claude Code 2.1.30x writes a named session's name into the right end of the box's top edge:
+`──────…──────── 1.23.0 ─`. Read with `herdr pane read <pane> --source visible --format ansi --raw`
+from a live session (160 columns), CRLF line ends and escapes kept, cut to the last tool call above the
+spinner. The two `●` rows and their tool rows have every letter replaced by neutral words of the same
+width; every escape, glyph, digit, space and row is kept. The right-aligned `✔ Update installed · Restart
+to update` row, the operator's three-row statusline and the agents panel are as captured. The profile's
+top edge already reads a label (`(?<label>…)` in claude.json, `isInputBoxTopBorder` in the chrome
+reader), so all four read their box with the label `1.23.0`, and the name is never draft or transcript.
+The field case: every send to that pane was refused `unconfirmed` with `modal: "unreadable"`. The cause
+was the rating survey, not the name: its key row stood on the update row right over the edge, one run of
+rows with it, so the single-key cue reads it (ADR 0109 keeps the survey unreadable on purpose).
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2303-titled-edge-working--w160.txt` | As captured: `✻ Zigzagging… (3m 21s · ↓ 11.6k tokens · still thinking with high effort)`, the update row, the titled edge, an empty `❯`, the bottom rule, three statusline rows, a blank row, and the agents panel (`● main`, three `◯ general-purpose` rows). Reads `running`, free of any modal. Labelled `running` |
+| `claude--v2303-titled-edge-idle--w160.txt` | **Derived**: the spinner row replaced by the field screen's own `✻ Brewed for 4m 14s · done 6:51 AM · 1 shell still running`. Reads idle and free. Labelled `idle` |
+| `claude--v2303-titled-edge-draft--w160.txt` | **Derived** from the idle file: the box holds `ok merge the five, running the crew update now`. Reads the draft without the name. Labelled `draft` |
+| `claude--v2303-titled-edge-survey--w160.txt` | **Derived** from the idle file to the layout of the field read (the masked rows in the lane's refusal example): a blank row, `● How is Claude doing this session? (optional)` and `  1: Bad    2: Fine   3: Good   0: Dismiss` right on the update row. Reads `idle`, `unreadable`, `empty`, the field receipt's verdict, and reads the same with a plain edge. Labelled `dialog` |
+
 ## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
 
 Read through a scratch bridge's `GET /api/pane/:id` (ANSI kept, CRLF rows) from an isolated Herdr
