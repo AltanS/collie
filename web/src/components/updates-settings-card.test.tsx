@@ -29,7 +29,7 @@ function run(state: UpdateRun["state"]): UpdateRun {
   return { schema: 1, state, from: "1.3.0", to: "1.4.0", startedAt: 1, updatedAt: 2, pid: 1, attempt: 1 };
 }
 
-function homeData(update: UpdateInfo | undefined): HomeData {
+function homeData(update: UpdateInfo | undefined, over: Partial<HomeData> = {}): HomeData {
   return {
     bridge: "connected",
     device: undefined,
@@ -46,16 +46,17 @@ function homeData(update: UpdateInfo | undefined): HomeData {
     update,
     error: false,
     authError: false,
+    ...over,
   };
 }
 
-function renderRow(update: UpdateInfo | undefined) {
+function renderRow(update: UpdateInfo | undefined, over: Partial<HomeData> = {}) {
   const router = createMemoryRouter(
     [
       {
         id: ROOT_ROUTE_ID,
         path: "/",
-        loader: () => homeData(update),
+        loader: () => homeData(update, over),
         children: [
           { path: "settings", element: <UpdatesSettingsCard /> },
           { path: "settings/updates", element: <div data-testid="updates" /> },
@@ -123,6 +124,20 @@ describe("updates row status line", () => {
     );
     renderRow(info());
     expect(await screen.findByText("1 peer behind")).toBeInTheDocument();
+  });
+
+  it("unknown outranks every fact a stale snapshot names (#512)", () => {
+    const update = info({ releaseAvailable: true, latest: "1.4.0", run: run("staging") });
+    expect(updatesStatusLine({ update, running: true, behind: 3, unknown: true })).toBe(
+      "Unknown, can’t reach Collie",
+    );
+  });
+
+  it("a failed root load renders unknown, never the stale snapshot's release (#512)", async () => {
+    renderRow(info({ releaseAvailable: true, latest: "1.4.0" }), { error: true });
+    expect(await screen.findByText("Unknown, can’t reach Collie")).toBeInTheDocument();
+    expect(screen.queryByText("1.4.0 available")).not.toBeInTheDocument();
+    expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
   });
 
   it("a failed census read costs the row nothing — it falls back to the snapshot", async () => {

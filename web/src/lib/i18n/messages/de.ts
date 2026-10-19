@@ -208,6 +208,7 @@ export const de: Dictionary = {
     "Dieser Name wird bereits verwendet. Anderen Namen wählen, der Code bleibt gültig.",
   "settings.devices.pair.failure.badRequest":
     "Code oder Name ungültig. Namen müssen 1–48 Zeichen lang sein.",
+  "settings.devices.pair.failure.identityRequired": "Für die Kopplung ist deine Tailscale-Identität nötig, die diese Adresse nicht sendet. Öffne Collie über die Tailnet-Adresse und kopple dort. Dein Code wurde nicht geprüft und ist noch gültig.",
 
   // --- settings.connection ---
   "settings.connection.title": "Verbindung",
@@ -1772,6 +1773,7 @@ export const de: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} Peers im Rückstand",
   "updates.entry.status.available": "{version} verfügbar",
   "updates.entry.status.upToDate": "Aktuell",
+  "updates.entry.status.unknown": "Unbekannt, Collie nicht erreichbar",
   "updateRibbon.starting": "Update wird gestartet…",
   "updateRibbon.fetching": "Update auf {version}. Wird geladen",
   "updateRibbon.building": "Update auf {version}. Wird gebaut",

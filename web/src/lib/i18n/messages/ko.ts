@@ -205,6 +205,7 @@ export const ko: Dictionary = {
   "settings.devices.pair.failure.duplicateLabel":
     "이미 사용 중인 기기 이름입니다. 다른 이름을 지정하세요. 코드는 계속 유효합니다.",
   "settings.devices.pair.failure.badRequest": "코드 또는 이름 형식이 올바르지 않습니다. 기기 이름은 1자에서 48자 사이여야 합니다.",
+  "settings.devices.pair.failure.identityRequired": "페어링에는 Tailscale 신원이 필요하지만 이 주소는 신원을 보내지 않습니다. Collie를 tailnet 주소로 열고 거기에서 페어링하세요. 코드가 시도되지 않았으므로 아직 유효합니다.",
 
   // --- settings.connection ---
   "settings.connection.title": "연결 상태",
@@ -1750,6 +1751,7 @@ export const ko: Dictionary = {
   "updates.entry.status.peersBehind.other": "피어 {count}개 뒤처짐",
   "updates.entry.status.available": "{version} 사용 가능",
   "updates.entry.status.upToDate": "최신 상태",
+  "updates.entry.status.unknown": "알 수 없음, Collie에 연결할 수 없습니다",
   "updateRibbon.starting": "업데이트 시작 중…",
   "updateRibbon.fetching": "{version}(으)로 업데이트 중. 가져오는 중",
   "updateRibbon.building": "{version}(으)로 업데이트 중. 빌드 중",

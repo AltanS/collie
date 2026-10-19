@@ -2326,6 +2326,24 @@ const PAIR_FAILURES: readonly PairFailure[] = [
 ];
 
 const recoverPairFailure: Recover<{ ok: false; reason: PairFailure }> = (status, detail) => {
+  // The identity gate refuses BEFORE the claim, as a bare-text 403 from `checkAccess` (#512): on
+  // loopback no `tailscale serve` injects the login header, so this is the answer a host-local
+  // browser gets. It is a named refusal with a remedy, not a transport failure — recover it like
+  // the 400s, or the card collapses it into "couldn't reach the bridge" and the operator retries
+  // a code that was never tried. A JSON spelling is read too, so a bridge that starts coding
+  // this refusal needs no second client change.
+  if (status === 403) {
+    const text = detail.trim();
+    if (text === "identity required" || text === "identity not trusted") {
+      return { ok: false, reason: "identity-required" };
+    }
+    const body = parseJsonObject(detail);
+    const named = body ? (asJsonString(body.error) ?? asJsonString(body.code)) : undefined;
+    if (named === "identity-required" || named === "pairing.identity_required") {
+      return { ok: false, reason: "identity-required" };
+    }
+    return null;
+  }
   if (status !== 400) return null;
   // A non-JSON 400 body, or one with no `error` string, falls through to the usual ApiError.
   const body = parseJsonObject(detail);

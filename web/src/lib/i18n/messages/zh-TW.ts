@@ -194,6 +194,7 @@ export const zhTW: Dictionary = {
   "settings.devices.pair.failure.badCode": "代碼錯誤。請核對後再試一次，連續錯誤將使該代碼失效。",
   "settings.devices.pair.failure.duplicateLabel": "此裝置名稱已被使用。請更換名稱，配對代碼仍然有效。",
   "settings.devices.pair.failure.badRequest": "代碼或名稱格式錯誤。名稱長度必須為 1 到 48 個字元。",
+  "settings.devices.pair.failure.identityRequired": "配對需要你的 Tailscale 身分，而此位址不會傳送該身分。請透過 tailnet 位址開啟 Collie 並在該處配對。你的代碼還沒有被嘗試過，所以仍然有效。",
 
   // --- settings.connection ---
   "settings.connection.title": "連線狀態",
@@ -1734,6 +1735,7 @@ export const zhTW: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 個 Peer 節點落後",
   "updates.entry.status.available": "有可用版本 {version}",
   "updates.entry.status.upToDate": "已是最新版本",
+  "updates.entry.status.unknown": "未知，無法連線到 Collie",
   "updateRibbon.starting": "開始更新…",
   "updateRibbon.fetching": "正在更新至 {version}。取得中",
   "updateRibbon.building": "正在更新至 {version}。建置中",

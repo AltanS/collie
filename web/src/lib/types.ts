@@ -503,14 +503,18 @@ export interface DevicesResponse {
   devices: PairedDeviceWire[];
 }
 
-/** Why a `POST /api/pair` claim was rejected (the `error` field of its 400 body). */
+/**
+ * Why a `POST /api/pair` claim was rejected: the `error` field of its 400 body, or — for
+ * `identity-required` — the access gate's 403, which refuses before the claim is reached (#512).
+ */
 export type PairFailure =
   | "no-pending"
   | "expired"
   | "exhausted"
   | "bad-code"
   | "duplicate-label"
-  | "bad-request";
+  | "bad-request"
+  | "identity-required";
 
 /**
  * One entry in the snapshot's session registry — a named Herdr session the bridge is fanning out.
