@@ -39,10 +39,16 @@ export type CommandWhileRunning = "queues" | "runs" | "drops" | "steers";
 export interface QueuedRow {
   /** A regular expression source for the row that starts the text, with the named group `text`. */
   readonly pattern: string;
-  /** A regular expression source for the hint row under the queued texts. */
+  /** A regular expression source for the hint row by the queued texts. */
   readonly hint: string;
-  /** How many blank rows may stand between the last queued text and the hint. */
+  /** How many blank rows may stand between the queued texts and the hint. */
   readonly hintGap: number;
+  /**
+   * The hint row stands over the queued texts, not under them: the witness reads downward from it.
+   * Muse draws its queue that way (lab, Muse Code 1.4.10, 2026-10-18). Absent: under, as Claude
+   * Code and Codex draw it.
+   */
+  readonly hintAbove?: boolean;
 }
 
 export interface VersionRange {
@@ -400,7 +406,8 @@ export interface Profile {
     /**
      * How the harness draws a message it queued during a turn, when that is known: a row whose
      * `pattern` holds the text in the named group `text` (later rows of a wrapped text are indented),
-     * and a `hint` row at most `hintGap` blank rows under the last of them. Optional.
+     * and a `hint` row at most `hintGap` blank rows from the texts — under the last of them, or over
+     * the first when `hintAbove` is set. Optional.
      */
     readonly queuedRow?: QueuedRow;
     /**
@@ -910,11 +917,15 @@ export function parseProfile(raw: JsonValue): Profile {
     const queuedNode = object(keysNode.queuedRow, "keys.queuedRow");
     const rowPattern = pattern(field(queuedNode, "pattern", "keys.queuedRow"), "keys.queuedRow.pattern");
     if (!rowPattern.source.includes("(?<text>")) fail("keys.queuedRow.pattern", "must hold the named group text");
-    const queuedRow: QueuedRow = {
+    if (queuedNode.hintAbove !== undefined && queuedNode.hintAbove !== true && queuedNode.hintAbove !== false) {
+      fail("keys.queuedRow.hintAbove", "must be true or false");
+    }
+    const queuedBase: QueuedRow = {
       pattern: rowPattern.source,
       hint: pattern(field(queuedNode, "hint", "keys.queuedRow"), "keys.queuedRow.hint").source,
       hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
     };
+    const queuedRow: QueuedRow = queuedNode.hintAbove === true ? { ...queuedBase, hintAbove: true } : queuedBase;
     keys = { ...keys, queuedRow };
   }
   if (keysNode.queueKey !== undefined) {

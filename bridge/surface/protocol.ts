@@ -502,14 +502,16 @@ function commandPopup(snap: Snap): boolean {
  */
 const LATE_WITNESS_MS = 300;
 
-/** How many rows above a queued hint are read for the queued texts. */
+/** How many rows from a queued hint are read for the queued texts. */
 const QUEUED_SCAN_ROWS = 24;
 
 /**
  * Whether a read shows a text as a message the harness queued, by the profile's own drawing of one
- * (`keys.queuedRow`): a hint row above the box, and over it, past at most `hintGap` blank rows, the
- * queued texts. Each starts on a row the pattern matches, its wrapped rows indented under it. One of
- * them, joined and whitespace-free, must equal the text. Rows inside the box are never read.
+ * (`keys.queuedRow`): a hint row above the box, and by it, past at most `hintGap` blank rows, the
+ * queued texts — over the hint, or under it when the profile sets `hintAbove` (Muse draws its
+ * `Queued input` header over the texts; lab, Muse Code 1.4.10, 2026-10-18). Each text starts on a
+ * row the pattern matches, its wrapped rows indented under it. One of them, joined and
+ * whitespace-free, must equal the text. Rows inside the box are never read.
  */
 function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string): boolean {
   if (queuedRow === undefined || snap.frame === null || wsFree(text).length === 0) return false;
@@ -519,6 +521,25 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
   const above = snap.texts.slice(0, snap.frame.top);
   for (let at = above.length - 1; at >= 0; at--) {
     if (!hint.test(above[at]!)) continue;
+    if (queuedRow.hintAbove === true) {
+      let i = at + 1;
+      for (let gap = 0; i < above.length && gap < queuedRow.hintGap && above[i]!.trim().length === 0; gap++) i++;
+      // Downward through the queued texts: an indented row belongs to the text over it.
+      let parts: string[] | null = null;
+      for (const ceil = Math.min(above.length, i + QUEUED_SCAN_ROWS); i < ceil; i++) {
+        const row = above[i]!;
+        const head = start.exec(row);
+        if (head !== null) {
+          if (parts !== null && wsFree(parts.join("")) === want) return true;
+          parts = [head.groups?.["text"] ?? ""];
+          continue;
+        }
+        if (parts === null || !/^\s+\S/u.test(row)) break;
+        parts.push(row.trim());
+      }
+      if (parts !== null && wsFree(parts.join("")) === want) return true;
+      continue;
+    }
     let i = at - 1;
     for (let gap = 0; i >= 0 && gap < queuedRow.hintGap && above[i]!.trim().length === 0; gap++) i--;
     // Upward through the queued texts: an indented row waits for the row that starts its text.
