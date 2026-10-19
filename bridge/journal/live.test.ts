@@ -1017,6 +1017,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     const live = redactChatBody({
       page: "live",
       gen: 1,
+      session: "s1",
       rev: 2,
       head: SEQ_BASE,
       oldest: SEQ_BASE,
@@ -1029,6 +1030,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     const prompted = redactChatBody({
       page: "live",
       gen: 1,
+      session: "s1",
       rev: 2,
       head: SEQ_BASE,
       oldest: SEQ_BASE,
@@ -1038,7 +1040,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
       lastPrompt: { uuid: "p1", ts: "", text: `deploy with ${key}` },
     });
     expect(prompted).toMatchObject({ lastPrompt: { uuid: "p1", text: `deploy with ${masked}` } });
-    const older = redactChatBody({ page: "older", gen: 1, upserts: [turn], hasOlder: true });
+    const older = redactChatBody({ page: "older", gen: 1, session: "s1", upserts: [turn], hasOlder: true });
     expect(JSON.stringify(older)).not.toContain(key);
     expect(older).toMatchObject({ page: "older", gen: 1, hasOlder: true });
   });

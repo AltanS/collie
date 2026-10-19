@@ -1588,6 +1588,12 @@ export interface ChatEntry extends TranscriptEntry {
 export interface ChatWindowBody {
   page: "live";
   gen: number;
+  /**
+   * Which session, as an opaque tag. Another one than the tag held means the pane's agent started a
+   * new session (pi's `/new`): drop what is held for the pane, older pages included (#526). Absent
+   * from a bridge one release behind, which leaves `gen` as the only rule.
+   */
+  session?: string;
   rev: number;
   /** The newest `seq` the window holds. Below `oldest` when the window is empty. */
   head: number;
@@ -1639,6 +1645,8 @@ export interface ChatPrompt {
 export interface ChatOlderBody {
   page: "older";
   gen: number;
+  /** The session the page was read from, as {@link ChatWindowBody.session} names it. */
+  session?: string;
   upserts: ChatEntry[];
   /** Turns exist before `upserts[0]` too. */
   hasOlder: boolean;

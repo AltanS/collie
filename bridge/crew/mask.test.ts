@@ -97,6 +97,7 @@ const history = { paneId: "w1:p1", available: true as const, entries: [entry], h
 const chatBody: ChatWindowBody = {
   page: "live",
   gen: 1,
+  session: "s1",
   rev: 3,
   head: 1_000_001,
   oldest: 1_000_000,

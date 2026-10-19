@@ -2992,6 +2992,7 @@ describe("chatBodyForMux — Send now is offered only where the multiplexer can 
   const body = {
     page: "live" as const,
     gen: 1,
+    session: "s1",
     rev: 3,
     head: 3,
     oldest: 1,

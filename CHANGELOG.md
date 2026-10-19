@@ -71,6 +71,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **An Agent call that names no type is labelled plain Agent.** A call that names no agent type is labelled plain Agent, or with its model, no longer Agent · agent.
 - **Crew update from a lead on a development build no longer waits on itself.** A lead built from a commit past the release tag counted as behind, so crew update ran the lead's own updater first, that updater said it was already current and started nothing, and the verb then waited for a run that never came while the members stayed untouched. A development build at or past the release is ahead, not behind, and a lead whose updater reports current moves straight on to the members.
 - **Chat and History follow a Codex session after a rewind.** Codex continues a rewound conversation in a new transcript file; Collie kept the old one, so discarded turns stayed and new ones never showed. Collie now follows the active transcript and shows the retained history with the new turns, in order. Thanks @Luffbee (#523).
+- **Chat follows a pi session after `/new`.** pi reports its new session before it writes the file, and Collie read the missing file as no log and kept showing the previous session until the pane was reopened; a session that has no file yet now reads as a new empty one, and the phone clears the old thread at once. Thanks @viniciosrab (#526).
 
 ## [1.22.6] - 2026-10-18
 
