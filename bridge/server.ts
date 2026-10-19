@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { isIP } from "node:net";
 import { homedir, hostname, networkInterfaces } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "node:path";
@@ -15,7 +15,7 @@ import {
   sharedListChanges,
   sharedReadCommit,
 } from "./changes.ts";
-import { rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
+import { rootForPane, rootOfWorkspace, type RootSnapshot, withinBound } from "./changes-root.ts";
 import {
   existingPaths,
   type FilesExistAnswer,
@@ -4410,9 +4410,27 @@ export interface ChangesSnapshotSource {
 }
 
 /**
+ * One pane's workspace root, or `null` when there is none — or when the pane's own folder sits
+ * outside it, in which case that root is another pane's picture (#509, {@link rootForPane}).
+ * Resolved off the live snapshot on every read, so a pane that `cd`s elsewhere is re-rooted by its
+ * folder at read time. The pure rule is string-only, so before a root is discarded the disk is
+ * asked: two spellings of one folder that differ by a symlink (`/tmp` vs `/private/tmp`, an 8.3
+ * name on Windows) keep their workspace root.
+ */
+async function paneWorkspaceRoot(found: ReturnType<typeof rootOfWorkspace>, cwd: string): Promise<string | null> {
+  const root = found?.root ?? null;
+  if (root === null) return null;
+  if (rootForPane(root, cwd) !== null) return root;
+  const [realCwd, realRoot] = await Promise.all([realpath(cwd).catch(() => null), realpath(root).catch(() => null)]);
+  return realCwd !== null && realRoot !== null && rootForPane(realRoot, realCwd) !== null ? root : null;
+}
+
+/**
  * GET /api/pane/:id/changes — what changed under the pane's WORKSPACE folder since the last commit
  * (ADR 0065). The root is bridge/changes-root.ts's rule over the live snapshot; when the workspace
- * has no narrow enough folder, the pane's own cwd is the root, as it was before.
+ * has no narrow enough folder, the pane's own cwd is the root, as it was before. A pane whose own
+ * folder is outside that root likewise reads its own folder, bounded (#509): an empty list when it
+ * holds no repo, `no-folder` when it is too wide to scan — never the workspace's repo.
  *
  * The folder comes off the live snapshot, keyed by pane id; the client never sends one. With
  * `?repo=&path=` the answer is one file's diff, and bridge/changes.ts serves it only for a repo its
@@ -4438,10 +4456,20 @@ export async function paneChanges(
       : json({ paneId, available: false, reason: "no-pane" } satisfies PaneChangesResponse, accept);
   }
   const found = rootOfWorkspace(snap, pane.workspaceId, home);
-  const root = found?.root ?? pane.cwd;
   const subject = found
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
+  const wsRoot = await paneWorkspaceRoot(found, pane.cwd);
+  // No workspace root at all: the pane's own cwd, as before ADR 0065. A root discarded because
+  // this pane sits outside it (#509): the pane's own cwd too, but bounded — a pane parked in `~`
+  // or `/` in a rooted workspace says `no-folder` rather than scanning home or inheriting the
+  // workspace's repo.
+  const root = wsRoot ?? (found?.root ? (withinBound(pane.cwd, home) ? pane.cwd : null) : pane.cwd);
+  if (root === null) {
+    return wantsDiff
+      ? json({ ...subject, available: false, reason: "no-folder" } satisfies PaneChangeDiffResponse, accept)
+      : json({ ...subject, available: false, reason: "no-folder" } satisfies PaneChangesResponse, accept);
+  }
   try {
     if (params.view === "commit") {
       if (params.path !== null) {
@@ -4523,8 +4551,9 @@ function unknownPath(): Response {
 /**
  * GET /api/pane/:id/files — one folder (`?dir=`, or none for the root) or one file (`?path=`) under
  * the pane's WORKSPACE root, the Changes view's own (ADR 0083). The root comes off the live snapshot;
- * when the workspace has none, the pane's cwd stands in only if it passes the same bound, else
- * `no-folder`. The client names a path relative to that root and never a root. A refused path is
+ * when the workspace has none — or the pane's own folder is outside it (#509) — the pane's cwd
+ * stands in only if it passes the same bound, else `no-folder`. The client names a path relative
+ * to that root and never a root. A refused path is
  * `404 { error: "unknown-path" }`, the same answer whatever the reason. JSON only: file bytes are
  * never served as a document.
  */
@@ -4542,7 +4571,7 @@ export async function paneFiles(
   const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === paneId);
   if (!pane) return json({ paneId, available: false, reason: "no-pane" } satisfies PaneFilesResponse, accept);
   const found = rootOfWorkspace(snap, pane.workspaceId, home);
-  const root = paneFilesRootOf(found, pane.cwd, home);
+  const root = paneFilesRootOf(await paneWorkspaceRoot(found, pane.cwd), pane.cwd, home);
   const subject = found
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
@@ -4576,10 +4605,13 @@ export async function workspaceFiles(
   return json({ ...subject, ...maskFileBody(answer, redact) } satisfies WorkspaceFilesResponse, accept);
 }
 
-/** A pane's Files root: its workspace's, else its own cwd, bounded, unlike the Changes route's fallback. */
-function paneFilesRootOf(found: ReturnType<typeof rootOfWorkspace>, cwd: string, home: string): string | null {
+/**
+ * A pane's Files root: its workspace's root as this pane sees it ({@link paneWorkspaceRoot}), else
+ * its own cwd, bounded, unlike the Changes route's fallback.
+ */
+function paneFilesRootOf(wsRoot: string | null, cwd: string, home: string): string | null {
   // The fallback is bounded: a pane sitting in `~` or `/` lists nothing.
-  return found?.root ?? (withinBound(cwd, home) ? cwd : null);
+  return wsRoot ?? (withinBound(cwd, home) ? cwd : null);
 }
 
 /**
@@ -4623,21 +4655,21 @@ export async function filesExist(
   }
   const paths = parseFilesExistBody(body);
   if (paths === null) return text("bad body", 400);
-  const root = filesSubjectRoot(engine, subject, home);
+  const root = await filesSubjectRoot(engine, subject, home);
   const exists = root === null ? [] : await existingPaths({ root, home, privateFolders }, paths);
   return json({ exists } satisfies FilesExistAnswer, accept);
 }
 
 /**
  * The Files root of a pane or a workspace, the one the Files read picks for the same subject: a
- * pane's workspace root, else its own cwd when that is bounded; a workspace's root. `null` when there
- * is none, or no such pane or workspace.
+ * pane's workspace root as that pane sees it ({@link paneWorkspaceRoot}, #509), else its own cwd
+ * when that is bounded; a workspace's root. `null` when there is none, or no such pane or workspace.
  */
-function filesSubjectRoot(engine: ChangesSnapshotSource, subject: FilesExistSubject, home: string): string | null {
+async function filesSubjectRoot(engine: ChangesSnapshotSource, subject: FilesExistSubject, home: string): Promise<string | null> {
   const snap = engine.current();
   if (subject.kind === "workspace") return rootOfWorkspace(snap, subject.workspaceId, home)?.root ?? null;
   const pane = [...snap.agents, ...snap.shellPanes].find((a) => a.paneId === subject.paneId);
-  return pane ? paneFilesRootOf(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd, home) : null;
+  return pane ? paneFilesRootOf(await paneWorkspaceRoot(rootOfWorkspace(snap, pane.workspaceId, home), pane.cwd), pane.cwd, home) : null;
 }
 
 /**
@@ -4705,7 +4737,7 @@ export async function filesImage(
 ): Promise<Response> {
   const path = url.searchParams.get("path");
   if (path === null) return text("missing path", 400);
-  const root = filesSubjectRoot(engine, subject, home);
+  const root = await filesSubjectRoot(engine, subject, home);
   if (root === null) return unknownPath();
   return filesImageResponse(await readImage({ root, home, privateFolders }, path));
 }

@@ -367,13 +367,20 @@ function commonAncestor(paths: readonly string[]): string | null {
   return `/${parts.join("/")}`;
 }
 
+/** Whether `folder` is `root` or sits below it, under either home spelling. Both normalised. */
+function insideRoot(root: string, folder: string): boolean {
+  return homeSpellings(folder).includes(root) || under(root, folder) !== null;
+}
+
 /**
  * The Changes root of one pane, worked out from the snapshot the way the bridge's pane Files route
- * picks it (`bridge/changes-root.ts`, `workspaceRoot`, then the pane's own cwd): the workspace's
- * folder, else the folder all its panes share, else the pane's own cwd, each only when it lies below
- * home. Null when none does, when home is not known yet (the bound cannot be checked), or on a
- * machine whose paths are not POSIX. The bridge looks the root up again on every read; this copy
- * only decides which printed paths are worth a link.
+ * picks it (`bridge/changes-root.ts`, `workspaceRoot`, then `rootForPane`, then the pane's own
+ * cwd): the workspace's folder, else the folder all its panes share — either only when this pane
+ * sits inside it (#509: a pane parked outside its workspace's folder roots at its own, never at
+ * another pane's repo) — else the pane's own cwd, each only when it lies below home. Null when
+ * none does, when home is not known yet (the bound cannot be checked), or on a machine whose paths
+ * are not POSIX. The bridge looks the root up again on every read; this copy only decides which
+ * printed paths are worth a link.
  */
 export function paneFilesRoot({
   pane,
@@ -389,12 +396,20 @@ export function paneFilesRoot({
   const h = folderOf(home);
   if (h === null) return null;
   const sameSpace = (p: { workspaceId: string; host?: string }) => p.workspaceId === pane.workspaceId && p.host === pane.host;
-  const folder = folderOf(workspaces.find(sameSpace)?.folder);
-  if (folder !== null && withinBound(folder, h)) return folder;
-  const cwds = panes.filter(sameSpace).map((p) => folderOf(p.cwd)).filter((c): c is string => c !== null);
-  const common = commonAncestor(cwds);
-  if (common !== null && withinBound(common, h)) return common;
   const own = folderOf(pane.cwd);
+  // The workspace root, picked as the bridge picks it: its folder when bounded, else the panes'
+  // common folder when bounded.
+  let wsRoot: string | null = null;
+  const folder = folderOf(workspaces.find(sameSpace)?.folder);
+  if (folder !== null && withinBound(folder, h)) wsRoot = folder;
+  else {
+    const cwds = panes.filter(sameSpace).map((p) => folderOf(p.cwd)).filter((c): c is string => c !== null);
+    const common = commonAncestor(cwds);
+    if (common !== null && withinBound(common, h)) wsRoot = common;
+  }
+  // That root stands for this pane only when the pane sits inside it (#509); an unknown cwd
+  // (blank, non-POSIX) cannot be shown to be outside, so it does not discard the root.
+  if (wsRoot !== null && (own === null || insideRoot(wsRoot, own))) return wsRoot;
   return own !== null && withinBound(own, h) ? own : null;
 }
 

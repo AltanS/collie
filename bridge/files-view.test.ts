@@ -598,6 +598,38 @@ describe("GET /api/pane/:id/files and /api/workspace/:id/files", () => {
     });
   });
 
+  test("a pane outside the workspace folder reads its own folder, never the workspace's (#509)", async () => {
+    const scratch = join(home, "scratch509");
+    mkdirSync(scratch, { recursive: true });
+    write(join(scratch, "notes.txt"), "own folder\n");
+    const s = {
+      current: (): RootSnapshot => ({
+        agents: [pane("w1:p1", "w1", join(root, "c", "deep")), pane("w1:p9", "w1", scratch)],
+        shellPanes: [],
+        workspaces: [space("w1", "ws", root)],
+      }),
+    };
+    const own = await (await paneFiles(s, "w1:p9", at("?path=notes.txt"), req, deny(), home)).json();
+    expect(own).toMatchObject({ paneId: "w1:p9", available: true, root: scratch, text: "own folder\n" });
+    // A file that exists only under the workspace root is not this pane's to read.
+    const notOwn = await paneFiles(s, "w1:p9", at("?path=a.txt"), req, deny(), home);
+    expect(notOwn.status).toBe(404);
+    expect(await notOwn.json()).toEqual({ error: "unknown-path" });
+    // The existence check resolves against the same root as the read.
+    const post = new Request("http://x/", {
+      method: "POST",
+      body: JSON.stringify({ paths: ["notes.txt", "a.txt"] }),
+      headers: { "content-type": "application/json" },
+    });
+    expect(await (await filesExist(s, { kind: "pane", paneId: "w1:p9" }, post, deny(), home)).json()).toEqual({ exists: ["notes.txt"] });
+    // The workspace route still reads the workspace root.
+    expect(await (await workspaceFiles(s, "w1", at("?path=a.txt"), req, deny(), home)).json()).toMatchObject({
+      available: true,
+      root,
+      text: "hello\n",
+    });
+  });
+
   test("the private folders are the state folder and the config folder", () => {
     expect(filesPrivateFolders({ stateDir: "/s/collie", commandsFile: "/c/collie/commands.toml" })).toEqual(["/s/collie", "/c/collie"]);
   });
