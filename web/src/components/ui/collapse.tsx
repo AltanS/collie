@@ -37,6 +37,14 @@ import { cn } from "@/lib/utils";
  *     the same ref, and seven copies of a rule is not a rule.
  *
  * It styles NOTHING. Tone, padding, borders and text all belong to what is inside it.
+ *
+ * **`axis="x"` runs the same machine sideways**, for a control that comes and goes INSIDE A ROW: the
+ * belt's agents mark (actions-row.tsx) is the first. `grid-template-columns: 0fr ↔ 1fr` instead of
+ * rows, and nothing else changes: the same duration, the same delayed unmount, the same hold, the
+ * same reduced-motion snap. An `fr` track under max-content sizing is its content's width times the
+ * factor, so the column eases from nothing to the child's own width with no measured number. The
+ * caller owns the row's gap: a flex `gap` beside a zero-width item still counts, so a caller in a
+ * gapped row cancels one gap with a negative margin on this box and pays it back as padding inside.
  */
 
 /**
@@ -68,6 +76,8 @@ export interface CollapseProps {
    */
   children: ReactNode;
   className?: string;
+  /** `"y"` (the default) grows the height; `"x"` grows the width, for a control in a row. */
+  axis?: "x" | "y";
 }
 
 /**
@@ -108,7 +118,7 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function Collapse({ open, children, className }: CollapseProps) {
+export function Collapse({ open, children, className, axis = "y" }: CollapseProps) {
   const reduced = usePrefersReducedMotion();
   const ms = reduced ? 0 : COLLAPSE_MS;
 
@@ -192,10 +202,17 @@ export function Collapse({ open, children, className }: CollapseProps) {
     <div
       data-slot="collapse"
       data-state={expanded ? "open" : "closed"}
+      data-axis={axis === "x" ? "x" : undefined}
       className={cn(
         "grid shrink-0 transition-all ease-out motion-reduce:transition-none",
         COLLAPSE_DURATION_CLASS,
-        expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        axis === "x"
+          ? expanded
+            ? "grid-cols-[1fr] opacity-100"
+            : "grid-cols-[0fr] opacity-0"
+          : expanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0",
         // The clip is only needed while the row is shorter than its content. Once open it is
         // actively harmful: an `overflow: hidden` ancestor eats a child's `::before` tap
         // extension, taps and all, with nothing to see — the measured failure documented at

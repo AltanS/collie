@@ -84,8 +84,8 @@ import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
-import { agentLabel, SubagentSheetCtx, type SubagentTarget } from "@/components/chat-cards";
-import { timeAgoShort } from "@/lib/format";
+import { AgentsSheet, subagentName } from "@/components/agents-sheet";
+import { SubagentSheetCtx, type SubagentTarget } from "@/components/chat-cards";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { VoiceTakeover } from "@/components/voice-takeover";
 import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
@@ -270,18 +270,11 @@ interface ComposerProps {
 // decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
-type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | "agents" | null;
+type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | null;
 
 /** The card key a subagent sheet opened from the belt carries. No Chat card uses it. */
 const BELT_SUBAGENT_KEY = "belt-subagent:";
 
-/**
- * The name the Agents dock draws for a subagent: its model, else its type. `inherit` names no model,
- * so the type stands in. The dock and the sheet read it through `agentLabel`, as an Agent card does.
- */
-function subagentName(subagent: PaneSubagent): string | undefined {
-  return subagent.model !== undefined && subagent.model !== "inherit" ? subagent.model : subagent.agentType;
-}
 
 
 // Grace window after a send during which a terminal draft matching what we just sent is treated as
@@ -1135,12 +1128,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     todoList.length > 0
       ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
       : "";
-  // The running subagents: the agents mark on the belt's fixed block, and its dock. A tap on a row
-  // opens the SAME sheet an Agent card in Chat opens (subagent-sheet.tsx), through the context the
-  // pane route provides.
+  // The running subagents: the agents mark on the belt's fixed block, and the Agents sheet it opens
+  // (agents-sheet.tsx). The list is a sheet over the page, not a dock in flow, so opening it moves
+  // nothing (Altan, 2026-10-19: "we hate layout shifts"). A tap on a row opens the SAME sheet an Agent
+  // card in Chat opens (subagent-sheet.tsx), through the context the pane route provides, as a second
+  // layer over the list: the list stays open under it, so closing the transcript comes back to it.
   const subagentList = subagents ?? [];
   const agentsLabel =
     subagentList.length > 0 ? translate("composer.controls.agents", { count: subagentList.length }) : "";
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const subagentSheet = useContext(SubagentSheetCtx);
   const beltSubagent = useRef<SubagentTarget | null>(null);
   const openSubagent = (subagent: PaneSubagent) => {
@@ -1154,9 +1150,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       status: "running",
     };
     beltSubagent.current = target;
-    // The sheet covers the composer, so the dock closes first rather than waiting under it.
-    requestDrawer(null);
     subagentSheet.open(target);
+  };
+  // Both sheets hear one Escape (each listens on the window), so the list ignores a close while a
+  // transcript it opened stands over it: Escape takes the top layer away and leaves the list.
+  const transcriptOver = subagentSheet?.activeCardKey?.startsWith(BELT_SUBAGENT_KEY) === true;
+  const closeAgents = () => {
+    if (!transcriptOver) setAgentsOpen(false);
   };
   // A sheet opened from the belt has no Chat card to tell it the subagent ended. When the subagent
   // leaves the running list, the sheet hears it from here, stops polling and shows the report.
@@ -1876,39 +1876,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </ul>
           </ComposerDock>
         )}
-        {drawer === "agents" && subagentList.length > 0 && (
-          <ComposerDock title={agentsLabel} onClose={closeDrawer}>
-            <ul className="mt-2 divide-y divide-border border-t border-border">
-              {subagentList.map((subagent) => {
-                const started = subagent.startedAt === undefined ? Number.NaN : Date.parse(subagent.startedAt);
-                return (
-                  <li key={subagent.agentId}>
-                    {/* A row is one 44px tap (DESIGN.md §6): it opens the subagent's sheet and sends nothing. */}
-                    <button
-                      type="button"
-                      data-slot="belt-subagent"
-                      onClick={() => openSubagent(subagent)}
-                      className="flex min-h-11 w-full items-start gap-2.5 px-3 py-2 text-left text-sm leading-snug transition-colors active:bg-accent"
-                    >
-                      <StatusDot status="working" surface="bg-background" className="mt-1" />
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="truncate text-xs font-medium text-muted-foreground">
-                          {agentLabel(subagentName(subagent))}
-                        </span>
-                        {subagent.description !== "" && (
-                          <span className="font-content break-words">{subagent.description}</span>
-                        )}
-                      </span>
-                      {Number.isFinite(started) && (
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgoShort(started)}</span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </ComposerDock>
-        )}
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -2095,15 +2062,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
-          // The running subagents: a small mark with their count in the pinned block, left of Files
-          // and the Switch mark, only while the count is above zero. A tap opens the Agents dock.
+          // The running subagents: a small mark with their count in the pinned block, right of the X
+          // and left of Files, only while the count is above zero. A tap opens the Agents sheet.
           agents={
             subagentList.length > 0
               ? {
                   count: subagentList.length,
                   label: agentsLabel,
-                  expanded: drawer === "agents",
-                  onClick: () => requestDrawer(drawer === "agents" ? null : "agents"),
+                  expanded: agentsOpen,
+                  onClick: () => setAgentsOpen(true),
                 }
               : undefined
           }
@@ -2677,6 +2644,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onDiscard={recorder.discard}
         />
       )}
+
+      {/* The running subagents, over the page: the agents mark opens it, and nothing in flow moves. */}
+      <AgentsSheet
+        open={agentsOpen && subagentList.length > 0}
+        onClose={closeAgents}
+        title={agentsLabel}
+        subagents={subagentList}
+        onOpen={openSubagent}
+      />
 
       {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} onPick={pickSent} />}
 
