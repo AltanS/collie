@@ -149,6 +149,16 @@ export interface TranscriptSource {
   /** Absolute path of the log this ref names, or null when it isn't on disk / isn't ours to read. */
   resolve(ref: AgentSessionRef): Promise<string | null>;
   /**
+   * The key a ref WILL resolve to once its log exists, for a ref that names a session whose log has
+   * not been written yet. Only the live window asks, and only after `resolve` answered null: a
+   * session with a key here is a NEW EMPTY session, not "no log" (#526).
+   *
+   * Optional, and only pi has it. pi reports its new session as a PATH before it writes the file
+   * (on start and after `/new`), so the bridge knows exactly where the log will be and can confine
+   * that place now. An id ref names no place, so for the other harnesses a missing log stays "no log".
+   */
+  pending?(ref: AgentSessionRef): Promise<string | null>;
+  /**
    * Size + mtime of a log, WITHOUT reading it — the store's cache-validity check.
    *
    * Split out from `load` on purpose: a journal can be 32 MB, and paging back through a long

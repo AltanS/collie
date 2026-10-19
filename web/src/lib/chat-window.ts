@@ -9,7 +9,9 @@
 //
 // ── THE THREE RULES, AND THEY ARE THE WHOLE MODULE (ADR 0073) ────────────────
 //  1. A `gen` different from the one held REPLACES everything. Two numberings cannot be merged, and
-//     pretending otherwise is how a thread ends up showing one turn twice.
+//     pretending otherwise is how a thread ends up showing one turn twice. So does a `session` tag
+//     different from the one held: the pane's agent started another session (pi's `/new`, #526),
+//     and nothing held, older pages included, belongs to it.
 //  2. An upsert whose `uuid` is held overwrites IN PLACE and keeps the `seq` it already had, never
 //     the `seq` in the answer. A turn that changed did not move. This is not a nicety: opencode
 //     re-emits a whole streaming reply under a `uuid` already held, and a `?before=` page and a live
@@ -68,6 +70,11 @@ export interface ChatWindow {
   readonly status: ChatStatus;
   /** Which numbering {@link entries} are in. Zero until an answer lands; a real `gen` is clock-seeded. */
   readonly gen: number;
+  /**
+   * Which session {@link entries} belong to, as the bridge's opaque tag, or `null` before a live
+   * answer and from a bridge one release behind (which sends none). Rule 1 compares it beside `gen`.
+   */
+  readonly session: string | null;
   /** The revision held. Sent back as `?after=<gen>:<rev>`. */
   readonly rev: number;
   /** The newest `seq` the live window reported. */
@@ -144,6 +151,7 @@ const EMPTY_QUEUE: readonly string[] = Object.freeze<string[]>([]);
 export const EMPTY_CHAT_WINDOW: ChatWindow = {
   status: { kind: "empty" },
   gen: 0,
+  session: null,
   rev: 0,
   head: 0,
   oldest: 0,
@@ -167,6 +175,7 @@ export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number):
   return {
     status: LIVE,
     gen: 0,
+    session: null,
     rev: 0,
     head: entries.at(-1)?.seq ?? 0,
     oldest: entries[0]?.seq ?? 0,
@@ -219,13 +228,16 @@ function sameStatus(held: ChatStatus, next: ChatStatus): boolean {
 }
 
 function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
-  // Rule 1. A numbering we do not hold replaces what we hold; there is no merging two of them.
-  const known = body.gen === held.gen;
+  // Rule 1. A numbering we do not hold replaces what we hold; there is no merging two of them. Nor
+  // is there merging two sessions, whatever their numbering says.
+  const session = body.session ?? null;
+  const known = body.gen === held.gen && sameSession(held.session, session);
   const entries = upsert(known ? held.entries : [], body.upserts);
   const oldest = entries[0]?.seq ?? body.oldest;
   return {
     status: LIVE,
     gen: body.gen,
+    session,
     rev: body.rev,
     head: body.head,
     oldest,
@@ -279,10 +291,24 @@ function olderExists(oldest: number, body: ChatWindowBody, previous: boolean): b
   return previous;
 }
 
+/**
+ * Two session tags name one session. A side that carries none (a bridge one release behind, a window
+ * no live answer built yet) says nothing, and `gen` decides alone, exactly as before the tag existed.
+ */
+export function sameSession(held: string | null, next: string | null): boolean {
+  return held === null || next === null || held === next;
+}
+
+/** The held window and an answer name two different sessions of the pane (#526). */
+export function sessionChanged(held: ChatWindow, next: ChatWindow): boolean {
+  return !sameSession(held.session, next.session);
+}
+
 function mergeOlder(held: ChatWindow, body: ChatOlderBody): ChatWindow {
   // A page computed against a numbering we no longer hold cannot be placed, so it is thrown away
-  // whole rather than merged into the wrong thread (ADR 0073 § `older`).
-  if (body.gen !== held.gen) return held;
+  // whole rather than merged into the wrong thread (ADR 0073 § `older`). A page of another session
+  // is the same mistake: the agent moved on while the tap was in flight (#526).
+  if (body.gen !== held.gen || !sameSession(held.session, body.session ?? null)) return held;
   const entries = upsert(held.entries, body.upserts);
   return { ...held, entries, oldest: entries[0]?.seq ?? held.oldest, hasOlder: body.hasOlder };
 }

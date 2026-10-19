@@ -232,3 +232,22 @@ back WHOLE as `added` rather than mutating it in place, which opencode does on e
 streaming reply and hermes does by re-composing. The window was taking that as a new turn, putting one
 turn at a second `seq` and leaving the client's merge to move a turn that never moved. An `added`
 whose uuid is already held is now a change in place, keeping its `seq`.
+
+## Addendum — 2026-10-19: a session with no log yet, and the session tag (#526)
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten.
+
+pi names a new session before it writes the file: on launch and after `/new`, Herdr reports a `path`
+ref to a log that pi writes only when the first reply is saved. `resolve` answered null for it, the
+route said "no log", and the phone kept the previous session's thread, because a status over held
+turns keeps the turns. Two changes close it, and neither touches the other harnesses' "no log".
+
+- **A ref whose log is not written yet is a new empty session**, where the adapter can confine the
+  place the log will be (`TranscriptSource.pending`, pi only: an id ref names no place). The window is
+  keyed by that place, answers no turns with `hasOlder: false`, and starts reading when the file
+  appears, because `resolve` then answers the same key.
+- **Every live answer carries `session`**, an opaque tag of the window's key (a salted hash, never the
+  path). Rule 1 now reads: a `gen` OR a `session` other than the one held replaces everything, older
+  pages included, and an older page of another session is thrown away. `gen` alone cannot say "another
+  session", because one session's window also bumps it on a reset. A bridge one release behind sends
+  no tag, and `gen` decides alone.

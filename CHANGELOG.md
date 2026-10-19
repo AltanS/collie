@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A sent walky talky message always shows in Chat.** The agent's own send command was folded into the steps row with the other commands, so the sent message and its receipt were out of sight; the card now stands on its own, like a received message.
 - **A subagent card always shows in Chat.** A turn's tool steps fold into one row such as "18 commands, 2 reads", and a delegated Agent call was folded in with them, so its summary and its report were out of sight and the fold's label did not count it. An Agent card now stands on its own between the folds, with the steps before and after it folded as before.
 - **An Agent call that names no type is labelled plain Agent.** A call that names no agent type is labelled plain Agent, or with its model, no longer Agent · agent.
+- **Chat follows a pi session after `/new`.** pi reports its new session before it writes the file, and Collie read the missing file as no log and kept showing the previous session until the pane was reopened; a session that has no file yet now reads as a new empty one, and the phone clears the old thread at once. Thanks @viniciosrab (#526).
 
 ## [1.22.6] - 2026-10-18
 

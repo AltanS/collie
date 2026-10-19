@@ -19,11 +19,11 @@
 // treated as hostile input and confined to pi's own sessions root like everything else — see
 // journal/files.ts. The id fallback is supported too, since the hook uses it when no file is open yet.
 
-import { readdir } from "node:fs/promises";
+import { lstat, readdir } from "node:fs/promises";
 
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import {
   containedRealpath,
@@ -699,7 +699,8 @@ export function createPiReducer(): RowReducer {
  *
  * Two ref kinds, because pi's hook reports whichever it has:
  *  - `path` — the common case. Confined to the root after symlink resolution, so a path pointing
- *    anywhere else resolves to null and reads to the client as an ordinary "no log".
+ *    anywhere else resolves to null and reads to the client as an ordinary "no log". A path whose
+ *    file pi has not written yet is a new empty session instead (`pending`, #526).
  *  - `id`   — the fallback. The uuid is the filename SUFFIX (`<ISO-ts>_<uuid>.jsonl`) inside a
  *    per-cwd directory, so this is a scan of the project dirs, cached after the first hit.
  */
@@ -739,6 +740,33 @@ export class PiTranscriptSource implements TranscriptSource {
       return hit;
     }
     return null;
+  }
+
+  /**
+   * Where a `path` ref's log will be, while pi has not written it yet (#526).
+   *
+   * pi names a new session the moment it starts one, on launch and after `/new`, and writes the file
+   * only when the first reply is saved (`SessionManager._persist`, pi 0.87.1). Herdr reports the path
+   * at once, so for that gap the ref names a file that does not exist. `resolve` answers null for it,
+   * which reads as "no log"; this answers the key the file WILL have, so the live window can show a
+   * new, empty session and start reading when the file appears.
+   *
+   * The same confinement as `resolve`, moved one level up because there is no file to resolve yet:
+   *  - the name must be pi's own (`<ISO-ts>_<session-uuid>.jsonl`), so a free-form path is refused;
+   *  - NOTHING may exist at the path, not even a dangling symlink: a file that exists goes through
+   *    `resolve` and its containment, and a refused one must never come back here as "empty";
+   *  - the FOLDER must exist and lie inside a sessions root after symlink resolution, and the key is
+   *    built from that real folder, which is the spelling `resolve` answers once the file exists, so
+   *    both name one live window.
+   */
+  async pending(ref: AgentSessionRef): Promise<string | null> {
+    if (ref.kind !== "path") return null;
+    const name = basename(ref.value);
+    const id = /_([^_]+)\.jsonl$/.exec(name)?.[1];
+    if (id === undefined || !isPiSessionId(id)) return null;
+    if (await lstat(ref.value).then(() => true, () => false)) return null;
+    const folder = await containedRealpathIn(dirname(ref.value), this.roots);
+    return folder === null ? null : join(folder, name);
   }
 
   /** The log whose name ends in `suffix` under one sessions root, contained by that root. */
