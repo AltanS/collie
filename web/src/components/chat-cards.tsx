@@ -101,6 +101,10 @@ const HARNESS_LABELS = new Map([
   ["opencode", "opencode"],
   ["pi", "pi"],
   ["antigravity", "Antigravity"],
+  ["agy", "Antigravity"],
+  ["grok", "Grok"],
+  ["hermes", "Hermes Agent"],
+  ["muse", "Muse"],
 ]);
 
 /** The harness's own name for itself, or the key back when nobody has taught us one. */
