@@ -6,7 +6,7 @@ import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
 // The notice a harness draws above its live box: a head row the profile names, up to three indented
-// continuation rows, one row of `<digit>: <label>` keys, then only blank rows down to the box.
+// continuation rows, a block of `<digit>: <label>` keys, then only blank rows down to the box.
 
 const IDLE = requireProfile("claude").idle;
 const NOTICES = IDLE.notices ?? [];
@@ -141,6 +141,73 @@ describe("readAboveNotice", () => {
     const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
     expect(readAboveNotice(rows.map(rowText), findInputFrame(rows, IDLE)!.top, [], GAPS)).toBeNull();
   });
+});
+
+// The follow-ups Claude Code 2.1.304's plugin draws after a key on its notice: the Dismissed row, whose
+// head carries the first keys, and the explanation under a head the profile marks `body`.
+describe("the notice's follow-ups", () => {
+  const DISMISSED = "✦ Dismissed.   1: That was helpful   2: Not relevant";
+  const EXPLAINED_KEYS = "  1: Understood   2: Chat in main session   0: Dismiss";
+  const bodyRows = (count: number): string[] => Array.from({ length: count }, (_, i) => `  - body row ${String(i)}`);
+
+  it("reads an inline head: the head row carries the keys", () => {
+    const notice = noticeOf(screen([`${DISMISSED}   0: Dismiss`, ""]));
+    expect(notice?.text).toBe("Dismissed.");
+    expect(notice?.keys).toEqual([
+      { key: "1", label: "That was helpful" },
+      { key: "2", label: "Not relevant" },
+      { key: "0", label: "Dismiss" },
+    ]);
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(2);
+    expect(notice?.body).toBeNull();
+  });
+
+  it("reads an inline head over a wrapped key block whose last row holds one key", () => {
+    const notice = noticeOf(screen([DISMISSED, "  3: Couldn’t understand   4: Turn off suggestions", "  0: Dismiss", ""]));
+    expect(notice?.text).toBe("Dismissed.");
+    expect(notice?.keys.map((k) => k.key)).toEqual(["1", "2", "3", "4", "0"]);
+    expect(notice?.keys.at(2)).toEqual({ key: "3", label: "Couldn’t understand" });
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(4);
+  });
+
+  it("reads a body under a head the profile marks `body`, its blank edges trimmed", () => {
+    const notice = noticeOf(screen([HEAD, "  cont", "", "  A title row", "  - one bullet", "    its wrapped row", "  - another", "", EXPLAINED_KEYS, ""]));
+    expect(notice?.text).toBe(`${HEAD.slice(2)} cont`);
+    expect(notice?.body).toEqual({ first: 5, last: 8 });
+    expect(notice?.keys.map((k) => k.label)).toEqual(["Understood", "Chat in main session", "Dismiss"]);
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(10);
+  });
+
+  it("reads the plain offer under a body head with no body", () => {
+    expect(noticeOf(screen([HEAD, "  one", KEYS]))?.body).toBeNull();
+  });
+
+  it("reads a body of 58 rows between its two blank rows", () => {
+    expect(noticeOf(screen([HEAD, "", ...bodyRows(58), "", EXPLAINED_KEYS]))?.body).toEqual({ first: 4, last: 61 });
+  });
+
+  it("reads a key block of six rows", () => {
+    const six = ["  1: One   2: Two", "  3: Three", "  4: Four", "  5: Five", "  6: Six", "  0: Dismiss"];
+    expect(noticeOf(screen([HEAD, ...six]))?.keys.map((k) => k.key)).toEqual(["1", "2", "3", "4", "5", "6", "0"]);
+  });
+
+  const failClosed: [string, string[]][] = [
+    ["the same body under a head without `body`", ["● How is Claude doing this session? (optional)", "", "  A title row", "  - one bullet", "", EXPLAINED_KEYS]],
+    ["a body row indented by one space", [HEAD, "", "  A title row", " - one bullet", "", EXPLAINED_KEYS]],
+    ["a body row at the left edge", [HEAD, "", "  A title row", "- one bullet", "", EXPLAINED_KEYS]],
+    ["61 body rows", [HEAD, "", ...bodyRows(61), "", EXPLAINED_KEYS]],
+    ["a key row inside the body", [HEAD, "", "  A title row", "  1: Yes   2: No", "  - one bullet", "", EXPLAINED_KEYS]],
+    ["a key block of seven rows", [HEAD, "  1: One   2: Two", "  3: Three", "  4: Four", "  5: Five", "  6: Six", "  7: Seven", "  0: Dismiss"]],
+    ["an inline head whose keys hold a letter key", ["✦ Dismissed.   1: That was helpful   y: Yes", "  0: Dismiss"]],
+  ];
+  for (const [name, over] of failClosed) {
+    it(`fails closed on ${name}`, () => {
+      expect(noticeOf(screen(over))).toBeNull();
+    });
+  }
 });
 
 describe("a row the profile names between the notice and the box (idle.noticeGaps)", () => {

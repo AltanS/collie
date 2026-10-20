@@ -1030,6 +1030,12 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2302-slash-model-list--w120--h40", statusRows: 0, draft: "/model", stripped: 24 },
     { fixture: "v2302-slash-effort-list--w120--h40", statusRows: 0, draft: "/effort", stripped: 24 },
     { fixture: "v2302-heads-up-above-box--w142", statusRows: 2, draft: null, stripped: 6 },
+    // The Heads up follow-ups, 2.1.304 (derived): the box under each is empty or holds only the dim suggestion.
+    { fixture: "v2304-heads-up-dismissed--w135", statusRows: 2, draft: null, stripped: 6 },
+    { fixture: "v2304-heads-up-dismissed--w65", statusRows: 2, draft: null, stripped: 6 },
+    { fixture: "v2304-heads-up-dismissed-after-explain--w65", statusRows: 2, draft: null, stripped: 6 },
+    { fixture: "v2304-heads-up-explained--w135", statusRows: 2, draft: null, stripped: 6 },
+    { fixture: "v2304-heads-up-explained--w65", statusRows: 2, draft: null, stripped: 6 },
     // The fix rig's 120 x 36 Herdr pane (captured 2026-10-17): an empty box on a screen whose rows reach
     // the bottom, and the same pane with the list under the box, blank rows under the list.
     { fixture: "v2302-idle-full-screen--w120--h36", statusRows: 1, draft: null, stripped: 5 },

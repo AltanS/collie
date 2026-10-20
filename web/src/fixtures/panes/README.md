@@ -2430,6 +2430,18 @@ captured.
 |---|---|
 | `claude--v2302-notice-over-agents-panel--w69.txt` | A running turn (`✶ Hashing… · tool use (4s · thinking with high effort)`) at 69 columns with the `✦ You should know · ` notice above the box, its three wrapped rows and the key row `1: Learn more   2: Knew this already   0: Dismiss`, then the box, two status rows, and the agents panel (`● main`, three `◯ general-purpose` rows) under them. The notice and the agents panel are vanilla Claude Code; the spinner's ` · tool use` suffix, the `[-]` row over the notice and the reply boxes come from a theme plugin (ui-themes). The panel is the footer run the Claude profile names (`frame.volatile.named`), so it is not counted against the six-row tail and the notice lifts its card (ADR 0109). Labelled `running` |
 
+## Heads up follow-ups, 2.1.304, derived
+
+**Derived** from `herdr pane read --ansi` captures of a plain `claude` 2.1.304 session, not kept byte for byte: every letter of the transcript above the notice (the welcome banner included) and of the statusline was replaced by neutral words of the same width, every escape sequence, glyph, digit, space and row kept. The notice rows, the `[-]` row over them, the box and the mode row are as captured. The notices, the `[-]` row and the box are vanilla Claude Code. Each is the follow-up the `you-should-know` plugin draws after a key on its `✦ Heads up · ` notice. Its keys act on a box holding one digit, as the first notice's do, so the Surface reads `modal: "none"` and the notice lifts as a menu card that leaves the box live (ADR 0109). The turn is over in each: labelled `idle`.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2304-heads-up-dismissed--w135.txt` | After **Dismiss**: one row, `✦ Dismissed.   1: That was helpful   2: Not relevant   3: Couldn’t understand   4: Turn off suggestions   0: Dismiss`, the head and its keys on the same row, a blank row, then the empty box |
+| `claude--v2304-heads-up-dismissed--w65.txt` | The same at 65 columns, wrapped onto three rows: `✦ Dismissed.   1: That was helpful   2: Not relevant`, `  3: Couldn’t understand   4: Turn off suggestions`, `  0: Dismiss`. The last row holds one key |
+| `claude--v2304-heads-up-dismissed-after-explain--w65.txt` | After **Learn more**, then **Dismiss**, at 65 columns: `✦ Dismissed.   1: That was helpful   2: Didn’t understand`, then `  0: Dismiss`. The box holds Claude Code's dim prompt suggestion |
+| `claude--v2304-heads-up-explained--w135.txt` | After **Learn more**: the `✦ Heads up · ` head and one continuation row, a blank row, the explanation (a title row and `  - ` bullets, a wrapped bullet indented by four), a blank row, the key row `  1: Understood   2: Chat in main session   0: Dismiss`, a blank row, then the empty box |
+| `claude--v2304-heads-up-explained--w65.txt` | The same at 65 columns: the head and three continuation rows, a blank row, sixteen rows of explanation, a blank row and the key row. The box holds Claude Code's dim prompt suggestion |
+
 ## Cursor CLI input box (captured 2026-10-17, Cursor CLI 2026.10.14 and 2026.10.16, Herdr)
 
 Read through `GET /api/pane/:id` with `scripts/capture-fixture.sh` from a throwaway pane in

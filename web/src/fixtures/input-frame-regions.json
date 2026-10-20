@@ -1502,6 +1502,86 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2304-heads-up-dismissed--w135.txt",
+  "frame": {
+   "top": 69,
+   "prompt": 70,
+   "bottom": 71,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 72,
+    "last": 73
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2304-heads-up-dismissed--w65.txt",
+  "frame": {
+   "top": 67,
+   "prompt": 68,
+   "bottom": 69,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 70,
+    "last": 71
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+  "frame": {
+   "top": 67,
+   "prompt": 68,
+   "bottom": 69,
+   "label": null,
+   "text": "Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…",
+   "placeholder": true,
+   "status": {
+    "first": 70,
+    "last": 71
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2304-heads-up-explained--w135.txt",
+  "frame": {
+   "top": 69,
+   "prompt": 70,
+   "bottom": 71,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 72,
+    "last": 73
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2304-heads-up-explained--w65.txt",
+  "frame": {
+   "top": 67,
+   "prompt": 68,
+   "bottom": 69,
+   "label": null,
+   "text": "Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…",
+   "placeholder": true,
+   "status": {
+    "first": 70,
+    "last": 71
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },
