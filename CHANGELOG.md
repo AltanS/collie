@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The phone types an answer into an AskUserQuestion field.** A single question, a wizard step or a multi-select question takes your own words from the card, and Collie checks that the field still holds what you saw before it sends. Thanks @leftos (#441).
 - **A send profile can name the commands its harness runs in a turn.** OMP's `/goal` now goes in while a goal turn runs, instead of being held behind a turn that never ends. Only `/goal` is listed, on the versions where a send into a turn is already trusted. Thanks @neuralyze (#541).
 - **A Muse pane takes the name you gave its session.** Collie reads the name from the session's own log when you rename a Muse session, and it uses that name for the pane in the dashboard and in push notifications. A session that only has an automatic name keeps the generic label. Thanks @jpcarranza94 (#533).
+- **Muse edits show their diffs and question answers show in History.** A Muse `edit_file` call now carries its diff and its added and removed line counts, and a Muse question call carries the answers you gave. An attached image no longer gets a second placeholder when Muse already wrote one. Thanks @jpcarranza94 (#532).
 
 ### Fixed
 
