@@ -247,3 +247,67 @@ describe("the rating survey above the box", () => {
     expect(card.menu.actions).toEqual(SURVEY_KEYS);
   });
 });
+
+// Claude Code 2.1.304's follow-ups after a key on the Heads up notice: the Dismissed row, its keys on
+// the head row and wrapped under it, and the explanation after Learn more, with its own key row.
+describe("the Heads up follow-ups above the box", () => {
+  const DISMISSED_KEYS = [
+    { label: "That was helpful", keys: ["1"] },
+    { label: "Not relevant", keys: ["2"] },
+    { label: "Couldn’t understand", keys: ["3"] },
+    { label: "Turn off suggestions", keys: ["4"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const AFTER_EXPLAIN_KEYS = [
+    { label: "That was helpful", keys: ["1"] },
+    { label: "Didn’t understand", keys: ["2"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const EXPLAINED_KEYS = [
+    { label: "Understood", keys: ["1"] },
+    { label: "Chat in main session", keys: ["2"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const cases: { fixture: string; title: string; actions: { label: string; keys: string[] }[] }[] = [
+    { fixture: "claude--v2304-heads-up-dismissed--w135.txt", title: "Dismissed.", actions: DISMISSED_KEYS },
+    { fixture: "claude--v2304-heads-up-dismissed--w65.txt", title: "Dismissed.", actions: DISMISSED_KEYS },
+    { fixture: "claude--v2304-heads-up-dismissed-after-explain--w65.txt", title: "Dismissed.", actions: AFTER_EXPLAIN_KEYS },
+    {
+      fixture: "claude--v2304-heads-up-explained--w135.txt",
+      title:
+        "Heads up · One of the notes being read, 02-team, says a former CTO's admin access was never removed and was used yesterday from an unknown address.",
+      actions: EXPLAINED_KEYS,
+    },
+    {
+      fixture: "claude--v2304-heads-up-explained--w65.txt",
+      title:
+        "Heads up · One of the notes being read, 09-support, says the customer login site's security certificate expires tonight at midnight, and its renewal has been failing for two weeks.",
+      actions: EXPLAINED_KEYS,
+    },
+  ];
+
+  for (const { fixture, title, actions } of cases) {
+    describe(fixture, () => {
+      it("reads the box free: no modal, the composer empty and ready", () => {
+        const rows = lines(fixture);
+        expect(readScreen(rows, "claude", requireProfile("claude").idle).surface).toMatchObject({ modal: "none", composer: "empty" });
+        expect(claudeAdapter.composerReady?.(rows)).toBe(true);
+      });
+
+      it("lifts a menu card with the head's text and the printed keys in printed order, the box live", () => {
+        const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+        if (card?.kind !== "menu") throw new Error("no menu");
+        expect(card.menu.title).toBe(title);
+        expect(card.menu.actions).toEqual(actions);
+        expect(card.menu.liveBox).toEqual({ draft: false });
+      });
+    });
+  }
+
+  // Captured after Understood (2.1.304): the notice is gone. An existing capture with no notice over
+  // its box stands in for it.
+  it("lifts no menu card over a box with no notice above it", () => {
+    const rows = lines("claude--v2303-titled-edge-working--w160.txt");
+    expect(claudeBuildBlocks(rows).some((b) => b.kind === "menu")).toBe(false);
+  });
+});

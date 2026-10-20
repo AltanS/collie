@@ -128,6 +128,12 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2302-slash-effort-list--w120--h40.txt",
     "claude--v2302-slash-model-list--w120--h40.txt",
     "claude--v2302-heads-up-above-box--w142.txt",
+    // The Heads up follow-ups, 2.1.304 (derived): the box stands under each.
+    "claude--v2304-heads-up-dismissed--w135.txt",
+    "claude--v2304-heads-up-dismissed--w65.txt",
+    "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    "claude--v2304-heads-up-explained--w135.txt",
+    "claude--v2304-heads-up-explained--w65.txt",
     // The notice over the agents panel at 69 columns (derived from a bridge read): the box stands.
     "claude--v2302-notice-over-agents-panel--w69.txt",
     // The fix rig's Herdr pane, 120 x 36 (captured 2026-10-17): a screen whose rows reach the bottom

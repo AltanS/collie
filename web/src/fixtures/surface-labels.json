@@ -981,6 +981,31 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2304-heads-up-dismissed--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-dismissed--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-dismissed-after-explain--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-explained--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-explained--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
   "claude--v2303-titled-edge-working--w160.txt": {
    "harness": "claude",
    "version": "2.1.303",

@@ -200,6 +200,29 @@ function isNoticeMenu(block: Block): boolean {
   return block.kind === "menu" && block.menu.liveBox !== undefined;
 }
 
+/** A keyed item as a row prints it: a letter or a digit after a space, the row's start or a separator glyph, then a colon or a parenthesis. */
+const PRINTED_KEY = /(?:^|[\s|│·•])([A-Za-z0-9])[:)]/gu;
+
+/**
+ * The keys a notice card's trailing key block printed, top row first: walking up from the card's last
+ * row, each row while it holds a printed key. When every row under the head holds one, the head row's
+ * keys printed after the card's title count too (an inline head, `✦ Dismissed.   1: …`).
+ */
+function printedNoticeKeys(rows: readonly string[], title: string): string[] {
+  const keyed = (text: string): string[] => [...text.matchAll(PRINTED_KEY)].map((m) => m[1]!);
+  const keys: string[][] = [];
+  for (let row = rows.length - 1; row > 0; row--) {
+    const found = keyed(rows[row]!);
+    if (found.length === 0) break;
+    keys.unshift(found);
+  }
+  if (keys.length === rows.length - 1) {
+    const head = rows[0]!.trim().replace(/^\S+\s+/u, "");
+    keys.unshift(keyed(head.startsWith(title) ? head.slice(title.length) : head));
+  }
+  return keys.flat();
+}
+
 /** The signatures of every menu block in a build — the race guard's freshness token, in order. */
 function menuSignatures(blocks: Block[]): string[] {
   return blocks.flatMap((b) => (b.kind === "menu" ? [b.menu.signature] : []));
@@ -705,15 +728,14 @@ export function describeAdapterConformance(
       if (menuFixtures.length === 0) it.todo("adapter lifts no menu blocks from its own fixtures");
 
       for (const name of noticeFixtures) {
-        // .adr/0009 still holds: no key is synthesised. Each is one digit the notice's own key row
-        // printed as `<digit>:` (the last row of the block), in the printed order. The row is parsed
-        // here on its own terms, not the reader's: every keyed item, a letter or a digit after a space,
-        // the row's start or a separator glyph, so a letter key the reader dropped shows.
-        it(`${name}: a notice card's keys are the digits its key row printed`, () => {
+        // .adr/0009 still holds: no key is synthesised. Each is one digit the notice's own key block
+        // printed as `<digit>:` (the trailing rows of the block), in the printed order. The block is
+        // parsed here on its own terms, not the reader's: every keyed item, a letter or a digit after a
+        // space, the row's start or a separator glyph, so a letter key the reader dropped shows.
+        it(`${name}: a notice card's keys are the digits its key block printed`, () => {
           for (const block of adapter.buildBlocks(loadLines(name))) {
             if (block.kind !== "menu" || block.menu.liveBox === undefined) continue;
-            const keyRow = lineText(block.lines.at(-1)!);
-            const printed = [...keyRow.matchAll(/(?:^|[\s|│·•])([A-Za-z0-9])[:)]/gu)].map((m) => m[1]!);
+            const printed = printedNoticeKeys(block.lines.map(lineText), block.menu.title);
             expect(printed.every((key) => /^\d$/u.test(key)), `${name}: a key row with a letter key lifted a card`).toBe(true);
             expect(block.menu.actions.map((a) => a.keys)).toEqual(printed.map((key) => [key]));
             expect(block.menu.nav).toEqual({ upDown: false });

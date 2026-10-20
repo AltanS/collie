@@ -275,6 +275,31 @@
     "region": "✦ You should know · One of the notes says the payroll export\n  runs on an unencrypted laptop that goes home every night and\n  holds every employee's bank account number.\n  1: Learn more   2: Knew this already   0: Dismiss\n  \n─────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2304-heads-up-dismissed--w135.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Not relevant   3: Couldn’t understand   4: Turn off suggestions   0: Dismiss\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-dismissed--w65.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Not relevant\n  3: Couldn’t understand   4: Turn off suggestions\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Didn’t understand\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…\n─────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-explained--w135.txt",
+    "detector": "menu",
+    "region": "✦ Heads up · One of the notes being read, 02-team, says a former CTO's admin access was never removed and was used yesterday from\n  an unknown address.\n\n  Former CTO's access may be in use now\n  - The file .tmp\\hu\\q\\02-team.md says the script that removes access when someone leaves missed the departed CTO's access.\n  - They still have owner rights on the GitHub organization and the AWS root keys, which give full control of the cloud account.\n  - The note says both were used yesterday from an unknown IP address. If that's true, someone may be in your systems right now.\n  - You asked for a reply of only \"done\", so the main agent may not mention this until it finishes, or may not mention it at all.\n  - If this note describes a real system, remove that GitHub access and replace those AWS keys now, then check what was done with\n    them.\n \n  1: Understood   2: Chat in main session   0: Dismiss\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-explained--w65.txt",
+    "detector": "menu",
+    "region": "✦ Heads up · One of the notes being read, 09-support, says\n  the customer login site's security certificate expires\n  tonight at midnight, and its renewal has been failing for\n  two weeks.\n\n  Customer login certificate expires tonight\n  - You asked for the reply to be just \"done\", so this could\n    get lost.\n  - The note 09-support.md (in the .tmp\\hu\\t folder) says\n    the TLS certificate for the customer login site runs out\n    tonight at midnight. This certificate is what lets\n    browsers trust the site.\n  - It also says the job that renews it automatically has\n    failed silently for two weeks, so nobody was warned.\n  - If the note is true and the certificate lapses,\n    customers' browsers will show a security warning or\n    refuse to open the login page.\n  - If this is a real system, check the certificate's expiry\n    date and renew it by hand today.\n  \n  1: Understood   2: Chat in main session   0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…\n─────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude--working.txt",
     "detector": "menu",
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── collie upgrades ──\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"

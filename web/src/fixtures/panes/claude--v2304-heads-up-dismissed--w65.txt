@@ -1,0 +1,72 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mPhrase Some [0m[38;2;153;153;153ma2.1.304[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSome 5.5 line some phrase · Sample Run[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153mA:\run\_the\Phrase\sample[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLine words .in some to A:\run\_the\Phrase\sample\.run\in\a the[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55min a line, the Line some run some, to sentence plain, to [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnotation words, to words notation. Some line, words line some [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mrun some line. An statement.[0m[48;2;55;55;55m                                   [0m
+
+  [0m[38;2;153;153;153mSentence run [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m example, line [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mNeutral the plain to notation words; 4 to 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mPlain example: 10 to 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mline
+
+  The plain in line: [0m[38;2;177;185;249m04-sample.in [0msome a example phrase the
+  phrase words notation'a line example run sentence TO example an
+  to neutral example phrase in run some statements, words
+  Phrase. In line'a line, an plain in a some line words notation.
+
+[0m[38;2;153;153;153m✻ Paragraph run 2a 5a · some 10:45 TO[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                             [0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦ [0m[38;2;153;153;153mDismissed.[0m   [0m[38;2;177;185;249m1[0m: That was helpful   [0m[38;2;177;185;249m2[0m: Not relevant
+  [0m[38;2;177;185;249m3[0m: Couldn’t understand   [0m[38;2;177;185;249m4[0m: Turn off suggestions
+  [0m[38;2;177;185;249m0[0m: Dismiss
+
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+❯ 
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mthe: [0m[38;2;63;185;106m 12%[0m[38;2;153;153;153m  |  run: 5a [0m[38;2;237;107;83m 43%[0m[38;2;153;153;153m (3a44a) · 7a [0m[38;2;237;107;83m 11%[0m[38;2;153;153;153m / A [0m[38;2;68;182;135m  0%[0m[38;2;153;153;153m (6a19a…[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle) · ← 2 agents[0m

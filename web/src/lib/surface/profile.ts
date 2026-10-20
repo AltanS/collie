@@ -89,6 +89,11 @@ export interface FrameAnchor {
 export interface NoticeHead {
   /** A regular expression source, matched on the notice's first row with its trailing spaces cut: it must not need a trailing space. */
   readonly head: string;
+  /**
+   * True for a head that may stand over a body: after its continuation rows and a blank row, rows
+   * indented by two spaces or more, down to the key block. Optional.
+   */
+  readonly body?: true;
 }
 
 /** A named row under the box (`idle.volatile.below.footerRows`). */
@@ -763,7 +768,7 @@ function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const withScreens = node.otherScreens === undefined ? withFooter : { ...withFooter, otherScreens: otherScreens(node.otherScreens) };
   return node.commandList === undefined ? withScreens : { ...withScreens, commandList: commandList(node.commandList) };
 }
-/** `idle.notices`: each an object whose head pattern compiles and cannot match a blank row. */
+/** `idle.notices`: each an object whose head pattern compiles and cannot match a blank row, and whose `body`, when named, is true. */
 function parseNotices(value: JsonValue | undefined): NoticeHead[] {
   const path = "idle.notices";
   return list(value, path).map((item, i) => {
@@ -771,7 +776,9 @@ function parseNotices(value: JsonValue | undefined): NoticeHead[] {
     const node = object(item, at);
     const head = pattern(field(node, "head", at), `${at}.head`);
     if (head.test("") || head.test(" ")) fail(`${at}.head`, "must not match a blank row");
-    return { head: head.source };
+    if (node.body === undefined) return { head: head.source };
+    if (node.body !== true) fail(`${at}.body`, "must be true when named");
+    return { head: head.source, body: true };
   });
 }
 
