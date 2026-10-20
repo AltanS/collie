@@ -11,6 +11,7 @@ import {
   createMuseReducer,
 } from "./muse.ts";
 import type { JsonValue } from "../json.ts";
+import { RENAME_TITLE_MAX } from "../mux/durable/clean.ts";
 
 // Row builders mirroring the verified on-disk shape (bridge/journal/muse.ts header): the envelope
 // fields the adapter reads plus the payload under test, nothing else.
@@ -1108,5 +1109,25 @@ describe("museSessionNameReader", () => {
     const root = await fixtureRoot();
     const reader = museSessionNameReader([root]);
     await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeUndefined();
+  });
+
+  // #533 shipped the name as the log wrote it, trimmed and nothing else. It is agent-written text
+  // that reaches the pane header, the dashboard and a push title, so it is cleaned like a pane title.
+  test("a hostile name comes back one capped line with no control character", async () => {
+    const root = await fixtureRoot();
+    const hostile = `\x1b[31mred\x1b[0m first\nsecond${"x".repeat(30_000)}`;
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_A, hostile, "user")]);
+    const reader = museSessionNameReader([root]);
+    const name = await reader({ kind: "id", value: UUID_A }, undefined);
+    expect(typeof name).toBe("string");
+    const shown = name ?? "";
+    expect(shown.startsWith("red first second")).toBe(true);
+    const controls = [...shown].filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+    expect([...shown].length).toBe(RENAME_TITLE_MAX);
+    expect(shown.endsWith("…")).toBe(true);
   });
 });

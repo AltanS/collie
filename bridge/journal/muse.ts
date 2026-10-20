@@ -61,6 +61,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";
+import { RENAME_TITLE_MAX, shortLine } from "../mux/durable/clean.ts";
 import { containedRealpath, exists, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { resolveImageUrl } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -995,8 +996,18 @@ function foldNameLine(current: string | null, line: string, sessionId: string): 
   const source = str(payload.source);
   if (source === "automatic") return null;
   if (source !== "user") return current;
-  const name = str(payload.new_name).trim();
-  return name === "" ? null : name;
+  return sessionNameOf(str(payload.new_name)) ?? null;
+}
+
+/**
+ * The name as a person may read it. The log row is agent-written text, and it reaches the pane
+ * header, the dashboard and a push title, so it gets a pane title's cleaning: terminal escapes out
+ * first (their tails would read as `[31m`), whitespace runs as one space, then `shortLine` drops every
+ * other control and invisible character and cuts to the pane title cap with `…`. Before this a
+ * 30000-character name with an escape and a newline went through whole (refines #533).
+ */
+function sessionNameOf(raw: string): string | undefined {
+  return shortLine(stripAnsi(raw).replace(/\s+/gu, " "), RENAME_TITLE_MAX);
 }
 
 /** One session log's incremental name scan: where it got to, and the name folded so far. */

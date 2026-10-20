@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Heads up notice's follow-ups show as cards.** After Dismiss or Learn more on Claude Code's Heads up notice, the phone showed no buttons. It now draws the follow-up's choices and the explanation as a card. Thanks @leftos (#550).
 - **Muse's `/effort` and `/hud` pickers read as a dialog, with Escape as the way out.** Their filter field takes every typed character, so a tap that sent a digit or a letter would type into the filter. Collie now refuses the composer there and the unread-dialog card offers Escape alone. Thanks @jpcarranza94 (#529).
 - **A send to Muse during a turn goes into Muse's own queue.** Measured on Muse Code 1.4.10, Tab queues a message in a running turn and Enter steers it, so Collie now presses Tab and a phone send can no longer steer by accident. The queued rows Muse draws make the receipt say queued, and slash commands in a turn stay held. Thanks @jpcarranza94 (#524).
+- **A Muse session name is one short line, and it leaves with its session.** The name read from Muse's log now loses its control characters and escapes and is cut to 120 characters, the pane title limit, so a long or hostile name no longer reaches the pane header, the dashboard or a push title whole. A pane that ran `muse resume` on a named session and then a bare `muse` no longer keeps the old name. This refines #533.
 
 ### Docs
 
