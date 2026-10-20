@@ -2203,16 +2203,18 @@ throwaway Herdr session (`herdr pane read --source visible --format ansi`). The 
 shortened cwd was swapped for `/private/tmp/collie-muse-sandbox`, the same 32 characters, and its
 model label renamed `mini`. Nothing was submitted while capturing.
 
-The seven `muse--*-1410` rows of 2026-10-18 are visible-screen captures of Muse Code 1.4.10
+The six `muse--*-1410` rows PR 520 added on 2026-10-18 (idle, done, draft, probe draft and the two
+running turns) are visible-screen captures of Muse Code 1.4.10
 (`muse --version`: `Muse Code 1.4.10 (1.4.10-R6427.1)`) in a throwaway Herdr scratch pane in
 `/private/tmp/collie-audit/work`, taken with `herdr pane read --format ansi --source visible` (#519).
 CRLF throughout, no trailing newline, as the reader returned them. **One sanitization pass,
-length-preserving:** the shell prompt above the banner names the operator's own project, so
-`medical_practice_system` became `example-project-0000000` and `personal-projects` became
-`example-projects0` (same character counts, SGR untouched); an email/home-path/UUID/secret-shape sweep
-of the seven files returns nothing else. What was spent: one real turn (`sleep 20`, then the
-`DONE-1410` reply) for the two running captures and `muse--done-1410`; the draft, probe and palette
-reads submitted nothing and were cleared with Ctrl+U, Backspace and Escape. These captures are
+length-preserving:** the shell prompt above the banner named two of the operator's own folders, and
+each became a placeholder of the same character count (`example-project-0000000` and
+`example-projects0`, SGR untouched); an email/home-path/UUID/secret-shape sweep of the six files
+returns nothing else. What was spent: one real turn (`sleep 20`, then the `DONE-1410` reply) for the
+two running captures and `muse--done-1410`; the draft and probe reads submitted nothing and were
+cleared with Ctrl+U and Backspace. `muse--slash-palette-1410` was on main before PR 520 and has its
+own row above. These captures are
 capture-grade evidence only: Muse has no harness-lab entry (see the lab README), so neither the
 profile range nor `probe.status` moved with them.
 
