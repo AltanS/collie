@@ -38,6 +38,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Claude question without a question mark gets its card.** An AskUserQuestion written as statements showed the "cannot read this dialog" card until you answered it in the terminal. Collie now reads the question from the rows under the dialog's chip. Thanks @leftos (#548).
 - **The Heads up notice's follow-ups show as cards.** After Dismiss or Learn more on Claude Code's Heads up notice, the phone showed no buttons. It now draws the follow-up's choices and the explanation as a card. Thanks @leftos (#550).
 
+### Docs
+
+- **Muse Code 1.4.10 has live captures in the fixture corpus.** Seven byte-faithful screens (idle, done, draft, probe draft, bare slash palette, two running turns) are labelled and pinned in the Muse adapter tests. The Muse profile range does not move, because the harness lab cannot run Muse yet. Thanks @jpcarranza94 (#520).
+
 ## [1.23.1] - 2026-10-20
 
 ### Fixed
