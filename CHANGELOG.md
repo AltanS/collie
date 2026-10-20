@@ -32,7 +32,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Muse pane takes the name you gave its session.** Collie reads the name from the session's own log when you rename a Muse session, and it uses that name for the pane in the dashboard and in push notifications. A session that only has an automatic name keeps the generic label. Thanks @jpcarranza94 (#533).
 - **Muse edits show their diffs and question answers show in History.** A Muse `edit_file` call now carries its diff and its added and removed line counts, and a Muse question call carries the answers you gave. An attached image no longer gets a second placeholder when Muse already wrote one. Thanks @jpcarranza94 (#532).
 - **Muse slash commands appear in History.** A command you run in Muse, such as `/model` or `/compact`, is now drawn as your line, the way Claude Code's commands are. Muse logs the bare command name only, so no arguments show. Thanks @jpcarranza94 (#530).
-- **Muse's model and export pickers show as buttons.** Muse Code 1.4.10 draws `/model` and `/export` below the input box, and the phone now lifts them as a menu with Confirm and Go back. A tap on a row that moved since you looked is refused, and the filter pickers still fall back to the raw screen. Thanks @jpcarranza94 (#525).
 
 ### Fixed
 
