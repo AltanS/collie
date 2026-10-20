@@ -24,6 +24,16 @@
 // unless the extension paints it (pi-coding-agent's components/footer.js). A default OmO install
 // prints its badge and memory status there with no colour (pi--omo-v5130-plain-idle.txt).
 //
+// An extension may replace pi's editor (`ctx.ui.setEditorComponent`) with one that draws the frame
+// one column in (issue 544, pi-powerline-footer's `editor.render` wrapper): both rules ` ─…` at column
+// one, two cells short of the screen, the first draft row ` > ` with the draft from column three, the
+// later rows three spaces in. Its own widget may stand straight under the bottom rule (` ↳ ` and the
+// last prompt, `setWidget` belowEditor), and an extension footer under that can run past pi's four
+// rows. That layout is `inset`, read only when the column-zero layouts above find no editor: the two
+// rules and the prompt all sit in column one, the `>` row is the first row inside, and the tail is
+// painted status rows, or none, and at most one widget row. pi's own dialogs replace the editor and draw their
+// rules in column zero, so none of them reads as `inset`.
+//
 // A question replaces the editor between the rules, so a frame is a composer only when no pi modal
 // is on screen (index.ts asks ask.ts for that too); a status tail alone never permits typing.
 import { MIRROR_BG, MIRROR_FG } from "../../ansi";
@@ -37,6 +47,16 @@ const CONTINUATION = /^ {2}([\s\S]*)$/;
 const BOX_EDGE = /^[─-╿]/;
 const MAX_EDITOR_ROWS = 100;
 const MAX_STATUS_ROWS = 4;
+/** The `inset` layout (see the header): its rules, its prompt row and its later draft rows. */
+const INSET_RULE = /^ ─{8,}$/;
+const INSET_LABELLED_RULE = /^ ─{2,} \S.*? ─{3,}$/;
+const INSET_PROMPT = /^ >(?: ([\s\S]*))?$/;
+const INSET_CONTINUATION = /^ {3}/;
+/** The extension's widget straight under the inset editor: the last prompt behind ` ↳ `. */
+const INSET_WIDGET = /^ ↳ \S/;
+const MAX_INSET_WIDGET_ROWS = 1;
+/** An extension footer under the inset editor: the captured one is five rows (issue 544). */
+const MAX_INSET_STATUS_ROWS = 8;
 /** The palette is a window onto a longer list; its height is the pane's, and this bounds the scan. */
 const MAX_PALETTE_ROWS = 32;
 /** A picker's header sits between two rules above its list (OmO's and pi's `/tree`: a title, two
@@ -126,34 +146,58 @@ export interface PiTail {
   /** Exclusive end of the status rows; only blank padding follows. */
   end: number;
   palette: boolean;
+  /** The bottom rule is the `inset` layout's, in column one (see the header). */
+  inset: boolean;
 }
 
 /** The editor's bottom rule, the optional palette under it and the status rows at the tail. */
 export function tailRule(lines: StyledLine[]): PiTail | null {
   let end = lines.length;
   while (end > 0 && text(lines[end - 1]!) === "") end--;
+  return columnZeroTail(lines, end) ?? insetTail(lines, end);
+}
+
+/**
+ * The `inset` layout's tail: up to eight status rows, painted as `paintedStatus` says, or none, and
+ * over them at most one widget row (` ↳ `) straight under a column-one bottom rule, as the profile's
+ * `under` takes it, paint or not. No palette.
+ */
+function insetTail(lines: StyledLine[], end: number): PiTail | null {
+  let statusStart = end;
+  while (statusStart > 0 && end - statusStart < MAX_INSET_STATUS_ROWS && statusRow(lines[statusStart - 1]!)) statusStart--;
+  // No status row at all: pi-powerline-footer with no footer of another extension (live, 2026-10-20)
+  // ends the screen with its bottom rule, or with its widget row under it.
+  if (statusStart !== end && !paintedStatus(lines.slice(statusStart, end))) return null;
+  let below = statusStart;
+  while (below > 0 && statusStart - below < MAX_INSET_WIDGET_ROWS && INSET_WIDGET.test(text(lines[below - 1]!))) below--;
+  if (below === 0 || !INSET_RULE.test(text(lines[below - 1]!))) return null;
+  return { bottom: below - 1, statusStart, end, palette: false, inset: true };
+}
+
+/** The column-zero layouts' tail: stock pi's and OmO's (see the header). */
+function columnZeroTail(lines: StyledLine[], end: number): PiTail | null {
   // No status row at all (issue 445): an extension replaced pi's footer with an empty one, so the
   // editor's bottom rule is the last thing on screen. A rule of the same width must stand above it, and `locateComposer`
   // still demands the same colour and a clean editor body, which is what keeps other boxes out.
   if (end > 0 && RULE.test(text(lines[end - 1]!)) &&
     ruleAbove(lines.map(text), end - 1, text(lines[end - 1]!).length, MAX_EDITOR_ROWS) >= 0) {
-    return { bottom: end - 1, statusStart: end, end, palette: false };
+    return { bottom: end - 1, statusStart: end, end, palette: false, inset: false };
   }
   // The status rows: one to four, painted as `paintedStatus` says.
   let statusStart = end;
   while (statusStart > 0 && end - statusStart < MAX_STATUS_ROWS && statusRow(lines[statusStart - 1]!)) statusStart--;
   if (statusStart === end || statusStart === 0 || !paintedStatus(lines.slice(statusStart, end))) return null;
-  if (RULE.test(text(lines[statusStart - 1]!))) return { bottom: statusStart - 1, statusStart, end, palette: false };
+  if (RULE.test(text(lines[statusStart - 1]!))) return { bottom: statusStart - 1, statusStart, end, palette: false, inset: false };
   // The palette, directly under the bottom rule, in either form.
   let top = statusStart;
   while (top > 0 && statusStart - top < MAX_PALETTE_ROWS && /^(?: *→ | +\S)/.test(text(lines[top - 1]!))) top--;
   if (top === statusStart || top < 1 || !RULE.test(text(lines[top - 1]!))) return null;
   if (!paletteRows(lines.slice(top, statusStart).map(text))) return null;
-  return { bottom: top - 1, statusStart, end, palette: true };
+  return { bottom: top - 1, statusStart, end, palette: true, inset: false };
 }
 
 export interface PiComposer {
-  readonly layout: "omo" | "stock";
+  readonly layout: "omo" | "stock" | "inset";
   readonly top: number;
   readonly bottom: number;
   readonly statusStart: number;
@@ -178,9 +222,40 @@ function indentedEditor(rows: StyledLine[], filled: StyledLine[]): boolean {
   return rows.some(cursorCell) && filled.every((row) => text(row).startsWith(" "));
 }
 
+/**
+ * The `inset` editor over its tail (see the header): a column-one top rule of the bottom rule's width
+ * and colour, the ` >` prompt as the first row inside, and every later row blank or three spaces in.
+ * A box glyph inside is a panel, unless it is a shorter pasted rule.
+ */
+function insetComposer(lines: StyledLine[], tail: PiTail): PiComposer | null {
+  const { bottom } = tail;
+  const bottomLine = lines[bottom]!;
+  const width = text(bottomLine).length;
+  let top = bottom - 1;
+  while (top >= 0) {
+    const value = text(lines[top]!);
+    if ((INSET_RULE.test(value) || INSET_LABELLED_RULE.test(value)) && value.length === width) break;
+    if (bottom - top > MAX_EDITOR_ROWS) return null;
+    top--;
+  }
+  if (top < 0 || top + 1 === bottom) return null;
+  if (ruleColor(lines[top]!) !== ruleColor(bottomLine)) return null;
+  const rows = lines.slice(top + 1, bottom);
+  if (!INSET_PROMPT.test(text(rows[0]!))) return null;
+  const ok = rows.slice(1).every((row) => {
+    const value = text(row);
+    if (value === "") return true;
+    const glyph = value.trimStart();
+    return INSET_CONTINUATION.test(value) && (!BOX_EDGE.test(glyph) || pastedRule(glyph, width)) && !PROMPT.test(glyph);
+  });
+  if (!ok) return null;
+  return { layout: "inset", top, bottom, statusStart: tail.statusStart, end: tail.end };
+}
+
 export function locateComposer(lines: StyledLine[]): PiComposer | null {
   const tail = tailRule(lines);
   if (tail === null) return null;
+  if (tail.inset) return insetComposer(lines, tail);
   const { bottom } = tail;
   const bottomLine = lines[bottom]!;
   const width = text(bottomLine).length;
@@ -240,6 +315,7 @@ function draftOf(lines: StyledLine[], composer: PiComposer): string | null {
     .map((line, index) => {
       const value = text(line);
       if (composer.layout === "stock") return value;
+      if (composer.layout === "inset") return index === 0 ? (INSET_PROMPT.exec(value)?.[1] ?? "") : value;
       return index === 0 ? (PROMPT.exec(value)?.[1] ?? "") : value.slice(2);
     })
     // One space per row seam, and nothing for a blank row or an indent: the read-back
