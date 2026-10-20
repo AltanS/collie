@@ -831,6 +831,142 @@ async function metadataRoot(path: string): Promise<string | null> {
  * No `cacheProbe`: the log carries usage records but Muse publishes no cache TTL Collie could
  * quote, so like grok and hermes this ships no rule.
  */
+// ── The name the operator gave the session (MUSE-36) ───────────────────────
+//
+// Muse paints no session name anywhere: the label slot in its input-box rule carries the voice
+// hint ("Voice input (⌥ + v to start)"), and the automatic name every session gets at birth
+// (`icy-chromosphere` and friends) is never painted or titled either. The one proven home of a
+// USER-given name is this log: `session.name.changed` rows, whose payload is flat
+// `{session_id, previous_name, new_name, source: "automatic" | "user"}`. The session's current
+// display name is the LAST such row's `new_name` — and it is only a name worth showing when that
+// change was the user's. Folding every row in order (a user change sets it, any later automatic
+// change clears it) gives exactly that, with no separate "was it ever renamed" state to drift.
+
+/**
+ * Fold one raw log line into the running user-given name. Lines that cannot carry a name change
+ * for THIS session — another payload type, unparseable, a row naming a different session, a
+ * change from a source this reader does not know — leave the running value untouched, so a shape
+ * Muse adds tomorrow degrades to "the last name we understood", never to a wrong one.
+ */
+function foldNameLine(current: string | null, line: string, sessionId: string): string | null {
+  if (!line.includes("session.name.changed")) return current;
+  let parsed: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    parsed = JSON.parse(line) as JsonValue;
+  } catch {
+    return current;
+  }
+  if (!isObj(parsed) || str(parsed.payload_type) !== "session.name.changed") return current;
+  const payload = isObj(parsed.payload) ? parsed.payload : null;
+  if (payload === null) return current;
+  const owner = str(payload.session_id);
+  if (owner !== "" && owner.toLowerCase() !== sessionId) return current;
+  const source = str(payload.source);
+  if (source === "automatic") return null;
+  if (source !== "user") return current;
+  const name = str(payload.new_name).trim();
+  return name === "" ? null : name;
+}
+
+/** One session log's incremental name scan: where it got to, and the name folded so far. */
+interface NameScan {
+  path: string;
+  /** File bytes consumed so far — `rest` included, so the next read starts exactly here. */
+  offset: number;
+  /** Consumed bytes after the last newline: a row still being written, held until it completes. */
+  rest: Uint8Array;
+  name: string | null;
+}
+
+/**
+ * How much of a log one scan step reads. A first scan walks the whole log — a rename can sit
+ * thousands of rows back, so no tail window can promise to hold it — and session logs measured
+ * on a real herd run past 100 MB (files.ts), so the walk is chunked and only the one partial
+ * row at the live edge is ever held in memory. After the first walk a scan is incremental:
+ * each call folds only what was appended since the last.
+ */
+const NAME_SCAN_CHUNK = 1024 * 1024;
+
+async function scanNew(scan: NameScan, sessionId: string, size: number): Promise<void> {
+  while (scan.offset < size) {
+    const to = Math.min(size, scan.offset + NAME_SCAN_CHUNK);
+    const chunk = new Uint8Array(await Bun.file(scan.path).slice(scan.offset, to).arrayBuffer());
+    scan.offset = to;
+    let joined = chunk;
+    if (scan.rest.length > 0) {
+      joined = new Uint8Array(scan.rest.length + chunk.length);
+      joined.set(scan.rest);
+      joined.set(chunk, scan.rest.length);
+    }
+    // Rows are only ever folded whole: everything after the last newline is a row Muse is
+    // still writing, held in `rest` until its newline lands (the live read's torn-line rule,
+    // files.ts `readSinceFile`, in miniature).
+    const end = joined.lastIndexOf(0x0a);
+    if (end === -1) {
+      scan.rest = joined;
+      continue;
+    }
+    scan.rest = joined.slice(end + 1);
+    const text = new TextDecoder().decode(joined.subarray(0, end));
+    for (const line of text.split("\n")) scan.name = foldNameLine(scan.name, line, sessionId);
+  }
+}
+
+/**
+ * The user-given name of the Muse session in one pane, for the state engine's pane naming.
+ *
+ * Returns the name; `null` when the pane's own session is known exactly and carries no
+ * user-given name; `undefined` when nothing can be said either way. The pane binds to a log
+ * ONLY exactly — a reported session ref, or a `resume <uuid>` in its foreground argv (the same
+ * two facts {@link MuseTranscriptSource.discoverSession} trusts before its cwd walk) — and
+ * never by that walk: it resolves two panes sharing a folder to the one newest log, and a name
+ * lifted from a neighbour's session would outrank the pane's own tab name and title
+ * (bridge/pane-name.ts), which is a worse answer than no name. A fresh `muse` binds by neither
+ * fact today, so it reads `undefined` and keeps its fallbacks byte-identical.
+ *
+ * Stateful per session: the first call for a session folds its whole log once; later calls
+ * fold only appended bytes, so a poll loop pays a stat and (usually) no read at all.
+ */
+export type MuseSessionNameReader = (
+  ref: AgentSessionRef | undefined,
+  processes: readonly ForegroundProcess[] | undefined,
+) => Promise<string | null | undefined>;
+
+export function museSessionNameReader(roots: string | readonly string[]): MuseSessionNameReader {
+  const source = new MuseTranscriptSource(roots);
+  const scans = new Map<string, NameScan>();
+  return async (ref, processes) => {
+    const sessionId =
+      ref !== undefined && ref.kind === "id" && isMuseSessionId(ref.value)
+        ? ref.value.toLowerCase()
+        : sessionFromArgv(processes);
+    if (sessionId === null) return undefined;
+    const path = await source.resolve({ kind: "id", value: sessionId });
+    if (path === null) return undefined;
+    let scan = scans.get(sessionId);
+    if (scan === undefined || scan.path !== path) {
+      scan = { path, offset: 0, rest: new Uint8Array(), name: null };
+      scans.set(sessionId, scan);
+    }
+    const st = await statFile(path);
+    if (st === null) return undefined;
+    // A log that shrank under the scan was truncated or replaced: refold from the start rather
+    // than trust a name folded out of bytes that are no longer the log's.
+    if (st.size < scan.offset) {
+      scan.offset = 0;
+      scan.rest = new Uint8Array();
+      scan.name = null;
+    }
+    try {
+      await scanNew(scan, sessionId, st.size);
+    } catch {
+      return undefined;
+    }
+    return scan.name;
+  };
+}
+
 export function museJournal(roots: string | readonly string[]): JournalAdapter {
   const source = new MuseTranscriptSource(roots);
   return {
