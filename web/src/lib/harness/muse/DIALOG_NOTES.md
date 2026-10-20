@@ -436,6 +436,25 @@ Re-probed recipes (key sent → screen after):
 - **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
   turn, and the button carries the terminal's own words rather than "Cancel".
 
+## 7. Below-box pickers as menus — `/model`, `/export` (added 2026-10-19, MUSE-14)
+
+Muse Code 1.4.10, live-probed 2026-10-19 (captures `muse--menu-model{,-moved}.txt`,
+`muse--menu-export.txt`, decline fixture `muse--menu-effort-filter.txt`; grammar in `menu.ts`).
+These pickers keep the composer frame (Voice rule, bare `❯`, bottom rule) and paint UNDER it,
+where the statusline was: title, blank, option rows (unpointed 2-space, pointed `⟩ ` at
+column 0), blank, footer `↑↓ move · enter confirm · esc go back` (`/export`: `esc cancel`).
+Down moved `⟩` one row (the moved twin); Escape restored the idle tail with model and effort
+unchanged; Enter and digits were never pressed inside a picker.
+
+Lifted as the shared `MenuModel`: Confirm = the footer's own `enter`, cancel = its `esc`,
+Up/Down from its `↑↓ move` segment — no digit is ever synthesised. The signature spans
+title → footer including the pointer glyph (text, not style), so a committing tap on a
+moved highlight refuses (`menusEqual`) while arrows keep identity (`menusSameIdentity`) —
+proven on the real capture pair. Deliberately declined, pending their own captures: filter
+rows (`/effort` — typed keys filter, MUSE-16), numbered rows (`/permissions` — digit
+behaviour unprobed), `[x]`/toggle rows (`/skills`, `/hud`), `↓ N more` scroll windows,
+dash-separated and full-screen footers (`/settings`, `/theme`, …), footerless (`/rewind`).
+
 ## What was deliberately NOT lifted
 
 - The command palette, `/resume` picker, `/tasks` drawer and `/workflows`

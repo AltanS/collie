@@ -67,6 +67,7 @@ import {
 } from "./chrome";
 import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, locateTail, regionSignature, rstrip } from "./markers";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
+import { detectMenuRegion } from "./menu";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 import { detectSessionPicker } from "../session-picker";
@@ -137,6 +138,18 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
       kind: "menu",
       menu: picker.model,
       lines: lines.slice(picker.startLine),
+    });
+  }
+  // LAST, like every generic menu (menu.ts): the below-box pickers (`/model`, `/export`) that
+  // replace the statusline under the composer frame. Strictly the measured shape — a filter
+  // row, numbered or checkbox options, or any footer segment beyond `↑↓`/`enter`/`esc`
+  // declines to raw (MUSE-14).
+  const menu = detectMenuRegion(lines);
+  if (menu !== null) {
+    return lift(lines, menu.startLine, menu.model.signature, {
+      kind: "menu",
+      menu: menu.model,
+      lines: lines.slice(menu.startLine),
     });
   }
   return unlifted(lines);
