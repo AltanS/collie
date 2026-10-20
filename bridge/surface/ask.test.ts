@@ -674,6 +674,15 @@ describe("changed, replaced and repeated asks are refused with no key", () => {
     expect(dialog).not.toBeNull();
     expect(planFor(dialog!, 0)).toBeNull();
   });
+
+  test("a wizard step whose answer field has focus has no plan for any option: a digit would be typed into the field", () => {
+    for (const name of ["claude--v2299-ask-field-wizard-focused-empty.txt", "claude--v2299-ask-field-wizard-focused-typed.txt"]) {
+      const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(fx(name))), HARNESS));
+      expect(dialog?.blockKind).toBe("wizard");
+      const plans = [0, 1, 2, 3, 4, 5].map((i) => planFor(dialog!, i));
+      expect(plans).toEqual([null, null, null, null, null, null]);
+    }
+  });
 });
 
 describe("timeouts: an ask that left the screen", () => {
