@@ -123,6 +123,9 @@ const RAW_MODALS = new Set([
   "pi--v0871-model-selector-empty--w120.txt",
   "pi--v130-model-selector-empty--w120.txt",
   "pi--v130-settings-screen--w120.txt",
+  // The model selector under pi-powerline-footer, which replaces pi's editor with its own (issue 544,
+  // live 2026-10-20): pi's selector still takes the editor's place in column zero.
+  "pi--v130-powerline-model-selector--w120.txt",
   ...["v0871", "v110"].flatMap((v) => [
     `pi--${v}-question-other-focused.txt`,
     `pi--${v}-question-answer-editor.txt`,

@@ -23,6 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Claude question without a question mark gets its card.** An AskUserQuestion written as statements showed the "cannot read this dialog" card until you answered it in the terminal. Collie now reads the question from the rows under the dialog's chip. Thanks @leftos (#548).
+- **A pi pane with an extension's own input box takes sends again.** An extension such as pi-powerline-footer can replace pi's input box with one that draws its borders and a `>` prompt one column in, shows your last prompt under the box and may add a taller footer. Collie found no input box there, so every send was refused with "Collie cannot tell if this was sent". Collie now reads that box, also when a message wraps to more rows or is a walky talky message, and a slash command typed there goes out with one tap while pi's command list shows. Collie reads the box only when both borders and the prompt sit in the same column and every row inside is the prompt row or a row three spaces in. pi's own questions and pickers still never read as the input box. Thanks @npo-mmenke (#544).
+
 ## [1.23.1] - 2026-10-20
 
 ### Fixed

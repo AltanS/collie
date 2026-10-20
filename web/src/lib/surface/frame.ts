@@ -81,6 +81,13 @@ export interface Frame {
     readonly named: readonly NamedRow[];
   };
   readonly anchorsHit: readonly FrameAnchorHit[];
+  /**
+   * With the layout's `ownPrompt`: the box's own prompt glyph, the prompt row's text in front of the
+   * draft hole, as that row and the column the hole starts in (the row's length when the prompt
+   * anchor matched no hole). The cue read of a harness that draws its dialogs in the box's place
+   * reads it as blank (cues.ts `readCuesFor`). Absent otherwise.
+   */
+  readonly ownPrompt?: { readonly row: number; readonly end: number };
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -745,7 +752,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const { status, footer, named } = open ? { status: null, footer: null, named: [] } : walkBelowNamed(texts, bottom, end, idle, c.footerRows);
   const above = bandAbove(texts, top, idle);
 
-  return {
+  const frame: Frame = {
     top,
     bottom,
     label: label.length > 0 ? label : null,
@@ -754,6 +761,8 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     volatile: { above, status, footer, named },
     anchorsHit,
   };
+  // The layout's own prompt glyph (`ownPrompt`): only on a box whose every row the profile's `rows` named.
+  return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...frame, ownPrompt: { row: prompt, end: holeStart } } : frame;
 }
 
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();

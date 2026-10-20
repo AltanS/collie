@@ -472,10 +472,14 @@ describe("a list that leaves the lead off, under the box only, over the harness'
     expect(read(screen("/mod", tall)).frame).toBeNull();
   });
 
-  it("the footer ends the list: one run to the screen's end, at most four rows, no blank row in it", () => {
+  it("the footer ends the list: one run to the screen's end, at most six rows, no blank row in it", () => {
     expect(read(screen("/model", MODEL, ["↑0 ↓0 $0.000 from an extension"])).own).toBe(true);
-    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four"])).own).toBe(true);
-    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five"])).own).toBe(false);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five", "row six"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five", "row six", "row seven"])).own).toBe(false);
+    // An extension's widget under the editor (issue 544, pi-powerline-footer's ` ↳ ` last prompt) opens
+    // the footer too, over the extension's own footer rows; any other row one column in does not.
+    expect(read(screen("/model", MODEL, [" ↳ the last prompt", ...FOOTER, "row three", "row four", "row five"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [" Do you want to proceed?", ...FOOTER])).own).toBe(false);
     expect(read(screen("/model", MODEL, [FOOTER[0]!, "", FOOTER[1]!])).own).toBe(false);
     // A row that is neither list nor footer between them: no list.
     expect(read(screen("/model", [...MODEL, " Do you want to proceed?"])).own).toBe(false);

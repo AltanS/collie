@@ -265,6 +265,41 @@ trailing padding are as read. No user, host or path is in either file.
 | `pi--v130-custom-footer-idle.txt` | Empty editor, the cursor cell, the extension's footer | composer, empty |
 | `pi--v130-custom-footer-draft.txt` | `hello from the probe` typed, not sent | composer, draft read back |
 
+## pi 1.3.0 under pi-powerline-footer's editor (issue 544, reported 2026-10-20, Herdr 0.9.5)
+
+**Sanitized**, from the reporter's own capture attached to issue 544 (`herdr pane read --source recent
+--lines 200 --format ansi`, 254 columns, LF line ends, no trailing newline). pi 1.3.0 with several
+extensions. One of them, pi-powerline-footer, replaces pi's editor (`ctx.ui.setEditorComponent`) with
+a wrapper whose `editor.render` draws both rules ` ─…` and the prompt ` > ` one column in, two cells
+short of the screen, and continuation rows three spaces in. Its `powerline-last-prompt` widget
+(`setWidget`, below the editor) puts ` ↳ ` and the last prompt straight under the bottom rule. Its
+`powerline-status` widget above the editor is the ` GPT-6.1 Sol | think:low | …` row. Under the widget
+stand five footer rows: three match pi's own cwd, stats and joined `setStatus` rows (ponytail's `🐴`
+status is in the last), and two more sit between them, so an extension footer (`setFooter`) draws
+them; which extension is not known. The turn is running, so pi embeds `⠸ Working` in
+the top rule. Cut to the last 23 rows of the read, from the blank row over the last agent turn. The pane
+id, the reporter's German reply and the session name were replaced by strings of the same width;
+`litellm/[REDACTED]` is the reporter's own redaction.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-running--w254.txt` | Empty inset editor, a running turn, widget row and five-row footer | running, modal none, composer empty (the profile's `frameAlternates`); the pi reader's `inset` layout, unbound (the tail is past the six-row window) |
+
+**Live**, from the lab run of 2026-10-20: pi 1.3.0 with pi-powerline-footer 0.20.2 alone, 120 columns
+and 40 rows, LF line ends, no trailing newline. pi ran under tmux, so its extended-keys warning stands
+at the top. With no other extension's footer the inset box ends the screen, or its ` ↳ ` widget row
+does; the powerline status row stands over the top rule. Nothing personal was on screen. One file is
+**derived**: the walky talky draft is the two-row draft with its two rows replaced by a walky talky
+header row and a body row, as the bridge types a message (a newline between them).
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-idle-widget--w120.txt` | Empty inset box after a turn, the ` ↳ ` row under it | free (idle, modal none, empty); the pi reader's `inset` layout with no status row |
+| `pi--v130-powerline-editor-two-row-draft--w120.txt` | A typed prompt that wraps to a second row, three spaces in | draft, modal none, the two rows read as one text (the alternate's `rows` and `ownPrompt`) |
+| `pi--v130-powerline-editor-walky-draft--w120.txt` | Derived: a walky talky header row and its body row | draft, modal none, header and body as one text |
+| `pi--v130-powerline-editor-slash-model--w120.txt` | `/model` typed, pi's command list under the box | draft `/model`, modal none, the list is the command's own (the profile's `commandList`) |
+| `pi--v130-powerline-model-selector--w120.txt` | pi's `/model` selector, which takes the editor's place in column zero | modal unreadable, never free; the pi reader's modal |
+
 ## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
 
 Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in

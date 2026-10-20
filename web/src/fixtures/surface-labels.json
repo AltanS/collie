@@ -4501,6 +4501,36 @@
    "version": "1.3.0",
    "state": "idle"
   },
+  "pi--v130-powerline-editor-running--w254.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "running"
+  },
+  "pi--v130-powerline-editor-idle-widget--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-powerline-editor-two-row-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-powerline-editor-walky-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-powerline-editor-slash-model--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "popup"
+  },
+  "pi--v130-powerline-model-selector--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
   "pi--v130-slash-model-list--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",

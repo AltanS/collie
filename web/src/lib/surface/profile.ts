@@ -244,7 +244,15 @@ export interface FrameLayout {
    * list and a dialog's title too, and those stand apart by a blank row or run past the bound. Optional.
    */
   readonly underPainted?: boolean;
-
+  /**
+   * The interior walk only, with `rows`. True when the text in front of the draft hole on the prompt
+   * row is the box's own prompt glyph, never a dialog's pointer. On a harness that draws its dialogs in
+   * the box's place (`idle.dialogsInBox`) the modal cues read the rows from the top edge down, and there
+   * this glyph reads as blank. Without it a draft that wraps reads as a pointer on a listed row (the
+   * glyph's row, and a wrapped row in the hole's column) between two rules, which is an overlay. `rows`
+   * must name every row the box may hold, so a box with any other row inside is no box. Optional.
+   */
+  readonly ownPrompt?: boolean;
 }
 
 /** The ghost text after the cursor ({@link Profile.idle.inlineHint}). */
@@ -839,7 +847,7 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
     maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
   };
   if (walk === "edges") {
-    for (const key of ["rows", "trailer", "continuation"] as const) {
+    for (const key of ["rows", "trailer", "continuation", "ownPrompt"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
     }
     const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
@@ -855,10 +863,13 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   }
   if (frameNode.underPainted === true && frameNode.under === undefined) fail("idle.frame.underPainted", "needs an under pattern");
   const withPainted = frameNode.underPainted === true ? { ...withUnder, underPainted: true } : withUnder;
-  if (frameNode.continuation === undefined) return withPainted;
+  if (frameNode.ownPrompt !== undefined && frameNode.ownPrompt !== true && frameNode.ownPrompt !== false) fail("idle.frame.ownPrompt", "must be true or false");
+  if (frameNode.ownPrompt === true && frameNode.rows === undefined) fail("idle.frame.ownPrompt", "needs a rows pattern");
+  const withOwnPrompt = frameNode.ownPrompt === true ? { ...withPainted, ownPrompt: true } : withPainted;
+  if (frameNode.continuation === undefined) return withOwnPrompt;
   const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
   if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
-  return { ...withPainted, continuation: continuation.source };
+  return { ...withOwnPrompt, continuation: continuation.source };
 }
 
 export function parseProfile(raw: JsonValue): Profile {

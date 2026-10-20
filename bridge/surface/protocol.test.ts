@@ -5843,3 +5843,105 @@ describe("S1 reads the turn again before the commit key (PR 491): a turn starts 
     expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
   });
 });
+
+describe("pi under pi-powerline-footer's inset editor (issue 544, live 2026-10-20)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+  const capture = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\n");
+  const GLYPH = " \u001b[38;2;200;200;200m>\u001b[39m";
+  const WIDGET = " \u001b[38;5;244m↳\u001b[39m \u001b[38;5;244mReply with exactly DONE-1 and nothing else.\u001b[39m";
+  const INSET_WRAP = 112;
+
+  /** The extension's box holding `box`: ` > ` and the first row, later rows and wrapped rows three spaces in, the cursor last. */
+  const insetRows = (box: string): string[] => {
+    const rows: string[] = [];
+    for (const line of box.split("\n")) {
+      for (let at = 0; at === 0 || at < line.length; at += INSET_WRAP) rows.push(line.slice(at, at + INSET_WRAP));
+    }
+    return rows.map((row, i) => `${i === 0 ? `${GLYPH} ` : "   "}${row}${i === rows.length - 1 ? "\u001b[7m \u001b[0m" : ""}`);
+  };
+
+  /**
+   * The live screen around the box (`two-row-draft` capture): the rows over the box, the box redrawn
+   * from the pane's text, the bottom rule and what stands under it. pi pads the screen with blank rows
+   * at the top, so a taller box takes them and the rows under stay at the bottom. Submit (alt+Enter)
+   * takes the text and leaves the box empty.
+   */
+  const live = (pane: FakePane, under: string[] = []): void => {
+    const rows = capture("pi--v130-powerline-editor-two-row-draft--w120.txt");
+    const prompt = rows.findIndex((row) => plain(row).startsWith(" > "));
+    const bottom = rows.findIndex((row, i) => i > prompt && /^ ─{20,}$/u.test(plain(row)));
+    pane.collapseOver = 100_000;
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("keys:") && what.includes("alt+Enter")) p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      const box = insetRows(p.box);
+      const drawn = [...rows.slice(0, prompt), ...box, ...rows.slice(bottom, bottom + 1), ...under];
+      const pad = rows.length - drawn.length;
+      p.fixed = [...drawn.slice(0, 3), ...Array<string>(Math.max(0, pad)).fill(""), ...drawn.slice(3)].join("\r\n");
+    };
+  };
+
+  const LONG = 'Use the question tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do nothing else.';
+  const WALKY = "[walky-talky wt_0a1b2c3d4e5f] from operator (Phone)\nReply with exactly WALKY-1 and nothing else.";
+
+  for (const [name, text] of [["a message that wraps to a second row", LONG], ["a walky talky header and body", WALKY]] as const) {
+    for (const under of [[], [WIDGET]]) {
+      test(`${name}${under.length > 0 ? ", the widget row under the box" : ""}: sent with one submit`, async () => {
+        const pane = new FakePane("claude");
+        const { send } = rig({ pane, harness: "pi", version: "1.3.0" });
+        live(pane, under);
+        const answer = await send(text);
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("alt+Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+    }
+  }
+
+  test("a dialog's key hints drawn in the box after the text went in: left typed, never submitted", async () => {
+    const pane = new FakePane("claude");
+    const { send } = rig({ pane, harness: "pi", version: "1.3.0" });
+    live(pane);
+    const draw = pane.beforeRead!;
+    pane.beforeRead = (p, n) => {
+      void draw(p, n);
+      // The box's second row (the only row three spaces in) turns into a dialog's hint row.
+      if (p.box === LONG) p.fixed = p.fixed!.replace(/\r\n {3}[^\r\n]*/u, "\r\n   ↑↓ navigate • Enter to select • Esc to cancel");
+    };
+    const answer = await send(LONG);
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.keysSeen).not.toContain("alt+Enter");
+    neverEscape(pane);
+  });
+
+  // The slash list opens under the box (the editor draws it), and the widget row stands under the list.
+  for (const under of [[], [WIDGET]]) {
+    test(`/model over its own list${under.length > 0 ? " and the widget row" : ""}: one Enter, and the selector it opens counts as sent`, async () => {
+      const listed = capture("pi--v130-powerline-editor-slash-model--w120.txt");
+      const opened = capture("pi--v130-powerline-model-selector--w120.txt").join("\r\n");
+      const boxRow = listed.findIndex((row) => plain(row).startsWith(" > /model"));
+      const list = listed.slice(boxRow + 2);
+      const head = listed.slice(0, boxRow + 2);
+      const pane = new FakePane("claude");
+      const { send } = rig({ pane, harness: "pi", version: "1.3.0" });
+      pane.beforeRead = (p) => {
+        if (p.box === "" && p.keysSeen.includes("Enter")) {
+          p.fixed = opened;
+          return;
+        }
+        const rows = [...head];
+        rows[boxRow] = `${GLYPH} ${p.box}\u001b[7m \u001b[0m`;
+        const below = p.box.startsWith("/") ? [...list, ...under] : under;
+        const pad = Array<string>(list.length + under.length - below.length).fill("");
+        p.fixed = [rows[0]!, ...pad, ...rows.slice(1), ...below].join("\r\n");
+      };
+      const answer = await send("/model", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      neverEscape(pane);
+    });
+  }
+});
