@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The harness canary can press each harness-bar button on a live agent.** The opt-in `--scenario bar` sends every picker button of an agent's shipped bar through the phone's own send path, closes the picker with Escape and saves the screen as `bar-<id>.ansi` for a person to read. The drafts scenario now also reads Oh My Pi's collapsed paste chip, so its long multi-line draft case no longer ends not reached. Thanks @GGGODLIN (#449).
 - **The phone types an answer into an AskUserQuestion field.** A single question, a wizard step or a multi-select question takes your own words from the card, and Collie checks that the field still holds what you saw before it sends. Thanks @leftos (#441).
 - **A send profile can name the commands its harness runs in a turn.** OMP's `/goal` now goes in while a goal turn runs, instead of being held behind a turn that never ends. Only `/goal` is listed, on the versions where a send into a turn is already trusted. Thanks @neuralyze (#541).
+- **A Muse pane takes the name you gave its session.** Collie reads the name from the session's own log when you rename a Muse session, and it uses that name for the pane in the dashboard and in push notifications. A session that only has an automatic name keeps the generic label. Thanks @jpcarranza94 (#533).
 
 ### Fixed
 
