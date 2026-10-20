@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Kiro CLI gets Chat, History, native approvals and a send profile.** Collie reads a Kiro V3 session from its `messages.jsonl`, finds the pane's session by the lock the running Kiro holds (Herdr only), and answers Kiro's shell, read, write and replace panels with Allow once, Deny and Close. MCP requests, clipped panels and the V1 and V2 engines stay on the terminal. Checked on kiro-cli 2.32.0. `kiro_root` and `COLLIE_KIRO_ROOT` point at another sessions folder. Thanks @aahung (#460).
+
 ## [1.23.1] - 2026-10-20
 
 ### Fixed
