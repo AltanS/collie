@@ -225,13 +225,15 @@ describe("Kiro journal routes with actual saved-session files", () => {
     const live = await w.chat("w1:p1", "?limit=2");
     const oldest = live.upserts[0];
     if (oldest === undefined) throw new Error("Expected newest turns");
-    // When: both routes ask for entries before that same opaque turn ID.
-    const history = await w.history("w1:p1", `?before=${oldest.uuid}&limit=2`);
+    // When: Chat asks for the page before that opaque turn ID (a page counts turns, journal/turns.ts,
+    // so it holds every earlier turn of this short log), and History asks for the same number of entries.
     const chat = await w.chat("w1:p1", `?before=${oldest.seq}:${oldest.uuid}&limit=2`);
+    if (chat.page !== "older") throw new Error("Expected an older page");
+    const history = await w.history("w1:p1", `?before=${oldest.uuid}&limit=${chat.upserts.length}`);
     // Then: both use the journal projection, not raw source/context text.
-    expect(chat.page).toBe("older");
+    expect(chat.upserts.length).toBeGreaterThan(2);
     expect(withoutPositions(chat.upserts)).toEqual(history.entries);
-    expect(history.hasMore).toBe(true);
+    expect(history.hasMore).toBe(chat.hasOlder);
     noPrivateText(history);
     noPrivateText(chat);
   });

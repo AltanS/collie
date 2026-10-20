@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Page, Route } from "@playwright/test";
 
+import type { Locale } from "@/lib/i18n/locale";
 import type { MachineAlerts, PaneChatResponse, PaneHistoryResponse, SnapshotResponse } from "@/lib/types";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
@@ -35,6 +36,9 @@ import { censusFor, fixtureMachines, fixtureMachinesSolo, historyFor } from "@/t
 // MSW is deliberately NOT used in the browser. It installs a service worker of its own and this app
 // ships one; two workers on one scope is a fight, not a fixture. The MSW handler array stays the
 // unit layer's, and this module re-states the ROUTING (nine lines of it) rather than the data.
+
+/** The locale pin. A BARE string under this key, not JSON — `src/lib/i18n/index.ts:44`. */
+const LOCALE_STORAGE_KEY = "collie:locale:v1";
 
 /** `/api/update/check` reports the bridge's own version, which `SnapshotResponse` does not carry.
  *  It is level with `latest` in the default world, so the two only ever have to agree with each
@@ -403,6 +407,20 @@ export function fill(template: string, vars: Readonly<Record<string, string | nu
     out = out.split(`{${slot}}`).join(String(value));
   }
   return out;
+}
+
+/**
+ * Pin the locale before the first navigation. There is no URL parameter and no `Accept-Language`
+ * path in this app; the storage key is the only mechanism, and it has to be written before the
+ * bundle's first script runs, which is what `addInitScript` is for.
+ */
+export async function pinLocale(page: Page, locale: Locale): Promise<void> {
+  await page.addInitScript(
+    ([key, value]) => {
+      window.localStorage.setItem(key, value);
+    },
+    [LOCALE_STORAGE_KEY, locale],
+  );
 }
 
 /**
