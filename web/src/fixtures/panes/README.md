@@ -2139,7 +2139,7 @@ signature.
 | `muse--draft-image-chip.txt` | An attached image path converted in place to `[Image #1]` (N in attach order). The read stays verbatim; the attach grammar maps it back for verify (#278) | `idle` |
 | `muse--draft-quoted-path.txt` | A non-image path double-quoted in place (`"/tmp/…"`). Same split: verbatim read, attach grammar verifies (#278) | `idle` |
 | `muse--working.txt` | A finished turn: the transcript ends `◆ Worked for 2m 57s · 4:24 PM` and the composer is free. The name is the first capture's; relabelled idle on 2026-10-16 (M56 spec 14), since no mid-turn screen was ever captured under it | `idle` |
-| `muse--turn-running.txt` | Derived 2026-10-16 from `muse--working.txt`: its last transcript row is replaced by the running row `◇ Double checking (2m 40s · esc to interrupt)`, in the form of the `Calling tools (1m 01s · esc to interrupt)` row of `muse--approval-ls-147.txt`. Not a live capture; a live one is pending | `working` |
+| `muse--turn-running.txt` | Derived 2026-10-16 from `muse--working.txt`: its last transcript row is replaced by the running row `◇ Double checking (2m 40s · esc to interrupt)`, in the form of the `Calling tools (1m 01s · esc to interrupt)` row of `muse--approval-ls-147.txt`. Not a live capture; live ones landed 2026-10-18 as `muse--running-command-1410` and `muse--running-checking-1410` (#519) | `working` |
 | `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
 | `muse--tip-loop.txt` | The same idle composer holding the rotated `/loop 10m <prompt> schedules a recurring prompt` placeholder tip — the tip rotates, and an unlisted one reads as a ghost draft (#274) | `idle` |
 | `muse--tip-paste.txt` | The same idle composer holding the `Paste an image with Ctrl+V — file paths and URLs work too` placeholder tip — the tip rotates per context (#278) | `idle` |
@@ -2179,7 +2179,13 @@ signature.
 | `muse--palette-hint-moved.txt` | Same, after Down: the bold has moved to `/resume-claude`, so the read must not verify `/resume` | `idle` |
 | `muse--palette-typed-arg.txt` | `/model x` typed: the hint is gone and `x` wears the typed-text colour. The read is `/model x` | `idle` |
 | `muse--palette-skill.txt` | `/plan` typed: its one suggestion is a built-in skill row, `  /plan · built-in · default skill  On an explicit…`, tags between the command and the gap. The read is `/plan`. Visible-screen read 2026-10-15, cwd swapped for the sandbox path and model label renamed `mini` | `idle` |
+| `muse--idle-1410.txt` | Muse Code 1.4.10 idle after finished turns: `── Voice input (⌥ + v to start) ──` top rule, bare `❯` (no hole hint showed), `muse-wonder-full-1.0 · xhigh · /private/tmp/collie-audit/work · YOLO` statusline. Reads free (#519) | `idle` |
+| `muse--done-1410.txt` | Same session just after the `sleep 20` turn: `◆ Ran command · Run sleep 20 · ✓ · 20s · ctrl+o`, `◆ DONE-1410`, empty box. Reads free (#519) | `idle` |
+| `muse--draft-1410.txt` | `❯ VERIFY-DRAFT-1410` typed and not sent, cleared with Ctrl+U after the read. Reads as a draft (#519) | `idle` |
+| `muse--probe-draft-1410.txt` | The profile probe char `⌁` (U+2301) alone in the 1.4.10 box: it renders as draft text and one Backspace removed it (probed live, then cleared). A fixture, not a probed send: `probe.status` stays provisional until a live `SendProtocol` send passes (#519) | `idle` |
 | `muse--slash-palette-1410.txt` | Bare `/` on Muse Code 1.4.10 (byte-faithful live capture, 2026-10-18, #519): seven command rows (`/bug` pointed, bold) and `↓ 72 more` painted inside the box between the prompt row and the bottom rule. The profile's inside `commandList` reads the palette pointing at `/bug`, so a bare `/` is no own list and the screen stays not-free; with the pointed command typed in full it reads as the typed command's own list (MUSE-03) | `idle` |
+| `muse--running-command-1410.txt` | Live mid-turn 1.4.10: `◇ Running command · Run sleep 20 — running (10s · esc to interrupt)` + `└ (ctrl+b to send to background)`, framed empty box below. Reads running — the first live Muse running capture; `muse--turn-running.txt` above is derived (#519) | `working` |
+| `muse--running-checking-1410.txt` | Same turn after the reply row printed: `◆ DONE-1410` and still `◇ Double checking (32s · esc to interrupt)` above the box. Reads running (#519) | `working` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -2192,6 +2198,19 @@ The four `muse--palette-*` rows of 2026-10-15 are visible-screen captures of Mus
 throwaway Herdr session (`herdr pane read --source visible --format ansi`). The statusline's
 shortened cwd was swapped for `/private/tmp/collie-muse-sandbox`, the same 32 characters, and its
 model label renamed `mini`. Nothing was submitted while capturing.
+
+The seven `muse--*-1410` rows of 2026-10-18 are visible-screen captures of Muse Code 1.4.10
+(`muse --version`: `Muse Code 1.4.10 (1.4.10-R6427.1)`) in a throwaway Herdr scratch pane in
+`/private/tmp/collie-audit/work`, taken with `herdr pane read --format ansi --source visible` (#519).
+CRLF throughout, no trailing newline, as the reader returned them. **One sanitization pass,
+length-preserving:** the shell prompt above the banner names the operator's own project, so
+`medical_practice_system` became `example-project-0000000` and `personal-projects` became
+`example-projects0` (same character counts, SGR untouched); an email/home-path/UUID/secret-shape sweep
+of the seven files returns nothing else. What was spent: one real turn (`sleep 20`, then the
+`DONE-1410` reply) for the two running captures and `muse--done-1410`; the draft, probe and palette
+reads submitted nothing and were cleared with Ctrl+U, Backspace and Escape. These captures are
+capture-grade evidence only: Muse has no harness-lab entry (see the lab README), so neither the
+profile range nor `probe.status` moved with them.
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)

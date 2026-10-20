@@ -3036,10 +3036,20 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "muse--done-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "idle"
+  },
   "muse--done.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "idle"
+  },
+  "muse--draft-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "draft"
   },
   "muse--draft-blank-row.txt": {
    "harness": "muse",
@@ -3074,6 +3084,11 @@
   "muse--fresh-idle.txt": {
    "harness": "muse",
    "version": "unversioned",
+   "state": "idle"
+  },
+  "muse--idle-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
    "state": "idle"
   },
   "muse--palette-exact.txt": {
@@ -3111,6 +3126,11 @@
    "version": "1.4.8",
    "state": "popup"
   },
+  "muse--probe-draft-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "draft"
+  },
   "muse--prompt-hint-1410.txt": {
    "harness": "muse",
    "version": "1.4.10",
@@ -3140,6 +3160,16 @@
    "harness": "muse",
    "version": "1.4.8",
    "state": "dialog"
+  },
+  "muse--running-checking-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "running"
+  },
+  "muse--running-command-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "running"
   },
   "muse--slash-palette-1410.txt": {
    "harness": "muse",
