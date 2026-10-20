@@ -32,6 +32,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A Claude question without a question mark gets its card.** An AskUserQuestion written as statements showed the "cannot read this dialog" card until you answered it in the terminal. Collie now reads the question from the rows under the dialog's chip. Thanks @leftos (#548).
+- **The Heads up notice's follow-ups show as cards.** After Dismiss or Learn more on Claude Code's Heads up notice, the phone showed no buttons. It now draws the follow-up's choices and the explanation as a card. Thanks @leftos (#550).
 
 ## [1.23.1] - 2026-10-20
 
