@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Claude question without a question mark gets its card.** An AskUserQuestion written as statements showed the "cannot read this dialog" card until you answered it in the terminal. Collie now reads the question from the rows under the dialog's chip. Thanks @leftos (#548).
 - **The Heads up notice's follow-ups show as cards.** After Dismiss or Learn more on Claude Code's Heads up notice, the phone showed no buttons. It now draws the follow-up's choices and the explanation as a card. Thanks @leftos (#550).
 - **Muse's `/effort` and `/hud` pickers read as a dialog, with Escape as the way out.** Their filter field takes every typed character, so a tap that sent a digit or a letter would type into the filter. Collie now refuses the composer there and the unread-dialog card offers Escape alone. Thanks @jpcarranza94 (#529).
+- **A send to Muse during a turn goes into Muse's own queue.** Measured on Muse Code 1.4.10, Tab queues a message in a running turn and Enter steers it, so Collie now presses Tab and a phone send can no longer steer by accident. The queued rows Muse draws make the receipt say queued, and slash commands in a turn stay held. Thanks @jpcarranza94 (#524).
 
 ### Docs
 
