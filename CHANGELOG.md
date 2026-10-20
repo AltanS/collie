@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A send to Muse goes through while its prompt hint shows.** Muse 1.4.10 prints a ghost suggestion in its empty input box, and Collie read it as a draft, so every send was refused with "draft present". The Surface now reads the hint as a free box. Thanks @jpcarranza94 (#510, #516).
+
 ## [1.23.0] - 2026-10-19
 
 ### Added
