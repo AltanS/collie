@@ -440,6 +440,198 @@ describe("parseMuseTranscript tool calls", () => {
   });
 });
 
+describe("parseMuseTranscript edit diffs, question answers and image assets (#519)", () => {
+  // Shapes below mirror the corpus measured 2026-10-18 (3,114 edit_file results,
+  // 112 request_user_input calls, 37 user assets), sanitised — see muse.ts.
+  const EDIT_TEXT = [
+    "edited",
+    "changed lines: lines 2-3",
+    "--- original",
+    "+++ updated",
+    "@@",
+    "-const oldValue = 1;",
+    "+const newValue = 2;",
+    "+const extra = 3;",
+  ].join("\n");
+
+  test("an edit_file batch diff enriches the edit call with hunks and counts, never `created`", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [
+          { call_id: "call_1", name: "edit_file", args: { path: "/a/b.ts", find: "old", replace: "new" } },
+        ]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: EDIT_TEXT }]),
+      ].join("\n"),
+    );
+    const call = entries[0]?.parts?.[0];
+    expect(call).toMatchObject({
+      kind: "tool",
+      call: {
+        kind: "edit",
+        path: "/a/b.ts",
+        added: 2,
+        removed: 1,
+        diff: [{ header: "@@", lines: ["-const oldValue = 1;", "+const newValue = 2;", "+const extra = 3;"] }],
+      },
+    });
+    expect(call).not.toMatchObject({ call: { created: true } });
+    if (call?.kind === "tool" && call.call?.kind === "edit") expect(call.call).not.toHaveProperty("created");
+  });
+
+  test("an edit_file result with no diff lines leaves the call unenriched", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "edit_file", args: { path: "/a/b.ts", find: "x", replace: "y" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "error: find text not found" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "edit", path: "/a/b.ts", added: 0, removed: 0 } });
+    if (part?.kind === "tool" && part.call?.kind === "edit") expect(part.call).not.toHaveProperty("diff");
+  });
+
+  test("a write_file result pins the data absence: no diff and no `created` is fabricated from the content arg", () => {
+    // Muse's write_file batch text is only "wrote N bytes to <path>": no diff and
+    // nothing tells a new file from an overwrite (Claude's `originalFile` has no Muse
+    // counterpart), so the call must stay at its classified 0/0 with neither field.
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [
+          { call_id: "call_1", name: "write_file", args: { path: "/a/new.ts", content: "one\ntwo\n" } },
+        ]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "wrote 8 bytes to /a/new.ts" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "edit", path: "/a/new.ts", added: 0, removed: 0 } });
+    if (part?.kind === "tool" && part.call?.kind === "edit") {
+      expect(part.call).not.toHaveProperty("diff");
+      expect(part.call).not.toHaveProperty("created");
+    } else throw new Error("expected an edit call");
+  });
+
+  const QUESTION_ARGS = {
+    questions: [
+      {
+        id: "fruit",
+        header: "Fruit",
+        question: "Which fruit?",
+        options: [
+          { label: "Apple", description: "round" },
+          { label: "Banana" },
+        ],
+      },
+      {
+        id: "extras",
+        header: "Extras",
+        question: "Any extras?",
+        options: [{ label: "Nuts" }, { label: "Honey" }],
+        selection: { mode: "multiple", min_selections: 0, max_selections: 2 },
+      },
+      {
+        id: "note",
+        header: "Note",
+        question: "Anything else?",
+        options: [{ label: "Nothing" }],
+      },
+    ],
+  };
+
+  test("a request_user_input batch answer lands on the question call, keyed by question id not order", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "request_user_input", args: QUESTION_ARGS }]),
+        batchResults("row-2", [
+          {
+            tool_call_id: "call_1",
+            text: JSON.stringify({
+              status: "answered",
+              answers: [
+                { id: "note", free_text: "extra napkins" },
+                { id: "extras", selected_labels: ["Nuts", "Honey"] },
+                { id: "fruit", selected_label: "Banana" },
+              ],
+            }),
+          },
+        ]),
+      ].join("\n"),
+    );
+    expect(entries[0]?.parts?.[0]).toMatchObject({
+      kind: "tool",
+      call: {
+        kind: "question",
+        questions: [{ multiple: false }, { multiple: true }, { multiple: false }],
+        answers: [["Banana"], ["Nuts", "Honey"], ["extra napkins"]],
+      },
+    });
+  });
+
+  test("an interrupted request_user_input carries no answers", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "request_user_input", args: QUESTION_ARGS }]),
+        batchResults("row-2", [
+          {
+            tool_call_id: "call_1",
+            text: JSON.stringify({ status: "interrupted", answers: [{ id: "fruit", selected_label: "Apple" }] }),
+          },
+        ]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "question" } });
+    if (part?.kind === "tool" && part.call?.kind === "question") expect(part.call).not.toHaveProperty("answers");
+    else throw new Error("expected a question call");
+  });
+
+  test("a text block already carrying Muse's [Image #n] placeholder is not placeholdered twice", () => {
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("look at [Image #1] please"),
+        {
+          kind: "asset",
+          asset: {
+            schema_version: 1,
+            algorithm: "sha256",
+            digest: "a".repeat(64),
+            media_type: "image/png",
+            byte_length: 42,
+            width: 10,
+            height: 10,
+          },
+        },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "look at [Image #1] please" }]);
+  });
+
+  test("a user asset pins the data absence: a hash and a path never become invented pixels", () => {
+    // The log carries only a content digest (+ sometimes a since-deleted source_path);
+    // no blob store exists under Muse's data dirs, so the turn stays a marked text
+    // placeholder and no image part / data URL is fabricated.
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("check this"),
+        {
+          kind: "asset",
+          asset: {
+            schema_version: 1,
+            algorithm: "sha256",
+            digest: "b".repeat(64),
+            media_type: "image/png",
+            byte_length: 42,
+            width: 10,
+            height: 10,
+            source_path: "/tmp/no-longer-there.png",
+          },
+        },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
+    expect(JSON.stringify(entries)).not.toContain("data:image");
+  });
+});
+
 describe("createMuseReducer queue and unknowns", () => {
   test("queued bodies list until their drain, oldest-first on duplicates", () => {
     const reducer = createMuseReducer();
