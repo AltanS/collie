@@ -345,6 +345,17 @@ export function isBlank(text: string): boolean {
   return text.trim().length === 0;
 }
 
+// The question marks a dialog's question may carry: the ASCII "?", the fullwidth "？" (U+FF1F) that
+// Japanese and Chinese text ends a question with, and the Arabic "؟" (U+061F). The Greek question
+// mark is the ";" of ordinary prose, so it is not one.
+const QUESTION_MARK = /[?\uFF1F\u061F]/;
+
+/** True when a row carries a question mark in any of the scripts above. The harness readers find a
+ *  dialog's question by this, so a question that ends in "？" is still a question. */
+export function hasQuestionMark(text: string): boolean {
+  return QUESTION_MARK.test(text);
+}
+
 /** Drop a trailing run of blank lines (keeps the raw block above the buttons tight). Exported for the
  *  harness adapters, whose pipelines tighten the raw region above a lifted dialog with it. */
 export function trimTrailingBlank(lines: StyledLine[]): StyledLine[] {

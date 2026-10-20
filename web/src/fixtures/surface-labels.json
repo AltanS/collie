@@ -966,6 +966,11 @@
    "version": "2.1.303",
    "state": "dialog"
   },
+  "claude--v2296-question-fullwidth--w150.txt": {
+   "harness": "claude",
+   "version": "2.1.296",
+   "state": "dialog"
+  },
   "claude--v2302-heads-up-above-box--w142.txt": {
    "harness": "claude",
    "version": "2.1.302",

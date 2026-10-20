@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi, type AnsiSegment } from "./ansi";
-import { dropLeadingLines, lineText, splitLines, type StyledLine } from "./blocks";
+import { dropLeadingLines, hasQuestionMark, lineText, splitLines, type StyledLine } from "./blocks";
 import { buildBlocks } from "./harness";
 import { isBoxBorder, isHorizontalRule } from "./harness/claude/markers";
 
@@ -468,5 +468,26 @@ describe("dropLeadingLines", () => {
   it("is the identity for a count of zero, reference and all", () => {
     const blocks = [raw("a", "b")];
     expect(dropLeadingLines(blocks, 0)).toBe(blocks);
+  });
+});
+
+describe("hasQuestionMark", () => {
+  it.each([
+    ["ASCII", "Which theme?"],
+    ["fullwidth (U+FF1F), as Japanese and Chinese end a question", "どこを中心にレビューしますか？"],
+    ["Arabic (U+061F)", "هل تريد المتابعة؟"],
+    ["in the middle of a row", "Really? Yes."],
+  ])("finds the %s question mark", (_label, text) => {
+    expect(hasQuestionMark(text)).toBe(true);
+  });
+
+  it.each([
+    ["a plain statement", "Pick a theme."],
+    ["an empty row", ""],
+    ["the Greek question mark, which is the semicolon of ordinary prose", "τι κάνεις;"],
+    ["an ASCII semicolon", "a; b"],
+    ["a fullwidth exclamation mark", "どうぞ！"],
+  ])("does not find one in %s", (_label, text) => {
+    expect(hasQuestionMark(text)).toBe(false);
   });
 });

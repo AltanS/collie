@@ -6,6 +6,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
+import { buildBlocks } from "..";
 import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
@@ -714,5 +715,49 @@ describe("detectPromptSelect — the unnumbered folder-trust prompt", () => {
     expect(promptsEqual(here, moved)).toBe(false);
     expect(promptsSameIdentity(here, moved)).toBe(true);
     expect(promptsEqual(here, here)).toBe(true);
+  });
+});
+
+// Issue 543: a Japanese AskUserQuestion on Claude Code 2.1.296 ends its question in a fullwidth
+// question mark. The reader looked for an ASCII "?" only, so the dialog was never lifted: the card
+// did not show and Chat on a pane with a session log showed nothing for it.
+describe("detectPromptSelect: a question that ends in a fullwidth question mark", () => {
+  const NAME = "claude--v2296-question-fullwidth--w150.txt";
+
+  it("lifts the two-line Japanese question as one select dialog", () => {
+    const model = detectPromptSelect(fixtureLines(NAME));
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("select");
+    expect(model!.question).toBe(
+      "共有された変更 (12 ファイル、+340/-15) は 2026-10-13 にマージ済みで、本番にもデプロイ済みです。 どこを中心にレビューしますか？",
+    );
+    expect(model!.options.map((o) => o.label)).toEqual([
+      "アプリコード (推奨)",
+      "インフラスクリプト",
+      "全体",
+      "返信の下書き",
+      "Chat about this",
+    ]);
+    // "5. Type something." is the free-text row: dropped, and "Chat about this" keeps its number.
+    expect(model!.options.map((o) => o.keys)).toEqual([["1", "Enter"], ["2", "Enter"], ["3", "Enter"], ["4", "Enter"], ["6", "Enter"]]);
+  });
+
+  it("reads the same dialog as the capture with an ASCII question mark", () => {
+    const ascii = fixtureText(NAME).replaceAll("？", "?");
+    expect(ascii).not.toBe(fixtureText(NAME));
+    const wide = detectPromptSelect(fixtureLines(NAME))!;
+    const plain = detectPromptSelect(splitLines(parseAnsi(ascii)))!;
+    expect(wide.options.map((o) => o.keys)).toEqual(plain.options.map((o) => o.keys));
+    expect(wide.question.replace("？", "?")).toBe(plain.question);
+  });
+
+  it("buildBlocks lifts it as a prompt-select block for Chat and the card", () => {
+    const kinds = buildBlocks(fixtureLines(NAME), { agent: "claude" }).map((b) => b.kind);
+    expect(kinds).toContain("prompt-select");
+  });
+
+  it("a Japanese line with no question mark at all is still not a question", () => {
+    const text = fixtureText(NAME).replaceAll("？", "。");
+    expect(detectPromptSelect(splitLines(parseAnsi(text)))).toBeNull();
   });
 });

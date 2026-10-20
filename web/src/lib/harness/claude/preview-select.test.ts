@@ -423,3 +423,17 @@ describe("detectPreviewSelect — a dialog rule wrapped beside a theme's gutter"
     expect(kinds).toContain("preview-select");
   });
 });
+
+// Issue 543: the preview variant finds its question by the same question-mark test, so a question that
+// ends in a fullwidth "？" must still be read there too.
+describe("detectPreviewSelect: a question that ends in a fullwidth question mark", () => {
+  it("reads the question and the options of the single-question preview dialog", () => {
+    const text = fixtureText("claude--select-preview.txt");
+    expect(text).toContain("Which widget design should we use?");
+    const wide = text.replaceAll("Which widget design should we use?", "どのウィジェットのデザインにしますか？");
+    const model = detectPreviewSelect(splitLines(parseAnsi(wide)));
+    expect(model).not.toBeNull();
+    expect(model!.question).toBe("どのウィジェットのデザインにしますか？");
+    expect(model!.options.map((o) => o.label)).toEqual(["Boxy", "Rounded", "Minimal"]);
+  });
+});

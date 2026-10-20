@@ -15,7 +15,7 @@
 // claude--*preview*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
+import { classifyFooter, hasQuestionMark, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { PreviewNote, PreviewOption, PreviewSelectModel } from "../preview-model";
@@ -203,7 +203,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
     if (isRuleRow(texts, i)) break;
-    if (t.includes("?")) {
+    if (hasQuestionMark(t)) {
       questionIdx = i;
       break;
     }

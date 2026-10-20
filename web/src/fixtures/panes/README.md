@@ -1177,6 +1177,25 @@ file (`KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`).
 | `claude--v2303-permission-bash-bg-agent-rm--w160.txt` | A background agent's Bash permission, pointer on `1. Yes`, a 26-row command and the warning `Dangerous rm operation on possibly-empty variable path: $D/*.wav in ...`. Lifts `prompt-select` (`permission`, `Do you want to proceed?`, Yes `1`, No `2`) from the `─` edge, with the header, the description, the command and the warning as its subject; the ask has a region, so a tap sends its digit | `blocked` |
 | `claude--v2303-permission-bash-bg-agent-rm--w80.txt` | The same screen at 80 columns: a 33-row command and a three-row warning. Lifts the same way | `blocked` |
 
+## Claude Code 2.1.296 question that ends in a fullwidth question mark (reporter's capture, issue 543, 2026-10-20)
+
+A Japanese AskUserQuestion on Claude Code 2.1.296 (Herdr 0.9.0, macOS), captured by the reporter with
+`--source visible --format ansi` while the dialog was on screen and attached to the issue. The
+reporter replaced the conversation text with neutral text and kept the dialog layout: the stepper chip,
+a two-line question that ends in `？` (U+FF1F), four numbered options with their descriptions, the
+`5. Type something.` row, a rule, `6. Chat about this` and the footer. The file is the attachment
+byte for byte (150 columns, the width of its rules). It names no personal path or name, so nothing
+was changed.
+
+The reader looked for an ASCII `?` only, so the question was never found and the dialog stayed a raw
+block. It now tests with `hasQuestionMark` (`lib/blocks.ts`), which also takes `？` and the Arabic `؟`.
+agy's grammar claims the file too (its fallback takes the row nearest the options as the question),
+the same named exception as the 2.1.291 file (`KNOWN_FOREIGN_CLAIMS` in `harness/agy/agy.test.ts`).
+
+| Fixture | State / what's in it | Grammar state |
+|---|---|---|
+| `claude--v2296-question-fullwidth--w150.txt` | A Japanese one-question AskUserQuestion, pointer on `1.`, the question `...どこを中心にレビューしますか？` on the second of two `│` rows. Lifts `prompt-select` (`select`, five options with Enter after the digit, `5. Type something.` dropped, `Chat about this` keeping `6`) | `blocked` |
+
 ## Claude Code 2.1.296 closing rule (captured 2026-10-12, herdr 0.9.3, throwaway Herdr session)
 
 A session renamed with `/rename` (or started with `--name`) makes Claude Code 2.1.296 draw ONE more

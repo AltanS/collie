@@ -838,6 +838,10 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2296-question-fullwidth--w150.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2299-ask-under-long-task-list.txt",
   "frame": null
  },
