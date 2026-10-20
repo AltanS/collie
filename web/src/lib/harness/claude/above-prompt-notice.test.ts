@@ -247,3 +247,100 @@ describe("the rating survey above the box", () => {
     expect(card.menu.actions).toEqual(SURVEY_KEYS);
   });
 });
+
+// Claude Code 2.1.304's follow-ups after a key on the Heads up notice: the Dismissed row, its keys on
+// the head row and wrapped under it, and the explanation after Learn more, with its own key row.
+describe("the Heads up follow-ups above the box", () => {
+  const DISMISSED_KEYS = [
+    { label: "That was helpful", keys: ["1"] },
+    { label: "Not relevant", keys: ["2"] },
+    { label: "Couldn’t understand", keys: ["3"] },
+    { label: "Turn off suggestions", keys: ["4"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const AFTER_EXPLAIN_KEYS = [
+    { label: "That was helpful", keys: ["1"] },
+    { label: "Didn’t understand", keys: ["2"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const EXPLAINED_KEYS = [
+    { label: "Understood", keys: ["1"] },
+    { label: "Chat in main session", keys: ["2"] },
+    { label: "Dismiss", keys: ["0"] },
+  ];
+  const cases: { fixture: string; title: string; actions: { label: string; keys: string[] }[] }[] = [
+    { fixture: "claude--v2304-heads-up-dismissed--w135.txt", title: "Dismissed.", actions: DISMISSED_KEYS },
+    { fixture: "claude--v2304-heads-up-dismissed--w65.txt", title: "Dismissed.", actions: DISMISSED_KEYS },
+    { fixture: "claude--v2304-heads-up-dismissed-after-explain--w65.txt", title: "Dismissed.", actions: AFTER_EXPLAIN_KEYS },
+    {
+      fixture: "claude--v2304-heads-up-explained--w135.txt",
+      title:
+        "Heads up · One of the notes being read, 02-team, says a former CTO's admin access was never removed and was used yesterday from an unknown address.",
+      actions: EXPLAINED_KEYS,
+    },
+    {
+      fixture: "claude--v2304-heads-up-explained--w65.txt",
+      title:
+        "Heads up · One of the notes being read, 09-support, says the customer login site's security certificate expires tonight at midnight, and its renewal has been failing for two weeks.",
+      actions: EXPLAINED_KEYS,
+    },
+  ];
+
+  for (const { fixture, title, actions } of cases) {
+    describe(fixture, () => {
+      it("reads the box free: no modal, the composer empty and ready", () => {
+        const rows = lines(fixture);
+        expect(readScreen(rows, "claude", requireProfile("claude").idle).surface).toMatchObject({ modal: "none", composer: "empty" });
+        expect(claudeAdapter.composerReady?.(rows)).toBe(true);
+      });
+
+      it("lifts a menu card with the head's text and the printed keys in printed order, the box live", () => {
+        const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+        if (card?.kind !== "menu") throw new Error("no menu");
+        expect(card.menu.title).toBe(title);
+        expect(card.menu.actions).toEqual(actions);
+        // The explanation's body rides on `liveBox` too; the cases below pin it.
+        expect(card.menu.liveBox).toMatchObject({ draft: false });
+      });
+    });
+  }
+
+  // The explanation's body rides on the card's model as offsets into its own rows, so the card can show
+  // it: from the body's title row down through the last row of its last bullet.
+  const BODIES = [
+    { fixture: "claude--v2304-heads-up-explained--w135.txt", first: "Former CTO's access may be in use now", last: "them." },
+    { fixture: "claude--v2304-heads-up-explained--w65.txt", first: "Customer login certificate expires tonight", last: "date and renew it by hand today." },
+  ];
+  for (const { fixture, first, last } of BODIES) {
+    it(`carries the explanation's body on the card's model: ${fixture}`, () => {
+      const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+      if (card?.kind !== "menu") throw new Error("no menu");
+      const body = card.menu.liveBox?.body;
+      if (body === undefined) throw new Error("no body");
+      const rows = card.lines.slice(body.start, body.end + 1).map((line) => lineText(line).trim());
+      expect(rows[0]).toBe(first);
+      expect(rows.at(-1)).toBe(last);
+    });
+  }
+
+  for (const fixture of [
+    "claude--v2304-heads-up-dismissed--w135.txt",
+    "claude--v2304-heads-up-dismissed--w65.txt",
+    "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    HEADS_UP,
+  ]) {
+    it(`carries no body on a card with none: ${fixture}`, () => {
+      const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+      if (card?.kind !== "menu") throw new Error("no menu");
+      expect(card.menu.liveBox).toBeDefined();
+      expect(card.menu.liveBox).not.toHaveProperty("body");
+    });
+  }
+
+  // Captured after Understood (2.1.304): the notice is gone. An existing capture with no notice over
+  // its box stands in for it.
+  it("lifts no menu card over a box with no notice above it", () => {
+    const rows = lines("claude--v2303-titled-edge-working--w160.txt");
+    expect(claudeBuildBlocks(rows).some((b) => b.kind === "menu")).toBe(false);
+  });
+});

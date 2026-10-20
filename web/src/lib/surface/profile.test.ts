@@ -768,10 +768,21 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "notices"], "no list")).path).toBe("idle.notices");
     expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
     expect(parseProfile(rawClaude()).idle.notices).toEqual([
-      { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)" },
+      { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)", body: true },
       { head: "^● How is Claude doing this session\\? \\(optional\\)$" },
+      { head: "^✦ Dismissed\\.(?=\\s|$)" },
     ]);
     expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
+  });
+
+  it("accepts `body: true` on a notice head and rejects any other value", () => {
+    expect(parseProfile(change(rawClaude(), ["idle", "notices", 1, "body"], true)).idle.notices?.[1]).toEqual({
+      head: "^● How is Claude doing this session\\? \\(optional\\)$",
+      body: true,
+    });
+    for (const bad of [false, "true", 1, null, {}]) {
+      expect(failure(change(rawClaude(), ["idle", "notices", 0, "body"], bad)).path, JSON.stringify(bad)).toBe("idle.notices[0].body");
+    }
   });
 
   it("accepts a profile that names no hook", () => {
