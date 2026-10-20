@@ -12,7 +12,7 @@ import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, t
 import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
-import { splitLines } from "../../web/src/lib/blocks.ts";
+import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
@@ -3189,6 +3189,45 @@ describe("real screens from the fixture corpus", () => {
     expect(pane.transcript.at(-1)).not.toBe("> 1");
     expect(pane.keysSeen).toEqual([]);
   });
+
+  // Claude Code 2.1.304's follow-ups to the notice (ADR 0109, addendum 2026-10-20): after Dismiss a
+  // `✦ Dismissed.` row with its keys on the head's own row, after Learn more an explanation between the
+  // head and its keys. Both stand over a live box, so a sentence and a number go on one tap, and one of
+  // the printed digits takes the notice path.
+  const DISMISSED = "claude--v2304-heads-up-dismissed--w135.txt";
+  const EXPLAINED = "claude--v2304-heads-up-explained--w135.txt";
+
+  /** A fixture's notice as plain rows, from its head row down to the row over the box's top edge. */
+  function noticeRowsOf(name: string): string[] {
+    const rows = splitLines(parseAnsi(fixture(name))).map((line) => lineText(line).trimEnd());
+    const head = rows.findIndex((row) => row.startsWith("✦ "));
+    const top = rows.findIndex((row, i) => i > head && /^─{8,}$/u.test(row));
+    return rows.slice(head, top);
+  }
+
+  for (const name of [DISMISSED, EXPLAINED]) {
+    test(`on the follow-up in ${name}: hello and 10 go on one tap`, async () => {
+      for (const text of ["hello", "10"]) {
+        const { pane, send } = rig();
+        pane.over = noticeRowsOf(name);
+        const answer = await send(text);
+        expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+        expect(answer.cause, text).toBeUndefined();
+        expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+      }
+    });
+  }
+
+  for (const [name, digit] of [[DISMISSED, "0"], [EXPLAINED, "1"]] as const) {
+    test(`on the follow-up in ${name}: ${digit} is refused with the notice cause`, async () => {
+      const captured = rig({ pane: still(fixture(name)) });
+      const answer = await captured.send(digit);
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(answer.cause).toBe("notice_key");
+      expect(answer.offers).toEqual(["commit", "keys"]);
+      expect(captured.pane.calls).toEqual([]);
+    });
+  }
 
   // Seen live on 2026-10-17: Claude Code's usage row in the blank row between the key row and the box
   // for about ten seconds after a turn. The profile names it (`idle.noticeGaps`), so the box stays free.

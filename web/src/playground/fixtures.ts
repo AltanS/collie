@@ -55,6 +55,8 @@ import claudePermissionBash from "@/fixtures/panes/claude--permission-bash.txt?r
 import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
 import claudeModelPicker from "@/fixtures/panes/claude-lab--menu-model-picker-v2300--w119.txt?raw";
 import claudeHeadsUp from "@/fixtures/panes/claude--v2302-heads-up-above-box--w142.txt?raw";
+import claudeHeadsUpDismissed from "@/fixtures/panes/claude--v2304-heads-up-dismissed--w135.txt?raw";
+import claudeHeadsUpExplained from "@/fixtures/panes/claude--v2304-heads-up-explained--w135.txt?raw";
 
 // ── The one clock ────────────────────────────────────────────────────────────────────────────────
 
@@ -1096,6 +1098,31 @@ export const paneHeadsUpDraft: PaneFixture = {
   text: claudeHeadsUp.replace("❯ ", "❯ half a thought"),
   revision: 7_303,
   surface: { revision: 7_303, turn: "running", modal: "none", composer: "draft" },
+};
+
+/**
+ * Claude Code 2.1.304 after Dismiss on the notice, at 135 columns (ADR 0109, addendum 2026-10-20): the
+ * follow-up `✦ Dismissed.` row carries its five keys on the head's own row, and lifts as their card.
+ */
+export const paneHeadsUpDismissed: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-heads-up-dismissed` },
+  text: claudeHeadsUpDismissed,
+  revision: 7_304,
+  // The capture was taken after the turn ended: the box is free and empty under the follow-up.
+  surface: { revision: 7_304, turn: "idle", modal: "none", composer: "empty" },
+};
+
+/**
+ * Claude Code 2.1.304 after Learn more, at 135 columns (ADR 0109, addendum 2026-10-20): the explanation
+ * between the head and the keys lifts with the card, its rows mirrored under the title.
+ */
+export const paneHeadsUpExplained: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-heads-up-explained` },
+  text: claudeHeadsUpExplained,
+  revision: 7_305,
+  surface: { revision: 7_305, turn: "idle", modal: "none", composer: "empty" },
 };
 
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */

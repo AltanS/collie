@@ -299,8 +299,41 @@ describe("the Heads up follow-ups above the box", () => {
         if (card?.kind !== "menu") throw new Error("no menu");
         expect(card.menu.title).toBe(title);
         expect(card.menu.actions).toEqual(actions);
-        expect(card.menu.liveBox).toEqual({ draft: false });
+        // The explanation's body rides on `liveBox` too; the cases below pin it.
+        expect(card.menu.liveBox).toMatchObject({ draft: false });
       });
+    });
+  }
+
+  // The explanation's body rides on the card's model as offsets into its own rows, so the card can show
+  // it: from the body's title row down through the last row of its last bullet.
+  const BODIES = [
+    { fixture: "claude--v2304-heads-up-explained--w135.txt", first: "Former CTO's access may be in use now", last: "them." },
+    { fixture: "claude--v2304-heads-up-explained--w65.txt", first: "Customer login certificate expires tonight", last: "date and renew it by hand today." },
+  ];
+  for (const { fixture, first, last } of BODIES) {
+    it(`carries the explanation's body on the card's model: ${fixture}`, () => {
+      const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+      if (card?.kind !== "menu") throw new Error("no menu");
+      const body = card.menu.liveBox?.body;
+      if (body === undefined) throw new Error("no body");
+      const rows = card.lines.slice(body.start, body.end + 1).map((line) => lineText(line).trim());
+      expect(rows[0]).toBe(first);
+      expect(rows.at(-1)).toBe(last);
+    });
+  }
+
+  for (const fixture of [
+    "claude--v2304-heads-up-dismissed--w135.txt",
+    "claude--v2304-heads-up-dismissed--w65.txt",
+    "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    HEADS_UP,
+  ]) {
+    it(`carries no body on a card with none: ${fixture}`, () => {
+      const card = claudeBuildBlocks(lines(fixture)).find((b) => b.kind === "menu");
+      if (card?.kind !== "menu") throw new Error("no menu");
+      expect(card.menu.liveBox).toBeDefined();
+      expect(card.menu.liveBox).not.toHaveProperty("body");
     });
   }
 

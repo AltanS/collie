@@ -1540,7 +1540,7 @@
    "prompt": 68,
    "bottom": 69,
    "label": null,
-   "text": "Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…",
+   "text": "Read every plain note in the sample folder and the example one…",
    "placeholder": true,
    "status": {
     "first": 70,
@@ -1572,7 +1572,7 @@
    "prompt": 68,
    "bottom": 69,
    "label": null,
-   "text": "Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…",
+   "text": "Read every plain note in the sample folder and the example one…",
    "placeholder": true,
    "status": {
     "first": 70,
