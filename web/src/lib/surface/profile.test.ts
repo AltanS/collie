@@ -79,7 +79,7 @@ describe("every profile file", () => {
     // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
     expect(claude.probe.char).toBe("⌁");
     expect(claude.probe.status).toBe("verified");
-    expect(claude.paste).toEqual({ bracketed: true });
+    expect(claude.paste).toEqual({ bracketed: true, block: true });
     // M56 spec 08: an ask that left the screen is voided after this lifetime.
     expect(claude.ask).toEqual({ lifetimeMs: 5000 });
     expect(claude.hooks.PermissionRequest).toBe("ask");

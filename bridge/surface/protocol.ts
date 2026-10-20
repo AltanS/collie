@@ -11,7 +11,8 @@
 //           and no other change, Backspace through the gate, require the S0 box again. A probe that
 //           fails with its character standing once in the box gets one Backspace and one more read
 //   write   the whole text in one write per line (a bracketed paste where the multiplexer and the
-//           profile allow it); a line break is the profile's newline key, through the gate
+//           profile allow it); a line break is the profile's newline key, through the gate. Where
+//           the multiplexer frames a paste itself (`pasteBlock`), the whole text is ONE paste instead
 //   S1      (6, 2500) read until the box holds exactly the predicted text (or the profile's collapse
 //           form) and nothing else moved; else `typed_not_submitted`. A turn that started after an
 //           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
@@ -195,6 +196,8 @@ export interface ProtocolMux {
   typeText(paneId: string, text: string): Promise<MuxAck>;
   /** A bracketed paste, where the multiplexer has one. */
   pasteText?(paneId: string, text: string): Promise<MuxAck>;
+  /** One bracketed paste of the whole text, line breaks included, where the multiplexer frames it itself. */
+  pasteBlock?(paneId: string, text: string): Promise<MuxAck>;
 }
 
 /** The pane a request is for, as the bridge's own snapshot names it. */
@@ -1153,7 +1156,9 @@ function isSpace(ch: string | undefined): boolean {
 /**
  * Whether the box text equals `prefix` then each line, white space and wrapping ignored. A line may
  * also show as the profile's collapse form (a long paste the harness folded), whose line count, if it
- * carries one, must say one line: each written line is its own write.
+ * carries one, must say one line: each written line is its own write. A text written as ONE paste
+ * (`pasteBlock`) may instead stand as one collapse form for all of it, whose line count is exactly the
+ * line breaks the text holds (Claude Code counts `+M lines` as the `\n`s in the paste; lab, 2.1.304).
  */
 export function boxMatches(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
   let p = 0;
@@ -1182,6 +1187,18 @@ export function boxMatches(box: string, prefix: string, lines: readonly string[]
     return true;
   };
   if (!eat(prefix)) return false;
+  if (lines.length > 1 && collapse !== null) {
+    const at = p;
+    skip();
+    collapse.lastIndex = p;
+    const m = collapse.exec(box);
+    if (m !== null && m.index === p && Number(m.groups?.lines) === lines.length - 1) {
+      p += m[0].length;
+      skip();
+      if (p === box.length) return true;
+    }
+    p = at;
+  }
   for (const line of lines) {
     const at = p;
     if (eat(line)) continue;
@@ -3037,8 +3054,24 @@ export class SendProtocol {
     return failed(probeMayRemain(probe), look ?? snap);
   }
 
-  /** The write: each line in one write, the profile's newline key between lines. */
+  /**
+   * The write: each line in one write, the profile's newline key between lines. Where the profile says
+   * its harness folds one whole-text paste (`paste.block`, measured in the lab) and the multiplexer
+   * frames a paste itself (`pasteBlock`), the whole text goes as ONE paste instead. A long dictation typed line by line grows the box past the screen, and a box whose
+   * top is off screen can never be proven, so the send ended `typed_not_submitted` and Submit and
+   * Discard could not find the box either. One paste is what the harness folds into its collapse form
+   * (`[Pasted text #N +M lines]`), one row, which S1 matches (boxMatches); a short one lands literally.
+   */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
+    const { mux } = this.deps;
+    if (state.match?.profile.paste?.block === true && mux.pasteBlock !== undefined) {
+      this.guard(state);
+      // Called on the mux, never torn off it: an adapter's method reads its own `this`.
+      const ack = await this.within(state, mux.pasteBlock(state.target.paneId, lines.join("\n")));
+      this.deps.gate.noteWrite(state.target.paneId);
+      if (!ack.ok) throw new Ended("refused", "write_failed", { detail: ack.detail });
+      return;
+    }
     const newline = state.match?.profile.keys.newline ?? null;
     for (let i = 0; i < lines.length; i++) {
       if (i > 0) {

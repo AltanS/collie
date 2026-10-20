@@ -92,6 +92,8 @@ class FakePane {
    */
   drawsQueuedRow = false;
   collapseOver = 120;
+  /** The most lines a {@link pasteBlock} paste may hold and still land literally. */
+  blockLiteralLines = 3;
   pastes = 0;
   readFails = false;
   readsSeen = 0;
@@ -251,6 +253,27 @@ class FakePane {
     return Promise.resolve(muxAck());
   };
 
+  /**
+   * One bracketed paste of the whole text (`pasteBlock`), as Claude Code 2.1.304 took it in the lab
+   * (2026-10-20): a paste with more than {@link blockLiteralLines} lines, or longer than
+   * {@link collapseOver}, folds into ONE `[Pasted text #N +M lines]` row, M being its line breaks;
+   * a short one lands literally, line breaks and all.
+   */
+  pasteBlock = (paneId: string, text: string): Promise<MuxAck> => {
+    void paneId;
+    this.calls.push(`block:${text}`);
+    if (this.now !== null) this.lastWriteAt = this.now();
+    const breaks = text.split("\n").length - 1;
+    if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
+      this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
+    } else {
+      this.box += text;
+    }
+    this.bump();
+    this.afterInput?.(this, `block:${text}`);
+    return Promise.resolve(muxAck());
+  };
+
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
     const held = this.beforeWrite?.(this, `keys:${keys.join(",")}`);
@@ -262,7 +285,7 @@ class FakePane {
         if (this.echo !== null) {
           this.echo.field = this.echo.field.slice(0, -1);
         } else if (this.backspaceRestores) {
-          const chip = /\[Pasted text #\d+\]$/u.exec(this.box);
+          const chip = /\[Pasted text #\d+(?: \+\d+ lines)?\]$/u.exec(this.box);
           this.box = chip === null ? [...this.box].slice(0, -1).join("") : this.box.slice(0, chip.index);
         }
       } else if (key === "ctrl+j") {
@@ -329,6 +352,8 @@ function rig(
     version?: string;
     harness?: string;
     paste?: boolean;
+    /** The multiplexer frames a whole-text paste itself (Herdr's `pasteBlock`). */
+    block?: boolean;
     pane?: FakePane;
     storeDir?: string;
     ledger?: SurfaceLedger;
@@ -342,7 +367,12 @@ function rig(
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
   const clock = options.clock ?? { now: 1_000_000 };
   const now = (): number => clock.now;
-  const mux = options.paste === false ? { readGrid: pane.readGrid, typeText: pane.typeText } : { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText };
+  const mux =
+    options.paste === false
+      ? { readGrid: pane.readGrid, typeText: pane.typeText }
+      : options.block === true
+        ? { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText, pasteBlock: pane.pasteBlock }
+        : { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText };
   const gate = new KeyGate(pane, now);
   const store = new RequestStore(options.storeDir ?? join(dir, "sends"), now);
   const locks = new SessionLocks();
@@ -461,6 +491,89 @@ describe("a send that goes through", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "Enter"] });
     expect(pane.calls).toEqual(["paste:first line", "paste:second line"]);
     expect(pane.transcript.at(-1)).toBe("> first line second line");
+  });
+
+  test("a long dictation goes as ONE paste where the multiplexer frames it, and the folded row is proven", async () => {
+    const { pane, send } = rig({ block: true });
+    const lines = Array.from({ length: 190 }, (_, i) => `Строка ${String(i + 1)}: надиктованный текст.`);
+    const answer = await send(lines.join("\n"));
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual([`block:${lines.join("\n")}`]);
+    expect(pane.keysSeen).not.toContain("ctrl+j");
+    expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +189 lines]");
+  });
+
+  test("a profile that does not say its harness folds a whole paste keeps the write per line, even where the multiplexer could paste it whole", async () => {
+    const { pane, send } = rig({ block: true, edit: (profile) => ({ ...profile, paste: { bracketed: true } }) });
+    expect((await send("first line\nsecond line")).receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "Enter"] });
+    expect(pane.calls).toEqual(["paste:first line", "paste:second line"]);
+  });
+
+  test("Submit and Discard find a box that holds the folded paste", async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${String(i)}`).join("\n");
+    const submitted = rig({ block: true });
+    submitted.pane.box = "[Pasted text #1 +11 lines]";
+    expect((await submitted.send(lines, { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(submitted.pane.transcript.at(-1)).toBe("> [Pasted text #1 +11 lines]");
+    const discarded = rig({ block: true });
+    discarded.pane.box = "[Pasted text #1 +11 lines]";
+    expect((await discarded.send(lines, { mode: "discard" })).receipt?.outcome).toBe("discarded");
+    expect(discarded.pane.box).toBe("");
+  });
+
+  test("Add to a draft pastes the whole text after it, and the draft then the folded row is proven", async () => {
+    const { pane, send } = rig({ block: true });
+    pane.box = "draft";
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${String(i)}`).join("\n");
+    expect((await send(lines, { mode: "append" })).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${lines}`]);
+    expect(pane.transcript.at(-1)).toBe("> draft[Pasted text #1 +11 lines]");
+  });
+
+  test("a long dictation into a running turn is one paste and goes in queued", async () => {
+    const { pane, send } = rig({ block: true });
+    pane.over = [LIVE_ROW];
+    const lines = Array.from({ length: 60 }, (_, i) => `dictated line ${String(i)}`).join("\n");
+    expect((await send(lines)).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${lines}`]);
+    expect(pane.keysSeen).not.toContain("ctrl+j");
+  });
+
+  test("the paste is called on the multiplexer, so an adapter method that reads its own this works", async () => {
+    const pane = new FakePane("claude");
+    // A class method, as HerdrMux's is: torn off its object it would lose `this` (live lab, 2026-10-20).
+    class Adapter {
+      readonly readGrid = pane.readGrid;
+      readonly typeText = pane.typeText;
+      constructor(private readonly target: FakePane) {}
+      pasteBlock(paneId: string, text: string): Promise<MuxAck> {
+        return this.target.pasteBlock(paneId, text);
+      }
+    }
+    const { deps } = rig({ pane });
+    const own = new SendProtocol({ ...deps, mux: new Adapter(pane) });
+    const answer = await own.handle({ id: nextId(), text: "one\ntwo\nthree\nfour", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(pane.calls).toEqual(["block:one\ntwo\nthree\nfour"]);
+  });
+
+  test("one long dictated line goes as one paste too, and a short text lands literally", async () => {
+    const { pane, send } = rig({ block: true });
+    expect((await send("слово ".repeat(700).trim())).receipt?.outcome).toBe("sent");
+    expect((await send("first line\nsecond line")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls.map((call) => call.split(":")[0])).toEqual(["block", "block"]);
+    expect(pane.transcript.at(-1)).toBe("> first line second line");
+  });
+
+  test("a folded row that claims another line count is not this text: it ends typed_not_submitted", async () => {
+    const pane = new FakePane("claude");
+    // The rig takes the port when it is built, so the harness that folds one line too many comes first.
+    const original = pane.pasteBlock;
+    pane.pasteBlock = (paneId, text) => original(paneId, `${text}\nextra`);
+    const { send } = rig({ block: true, pane });
+    const answer = await send(Array.from({ length: 10 }, (_, i) => `line ${String(i)}`).join("\n"));
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 
   test("control bytes, tabs and paste markers never reach the pane", async () => {
@@ -2975,6 +3088,18 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #2 +11 lines]", "", ["x".repeat(500)], collapse)).toBe(false);
     expect(boxMatches("a [Pasted text #1] b", "", ["a", "y".repeat(300), "b"], collapse)).toBe(true);
     expect(boxMatches("[Pasted text #2]", "", ["short"], null)).toBe(false);
+  });
+
+  test("boxMatches takes ONE collapse form for a whole multi-line text only when it claims the text's line breaks", () => {
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const three = ["a", "b", "c"];
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse)).toBe(true);
+    expect(boxMatches(" [Pasted text #4 +2 lines] ", "", three, collapse)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +3 lines]", "", three, collapse)).toBe(false);
+    expect(boxMatches("[Pasted text #4]", "", three, collapse)).toBe(false);
+    expect(boxMatches("[Pasted text #4 +2 lines] tail", "", three, collapse)).toBe(false);
+    expect(boxMatches("draft [Pasted text #4 +2 lines]", "draft", three, collapse)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, null)).toBe(false);
   });
 
   test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {
