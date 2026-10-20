@@ -38,7 +38,7 @@ import type { GitHeadSurface } from "./git-head.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
-import { createSessionLabels, withSessionLabels } from "./operator-session-labels.ts";
+import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSessionLabels } from "./operator-session-labels.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
@@ -1503,6 +1503,10 @@ export function startServer(opts: {
   // an edit shows on the next poll, browser and crew sweep alike. The first read starts here.
   const sessionLabels = createSessionLabels(cfg.sessionsFile ?? null);
   void sessionLabels.refresh();
+  // The same file's `[folders]`: where a launch or a new space in a session opens when nothing named
+  // a folder. Read per launch, and only a folder that is there on disk is used; else home, as before.
+  const sessionFolders = createSessionFolders(cfg.sessionsFile ?? null);
+  const sessionFolderOf = (name: string) => resolveSessionFolder(sessionFolders, name, diskFolderFs);
   // ONE registry for the process, built by the caller so the cache tracker probes through the same
   // adapters (and therefore the same memoised path caches) the history route reads.
   const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots)) : null;
@@ -1787,7 +1791,7 @@ export function startServer(opts: {
       if (denied) return denied;
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);
+      return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name));
     }
     // A launch is a `/api/workspace` create the operator pre-declared: the client names a row in
     // `launchers.toml` and the bridge, never the client, supplies the command line. It sits here
@@ -1805,6 +1809,7 @@ export function startServer(opts: {
         switches: launcherSources.switches,
         recentRuns,
         sent,
+        sessionFolder: await sessionFolderOf(rt.name),
       });
     }
     // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
@@ -5781,8 +5786,8 @@ async function createTab(
   } satisfies CreateResponse, ae);
 }
 
-// Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the user's home dir
-// when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
+// Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the session's folder
+// from `sessions.toml` `[folders]`, else the user's home dir, when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
 // can cd from there. Same structural-only threat model as createTab.
 //
 // A create that WORKED, and that named a folder, puts the folder the multiplexer REPORTED for the new
@@ -5799,6 +5804,8 @@ export async function createWorkspace(
   device: string | null,
   session: string,
   folders?: Pick<FolderSurface, "recordRecent">,
+  // The operator's folder for this session (`sessions.toml` `[folders]`), already checked to exist.
+  sessionFolder?: string,
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -5812,7 +5819,7 @@ export async function createWorkspace(
   const fields = asJsonRecord(body) ?? {};
   // Checked, not declared — see createTab.
   const typed = typeof fields.cwd === "string" ? fields.cwd.trim() : "";
-  const cwd = typed || homedir();
+  const cwd = typed || sessionFolder || homedir();
   const label = typeof fields.label === "string" ? fields.label : undefined;
   const ae = req.headers.get("accept-encoding");
   const outcome = await herdr.createSpace({ cwd, label });
@@ -6819,7 +6826,7 @@ export async function launch(
     }
   }
   const row = picked.row;
-  const resolvedCwd = row?.cwd ?? asked ?? besidePane?.cwd ?? homedir();
+  const resolvedCwd = row?.cwd ?? asked ?? besidePane?.cwd ?? deps.sessionFolder ?? homedir();
 
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start a launch.
@@ -6889,6 +6896,8 @@ export interface LaunchDeps {
   recentRuns?: Pick<RecentRunSurface, "record">;
   /** Sent, where the same run is kept as kind `run` (ADR 0107). Absent: nothing is kept. */
   sent?: Pick<SentSurface, "record">;
+  /** The operator's folder for this session (`sessions.toml` `[folders]`), checked to exist. Absent: home. */
+  sessionFolder?: string;
 }
 
 /**

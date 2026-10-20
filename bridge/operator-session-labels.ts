@@ -1,6 +1,10 @@
+import { homedir } from "node:os";
+import { isAbsolute } from "node:path";
+
 import type { JsonObject } from "./json.ts";
 import { createOperatorFileReader, diskIo, type OperatorFileIo } from "./operator-file.ts";
 import type { SessionEntry } from "./types.ts";
+import { expandHome } from "./worktree-folder.ts";
 
 // The operator's own names for their sessions, read from `sessions.toml` next to their `.env` — the
 // seventh file on the operator-file contract (operator-file.ts owns the discovery rule, the mtime
@@ -23,6 +27,7 @@ export const MAX_SESSION_LABEL = 48;
 /** A parsed `sessions.toml` document, before a byte of it is believed. */
 interface SessionLabelsDocument {
   labels?: unknown;
+  folders?: unknown;
 }
 
 /** One `[labels]` row: the registry name and the label the phone prints for it. */
@@ -151,4 +156,104 @@ export function withSessionLabels(
     const label = labelOf(entry.name);
     return label === undefined ? entry : { ...entry, label };
   });
+}
+
+// A SESSION'S FOLDER. The same file's `[folders]` table names the folder a session's project lives
+// in. A launch or a new space from the dashboard that names no folder opens there instead of in home
+// (server.ts `launch`, `createWorkspace`): a bridge fronting one Herdr session per project otherwise
+// opens every project's new agent in the operator's home. Like a label it is the operator's own
+// default, never a path the phone sends: a row's pinned `cwd`, the Where field and a pane's own folder
+// all still win over it.
+
+/** One `[folders]` row: the registry name and the absolute folder its launches default to. */
+export interface SessionFolderRow {
+  name: string;
+  folder: string;
+}
+
+/**
+ * Turn a parsed TOML document into folder rows, dropping anything malformed with one warning line.
+ * A folder is absolute or starts with `~/` (expanded against `home`); a control character or a `..`
+ * segment drops the row. Whether the folder exists is checked at launch, not here. Pure and total.
+ *
+ * ```toml
+ * [folders]
+ * "project-yt" = "~/projects/yt"
+ * ```
+ */
+export function validateSessionFolders(
+  doc: SessionLabelsDocument | null | undefined,
+  warn = defaultWarn,
+  home = homedir(),
+): SessionFolderRow[] {
+  const table = doc?.folders;
+  if (table === undefined || table === null) return [];
+  if (typeof table !== "object" || Array.isArray(table)) {
+    warn("`folders` must be a table of \"session name\" = \"folder\" rows — ignoring the file's folders");
+    return [];
+  }
+  // SAFETY: as validateSessionLabels — a TOML table parses to a plain object, every value checked.
+  const rows = table as JsonObject;
+  const out: SessionFolderRow[] = [];
+  for (const [rawName, value] of Object.entries(rows)) {
+    const name = rawName.trim();
+    if (name === "") {
+      warn("ignoring a folder with an empty session name");
+      continue;
+    }
+    if (typeof value !== "string" || value.trim() === "") {
+      warn(`ignoring the folder for "${name}" — it must be a non-empty string`);
+      continue;
+    }
+    const raw = value.trim();
+    if (/[\p{Cc}]/u.test(raw) || raw.split(/[\\/]+/u).includes("..")) {
+      warn(`ignoring the folder for "${name}" — it carries a control character or a \`..\` segment`);
+      continue;
+    }
+    const folder = expandHome(raw, home);
+    if (!isAbsolute(folder)) {
+      warn(`ignoring the folder for "${name}" — it must be absolute or start with ~/`);
+      continue;
+    }
+    out.push({ name, folder });
+  }
+  return out;
+}
+
+/** The operator's session folders: a lookup refreshed by mtime, like {@link SessionLabels}. */
+export interface SessionFolders {
+  /** Re-read the file if its mtime moved. Never throws; a broken file keeps the last good folders. */
+  refresh(): Promise<void>;
+  /** The folder for a registry name, or undefined when the operator gave it none. */
+  folderOf(name: string): string | undefined;
+}
+
+/**
+ * The folder a launch in session `name` defaults to: the operator's `[folders]` entry, re-read if the
+ * file moved, and only when it is a directory on this machine's disk now. Else undefined, which the
+ * routes read as home. A disk that throws is "not there".
+ */
+export async function resolveSessionFolder(
+  folders: SessionFolders,
+  name: string,
+  fs: { isDirectory(path: string): Promise<boolean> },
+): Promise<string | undefined> {
+  await folders.refresh();
+  const folder = folders.folderOf(name);
+  if (folder === undefined) return undefined;
+  return (await fs.isDirectory(folder).catch(() => false)) ? folder : undefined;
+}
+
+/** A reader for the `[folders]` table of the operator's `sessions.toml`. */
+export function createSessionFolders(path: string | null, io: OperatorFileIo = diskIo, warn = defaultWarn): SessionFolders {
+  let folders = new Map<string, string>();
+  if (path === null) return { refresh: async () => {}, folderOf: (name) => folders.get(name) };
+  const read = createOperatorFileReader(path, (doc: SessionLabelsDocument | null | undefined, w) => validateSessionFolders(doc, w), io, warn);
+  return {
+    async refresh() {
+      const rows = await read();
+      folders = new Map(rows.map((row) => [row.name, row.folder]));
+    },
+    folderOf: (name) => folders.get(name),
+  };
 }

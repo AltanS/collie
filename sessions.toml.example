@@ -21,3 +21,9 @@
 # default = "Home"
 # "project-yt" = "Video"
 # "ai-system-setup" = "Agent setup"
+
+# The folder a session's project lives in. A launcher row with no `cwd`, or a new space with an empty
+# Where field, opens here instead of in home. Absolute or `~/`; a folder not on disk falls back to home.
+
+# [folders]
+# "project-yt" = "~/projects/yt"

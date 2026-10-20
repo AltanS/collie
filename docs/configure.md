@@ -832,6 +832,21 @@ Collie applies a few rules to every row:
 A dropped row never costs you the rest of the file. Edits show within a few seconds, with no
 restart. In a crew, each machine labels its own sessions in its own `sessions.toml`.
 
+### A folder for each session
+
+When each Herdr session is one project, a launch from the dashboard should start in that project,
+not in your home folder. Name the folder in the same file:
+
+```toml
+[folders]
+"project-yt" = "~/projects/yt"
+```
+
+A launcher row with no `cwd`, or a new space with an empty Where field, opens in the session's
+folder. A row's own `cwd`, a folder typed in Where, and a pane's own folder all still win. The folder
+is absolute or starts with `~/`; a row with a `..` segment or a control character is dropped and
+logged. A folder that is not on disk at launch time falls back to home.
+
 ## Dark mode / light mode
 
 > **Note.** Collie follows your phone's appearance by default.
