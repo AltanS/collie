@@ -212,7 +212,8 @@ describe("Kiro contained filesystem source", () => {
     // Given: a real session folder whose name a regular expression's dollar anchor can match before a newline.
     const base = await kiroSandbox();
     const root = join(base, "sessions");
-    await writeKiroSession(root, `${say("u", "Sample.")}\n`, "id\n");
+    // Windows refuses a folder name that ends in a newline, so there the folder is not made and the ID is refused all the same.
+    if (process.platform !== "win32") await writeKiroSession(root, `${say("u", "Sample.")}\n`, "id\n");
     // When: resolution is asked for that name.
     const found = await journal([root]).source.resolve({ kind: "id", value: "id\n" });
     // Then: it is not admitted as a safe path component.
