@@ -12,6 +12,10 @@
 // - user turns: `runtime.user_intent.accepted` model_messages[].content[] text blocks. NOT
 //   `run/started`'s prompt: both carry the user's words (102 accepted vs 91 started here), and a
 //   steer delivered mid-run never starts one — accepted fires once per message the operator sent.
+// - slash commands: `command.invoked` record.command, a bare `/name` with no args or output field
+//   in any sampled row, rendered once as the operator's line. It never also appears as an accepted
+//   prompt, so there is nothing to dedupe against. NOT `runtime.command_intake.*` (session
+//   plumbing: session_start, queue submits), which stays unread.
 // - assistant text: `run/assistant_message_committed` text. Reasoning arrives separately as
 //   `run/reasoning_summary_committed` (committed summaries; the `_delta` rows are the stream, and
 //   `run/reasoning_committed` carries encrypted content only — nothing renderable).
@@ -132,6 +136,10 @@ type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"
  * anything else renders verbatim. `subagent_read_result` is the second envelope: `{status,
  * summary, …}` whose `summary` is the child's findings, gated on the CALL's name so another
  * tool's `summary` field can never misfire here.
+ *
+ * A plain-text result carries no exit code anywhere else either: the batch item is exactly
+ * `{tool_call_index, tool_call_id, text}` and no sampled row records a number beside it (failure
+ * state elsewhere is categorical — `task/failed` and kin — never numeric). So none is invented.
  */
 interface UnwrappedResult {
   text: string;
@@ -721,6 +729,24 @@ export function createMuseReducer(): RowReducer {
           parts: [{ kind: "text", ...clamp(stripAnsi(text), MAX_TEXT_CHARS) }],
         });
       }
+      return reduction(entries, changed);
+    }
+
+    if (payloadType === "command.invoked") {
+      // A slash command the operator ran: `record.command` is a bare `/name` in every sampled row
+      // (no args field, no output field), and it never also arrives as an accepted prompt, so it
+      // renders once, as the operator's own line — the claude.ts precedent for `/x args`. The
+      // shape is the rule: anything but a slash-prefixed string is not a typed command. NOT
+      // `runtime.command_intake.*` — that is session plumbing (session_start, queue submits).
+      const record = isObj(payload.record) ? payload.record : null;
+      const command = record === null ? "" : str(record.command).trim();
+      if (!command.startsWith("/")) return NO_CHANGE;
+      entries.push({
+        uuid: rowId,
+        ts,
+        role: "user",
+        parts: [{ kind: "text", ...clamp(stripAnsi(command), MAX_TEXT_CHARS) }],
+      });
       return reduction(entries, changed);
     }
 
