@@ -306,6 +306,88 @@ The same block with nothing under its bottom rule is built inside `pi/ask.test.t
 file: agy's generic menu claims that screen, and the agy suite fails on any foreign fixture it lifts.
 The pi reader refuses it, because pi always paints a status row under a dialog.
 
+## Kiro CLI 2.32.0 corpus (captured 2026-10-17, Herdr 0.9.5, throwaway Herdr session)
+
+`kiro-cli 2.32.0` on x86_64 Linux, run directly with `chat --v3` under Herdr 0.9.5. Each `kiro--*` file is `herdr pane read <pane> --source visible --format ansi --raw`, the same `pane.read` answer the bridge serves, with LF line ends. Each is cut from the composer divider, the divider above a shell panel, or a file panel's `↓` preview row down; transcript rows above it were removed and blank viewport rows remain. The `running-*` and `write-viewport-*` files keep the whole visible grid.
+
+Two runs on the same day made all but the `slash-*` files. Most files come from scratch agents started with `--v3 --trust-tools=''` and the model `qwen3-coder-next`, in a throwaway Herdr session whose terminal was resized between captures so the pane was exactly 120, 60 or 40 columns by 40 rows; the panel or draft stayed open while it was resized. They asked for harmless shell, file and local stdio MCP echo calls, and the shell probes asked for a fixed tool description, so the panel titles (`Print the probe message`, `Print the deny probe message`, `Print the cancel probe message`) are the same in every run. These replace an earlier set made from the same screens through an xterm grid instead of Herdr: the text of all 55 matched row for row, and only the escape encoding changed. The `-trusted-`, `idle-oneline`, `draft-cwd-wrapped` and `kiro--v2-` files come from an earlier live run, also through Herdr, with the default agent configuration (no `--trust-tools`) in a disposable `/tmp/kiro-fixture/demo` folder. They are 120 columns wide, except `kiro--v2-idle-w119.txt` at 119. The `slash-*` files come from a run on 2026-10-18, also through Herdr, with the default agent configuration and an empty scratch `KIRO_HOME`, so the menu lists only built-in commands.
+
+For publication, the user name and the scratch folder were replaced with equal-length aliases, following the path across row breaks where it wraps, and the login-expiry label in the status rows with the equal-length word `Status`; its time value is unchanged. In the earlier run's files the model name was also replaced with the equal-length `qwen3-coder`. Every row keeps its columns. Request markers, option labels, pointers, dividers, footers and diff contents were not changed, and no credentials or real conversation content are included. Workspace trust, permissions and user settings were not edited, no persistent tool-approval option was confirmed, and every scratch process was stopped.
+
+Herdr's agent status was not recorded for these captures, so the table gives the hand-checked label from `surface-labels.json` instead. "Lifts" is the native card with Allow, Deny and the printed Close; "card" is the unread-dialog card with Escape. The keys pressed between captures and the terminal-only limits: [`kiro/APPROVAL_NOTES.md`](../../lib/harness/kiro/APPROVAL_NOTES.md).
+
+| Fixture | Cols | State / what's in it, and what it reads as | Label |
+| --- | --- | --- | --- |
+| `kiro--v2-idle-w119.txt` | 119 | V2 engine (`chat --v2`) idle composer, only the `/copy to clipboard` hint under it; composer | `idle` |
+| `kiro--v3-approval-allow-w120.txt` | 120 | Shell panel (`printf collie_approve_once_probe`), four options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-approval-allow-w60.txt` | 60 | Shell panel (`printf collie_approve_once_probe`), four options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-approval-always-w120.txt` | 120 | Shell panel (`printf collie_approve_once_probe`), four options, Always allow pointed (trust footer); lifts | `dialog` |
+| `kiro--v3-approval-clipped-w40.txt` | 40 | Shell panel at 40 columns, its footer wrapped by column; card | `dialog` |
+| `kiro--v3-approval-denied-request-allow-w120.txt` | 120 | Shell panel of the request the probe denies (`printf collie_deny_probe`), Allow pointed; lifts | `dialog` |
+| `kiro--v3-approval-denied-request-deny-w120.txt` | 120 | Shell panel of the request the probe denies (`printf collie_deny_probe`), Deny pointed; lifts | `dialog` |
+| `kiro--v3-approval-deny-w120.txt` | 120 | Shell panel (`printf collie_approve_once_probe`), four options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-approval-deny-w60.txt` | 60 | Shell panel (`printf collie_approve_once_probe`), four options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-approval-edit-w120.txt` | 120 | Shell panel's `Modify request` editor, a `›` feedback row over `esc to close`; card | `dialog` |
+| `kiro--v3-draft-cwd-wrapped-w120.txt` | 120 | Typed draft while the right-aligned cwd wraps mid-path onto the next row; composer, draft read back | `draft` |
+| `kiro--v3-draft-w120.txt` | 120 | `collie normal draft probe` typed, not sent; composer, draft read back | `draft` |
+| `kiro--v3-draft-w60.txt` | 60 | `collie normal draft probe` typed, not sent; composer, draft read back | `draft` |
+| `kiro--v3-draft-wrapped-w60.txt` | 60 | Single-line draft word-wrapped onto two-space continuation rows; composer, draft read back | `draft` |
+| `kiro--v3-idle-oneline-w120.txt` | 120 | Idle composer, the cwd right-aligned on the status bar's own row; composer | `idle` |
+| `kiro--v3-idle-w120.txt` | 120 | Idle composer: divider, status bar, cwd row, `›` placeholder, footer; composer | `idle` |
+| `kiro--v3-idle-w60.txt` | 60 | Idle composer: divider, status bar, cwd row, `›` placeholder, footer; composer | `idle` |
+| `kiro--v3-mcp-allow-w120.txt` | 120 | Local stdio MCP echo (`collie_echo/echo`), its `↓` argument preview above, Allow pointed; card | `dialog` |
+| `kiro--v3-mcp-allow-w60.txt` | 60 | Local stdio MCP echo (`collie_echo/echo`), its `↓` argument preview above, Allow pointed; card | `dialog` |
+| `kiro--v3-mcp-denied-request-allow-w120.txt` | 120 | Local stdio MCP echo of the request the probe denies, Allow pointed; card | `dialog` |
+| `kiro--v3-mcp-denied-request-deny-w120.txt` | 120 | Local stdio MCP echo of the request the probe denies, Deny pointed; card | `dialog` |
+| `kiro--v3-mcp-deny-w120.txt` | 120 | Local stdio MCP echo (`collie_echo/echo`), its `↓` argument preview above, Deny pointed; card | `dialog` |
+| `kiro--v3-mcp-deny-w60.txt` | 60 | Local stdio MCP echo (`collie_echo/echo`), its `↓` argument preview above, Deny pointed; card | `dialog` |
+| `kiro--v3-mcp-wrapped-allow-w120.txt` | 120 | Local stdio MCP echo with a long tool name and argument, Allow pointed; card | `dialog` |
+| `kiro--v3-mcp-wrapped-allow-w60.txt` | 60 | Local stdio MCP echo with a long tool name and argument, Allow pointed; card | `dialog` |
+| `kiro--v3-mcp-wrapped-clipped-w40.txt` | 40 | Long MCP echo panel at 40 columns, title, resource and footer wrapped; card | `dialog` |
+| `kiro--v3-mcp-wrapped-deny-w120.txt` | 120 | Local stdio MCP echo with a long tool name and argument, Deny pointed; card | `dialog` |
+| `kiro--v3-mcp-wrapped-deny-w60.txt` | 60 | Local stdio MCP echo with a long tool name and argument, Deny pointed; card | `dialog` |
+| `kiro--v3-read-allow-w120.txt` | 120 | Read panel under its `↓ Read … (L1-1)` preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-read-allow-w60.txt` | 60 | Read panel under its `↓ Read … (L1-1)` preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-read-denied-request-allow-w120.txt` | 120 | Read panel of the request the probe denies (`read-deny.txt`), Allow pointed; lifts | `dialog` |
+| `kiro--v3-read-denied-request-deny-w120.txt` | 120 | Read panel of the request the probe denies (`read-deny.txt`), Deny pointed; lifts | `dialog` |
+| `kiro--v3-read-deny-w120.txt` | 120 | Read panel under its `↓ Read … (L1-1)` preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-read-deny-w60.txt` | 60 | Read panel under its `↓ Read … (L1-1)` preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-read-wrapped-allow-w120.txt` | 120 | Read panel whose path wraps in its `↓ Read` preview, Allow pointed; lifts | `dialog` |
+| `kiro--v3-read-wrapped-allow-w60.txt` | 60 | Read panel whose path wraps in its `↓ Read` preview, Allow pointed; lifts | `dialog` |
+| `kiro--v3-read-wrapped-deny-w120.txt` | 120 | Read panel whose path wraps in its `↓ Read` preview, Deny pointed; lifts | `dialog` |
+| `kiro--v3-read-wrapped-deny-w60.txt` | 60 | Read panel whose path wraps in its `↓ Read` preview, Deny pointed; lifts | `dialog` |
+| `kiro--v3-replace-allow-w120.txt` | 120 | Replace panel under its one-line diff preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-replace-allow-w60.txt` | 60 | Replace panel under its one-line diff preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-replace-denied-request-allow-w120.txt` | 120 | Successor replace of the same file, same panel text and another diff, Allow pointed; lifts | `dialog` |
+| `kiro--v3-replace-denied-request-deny-w120.txt` | 120 | Successor replace of the same file, same panel text and another diff, Deny pointed; lifts | `dialog` |
+| `kiro--v3-replace-deny-w120.txt` | 120 | Replace panel under its one-line diff preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-replace-deny-w60.txt` | 60 | Replace panel under its one-line diff preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-replace-edit-w120.txt` | 120 | Replace panel's `Modify request` editor under its diff; card | `dialog` |
+| `kiro--v3-replace-trusted-allow-w120.txt` | 120 | Default agent configuration: replace panel with four options, a bare-number context row in its diff, Allow pointed; lifts | `dialog` |
+| `kiro--v3-replace-trusted-deny-w120.txt` | 120 | Default agent configuration: replace panel with four options, a bare-number context row in its diff, Deny pointed; lifts | `dialog` |
+| `kiro--v3-running-steered-w120.txt` | 120 | Running turn after a steer: `› collie steer probe` in the transcript, the busy prompt row; composer, turn running | `running` |
+| `kiro--v3-running-w120.txt` | 120 | Running turn, whole grid: `›  Kiro is working · 1s · …` on the prompt row; composer, turn running | `running` |
+| `kiro--v3-slash-help-w120.txt` | 120 | `/help` typed: the `/` menu filtered to its one row; popup | `popup` |
+| `kiro--v3-slash-menu-w120.txt` | 120 | `/` typed: the command menu's first eight rows and `(+35 more)`; popup | `popup` |
+| `kiro--v3-slash-model-w120.txt` | 120 | `/model` typed: the `/` menu filtered to its one row; popup | `popup` |
+| `kiro--v3-slash-quit-w120.txt` | 120 | `/quit` typed: the `/` menu filtered to its one row; popup | `popup` |
+| `kiro--v3-write-allow-w120.txt` | 120 | Write panel under its one-line diff preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-write-allow-w60.txt` | 60 | Write panel under its one-line diff preview, three options, Allow pointed; lifts | `dialog` |
+| `kiro--v3-write-denied-request-allow-w120.txt` | 120 | Write panel of the request the probe denies, Allow pointed; lifts | `dialog` |
+| `kiro--v3-write-denied-request-deny-w120.txt` | 120 | Write panel of the request the probe denies, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-deny-w120.txt` | 120 | Write panel under its one-line diff preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-deny-w60.txt` | 60 | Write panel under its one-line diff preview, three options, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-lines-allow-w120.txt` | 120 | Complete 15-line write diff with one- and two-digit line numbers, Allow pointed; lifts | `dialog` |
+| `kiro--v3-write-lines-deny-w120.txt` | 120 | Complete 15-line write diff with one- and two-digit line numbers, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-lines-deny-w60.txt` | 60 | Complete 15-line write diff with one- and two-digit line numbers, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-trusted-allow-w120.txt` | 120 | Default agent configuration: write panel with four options, indented and blank added lines, Allow pointed; lifts | `dialog` |
+| `kiro--v3-write-trusted-always-w120.txt` | 120 | Default agent configuration: write panel with four options, indented and blank added lines, Always allow pointed (trust footer); lifts | `dialog` |
+| `kiro--v3-write-trusted-deny-w120.txt` | 120 | Default agent configuration: write panel with four options, indented and blank added lines, Deny pointed; lifts | `dialog` |
+| `kiro--v3-write-viewport-allow-w120.txt` | 120 | 50-line write proposal whose preview runs above the viewport, whole grid, Allow pointed; card | `dialog` |
+| `kiro--v3-write-viewport-allow-w60.txt` | 60 | 50-line write proposal whose preview runs above the viewport, whole grid, Allow pointed; card | `dialog` |
+| `kiro--v3-write-viewport-deny-w120.txt` | 120 | 50-line write proposal whose preview runs above the viewport, whole grid, Deny pointed; card | `dialog` |
+| `kiro--v3-write-viewport-deny-w60.txt` | 60 | 50-line write proposal whose preview runs above the viewport, whole grid, Deny pointed; card | `dialog` |
+
 ## Codex corpus (captured 2026-08-22, Codex v0.149.0, sandbox panes)
 
 Byte-faithful `format:ansi` captures with one sanitization pass, every substitution

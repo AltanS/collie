@@ -2,13 +2,16 @@
 // Herdr snapshot `agent` string to its HarnessAdapter; anything absent from the map has no adapter,
 // so it keeps the universal raw mirror (the T1 fallback). Both gates route through here — the render
 // pipeline (harness/index buildBlocks) and agent-chat's status strip — so the policy can't drift, and
-// adding a further verified agent is a one-line change to ADAPTERS. The list holds three today:
-// claude, which lifts every block kind; codex, which is Tier 1 chrome plus Tier-2 probed trust /
-// approval / question lifts; grok, which is Tier 1 chrome plus Tier-2 probed permission / ask /
-// plan lifts; muse, which is Tier 1 chrome plus Tier-2 approval / single-select / multi-select /
-// trust lifts; opencode, which is Tier 1 chrome plus the Tier-2 permission-dialog lift; hermes,
-// which is Tier 1 chrome plus Tier-2 clarify / dangerous-command approval lifts on its classic CLI;
-// and omp, which is Tier 1 and lifts none — it contributes chrome stripping and the composer gate.
+// adding a further verified agent is a one-line change to ADAPTERS. Registered today: claude, which
+// lifts every block kind; codex, which is Tier 1 chrome plus Tier-2 probed trust / approval /
+// question lifts; grok, which is Tier 1 chrome plus Tier-2 probed permission / ask / plan lifts;
+// hermes, which is Tier 1 chrome plus Tier-2 clarify / dangerous-command approval lifts on its
+// classic CLI; omp, which is Tier 1 chrome plus its tool-approval, ask, resume and model-picker lifts;
+// opencode, which is Tier 1 chrome plus the Tier-2 permission-dialog lift; agy (also registered as
+// antigravity), which is Tier 1 chrome plus its permission prompt and conversations picker; muse,
+// which is Tier 1 chrome plus Tier-2 approval / single-select / multi-select / trust lifts; pi, which
+// reads stock pi and OmO alike, with Tier 1 chrome plus its question and folder-trust lifts; and kiro,
+// which is Tier 1 chrome plus the Tier-2 shell and filesystem approval lifts of Kiro CLI V3.
 // Adapters register by their EXACT agent string only —
 // prefix-matching here was the AltanS/collie#99 reject: it would hand a harness's live keystroke
 // recipes to any agent string sharing the prefix. `hasBlockGrammar` replaces the old
@@ -26,6 +29,7 @@ import { opencodeAdapter } from "./opencode";
 import { agyAdapter, antigravityAdapter } from "./agy";
 import { museAdapter } from "./muse";
 import { piAdapter } from "./pi";
+import { kiroAdapter } from "./kiro";
 
 // Built FROM the adapter list (not a hand-written literal) so a key can't silently drift from its
 const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
@@ -40,6 +44,7 @@ const ADAPTERS: Record<string, HarnessAdapter> = Object.fromEntries(
     antigravityAdapter,
     museAdapter,
     piAdapter,
+    kiroAdapter,
   ].map((a) => [a.agent, a]),
 );
 

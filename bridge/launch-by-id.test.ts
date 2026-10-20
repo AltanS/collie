@@ -131,6 +131,13 @@ async function run(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}) {
 }
 
 describe("POST /api/launch — by id", () => {
+  test("a Kiro id launch types its program, kiro-cli, not the id", async () => {
+    const mux = new FakeMux();
+    const { status } = await run(mux, { harness: "kiro", cwd: "/home/op/src/app" });
+    expect(status).toBe(200);
+    expect(mux.texts).toEqual([["w1:p1", "kiro-cli"]]);
+  });
+
   test("a harness id opens a space and the bridge types that harness's binary", async () => {
     const mux = new FakeMux();
     const { status, body } = await run(mux, { harness: "claude", cwd: "/home/op/src/app" });

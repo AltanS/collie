@@ -584,7 +584,45 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "queues",
     rangeStatus: "provisional",
   },
+  {
+    id: "kiro",
+    binary: "kiro-cli",
+    versionOutput: "kiro-cli 2.32.0\n",
+    version: "2.32.0",
+    above: "2.32.1",
+    takes: [
+      { anchor: "top", row: "─".repeat(60) },
+      { anchor: "prompt", row: "› ask a question or describe a task ↵", draft: "ask a question or describe a task ↵" },
+      { anchor: "prompt", row: "› collie normal draft probe", draft: "collie normal draft probe" },
+      { anchor: "prompt", row: "›" },
+      { anchor: "bottom", row: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: "──── hello" },
+      { anchor: "prompt", row: "  collie normal draft probe" },
+      { anchor: "prompt", row: "❯ collie normal draft probe" },
+    ],
+    collapse: { text: "40 lines ▸", group: "lines", value: "40" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "steers",
+  },
 ];
+
+describe("kiro's running signs", () => {
+  it("the busy prompt row, the hint and the queued row are all running rows, and a draft that names the busy line later is not", () => {
+    // Given: Kiro's profile as shipped.
+    const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "kiro.json"), "utf8"));
+    if (raw === undefined) throw new Error("kiro.json is not a JSON object");
+    const rows = (parseProfile(raw).idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const running = (text: string): boolean => rows.some((sign) => sign.test(text));
+    // Then: each sign matches its own row, and the prompt sign is anchored on the glyph and the busy words.
+    expect(running("›  Kiro is working · 1s · Type to steer · Ctrl+S to queue")).toBe(true);
+    expect(running("› ask why Kiro is working · so slowly")).toBe(false);
+    expect(running("ᗥ Thinking... (esc to cancel)")).toBe(true);
+    expect(running("  ◇ 1 message queued")).toBe(true);
+  });
+});
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
   const profile = (): Profile => loadProfiles().get(c.id)!;

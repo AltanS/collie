@@ -1,6 +1,6 @@
 # The harness canary
 
-`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp and muse when `--agent`
+`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp, muse and kiro when `--agent`
 names them, in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
 send lands. It then reads the session each agent WROTE, with the bridge's own journal adapter, and
@@ -22,7 +22,7 @@ bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 Exit 1 means a scenario failed. Captures and `summary.json` go to
 `/tmp/collie-canary/<run-id>/<agent>-<version>/`. They are never copied into `web/src/fixtures/`.
 
-grok, hermes, agy, omp and muse run only when `--agent` names them, because their sends spend each
+grok, hermes, agy, omp, muse and kiro run only when `--agent` names them, because their sends spend each
 vendor's own quota. The `options` scenario is never part of a default run: it starts the agent once
 per option the New sheet offers (`bridge/launcher-recipes.ts`), with the line the bridge builds, and
 passes when Herdr shows the agent up, idle or asking a question first. It makes no model turn.
@@ -44,14 +44,15 @@ A launcher is yours to write, outside this repo: it points the agent at another 
 in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios only;
 `dialogs`, `busy` and `options` start their own lines.
 
-A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `HOME`) moves its log
-too. Point the journal at it with the bridge's own override for that agent, `COLLIE_GROK_ROOT`,
-`COLLIE_PI_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in the canary's environment.
+A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `KIRO_HOME`, `HOME`)
+moves its log too. Point the journal at it with the bridge's own override for that agent,
+`COLLIE_GROK_ROOT`, `COLLIE_PI_ROOT`, `COLLIE_KIRO_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in
+the canary's environment.
 
 ## What it checks
 
 Six scenarios per agent run by default; the seventh, `options`, runs only when `--scenario` names it, and
-grok, hermes, agy, omp and muse are the five opt-in agents that run only when `--agent` names them. Only
+grok, hermes, agy, omp, muse and kiro are the six opt-in agents that run only when `--agent` names them. Only
 `sends` makes model turns: four per agent.
 
 | id           | what the canary does                                          | what must hold                                         |

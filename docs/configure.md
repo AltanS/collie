@@ -401,9 +401,10 @@ On a crew (several machines, one phone-facing lead), each machine reads its own 
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
 
 The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
-Grok, Hermes, Muse and Antigravity. One that is not on the machine's login `PATH` stays in the list,
-disabled, marked "not installed". For another terminal agent, declare a row for it as above: it shows
-in the **Command** select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
+Grok, Hermes, Kiro, Muse and Antigravity. Kiro starts with its tool permissions left as you set
+them. An agent that is not on the machine's login `PATH` stays in the list, disabled, marked "not
+installed". For another terminal agent, declare a row for it as above: it shows in the **Command**
+select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
@@ -881,6 +882,11 @@ reads the session name off the footer of `openclaw tui` (`agent main (main) | se
 opens that agent's session database under `$OPENCLAW_STATE_DIR`, or `~/.openclaw`, read-only. Set
 `openclaw_root` when the state folder is somewhere else. The pane must report itself to Herdr as
 agent `openclaw`. Collie never reads OpenClaw's config file or its gateway token.
+
+Kiro needs no Herdr integration either: Herdr names a `kiro-cli` pane agent `kiro`, and Collie finds
+the pane's session by the lock the running Kiro holds in it. Collie reads Kiro V3 sessions, started
+with `--v3` or `--agent-engine v3`, or with V3 set as the engine in Kiro's own settings. A V1 or V2
+session has no Chat or History. Set `kiro_root` when Kiro keeps its sessions somewhere else.
 
 `herdr integration status` shows which integrations are installed. A hook is read when the agent
 starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the

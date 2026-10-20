@@ -87,6 +87,7 @@
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
+import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -97,10 +98,6 @@ export interface ResumePickerRegion {
   /** Index of the title row: the region is [`startLine` … the bottom border at the tail]. */
   startLine: number;
 }
-
-/** The bridge's cap on a bound region (`MAX_EXPECTED_PROMPT_CHARS`, bridge/server.ts), less a margin.
- *  Mirrored rather than imported, as everything else bridge-sized is in `web/`. */
-const MAX_REGION_CHARS = 32_000;
 
 /** How far above the footer the title may sit. A tall pane is a few dozen rows; the bound keeps
  *  scrollback out of the search. */

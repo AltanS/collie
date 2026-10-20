@@ -1791,6 +1791,15 @@ describe("AgentChat — no session reported", () => {
     expect(screen.queryByRole("button", { name: /show entire history/i })).not.toBeInTheDocument();
   });
 
+  // Kiro's adapter discovers its own session, so the bridge sets `hasSession` on every Kiro pane
+  // (`toPaneWire`), with or without a Herdr ref. The note never applies; the History link shows.
+  it("offers History on a Kiro pane and advises no hook", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "kiro", hasSession: true };
+    renderChat({ agent, agents: [agent] });
+    expect(noSessionNote()).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /show entire history/i })).toBeInTheDocument();
+  });
+
   it("says nothing once the pane has reported a session", () => {
     const agent = { ...fixtureAgents[0]!, agent: "claude", hasSession: true };
     renderChat({ agent, agents: [agent] });

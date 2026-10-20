@@ -29,6 +29,10 @@ describe("the harness table", () => {
     for (const h of HARNESS_LAUNCHES) expect(h.binary).toMatch(/^[a-z][a-z0-9-]*$/);
   });
 
+  test("Kiro is started as its program, kiro-cli, so the operator's own setting picks the engine", () => {
+    expect(harnessLaunch("kiro")?.binary).toBe("kiro-cli");
+  });
+
   test("a lookup is exact: no prefix, no prototype key", () => {
     expect(harnessLaunch("claude")?.binary).toBe("claude");
     expect(harnessLaunch("claude-danger")).toBeUndefined();

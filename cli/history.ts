@@ -18,12 +18,13 @@ import type { Exec, Files } from "./sys.ts";
 // adapter and a session is addressable — reported on the pane record, or found by an adapter that
 // discovers its own (`DISCOVERS_OWN_SESSIONS`).
 //
-// The session ref reaches Herdr from ONE place: the agent-side hook `herdr integration install
-// <agent>` writes. That hook exits silently when its environment is not what it expects, and it
-// loads at the agent's SESSION START — so installing it under a running agent changes nothing until
-// that agent is restarted. Miss any of it and the pane looks perfectly normal while both affordances
-// simply are not drawn, with nothing anywhere saying why. `/api/pane/:id/history` is not consulted
-// for the hide, so its own `no-log` / `disabled` reasons never get a chance to explain themselves.
+// For every other agent the session ref reaches Herdr from ONE place: the agent-side hook `herdr
+// integration install <agent>` writes. That hook exits silently when its environment is not what it
+// expects, and it loads at the agent's SESSION START — so installing it under a running agent
+// changes nothing until that agent is restarted. Miss any of it and the pane looks perfectly normal
+// while both affordances simply are not drawn, with nothing anywhere saying why.
+// `/api/pane/:id/history` is not consulted for the hide, so its own `no-log` / `disabled` reasons
+// never get a chance to explain themselves.
 //
 // One agent's session start is late on purpose: Codex fires the hook only on its first prompt
 // (issue #294, `REPORTS_SESSION_ON_FIRST_PROMPT`), so its pane with no session is explained here and
@@ -471,7 +472,7 @@ function journalRoots(deps: HistoryDeps): Finding {
     return warn(
       check,
       "COLLIE_TRANSCRIPT is off — the bridge reads no journal at all, so no pane offers a history" +
-        " however well its hooks are installed",
+        " however it reports its session",
       `remove COLLIE_TRANSCRIPT (or set it to 1) in ${deps.ctx.configDir}/.env, then \`collie restart\``,
     );
   }

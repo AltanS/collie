@@ -1,0 +1,8 @@
+────────────────────────────────────────────────────────────
+[0m[38;2;95;175;215mcollie-fixture[0m · qwen3-coder-next · [0m[38;5;2m◔[0m [0m[38;5;2m2%[0m · [0m[38;5;2mStatus: 19h 48m[0m
+[0m[38;5;13m/workspace/tester/demo/sample-app/.test-files/demo-session-f[0m
+[0m[38;5;13mixture[0m
+(main)
+
+› [0m[7m [0mask a question or describe a task ↵
+                   /sessions to resume · /copy to clipboard

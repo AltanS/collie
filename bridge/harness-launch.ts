@@ -19,7 +19,8 @@ import type { HarnessInfo } from "./types.ts";
 // reports once the agent runs is the name it was started by, so the started pane reads with its own
 // harness straight away. `harness-launch.test.ts` fails when a contract name is neither here nor in
 // {@link NOT_STARTED}. The binary is the same word: Herdr names an agent by its process, which is
-// what made these the contract's names in the first place.
+// what made these the contract's names in the first place. Kiro is the exception: its program is
+// `kiro-cli`, which Herdr reports as `kiro`.
 //
 // ── FOUND, WITH THE LOGIN SHELL'S PATH ──────────────────────────────────────────────────────────
 // A bridge under systemd or Herdr has a short PATH (on bluefin both `opencode` and `pi` live in a
@@ -46,6 +47,8 @@ export const HARNESS_LAUNCHES: readonly HarnessLaunch[] = [
   { id: "omp", label: "omp", binary: "omp" },
   { id: "grok", label: "Grok", binary: "grok" },
   { id: "hermes", label: "Hermes", binary: "hermes" },
+  // The engine (V2 or V3) is the operator's Kiro setting; Collie's Chat and approvals need V3.
+  { id: "kiro", label: "Kiro", binary: "kiro-cli" },
   { id: "muse", label: "Muse", binary: "muse" },
   { id: "agy", label: "Antigravity", binary: "agy" },
 ];
