@@ -91,6 +91,7 @@
       "confirm": "Enter",
       "cancel": "Escape"
     },
+    "enterWhileRunning": "steers",
     "neverHeld": [
       "/clear",
       "/new",
@@ -101,7 +102,14 @@
       "/fork",
       "/rewind",
       "!"
-    ]
+    ],
+    "queueKey": "Tab",
+    "queuedRow": {
+      "pattern": "^\\s*└ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*◆ Queued input · ↑ to edit\\s*$",
+      "hintGap": 0,
+      "hintAbove": true
+    }
   },
   "collapse": {
     "pattern": "\\[(?:Pasted Content \\d+ chars|Image #\\d+)\\]"
