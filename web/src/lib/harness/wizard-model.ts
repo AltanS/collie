@@ -10,7 +10,7 @@
 // comparator from its sibling prompt model, so `lib/blocks.ts` can re-export it without a cycle. The
 // identity comparator below is wired to this kind by dialog-contract.ts.
 
-import { sameOptionalKeys } from "./prompt-model";
+import { sameOptionalKeys, type AnswerFieldPointer } from "./prompt-model";
 
 /** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */
 export interface WizardStepChip {
@@ -39,6 +39,24 @@ export interface WizardOption {
   escape: boolean;
 }
 
+/**
+ * A question step's own answer field (Claude's `Type something.` row, ADR 0113): a text input, never
+ * an option. While it has focus every digit is typed into it and `Left` moves its caret, so no option
+ * and no step arrow may fire.
+ */
+export interface WizardAnswerField {
+  /** The row's digit: focuses the field while it is empty, ANSWERS with the held text once filled. */
+  key: string;
+  /** `❯` is on the row: the field has the keyboard. */
+  focused: boolean;
+  /** What the field holds, `""` while it shows its placeholder; without the trailing ` ✔`. */
+  text: string;
+  /** The row carries the ` ✔` of a revisited step answered by typing. */
+  chosen: boolean;
+  /** Where `❯` stands relative to the field. */
+  pointer: AnswerFieldPointer;
+}
+
 /** One answered pair echoed by the Submit review step. */
 export interface WizardAnswer {
   question: string;
@@ -64,6 +82,14 @@ export type WizardModel =
       steps: WizardStepChip[];
       question: string;
       options: WizardOption[];
+      /** The step's answer field, when the harness models one. Absent ⇒ the step has none. */
+      field?: WizardAnswerField;
+      /**
+       * The region normalised against what the answer recipe changes on purpose: no `❯`, the field's
+       * rows collapsed to one token, the footer's `ctrl+g to edit in …` hint dropped. Absent on a
+       * harness that types into no field; `wizardsSameIdentity` then falls back to `wizardsEqual`.
+       */
+      coreSignature?: string;
       signature: string;
     }
   | {
@@ -105,26 +131,8 @@ export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
   // The region signature is decisive (a re-rendered wizard changes it); the field checks below stay
   // as a fast-path and to keep intent explicit. `revision` is a stub, so this is the real guard.
   if (a.signature !== b.signature) return false;
-  if (
-    a.steps.length !== b.steps.length ||
-    !a.steps.every(
-      (s, i) =>
-        s.label === b.steps[i]!.label &&
-        s.answered === b.steps[i]!.answered &&
-        s.current === b.steps[i]!.current,
-    )
-  ) {
-    return false;
-  }
-  if (a.phase === "question" && b.phase === "question") {
-    return (
-      a.question === b.question &&
-      a.options.length === b.options.length &&
-      a.options.every(
-        (o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen,
-      )
-    );
-  }
+  if (!sameSteps(a.steps, b.steps)) return false;
+  if (a.phase === "question" && b.phase === "question") return sameQuestion(a, b);
   if (a.phase === "review" && b.phase === "review") {
     return (
       a.incomplete === b.incomplete &&
@@ -138,4 +146,44 @@ export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
     );
   }
   return false;
+}
+
+type QuestionStep = Extract<WizardModel, { phase: "question" }>;
+
+/** The stepper chips agree: labels, answered marks and the current chip. */
+function sameSteps(a: WizardStepChip[], b: WizardStepChip[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((s, i) => s.label === b[i]!.label && s.answered === b[i]!.answered && s.current === b[i]!.current)
+  );
+}
+
+/** The question text and every option's label and chosen mark agree. */
+function sameQuestion(a: QuestionStep, b: QuestionStep): boolean {
+  return (
+    a.question === b.question &&
+    a.options.length === b.options.length &&
+    a.options.every((o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen)
+  );
+}
+
+/**
+ * Whether two derivations are the same question step of the same dialog, whatever the answer recipe
+ * (lib/answer-field.ts) has done to its field: the pointer, the field's text, its focus and its ` ✔`
+ * all change under the recipe on purpose, so they are not compared. Everything else is: the chips,
+ * the question, the options, the field's digit and `coreSignature`, the region with those changes
+ * normalised away. A different question in the same shape still breaks it.
+ *
+ * Only when BOTH models are question steps carrying a `coreSignature`. Anything else (the review
+ * step, a harness that models no field) compares exactly as `wizardsEqual` does.
+ */
+export function wizardsSameIdentity(a: WizardModel, b: WizardModel): boolean {
+  if (a.phase !== "question" || b.phase !== "question") return wizardsEqual(a, b);
+  if (a.coreSignature === undefined || b.coreSignature === undefined) return wizardsEqual(a, b);
+  return (
+    a.coreSignature === b.coreSignature &&
+    sameSteps(a.steps, b.steps) &&
+    sameQuestion(a, b) &&
+    a.field?.key === b.field?.key
+  );
 }

@@ -25,6 +25,7 @@
 // tapped. The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
 // flow moves the pointer and fills the input by design, so `promptsEqual` would reject its own work.
 
+import { FEEDBACK_MAX_LENGTH, fillAnswerField, type FieldAccess } from "./answer-field";
 import { sendReply } from "./api";
 import { describeApiError, describeThrownError } from "./api-error-message";
 import { type PromptModel, type PromptOption } from "./blocks";
@@ -55,17 +56,9 @@ export { promptsEqual, promptsSameIdentity, sameKeys } from "./harness/prompt-mo
  *  name so existing imports (wizard-action, AgentChat, tests) keep working. */
 export type PromptActionResult = ActionResult;
 
-/**
- * Longest feedback Collie will type into a plan dialog.
- *
- * Not a comfort limit — a grammar one. The row does not window long text: Claude re-flows the whole
- * value across as many display lines as it needs, which pushes the dialog's footer away from its
- * options. `MAX_FEEDBACK_WRAP` (harness/claude/prompt-select.ts) is how far that may go before the
- * screen stops parsing at all, and this is sized to stay inside it even on a narrow pane (~4 lines of
- * ~60 usable columns). Longer text isn't dangerous — the read-back check simply refuses and nothing is
- * submitted — but the dialog would drop off the phone, so we don't let it happen.
- */
-export const FEEDBACK_MAX_LENGTH = 240;
+/** The longest text typed into a dialog's field, defined beside the answer recipe that shares it and
+ *  re-exported here so the plan flow's call sites keep one import site. */
+export { FEEDBACK_MAX_LENGTH } from "./answer-field";
 
 interface GuardArgs {
   paneId: string;
@@ -213,6 +206,8 @@ export async function submitPromptFeedback(
   args: GuardArgs & { text: string },
 ): Promise<PromptActionResult> {
   const row = args.prompt.feedback;
+  // AskUserQuestion's field has its own recipe, which reaches a focused or filled field safely.
+  if (row?.purpose === "answer") return submitPromptAnswer(args);
   if (!row || row.focused || row.text !== "") return { status: "changed" };
   // Grok's `z` row is a custom answer, not Claude's deny-with-feedback input. The sequence
   // below (digit → focus → type → Enter) was measured on Claude Code; running it on a
@@ -279,4 +274,32 @@ export async function submitPromptFeedback(
   } catch (e) {
     return { status: "error", error: describeThrownError(e) };
   }
+}
+
+/** How the answer recipe reads a single AskUserQuestion: its `answer` row, against the tapped dialog. */
+function answerFieldAccess(tapped: PromptModel): FieldAccess<"prompt-select"> {
+  return {
+    fieldOf: (m) => {
+      const row = m.feedback;
+      if (row?.purpose !== "answer") return null;
+      return { key: row.key, focused: row.focused, text: row.text, pointer: row.pointer ?? "none" };
+    },
+    sameDialog: (m) => promptsSameIdentity(m, tapped),
+    digitFocuses: true,
+  };
+}
+
+/**
+ * Answer a single AskUserQuestion in the person's own words (ADR 0113): the shared recipe
+ * (lib/answer-field.ts) reaches the field, clears what the person saw in it, types `text` and proves
+ * it arrived; then `Enter`, the one key that answers, bound to the read that proved the text. A
+ * keystroke at the terminal after that read makes the bridge refuse rather than answer with
+ * something else.
+ */
+export async function submitPromptAnswer(args: GuardArgs & { text: string }): Promise<PromptActionResult> {
+  const filled = await fillAnswerField(target(args), answerFieldAccess(args.prompt), args.text);
+  if (!filled.ok) return filled.result;
+  const { proof } = filled;
+  const commit = await sendBoundKeys(args, ["Enter"], proof.signature, proof.styledSignature, proof.bindColumns);
+  return withWhy(commit, "bridge");
 }

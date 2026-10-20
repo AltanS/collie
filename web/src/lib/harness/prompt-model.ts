@@ -52,16 +52,26 @@ export interface PromptOption {
 }
 
 /**
- * Why the inline free-text row exists. Absent means Claude's plan-approval input — the only
- * purpose `submitPromptFeedback` will type into.
+ * Why the inline free-text row exists. Absent means Claude's plan-approval input. Collie types into
+ * two purposes, each by its own recipe: `plan-change` and `answer`.
  *
  *   - `plan-change` — Claude's "Tell Claude what to change": the digit focuses the field, typing
  *     fills it, Enter denies the plan and hands the agent the text (PLAN_FEEDBACK_NOTES.md).
- *   - `free-text` — another harness's custom-answer row (Grok's `z`). Parsed so a focused row can
- *     lock the option buttons; Collie does not type into it. The Claude plan-feedback send path
- *     is the wrong recipe (different key, different Enter, unmeasured caret/wrap).
+ *   - `answer` — Claude's AskUserQuestion `Type something.` field: typed into and submitted as the
+ *     question's answer by `lib/answer-field.ts` (ADR 0113, ASK_FIELD_NOTES.md). Its digit focuses
+ *     the field only while it is empty; on a filled field it submits the held text.
+ *   - `free-text` — a text field Collie reads and does not type into: a permission dialog's amend
+ *     note, or another harness's custom-answer row (Grok's `z`). Parsed so a focused row can lock
+ *     the option buttons. Neither Claude recipe fits it (different key, different Enter,
+ *     unmeasured caret/wrap).
  */
-export type PromptFeedbackPurpose = "plan-change" | "free-text";
+export type PromptFeedbackPurpose = "plan-change" | "answer" | "free-text";
+
+/**
+ * Where `❯` sits relative to an `answer` field, among the menu's rows: on a row above it, on the
+ * field itself (`on`, exactly when `focused`), on a row below it (`Chat about this`), or nowhere.
+ */
+export type AnswerFieldPointer = "above" | "on" | "below" | "none";
 
 /**
  * The dialog's inline free-text INPUT row, when it has one (Claude's plan approval: "Tell Claude
@@ -89,6 +99,9 @@ export interface PromptFeedback {
   text: string;
   /** Absent = `plan-change` (Claude). Set explicitly when the row is not that input. */
   purpose?: PromptFeedbackPurpose;
+  /** Set on `answer` rows only: where the pointer stands, which the walk onto a filled field reads.
+   *  Not part of the dialog's identity (`identityDiff`): the walk moves it on purpose. */
+  pointer?: AnswerFieldPointer;
 }
 
 /** A recognised single-choice dialog: the question, its selectable options, and the family. */

@@ -7,6 +7,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 vi.mock("./api", () => ({
   fetchPane: vi.fn(),
   sendKeys: vi.fn(),
+  sendReply: vi.fn(),
 }));
 
 // A harness that declares its submit keys as data (opencode's `question` tool shape). It re-uses
@@ -48,7 +49,7 @@ vi.mock("./harness/registry", async (importOriginal) => {
   };
 });
 
-import { fetchPane, sendKeys } from "./api";
+import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines, type MultiSelectModel } from "./blocks";
 import { detectMultiSelect } from "./harness/claude/multi-select";
@@ -57,10 +58,12 @@ import {
   multiSelectEquals,
   multiSelectIdentity,
   submitMultiSelectIntent,
+  type MultiSelectIntent,
 } from "./multi-select-action";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
+const mockSendReply = vi.mocked(sendReply);
 
 type Pointer = "opt1" | "opt2" | "opt3" | "opt4" | "free" | "submit" | "chat" | "none";
 
@@ -150,6 +153,193 @@ beforeEach(() => {
   mockFetchPane.mockReset();
   mockSendKeys.mockReset();
   mockSendKeys.mockResolvedValue({ ok: true });
+  mockSendReply.mockReset();
+  mockSendReply.mockResolvedValue({ ok: true });
+});
+
+// The answer field of a multi-select question (ADR 0113, grammar/ASK_FIELD_NOTES.md § Multi-select),
+// in the 2.1.299 layout of the claude--v2299-ask-field-multi-* captures: three options, the field as
+// row 4, `Submit`, a rule, `5. Chat about this`. `wrap` adds a continuation line under the field.
+type FieldPointer = "opt1" | "opt3" | "field" | "submit" | "chat";
+function fieldBuffer(pointer: FieldPointer, text: string, checked: boolean, wrap?: string): string {
+  const mark = (p: FieldPointer) => (p === pointer ? "❯ " : "  ");
+  return [
+    "←  ☒ Toppings  ✔ Submit  →",
+    "",
+    "Which toppings?",
+    "",
+    `${mark("opt1")}1. [✔] Cheese`,
+    "         Melted cheese",
+    "  2. [ ] Olives",
+    "         Sliced olives",
+    `${mark("opt3")}3. [ ] Basil`,
+    "         Fresh basil leaves",
+    `${mark("field")}4. ${checked ? "[✔]" : "[ ]"} ${text === "" ? "Type something" : text}`,
+    ...(wrap === undefined ? [] : [`     ${wrap}`]),
+    (pointer === "submit" ? "❯    " : "     ") + "Submit",
+    "─".repeat(80),
+    `${mark("chat")}5. Chat about this`,
+    "",
+    pointer === "field"
+      ? "Enter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+      : "Enter to select · ↑/↓ to navigate · Esc to cancel",
+  ].join("\n");
+}
+
+function typeAnswer(tapped: string, text = "Kiwi") {
+  return submitMultiSelectIntent({ ...base, multi: model(tapped), intent: { kind: "type", text } });
+}
+
+const CLEAR = ["ctrl+u", "ctrl+k"];
+
+describe("submitMultiSelectIntent — type an answer into the field", () => {
+  // The park ends on the option row above the field: from `Submit` an option's digit does nothing
+  // (ASK_FIELD_NOTES.md § Multi-select), so a park there would leave every checkbox tap dead.
+  it("an empty field: never its digit (it toggles), a Down walk, type, no Enter (ticked), park Up on the option above", async () => {
+    const tapped = fieldBuffer("opt3", "", true);
+    script(
+      tapped, // entry guard
+      tapped, // the walk's first read
+      fieldBuffer("field", "", true), // the walk lands
+      fieldBuffer("field", "", true), // the reach proof
+      fieldBuffer("field", "Kiwi", true), // typing into it kept it ticked
+      fieldBuffer("opt3", "Kiwi", true), // the park lands on the option above the field
+    );
+    expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Down"], ["Up"]]);
+    expect(keysSent()).not.toContainEqual(["4"]);
+    expect(keysSent()).not.toContainEqual(["Enter"]);
+    expect(mockSendReply.mock.calls).toEqual([["w1:p1", "Kiwi", false, undefined]]);
+    // The park's Up is bound to the read that proved the text.
+    expect(mockSendKeys.mock.calls[1]![3]).toBe(model(fieldBuffer("field", "Kiwi", true)).regionSignature);
+  });
+
+  it("replaces a filled field from Submit: an Up walk, a clear, the text, then the park Up", async () => {
+    const tapped = fieldBuffer("submit", "Mushroom", false);
+    script(
+      tapped, // entry guard
+      tapped, // the walk's first read
+      fieldBuffer("field", "Mushroom", false), // the walk lands
+      fieldBuffer("field", "Mushroom", false), // the reach proof
+      fieldBuffer("field", "", false), // one clear round emptied (and unticked) it
+      fieldBuffer("field", "Kiwi", true), // typing into the empty field ticked it
+      fieldBuffer("opt3", "Kiwi", true),
+    );
+    expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], CLEAR, ["Up"]]);
+    expect(keysSent()).not.toContainEqual(["4"]);
+    expect(keysSent()).not.toContainEqual(["Down"]);
+  });
+
+  it("a wrapped field: the park spends one Up per caret line, within its bound, and never Enter", async () => {
+    const tapped = fieldBuffer("field", "", true);
+    const typed = fieldBuffer("field", "Mushroom and", true, "pineapple");
+    const proof = model(typed);
+    expect(proof.phase === "checkbox" && proof.field?.lines).toBe(2);
+    const text = proof.phase === "checkbox" ? (proof.field?.text ?? "") : "";
+    // The first Up moves the caret up a visual line and repaints nothing, so the park's poll reads the
+    // same screen until it gives up; the second Up leaves the field for the option above it.
+    const caretMoveReads = Array.from({ length: 8 }, () => typed);
+    script(tapped, tapped, typed, ...caretMoveReads, fieldBuffer("opt3", "Mushroom and", true, "pineapple"));
+    expect(await typeAnswer(tapped, text)).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["Up"]]);
+  });
+
+  it("a park that never reaches the option row still reports sent, after its bound of Ups and no Enter", async () => {
+    const tapped = fieldBuffer("field", "", true);
+    script(tapped, tapped, fieldBuffer("field", "Kiwi", true));
+    expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
+    // One line of text: the bound is its lines plus three.
+    expect(keysSent()).toEqual([["Up"], ["Up"], ["Up"], ["Up"]]);
+  });
+
+  it("a typed field that reads unticked: exactly ONE Enter, bound, then the tick verified", async () => {
+    const tapped = fieldBuffer("submit", "Mushroom", false);
+    script(
+      tapped,
+      tapped,
+      fieldBuffer("field", "Mushroom", false),
+      fieldBuffer("field", "Mushroom", false),
+      fieldBuffer("field", "", false),
+      fieldBuffer("field", "Kiwi", false), // typed, but unticked
+      fieldBuffer("field", "Kiwi", true), // the Enter ticked it
+      fieldBuffer("opt3", "Kiwi", true),
+    );
+    expect(await typeAnswer(tapped)).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], CLEAR, ["Enter"], ["Up"]]);
+    expect(mockSendKeys.mock.calls[2]![3]).toBe(model(fieldBuffer("field", "Kiwi", false)).regionSignature);
+  });
+
+  it("the tick never comes: an error, and no second Enter", async () => {
+    const tapped = fieldBuffer("field", "", false);
+    script(tapped, tapped, fieldBuffer("field", "Kiwi", false));
+    const res = await typeAnswer(tapped);
+    expect(res.status).toBe("error");
+    expect(keysSent()).toEqual([["Enter"]]);
+  });
+
+  it("the field no longer holds what the person saw: refused, nothing typed, no Enter", async () => {
+    const tapped = fieldBuffer("submit", "Mushroom", false);
+    script(fieldBuffer("submit", "Mushrooms", false));
+    expect(await typeAnswer(tapped)).toEqual({ status: "changed", why: "entry" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
+  it("a park that sees the field change refuses", async () => {
+    const tapped = fieldBuffer("field", "", true);
+    script(tapped, tapped, fieldBuffer("field", "Kiwi", true), fieldBuffer("opt3", "Kiwis", true));
+    expect(await typeAnswer(tapped)).toEqual({ status: "changed", why: "park: drift" });
+    expect(keysSent()).toEqual([["Up"]]);
+  });
+
+  it("a dialog with no field refuses before any read", async () => {
+    const res = await submitMultiSelectIntent({ ...base, multi: model(reviewBuffer()), intent: { kind: "type", text: "Kiwi" } });
+    expect(res).toEqual({ status: "changed" });
+    expect(mockFetchPane).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitMultiSelectIntent — the other intents and the field", () => {
+  it("toggle, escape and nav never type into a focused field: one Up, and no key while it keeps focus", async () => {
+    const screen = fieldBuffer("field", "Kiwi", true);
+    const focused = model(screen);
+    // A standalone multiSelect has no step to navigate to, so its nav is refused before any key.
+    const intents: [MultiSelectIntent, string[][]][] = [
+      [{ kind: "toggle", n: 1 }, [["Up"]]],
+      [{ kind: "escape" }, [["Up"]]],
+      [{ kind: "nav", keys: ["Left"] }, []],
+    ];
+    for (const [intent, keys] of intents) {
+      mockSendKeys.mockClear();
+      script(screen);
+      expect(await submitMultiSelectIntent({ ...base, multi: focused, intent })).toEqual({ status: "changed" });
+      expect(keysSent(), intent.kind).toEqual(keys);
+    }
+  });
+
+  it("toggle takes the field's own digit when it holds text and is not focused", async () => {
+    const screen = fieldBuffer("opt1", "Mushroom", false);
+    script(screen);
+    const res = await submitMultiSelectIntent({ ...base, multi: model(screen), intent: { kind: "toggle", n: 4 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["4"]]);
+  });
+
+  it("the advance walk's bound grows with the field's wrapped lines", async () => {
+    const one = fieldBuffer("opt1", "Mushroom", true);
+    const two = fieldBuffer("opt1", "Mushroom and", true, "pineapple");
+    const wrapped = model(two);
+    expect(wrapped.phase === "checkbox" && wrapped.field?.lines).toBe(2);
+    mockFetchPane.mockResolvedValue(paneWith(one));
+    await submitMultiSelectIntent({ ...base, multi: model(one), intent: { kind: "advance" } });
+    const short = keysSent().length;
+    mockSendKeys.mockClear();
+    mockFetchPane.mockResolvedValue(paneWith(two));
+    await submitMultiSelectIntent({ ...base, multi: model(two), intent: { kind: "advance" } });
+    expect(keysSent().length).toBe(short + 1);
+    expect(keysSent()).not.toContainEqual(["Enter"]);
+  });
 });
 
 describe("multiSelectEquals / multiSelectIdentity", () => {
@@ -336,8 +526,9 @@ describe("submit macro — walk the pointer down onto Submit, then Enter", () =>
 
   it("NEVER Enters when the pointer sits on the free-text row — nudges past it, never activates", async () => {
     const m = model(checkboxBuffer({ pointer: "free" }));
-    // The ❯ parked on "5. [ ] Type something" (the composer row) reads as `field`, a non-Submit row,
-    // so the walk only ever nudges Down — it must never mistake it for Submit and blind-Enter.
+    // The ❯ parked on "5. [ ] Type something" (the answer field) reads as the `field` pointer, a
+    // non-Submit row, so the walk only ever nudges Down — it must never mistake it for Submit and
+    // blind-Enter.
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({ pointer: "free" })));
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "changed" });

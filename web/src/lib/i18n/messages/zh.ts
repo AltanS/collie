@@ -522,6 +522,7 @@ export const zh: Dictionary = {
   "settings.paneOrder.description":
     "活动会把最近发生过事情的窗格放在仪表盘和切换器的顶部。缓存会把提示缓存最快失效的窗格放在顶部。位置则保持终端本身的顺序。",
   "chat.status.feedbackSent": "反馈已发送",
+  "chat.status.answerSent": "回答已发送",
   "chat.status.sent": "已发送",
   "chat.status.menuChanged": "菜单已变动，正在刷新",
   "chat.status.askChanged": "对话框已更改；卡片显示新对话框",
@@ -753,6 +754,21 @@ export const zh: Dictionary = {
   "prompt.feedback.freeText.focused":
     "自由文本输入框已占用终端键盘焦点。此时点击按钮会输入文本而非提交响应，关闭该输入框即可恢复正常功能。",
   "prompt.feedback.freeText.typedPrefix": "正在终端中输入自定义内容：",
+  "prompt.feedback.answer.offer": "输入自己的回答",
+  "prompt.feedback.answer.change": "修改此回答",
+  "prompt.feedback.answer.editorLabel": "你的回答",
+  "prompt.feedback.answer.textAria": "回答内容",
+  "prompt.feedback.answer.placeholder": "写下你的回答…",
+  "prompt.feedback.answer.help": "输入到问题的回答栏中，并作为你的回答发送。",
+  "prompt.feedback.answer.helpWizard": "输入到此问题的回答栏中。发送后即作答并进入下一个问题。",
+  "prompt.feedback.answer.helpMulti":
+    "将你的回答添加为已勾选的选项；完成后点按提交（或下一步）。",
+  "prompt.feedback.answer.send": "发送回答",
+  "prompt.feedback.answer.sending": "正在输入你的回答…",
+  "prompt.feedback.answer.focused": "回答栏正在终端中占用键盘，这些按钮会把内容输入到栏中。你仍可以在下方发送自己的回答。",
+  "prompt.feedback.answer.typedPrefix": "回答栏中：",
+  "prompt.feedback.answer.fieldMoved": "终端中的回答栏现在是“{text}”。再次发送即可替换。",
+  "prompt.feedback.answer.fieldEmptied": "终端中的回答栏已被清空。再次发送即可填入。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane 设置",
@@ -1482,6 +1498,10 @@ export const zh: Dictionary = {
   "promptAction.feedback.empty": "内容为空",
   "promptAction.feedback.boxNotOpened": "反馈输入框未能打开，请检查对应窗格",
   "promptAction.feedback.notArrived": "反馈未能送达，未提交任何更改",
+  "promptAction.answer.fieldNotReached": "无法定位到回答栏，未发送任何内容",
+  "promptAction.answer.notCleared": "无法清空回答栏，未发送任何内容",
+  "promptAction.answer.notArrived": "回答未出现在回答栏中，未提交任何内容",
+  "promptAction.answer.notTicked": "回答已输入，但其所在行未被勾选。请在卡片上检查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "系统繁忙，另一段录音正在转写。请稍后重试。",

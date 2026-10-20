@@ -1,0 +1,30 @@
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mTesting a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mwarm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mverbatim, then stop.[0m[48;2;55;55;55m                                                                                                                                     [0m
+
+[0m[38;2;153;153;153m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which color do you prefer? → Teal, like the sea[0m
+
+[0m[38;2;255;255;255m● [0mThe user answered: "Which color do you prefer?"="Teal, like the sea"
+ 
+[0m[38;2;153;153;153m✻ Brewed for 11s · done 1:48 AM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mNow call AskUserQuestion exactly once with THREE questions (multiSelect false on all): Q1 'Which fruit?' header 'Fruit' options Apple, Pear; Q2 'Which [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdrink?' header 'Drink' options Tea, Coffee; Q3 'Which city?' header 'City' options Paris, Rome. After I answer, reply with only the exact tool result [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtext verbatim, then stop.[0m[48;2;55;55;55m                                                                                                                                [0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m← [0m[38;2;0;0;0m[48;2;177;185;249m ☒ Fruit [0m ☒ Drink  ☒ City  ✔ Submit  →
+
+[0m[1m[38;2;255;255;255mWhich fruit?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mApple[0m
+     [0m[38;2;153;153;153mA crisp fruit[0m
+  [0m[38;2;153;153;153m2.[0m Pear
+     [0m[38;2;153;153;153mA soft, sweet fruit[0m
+  [0m[38;2;153;153;153m3. [0mMango [0m[38;2;78;186;101m✔[0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate · Esc to cancel[0m

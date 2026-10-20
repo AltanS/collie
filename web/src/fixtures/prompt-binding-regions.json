@@ -455,6 +455,106 @@
     "region": "←  ☒ Next step  ✔ Submit  →\n\nWhich of the larger items should I take on after the changes ship?\n\n  1. [✔] New checks first (Recommended)\n         Add the four checks the review asked for, so that the later items can be proven. Cheap: about 1-2 USD per full run.\n  2. [✔] Quick script fixes\n         Item 5 (one path resolver, errors name the expected form) and item 6 (every refusal prints the full next command). Low risk.\n  3. [✔] No second planning pass\n         Item 4: the plan is kept after the review and reused by the next run. Saves about 40% of the planning tokens.\n  4. [✔] Step cap + new commands\n         Item 1 (step cap, split tasks over 5 items) and items 3 and 7 (check --run, plan --json, commit-check). Biggest saving, medium risk, a design change.\n❯ 5. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this"
   },
   {
+    "fixture": "claude--v2299-ask-field-single-focused-empty.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n  3. Blue\n     A cool color\n❯ 4. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-three-lines.txt",
+    "detector": "prompt-select",
+    "region": "❯ Call AskUserQuestion once more with ONE question: 'Which animal?' header 'Animal' options Cat, Dog. multiSelect false. Then reply with only the exact    \n  tool result verbatim.                                                                                                                                    \n\n● User answered Claude's questions:\n  ⎿  · Which animal? → A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of the day and \n     sleeps in the Otter\n\n● The user answered: \"Which animal?\"=\"A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of\n  the day and sleeps in the Otter\"\n\n✻ Crunched for 10s · done 1:51 AM\n \n❯ Call AskUserQuestion once more with ONE question: 'Which tree?' header 'Tree' options Oak, Pine. multiSelect false. Then reply with only the exact tool  \n  result verbatim.3                                                                                                                                        \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Tree \n\nWhich tree?\n\n  1. Oak\n     A broad hardwood tree\n  2. Pine\n     An evergreen conifer\n❯ 3. one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three\n     four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three four five six\n     seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-typed.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n  3. Blue\n     A cool color\n❯ 4. Teal, like the sea\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-wrapped.txt",
+    "detector": "prompt-select",
+    "region": "❯ Now call AskUserQuestion exactly once with THREE questions (multiSelect false on all): Q1 'Which fruit?' header 'Fruit' options Apple, Pear; Q2 'Which   \n  drink?' header 'Drink' options Tea, Coffee; Q3 'Which city?' header 'City' options Paris, Rome. After I answer, reply with only the exact tool result    \n  text verbatim, then stop.                                                                                                                                \n\n● User answered Claude's questions:\n  ⎿  · Which fruit? → Kiwi\n     · Which drink? → Tea\n     · Which city? → Lisbon\n\n● The user answered: \"Which fruit?\"=\"Kiwi\", \"Which drink?\"=\"Tea\", \"Which city?\"=\"Lisbon\"\n   \n✻ Worked for 6s · done 1:51 AM\n   \n❯ Call AskUserQuestion once more with ONE question: 'Which animal?' header 'Animal' options Cat, Dog. multiSelect false. Then reply with only the exact    \n  tool result verbatim.                                                                                                                                    \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Animal \n\nWhich animal?\n\n  1. Cat\n     A small domestic feline\n  2. Dog\n     A loyal domestic canine\n❯ 3. A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of the day and sleeps in the\n     branches when it is warm, which seems like a very sensible way to live if you ask me, honestly the best of all the animals\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-typed-off-row.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n❯ 3. Blue\n     A cool color\n  4. Teal, like the sea\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-focused-empty.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-focused-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n❯ 1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n  3. Mango ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-focused.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango  ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-cleared.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something. ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-review-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nReview your answers\n \n ● Which fruit?\n   → Mango\n ● Which drink?\n   → Tea\n ● Which city?\n   → Lisbon\n\nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
+  },
+  {
+    "fixture": "claude--v2283-multiselect-type-something-focused.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colors  ✔ Submit  →\n\nWhich colors?\n\n  1. [ ] Red\n         A warm, bright color.\n  2. [ ] Blue\n         A cool, calm color.\n  3. [ ] Green\n         A natural, fresh color.\n❯ 4. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-ticked-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n❯ 1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [✔] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-cleared.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-pointer-submit.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [ ] Mushroom\n❯    Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Type something\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
     "fixture": "claude--v2283-permission-amend-focused.txt",
     "detector": "prompt-select",
     "region": "  follow text inside a paste when you ask me to.\n  Do you want me to reply \"OK\"?\n\n✻ Worked for 2s · done 8:55 AM\n\n❯ Run with Bash as ONE call: echo \"a\" >           \n  /tmp/collie-dialog-debug/amend.txt              \n\n● Writing \"a\" to amend.txt\n  ⎿  $ echo \"a\" > \n     /tmp/collie-dialog-debug/amend.txt\n  \n──────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — \n choose \"switch to auto mode\" below\n\n   echo \"a\" >\n   /tmp/collie-dialog-debug/amend.txt\n   Write \"a\" to amend.txt\n     \n Do you want to proceed?\n ❯ 1. Yes, and tell Claude what to do next\n   2. Yes, and always allow access to\n      /tmp/collie-dialog-debug from this project\n   3. Yes, and switch to auto mode · auto mode \n      handles these prompts for you\n   4. No\n  \n Esc to cancel"
