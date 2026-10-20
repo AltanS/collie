@@ -6,7 +6,7 @@ import type { StyledLine } from "../../blocks";
 import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel } from "../prompt-model";
-import { findReadPreview, findWritePreview } from "./file-preview";
+import { findReadPreview, findWritePreview, panelPath } from "./file-preview";
 import { frameRows, isDivider, readPanelTail } from "./markers";
 
 /** A complete captured approval panel and its first row in the terminal buffer. */
@@ -89,7 +89,10 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     if (capability === "fs_write" && title !== " Write File requires approval" && title !== " Replace in File requires approval") return null;
     // The permission body names only the path. Bind the pending tool's range or full diff too:
     // a successor edit of the same file otherwise has the very same permission panel.
-    const preview = capability === "fs_read" ? findReadPreview(rows, panelTop) : findWritePreview(rows, panelTop);
+    // The preview must also name the panel's own path, or a preview of another file could bind.
+    const path = panelPath(body);
+    if (path === null) return null;
+    const preview = capability === "fs_read" ? findReadPreview(rows, panelTop, path) : findWritePreview(rows, panelTop, path);
     if (preview === null || rows.slice(preview.start, preview.end + 1).some(unsafeBody)) return null;
     startLine = preview.start;
     subject = [...lines.slice(preview.start, preview.end + 1), ...subject];

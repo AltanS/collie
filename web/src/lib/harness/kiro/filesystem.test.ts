@@ -21,6 +21,12 @@ const changed = (name: string, from: string, to: string): StyledLine[] => {
   expect(text).toContain(from);
   return linesOf(text.replace(from, to));
 };
+// A path edit has to reach the preview header and the panel alike, or the binding refuses it.
+const changedEverywhere = (name: string, from: string, to: string): StyledLine[] => {
+  const text = load(name).map(lineText).join("\n");
+  expect(text.split(from).length).toBeGreaterThan(2);
+  return linesOf(text.replaceAll(from, to));
+};
 
 // Tool IDs and capabilities are the ones kiro-cli 2.32.0 prints on its panels. The
 // permission capability is not the tool ID: both fs_write and str_replace use fs_write.
@@ -95,7 +101,7 @@ describe("installed V3 filesystem approvals", () => {
   ])("%s changes identity when its subject changes", (name, from, to) => {
     // Given: a captured approval whose read range, content or path changes.
     const initial = modelOf(load(name));
-    const successor = modelOf(changed(name, from, to));
+    const successor = modelOf(from.endsWith(".txt") ? changedEverywhere(name, from, to) : changed(name, from, to));
     // When: the generic walk identity compares the two requests.
     // Then: a successor is never authorized by pointer movement.
     expect(promptsSameIdentity(initial, successor)).toBe(false);
@@ -138,9 +144,39 @@ describe("installed V3 filesystem approvals", () => {
     expect(kiroAdapter.composerReady?.(panel)).toBe(false);
   });
 
+  it.each([
+    ["read-allow-w120", "header names secrets.env", "/read-once.txt (L1-1)", "/secrets.env (L1-1)"],
+    ["read-allow-w60", "wrapped header names secrets.env", "/read-once.txt (L1-1)", "/secrets.env (L1-1)"],
+    ["read-allow-w120", "header name only ends like the panel's", "/read-once.txt (L1-1)", "/unread-once.txt (L1-1)"],
+    ["read-wrapped-allow-w60", "wrapped header ends in another name", "\n  approval resource rows.txt (L1-1)", "\n  approval resource cols.txt (L1-1)"],
+    ["replace-allow-w120", "header names other.txt", "files-v3/replace.txt", "files-v3/other.txt"],
+    ["replace-allow-w120", "summary names other.txt", "removed 1 line in replace.txt", "removed 1 line in other.txt"],
+    ["write-allow-w60", "wrapped header names other.txt", "/write-once.txt\n", "/other.txt\n"],
+    ["write-allow-w120", "summary names other.txt", "added 1 line in write-once.txt", "added 1 line in other.txt"],
+  ])("%s refuses a preview of another file above the panel: %s", (name, _case, from, to) => {
+    // Given: a real file approval whose preview header or write summary names another path.
+    const lines = changed(name, from, to);
+    // When: the adapter binds the preview to the panel.
+    // Then: the diff or range of one file cannot ride on the approval of another.
+    expect(kiroAdapter.buildBlocks(lines).some((block) => block.kind === "prompt-select")).toBe(false);
+    expect(kiroAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it.each([
+    "read-allow-w120", "read-allow-w60", "read-wrapped-allow-w120", "read-wrapped-allow-w60",
+    "write-allow-w120", "write-allow-w60", "replace-allow-w120", "replace-allow-w60",
+    "write-lines-deny-w60", "write-trusted-allow-w120", "replace-trusted-allow-w120",
+  ])("%s binds the unchanged preview that names the panel's own path", (name) => {
+    // Given: a real capture whose absolute preview path ends with the panel's relative path,
+    // wrapped between words or inside a word at 60 columns.
+    // When: the adapter binds the preview to the panel.
+    // Then: the captured request still lifts with its preview in the subject.
+    expect(modelOf(load(name)).subject?.map(lineText).join("\n")).toContain("↓ ");
+  });
+
   it("declines an oversized visible subject", () => {
     // Given: a captured resource changed to exceed the adapter's bounded region size.
-    const lines = changed("read-allow-w120", "read-once.txt", "a".repeat(32_001));
+    const lines = changedEverywhere("read-allow-w120", "read-once.txt", "a".repeat(32_001));
     // When: the region is considered for a card.
     // Then: it stays raw rather than hiding part of the subject to fit.
     expect(kiroAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
