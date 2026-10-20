@@ -3076,26 +3076,6 @@
    "version": "unversioned",
    "state": "idle"
   },
-  "muse--menu-effort-filter.txt": {
-   "harness": "muse",
-   "version": "1.4.10",
-   "state": "dialog"
-  },
-  "muse--menu-export.txt": {
-   "harness": "muse",
-   "version": "1.4.10",
-   "state": "dialog"
-  },
-  "muse--menu-model-moved.txt": {
-   "harness": "muse",
-   "version": "1.4.10",
-   "state": "dialog"
-  },
-  "muse--menu-model.txt": {
-   "harness": "muse",
-   "version": "1.4.10",
-   "state": "dialog"
-  },
   "muse--palette-exact.txt": {
    "harness": "muse",
    "version": "unversioned",
