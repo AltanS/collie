@@ -1570,6 +1570,14 @@
   }
  },
  {
+  "fixture": "claude--v2304-ask-no-question-mark--w135.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2304-ask-no-question-mark-plain--w135.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

@@ -1096,6 +1096,16 @@
    "version": "2.1.303",
    "state": "idle"
   },
+  "claude--v2304-ask-no-question-mark--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
+  "claude--v2304-ask-no-question-mark-plain--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
   "claude--v2302-turn-ended-yn--w119.txt": {
    "harness": "claude",
    "version": "2.1.302",

@@ -54,6 +54,10 @@ const KNOWN_FOREIGN_CLAIMS = new Set([
   // A Japanese AskUserQuestion on 2.1.296 (issue 543): its question ends in a fullwidth "？", which agy
   // reads as a question now that both readers share hasQuestionMark. No agy pane paints it.
   "claude--v2296-question-fullwidth--w150.txt",
+  // A Claude AskUserQuestion on 2.1.304 whose question has no "?" at all: both readers take the
+  // question under the single-question chip, and the scrubbed transcript names Claude nowhere. No agy
+  // pane paints it.
+  "claude--v2304-ask-no-question-mark-plain--w135.txt",
 ]);
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
