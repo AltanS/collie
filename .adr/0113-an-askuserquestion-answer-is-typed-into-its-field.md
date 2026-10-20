@@ -62,3 +62,16 @@ keystroke at a time (`ASK_FIELD_NOTES.md`):
   of the step.
 - Revisit this if Claude Code changes what the field's digit does on a filled field, or adds a
   single key that clears the whole field; both are in `ASK_FIELD_NOTES.md`'s re-walk list.
+
+## Addendum (2026-10-20, maintainer)
+
+This addendum answers the two questions from the pull request thread. Nothing above is rewritten.
+
+1. **Receipt.** A typed answer goes out through the one key path, keys plus a reply. It carries
+   no request id, like every key tap today. The Ask v1 receipt is not used. The long-term design
+   lists key taps as one open item for all of them, not new here.
+2. **Claude only.** The feature is on only when the reader emits `purpose: "answer"` and a
+   `field`. Today only the Claude reader does that. The measured keys live in the shared action
+   modules: `ctrl+u ctrl+k`, the digit behaviour, and `Enter` toggling the tick. A second harness
+   that emits `field` must first measure its own keys. Those keys must then move into profile data
+   before the feature is switched on for that harness.
