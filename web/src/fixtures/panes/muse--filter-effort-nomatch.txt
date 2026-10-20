@@ -1,0 +1,9 @@
+── Voice input (⌥ + v to start) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Effort  |  Select Meta reasoning effort
+  filter: xh1
+
+  no matches for "xh1" — Backspace to clear
+
+  ↑↓ move · type to filter · enter confirm · esc go back

@@ -2186,6 +2186,10 @@ signature.
 | `muse--slash-palette-1410.txt` | Bare `/` on Muse Code 1.4.10 (byte-faithful live capture, 2026-10-18, #519): seven command rows (`/bug` pointed, bold) and `↓ 72 more` painted inside the box between the prompt row and the bottom rule. The profile's inside `commandList` reads the palette pointing at `/bug`, so a bare `/` is no own list and the screen stays not-free; with the pointed command typed in full it reads as the typed command's own list (MUSE-03) | `idle` |
 | `muse--running-command-1410.txt` | Live mid-turn 1.4.10: `◇ Running command · Run sleep 20 — running (10s · esc to interrupt)` + `└ (ctrl+b to send to background)`, framed empty box below. Reads running — the first live Muse running capture; `muse--turn-running.txt` above is derived (#519) | `working` |
 | `muse--running-checking-1410.txt` | Same turn after the reply row printed: `◆ DONE-1410` and still `◇ Double checking (32s · esc to interrupt)` above the box. Reads running (#519) | `working` |
+| `muse--filter-effort.txt` | `/effort` open: bare `❯`, bottom rule, `Effort  |  Select Meta reasoning effort`, `filter`, five rows with `⟩ xhigh … current`, footer `↑↓ move · type to filter · enter confirm · esc go back`; the statusline is gone (the picker holds its slot). Not lifted: the composer refuses and the unread-dialog card offers Escape (MUSE-16) | `blocked` |
+| `muse--filter-effort-typed.txt` | Same picker after typing `xh`: `filter: xh`, one matching row left, the `❯` above still bare — typed text lands in the filter, never the box | `blocked` |
+| `muse--filter-effort-nomatch.txt` | After typing `1` next: `filter: xh1`, `no matches for "xh1" — Backspace to clear`, no pointed row — the digit-is-filter-text proof | `blocked` |
+| `muse--filter-hud.txt` | `/hud` open: `filter` under the rule, toggle rows, footer `↑↓ move · enter/space toggle · type to filter · esc close`, and the statusline still painted below the picker. (Its typed twin is not a fixture — see the provenance note below; the adapter test rebuilds it from these rows) | `blocked` |
 
 **Nothing was approved blindly.** The one approved command was `ls -la` on the
 empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
@@ -2211,6 +2215,19 @@ of the seven files returns nothing else. What was spent: one real turn (`sleep 2
 reads submitted nothing and were cleared with Ctrl+U, Backspace and Escape. These captures are
 capture-grade evidence only: Muse has no harness-lab entry (see the lab README), so neither the
 profile range nor `probe.status` moved with them.
+
+The four `muse--filter-*` files of 2026-10-18 (MUSE-16, issue 519) are visible-screen reads
+(`herdr pane read --source visible`, plain text — no SGR, and the adapter matches shape, never
+colour) of a scratch Muse pane in `/private/tmp/collie-audit/work`, cut at the Voice rule: the
+transcript above it held account/billing panes and was dropped, so each file is the probed tail
+verbatim and nothing more. The probe typed only filter text and arrows inside the pickers and
+left both with Escape; effort (`xhigh`) and every HUD flag were verified unchanged afterwards,
+and Enter was never pressed inside a picker. The typed `/hud` screen (`filter: eff`, two rows
+left) was probed but is deliberately not a fixture: under a foreign Surface profile its few
+under-rule rows walk as a statusline and the generic corpus reads it free (its own profile
+reads it unreadable, and the Muse adapter refuses it), so the adapter test rebuilds that
+geometry from `muse--filter-hud.txt` instead. Full probe log:
+[`DIALOG_NOTES.md`](../../lib/harness/muse/DIALOG_NOTES.md) §7.
 
 
 ## opencode corpus (captured 2026-09-26, opencode 1.18.32, herdr 0.9.0, private Herdr session)

@@ -1,0 +1,16 @@
+── Voice input (⌥ + v to start) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  HUD
+  filter
+
+⟩ Model                 On
+  Effort                On
+  Path                  On
+  Permissions           On
+  Context               Off
+  Branch                Off
+  ↓ 3 more
+  Current model name
+  ↑↓ move · enter/space toggle · type to filter · esc close
+  muse-wonder-full-1.0 · xhigh · /private/tmp/collie-audit/work · YOLO

@@ -3081,6 +3081,26 @@
    "version": "unversioned",
    "state": "draft"
   },
+  "muse--filter-effort-nomatch.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-effort-typed.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-effort.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-hud.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
   "muse--fresh-idle.txt": {
    "harness": "muse",
    "version": "unversioned",
