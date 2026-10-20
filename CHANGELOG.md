@@ -44,7 +44,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
-- **Muse Code 1.4.10 has live captures in the fixture corpus.** Seven byte-faithful screens (idle, done, draft, probe draft, bare slash palette, two running turns) are labelled and pinned in the Muse adapter tests. The Muse profile range does not move, because the harness lab cannot run Muse yet. Thanks @jpcarranza94 (#520).
+- **Muse Code 1.4.10 has live captures in the fixture corpus.** Six byte-faithful screens (idle, done, draft, probe draft, two running turns) are labelled and pinned in the Muse adapter tests. The Muse profile range does not move, because the harness lab cannot run Muse yet. Thanks @jpcarranza94 (#520).
 
 ## [1.23.1] - 2026-10-20
 
