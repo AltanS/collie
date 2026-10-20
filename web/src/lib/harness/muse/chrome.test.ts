@@ -22,6 +22,8 @@ function lines(name: string) {
 describe("extractInputDraft — the verify half of type-then-verify", () => {
   it("reads the stranded single-line draft verbatim", () => {
     expect(extractInputDraft(lines("muse--draft-single.txt"))).toBe("hello muse draft");
+    // Live 1.4.10 pair (#510): the prompt hint disappears once real text is typed.
+    expect(extractInputDraft(lines("muse--prompt-hint-typed-1410.txt"))).toBe("hel");
   });
 
   it("folds a wrapped draft with the single space FOLD_SEAM expects", () => {
@@ -101,6 +103,10 @@ describe("extractInputDraft — the verify half of type-then-verify", () => {
     expect(extractInputDraft(lines("muse--tip-loop.txt"))).toBeNull();
     // The tip rotates per context: the paste variant is a placeholder too (#278).
     expect(extractInputDraft(lines("muse--tip-paste.txt"))).toBeNull();
+    // A prompt suggestion's words are the model's, in no text list: the placeholder colour alone
+    // keeps it from reading as a stranded draft (#510).
+    expect(extractInputDraft(lines("muse--prompt-hint.txt"))).toBeNull();
+    expect(extractInputDraft(lines("muse--prompt-hint-1410.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-ls.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--approval-network.txt"))).toBeNull();
     expect(extractInputDraft(lines("muse--ask-color.txt"))).toBeNull();

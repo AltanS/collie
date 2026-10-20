@@ -60,6 +60,8 @@ class FakePane {
   transcript = ["> an earlier question", "An answer from the agent, two rows", "of it."];
   box = "";
   placeholder = 'Try "fix the failing tests"';
+  /** How the empty box's placeholder is painted: the faint attribute, or a grey of its own (Muse's tip). */
+  placeholderPaint: "dim" | "fg" = "dim";
   status = ["  sonnet · project · main"];
   /** The rows under the box while it holds text, when they differ (Claude Code's footer follows the box). */
   statusWithText: string[] | null = null;
@@ -160,7 +162,7 @@ class FakePane {
       const lines = this.box.split("\n");
       return lines.map((line, i) => (i === lines.length - 1 ? `${line}\u001b[7m \u001b[0m` : line));
     }
-    if (this.box === "") return [`❯ \u001b[2m${this.placeholder}\u001b[0m`];
+    if (this.box === "") return [`❯ ${this.placeholderPaint === "fg" ? "\u001b[38;2;175;177;179m" : "\u001b[2m"}${this.placeholder}\u001b[0m`];
     if (this.bangPrompt && this.box.startsWith("!")) return [`! ${this.box.slice(1)}`];
     const rows: string[] = [];
     this.box.split("\n").forEach((line, li) => {
@@ -2354,6 +2356,21 @@ describe("S0", () => {
     pane.placeholder = "Press up to edit queued messages";
     pane.beforeRead = (p, n) => {
       if (n === 2) p.placeholder = 'Try "fix the failing tests"';
+    };
+    expect((await send("hello there, agent")).receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("a suggestion painted in the placeholder colour is no draft, and its change between the reads no moved box (#510)", async () => {
+    // Muse's prompt hint: ghost text in rgb(175,177,179), no faint attribute, words no text list
+    // names. The profile names the colour, so the box reads free; before, every send was refused
+    // draft_present.
+    const { pane, send } = rig({
+      edit: (profile) => ({ ...profile, idle: { ...profile.idle, placeholders: { ...profile.idle.placeholders, fg: ["rgb(175,177,179)"] } } }),
+    });
+    pane.placeholderPaint = "fg";
+    pane.placeholder = "Run the test suite and fix any failures";
+    pane.beforeRead = (p, n) => {
+      if (n === 2) p.placeholder = "Now open a pull request for it";
     };
     expect((await send("hello there, agent")).receipt).toMatchObject({ outcome: "sent" });
   });
