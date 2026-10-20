@@ -69,6 +69,13 @@
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
 // message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
 //
+// A command the harness runs at once in a turn (`keys.commandsRunInTurn`, measured in the lab: OMP's
+// `/goal`) is neither queued nor held. It goes on the same probed path into the turn, but the commit
+// presses the command keys, because the harness takes the command before the turn sees any text. The
+// receipt says `sent`, never `queued`. It needs the trust a queued send needs (turnTrusted); on an
+// unread version or a revoked range the command is held as before. It does not wait behind the pane's
+// held sends either: it acts on the session now, so a chain of turns cannot keep it out.
+//
 // The held send (M56 spec 15): a send that would be refused `turn_running` (a harness that does not
 // take it during a turn) is held instead when the protocol has a hold queue (holds.ts). The receipt says
 // `held`; the poll releases the oldest held request of a pane the first time its Surface reads free, as
@@ -844,13 +851,16 @@ function commandQueues(match: ProfileMatch | null): boolean {
 
 /**
  * The keys that commit a send: the profile's submit keys, or its queue key for a send that goes into
- * a running turn on a harness whose Enter does not queue. Enter never goes into such a turn.
+ * a running turn on a harness whose Enter does not queue, so Enter never steers such a turn. A command
+ * the harness runs at once in a turn ({@link runsInTurnEntry}) steers nothing: the turn gate marks it,
+ * and it takes the command keys, as on an idle box.
  */
 function commitKeys(state: RunState): readonly string[] {
   const keys = state.match?.profile.keys;
   if (keys === undefined) return GENERIC_SUBMIT;
+  if (state.runsInTurn) return keys.commandSubmit ?? keys.submit;
   // The queued path on a harness whose Enter does not queue: S0 read a turn, or the rows above moved
-  // while Collie typed. Only the queue key goes in; no rule can route the submit keys there.
+  // while Collie typed. Only the queue key goes in; no other rule routes the submit keys there.
   if ((state.queued || state.streamed) && keys.enterWhileRunning !== "queues") {
     if (keys.queueKey === undefined) throw new Ended("typed_not_submitted", "changed", { detail: TURN_RUNNING });
     return [keys.queueKey];
@@ -880,10 +890,13 @@ function labelFromWitness(match: ProfileMatch | null): boolean {
 /**
  * Why a request may not go into a running turn, or null when it may: a command the profile never lets
  * wait (`keys.neverHeld`) is refused first, on any harness, so that no later refusal can turn it into a
- * held send; the harness must queue; nothing may be open at the box (a popup above or under it that
- * the frame walks past, read by the frameless cues); and what the box would hold once Enter goes out
- * must not be a command (a request in mode command, or a box text plus the new text that starts with
- * a reserved lead). Discard always may, and is never a never-held command.
+ * held send; the harness must queue, unless the command is one it runs at once in a turn
+ * ({@link runsInTurnEntry}); nothing may be open at the box (a popup above or under it that the frame
+ * walks past, read by the frameless cues); and what the box would hold once Enter goes out must not be
+ * a command (a request in mode command, or a box text plus the new text that starts with a reserved
+ * lead) unless the harness queues commands or runs that one at once. Discard always may, and is never
+ * a never-held command. A command the harness runs at once is marked on the state (`runsInTurn`): the
+ * commit then presses the command keys.
  *
  * `cues` says which frameless read stands for "open at the box". At S0 it is the whole screen
  * (`bareCues`). After the text is typed it is the rows under the box only (`belowCues`): the turn's
@@ -905,9 +918,14 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
     state.neverHold = true;
     return new Ended("refused", "turn_running", { surface, detail: NEVER_HELD });
   }
-  if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+  const atOnce = request.mode !== "discard" && isCommand && runsInTurnEntry(goesOut, state.match) !== null;
+  if (!atOnce && !queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
   if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
   if (request.mode === "discard") return null;
+  if (atOnce) {
+    state.runsInTurn = true;
+    return null;
+  }
   if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface, detail: COMMAND_IN_TURN });
   return null;
 }
@@ -915,9 +933,11 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
 /**
  * The turn rule of a manual send on a harness whose Enter does not queue (it steers the turn, or no lab
  * run measured it): no box was found to read the turn from, so any running sign on the screen counts.
- * Then a command the profile never lets wait is refused first, and otherwise the send takes the queue
- * key (`"queue"`), or is refused when the profile names none (or the turn holds a command). Null when
- * the rule does not apply or no running sign shows. Enter never steers a turn by accident.
+ * Then a command the profile never lets wait is refused first, a command the harness runs at once in a
+ * turn ({@link runsInTurnEntry}) goes ahead marked `runsInTurn` (the command keys), and otherwise the
+ * send takes the queue key (`"queue"`), or is refused when the profile names none (or the turn holds a
+ * command). Null when the rule does not apply or no running sign shows. Enter never steers a turn by
+ * accident.
  */
 function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
   const profile = state.match?.profile;
@@ -931,6 +951,10 @@ function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
   if (isCommand && neverHeldEntry(state.request.text, state.match) !== null) {
     state.neverHold = true;
     return new Ended("refused", "turn_running", { surface: snap.surface, detail: NEVER_HELD });
+  }
+  if (isCommand && runsInTurnEntry(state.request.text, state.match) !== null) {
+    state.runsInTurn = true;
+    return "queue";
   }
   if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: TURN_RUNNING });
   if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: COMMAND_IN_TURN });
@@ -977,6 +1001,22 @@ export function neverHeldEntry(text: string, match: ProfileMatch | null): string
   const t = text.trim();
   for (const entry of list) {
     if (entry.length === 1 ? t.startsWith(entry) : t === entry || (t.startsWith(entry) && /\s/u.test(t.charAt(entry.length)))) return entry;
+  }
+  return null;
+}
+
+/**
+ * The profile's entry in `keys.commandsRunInTurn` that a command matches, or null: the command word
+ * alone or followed by white space (`/goal`, `/goal pause`, never `/goals`). Only where the profile may
+ * be trusted with a running turn at all ({@link turnTrusted}): a version the binary reported, on a range
+ * that is not revoked. A provisional version borrows the list as it borrows the queue key; an unread
+ * version or a revoked range matches nothing, so such a command is held as before.
+ */
+export function runsInTurnEntry(text: string, match: ProfileMatch | null): string | null {
+  if (!turnTrusted(match)) return null;
+  const t = text.trim();
+  for (const entry of match.profile.keys.commandsRunInTurn ?? []) {
+    if (t === entry || (t.startsWith(entry) && /\s/u.test(t.charAt(entry.length)))) return entry;
   }
   return null;
 }
@@ -1458,6 +1498,12 @@ interface RunState {
   belowMoved: boolean;
   /** S2 or the late read saw the harness's queued row with the text ({@link showsQueued}). */
   witnessed: boolean;
+  /**
+   * A turn gate let a command through that the harness runs at once in a turn
+   * ({@link runsInTurnEntry}). It rides the turn path's reads (`queued` or `streamed` say how it got
+   * there), but the commit presses the command keys and the receipt never says `queued`.
+   */
+  runsInTurn: boolean;
   /** The read before the latest one, for the compares that ask how the screen moved from read to read. */
   previousRead: Snap | null;
   /** The latest read. */
@@ -1656,7 +1702,7 @@ export class SendProtocol {
     // The lines as they were written: the harness reports what it took, control bytes and markers cut.
     const promptHash = this.deps.store.hashText(normalizePrompt(sendLines(state.request.text).join("\n")));
     const open: OpenSend = { id: state.record.id, paneId: state.target.paneId, promptHash, at, key: this.keyOf(state), settled: false, effective: false };
-    this.openSends.push(state.queued ? { ...open, queued: true } : open);
+    this.openSends.push(state.queued && !state.runsInTurn ? { ...open, queued: true } : open);
   }
 
   /** At settle: a matched `sent` becomes `effective`; a `sent` or `unknown` stays open; any other end closes it. */
@@ -1665,7 +1711,7 @@ export class SendProtocol {
     if (entry === undefined) return outcome;
     // A witness after Enter (S2, or the late read) can find the send queued behind a turn: the
     // receipt then waits the queued window for its prompt edge.
-    if (state.queued) entry.queued = true;
+    if (state.queued && !state.runsInTurn) entry.queued = true;
     if (entry.effective && (outcome === "sent" || outcome === "unknown")) {
       this.openSends.splice(this.openSends.indexOf(entry), 1);
       return "effective";
@@ -1721,10 +1767,13 @@ export class SendProtocol {
     // A pane with held sends: a new message or command joins the end of its queue, it never jumps. A
     // manual send joins too: the screen the person confirmed is not the one its turn will come on.
     // A pane with no profile never holds: its send goes in blind (see the header), so it skips this.
+    // A command the harness runs at once in a turn (runsInTurnEntry) does not join: it acts on the
+    // session now, and turns that follow each other with no free read (a goal that chains its turns)
+    // would keep the sends ahead of it, and so the command too, waiting.
     const holds = this.deps.holds;
     const joins = holds !== undefined && JOINS.has(request.mode) && holds.waiting(target.session, target.paneId).length > 0;
     const match = joins ? await this.deps.profile(target.harness) : null;
-    if (match !== null) {
+    if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
@@ -2153,6 +2202,7 @@ export class SendProtocol {
       streamed: false,
       belowMoved: false,
       witnessed: false,
+      runsInTurn: false,
       previousRead: null,
       lastRead: null,
       stepStart: at,
@@ -2186,7 +2236,8 @@ export class SendProtocol {
     const receipt: ReceiptDraft = { ...base };
     if (reason !== undefined) receipt.reason = reason;
     if (cap !== undefined) receipt.cap = cap;
-    const queued = labelFromWitness(state.match) ? state.witnessed : state.queued;
+    // A command the harness ran at once in the turn waits for nothing, so it is never `queued`.
+    const queued = !state.runsInTurn && (labelFromWitness(state.match) ? state.witnessed : state.queued);
     if (queued && (outcome === "sent" || outcome === "effective")) receipt.queued = true;
     if ((outcome === "refused" || outcome === "typed_not_submitted") && note !== undefined) {
       const detail = reason === "write_failed" && outcome === "refused" ? WRITE_FAILED : note.detail ?? (outcome === "typed_not_submitted" && reason !== undefined ? typedDetail(reason) : undefined) ?? reason;
@@ -2655,7 +2706,8 @@ export class SendProtocol {
    * refuses or would hold gets no commit key: it ends `typed_not_submitted` with its text in the box
    * ({@link TURN_STARTED}), and nothing is held or typed again. A send the rule allows goes ahead as
    * before; on a harness whose Enter does not queue it takes the queue key, as at S0, so Enter never
-   * steers the turn. The rule's cue part reads S0's rows, as in aboveMovedInTurn: what may stand at the
+   * steers the turn, and a command the harness runs at once in a turn takes the command keys, as at
+   * S0. The rule's cue part reads S0's rows, as in aboveMovedInTurn: what may stand at the
    * box once the text is typed is the S1 compare's to say (a command's own list under the box is no
    * dialog). A send S0 already put on the queued path met the rule there and skips this.
    */
