@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
-import { AnswerFieldSurface, answerFieldCopy, useAnswerEditor } from "@/components/answer-field-surface";
+import { AnswerFieldSurface, answerFieldCopy, stepOf, useAnswerEditor } from "@/components/answer-field-surface";
 import { AnswerList } from "@/components/answer-list";
 import { WizardStepper } from "@/components/wizard-stepper";
 import type { StyledLine, WizardModel, WizardOption } from "@/lib/blocks";
@@ -63,6 +63,7 @@ export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneI
   const [sending, setSending] = useState<string | null>(null);
   const editor = useAnswerEditor();
   const field = wizard.phase === "question" ? wizard.field : undefined;
+  const asked = { question: wizard.phase === "question" ? wizard.question : "", step: stepOf(wizard.steps) };
   const locked = Boolean(disabled) || sending !== null || (field?.focused ?? false);
   const answerLocked = Boolean(disabled) || offline || sending !== null;
 
@@ -124,11 +125,12 @@ export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneI
             field && onAnswer ? (
               <AnswerFieldSurface
                 field={field}
+                asked={asked}
                 copy={answerFieldCopy(t("prompt.feedback.answer.helpWizard"))}
                 ours={sending === "answer"}
                 anySending={sending !== null}
                 editor={editor}
-                onSend={() => void editor.send(field, runAnswer, answerLocked)}
+                onSend={() => void editor.send(field, asked, runAnswer, answerLocked)}
                 locked={answerLocked}
                 busyIcon={busyIcon}
                 showTyped

@@ -712,6 +712,7 @@ export const it: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "Nel campo di risposta: ",
   "prompt.feedback.answer.fieldMoved": "Il campo di risposta nel terminale ora contiene «{text}». Invia di nuovo per sostituirlo.",
   "prompt.feedback.answer.fieldEmptied": "Il campo di risposta nel terminale è stato svuotato. Invia di nuovo per riempirlo.",
+  "prompt.feedback.answer.questionMoved": "Il terminale è passato a un'altra domanda: «{question}». Non è stato inviato nulla. Invia di nuovo per rispondere a questa.",
   "paneSettings.title": "Impostazioni riquadro",
   "paneSettings.cacheWatch.label": "Avvisami prima che la cache di questo riquadro scada",
   "paneSettings.cacheWatch.hint": "circa {minutes} minuti prima della scadenza",

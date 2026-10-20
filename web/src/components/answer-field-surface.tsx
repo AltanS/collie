@@ -3,6 +3,7 @@ import { MessageSquarePlus } from "lucide-react";
 
 import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
 import { FEEDBACK_MAX_LENGTH } from "@/lib/answer-field";
+import type { WizardStepChip } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
 
 /** The words a card's inline text field speaks: its offer, its editor and its states. */
@@ -56,25 +57,51 @@ export function TypedFieldCard({ prefix, text }: { prefix: string; text: string 
   );
 }
 
-/** A card's answer editor: whether it is open, its draft, and the field text it was opened over. */
+/**
+ * The question a field answers, as the card read it: its text, and which step of a stepper it is on.
+ * The editor keeps it at open, because the card dock draws one card per dialog kind and does not key
+ * it to the dialog: a wizard the desk moves to its next step re-renders the same card under the open
+ * editor, and both steps' fields can read the same (empty) text.
+ */
+export interface AskedQuestion {
+  question: string;
+  /** The current chip's position and label; "" for a question without a stepper. */
+  step: string;
+}
+
+/** The step a stepper is on: the current chip's position and label, "" when none reads as current. */
+export function stepOf(steps: readonly WizardStepChip[] | null | undefined): string {
+  const at = steps?.findIndex((chip) => chip.current) ?? -1;
+  return at < 0 ? "" : `${at}:${steps![at]!.label}`;
+}
+
+function sameQuestion(a: AskedQuestion, b: AskedQuestion): boolean {
+  return a.question === b.question && a.step === b.step;
+}
+
+/** A card's answer editor: whether it is open, its draft, and the field and question it was opened over. */
 export interface AnswerEditor {
   editorOpen: boolean;
   draft: string;
   setDraft: (value: string) => void;
   /** What the field came to hold while the editor hid it, once a Send has found it; null otherwise. */
   moved: string | null;
-  /** Open the editor holding `prefill`, over a field that reads `fieldText` right now. */
-  open: (prefill: string, fieldText: string) => void;
+  /** The question the dialog moved on to while the editor hid it, once a Send has found it; null otherwise. */
+  questionMoved: string | null;
+  /** Open the editor holding `prefill`, over a field that reads `fieldText` right now, on `asked`. */
+  open: (prefill: string, fieldText: string, asked: AskedQuestion) => void;
   cancel: () => void;
   /**
    * Send the trimmed draft through `onAnswer`, unless the field no longer holds what the person last
-   * saw. The open editor replaces the field's own card on screen, so text typed at the desk meanwhile
-   * was never seen here, and the recipe would clear it (ADR 0113 rule 3: clear only what was seen).
-   * Then nothing is sent: the change is shown in the editor and becomes what was seen, so the next
-   * Send replaces it. The editor closes only on a send `onAnswer` reports as landed.
+   * saw, or the dialog no longer shows the question they wrote it for. The open editor replaces the
+   * field's own card on screen, so text typed at the desk meanwhile was never seen here, and the
+   * recipe would clear it (ADR 0113 rule 3: clear only what was seen); a step the desk moved on to
+   * was never seen either. Then nothing is sent: the change is shown in the editor and becomes what
+   * was seen, so the next Send goes to it. The editor closes only on a send `onAnswer` reports as landed.
    */
   send: (
     field: { text: string },
+    asked: AskedQuestion,
     onAnswer: (text: string) => boolean | Promise<boolean>,
     locked: boolean,
   ) => Promise<void>;
@@ -85,58 +112,82 @@ export function useAnswerEditor(): AnswerEditor {
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [seenText, setSeenText] = useState("");
+  const [seenAsked, setSeenAsked] = useState<AskedQuestion>({ question: "", step: "" });
   const [moved, setMoved] = useState<string | null>(null);
+  const [questionMoved, setQuestionMoved] = useState<string | null>(null);
 
-  function open(prefill: string, fieldText: string) {
+  function open(prefill: string, fieldText: string, asked: AskedQuestion) {
     setDraft(prefill);
     setSeenText(fieldText);
+    setSeenAsked(asked);
     setMoved(null);
+    setQuestionMoved(null);
     setEditorOpen(true);
   }
 
   function cancel() {
     setEditorOpen(false);
     setMoved(null);
+    setQuestionMoved(null);
   }
 
   async function send(
     field: { text: string },
+    asked: AskedQuestion,
     onAnswer: (text: string) => boolean | Promise<boolean>,
     locked: boolean,
   ) {
     const text = draft.trim();
     if (text.length === 0 || locked) return;
-    if (field.text !== seenText) {
+    const questionChanged = !sameQuestion(asked, seenAsked);
+    const fieldChanged = field.text !== seenText;
+    if (questionChanged || fieldChanged) {
+      setSeenAsked(asked);
       setSeenText(field.text);
-      setMoved(field.text);
+      setQuestionMoved(questionChanged ? asked.question : null);
+      setMoved(fieldChanged ? field.text : null);
       return;
     }
     if (await onAnswer(text)) {
       setEditorOpen(false);
       setMoved(null);
+      setQuestionMoved(null);
     }
   }
 
-  return { editorOpen, draft, setDraft, moved, open, cancel, send };
+  return { editorOpen, draft, setDraft, moved, questionMoved, open, cancel, send };
 }
 
-/** The editor's notice for a field that changed under it, as text nodes. */
-function FieldMovedNotice({ text }: { text: string }) {
+/**
+ * The editor's notice for a dialog that changed under it, as text nodes: the question it moved on to,
+ * then what the field holds now. Null when Send found nothing changed.
+ */
+export function EditorMovedNotice({ editor }: { editor: Pick<AnswerEditor, "moved" | "questionMoved"> }) {
+  if (editor.moved === null && editor.questionMoved === null) return null;
   return (
-    <p
+    <div
       role="status"
-      className="rounded-md border border-dashed border-status-working/50 px-2 py-1.5 text-xs leading-snug text-status-working"
+      className="space-y-1 rounded-md border border-dashed border-status-working/50 px-2 py-1.5 text-xs leading-snug text-status-working"
     >
-      {text === ""
-        ? t("prompt.feedback.answer.fieldEmptied")
-        : t("prompt.feedback.answer.fieldMoved", { text })}
-    </p>
+      {editor.questionMoved === null ? null : (
+        <p>{t("prompt.feedback.answer.questionMoved", { question: editor.questionMoved })}</p>
+      )}
+      {editor.moved === null ? null : (
+        <p>
+          {editor.moved === ""
+            ? t("prompt.feedback.answer.fieldEmptied")
+            : t("prompt.feedback.answer.fieldMoved", { text: editor.moved })}
+        </p>
+      )}
+    </div>
   );
 }
 
 export interface AnswerFieldSurfaceProps {
   /** The terminal's field as the card's model reads it. */
   field: { focused: boolean; text: string };
+  /** The question the field answers right now; the editor keeps it at open. */
+  asked: AskedQuestion;
   copy: FeedbackCopy;
   /** Our own answer send is in flight. */
   ours: boolean;
@@ -197,7 +248,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
         cancelDisabled={props.anySending}
         busy={false}
         busyAriaLabel={t("prompt.sendingAria")}
-        notice={editor.moved === null ? null : <FieldMovedNotice text={editor.moved} />}
+        notice={<EditorMovedNotice editor={editor} />}
       />
     );
   }
@@ -208,7 +259,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
         <InlineEditorOffer
           label={copy.change ?? ""}
           disabled={locked}
-          onClick={() => editor.open(field.text, field.text)}
+          onClick={() => editor.open(field.text, field.text, props.asked)}
         />
       </>
     );
@@ -216,7 +267,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
   return (
     <>
       {focusedBanner}
-      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => editor.open("", "")} />
+      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => editor.open("", "", props.asked)} />
     </>
   );
 }

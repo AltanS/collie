@@ -779,6 +779,7 @@ export const ja: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "回答欄の内容: ",
   "prompt.feedback.answer.fieldMoved": "ターミナルの回答欄の内容が「{text}」になりました。もう一度送信すると置き換えます。",
   "prompt.feedback.answer.fieldEmptied": "ターミナルの回答欄が空になりました。もう一度送信すると入力します。",
+  "prompt.feedback.answer.questionMoved": "ターミナルは別の質問に進みました：「{question}」。何も送信していません。もう一度送信すると、この質問に答えます。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "ペイン設定",

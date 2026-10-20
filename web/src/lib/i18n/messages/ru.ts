@@ -745,6 +745,7 @@ export const ru: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "В поле ответа: ",
   "prompt.feedback.answer.fieldMoved": "В поле ответа в терминале теперь «{text}». Отправьте ещё раз, чтобы заменить.",
   "prompt.feedback.answer.fieldEmptied": "Поле ответа в терминале очищено. Отправьте ещё раз, чтобы заполнить его.",
+  "prompt.feedback.answer.questionMoved": "Терминал перешёл к другому вопросу: «{question}». Ничего не отправлено. Отправьте ещё раз, чтобы ответить на него.",
   "paneSettings.title": "Настройки панели",
   "paneSettings.cacheWatch.label": "Предупреждать перед тем, как кэш этой панели остынет",
   "paneSettings.cacheWatch.hint": "примерно за {minutes} мин до истечения",

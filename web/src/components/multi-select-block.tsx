@@ -4,7 +4,7 @@ import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MultiSelectModel, StyledLine } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
-import { AnswerFieldSurface, answerFieldCopy, useAnswerEditor } from "@/components/answer-field-surface";
+import { AnswerFieldSurface, answerFieldCopy, stepOf, useAnswerEditor } from "@/components/answer-field-surface";
 import { AnswerList } from "@/components/answer-list";
 import { KeyBadge, optionSurface, PromptPanel, QuestionHeading } from "@/components/option-button";
 import { WizardStepper } from "@/components/wizard-stepper";
@@ -104,15 +104,17 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
     );
   }
   const field = multi.field;
+  const asked = { question: multi.question, step: stepOf(multi.steps) };
   const answerField =
     field && onAnswer ? (
       <AnswerFieldSurface
         field={field}
+        asked={asked}
         copy={answerFieldCopy(t("prompt.feedback.answer.helpMulti"))}
         ours={sending === "answer"}
         anySending={sending !== null}
         editor={editor}
-        onSend={() => void editor.send(field, runAnswer, answerLocked)}
+        onSend={() => void editor.send(field, asked, runAnswer, answerLocked)}
         locked={answerLocked}
         busyIcon={<SpinnerSm />}
         showTyped={false}

@@ -769,6 +769,7 @@ export const zh: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "回答栏中：",
   "prompt.feedback.answer.fieldMoved": "终端中的回答栏现在是“{text}”。再次发送即可替换。",
   "prompt.feedback.answer.fieldEmptied": "终端中的回答栏已被清空。再次发送即可填入。",
+  "prompt.feedback.answer.questionMoved": "终端已转到另一个问题：“{question}”。没有发送任何内容。再次发送即可回答这个问题。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane 设置",

@@ -711,6 +711,7 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "Yanıt alanında: ",
   "prompt.feedback.answer.fieldMoved": "Terminaldeki yanıt alanında artık “{text}” var. Değiştirmek için yeniden gönderin.",
   "prompt.feedback.answer.fieldEmptied": "Terminaldeki yanıt alanı boşaltıldı. Doldurmak için yeniden gönderin.",
+  "prompt.feedback.answer.questionMoved": "Terminal başka bir soruya geçti: “{question}”. Hiçbir şey gönderilmedi. Bu soruyu yanıtlamak için yeniden gönderin.",
   "paneSettings.title": "Bölme ayarları",
   "paneSettings.cacheWatch.label": "Bu bölmenin önbelleği soğumadan önce beni uyar",
   "paneSettings.cacheWatch.hint": "süresi dolmadan yaklaşık {minutes} dakika önce",

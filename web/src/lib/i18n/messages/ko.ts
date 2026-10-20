@@ -780,6 +780,7 @@ export const ko: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "답변 칸 내용: ",
   "prompt.feedback.answer.fieldMoved": "터미널의 답변 칸에 이제 “{text}”이(가) 들어 있습니다. 다시 보내면 바꿉니다.",
   "prompt.feedback.answer.fieldEmptied": "터미널의 답변 칸이 비워졌습니다. 다시 보내면 채웁니다.",
+  "prompt.feedback.answer.questionMoved": "터미널이 다른 질문으로 넘어갔습니다: “{question}”. 아무것도 보내지 않았습니다. 다시 보내면 이 질문에 답합니다.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "창 설정",

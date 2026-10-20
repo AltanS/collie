@@ -787,6 +787,7 @@ export const es: Dictionary = {
   "prompt.feedback.answer.typedPrefix": "En el campo de respuesta: ",
   "prompt.feedback.answer.fieldMoved": "El campo de respuesta del terminal ahora contiene «{text}». Envía de nuevo para reemplazarlo.",
   "prompt.feedback.answer.fieldEmptied": "El campo de respuesta del terminal se vació. Envía de nuevo para rellenarlo.",
+  "prompt.feedback.answer.questionMoved": "El terminal pasó a otra pregunta: «{question}». No se envió nada. Envía de nuevo para responder a esta.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Configuración del pane",

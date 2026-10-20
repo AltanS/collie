@@ -863,6 +863,7 @@ export const en = {
   "prompt.feedback.answer.typedPrefix": "In the answer field: ",
   "prompt.feedback.answer.fieldMoved": "The answer field in the terminal now holds “{text}”. Send again to replace it.",
   "prompt.feedback.answer.fieldEmptied": "The answer field in the terminal was emptied. Send again to fill it.",
+  "prompt.feedback.answer.questionMoved": "The terminal moved on to another question: “{question}”. Nothing was sent. Send again to answer this one.",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "Pane settings",

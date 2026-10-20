@@ -13,6 +13,7 @@ import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
 import {
   AnswerFieldSurface,
   TypedFieldCard,
+  EditorMovedNotice,
   answerFieldCopy,
   useAnswerEditor,
   type FeedbackCopy,
@@ -268,9 +269,10 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
   const [sending, setSending] = useState<string | null>(null);
   // One editor for whichever field this dialog carries: a dialog's field is either an answer or a plan
   // change, never both. The plan-change editor shows only over an empty field, so the editor's
-  // seen-text check never holds a plan-change Send back.
+  // seen-text check never holds a plan-change Send back; a question that changed under it does, once.
   const editor = useAnswerEditor();
   const feedback = prompt.feedback;
+  const asked = { question: prompt.question, step: "" };
   const terminalFocused = feedback?.focused ?? false;
   const locked = Boolean(disabled) || offline || sending !== null || terminalFocused;
   const isAnswer = feedback?.purpose === "answer";
@@ -295,7 +297,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
     // The editor closes only on a send that actually landed. A refused one (the guard saw the dialog
     // move) would otherwise throw away up to FEEDBACK_MAX_LENGTH characters someone thumb-typed on a
     // phone — the longest text this app ever asks anyone to type — with no way to get them back.
-    await editor.send(feedback, (text) => press("feedback", { kind: "feedback", text }), isAnswer ? answerLocked : locked);
+    await editor.send(feedback, asked, (text) => press("feedback", { kind: "feedback", text }), isAnswer ? answerLocked : locked);
   }
 
   const busyIcon = (
@@ -358,6 +360,7 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
       {feedback && feedbackCopy && isAnswer ? (
         <AnswerFieldSurface
           field={feedback}
+          asked={asked}
           copy={feedbackCopy}
           ours={sending === "feedback"}
           anySending={sending !== null}
@@ -400,12 +403,13 @@ export function PromptSelectBlock({ prompt, lines, onAction, disabled, paneId, s
           cancelDisabled={sending !== null}
           busy={sending === "feedback"}
           busyAriaLabel={t("prompt.sendingAria")}
+          notice={<EditorMovedNotice editor={editor} />}
         />
       ) : feedback && feedbackCopy && feedbackCopy.offer ? (
         <InlineEditorOffer
           label={feedbackCopy.offer}
           disabled={locked}
-          onClick={() => editor.open("", feedback.text)}
+          onClick={() => editor.open("", feedback.text, asked)}
         />
       ) : null}
     </PromptPanel>
