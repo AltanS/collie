@@ -14,7 +14,8 @@ import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
-import { answeredBelow } from "./scenarios";
+import { answeredBelow, opaqueTokenRead, pressableBar } from "./scenarios";
+import type { Adapter } from "./readers";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
 const ESC = String.fromCodePoint(0x1b);
@@ -48,6 +49,13 @@ describe("parseArgs", () => {
     expect(o.agents).toEqual(["grok", "hermes", "agy"]);
     expect(o.scenarios).toEqual(["options"]);
     expect(DEFAULT_SCENARIOS).not.toContain("options");
+  });
+
+  test("the harness bar is pressed only when asked for", () => {
+    const o = parseArgs(["--agent", "muse", "--scenario", "bar"], "/repo");
+    if (o === "help") throw new Error("help");
+    expect(o.scenarios).toEqual(["bar"]);
+    expect(DEFAULT_SCENARIOS).not.toContain("bar");
   });
 
   test("--agent, --scenario, --cols, --readers", () => {
@@ -184,6 +192,26 @@ describe("drafts and messages", () => {
   });
 });
 
+describe("opaqueTokenRead", () => {
+  const chip = (draft: string) => /^📄 #\d+$/.test(draft);
+  const omp: Adapter = { agent: "omp", extractInputDraft: () => null, draftIsOpaque: chip };
+
+  test("a token with no evidence of its content counts as the draft read back", () => {
+    expect(opaqueTokenRead(omp, "📄 #1")).toBe(true);
+  });
+
+  test("real text, no draft or no adapter is not a token read", () => {
+    expect(opaqueTokenRead(omp, "Reply with only OK.")).toBe(false);
+    expect(opaqueTokenRead(omp, null)).toBe(false);
+    expect(opaqueTokenRead(undefined, "📄 #1")).toBe(false);
+  });
+
+  test("a harness whose token can be matched to the send keeps that stricter check", () => {
+    const matched: Adapter = { ...omp, agent: "claude", draftCarriesSend: () => false };
+    expect(opaqueTokenRead(matched, "📄 #1")).toBe(false);
+  });
+});
+
 describe("answeredBelow", () => {
   const plain = messageById("01-plain");
   const read = JOURNAL_MESSAGE;
@@ -244,5 +272,18 @@ describe("lastPointedRow", () => {
     const texts = ["❯ Use the AskUserQuestion tool to ask me", "Which fruit?", "  1. Apple", "❯ 2. Banana", "  3. Type something."];
     expect(lastPointedRow(texts, "❯")).toBe("2. Banana");
     expect(lastPointedRow(["no pointer here"], "❯")).toBeNull();
+  });
+});
+
+describe("pressableBar", () => {
+  test("presses the picker buttons in bar order, never Compact and never a two-tap row", () => {
+    const bar = [
+      { id: "model", command: "/model" },
+      { id: "compact", command: "/compact" },
+      { id: "wipe", command: "/clear", confirm: true },
+      { id: "resume", command: "/resume" },
+    ];
+    expect(pressableBar(bar).map((i) => i.id)).toEqual(["model", "resume"]);
+    expect(pressableBar([])).toEqual([]);
   });
 });
