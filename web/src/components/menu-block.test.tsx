@@ -295,4 +295,36 @@ describe("MenuBlock over a notice above the box", () => {
     expect(container.querySelector("pre")).not.toBeInTheDocument();
     expect(screen.getAllByText(/With GitHub triggers/u)).toHaveLength(1);
   });
+
+  // After Learn more (2.1.304) the notice prints an explanation between its head and its keys: the card
+  // shows those rows as they were drawn, under the title.
+  describe("the explanation after Learn more", () => {
+    const EXPLAINED = readFileSync(join(PANES, "claude--v2304-heads-up-explained--w135.txt"), "utf8");
+
+    it("mirrors the explanation's rows, from its title row to its last bullet", () => {
+      const container = renderMenuContainer(EXPLAINED);
+      const mirror = container.querySelector("pre");
+      expect(mirror).toBeInTheDocument();
+      expect(mirror?.textContent).toContain("Former CTO's access may be in use now");
+      expect(mirror?.textContent).toContain("If this note describes a real system, remove that GitHub access");
+    });
+
+    it("renders the three printed keys", () => {
+      renderMenu(vi.fn(), EXPLAINED);
+      for (const name of ["Understood", "Chat in main session", "Dismiss"]) expect(screen.getByRole("button", { name })).toBeEnabled();
+    });
+
+    it("a tap on Understood sends 1, bound to the notice's rows", async () => {
+      vi.mocked(fetchPane).mockResolvedValue({ paneId: "w1:p1", text: EXPLAINED, truncated: false, revision: 0 });
+      const block = menuBlock(EXPLAINED);
+      const onAction = vi.fn(async (action: MenuBlockAction): Promise<void> => {
+        await submitMenuKeys({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude", menu: block.menu, keys: action.keys, nav: action.nav });
+      });
+      render(<MenuBlock menu={block.menu} lines={block.lines} onAction={onAction} />);
+      await userEvent.click(screen.getByRole("button", { name: "Understood" }));
+      expect(onAction).toHaveBeenCalledWith({ keys: ["1"], nav: false });
+      await vi.waitFor(() => expect(sendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, block.menu.signature));
+      expect(block.menu.signature).toContain("1: Understood");
+    });
+  });
 });

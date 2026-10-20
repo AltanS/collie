@@ -287,7 +287,7 @@
   {
     "fixture": "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
     "detector": "menu",
-    "region": "✦ Dismissed.   1: That was helpful   2: Didn’t understand\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…\n─────────────────────────────────────────────────────────────────"
+    "region": "✦ Dismissed.   1: That was helpful   2: Didn’t understand\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every plain note in the sample folder and the example one…\n─────────────────────────────────────────────────────────────────"
   },
   {
     "fixture": "claude--v2304-heads-up-explained--w135.txt",
@@ -297,7 +297,7 @@
   {
     "fixture": "claude--v2304-heads-up-explained--w65.txt",
     "detector": "menu",
-    "region": "✦ Heads up · One of the notes being read, 09-support, says\n  the customer login site's security certificate expires\n  tonight at midnight, and its renewal has been failing for\n  two weeks.\n\n  Customer login certificate expires tonight\n  - You asked for the reply to be just \"done\", so this could\n    get lost.\n  - The note 09-support.md (in the .tmp\\hu\\t folder) says\n    the TLS certificate for the customer login site runs out\n    tonight at midnight. This certificate is what lets\n    browsers trust the site.\n  - It also says the job that renews it automatically has\n    failed silently for two weeks, so nobody was warned.\n  - If the note is true and the certificate lapses,\n    customers' browsers will show a security warning or\n    refuse to open the login page.\n  - If this is a real system, check the certificate's expiry\n    date and renew it by hand today.\n  \n  1: Understood   2: Chat in main session   0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every .md file in X:\\dev\\_ext\\AltanS\\collie\\.tmp\\hu\\u one…\n─────────────────────────────────────────────────────────────────"
+    "region": "✦ Heads up · One of the notes being read, 09-support, says\n  the customer login site's security certificate expires\n  tonight at midnight, and its renewal has been failing for\n  two weeks.\n\n  Customer login certificate expires tonight\n  - You asked for the reply to be just \"done\", so this could\n    get lost.\n  - The note 09-support.md (in the .tmp\\hu\\t folder) says\n    the TLS certificate for the customer login site runs out\n    tonight at midnight. This certificate is what lets\n    browsers trust the site.\n  - It also says the job that renews it automatically has\n    failed silently for two weeks, so nobody was warned.\n  - If the note is true and the certificate lapses,\n    customers' browsers will show a security warning or\n    refuse to open the login page.\n  - If this is a real system, check the certificate's expiry\n    date and renew it by hand today.\n  \n  1: Understood   2: Chat in main session   0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every plain note in the sample folder and the example one…\n─────────────────────────────────────────────────────────────────"
   },
   {
     "fixture": "claude--working.txt",

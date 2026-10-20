@@ -63,6 +63,10 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   const underEnd = frame.volatile.named[0]?.row ?? texts.length;
   const rowsUnder = texts.slice(frame.bottom + 1, underEnd).filter((text) => text.trim().length > 0).length;
   if (rowsUnder >= BRIDGE_TAIL_ROWS) return null;
+  const draft = extractInputDraft(lines) !== null;
+  // The body's rows, counted from the head row the card's lines start on; left out when there is none.
+  const liveBox: NonNullable<MenuModel["liveBox"]> =
+    notice.body === null ? { draft } : { draft, body: { start: notice.body.first - notice.first, end: notice.body.last - notice.first } };
   return {
     startLine: notice.first,
     endLine: notice.last,
@@ -71,7 +75,7 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
       actions: notice.keys.map((key) => ({ label: key.label, keys: [key.key] })),
       nav: { upDown: false },
       signature: texts.slice(notice.first, frame.bottom + 1).join("\n"),
-      liveBox: { draft: extractInputDraft(lines) !== null },
+      liveBox,
     },
   };
 }
