@@ -29,6 +29,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The harness canary can press each harness-bar button on a live agent.** The opt-in `--scenario bar` sends every picker button of an agent's shipped bar through the phone's own send path, closes the picker with Escape and saves the screen as `bar-<id>.ansi` for a person to read. The drafts scenario now also reads Oh My Pi's collapsed paste chip, so its long multi-line draft case no longer ends not reached. Thanks @GGGODLIN (#449).
 - **The phone types an answer into an AskUserQuestion field.** A single question, a wizard step or a multi-select question takes your own words from the card, and Collie checks that the field still holds what you saw before it sends. Thanks @leftos (#441).
 
+### Fixed
+
+- **A Claude question without a question mark gets its card.** An AskUserQuestion written as statements showed the "cannot read this dialog" card until you answered it in the terminal. Collie now reads the question from the rows under the dialog's chip. Thanks @leftos (#548).
+
 ## [1.23.1] - 2026-10-20
 
 ### Fixed
