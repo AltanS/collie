@@ -1709,6 +1709,8 @@ export const es: Dictionary = {
   "settings.updateCard.majorNote": "{version} es una versión mayor.",
   "settings.updateCard.dismiss": "Recordar en el próximo resumen",
   "settings.updateCard.dismissed": "Pospuesto hasta el próximo resumen.",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "Comprobando este equipo…",
   "settings.updateCard.details": "Detalles",
   "settings.updateCard.summary.checks.one": "{count} comprobación",

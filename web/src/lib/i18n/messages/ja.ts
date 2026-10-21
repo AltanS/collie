@@ -1696,6 +1696,8 @@ export const ja: Dictionary = {
   "settings.updateCard.majorNote": "{version} は新しいメジャーバージョンです。",
   "settings.updateCard.dismiss": "次回のダイジェストで通知",
   "settings.updateCard.dismissed": "次回のダイジェストまで通知を停止しました。",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "このマシンを確認中…",
   "settings.updateCard.details": "詳細",
   "settings.updateCard.summary.checks.one": "{count}件のチェック",

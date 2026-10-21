@@ -251,6 +251,24 @@ describe("update card — what it says before anything happens", () => {
     expect(screen.getByText("Dismissed until the next digest.")).toBeInTheDocument();
     expect(screen.getByText(/Running 1\.3\.0/)).toBeInTheDocument();
   });
+
+  it("on Edge there is no digest: the button and its receipt name the next build, and the snooze is the same call", async () => {
+    const user = userEvent.setup();
+    let snoozed = false;
+    server.use(
+      http.post("/api/update/snooze", () => {
+        snoozed = true;
+        return HttpResponse.json(info());
+      }),
+    );
+    renderCard(info({ line: "edge" }));
+    expect(await screen.findByRole("button", { name: "Remind me at the next build" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remind me next digest" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remind me at the next build" }));
+    await waitFor(() => expect(snoozed).toBe(true));
+    expect(screen.getByText("Dismissed until the next Edge build.")).toBeInTheDocument();
+    expect(screen.queryByText("Dismissed until the next digest.")).not.toBeInTheDocument();
+  });
 });
 
 // ── WHAT THE RELEASES CHANGED (1.21.1) ─────────────────────────────────────────────────────────

@@ -1622,6 +1622,8 @@ export const ru: Dictionary = {
   "settings.updateCard.majorNote": "{version}: новая мажорная версия.",
   "settings.updateCard.dismiss": "Напомнить в следующем дайджесте",
   "settings.updateCard.dismissed": "Отложено до следующего дайджеста.",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "Проверка этой машины…",
   "settings.updateCard.details": "Подробности",
   "settings.updateCard.summary.checks.one": "{count} проверка",
