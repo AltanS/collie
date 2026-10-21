@@ -29,8 +29,9 @@
 //      and the Crew page's message to that machine draws a "not sent: off" row. pi's pane gets
 //      nothing. The member is restarted clean afterwards.
 //   21 the pair limit across the crew: six messages from one pane to a pane on the member are taken
-//      (the member's box holds a draft, so they wait in its inbox and cost no model turn), the
-//      seventh is refused `pair limit` on the lead and never dialled.
+//      (the member's box holds a draft, so they are held, `accepted` with `draft present`, and cost
+//      no model turn), the seventh is refused `pair limit` on the lead and never dialled. The draft
+//      stays: this is the leg's last case, and the held messages go with the rig.
 //   15 the lead's release line is the crew's (M60 spec 01, ADR 0110): on the lead's Updates page the
 //      Release line reads Stable, a tap on Edge shows the receipt and the lead's line record says
 //      `edge` with no run started, the Crew page says the members follow Edge, and a tap on Stable
@@ -663,7 +664,8 @@ test.describe("walky talky across a crew", () => {
         const who = await askWalky("lead", { op: "who" });
         const address = asJsonString(jsonRows(who?.targets).find((t) => sameTarget(asJsonString(t.address) ?? "", MEMBER_ID, piPane))?.address) ?? null;
         if (address === null) return { verdict: "fail", taps: 0, note: `the lead's who does not list pi's pane ${piPane}`, taps_log: trail.log, captures: trail.captures };
-        // A draft in pi's box: a message waits in its inbox as `draft present`, so no message costs pi a turn.
+        // A draft in pi's box holds every message (M62 spec 02): `accepted` with `draft present`, never
+        // typed, so no message costs pi a turn while the draft stays.
         await rig.keys(piPane, ["d", "r", "a", "f", "t"], MEMBER_ID);
         await sleep(1500);
         const mark = mintId().slice(3, 9);
@@ -672,18 +674,33 @@ test.describe("walky talky across a crew", () => {
         for (let n = 1; n <= 7; n++) sends.push(await cliSend(sender, address, `Walky pair check ${mark} number ${String(n)}.`));
         const words = sends.map((s, i) => `${String(i + 1)}: exit ${String(s.code)} ${s.receipts.map((r) => `${asJsonString(r.state) ?? "?"}${asJsonString(r.reason) === undefined ? "" : ` (${asJsonString(r.reason) ?? ""})`}`).join(", ") || s.out.slice(0, 80)}`);
         notes.push(`${address} from ${sender}: ${words.join("; ")}`);
-        const firstSix = sends.slice(0, 6).every((s) => s.code === 0 && s.receipts.length === 1 && ["accepted", "inbox-only"].includes(asJsonString(s.receipts[0]!.state) ?? ""));
+        // Taken and not typed: `accepted` (held), never `inbox-only` any more.
+        const firstSix = sends.slice(0, 6).every((s) => s.code === 0 && s.receipts.length === 1 && asJsonString(s.receipts[0]!.state) === "accepted");
         const last = sends[6]!;
         const seventh = last.code === 4 && asJsonString(last.receipts[0]?.state) === "refused" && asJsonString(last.receipts[0]?.reason) === "pair limit";
+        // The member's report carries the hold's reason to the lead (CREW_PROTOCOL §21, "A held send").
+        const ids = sends.slice(0, 6).flatMap((s) => (s.id === null ? [] : [s.id]));
+        const heldOnLead = await rig.until(
+          async () => {
+            const states = await Promise.all(ids.map(async (id) => (await leadReceipts(id))[0]));
+            return states.every((receipt) => asJsonString(receipt?.state) === "accepted" && asJsonString(receipt?.reason) === "draft present");
+          },
+          (all) => all,
+          30_000,
+          1000,
+        );
+        notes.push(heldOnLead === true ? "the lead reads all six `accepted: draft present`" : "the lead did NOT read all six as held: draft present");
         await sleep(1500);
         const boxText = await rig.tail(piPane, 6, MEMBER_ID);
         const draftKept = /draft\s*$/m.test(boxText) && !boxText.includes(mark) && !boxText.includes("[walky-talky");
         const counted = refusalCount("lead", "pair limit") > limitBefore;
         notes.push(draftKept ? "pi's draft is untouched, nothing typed" : "pi's BOX CHANGED", counted ? "the lead counted one `pair limit`" : "the lead's refusals did not count `pair limit`");
         trail.captures.push(await captureScreen(rig, piPane, "walky-21-pi", MEMBER_ID));
-        return { verdict: firstSix && seventh && draftKept && counted ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
+        return { verdict: ids.length === 6 && firstSix && seventh && heldOnLead === true && draftKept && counted ? "pass" : "fail", taps: 0, note: notes.join("; "), taps_log: trail.log, captures: trail.captures };
       } finally {
-        await rig.keys(piPane, ["ctrl+u"], MEMBER_ID);
+        // The draft stays in pi's box on purpose: clearing it would type the six held messages and cost
+        // pi six turns. This is the crew leg's last case, and `rig.ts down` takes the holds with the
+        // rig; `up` starts from empty state. A case added after this one must cancel them first.
         if (sender !== null) paneClose(sender);
       }
     });

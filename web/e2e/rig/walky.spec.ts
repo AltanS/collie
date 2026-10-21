@@ -4,8 +4,10 @@
 //
 //   6  the operator's message from the phone: the pane gets ONE prompt, header and body; the receipt
 //      settles at `delivered`; Chat draws the "Message from" card with the operator badge.
-//   9  a message over an open dialog: the receipt is `inbox-only` with a reason, nothing is typed into
-//      the dialog, the dialog still answers, and `collie walky inbox` (run by the agent) lists it.
+//   9  a message over an open dialog is held: nothing is typed into the dialog, the dialog still
+//      answers, and the message is typed after it. A message over a draft is held too (M62 spec 02):
+//      `accepted` with the reason `draft present`, the draft untouched; the draft is then sent, and
+//      the message is typed after that turn, once.
 //   10 a broadcast (`to: all`) from the operator: one receipt per agent pane, the shell pane skipped.
 //      This case posts the request the Crew page's "Message all agents" sheet posts. The sheet itself,
 //      tapped on the Crew page, is proved on the crew leg (walky-crew.spec.ts, case 12).
@@ -50,7 +52,7 @@ import {
   type Session,
 } from "./leg";
 import { DEVICE_LABEL, paneClose, sleep } from "./rig-lib";
-import { PHONE, REPLY_MS, addressOf, busyMessage, escape, mintId, operatorHeader, operatorMessage, reasonOf, rowOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, busyMessage, escape, firstRow, mintId, operatorHeader, operatorMessage, reasonOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
 
 const H = "claude" as const;
 const session: Session = { paneId: null, startNote: "not started" };
@@ -87,11 +89,12 @@ test.describe("walky talky", () => {
     await runScenario(H, "walky", session, (pane, trail) => operatorMessage(browser, rig, pane, trail, { harness: H, scenario: "walky", tag: "6", body: BODY, reply: /^\s*(?:⏺|●)\s*WALKY-OK/m }));
   });
 
-  test("9 walky talky: a message the pane cannot take is kept, never typed into a dialog or over a draft", async ({ browser, rig }) => {
+  test("9 walky talky: a message the pane cannot take now is held, never typed into a dialog or over a draft", async ({ browser, rig }) => {
     await runScenario(H, "walky-inbox", session, async (pane, trail) => {
       spendTurn(H, "walky inbox: a permission request");
       spendTurn(H, "walky inbox: the message that waited behind the dialog");
-      spendTurn(H, "walky inbox: read the inbox");
+      spendTurn(H, "walky inbox: the draft, sent");
+      spendTurn(H, "walky inbox: the message that waited behind the draft");
       const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
       const log = trail.log;
       const notes = trail.notes;
@@ -121,45 +124,45 @@ test.describe("walky talky", () => {
         const ran = (await rig.until(async () => existsSync(proof), (made) => made, 15_000)) === true;
         // The Send Protocol holds the message behind the dialog and types it once the dialog is answered,
         // so it ends `delivered`, once (docs/walky-talky.md, "Into a busy pane"). It waits in the inbox as
-        // `held past 10 minutes` only when the hold runs out first.
+        // `held past 60 minutes` only when the hold runs out first.
         const afterState = await settledWalky(rig, pane, waiting, 60_000);
         const typedOnce = (await rig.screenUntil(pane, new RegExp(escape(operatorHeader(waiting))), 30_000, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
         const total = (await rig.screen(pane, 200)).split(`[walky-talky ${waiting}]`).length - 1;
         notes.push(`A: Yes ${yes.worked ? "worked" : "did not work"}, command ${ran ? "ran" : "did not run"}, then the receipt says ${afterState} and the header is on screen ${String(total)} time(s)`);
 
-        // Part B: a draft sits in the box. The Send Protocol refuses, never holds, so the message is
-        // kept in the inbox with a reason and the draft is untouched. The draft is typed outside the
-        // phone (the keys route), as the cleanup of a stuck box is.
+        // Part B: a draft sits in the box (M62 spec 02). The message is held, never typed over the draft:
+        // its receipt stays `accepted` with the reason `draft present`, and the draft is untouched. The
+        // draft is then sent (Enter, outside the phone, as the cleanup of a stuck box is), its turn runs,
+        // and the message is typed after that turn, once: `delivered`. The draft is typed outside the
+        // phone (the keys route).
         await rig.keys(pane, ["d", "r", "a", "f", "t"]);
         await sleep(1500);
         const kept = mintId();
         const markB = kept.slice(3, 9);
-        const keptBody = `Walky draft check ${markB}.`;
+        const keptBody = `Walky draft check ${markB}: answer with only the word ZEBRA-TEN, nothing else.`;
         const postedB = await rig.post("/api/walky", { id: kept, to: addressOf(pane), body: keptBody });
-        const keptState = await settledWalky(rig, pane, kept, 30_000);
-        const keptRow = await rowOf(rig, pane, kept, 5000);
-        const keptReason = reasonOf(keptRow ?? undefined);
-        await sleep(2000);
+        const heldRow = await firstRow(rig, pane, (row) => row.id === kept && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000);
+        await sleep(3000);
         const boxText = await rig.tail(pane, 6);
         const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${kept}]`) && !boxText.includes(markB);
-        notes.push(`B: POST /api/walky ${String(postedB.status)}, receipt ${keptState}${keptReason === null ? " with no reason" : ` (${keptReason})`}, ${draftKept ? "the draft is untouched, nothing typed" : "the BOX CHANGED"}`);
+        const stillHeld = stateOf((await walkyRows(rig, pane)).find((r) => r.id === kept)) === "accepted";
+        notes.push(`B: POST /api/walky ${String(postedB.status)}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}, ${draftKept ? "the draft is untouched, nothing typed" : "the BOX CHANGED"}${stillHeld ? "" : ", the hold ENDED early"}`);
         trail.captures.push(await captureScreen(rig, pane, "walky-9-draft"));
-        await rig.keys(pane, ["ctrl+u"]);
-        await sleep(1000);
-
-        // The agent reads its inbox with the CLI: the kept message is there, with its body.
-        log.push(await sendFromComposer(page, recorder, "Run `collie walky inbox` and tell me nothing else.", "ask the agent to read its inbox"));
-        const header = escape(operatorHeader(kept));
-        const read = (await rig.screenUntil(pane, new RegExp(`Bash\\(collie walky inbox[^)]*\\)[\\s\\S]*?${header}[\\s\\S]*?${markB}`), REPLY_MS, 200)) !== null;
-        notes.push(read ? "B: the agent's `collie walky inbox` listed it with its body" : "B: the agent's inbox output did not show it");
+        // The draft goes in as a prompt; the turn hold takes over and types the message after it.
+        await rig.keys(pane, ["Enter"]);
+        const keptState = await settledWalky(rig, pane, kept, REPLY_MS * 2);
+        const typedAfter = (await rig.screenUntil(pane, new RegExp(escape(operatorHeader(kept))), 30_000, 200)) !== null;
         await waitIdle(rig, pane, REPLY_MS);
-        trail.captures.push(await captureScreen(rig, pane, "walky-9-inbox"));
+        const afterDraft = await rig.screen(pane, 200);
+        const keptTotal = afterDraft.split(`[walky-talky ${kept}]`).length - 1;
+        notes.push(`B: the draft sent, then the receipt says ${keptState} and the header is on screen ${String(keptTotal)} time(s)`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-9-after-draft"));
 
         const partA = posted.status === 200 && !typedDuring && cardStill && yes.worked && ran && afterState === "delivered" && typedOnce && total === 1;
-        const partB = postedB.status === 200 && keptState === "inbox-only" && keptReason !== null && keptReason !== "" && draftKept && read;
+        const partB = postedB.status === 200 && heldRow !== null && draftKept && stillHeld && keptState === "delivered" && typedAfter && keptTotal === 1;
         const verdict = partA && partB && log.every((l) => l.worked) ? "pass" : "fail";
-        return { verdict, taps: log.length, minTaps: 3, note: notes.join("; "), taps_log: log, captures: trail.captures };
+        return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: trail.captures };
       } finally {
         await context.close();
       }
