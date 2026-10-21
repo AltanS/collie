@@ -94,7 +94,7 @@ describe("readSend", () => {
   // The review's F3: the bridge's English detail is dropped for every `unconfirmed`, so the notice's own
   // sentence travels as a cause the phone translates. An answer without it keeps the generic sentence.
   it("a refusal with the notice cause says the number would answer the notice, and keeps the commit offer", () => {
-    const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That digit would answer the notice above the box." };
+    const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That message would answer the notice above the box." };
     expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "noticeKey", offers: ["commit"], detail: null });
     const running: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["keys"], cause: "notice_key" };
     // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Type here.

@@ -2700,6 +2700,22 @@ Inherent to vanilla Claude Code: the model writes AskUserQuestion's question tex
 | `claude--v2304-ask-no-question-mark--w135.txt` | **Derived** from the field report's `display` (an unread-dialog report from a `cui` session), escapes kept, line endings LF. Hardening against a user theme (ui-themes): the coloured strip and blank column left of the dialog, the rules wrapped into a `──` stub above the chip and above `Chat about this`. The chip ` ☐ Green #29`, a five-row question in the `│` gutter ending in `.`, two options with two-row descriptions, `3. Type something.`, `4. Chat about this`, the footer, then a task checklist. Every letter of the transcript, the chip label, the question, the option labels and descriptions and the checklist items was replaced by neutral words of the same width; every escape, glyph, digit, space, `│` and rule is kept, and no `?` was added. `Type something.`, `Chat about this`, the footer and the checklist's count rows are as captured. Lifts a `select` card. Labelled `dialog` |
 | `claude--v2304-ask-no-question-mark-plain--w135.txt` | **Derived** from a plain `claude` 2.1.304 capture (lab, 135 columns, escapes kept, line endings LF): the transcript above the dialog's rule, the lab prompts included, replaced by neutral words of the same width. The dialog is as captured: ` ☐ Ship it`, `The release branch has passed every check. Pick how to proceed with the merge.`, `Merge now (Recommended)`, `Hold the merge`, `3. Type something.`, `4. Chat about this` and the footer. Lifts a `select` card. Labelled `dialog` |
 
+## The survey's transcript question, 2.1.306 (captured 2026-10-21, 153 columns, Herdr)
+
+After a key on the rating survey (`● How is Claude doing this session? (optional)`) Claude Code 2.1.306
+asks a second question over the same live box: `● Can Anthropic look at your session transcript to help
+us improve Claude Code?`, a `Learn more:` row with the docs link, and the keys `y: Yes    n: No     d:
+Don't ask again`. The 2.1.306 bundle reads them through the same hook as the rating survey's digits: a
+key acts only when the box's whole value is that letter, lowercased first. Read with `herdr pane read
+<pane> --source visible --format ansi` from a live session, CRLF line ends and escapes kept, cut to the
+last 16 rows. The git branch in the statusline is replaced by `fix/transcript-survey-probe-01*` of the
+same width; every other row is as captured. The field case: every phone send to the pane was refused
+`unconfirmed` (`modal: "unreadable"`) until the question was answered by hand.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2306-transcript-survey--w153.txt` | The transcript question over an empty box, a blank row between; under the box the statusline, `✔ Update installed · Restart to apply` and `new task? /clear to save 289.5k tokens`. Reads `idle`, `none`, `empty` and lifts a card with Yes, No and Don't ask again (`letters` head in claude.json). Labelled `idle` |
+
 ## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
 
 Read through a scratch bridge's `GET /api/pane/:id` (ANSI kept, CRLF rows) from an isolated Herdr
