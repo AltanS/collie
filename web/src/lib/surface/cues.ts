@@ -446,6 +446,19 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
   return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
 }
 
+/** The prompt glyph at the start of the frame's prompt row, when one is there. */
+const PROMPT_POINTER = new RegExp(`^(\\s*)[${POINTERS}]`, "u");
+
+/** The prompt row without its anchor glyph. The draft and dialog rows keep their text. */
+function stripPromptPointer(row: FrameRow): FrameRow {
+  const text = rowText(row);
+  const match = PROMPT_POINTER.exec(text);
+  if (match === null) return row;
+  const head = [...match[0]];
+  head.pop();
+  return { segments: [{ text: `${head.join("")}${text.slice(match[0].length)}` }] };
+}
+
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
@@ -458,8 +471,12 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
+  // The prompt glyph anchors the found box; it is never the pointer of a dialog list drawn under the draft.
+  // Removing only that glyph leaves a slash query or a dialog's own option rows readable, while a multiline
+  // draft's wrapped rows no longer read as the list under its pointer.
+  const withoutPromptPointer = rows.map((row, i) => (i === frame.interior.prompt ? stripPromptPointer(row) : row));
   const at = frame.top;
-  const down = readCues(rows.slice(at), null, null);
+  const down = readCues(withoutPromptPointer.slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };

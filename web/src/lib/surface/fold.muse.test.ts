@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows, idleFor, readScreen } from "../../test/surface-corpus";
+import { fixtureRows, idleFor, readScreen, rowsOf } from "../../test/surface-corpus";
 import { labelOf, own } from "../../test/surface-fold";
 import { commandListAt, ownCommandList } from "./cues";
 import { findInputFrame, rowText } from "./frame";
@@ -132,5 +132,26 @@ describe("the typed command's own slash palette inside Muse's box (MUSE-03, #519
       expect(isFree(read.surface), name).toBe(false);
       expect(labelOf(name).state, name).toBe("dialog");
     }
+  });
+
+  it("a multiline prose draft is the box's own text, not a pointed list (live 2026-10-21)", () => {
+    const rows = rowsOf(
+      [
+        "─".repeat(40),
+        "── Voice input (⌥ + v to start) ──",
+        "❯ first line of a long draft",
+        "  second line continues here",
+        "  third line continues here",
+        "─".repeat(40),
+        "  muse-spark-1.3 · xhigh · ~/project",
+      ].join("\n"),
+    );
+    const found = findInputFrame(rows, IDLE);
+    expect(found).not.toBeNull();
+    expect(found?.interior.text).toBe("first line of a long draft second line continues here third line continues here");
+    const read = readScreen(rows, "muse", IDLE);
+    expect(read.surface).toMatchObject({ modal: "none", composer: "draft" });
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("pointer-row");
+    expect(read.cues?.strength).toBe("none");
   });
 });
