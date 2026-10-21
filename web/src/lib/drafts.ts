@@ -16,6 +16,22 @@ import { normalizeScope, type Scope } from "./scope";
 
 const PREFIX = "collie:draft:";
 
+/**
+ * Where this build keeps a pane's draft: the store's second version (2026-10-21, PR 560).
+ *
+ * A draft may now hold a `kind: "paste"` chip, whose text lives only in the chip while the draft
+ * carries a `[Pasted #N]` marker. A build from before it (Stable 1.23.x) drops a chip kind it does
+ * not know and keeps the text beside it, so it would restore the bare marker and send it literally.
+ * It never reads this key, so it never meets such a draft. The version sits under {@link PREFIX}, so
+ * that build's prune and its device wipe still reach every entry here.
+ *
+ * The first version, {@link PREFIX} with the scope right after it, is read once and copied here when
+ * it is the newer of the two (one way: nothing here is ever written back to it), so a draft typed
+ * before the update survives it. That entry stays where it is for a rollback. A save supersedes it
+ * and a clear removes it, so a rollback never restores a draft older than the one this build held.
+ */
+const PREFIX_V2 = "collie:draft:v2:";
+
 /** Drafts older than this are pruned on first use — an ancient half-thought must never resurface. */
 const MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
@@ -91,12 +107,18 @@ const memory = new Map<string, DraftEntry>();
 
 // A pane id is unique only within one session on one machine, so a draft is keyed by the whole
 // (host, session, paneId) triple — otherwise the draft you typed for `w1:p1` on one machine would be
-// restored into `w1:p1` on another. The lead's keys are byte-identical to what shipped: the host
-// segment is emitted only when there IS one, so every existing stored draft is still found. Both
-// tiers key off this one function, so memory and disk can never disagree about which pane is which.
-function keyFor(scope: Scope | undefined, paneId: string): string {
+// restored into `w1:p1` on another. The host segment is emitted only when there IS one, so the
+// lead's first-version keys are byte-identical to what shipped and every one of them is still found.
+// Both tiers key off this one function, so memory and disk can never disagree about which pane is
+// which.
+function keyFor(scope: Scope | undefined, paneId: string, prefix: string = PREFIX_V2): string {
   const { host, session } = normalizeScope(scope);
-  return `${PREFIX}${host ? `${host}@` : ""}${session ?? "default"}:${paneId}`;
+  return `${prefix}${host ? `${host}@` : ""}${session ?? "default"}:${paneId}`;
+}
+
+/** The pane's key in the store's first version, read only to migrate it ({@link PREFIX_V2}). */
+function legacyKeyFor(scope: Scope | undefined, paneId: string): string {
+  return keyFor(scope, paneId, PREFIX);
 }
 
 function storage(): Storage | null {
@@ -197,15 +219,25 @@ export function fitsDraftStore(
   return draftCharCount(text, attachments) <= MAX_CHARS;
 }
 
-/** The disk tier's entry for a pane, expiring (and removing) anything past MAX_AGE_MS. */
+/**
+ * The disk tier's entry for a pane, expiring (and removing) anything past MAX_AGE_MS. A first-version
+ * entry that is newer than this version's, or the only one, is copied over first ({@link PREFIX_V2});
+ * the first-version entry itself is left as it is.
+ */
 function loadStored(scope: Scope | undefined, paneId: string): DraftEntry | null {
   const store = storage();
   if (!store) return null;
   try {
-    const entry = parse(store.getItem(keyFor(scope, paneId)));
+    const key = keyFor(scope, paneId);
+    let entry = parse(store.getItem(key));
+    const legacy = parse(store.getItem(legacyKeyFor(scope, paneId)));
+    if (legacy !== null && Date.now() - legacy.at <= MAX_AGE_MS && (entry === null || legacy.at > entry.at)) {
+      entry = legacy;
+      store.setItem(key, JSON.stringify(legacy));
+    }
     if (entry === null) return null;
     if (Date.now() - entry.at > MAX_AGE_MS) {
-      store.removeItem(keyFor(scope, paneId));
+      store.removeItem(key);
       return null;
     }
     return entry;
@@ -277,6 +309,7 @@ export function saveDraft(
     // thing, so this only bites when the process actually dies — which fitsDraftStore's notice has
     // been saying on screen the entire time.
     clearStored(store, key);
+    clearStored(store, legacyKeyFor(scope, paneId));
     return;
   }
   try {
@@ -284,6 +317,9 @@ export function saveDraft(
   } catch {
     // Quota / private mode. The in-memory draft is still on screen; only its persistence is lost.
   }
+  // The first-version entry is older than what was just written, so it goes: a rollback that
+  // restored it would put text in the box the operator has since changed.
+  clearStored(store, legacyKeyFor(scope, paneId));
 }
 
 /** Hold the memory tier under {@link MEMORY_MAX_CHARS}, oldest first, never evicting `keep`. */
@@ -317,6 +353,7 @@ export function clearDraft(scope: Scope | undefined, paneId: string): void {
   const store = storage();
   if (!store) return;
   clearStored(store, key);
+  clearStored(store, legacyKeyFor(scope, paneId));
 }
 
 /**
