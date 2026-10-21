@@ -80,8 +80,8 @@
 //
 // A draft holds a walky talky message (M62 spec 02): a send its caller marks `draftHolds` is held over
 // a draft instead of refused `draft_present`, and nothing is typed while the draft is there. It goes
-// once two polls in a row read the box empty and the pane idle, or after the turn a submitted draft
-// starts. Its caller names the hold's end (`holdUntil`), so one clock runs for it, and checks the pane
+// once two polls in a row, at least two seconds apart, read the box empty and the pane idle, or after
+// the turn a submitted draft starts. Its caller names the hold's end (`holdUntil`), so one clock runs for it, and checks the pane
 // once more before it goes (`releaseCheck`). Every other send keeps the refusal and its offers.
 //
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
@@ -1638,6 +1638,16 @@ const FREE_POLLS = 2;
  */
 const QUIET_FREE_POLLS = 5;
 const QUIET_FREE_MS = 10_000;
+/**
+ * A marked request held over a draft (M62 spec 02) goes on two free reads in a row, and the second
+ * comes at least this long after the first. The poll ticks on every screen update, so two reads can be
+ * a few hundred milliseconds apart, and a draft just submitted reads as an empty box over an idle pane
+ * until the agent draws its turn. Field case 2026-10-21 (browser leg case 9, Claude Code on Haiku): two
+ * reads about a second after the Enter released the message, the turn showed while it was typed, and
+ * it ended `typed_not_submitted(changed)` with the text left in the box. A box the person cleared waits
+ * these two seconds; a submitted draft's turn shows inside them and makes it a turn hold.
+ */
+const DRAFT_LEFT_MS = 2000;
 /** Polls in a row with no pane before its held requests end `pane_gone`. */
 const MISSING_POLLS = 3;
 
@@ -2062,7 +2072,8 @@ export class SendProtocol {
    *    it free over at least ten seconds. A command whose Enter could steer a turn takes neither the
    *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again;
    *  - a marked request held over a draft (M62 spec 02) goes once two polls in a row read the pane free,
-   *    the box empty and the pane idle (the shape of hold.ts `DESK_READS`). A poll that reads a turn
+   *    the box empty and the pane idle (the shape of hold.ts `DESK_READS`), the second at least
+   *    {@link DRAFT_LEFT_MS} after the first. A poll that reads a turn
    *    makes it a turn hold: the draft was submitted, and it goes after that turn. Each poll writes what
    *    holds a marked request now (`cause`), and the caller's `releaseCheck` has the last word.
    * Every end keeps the text. Returns the releases it started, for a test to wait on. Never throws: a
@@ -2126,8 +2137,9 @@ export class SendProtocol {
       // A command whose Enter could steer a turn waits for a running turn a poll itself read (review Q1).
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
       const quiet = next.waitsForTurn !== true && watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
-      // A draft that left the box: two reads in a row of an empty box and an idle pane.
-      const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS;
+      // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
+      // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
+      const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       if (busy || !(afterTurn || quiet || draftLeft)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");

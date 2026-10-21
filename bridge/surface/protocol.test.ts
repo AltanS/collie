@@ -5433,6 +5433,12 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     return { ...r, protocol, send, holds };
   };
   const tick = async (r: Rig, surface: Read = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+  /** The poll's default cadence: two reads this far apart span the draft release's two seconds. */
+  const POLL = 2000;
+  const later = async (r: Rig, surface: Read = FREE, ms = POLL): Promise<(SendAnswer | null)[]> => {
+    r.clock.now += ms;
+    return tick(r, surface);
+  };
 
   test("a phone send over a draft is still refused draft_present with its offers; a marked one is held, nothing typed", async () => {
     const r = queued();
@@ -5470,8 +5476,8 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     await r.send("from walky", { id: "draft-000006", ...marked(r.clock.now + HOUR) });
     expect(await tick(r, DRAFT)).toEqual([]);
     r.pane.box = "";
-    expect(await tick(r)).toEqual([]);
-    const [released] = await tick(r);
+    expect(await later(r)).toEqual([]);
+    const [released] = await later(r);
     expect(released?.receipt).toMatchObject({ requestId: "draft-000006", outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> from walky");
     expect(r.holds.list()).toEqual([]);
@@ -5492,14 +5498,54 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     expect(r.pane.transcript.slice(-2)).toEqual(["> fix the parser", "> from walky"]);
   });
 
+  test("a submitted draft whose turn has not drawn yet: two quick free reads type nothing, the turn read makes it a turn hold (2026-10-21 rig case 9)", async () => {
+    // The browser leg's sequence: the draft, then Enter. The box clears at once, and the poll ticks on
+    // every screen update, so two reads a few hundred milliseconds apart read an empty box over an idle
+    // pane before the agent draws its turn. Typing there met the turn and ended typed_not_submitted.
+    const r = queued();
+    r.pane.box = "draft";
+    await r.send("from walky", { id: "draft-000011", ...marked(r.clock.now + HOUR) });
+    expect(await later(r, DRAFT)).toEqual([]);
+    r.pane.transcript.push("> draft");
+    r.pane.box = "";
+    expect(await later(r, FREE, 300)).toEqual([]);
+    expect(await later(r, FREE, 400)).toEqual([]);
+    expect(await later(r, FREE, 500)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.holds.get("draft-000011")).toMatchObject({ state: "held", cause: "draft_present" });
+    // The turn shows: the hold is now a turn hold, and it goes after that turn, once.
+    expect(await later(r, RUNNING, 300)).toEqual([]);
+    expect(r.holds.get("draft-000011")?.cause).toBe("turn_running");
+    expect(await later(r, RUNNING)).toEqual([]);
+    expect(await later(r)).toEqual([]);
+    const [released] = await later(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000011", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> draft", "> from walky"]);
+  });
+
+  test("the draft release counts its two seconds from the first free read: a draft read in between starts them again", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000012", ...marked(r.clock.now + HOUR) });
+    r.pane.box = "";
+    expect(await later(r)).toEqual([]);
+    expect(await later(r, DRAFT, 1500)).toEqual([]);
+    expect(await later(r, FREE, 1500)).toEqual([]);
+    expect(await later(r, FREE, 1500)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    const [released] = await later(r, FREE, 500);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000012", outcome: "sent" });
+  });
+
   test("a release that meets a draft again goes back without spending a try, and writes the cause", async () => {
     const r = queued();
     r.pane.box = "half a thought";
     await r.send("from walky", { id: "draft-000008", ...marked(r.clock.now + HOUR) });
     for (let round = 0; round < 7; round++) {
       // The poll reads the box free, but the person typed again before the release read it.
-      expect(await tick(r)).toEqual([]);
-      const [back] = await tick(r);
+      expect(await later(r)).toEqual([]);
+      const [back] = await later(r);
       expect(back?.receipt).toMatchObject({ requestId: "draft-000008", outcome: "held", keys: [] });
     }
     expect(r.holds.get("draft-000008")).toMatchObject({ state: "held", tries: 0, cause: "draft_present" });
@@ -5511,8 +5557,8 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     r.pane.box = "half a thought";
     await r.send("from walky", { id: "draft-000009", ...marked(r.clock.now + HOUR) });
     r.pane.box = "";
-    expect(await tick(r)).toEqual([]);
-    expect(await tick(r)).toEqual([]);
+    expect(await later(r)).toEqual([]);
+    expect(await later(r)).toEqual([]);
     expect(r.deps.store.get("draft-000009")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
     expect(r.pane.calls).toEqual([]);
     expect(r.pane.keysSeen).toEqual([]);
