@@ -439,7 +439,7 @@ export function createMuseReducer(): RowReducer {
 
     if (payloadType === "runtime.user_intent.accepted") {
       const texts: string[] = [];
-      let assets = 0;
+      const images: Extract<TranscriptPart, { kind: "image" }>[] = [];
       const messages = payload.model_messages;
       if (Array.isArray(messages)) {
         for (const message of messages) {
@@ -450,26 +450,56 @@ export function createMuseReducer(): RowReducer {
             unknown.part(kind === "" ? undefined : kind);
             if (kind === "text" && typeof block.text === "string" && block.text.trim() !== "") {
               texts.push(block.text);
-            } else if (kind === "asset") {
-              assets += 1;
+            } else if (kind === "asset" && isObj(block.asset)) {
+              // A content hash, not bytes — the picture lives outside the log and the pure
+              // parser cannot fetch it. The digest still names the bytes, so it becomes an
+              // image part addressed at this collie's blob route: it renders where the bytes
+              // are servable and reads as a named attachment — never as words the operator
+              // typed — where they are not. Muse's own `[Image #n]` markers already in the
+              // text stay verbatim: they are the log's own words, not invented ones. A
+              // non-image mime contributes nothing, and an unshaped digest names nothing.
+              const mediaType =
+                typeof block.asset.media_type === "string" ? block.asset.media_type : undefined;
+              if (mediaType !== undefined && !mediaType.startsWith("image/")) continue;
+              const digest = str(block.asset.digest);
+              const url = digest === "" ? null : resolveImageUrl(`blob:sha256:${digest}`, mediaType);
+              if (url === null) continue;
+              const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+              if (mediaType !== undefined) part.mimeType = mediaType;
+              images.push(part);
+            } else if (kind === "image") {
+              // An inline picture beside the asset references: base64 the log carried, so the
+              // pixels ARE here. A reference this build will not load contributes no part,
+              // rather than a broken <img> (the tool-image precedent below).
+              const raw =
+                typeof block.base64_data === "string"
+                  ? block.base64_data
+                  : typeof block.data === "string"
+                    ? block.data
+                    : "";
+              if (raw === "") continue;
+              const mediaType =
+                typeof block.media_type === "string"
+                  ? block.media_type
+                  : typeof block.mimeType === "string"
+                    ? block.mimeType
+                    : undefined;
+              const url = resolveImageUrl(raw, mediaType);
+              if (url === null) continue;
+              const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+              if (mediaType !== undefined) part.mimeType = mediaType;
+              images.push(part);
             }
           }
         }
       }
-      if (texts.length === 0 && assets === 0) return NO_CHANGE;
-      // An asset is a content hash, not bytes — the picture lives outside the log and the pure
-      // parser cannot resolve it. A marked placeholder keeps the turn from rendering empty (or
-      // vanishing, for an image-only turn) without inventing pixels. Only the deficit is
-      // added: Muse's own text already carries an `[Image #n]` placeholder per pasted
-      // picture (every asset turn in the measured corpus), and naming it twice is noise.
-      const alreadyNamed = texts.join("\n\n").split("[Image").length - 1;
-      for (let i = alreadyNamed; i < assets; i++) texts.push("[image attached]");
-      entries.push({
-        uuid: rowId,
-        ts,
-        role: "user",
-        parts: [{ kind: "text", ...clamp(stripAnsi(texts.join("\n\n")), MAX_TEXT_CHARS) }],
-      });
+      if (texts.length === 0 && images.length === 0) return NO_CHANGE;
+      const parts: TranscriptEntry["parts"] = [];
+      if (texts.length > 0) {
+        parts.push({ kind: "text", ...clamp(stripAnsi(texts.join("\n\n")), MAX_TEXT_CHARS) });
+      }
+      parts.push(...images);
+      entries.push({ uuid: rowId, ts, role: "user", parts });
       return reduction(entries, changed);
     }
 

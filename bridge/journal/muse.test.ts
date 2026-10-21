@@ -94,14 +94,47 @@ describe("parseMuseTranscript turns", () => {
     });
   });
 
-  test("text blocks join across messages, image assets become marked placeholders", () => {
+  test("text blocks join across messages; a digest asset becomes a named image part, never typed words", () => {
+    const digest = "b".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
         textBlock("check this"),
-        { kind: "asset", asset: { media_type: "image/png", byte_length: 42 } },
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest } },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
+    expect(entries[0]?.parts).toEqual([
+      { kind: "text", text: "check this" },
+      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
+    ]);
+  });
+
+  test("an image-only turn survives on its image part alone", () => {
+    const digest = "c".repeat(64);
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest } },
+      ]),
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      role: "user",
+      parts: [{ kind: "image", url: `/api/blobs/${digest}` }],
+    });
+  });
+
+  test("an inline user image with pixels renders them; an unloadable one contributes no part", () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("see"),
+        { kind: "image", media_type: "image/png", base64_data: png },
+        { kind: "image", media_type: "image/png", base64_data: "http://evil.example/x.png" },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([
+      { kind: "text", text: "see" },
+      { kind: "image", url: `data:image/png;base64,${png}`, mimeType: "image/png" },
+    ]);
   });
 
   test("run/started's prompt is not a second user turn", () => {
@@ -705,7 +738,8 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
     else throw new Error("expected a question call");
   });
 
-  test("a text block already carrying Muse's [Image #n] placeholder is not placeholdered twice", () => {
+  test("Muse's own [Image #n] marker stays verbatim beside the asset's named image part", () => {
+    const digest = "a".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
         textBlock("look at [Image #1] please"),
@@ -714,7 +748,7 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
           asset: {
             schema_version: 1,
             algorithm: "sha256",
-            digest: "a".repeat(64),
+            digest,
             media_type: "image/png",
             byte_length: 42,
             width: 10,
@@ -723,13 +757,18 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
         },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "look at [Image #1] please" }]);
+    expect(entries[0]?.parts).toEqual([
+      { kind: "text", text: "look at [Image #1] please" },
+      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
+    ]);
   });
 
-  test("a user asset pins the data absence: a hash and a path never become invented pixels", () => {
+  test("a user asset names its digest, never invented pixels: a hash and a path become no data URL", () => {
     // The log carries only a content digest (+ sometimes a since-deleted source_path);
-    // no blob store exists under Muse's data dirs, so the turn stays a marked text
-    // placeholder and no image part / data URL is fabricated.
+    // no blob store exists under Muse's data dirs, so the digest becomes a named blob-route
+    // reference — rendered where the bytes are servable, an honest named attachment where
+    // they are not — and no data URL is fabricated from it.
+    const digest = "b".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
         textBlock("check this"),
@@ -738,7 +777,7 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
           asset: {
             schema_version: 1,
             algorithm: "sha256",
-            digest: "b".repeat(64),
+            digest,
             media_type: "image/png",
             byte_length: 42,
             width: 10,
@@ -748,8 +787,31 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
         },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
+    expect(entries[0]?.parts).toEqual([
+      { kind: "text", text: "check this" },
+      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
+    ]);
     expect(JSON.stringify(entries)).not.toContain("data:image");
+  });
+
+  test("an asset without a digest or with a non-image mime contributes no part", () => {
+    const textOnly = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("check this"),
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42 } },
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest: "xyz" } },
+        {
+          kind: "asset",
+          asset: { media_type: "video/mp4", byte_length: 42, digest: "d".repeat(64) },
+        },
+      ]),
+    );
+    expect(textOnly[0]?.parts).toEqual([{ kind: "text", text: "check this" }]);
+    expect(
+      parseMuseTranscript(
+        accepted("row-2", [{ kind: "asset", asset: { media_type: "image/png", digest: "xyz" } }]),
+      ),
+    ).toEqual([]);
   });
 });
 
