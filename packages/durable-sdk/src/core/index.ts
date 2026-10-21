@@ -67,6 +67,7 @@ export {
   subtitleOf,
 } from "./rules.ts";
 export * from "./types.ts";
+export { type AskSpec, type RiskWords, type RiskWordsFor, summaryOf, toAskSpec } from "./ask-policy.ts";
 export { argumentsView, type Approval, type ApprovalOptions, callSummary, requireApproval } from "./approval.ts";
 export { SDK_VERSION } from "./version.ts";
 
