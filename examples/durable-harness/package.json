@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node --import ./tests/node/register.mjs server.ts",
+    "seed": "node seed.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
