@@ -5,6 +5,10 @@
 //
 //   node --import ./register.mjs proc.mjs serve [prompt]   start the World (queue and recovery), serve the route on a
 //                                                          free port, and start a session with `prompt` when given
+//   node --import ./register.mjs proc.mjs take <sessionId>
+//                                                          start the World and serve the route as `serve` does, then
+//                                                          take the session over once (acquireHarness) and keep the
+//                                                          lease open: the takeover of spike Q1. Logs {ev:"taken"}.
 //
 // Environment, besides DH_DIR (the data folder), DH_ROLE (a name in every line) and COLLIE_TOKEN:
 //   DH_QUEUE=0       serve the route only: the World is never started, so this process runs no queue and no recovery
@@ -95,6 +99,10 @@ if (process.argv[2] === "serve" && prompt !== undefined) {
   const root = await lease.harness.root(ctx, { agent: { model: MODEL, instructions: "test" } });
   await root.submit({ type: "input", content: prompt, requestId: "r1" }, ctx);
   lease.harness.waitForIdle(ctx).then(() => log("idle"), (e) => log("idle-failed", { message: String(e?.message).slice(0, 200) }));
+}
+if (process.argv[2] === "take") {
+  const lease = await acquireHarness(process.argv[3], open); // the takeover: A's storage is fenced from here on
+  log("taken", { id: lease.storage.sessionId });
 }
 const fill = Number(process.env.DH_FILL ?? 0);
 if (fill > 0) {

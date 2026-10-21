@@ -249,6 +249,32 @@ describe("a real durable-harness session", () => {
     );
   }
 
+  // THE FENCE (spike 01 Q1, M66): B takes the session over while A's guard waits, B's hook run asks the same ask, and
+  // one answer lets both guards through. A is fenced when it comes to commit the execute intent of the tool, so A
+  // never runs it. Exactly one run of the tool, and it is B's.
+  realHarness(
+    "a takeover while the guard waits: both guards read the same answer, the fenced process never runs the tool and the new one runs it once",
+    async () => {
+      const dir = fresh();
+      const a = proc(dir, "A", ["serve", "please mark eight"]);
+      const da = await dialOf(a);
+      const ask = await firstAsk(da);
+      const sessionId = (await until("A's session line", () => a.lines.find((l) => l.ev === "session")?.id as string | undefined, 30000)) as string;
+      const b = proc(dir, "B", ["take", sessionId]);
+      const db = await dialOf(b);
+      await until("the takeover", () => b.lines.find((l) => l.ev === "taken"), 30000);
+      expect((await firstAsk(db)).id).toBe(ask.id); // B's rerun of the hook finds the same ask in the journal
+      const pane = (await api.snapshot(da)).body.panes[0]!;
+      expect((await api.answer(da, pane.id, ask.id, "allow")).body).toEqual({ result: "taken" });
+      await until("the tool", () => (marks(dir).length > 0 ? true : undefined), 30000);
+      await until("idle", async () => ((await api.snapshot(db)).body.panes[0]?.state === "idle" ? true : undefined), 30000);
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // a second run, or A's late one, would show by now
+      expect(marks(dir)).toEqual(["B please mark eight"]);
+      expect(a.lines.filter((l) => l.ev === "tool-ran")).toEqual([]);
+    },
+    90000,
+  );
+
   // THE COST OF A POLL: 50 snapshots of one session with 200 entries (100 chat turns), each one a full read of the log
   // through the route, since the route keeps nothing between two requests. The bound is the spec's: p95 under 1 s.
   realHarness(
