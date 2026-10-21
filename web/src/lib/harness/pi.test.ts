@@ -25,9 +25,12 @@ describeAdapterConformance(piAdapter, {
   // The slash palette pushes the editor frame out of the bridge's six-row tail window. Beside OmO's
   // side panel the editor is read from rows cropped at the panel (pi/panel.ts), which the bridge
   // cannot find on the screen, so the write goes out unbound. An extension's footer of five rows under
-  // its own widget row does the same to the inset editor (issue 544).
+  // its own widget row does the same to the inset editor (issue 544); the reporter's idle and draft
+  // captures have six rows under the box, the widget row among them.
   unboundComposerFixtures: [
     "pi--v130-powerline-editor-running--w254.txt",
+    "pi--v130-powerline-editor-idle-footer--w254.txt",
+    "pi--v130-powerline-editor-two-row-draft-footer--w254.txt",
     "pi--v110-slash-palette.txt",
     "pi--v120-slash-palette-padded.txt",
     "pi--omo-v5130-panel-draft.txt",

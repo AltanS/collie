@@ -285,6 +285,21 @@ id, the reporter's German reply and the session name were replaced by strings of
 | --- | --- | --- |
 | `pi--v130-powerline-editor-running--w254.txt` | Empty inset editor, a running turn, widget row and five-row footer | running, modal none, composer empty (the profile's `frameAlternates`); the pi reader's `inset` layout, unbound (the tail is past the six-row window) |
 
+**Reporter's idle and draft captures**, the same setup, two captures taken 2026-10-20 and 2026-10-21 (`herdr pane read --source recent
+--lines 200 --format ansi`, 254 columns, CRLF in the read, here LF, no trailing newline). The turn is
+done, so the top rule has no `Working` label and the box stands over the widget row and the five-row
+footer. Cut to the tail (the last agent turn's final rows, then the status row, the box, the widget
+and the footer). Replaced by text of the same width, SGR bytes unchanged: the German reply and the
+German prompts in the widget row and in the cwd row (the widget's second line wraps onto the cwd row,
+105 columns), the Windows share path (`\\wsl.localhost\<user>\tmp\<folder>\...`, user and folder
+names), and the `auth:` profile name (`demo-profile`). The typed draft in the second file is the
+reporter's own test text.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-idle-footer--w254.txt` | Empty inset box over a long widget row (cut by an ellipsis) and the five-row footer | free (idle, modal none, empty) |
+| `pi--v130-powerline-editor-two-row-draft-footer--w254.txt` | Two typed rows, `Collie test draft line one` and `... two`, over the widget row and footer | draft read back as the two rows joined, modal none, not free |
+
 **Live**, from the lab run of 2026-10-20: pi 1.3.0 with pi-powerline-footer 0.20.2 alone, 120 columns
 and 40 rows, LF line ends, no trailing newline. pi ran under tmux, so its extended-keys warning stands
 at the top. With no other extension's footer the inset box ends the screen, or its ` ↳ ` widget row

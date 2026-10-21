@@ -366,3 +366,22 @@ describe("an extension's inset editor, live (issue 544)", () => {
     }
   });
 });
+
+// Issue 544, the reporter's two idle captures (pi 1.3.0, 254 columns): the turn is done, the box stands
+// over the ` ↳ ` widget row, whose long text is cut by an ellipsis, and under it a five-row footer whose
+// cwd row the widget's second line has overwritten. The idle box is free, and a two-row draft reads back
+// as the rows joined by a space, with no modal.
+describe("the reporter's idle captures under pi-powerline-footer (issue 544)", () => {
+  it("reads the empty box free: idle, no modal", () => {
+    const read = own("pi--v130-powerline-editor-idle-footer--w254.txt");
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(read.surface)).toBe(true);
+  });
+
+  it("reads the two typed rows as one draft, not free, no modal", () => {
+    const read = own("pi--v130-powerline-editor-two-row-draft-footer--w254.txt");
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    expect(read.frame!.interior.text).toBe("Collie test draft line one Collie test draft line two");
+    expect(isFree(read.surface)).toBe(false);
+  });
+});
