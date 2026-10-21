@@ -79,6 +79,8 @@ describe("buildRecipe", () => {
     expect(buildRecipe("claude", ["skip", "plan"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("claude", ["opus", "opus"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("codex", ["bypass", "readonly"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "never"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "no-questions"])).toMatchObject({ ok: true, command: "muse --yolo --disable-request-user-input" });
   });
 
   test("an unknown harness or option is refused", () => {

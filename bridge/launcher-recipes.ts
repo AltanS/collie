@@ -100,8 +100,8 @@ const RECIPE_TABLE = {
   // provider and resume is a subcommand (`muse resume --last`), not a flag, so neither would be a
   // real flag. The canary's `options` scenario starts each chip's line alone.
   muse: [
-    { id: "yolo", label: "Yolo mode", args: "--yolo", noPrompts: true },
-    { id: "never", label: "Never ask", args: "--approval-mode never", noPrompts: true },
+    { id: "yolo", label: "Yolo mode", args: "--yolo", group: "mode", noPrompts: true },
+    { id: "never", label: "Never ask", args: "--approval-mode never", group: "mode", noPrompts: true },
     { id: "no-questions", label: "No question prompts", args: "--disable-request-user-input", noPrompts: true },
   ],
 } satisfies Record<string, readonly RecipeOption[]>;
