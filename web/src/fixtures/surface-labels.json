@@ -2851,6 +2851,46 @@
    "version": "2.32.0",
    "state": "popup"
   },
+  "kiro--v3-workspace-trust-continue-up-edge-w40.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-continue-w120.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-continue-w40.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-continue-w60.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-exit-down-edge-w40.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-exit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-exit-w40.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
+  "kiro--v3-workspace-trust-exit-w60.txt": {
+   "harness": "kiro",
+   "version": "2.33.0",
+   "state": "dialog"
+  },
   "kiro--v3-write-allow-w120.txt": {
    "harness": "kiro",
    "version": "2.32.0",

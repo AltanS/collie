@@ -10,7 +10,7 @@ import { kiroAdapter } from "./index";
 const PANES = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 const ALL = readdirSync(PANES).filter((name) => name.endsWith(".txt")).toSorted();
 const OWN = ALL.filter((name) => name.startsWith("kiro--"));
-const DIALOGS = OWN.filter((name) => !name.includes("viewport") && /(?:approval|read|write|replace)-.*(?:allow|always|deny)-w/.test(name));
+const DIALOGS = OWN.filter((name) => name.includes("workspace-trust-") || (!name.includes("viewport") && /(?:approval|read|write|replace)-.*(?:allow|always|deny)-w/.test(name)));
 const raw = (name: string): string => readFileSync(join(PANES, name), "utf8");
 const linesOf = (text: string): StyledLine[] => splitLines(parseAnsi(text));
 const load = (name: string): StyledLine[] => linesOf(raw(name));
