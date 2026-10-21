@@ -224,7 +224,7 @@ A question must survive a crash, a takeover and a new function, so the guard kee
 On every run of a risky call the guard reads the journal. It writes the question only when the journal
 has none for this call. Then it reads the journal again, after 1 s, then 2 s, 4 s, and every 5 s, until
 you answer, the question expires or someone stops the turn. A rerun of the call finds its own question
-and waits for the same one, with the same expiry.
+and waits for the same one, with the same expiry. A read that fails while it waits is tried again at the next wait, and never decides the call. If the first read fails, the call is blocked and nothing is written.
 
 durable-harness's `recoverAfterMs` is the silence after which a new process may take a session over. It belongs to
 each open, and its default is 120 s. While the hook waits, the session writes nothing, so on Vercel a

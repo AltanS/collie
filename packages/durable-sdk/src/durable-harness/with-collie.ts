@@ -4,7 +4,7 @@
 // registry's extensions plus a guard bound to that session, because a Pi hook does not learn which session it runs
 // in. The guard is rerun-first: the session can be taken over, crash or be resumed on another machine at any point,
 // so everything it knows is in the run's journal (`<runId>_collie`), never in this process. A risky call reads the
-// journal; appends its `ask` if the journal does not hold one yet; polls the journal (1 s, then up to 5 s apart) until
+// journal; appends its `ask` if the journal does not hold one yet; polls the journal (1 s, then up to 5 s apart; a failed read is retried, never a verdict) until
 // a terminal record closes the ask; and allows the call only on an `answer` whose option allows it, for the same
 // arguments. A timeout, other arguments, a stop, or this process losing the session (`StorageFenced`) deny.
 //
@@ -51,6 +51,8 @@ export interface WithCollieOptions {
   journal?: (storage: WorldStorage) => JournalPort;
   /** The first and the longest wait between two reads of the journal, in ms. Default 1000 and 5000. */
   pollMs?: { first: number; max: number };
+  /** Called when a read of the journal inside the wait failed, with the error and the count of failed reads of this call. The guard reads again at the next wait. */
+  onReadError?: (error: Error, count: number) => void;
 }
 
 /** The guard's extension name. One per session registry. */
@@ -102,7 +104,7 @@ export interface GuardSession {
  * call; poll until a terminal record closes it; allow (undefined) only on an `answer` whose option allows, for the same
  * arguments. Everything else blocks, with the reason. A stop of the call (`stop`) throws, as `riskGuard` does.
  */
-export async function askThroughJournal(call: GuardCall, session: GuardSession, journal: JournalPort, o: Pick<WithCollieOptions, "words" | "timeoutMs" | "onTimeout" | "pollMs">, stop?: AbortSignal): Promise<{ block: string } | undefined> {
+export async function askThroughJournal(call: GuardCall, session: GuardSession, journal: JournalPort, o: Pick<WithCollieOptions, "words" | "timeoutMs" | "onTimeout" | "pollMs" | "onReadError">, stop?: AbortSignal): Promise<{ block: string } | undefined> {
   const runId = session.sessionId;
   const poll = o.pollMs ?? { first: 1000, max: 5000 };
   const toolCallId = safeId(call.id);
@@ -141,6 +143,7 @@ export async function askThroughJournal(call: GuardCall, session: GuardSession, 
       if (!session.isFenced) void journal.appendJournal(runId, { t: "expire", askId, at, decidedBy: "timeout" }).catch(() => {});
     }, Math.max(0, Date.parse(at) - Date.now()));
   }
+  let failedReads = 0;
   try {
     for (let wait = poll.first; verdict === undefined; wait = Math.min(wait * 2, poll.max)) {
       await sleep(wait, signal);
@@ -148,7 +151,15 @@ export async function askThroughJournal(call: GuardCall, session: GuardSession, 
       if (verdict !== undefined) break;
       // A stop of the call ends it, as `riskGuard` does: the throw blocks it.
       if (stop?.aborted === true) throw stop.reason ?? new Error("aborted");
-      records = await journal.readJournal(runId);
+      // A read that fails is never a verdict: the World may be down for a moment, and the ask is still open in the
+      // journal. Count it, tell the caller, and read again at the next wait. The session and stop signals still end the loop.
+      try {
+        records = await journal.readJournal(runId);
+      } catch (e) {
+        failedReads++;
+        o.onReadError?.(e instanceof Error ? e : new Error(String(e)), failedReads);
+        continue;
+      }
       verdict = verdictOf(records, askId, argsHash);
     }
   } finally {
