@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A send whose first line is a notice's key asks first.** Collie types a message one line at a time, so a first line of only `y`, `n`, `d` or a printed digit stood alone in the input box for a moment, and the Claude Code notice above the box could take it as its answer. Such a send now takes the manual Send, as the key alone does, and a running turn, a Replace or an Add to it on an empty box refuses it to the key pad. Thanks @eseninik (#559).
+
 ## [1.24.0] - 2026-10-20
 
 ### Added

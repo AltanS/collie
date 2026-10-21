@@ -965,7 +965,7 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
-/** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
+/** The `unconfirmed` detail of a send whose whole text, or first line, is one of the keys a notice above the box printed. */
 const NOTICE_KEY_DETAIL = "That message would answer the notice above the box. Check the pane, then tap Type here.";
 /** The detail of a notice digit refused where no commit can go ahead (a running turn, a Replace). */
 const NOTICE_KEY_HELD_DETAIL = "That message would answer the notice above the box. Answer it on its card, or send it once the turn has ended.";
@@ -2406,7 +2406,7 @@ export class SendProtocol {
       }
       case "replace": {
         const frame = this.draftFrame(state, s0);
-        // The box would end up holding one of the notice's digits alone, which answers the notice.
+        // The box would end up holding one of the notice's keys alone, which answers the notice.
         if (this.answersNotice(state, s0)) throw noticeRefusal(s0);
         // S0 ends with its two reads; emptying the box is its own step with its own bound.
         this.lap(state, "s0");
@@ -2419,7 +2419,7 @@ export class SendProtocol {
       }
       case "append": {
         const frame = this.draftFrame(state, s0);
-        // Add to it on a box the person emptied since the phone saw its draft: the digit would stand
+        // Add to it on a box the person emptied since the phone saw its draft: the key would stand
         // alone in the box, and the notice would take it.
         if (boxText(frame).trim().length === 0 && this.answersNotice(state, s0)) throw noticeRefusal(s0);
         break;
@@ -2534,12 +2534,16 @@ export class SendProtocol {
   private gateSend(state: RunState, s0: Snap): void {
     const { surface } = s0;
     if (isFree(surface)) {
-      // On an empty box a digit the notice above it printed answers the notice: the manual Send.
-      if (this.answersNotice(state, s0)) {
+      // On an empty box a key the notice above it printed answers the notice: the manual Send. Only a
+      // whole-text key is typed as the answer, with no Enter. A longer send whose first line is a key
+      // takes the ordinary typed path once confirmed: if the notice took that line, S1 does not find
+      // the whole text in the box, and no Enter follows.
+      const answer = this.noticeAnswer(state, s0);
+      if (answer !== null) {
         state.manual = true;
         this.gateSteeringTurn(state, s0);
         this.gateManual(state, s0, NOTICE_KEY_DETAIL, NOTICE_KEY);
-        state.noticeKey = true;
+        state.noticeKey = answer === "whole";
       }
       return;
     }
@@ -2549,7 +2553,7 @@ export class SendProtocol {
         state.queued = false;
         throw new Ended("refused", "draft_present", { surface, framed: true, detail: "The box already holds a draft." });
       }
-      // In a turn the digit would answer the notice before the harness queues it, so no commit is offered.
+      // In a turn the key would answer the notice before the harness queues it, so no commit is offered.
       if (this.answersNotice(state, s0)) {
         state.queued = false;
         throw noticeRefusal(s0);
@@ -2583,14 +2587,24 @@ export class SendProtocol {
   }
 
   /**
-   * Whether S0 shows a notice the profile names over the found box (`idle.notices`) and the send's
-   * whole text, trimmed, is one of the keys it printed, a letter in either case (Claude Code lowercases
-   * the box before it matches a lettered key). The harness reads such a box as the answer to the notice,
-   * so the send takes the manual Send even on a free screen.
+   * Whether S0 shows a notice the profile names over the found box (`idle.notices`) and the send would
+   * leave one of the keys it printed alone in the box: its whole text, trimmed, is that key, or its
+   * first line is. The lines are written one at a time, so the first line stands alone in the box until
+   * the newline key follows it, long enough for the notice to take it. A letter matches in either case
+   * (Claude Code lowercases the box before it matches a lettered key). The harness reads such a box as
+   * the answer to the notice, so the send takes the manual Send even on a free screen.
    */
   private answersNotice(state: RunState, s0: Snap): boolean {
-    const text = state.request.text.trim();
-    return s0.notice !== null && s0.notice.keys.some((key) => key.key.toLowerCase() === text.toLowerCase());
+    return this.noticeAnswer(state, s0) !== null;
+  }
+
+  /** How a send answers the notice S0 shows: `whole` text, `first` line only, or null for neither. */
+  private noticeAnswer(state: RunState, s0: Snap): "whole" | "first" | null {
+    if (s0.notice === null) return null;
+    const keys = new Set(s0.notice.keys.map((key) => key.key.toLowerCase()));
+    if (keys.has(state.request.text.trim().toLowerCase())) return "whole";
+    const first = sendLines(state.request.text)[0] ?? "";
+    return keys.has(first.trim().toLowerCase()) ? "first" : null;
   }
 
   /**
