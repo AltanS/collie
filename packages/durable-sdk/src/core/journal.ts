@@ -5,7 +5,8 @@
 // WIRE.md appendix "A host with no process" describes the schema for the durable-harness host.
 // No runtime import, like the rest of core/.
 
-import type { Answer, Ask, AskOutcome } from "./types.ts";
+import { isRecord, isSafeInteger, isText } from "./rules.ts";
+import type { Answer, Ask, AskOutcome, Json, JsonObject } from "./types.ts";
 
 /** An ask was raised. The first record for an ask id fixes its text, its options and its `expiresAt`. */
 export interface JournalAsk {
@@ -48,16 +49,25 @@ export interface JournalExpire {
   decidedBy?: "timeout" | "program";
 }
 
-/** The memory of one request id. `pending` is written before the act, `done` after it. */
+/**
+ * The memory of one request id. `pending` is written before the act, `done` after it. `failed` is written after an act
+ * that refused (a stale turn, a bad option): the request id is free again, as the memory path keeps no failure.
+ */
 export interface JournalReceipt {
   t: "receipt";
-  phase: "pending" | "done";
+  phase: "pending" | "done" | "failed";
   /** The receipt group: the pane id, or one of the named groups. */
   group: string;
   requestId: string;
   digest: string;
   /** Only a `done` carries the reply. */
   reply?: object;
+  /**
+   * Minted per `pending`, so two writers that append a `pending` for one request id at once can read the stream back and
+   * tell whose stands. A `done` or `failed` carries the nonce of the `pending` it closes. Optional: a record without one
+   * folds as before.
+   */
+  nonce?: string;
   /** ISO 8601. */
   at: string;
 }
@@ -94,6 +104,8 @@ export const isTerminal = (r: JournalRecord): r is JournalAnswer | JournalExpire
  * - An `ask` that comes after a terminal record of its id is ignored: the ask is decided and never opens.
  * - A `receipt` with `phase: "done"` closes the `pending` of its request id, when the digest is the same. The first
  *   `pending` of an id stands; a `done` stands once, and a `pending` after it is ignored.
+ * - A `receipt` with `phase: "failed"` takes the standing `pending` of its id away, when the nonce is the same: the act
+ *   refused, and the next `pending` of the id stands as if it were the first.
  */
 export function foldJournal(records: readonly JournalRecord[]): FoldedJournal {
   const asks = new Map<string, JournalAsk>();
@@ -128,6 +140,11 @@ export function foldJournal(records: readonly JournalRecord[]): FoldedJournal {
 function foldReceipt(receipts: Map<string, FoldedReceipt>, r: JournalReceipt) {
   const { t: _t, ...entry } = r;
   const have = receipts.get(r.requestId);
+  if (r.phase === "failed") {
+    // Only the writer of the standing `pending` can free it: a `failed` with another nonce changes nothing.
+    if (have?.phase === "pending" && have.nonce !== undefined && have.nonce === r.nonce) receipts.delete(r.requestId);
+    return;
+  }
   if (have === undefined) {
     receipts.set(r.requestId, entry);
     return;
@@ -147,4 +164,37 @@ function outcomeOf(record: JournalAnswer | JournalExpire, ask: JournalAsk | unde
     if (effect !== undefined) outcome.effect = effect;
   }
   return outcome;
+}
+
+const TAGS: ReadonlySet<string> = new Set(["ask", "answer", "expire", "receipt"]);
+const PHASES: ReadonlySet<string> = new Set(["pending", "done", "failed"]);
+
+/** Does a parsed line carry the fields its tag needs? The fold reads these and nothing else. */
+function isJournalRecord(v: JsonObject): v is JsonObject & JournalRecord {
+  if (!isText(v.t) || !TAGS.has(v.t)) return false;
+  if (v.t === "receipt") return isText(v.phase) && PHASES.has(v.phase) && isText(v.requestId) && isText(v.digest) && isText(v.group);
+  if (!isText(v.askId)) return false;
+  if (v.t === "ask") return isText(v.toolCallId) && isText(v.argsHash) && isRecord(v.ask) && isText(v.openedAt);
+  if (v.t === "answer") return isSafeInteger(v.revision) && isRecord(v.answer) && isText(v.requestId) && isText(v.nonce) && isText(v.at);
+  return isText(v.at);
+}
+
+/**
+ * The records of a journal from its text: one JSON object per line. A reader splits on newlines, never on the chunks
+ * the text came in, and drops a line it cannot parse or whose fields do not fit its tag (WIRE.md appendix A.2), so one
+ * bad line costs that line and nothing else.
+ */
+export function parseJournal(text: string): JournalRecord[] {
+  const records: JournalRecord[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    let value: Json;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (isRecord(value) && isJournalRecord(value)) records.push(value);
+  }
+  return records;
 }

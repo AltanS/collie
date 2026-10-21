@@ -14,7 +14,7 @@ export { handle, hello, versionLine } from "./handle.ts";
 export type { AskSink, PaneHandle, PaneOptions, SendContext, SinkReply, StoreSeams, TabHandle, WorkspaceHandle } from "./layout.ts";
 export { AnswerDecided, AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
 export type { FoldedJournal, FoldedReceipt, JournalAnswer, JournalAsk, JournalExpire, JournalReceipt, JournalRecord, SeededAsk } from "./journal.ts";
-export { foldJournal, isTerminal } from "./journal.ts";
+export { foldJournal, isTerminal, parseJournal } from "./journal.ts";
 export {
   type Claim,
   digestOf,

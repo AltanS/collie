@@ -20,12 +20,22 @@
     "skipLibCheck": true,
     "types": ["bun"],
     "lib": ["ESNext"],
+    // `world-port.ts` reads durable-harness's package.json for its version check.
+    "resolveJsonModule": true,
     // A `paths` target is a folder lookup that never reads a package's `exports`, so the wildcard serves package roots
     // only. Each subpath the source imports gets its own line, the folder `exports` points into: tsc reads its
     // index.d.ts and Bun its index.js. Without one, the import resolves only where a stray copy sits above the repo.
+    //
+    // THE DURABLE-HARNESS PEERS COME FROM examples/durable-harness's INSTALL (M66), the same way: `durable-harness` and
+    // `@workflow/*` are imported by src/durable-harness/world-port.ts only. Each durable-harness subpath gets its own
+    // line, pointing at the file its `exports` names.
     "paths": {
       "@earendil-works/chord/context": ["../../examples/durable-member/node_modules/@earendil-works/chord/dist/context"],
-      "@earendil-works/*": ["../../examples/durable-member/node_modules/@earendil-works/*"]
+      "@earendil-works/*": ["../../examples/durable-member/node_modules/@earendil-works/*"],
+      "durable-harness": ["../../examples/durable-harness/node_modules/durable-harness/dist/index"],
+      "durable-harness/pi-durable": ["../../examples/durable-harness/node_modules/durable-harness/dist/pi-durable"],
+      "durable-harness/package.json": ["../../examples/durable-harness/node_modules/durable-harness/package.json"],
+      "@workflow/*": ["../../examples/durable-harness/node_modules/@workflow/*"]
     }
   },
   "include": ["src"]
