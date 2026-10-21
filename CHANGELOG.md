@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Grok or opencode draft that names the interrupt hint is no longer read as a running turn.** The running-row patterns of both profiles now stand where the real row puts them, Grok's `Esc:cancel` in the hint row under the box and opencode's `esc interrupt` in the status row after its spinner. A draft such as `press Esc:cancel to stop` stays a draft and the send goes through, where it was refused as `turn_running`. Tests from @aahung (#460).
+
 ## [1.24.0] - 2026-10-20
 
 ### Added

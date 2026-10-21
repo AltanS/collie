@@ -1,6 +1,7 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { lineText, type StyledLine } from "../blocks";
 import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign } from "./cues";
 import { isSingleKeyRow } from "./key-row";
@@ -525,6 +526,77 @@ describe("omp 18.11's running turn (issue 497)", () => {
 });
 
 describe("running signs and the prompt row", () => {
+  // The prompt row holds the operator's draft, and a profile's running rows are read there too (a
+  // harness may swap its prompt glyph while a turn runs). So a pattern that names a hint must stand
+  // where the real running row puts it, or a draft that types the hint reads as a running turn and the
+  // send is refused as `turn_running`. Grok and opencode name their hints; their patterns are anchored.
+  // Tests from @aahung's PR #460, adapted to `runningRows` (the PR's field was `runningPrompt`).
+  const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+  const cases = [
+    { fixture: "grok--draft-single.txt", harness: "grok", phrase: "Esc:cancel" },
+    { fixture: "oc--draft-single.txt", harness: "opencode", phrase: "esc interrupt" },
+  ];
+  for (const { fixture, harness, phrase } of cases) {
+    it(`running: a ${harness} draft that types \`${phrase}\` is not a running turn (synthetic prompt row on the real ${fixture})`, () => {
+      // Given: the captured draft with its text replaced by the harness's own running hint.
+      const idle = requireProfile(harness).idle;
+      const rows = fixtureRows(fixture);
+      const captured = findInputFrame(rows, idle)!;
+      const prompt = captured.interior.prompt;
+      const typed = lineText(rows[prompt]!).replace(captured.interior.text, phrase.padEnd(captured.interior.text.length));
+      const screen = rows.map((row, i) => (i === prompt ? plain(typed) : row));
+      // When: the frame is found again and its turn read.
+      const frame = findInputFrame(screen, idle)!;
+      // Then: the box holds the phrase, the pattern still finds the phrase, and the turn is idle.
+      expect(frame.interior.text).toBe(phrase);
+      expect(typed).toContain(phrase);
+      expect(idle.runningRows!.some((source) => new RegExp(source, "u").test(typed.trimEnd()))).toBe(false);
+      expect(runningSign(screen, frame, idle.runningRows)).toBe(false);
+      expect(readScreen(screen, harness, idle).surface.turn).toBe("idle");
+    });
+  }
+
+  it("running: a longer grok draft that names `Esc:cancel` among other words is not a running turn (synthetic)", () => {
+    const idle = requireProfile("grok").idle;
+    const rows = fixtureRows("grok--draft-single.txt");
+    const captured = findInputFrame(rows, idle)!;
+    const prompt = captured.interior.prompt;
+    const text = "press Esc:cancel to stop";
+    const typed = lineText(rows[prompt]!).replace(captured.interior.text, text.padEnd(captured.interior.text.length));
+    const screen = rows.map((row, i) => (i === prompt ? plain(typed) : row));
+    const frame = findInputFrame(screen, idle)!;
+    expect(frame.interior.text).toBe(text);
+    expect(runningSign(screen, frame, idle.runningRows)).toBe(false);
+  });
+
+  it.each([
+    ["grok", "grok--working.txt"],
+    ["opencode", "oc--working.txt"],
+    ["opencode", "oc--draft-while-working.txt"],
+  ])("running: the %s hint in %s, on its real row, is a running turn", (harness, fixture) => {
+    const idle = requireProfile(harness).idle;
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, idle)!;
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(true);
+    expect(readScreen(rows, harness, idle).surface.turn).toBe("running");
+  });
+
+  it.each([
+    ["grok", "grok--fresh-idle.txt"],
+    ["grok", "grok--draft-single.txt"],
+    ["grok", "grok--draft-wrapped.txt"],
+    ["grok", "grok--done.txt"],
+    ["opencode", "oc--fresh-idle.txt"],
+    ["opencode", "oc--draft-single.txt"],
+    ["opencode", "oc--draft-wrapped.txt"],
+    ["opencode", "oc--draft-multiline.txt"],
+  ])("running: the %s idle or draft screen %s is not a running turn", (harness, fixture) => {
+    const idle = requireProfile(harness).idle;
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, idle)!;
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(false);
+  });
+
   it("running: Kiro's busy prompt row reads running, also with one more row under the box", () => {
     // Given: the captured running Kiro screen, whose busy line stands on the prompt row, and the same
     // screen with one more row under the box, so the prompt row is no longer the box's last row.
