@@ -1,0 +1,54 @@
+
+ [0m[38;2;157;157;157mcollie-pi-wrap-probe[0m [0m[38;2;127;127;127m·[0m [0m[38;2;127;127;127mPerm:[0m [0m[38;2;157;157;157mYolo[0m [0m[38;2;127;127;127m·[0m [0m[38;2;127;127;127mMCP 5/5[0m                                                                                                                 [0m[38;2;157;157;157mctx[0m [0m[38;2;149;149;149m󰝦[0m 0% [0m[38;2;127;127;127m·[0m sub [0m[38;2;127;127;127m·[0m [0m[38;2;157;157;157mclaude[0m [0m[38;2;157;157;157m5h[0m [0m[38;2;157;157;157m󰪣[0m 75% [0m[38;2;157;157;157m·[0m [0m[38;2;157;157;157mweek[0m 30% 
+[0m[38;2;149;149;149m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;127;127;127mv1.3.0[0m                                                                                                                                                                                             
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;127;127;127mescape[0m[38;2;157;157;157m interrupt · [0m[38;2;127;127;127mctrl+c/ctrl+d[0m[38;2;157;157;157m clear/exit · [0m[38;2;127;127;127m/[0m[38;2;157;157;157m commands · [0m[38;2;127;127;127m![0m[38;2;157;157;157m bash · [0m[38;2;127;127;127mctrl+o[0m[38;2;157;157;157m more[0m                                                                                                                    
+ [0m[38;2;127;127;127mPress ctrl+o to show full startup help.[0m                                                                                                                                                                 
+                                                                                                                                                                                                         
+ [0m[38;2;127;127;127mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                                                                                                   
+
+
+ [0m[38;2;127;127;127mSkill registry refreshed (19 skills)[0m                                                                                                                                                                    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                                                                  [0m[38;2;127;127;127mclaude-opus-5-5 · high[0m 
+
+[0m[38;2;133;133;133m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;133;133;133m❯[0m This is a draft typed to capture how the editor wraps a long message over several rows, for the Collie fixture. Please look at the failing build on the main branch and find out why the integration   
+  suite times out after the last merge, then write down what you find in the notes file so we can talk about it tomorrow morning before the release goes out. If the cause is the new cache layer,       
+  check whether turning it off makes the suite pass again on a clean checkout of the branch, without any local state left over from earlier runs. Also tell me which commits touched the scheduler       
+  since the last green build, and keep the summary in plain words so the rest of the team can follow it. Do not change anything yet, just read, measure and report back with what you found, and say     
+  which of the three suspects you would look at first and why.[0m[7m [0m                                                                                                                                          
+[0m[38;2;133;133;133m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m

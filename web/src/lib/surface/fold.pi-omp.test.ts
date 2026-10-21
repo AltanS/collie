@@ -292,6 +292,15 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
     });
   }
 
+  // The field screen's bytes: gentle-pi 4.3.0 on pi 1.3.0, 201 columns, a five-row draft not sent.
+  it("the captured wrapped draft reads as a draft with no modal", () => {
+    const got = own("pi--v130-gentle-draft-wrapped.txt");
+    expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    expect(got.cues?.strength).not.toBe("strong");
+    expect(got.frame?.interior.text.startsWith("This is a draft typed to capture")).toBe(true);
+    expect(got.frame?.interior.text.endsWith("look at first and why.")).toBe(true);
+  });
+
   // The controls stay dialogs: a choice between the rules is no soft wrap. An explicit-newline draft of
   // short rows reads the same as such a list, so it stays a dialog too, the conservative side.
   const MENUS: readonly [string, string[]][] = [
