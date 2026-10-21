@@ -1678,6 +1678,8 @@ export const zh: Dictionary = {
   "settings.updateCard.majorNote": "{version} 是新的大版本。",
   "settings.updateCard.dismiss": "下次汇总时提醒我",
   "settings.updateCard.dismissed": "已忽略，将在下次汇总时提醒。",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "正在检查此机器…",
   "settings.updateCard.details": "详细信息",
   "settings.updateCard.summary.checks.one": "{count} 项检查",

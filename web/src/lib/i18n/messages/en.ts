@@ -1806,6 +1806,10 @@ export const en = {
   "settings.updateCard.majorNote": "{version} is a new major.",
   "settings.updateCard.dismiss": "Remind me next digest",
   "settings.updateCard.dismissed": "Dismissed until the next digest.",
+  // On Edge there is no digest: the push waits only for a newer build (and for 09:00). Same button, same
+  // snooze, so these two say what it does there.
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "Checking this machine…",
   "settings.updateCard.details": "Details",
   "settings.updateCard.summary.checks.one": "{count} check",

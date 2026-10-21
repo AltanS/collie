@@ -1688,6 +1688,8 @@ export const ko: Dictionary = {
   "settings.updateCard.majorNote": "{version} 버전은 새 메이저 릴리스입니다.",
   "settings.updateCard.dismiss": "다음 다이제스트에서 다시 알림",
   "settings.updateCard.dismissed": "다음 다이제스트까지 알림을 끕니다.",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "이 머신 확인 중…",
   "settings.updateCard.details": "상세 정보",
   "settings.updateCard.summary.checks.one": "검사 {count}개",

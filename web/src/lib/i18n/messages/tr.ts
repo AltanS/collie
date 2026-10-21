@@ -1556,6 +1556,8 @@ export const tr: Dictionary = {
   "settings.updateCard.majorNote": "{version} yeni bir ana sürümdür.",
   "settings.updateCard.dismiss": "Sonraki özette hatırlat",
   "settings.updateCard.dismissed": "Sonraki özete kadar kapatıldı.",
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "Bu makine denetleniyor…",
   "settings.updateCard.details": "Ayrıntılar",
   "settings.updateCard.summary.checks.one": "{count} denetim",
