@@ -439,6 +439,7 @@ export const ko: Dictionary = {
   "composer.protocol.commitCap": "확인 후 입력",
   "sendReceipts.title": "최근 전송",
   "sendReceipts.empty": "이 창으로 전송된 내역이 아직 없습니다.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "전송됨",
   "sendReceipts.outcome.effective": "확인됨",
   "sendReceipts.outcome.typed_not_submitted": "입력됨, 전송되지 않음",

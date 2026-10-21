@@ -427,6 +427,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.commitCap": "確認並輸入",
   "sendReceipts.title": "最近傳送",
   "sendReceipts.empty": "尚未傳送至此窗格。",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "已傳送",
   "sendReceipts.outcome.effective": "已確認",
   "sendReceipts.outcome.typed_not_submitted": "已輸入，未傳送",

@@ -477,6 +477,7 @@ export const en = {
   // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
   "sendReceipts.title": "Recent sends",
   "sendReceipts.empty": "No sends to this pane yet.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Sent",
   "sendReceipts.outcome.effective": "Confirmed",
   "sendReceipts.outcome.typed_not_submitted": "Typed, not sent",

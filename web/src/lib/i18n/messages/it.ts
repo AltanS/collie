@@ -381,6 +381,7 @@ export const it: Dictionary = {
   "composer.protocol.commitCap": "Conferma e digita",
   "sendReceipts.title": "Invii recenti",
   "sendReceipts.empty": "Nessun invio ancora a questo riquadro.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Inviato",
   "sendReceipts.outcome.effective": "Confermato",
   "sendReceipts.outcome.typed_not_submitted": "Digitato, non inviato",

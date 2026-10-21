@@ -442,6 +442,7 @@ export const es: Dictionary = {
   "composer.protocol.commitCap": "Confirmar y escribir",
   "sendReceipts.title": "Envíos recientes",
   "sendReceipts.empty": "Aún no hay envíos a este panel.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Enviado",
   "sendReceipts.outcome.effective": "Confirmado",
   "sendReceipts.outcome.typed_not_submitted": "Escrito, no enviado",

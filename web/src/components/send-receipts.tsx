@@ -57,6 +57,7 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
   return (
     <section data-slot="send-receipts" className="flex flex-col gap-1.5 px-4" aria-label={t("sendReceipts.title")}>
       <h3 className="text-sm font-medium">{t("sendReceipts.title")}</h3>
+      <p className="text-xs leading-snug text-muted-foreground">{t("sendReceipts.kept")}</p>
       {rows.length === 0 ? (
         <p className="text-xs leading-snug text-muted-foreground">{t("sendReceipts.empty")}</p>
       ) : (

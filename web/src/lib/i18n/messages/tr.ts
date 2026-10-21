@@ -381,6 +381,7 @@ export const tr: Dictionary = {
   "composer.protocol.commitCap": "Onayla ve yaz",
   "sendReceipts.title": "Son gönderilenler",
   "sendReceipts.empty": "Bu bölmeye henüz bir şey gönderilmedi.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Gönderildi",
   "sendReceipts.outcome.effective": "Onaylandı",
   "sendReceipts.outcome.typed_not_submitted": "Yazıldı, gönderilmedi",

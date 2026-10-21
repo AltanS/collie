@@ -444,6 +444,7 @@ export const de: Dictionary = {
   "composer.protocol.commitCap": "Bestätigen und tippen",
   "sendReceipts.title": "Kürzliche Sendungen",
   "sendReceipts.empty": "Noch keine Sendungen an dieses Pane.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Gesendet",
   "sendReceipts.outcome.effective": "Bestätigt",
   "sendReceipts.outcome.typed_not_submitted": "Getippt, nicht gesendet",

@@ -389,6 +389,7 @@ export const ru: Dictionary = {
   "composer.protocol.commitCap": "Подтвердить и напечатать",
   "sendReceipts.title": "Недавние отправки",
   "sendReceipts.empty": "В эту панель еще ничего не отправлялось.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Отправлено",
   "sendReceipts.outcome.effective": "Подтверждено",
   "sendReceipts.outcome.typed_not_submitted": "Напечатано, не отправлено",

@@ -19,6 +19,11 @@ const rows: readonly SendReceiptRow[] = [
 ];
 
 describe("SendReceiptsView", () => {
+  it("says under the heading how long Collie keeps the line of a send, and which lines it does not keep", () => {
+    render(<SendReceiptsView rows={rows} now={NOW} />);
+    expect(screen.getByText("Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.")).toBeInTheDocument();
+  });
+
   it("lists each receipt with its outcome, its reason and how long ago, newest first as given", () => {
     render(<SendReceiptsView rows={rows} now={NOW} />);
     const items = screen.getAllByRole("listitem");

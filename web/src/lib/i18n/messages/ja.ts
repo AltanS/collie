@@ -438,6 +438,7 @@ export const ja: Dictionary = {
   "composer.protocol.commitCap": "確認して入力",
   "sendReceipts.title": "最近の送信",
   "sendReceipts.empty": "このペインへの送信はまだありません。",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "送信済み",
   "sendReceipts.outcome.effective": "確認済み",
   "sendReceipts.outcome.typed_not_submitted": "入力済み、未送信",
