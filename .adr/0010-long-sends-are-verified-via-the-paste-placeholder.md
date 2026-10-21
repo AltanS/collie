@@ -138,10 +138,12 @@ Claude also takes image files off a paste (probed live 2026-10-21, Claude Code 2
 paste at each newline and at a space before an absolute path. Each piece that is an existing
 `.png/.jpg/.jpeg/.gif/.webp` file at an absolute path, in any case, becomes an `[Image #N]` before the
 rest, and the kept pieces are joined by newlines. A missing file, another extension, a `~/` or a
-relative path, and a path with words after it stay text. The bridge runs where the pane runs, so it
-checks the same disk: S1 expects one image token per such piece and the kept text after them. Any
-path is taken, not only Collie's uploads: a person who sends a screenshot from another app ends a
-dictation with its path, and that send must still be proven. Where the disk and Claude disagree, the
-box does not match and the send stalls, as before. The image token is the profile's (`paste.image`).
+relative path, and a path with words after it stay text. S1 expects one image token per piece that
+is in Collie's own upload shape (`<stateDir>/uploads/<pane>-<time>-<8 hex>.<ext>`, the shape the web
+adapter's `liftedPaste` reads, in `web/src/lib/upload-path.ts`) and still a file on the bridge's disk,
+which is the disk the pane runs on, then the kept text after them. Any other image path stays text
+to S1, as it does on the web side: if Claude takes it anyway, the box does not match and the send
+stalls rather than guessing (Altan, on the merge of #546). The image token is the profile's
+(`paste.image`).
 
 Chunking stays rejected.

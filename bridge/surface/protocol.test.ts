@@ -616,7 +616,7 @@ describe("a send that goes through", () => {
   });
 
   test("an image path that ends a long dictation is taken off the paste, and its image token then the folded rest is proven", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const pane = new FakePane("claude");
     pane.imageFiles = [shot];
     const { send } = rig({ block: true, pane, imageFiles: [shot] });
@@ -627,7 +627,7 @@ describe("a send that goes through", () => {
   });
 
   test("an image path on a line of its own is taken off a multi-line paste, and the rest folds with one line break fewer", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const pane = new FakePane("claude");
     pane.imageFiles = [shot];
     const { send } = rig({ block: true, pane, imageFiles: [shot] });
@@ -637,7 +637,7 @@ describe("a send that goes through", () => {
   });
 
   test("an image the harness took that the protocol did not expect leaves the send typed_not_submitted", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const pane = new FakePane("claude");
     pane.imageFiles = [shot];
     // The disk check says no file: the protocol expects the path as text, the harness attached it.
@@ -646,15 +646,25 @@ describe("a send that goes through", () => {
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("Submit finds a box that holds the image token and the folded paste", async () => {
+  test("an image path outside Collie's uploads stays text: the harness takes it, the box does not match, and nothing is submitted", async () => {
     const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    // The file exists on this disk, but only Collie's own upload shape is taken off the paste.
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Submit finds a box that holds the image token and the folded paste", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const { pane, send } = rig({ block: true, imageFiles: [shot] });
     pane.box = "[Image #1][Pasted text #2]";
     expect((await send(`${"слово ".repeat(300).trim()} ${shot}`, { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
   });
 
   test("Add to a draft with an image: the draft, the image token, then the folded rest", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const pane = new FakePane("claude");
     pane.imageFiles = [shot];
     pane.box = "draft";
@@ -665,7 +675,7 @@ describe("a send that goes through", () => {
   });
 
   test("a short multi-line text with an image lands literally after the image token", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const pane = new FakePane("claude");
     pane.imageFiles = [shot];
     const { send } = rig({ block: true, pane, imageFiles: [shot] });
@@ -674,7 +684,7 @@ describe("a send that goes through", () => {
   });
 
   test("Discard finds and clears a box that holds the image token and the folded paste", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
     const { pane, send } = rig({ block: true, imageFiles: [shot] });
     pane.box = "[Image #1][Pasted text #2 +9 lines]";
     const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
@@ -3371,11 +3381,13 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #2 +1 lines]", "", ["one long line"], collapse, { images: 0, image, lines: ["one long line"] })).toBe(false);
   });
 
-  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, image files taken off", () => {
+  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
     const match = profileFor("claude", "2.1.304", { log: () => undefined });
     expect(match?.profile.paste?.block).toBe(true);
-    const shot = "/srv/shots/a.jpg";
-    const isShot = (path: string): boolean => path === shot;
+    const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const foreign = "/srv/shots/a.jpg";
+    const windows = String.raw`C:\Users\Me Too\collie\uploads\w1-mf3x9q-0a1b2c3d.PNG`;
+    const isShot = (path: string): boolean => path === shot || path === foreign || path === windows;
     expect(wholePaste(match, ["short"], isShot)).toBeNull();
     expect(wholePaste(match, ["x".repeat(800)], isShot)).toBeNull();
     expect(wholePaste(match, ["x".repeat(801)], isShot)?.images).toBe(0);
@@ -3384,7 +3396,11 @@ describe("pure helpers", () => {
     expect(wholePaste(match, ["see", shot], isShot)).toMatchObject({ images: 1, lines: ["see"] });
     expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
-    expect(wholePaste(match, ["see /srv/shots/missing.jpg", "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
+    // Any other image file on the disk stays text: only Collie's own upload shape is taken off.
+    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 0, lines: ["see", foreign] });
+    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match, [`see ${windows}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
     expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
   });

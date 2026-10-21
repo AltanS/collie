@@ -92,6 +92,7 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
+import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
 import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
@@ -279,7 +280,7 @@ export interface SendDeps {
    * still holds the instance the message was meant for. Absent: every release goes ahead.
    */
   readonly releaseCheck?: (requestId: string, session: string, paneId: string) => boolean;
-  /** Whether a path names an image file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
+  /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -1224,11 +1225,6 @@ export interface WholePaste {
  */
 const WHOLE_PASTE_MIN_CHARS = 800;
 
-/** A piece of a paste that is an absolute path to an image file (Herdr runs on POSIX). */
-const IMAGE_PIECE = /^\/.*\.(?:png|jpe?g|gif|webp)$/iu;
-/** Where the harness cuts a paste into pieces: at each newline, and at a space right before an absolute path. */
-const PIECE_CUT = /\r?\n| (?=\/)/u;
-
 function isImageFile(path: string): boolean {
   try {
     return statSync(path).isFile();
@@ -1243,9 +1239,11 @@ function isImageFile(path: string): boolean {
  * more than {@link WHOLE_PASTE_MIN_CHARS} on one line (a dictation is often one long line), and never
  * for a text that starts with a reserved lead: a slash command, a shell line or a file mention keeps
  * the write it has always had, so the harness reads the lead as typed. With the profile's image
- * token, the pieces that are image files on this disk come off the paste the way the harness takes
- * them (lab, Claude Code 2.1.305: `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`); the kept
- * pieces stay, joined by newlines.
+ * token, the pieces that are Collie's own uploads (the shape the web adapter's `liftedPaste` reads,
+ * `web/src/lib/upload-path.ts`) and still a file on this disk come off the paste the way the harness
+ * takes them (lab, Claude Code 2.1.305: `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`); the
+ * kept pieces stay, joined by newlines. Any other image path stays text here: the harness may still
+ * take it, and then the box does not match and the send stalls instead of guessing.
  */
 export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
   const paste = match?.profile.paste;
@@ -1255,8 +1253,8 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   if (reservedLead(lines[0] ?? "", match.profile.reservedLeads) !== null) return null;
   if (paste.image === undefined) return { images: 0, image: null, lines };
   const image = new RegExp(paste.image, "uy");
-  const pieces = text.split(PIECE_CUT);
-  const kept = pieces.filter((piece) => !(IMAGE_PIECE.test(piece.trim()) && imageFile(piece.trim())));
+  const pieces = pastePieces(text);
+  const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
   const images = pieces.length - kept.length;
   return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n") };
 }
