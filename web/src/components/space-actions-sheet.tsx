@@ -9,6 +9,7 @@ import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
+import { stampTopology } from "@/lib/poll-intent";
 import type { WorkspaceView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -75,6 +76,9 @@ export function SpaceActionsSheet({
       const res = await api.renameSpace(space.workspaceId, trimmed, scope);
       if (res.ok) {
         setStatus(t("space.tab.renamed"), "success");
+        // The same catch-up as a tab close: the list should not wait out an idle-timed gap to show
+        // the new name (pane-actions-sheet.tsx says why the revalidate alone can read the old one).
+        stampTopology();
         onRenamed();
         onClose();
       } else {
