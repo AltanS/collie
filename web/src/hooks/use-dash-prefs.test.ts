@@ -32,7 +32,7 @@ describe("coerceDashPrefs", () => {
       shellsOpen: null,
       launchOpen: null,
       recentDir: "newest",
-      isolatedSpace: null,
+      isolatedSpaces: [],
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
@@ -56,7 +56,7 @@ describe("coerceDashPrefs", () => {
         shellsOpen: true,
         launchOpen: false,
         recentDir: "oldest",
-        isolatedSpace: "k1",
+        isolatedSpaces: ["k1", 7, "k4", "k1"],
         hiddenSpaces: ["k2", 3, "k3"],
         changesNested: false,
         changesDepth: 4,
@@ -75,7 +75,7 @@ describe("coerceDashPrefs", () => {
       shellsOpen: true,
       launchOpen: false,
       recentDir: "oldest",
-      isolatedSpace: "k1",
+      isolatedSpaces: ["k1", "k4"],
       hiddenSpaces: ["k2", "k3"],
       changesNested: false,
       changesDepth: 4,
@@ -170,6 +170,17 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({ launchOpen: 1 }).launchOpen).toBeNull();
   });
 
+  // ISSUE #527: the filter holds several workspaces. A device that stored the single isolate of an
+  // older Collie keeps it, as a choice of one; a stored list wins over that old key.
+  it("reads a stored single isolatedSpace as a choice of one", () => {
+    expect(coerceDashPrefs({ isolatedSpace: "k1" }).isolatedSpaces).toEqual(["k1"]);
+    expect(coerceDashPrefs({ isolatedSpace: null }).isolatedSpaces).toEqual([]);
+    expect(coerceDashPrefs({ isolatedSpace: "k1", isolatedSpaces: ["k2"] }).isolatedSpaces).toEqual(["k2"]);
+    expect(coerceDashPrefs({ isolatedSpace: "k1", isolatedSpaces: [] }).isolatedSpaces).toEqual([]);
+    expect(coerceDashPrefs({ isolatedSpaces: "k2" }).isolatedSpaces).toEqual([]);
+    expect(coerceDashPrefs({ isolatedSpace: "k1" })).not.toHaveProperty("isolatedSpace");
+  });
+
   it("ignores a retired `recentOpen` key from an older version's stored blob", () => {
     // The Recent fold this once toggled is gone (agent-list.tsx no longer sorts into it), so the
     // key is dropped from DashPrefs — but a device that saved it under an older Collie must still
@@ -181,7 +192,7 @@ describe("coerceDashPrefs", () => {
       shellsOpen: null,
       launchOpen: null,
       recentDir: "oldest",
-      isolatedSpace: null,
+      isolatedSpaces: [],
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
@@ -209,7 +220,7 @@ describe("useDashPrefs", () => {
       shellsOpen: null,
       launchOpen: null,
       recentDir: "newest",
-      isolatedSpace: null,
+      isolatedSpaces: [],
       hiddenSpaces: [],
       changesNested: true,
       changesDepth: 2,
@@ -232,7 +243,7 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setShellsOpen(true));
     act(() => first.result.current.setLaunchOpen(false));
     act(() => first.result.current.setRecentDir("oldest"));
-    act(() => first.result.current.setIsolatedSpace("k1"));
+    act(() => first.result.current.setIsolatedSpaces(["k1", "k4"]));
     act(() => first.result.current.toggleHiddenSpace("k2"));
     act(() => first.result.current.toggleHiddenSpace("k3"));
     act(() => first.result.current.toggleHiddenSpace("k2"));
@@ -254,7 +265,7 @@ describe("useDashPrefs", () => {
       shellsOpen: true,
       launchOpen: false,
       recentDir: "oldest",
-      isolatedSpace: "k1",
+      isolatedSpaces: ["k1", "k4"],
       hiddenSpaces: ["k3"],
       changesNested: false,
       changesDepth: 3,

@@ -104,14 +104,15 @@ export type StripEntry =
  * The workspace strip's chips, in the list's own order (issue #288). A workspace on a shown machine
  * keeps its chip. A hidden machine's workspace chips give way to ONE stand-in entry, at the place its
  * first workspace held, carrying every pane of that machine so the chip can show the worst dot:
- * hiding a machine never silences it. A workspace that is isolated keeps its chip right after its
- * machine's stand-in, because isolate wins over the machine filter. A hidden machine with no
- * workspace has no stand-in: there is nothing to hide. Nothing here reads status for ORDER.
+ * hiding a machine never silences it. A workspace that is isolated (one of the filter's chosen ones,
+ * issue #527) keeps its chip after its machine's stand-in, in the list's order, because isolate wins
+ * over the machine filter. A hidden machine with no workspace has no stand-in: there is nothing to
+ * hide. Nothing here reads status for ORDER.
  */
 export function stripEntries(
   groups: readonly WorkspaceGroup[],
   hiddenMachines: ReadonlySet<string>,
-  isolatedKey: string | undefined,
+  isolatedKeys: ReadonlySet<string>,
 ): StripEntry[] {
   if (hiddenMachines.size === 0) return groups.map((group) => ({ kind: "space", group }));
   const out: StripEntry[] = [];
@@ -129,7 +130,7 @@ export function stripEntries(
       out.push({ kind: "machine", host, panes });
     }
     panes.push(...group.panes);
-    if (group.key === isolatedKey) out.push({ kind: "space", group });
+    if (isolatedKeys.has(group.key)) out.push({ kind: "space", group });
   }
   return out;
 }
