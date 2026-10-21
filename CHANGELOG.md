@@ -41,6 +41,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The harness canary sends through the same Send Protocol as the phone.** The canary's fetch shim answered only the old `/api/pane/:id/reply` route, and its reader loader expected `draftCarriesSend` and `sendGuardedReply` in `reply-action.ts`, so a canary send on a current checkout failed. The shim now answers `/api/send` with the bridge's own Send Protocol, and the loader takes `draftCarriesSend` from `draft-match.ts` and sends through `sendText`. Thanks @GGGODLIN (#567).
 - **A Muse tool call the harness denied or failed no longer draws as a success.** Muse answers a refused call with `tool denied: …` and a failed one with `tool failed: …` as plain text. Collie now reads those two prefixes as the denied and failed flags, so Chat and History show a refusal or a failure as one. Any other plain result still renders as it did. Thanks @jpcarranza94 (#562).
 - **A pane, tab or space name can start with a lowercase letter.** The rename field no longer lets the phone keyboard capitalize the first letter, so "php vuln" stays "php vuln".
+- **A rename from the phone shows at once.** After you renamed a pane, a tab or a space, the old name could stay on screen for up to six seconds, because the bridge answers the rename about a tenth of a second before its own snapshot has the new name. The phone now reads again a moment later, as it already did after a close, so the new name lands within about half a second.
 
 ## [1.24.0] - 2026-10-20
 

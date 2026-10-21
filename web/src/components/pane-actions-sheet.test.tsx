@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { clearStatus, useStatus } from "@/lib/status";
+import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import { currentPins, pinMatcher, setPinned } from "@/lib/pins";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { AgentView, MuxConfig, ServerSummary } from "@/lib/types";
@@ -15,7 +16,10 @@ import { PaneActionsSheet } from "./pane-actions-sheet";
 // Both actions are wired straight to the bridge via lib/api (exercised through MSW here); the parent
 // gets onRenamed / onClosed callbacks for the revalidate/navigate side-effects.
 
-beforeEach(() => clearStatus());
+beforeEach(() => {
+  clearStatus();
+  resetPollIntent();
+});
 
 const agent: AgentView = {
   paneId: "w1:p1",
@@ -97,7 +101,7 @@ describe("PaneActionsSheet — rename", () => {
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 
-  it("posts the trimmed label, then calls onRenamed and closes", async () => {
+  it("posts the trimmed label, then calls onRenamed, owes a topology burst and closes", async () => {
     const user = userEvent.setup();
     let body: unknown;
     server.use(
@@ -114,6 +118,9 @@ describe("PaneActionsSheet — rename", () => {
 
     await waitFor(() => expect(props.onRenamed).toHaveBeenCalledTimes(1));
     expect(body).toEqual({ label: "deploy" });
+    // The revalidate can still read the old name (the bridge answers before its re-read lands), so
+    // the rename buys the same catch-up polls a close does.
+    expect(topologyBursting()).toBe(true);
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -145,9 +152,10 @@ describe("PaneActionsSheet — rename", () => {
     await user.type(screen.getByPlaceholderText("name this pane"), "x");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    // The sheet stays open (Save still enabled) and neither side-effect fires.
+    // The sheet stays open (Save still enabled) and no side-effect fires, the catch-up polls included.
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     expect(props.onRenamed).not.toHaveBeenCalled();
+    expect(topologyBursting()).toBe(false);
     expect(props.onClose).not.toHaveBeenCalled();
   });
 
