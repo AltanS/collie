@@ -42,6 +42,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The harness canary sends through the same Send Protocol as the phone.** The canary's fetch shim answered only the old `/api/pane/:id/reply` route, and its reader loader expected `draftCarriesSend` and `sendGuardedReply` in `reply-action.ts`, so a canary send on a current checkout failed. The shim now answers `/api/send` with the bridge's own Send Protocol, and the loader takes `draftCarriesSend` from `draft-match.ts` and sends through `sendText`. Thanks @GGGODLIN (#567).
 - **A Muse tool call the harness denied or failed no longer draws as a success.** Muse answers a refused call with `tool denied: …` and a failed one with `tool failed: …` as plain text. Collie now reads those two prefixes as the denied and failed flags, so Chat and History show a refusal or a failure as one. Any other plain result still renders as it did. Thanks @jpcarranza94 (#562).
 
+### Packaging
+
+- **The SDK pack check loads the `./durable-harness` entry.** It installs durable-harness and Pi beside the built package, under the same seven-day cooldown as the example, and imports `collieRoute` and `withCollie` on Node and on Bun.
+
 ### Docs
 
 - **The durable wire gains a draft appendix for a host with no process.** WIRE.md now says how a durable agent without a long-lived process, such as a function on Vercel, fills the wire: one epoch per World and schema, rev and turn id derived from the log, and the journal of asks, answers and request ids. It describes that host only and changes nothing in version 1.
