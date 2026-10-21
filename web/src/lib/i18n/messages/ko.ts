@@ -2532,6 +2532,8 @@ export const ko: Dictionary = {
   "walky.state.refusedBecause": "전송되지 않았습니다: {reason}",
   "walky.state.expired": "만료되었습니다",
   "walky.state.unknown": "도착했을 수 있으며 다시 전송되지 않습니다",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "메시지",
   "walky.sheet.title": "메시지",

@@ -2742,6 +2742,9 @@ export const en = {
   "walky.state.refusedBecause": "not sent: {reason}",
   "walky.state.expired": "expired",
   "walky.state.unknown": "may have arrived, will not be sent again",
+  // A held message: `accepted` with what holds it. `{reason}` is the bridge's words ("draft present", "turn running").
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Messages",
   "walky.sheet.title": "Messages",

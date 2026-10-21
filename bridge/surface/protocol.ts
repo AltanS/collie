@@ -76,6 +76,12 @@
 // end of the queue. A hold lasts 30 minutes, then ends `expired` with its text kept for a Resend; the
 // person may cancel it while it waits.
 //
+// A draft holds a walky talky message (M62 spec 02): a send its caller marks `draftHolds` is held over
+// a draft instead of refused `draft_present`, and nothing is typed while the draft is there. It goes
+// once two polls in a row read the box empty and the pane idle, or after the turn a submitted draft
+// starts. Its caller names the hold's end (`holdUntil`), so one clock runs for it, and checks the pane
+// once more before it goes (`releaseCheck`). Every other send keeps the refusal and its offers.
+//
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
@@ -119,7 +125,7 @@ import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.
 import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
-import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldStore } from "./holds.ts";
+import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -262,6 +268,12 @@ export interface SendDeps {
    * of it is the caller's business: the bridge keeps the line only for a shell pane (bridge/sent.ts).
    */
   readonly blindSent?: (sent: { readonly session: string; readonly paneId: string; readonly text: string }) => void;
+  /**
+   * The caller's last word before a held request goes out (M62 spec 02): false ends it
+   * `refused(pane_gone)` with nothing typed. The bridge asks walky talky, which checks that the pane
+   * still holds the instance the message was meant for. Absent: every release goes ahead.
+   */
+  readonly releaseCheck?: (requestId: string, session: string, paneId: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -276,6 +288,14 @@ export interface SendRequest {
   readonly revision?: number;
   /** The person's answer to the cap's extra confirm (M56 spec 09). */
   readonly capAck?: boolean;
+  /**
+   * A walky talky delivery (M62 spec 02): a draft in the box holds this send instead of refusing it.
+   * Nothing is typed over the draft: the hold goes once the box reads empty and the pane idle. Every
+   * other caller leaves it out and keeps the refusal and its offers.
+   */
+  readonly draftHolds?: boolean;
+  /** With {@link draftHolds}: when the hold ends, epoch ms. It replaces the hold store's own clock. */
+  readonly holdUntil?: number;
 }
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
@@ -1007,10 +1027,20 @@ const HELD = "The agent is working. Collie keeps this and sends it when the turn
 const HELD_BOX = "The input box is not free. Collie keeps this and sends it when the box is free.";
 /** The line of a held send that ended because its pane closed. */
 const HELD_PANE_GONE = "The pane closed before the held text could go out.";
+/** The detail of a marked send held because the box holds a draft (M62 spec 02). */
+const HELD_DRAFT = "The box holds a draft. Collie keeps this and sends it when the box is empty.";
 /** The detail a held answer carries, by what it was held for. */
 function heldDetail(end: Ended): string {
   if (end.extra.detail === HELD_BEHIND) return HELD_BEHIND;
+  if (end.reason === "draft_present") return HELD_DRAFT;
   return end.reason === "turn_running" ? HELD : HELD_BOX;
+}
+
+/** What a poll's Surface says holds a marked request now, or null when it says nothing new. */
+function causeOf(surface: Surface): HoldCause | null {
+  if (surface.turn === "running") return "turn_running";
+  if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") return "draft_present";
+  return null;
 }
 /**
  * Whether an end is a failed probe that left nothing behind (2026-10-17): the only keys were the probe
@@ -1745,7 +1775,11 @@ export class SendProtocol {
     // manual send joins too: the screen the person confirmed is not the one its turn will come on.
     // A pane with no profile never holds: its send goes in blind (see the header), so it skips this.
     const holds = this.deps.holds;
-    const joins = holds !== undefined && JOINS.has(request.mode) && holds.waiting(target.session, target.paneId).length > 0;
+    const waiting = holds?.waiting(target.session, target.paneId) ?? [];
+    // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
+    // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
+    const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.cause === "draft_present");
+    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly;
     const match = joins ? await this.deps.profile(target.harness) : null;
     if (match !== null) {
       const state = this.bareState(request, accepted.record, target, match);
@@ -1770,7 +1804,9 @@ export class SendProtocol {
    * Whether an end is one the hold queue takes instead: a refusal before any key, of a new text, that
    * means "not yet". `turn_running` as before; `not_free` and `bound` (a box that is not free, a screen
    * that would not hold still) only for a message, never a command: a command at a box Collie could
-   * not read stays a refusal. `draft_present` and `unconfirmed` need the person, so they stay refusals.
+   * not read stays a refusal. `draft_present` and `unconfirmed` need the person, so they stay refusals,
+   * except a `draft_present` on a send its caller marked `draftHolds` (a walky talky delivery, M62
+   * spec 02): that one is held, typed once the box reads empty and the pane idle.
    * A `probe_failed` whose cleanup was read back (see {@link cleanProbe}) counts as no key, and is held
    * like `not_free`; one whose box Collie could not confirm clean stays a refusal.
    *
@@ -1789,6 +1825,7 @@ export class SendProtocol {
     if (state.manual || state.match === null) return false;
     const leads = state.match.profile.reservedLeads;
     const command = state.command || state.request.mode === "command" || (state.request.mode === "replace" && reservedLead(sendLines(state.request.text)[0] ?? "", leads) !== null);
+    if (end.reason === "draft_present") return state.request.draftHolds === true && !command;
     return (end.reason === "not_free" || end.reason === "bound" || clean) && !command;
   }
 
@@ -1809,7 +1846,16 @@ export class SendProtocol {
     else if (end.reason !== "turn_running") this.quietWatch(target.session, target.paneId);
     const command = state.command || request.mode === "command";
     const waitsForTurn = command && !commandCannotSteer(state.match);
-    holds.add({ id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn });
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn };
+    if (request.draftHolds === true) {
+      // A marked send keeps its caller's clock, and what holds it: its own draft, or what the newest
+      // request ahead of it waits on when it joins the queue behind.
+      const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
+      const cause: HoldCause = end.reason === "draft_present" ? "draft_present" : end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : "turn_running";
+      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true, cause } : { ...input, draftHolds: true, cause, expiresAt: request.holdUntil });
+    } else {
+      holds.add(input);
+    }
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     this.count(state, receipt);
@@ -1823,10 +1869,13 @@ export class SendProtocol {
   private backToQueue(state: RunState, end: Ended): SendAnswer {
     const holds = this.deps.holds!;
     const entry = holds.get(state.record.id);
-    // An open question is a wait, not a failed try: the request waits for it to close, up to its own expiry.
-    const counted = state.answerWait !== true;
+    // An open question is a wait, not a failed try: the request waits for it to close, up to its own
+    // expiry. So is a draft for a marked send (M62 spec 02): its own clock bounds it.
+    const draft = end.reason === "draft_present" && entry?.draftHolds === true;
+    const counted = state.answerWait !== true && !draft;
     if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
     holds.putBack(state.record.id, counted);
+    if (draft) holds.setCause(state.record.id, "draft_present");
     const receipt = this.receiptOf(state, "held", undefined);
     this.deps.store.hold(state.record.id, receipt);
     return answerWith({ receipt, offers: [] }, { ...end.extra, detail: HELD });
@@ -1883,7 +1932,8 @@ export class SendProtocol {
       holds.remove(id);
       return null;
     }
-    const request: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
+    const base: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
+    const request: SendRequest = entry.draftHolds === true ? { ...base, draftHolds: true } : base;
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
     const work = this.run(request, record, target, true);
     this.inFlight.set(id, work);
@@ -1917,7 +1967,11 @@ export class SendProtocol {
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
    *    it free over at least ten seconds. A command whose Enter could steer a turn takes neither the
-   *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again.
+   *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again;
+   *  - a marked request held over a draft (M62 spec 02) goes once two polls in a row read the pane free,
+   *    the box empty and the pane idle (the shape of hold.ts `DESK_READS`). A poll that reads a turn
+   *    makes it a turn hold: the draft was submitted, and it goes after that turn. Each poll writes what
+   *    holds a marked request now (`cause`), and the caller's `releaseCheck` has the last word.
    * Every end keeps the text. Returns the releases it started, for a test to wait on. Never throws: a
    * release that fails is a warning.
    */
@@ -1962,6 +2016,9 @@ export class SendProtocol {
         continue;
       }
       const surface = generation === null ? undefined : surfaceOf(paneId);
+      // What holds each marked request now, as this poll reads it: a draft, or a turn.
+      const cause = surface === undefined ? null : causeOf(surface);
+      if (cause !== null) for (const entry of entries) if (entry.draftHolds === true && entry.state === "held" && entry.cause !== cause) holds.setCause(entry.id, cause);
       if (surface !== undefined && isFree(surface)) {
         watch.freeReads += 1;
         watch.freeSince ??= now;
@@ -1976,7 +2033,13 @@ export class SendProtocol {
       // A command whose Enter could steer a turn waits for a running turn a poll itself read (review Q1).
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
       const quiet = next.waitsForTurn !== true && watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
-      if (busy || !(afterTurn || quiet)) continue;
+      // A draft that left the box: two reads in a row of an empty box and an idle pane.
+      const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS;
+      if (busy || !(afterTurn || quiet || draftLeft)) continue;
+      if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
+        this.endHeld(next, "refused", "pane_gone");
+        continue;
+      }
       started.push(this.releaseQuietly(next.id));
     }
     return started;

@@ -162,13 +162,24 @@ gets, and Enter never goes into a turn where it would steer the agent.
 
 The queue and the queue key need a harness version Collie knows. With an unknown version, Collie
 holds the message instead. The browser rig does not report a Claude version, so there Collie holds
-the message and types it after the turn. A hold lasts 10 minutes for a message: after that Collie takes it back
-and it waits in the inbox. A pane with no profile is typed blind, as a reply is.
+the message and types it after the turn. A hold lasts 60 minutes from the moment Collie takes the
+message: after that Collie takes it back and it waits in the inbox. A pane with no profile is typed
+blind, as a reply is.
 
 An open dialog, such as a permission card or a question, is held the same way. Nothing goes into
 the dialog. Once the dialog is answered, Collie types the message and the receipt reads "typed into
-the pane". It waits in the inbox only when the hold runs out first. A box that holds your own draft
-is never typed into: the message waits in the inbox as `draft present`.
+the pane". It waits in the inbox only when the hold runs out first.
+
+A draft in the box holds the message too. Collie never types into a box that holds your own text.
+It types the message once the box is empty and the pane idle on two checks in a row. If you send
+the draft instead, its turn starts, and Collie types the message after that turn.
+
+While a message waits, its receipt reads `held: draft present` or `held: turn running`. Collie
+types it when the box clears or the turn ends, up to 60 minutes. Do not send it again. One clock
+runs for both reasons, and a bridge restart keeps the hold and the clock.
+
+Before Collie types a held message, it checks the pane once more. If the pane closed and another
+session took its id, the message stays in the inbox as `pane replaced`.
 
 Two messages to one pane are typed one after the other, never into each other. The second waits
 while the first is typed, and its receipt stays "queued". A message that still waits after 2
@@ -216,8 +227,9 @@ certificate with its own word for it, so the receiving machine checks the sender
   the lead with its crew updates, until the lead confirms it got it. The lead then sends the outcome
   on to the member that sent the message. So `send` on a member waits as it does for a local pane,
   up to 15 seconds, and prints "typed into the pane". `collie walky status <id>` on the member shows
-  the same. Until the outcome arrives, a member shows `queued (outcome known on the lead)`, and
-  `send` adds the `check later` line. Under an older lead it never arrives. Then run
+  the same. Until the outcome arrives, a member shows `queued (outcome known on the lead)`, or
+  `held: draft present` when the lead passed the hold on, and `send` adds the `check later` line.
+  Both mean wait: do not send it again. Under an older lead the outcome never arrives. Then run
   `collie walky status <id>` on the lead, or open the pane on the phone.
 - **A slow machine does not hold up a broadcast.** The lead gives each machine 8 seconds. A machine
   that takes longer shows `may have arrived, will not be sent again (member slow)`, and its next
@@ -246,11 +258,11 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 
 | State | Printed as | Meaning |
 | --- | --- | --- |
-| `accepted` | queued | Logged, not typed yet |
+| `accepted` | queued, or held with the reason | Logged, not typed yet. `held: draft present` or `held: turn running`: Collie types it when the box clears or the turn ends, up to 60 minutes. Do not send it again |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
-| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 10 minutes` (a busy pane or an open dialog outlasted the hold), `draft present`, `box not free`, `pane busy`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
+| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
 | `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, or walky talky off on that machine |
-| `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 10 minutes, or the log lost the record. Collie never sends it again |
+| `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 60 minutes, or the log lost the record. Collie never sends it again |
 
 The words are what the CLI and the phone show. `--json` and the receipt keep the state names.
 `send` exits 0 for `accepted`, `delivered` and `inbox-only`.
@@ -305,8 +317,10 @@ Each receipt state shows the words in the table above, with the reason after "no
   The text goes to this pane as a message from you. The phone adds the pane's token to the address,
   so the text reaches the session you are looking at. If another pane has taken the id since, the
   line shows `not sent: pane replaced` and nothing is typed. A pane from a machine older than tokens
-  gets the bare address. A line under the box shows "Message to" the pane and the receipt state. While it says "queued", the line follows the receipt and changes to the
-  final word. Tap "Dismiss" to clear the line. A plain tap on Send still sends the text as before.
+  gets the bare address. A line under the box shows "Message to" the pane and the receipt state.
+  While it says "queued" or "held", the line follows the receipt and changes to the final word. A
+  held message adds "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it
+  again." Tap "Dismiss" to clear the line. A plain tap on Send still sends the text as before.
 - **Message all agents.** On the Crew page, tap "Message all agents". Write the text, pick "Send
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
   "Message 5 agents on 2 machines?" with the count for that choice. The count leaves out machines

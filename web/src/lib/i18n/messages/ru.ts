@@ -2481,6 +2481,8 @@ export const ru: Dictionary = {
   "walky.state.refusedBecause": "не отправлено: {reason}",
   "walky.state.expired": "срок действия истек",
   "walky.state.unknown": "возможно, доставлено, повторно отправлено не будет",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Сообщения",
   "walky.sheet.title": "Сообщения",

@@ -2520,6 +2520,8 @@ export const zh: Dictionary = {
   "walky.state.refusedBecause": "未发送：{reason}",
   "walky.state.expired": "已过期",
   "walky.state.unknown": "可能已送达，不会再次发送",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "消息",
   "walky.sheet.title": "消息",

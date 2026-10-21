@@ -2370,6 +2370,8 @@ export const pt: Dictionary = {
   "walky.state.refusedBecause": "não enviado: {reason}",
   "walky.state.expired": "expirado",
   "walky.state.unknown": "pode ter chegado, não será enviado novamente",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Mensagens",
   "walky.sheet.title": "Mensagens",
