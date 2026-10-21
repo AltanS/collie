@@ -723,6 +723,23 @@ describe("the outcome report", () => {
     expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered" }]);
     expect(mergeReport(lead.log, "laptop", [{ ...held, at: AT + 7 }])).toBe(0);
   });
+
+  test("the lead takes a held receipt of the same millisecond as the dial's `accepted`, once (2026-10-22 rig case 21, message 3)", async () => {
+    const posted = async (memberId: string): Promise<CrewDialAnswer> => ({
+      kind: "answer",
+      status: 200,
+      body: { receipts: [{ id: "wt_aaaaaaaaaaa2", target: `${memberId}/w9:p9`, state: "accepted", verified: "origin", at: AT, by: memberId }] },
+    });
+    const lead = service("desk", [pane("w1:p1")], posted);
+    await lead.service.send({ id: "wt_aaaaaaaaaaa2", to: "laptop/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts).toMatchObject([{ state: "accepted", at: AT }]);
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts[0]?.reason).toBeUndefined();
+    const held: WalkyReceipt = { id: "wt_aaaaaaaaaaa2", target: "laptop/w9:p9", state: "accepted", reason: "draft present", verified: "origin", at: AT, by: "laptop", sendId: "wt_aaaaaaaaaaa2-1659612a" };
+    expect(mergeReport(lead.log, "laptop", [held])).toBe(1);
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts).toMatchObject([{ state: "accepted", reason: "draft present" }]);
+    // The report rides every snapshot answer until the ack: the resend writes nothing.
+    expect(mergeReport(lead.log, "laptop", [held])).toBe(0);
+  });
 });
 
 describe("a member that never answers", () => {
@@ -1141,6 +1158,21 @@ describe("an outcome never moves backwards (§21, added 2026-10-18)", () => {
     // The same state again only when it is newer.
     expect(movesForward(receipt("unknown"), receipt("unknown"))).toBe(false);
     expect(movesForward(receipt("unknown"), receipt("unknown", AT + 1))).toBe(true);
+  });
+
+  test("a held send written in the millisecond of its bare `accepted` crosses; a resend of it does not (2026-10-22 rig case 21, message 3)", () => {
+    const bare = receipt("accepted");
+    const held: WalkyReceipt = { ...bare, reason: "draft present" };
+    expect(movesForward(bare, held)).toBe(true);
+    // The resend the report carries until the ack, and a bare `accepted` of the same millisecond.
+    expect(movesForward(held, held)).toBe(false);
+    expect(movesForward(held, bare)).toBe(false);
+    // Another reason in the same millisecond is no move: only a newer one changes the reason.
+    expect(movesForward(held, { ...bare, reason: "turn running" })).toBe(false);
+    expect(movesForward(held, { ...bare, reason: "turn running", at: AT + 1 })).toBe(true);
+    // Never over a finished state, never backwards.
+    expect(movesForward(receipt("delivered"), { ...receipt("delivered"), reason: "draft present" })).toBe(false);
+    expect(movesForward(receipt("unknown"), held)).toBe(false);
   });
 
   test("on the lead: a member's report lands during the leg, and the leg's `unknown: member slow` does not go over it", async () => {

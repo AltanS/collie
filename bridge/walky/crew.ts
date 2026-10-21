@@ -315,8 +315,8 @@ export class WalkyCrew {
 /**
  * The member's half of the outcomes push: write each receipt its lead sent for a message THIS member
  * sent to another machine. A receipt is written only when this member's log holds a record for that
- * id and target whose message names this member as its sender, and only when it is newer or another
- * state (the `mergeReport` rule, so a resent receipt is skipped). A receipt for a pane on this
+ * id and target whose message names this member as its sender, and only when it moves forward
+ * (`movesForward`, the `mergeReport` rule, so a resent receipt is skipped). A receipt for a pane on this
  * machine is never taken: this member's own outcome is its own word. Answers how many were written.
  */
 export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly WalkyReceipt[]): number {

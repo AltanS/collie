@@ -3576,8 +3576,9 @@ pane on that member, for a message the lead routed there. The same receipt repor
 
 **An outcome only moves forward** (added 2026-10-18). The states rank `accepted`, then `unknown`, then
 the finished ones: `delivered`, `inbox-only`, `refused` and `expired`. A reported or pushed receipt is
-taken only when it ranks higher than the one held, or is the same state and newer; a finished state is
-never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
+taken only when it ranks higher than the one held, or is the same state and newer, or is the same
+state of the same millisecond and adds a `reason` the held one lacks (added 2026-10-22: a held send can
+be written in the millisecond of the bare `accepted` before it); a finished state is never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
 refusal) replaces only `accepted`, so a slow leg never goes over the outcome a report already brought.
 
 **A pane under a leg sent as a whole** (added 2026-10-18). A report may name a pane the lead holds no
