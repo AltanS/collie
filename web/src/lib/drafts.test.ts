@@ -264,6 +264,35 @@ describe("drafts", () => {
       expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").text).toBe("from the older build");
     });
 
+    // The Stable-then-Edge round trip. "Newer" is the stored `at`, never which key happens to exist.
+    it("takes the older build's text when its entry carries the newer timestamp, whatever is under the new key", () => {
+      localStorage.setItem(KEY, JSON.stringify({ text: "written by this build", at: Date.now() - 60_000 }));
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "written after the rollback", at: Date.now() - 1000 }));
+      expect(loadDraft(undefined, "w1:p1")).toBe("written after the rollback");
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").text).toBe("written after the rollback");
+    });
+
+    it("keeps the new version's draft when it is newer, and never copies the older entry over it", () => {
+      const chips = [{ n: 1, path: "a\nb\nc\nd\ne", name: "a", kind: "paste" as const }];
+      const raw = JSON.stringify({ text: "see [Pasted #1]", at: Date.now() - 1000, attachments: chips, next: 2 });
+      localStorage.setItem(KEY, raw);
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "an older draft", at: Date.now() - 60_000 }));
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "see [Pasted #1]", attachments: chips, next: 2 });
+      expect(localStorage.getItem(KEY)).toBe(raw);
+    });
+
+    // ADR 0017: a recognised password prompt purges the pane's draft. A first-version entry copied
+    // forward on read has no save behind it yet, and the purge must still take it and its copy.
+    it("purges a draft copied forward from the first version, and the first-version entry too", () => {
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "hunter2", at: Date.now() - 1000 }));
+      expect(loadDraft(undefined, "w1:p1")).toBe("hunter2");
+      expect(localStorage.getItem(KEY)).not.toBeNull();
+      clearDraft(undefined, "w1:p1");
+      expect(localStorage.getItem(KEY)).toBeNull();
+      expect(localStorage.getItem(LEGACY)).toBeNull();
+      expect(loadDraft(undefined, "w1:p1")).toBeNull();
+    });
+
     it("never moves an expired first-version draft over", () => {
       const raw = JSON.stringify({ text: "ancient", at: 0 });
       localStorage.setItem(LEGACY, raw);
