@@ -317,16 +317,23 @@ const GROK: readonly AgentCommand[] = [
 // ── Muse Code ────────────────────────────────────────────────────────────────
 // Sourced from Muse Code's own docs (dev.meta.ai/docs/muse-code/interactive) and checked against
 // Muse 1.4.7's own /help and slash completion, which win where they disagree: the docs' /models is
-// /model there. Muse has more commands than these 23 (/permissions, /quit, …); the rest are
-// reachable by typing, as on every catalog.
+// /model there. Where a 1.4.10 screen capture disagrees with docs/1.4.7 (takesArg on /model and
+// /effort, /resume's hint), the capture wins; each such row says so. Muse has more commands than
+// these; the rest are reachable by typing, as on every catalog.
 const MUSE: readonly AgentCommand[] = [
   { command: "/compact", description: "Summarize prior context to reclaim room", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/new", description: "Start a fresh session, keeping the terminal scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
   { command: "/clear", description: "Start a fresh session and wipe the scrollback", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/model", description: "Choose the model mid-session", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
-  { command: "/resume", description: "Pick a retained session in this workspace to resume", takesArg: true, argHint: "[--last]", common: true, dangerous: false }, // harness-bar
+  // Capture-sourced (muse--palette-hint.txt shows `/model [<model-id>]`; muse--palette-typed-arg.txt
+  // proves `/model x` takes it).
+  { command: "/model", description: "Choose the model mid-session", takesArg: true, argHint: "[<model-id>]", common: true, dangerous: false }, // harness-bar
+  // Capture-sourced (muse--palette-hint-skills.txt shows `/resume [--last|<id-or-name>]`;
+  // muse--resume-picker.txt is the picker it opens).
+  { command: "/resume", description: "Pick a retained session in this workspace to resume", takesArg: true, argHint: "[--last|<id-or-name>]", common: true, dangerous: false }, // harness-bar
   { command: "/help", description: "Show the full set of commands in this workspace", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/effort", description: "Change the reasoning effort mid-session", takesArg: true, argHint: "[level]", common: false, dangerous: false }, // harness-bar
+  // Capture-sourced (muse--filter-effort.txt is the `/effort` picker itself; the harness prints its
+  // levels, so bare `/effort` takes no argument).
+  { command: "/effort", description: "Change the reasoning effort mid-session", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
   { command: "/name", description: "Show or rename this session", takesArg: true, argHint: "[name]", common: false, dangerous: false },
   { command: "/fork", description: "Branch a new session from the latest message; optional first prompt", takesArg: true, argHint: "[prompt]", common: false, dangerous: false },
   { command: "/rewind", description: "Branch from an earlier user message into a new session", takesArg: false, argHint: "", common: false, dangerous: false },
@@ -343,6 +350,17 @@ const MUSE: readonly AgentCommand[] = [
   { command: "/workflows", description: "Browse active and completed multi-agent workflow runs", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/keymap", description: "Show keyboard shortcuts", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/theme", description: "Set the terminal theme", takesArg: false, argHint: "", common: false, dangerous: false },
+  // Capture-proven rows below: each vouched for by a muse--*.txt fixture (see MUSE-40). The bare-`/`
+  // palette holds ~79 rows; only captured rows ship.
+  // muse--palette-exact.txt + muse--palette-partial.txt (`/usage` typed, partial `/us` ran it).
+  { command: "/usage", description: "Show session usage", takesArg: false, argHint: "", common: true, dangerous: false },
+  // muse--filter-hud.txt is the `/hud` picker open (toggles, not a command with arguments).
+  { command: "/hud", description: "Toggle statusline widgets on or off", takesArg: false, argHint: "", common: true, dangerous: false },
+  // muse--approval-ls-147.txt hint row: "Change approval defaults in /permissions".
+  { command: "/permissions", description: "Change approval defaults", takesArg: false, argHint: "", common: false, dangerous: false },
+  // muse--slash-palette-1410.txt palette rows, verbatim summaries.
+  { command: "/deep-research", description: "Research a question across sources with cross-checking and citations", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/bug", description: "Report a bug to the team", takesArg: false, argHint: "", common: false, dangerous: false },
   // Bundled skills (muse-core), the ten a person can invoke, each in Muse Code 1.4.8's own `/`
   // completion on 2026-10-15 tagged `built-in`. The other ten are marked not user-invocable there.
   { command: "/create-plugin", description: "Create and validate a new native Muse plugin", takesArg: false, argHint: "", common: false, dangerous: false },
@@ -357,6 +375,26 @@ const MUSE: readonly AgentCommand[] = [
   { command: "/resume-codex", description: "Continue a Codex session here", takesArg: true, argHint: "[session-id-or-log-path]", common: false, dangerous: false },
 ];
 
+// ── Kiro ─────────────────────────────────────────────────────────────────────
+// Sourced from CAPTURES of kiro-cli 2.32.0's own `/` menu (V3), under omp's two rules above: only
+// what a capture shows, and nothing the capturing machine added. The menu ran with an empty
+// KIRO_HOME, so it lists built-in commands only. Each description is the menu's own, without its
+// "(tab for sub-commands)" note. `/model` and `/agent` open pickers the Kiro adapter does not lift:
+// the phone shows them on the raw mirror, to be driven with the keys pad and closed with Escape. So,
+// as for omp, `common: false`.
+const KIRO: readonly AgentCommand[] = [
+  // kiro--v3-slash-help-w120.txt
+  { command: "/help", description: "Show available commands", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-model-w120.txt
+  { command: "/model", description: "List or switch models", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-menu-w120.txt, the unfiltered menu's first rows.
+  { command: "/agent", description: "List or switch agents", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/compact", description: "Compact conversation history to reduce context usage", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/clear", description: "Clear the conversation and start a fresh session", takesArg: false, argHint: "", common: false, dangerous: true },
+  // kiro--v3-slash-quit-w120.txt
+  { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -367,6 +405,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["opencode", OPENCODE],
   ["omp", OMP],
   ["grok", GROK],
+  ["kiro", KIRO],
   ["muse", MUSE],
   // Herdr reports this agent under both names, and canonicalAgent() folds neither onto the other,
   // so both keys are filed — one catalog, two spellings.

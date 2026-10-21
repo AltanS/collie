@@ -57,7 +57,7 @@ export interface HarnessBarItem {
  * section states the rule). Every bar row for one of these must name a capture, because there is no
  * published page to check it against.
  */
-export const CAPTURE_SOURCED: readonly string[] = ["omp"];
+export const CAPTURE_SOURCED: readonly string[] = ["omp", "muse"];
 
 // ── Claude Code ──────────────────────────────────────────────────────────────
 // Model, Effort, Compact, Resume — the four Altan drives Claude Code with from the phone. Each one
@@ -134,10 +134,39 @@ const OMP: readonly HarnessBarItem[] = [
   },
 ];
 
-// The four below were driven on live panes on 2026-10-15 (opencode 1.18.34, Grok Build 1.0.52,
-// Muse Code 1.4.8, agy 1.3.5): every Model, Effort and Resume button opened its harness's own
-// picker on Enter, and every Compact was in the harness's own `/` completion. opencode lists
-// /compact only once its session holds a turn, which is the only time it has anything to compact.
+// ── Muse ─────────────────────────────────────────────────────────────────────
+// Capture-sourced like omp (the catalog section states the rule), so every row names the capture
+// that proves it. Model, Effort, Compact, Resume in Claude's order: `/model` reaches Muse's model
+// picker, `/effort` its effort picker (minimal–xhigh), `/compact` its context compaction, and
+// `/resume` its session picker — each one bare, with Muse's own picker taking the screen, exactly
+// as Claude's bar does. `/hud` and `/loop` stay off the bar: the HUD picker is toggles, not a
+// destination, and a recurring prompt is not a thumb-reach frequent command.
+const MUSE: readonly HarnessBarItem[] = [
+  {
+    id: "model",
+    label: "harnessBar.model",
+    command: "/model",
+    evidence: `${PANES}/muse--palette-hint.txt`,
+  },
+  {
+    id: "effort",
+    label: "harnessBar.effort",
+    command: "/effort",
+    evidence: `${PANES}/muse--filter-effort.txt`,
+  },
+  {
+    id: "compact",
+    label: "harnessBar.compact",
+    command: "/compact",
+    evidence: `${PANES}/muse--slash-palette-1410.txt`,
+  },
+  {
+    id: "resume",
+    label: "harnessBar.resume",
+    command: "/resume",
+    evidence: `${PANES}/muse--resume-picker.txt`,
+  },
+];
 
 // ── opencode ─────────────────────────────────────────────────────────────────
 // Its own spellings: /models for the model picker, /sessions for the session picker. No Effort
@@ -153,16 +182,6 @@ const OPENCODE: readonly HarnessBarItem[] = [
 // /effort opens no picker: it leaves `/effort <level>` in the input box for an argument.
 const GROK: readonly HarnessBarItem[] = [
   { id: "model", label: "harnessBar.model", command: "/model" },
-  { id: "compact", label: "harnessBar.compact", command: "/compact" },
-  { id: "resume", label: "harnessBar.resume", command: "/resume" },
-];
-
-// ── Muse Code ────────────────────────────────────────────────────────────────
-// Claude's four. Muse's /model picker sets the model only, and a bare /effort opens a picker of its
-// own, so Effort has a dial to reach that Model does not.
-const MUSE: readonly HarnessBarItem[] = [
-  { id: "model", label: "harnessBar.model", command: "/model" },
-  { id: "effort", label: "harnessBar.effort", command: "/effort" },
   { id: "compact", label: "harnessBar.compact", command: "/compact" },
   { id: "resume", label: "harnessBar.resume", command: "/resume" },
 ];

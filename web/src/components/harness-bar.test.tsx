@@ -117,6 +117,17 @@ describe("HarnessBar", () => {
     expect(screen.queryByRole("button", { name: "Effort" })).not.toBeInTheDocument();
   });
 
+  it("draws Muse's Model, Effort, Compact and Resume, and sends each bare", async () => {
+    const onRun = took();
+    render(<HarnessBar agent="muse" onRun={onRun} />);
+    for (const label of ["Model", "Effort", "Compact", "Resume"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "Tree" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Effort" }));
+    expect(onRun).toHaveBeenCalledWith("/effort");
+  });
+
   it("greys every button in place on a locked pane, rather than removing one", async () => {
     const onRun = took();
     render(<HarnessBar agent="claude" onRun={onRun} disabled />);

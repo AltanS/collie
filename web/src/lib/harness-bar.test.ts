@@ -81,6 +81,7 @@ describe("the shipped bar", () => {
 
   it("gives Muse Claude's four, because its /effort opens a picker of its own", () => {
     expect(barFor("muse").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+    expect(barFor("muse").map((i) => i.command)).toEqual(["/model", "/effort", "/compact", "/resume"]);
   });
 
   it("gives agy one bar under both of its names, with Effort inside its /model picker", () => {
@@ -97,6 +98,7 @@ describe("the shipped bar", () => {
   it("reaches a bar through the catalog's own agent ladder", () => {
     expect(barFor("claude-code").map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
     expect(barFor("  CLAUDE ").map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
+    expect(barFor("muse-code").map((i) => i.id)).toEqual(barFor("muse").map((i) => i.id));
   });
 
   it("spells every shipped label as a harnessBar key", () => {

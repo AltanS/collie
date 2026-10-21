@@ -88,6 +88,35 @@ describe("commandsFor", () => {
     expect(commandsFor("agy-cli")).toEqual(agyCmds);
   });
 
+  it("returns the Muse catalog for 'muse', proven on Muse captures only", () => {
+    const cmds = commandsFor("muse");
+    expect(cmds.length).toBeGreaterThan(0);
+    // Palette rows with Muse's own summaries (muse--slash-palette-1410.txt).
+    for (const command of ["/bug", "/clear", "/compact", "/copy", "/deep-research", "/export"]) {
+      expect(cmds.some((c) => c.command === command), command).toBe(true);
+    }
+    // Typed or probed: /usage ran, /model and /resume show arg hints, /effort and /hud opened
+    // their pickers live, /loop is the placeholder tip, /permissions the approval hint row.
+    expect(cmds.find((c) => c.command === "/model")).toMatchObject({ takesArg: true, argHint: "[<model-id>]" });
+    expect(cmds.find((c) => c.command === "/resume")).toMatchObject({ takesArg: true, argHint: "[--last|<id-or-name>]" });
+    expect(cmds.find((c) => c.command === "/loop")).toMatchObject({ takesArg: true });
+    for (const command of ["/usage", "/effort", "/hud", "/permissions"]) {
+      expect(cmds.some((c) => c.command === command), command).toBe(true);
+    }
+    // Built-in skill rows, shipped with the CLI rather than the capturing machine.
+    for (const command of ["/plan", "/resume-claude", "/resume-codex"]) {
+      expect(cmds.some((c) => c.command === command), command).toBe(true);
+    }
+    // Clearing the terminal wipes the session: two-tap like every other catalog's /clear.
+    expect(cmds.find((c) => c.command === "/clear")?.dangerous).toBe(true);
+    // Rows neither 453's docs/1.4.7 sourcing nor a screen capture vouches for stay out: never
+    // invent commands the CLI is not proven to have. (453 documents /new, /fork, /rewind, /tasks
+    // and /workflows from docs plus 1.4.7's own completion, so only the truly-unseen stay out.)
+    for (const command of ["/init", "/quit", "/exit", "/logout", "/tree", "/skills"]) {
+      expect(cmds.some((c) => c.command === command), command).toBe(false);
+    }
+  });
+
   it("is case-insensitive", () => {
     expect(commandsFor("CLAUDE")).toBe(commandsFor("claude"));
     expect(commandsFor("Codex")).toBe(commandsFor("codex"));
@@ -95,6 +124,7 @@ describe("commandsFor", () => {
     expect(commandsFor("OpenCode")).toBe(commandsFor("opencode"));
     expect(commandsFor("OMP")).toBe(commandsFor("omp"));
     expect(commandsFor("GROK")).toBe(commandsFor("grok"));
+    expect(commandsFor("MUSE")).toBe(commandsFor("muse"));
   });
 
   it("trims surrounding whitespace", () => {
@@ -108,6 +138,7 @@ describe("commandsFor", () => {
     expect(commandsFor("pi-go")).toBe(commandsFor("pi"));
     expect(commandsFor("omp-dev")).toBe(commandsFor("omp"));
     expect(commandsFor("grok-build")).toBe(commandsFor("grok"));
+    expect(commandsFor("muse-code")).toBe(commandsFor("muse"));
   });
 
   it("returns [] for unknown / absent agents", () => {
@@ -344,6 +375,9 @@ describe("commandsFor with the operator's own rows", () => {
     const mine = { agent: "claude", command: "/mine", description: "Mine", takesArg: false, argHint: "" };
     // The scope resolves the variant, and having done so it owns that pane's palette.
     expect(commandsFor("claude-code", [mine]).map((c) => c.command)).toEqual(["/mine"]);
+    // Same for the Muse family: `muse` reaches a `muse-code` pane's palette.
+    const museMine = { agent: "muse", command: "/mine", description: "Mine", takesArg: false, argHint: "" };
+    expect(commandsFor("muse-code", [museMine]).map((c) => c.command)).toEqual(["/mine"]);
   });
 
   it("does not let the catalog's prefix tolerance widen a narrow scope", () => {
@@ -356,6 +390,10 @@ describe("commandsFor with the operator's own rows", () => {
     // Same for every other family with a bare-prefix rule.
     const omp = { agent: "omp-experimental", command: "/deploy", description: "X", takesArg: false, argHint: "" };
     expect(commandsFor("omp", [omp]).some((c) => c.command === "/deploy")).toBe(false);
+    const muse = { agent: "muse-experimental", command: "/deploy", description: "X", takesArg: false, argHint: "" };
+    expect(commandsFor("muse", [muse]).some((c) => c.command === "/deploy")).toBe(false);
+    expect(commandsFor("muse-code", [muse]).some((c) => c.command === "/deploy")).toBe(false);
+    expect(commandsFor("muse-experimental", [muse]).some((c) => c.command === "/deploy")).toBe(true);
   });
 
   it("prefers the exact scope over the family one, whichever was declared first", () => {
