@@ -86,16 +86,16 @@ before it runs. Every other tool runs at once.
 
 ## On Vercel
 
-Mount the same three routes in your app, with the same `open`. Then:
+The same code is meant to run as a function with Vercel's World in place of the local one. Nothing has run on Vercel
+yet. The steps appear here after one preview deployment has attached, listed a session, answered one card and sent
+once the session was idle.
 
-```sh
-vercel env add COLLIE_TOKEN production
-vercel deploy --prod
-collie durable attach desk --url https://your-app.example.com/collie --token-env COLLIE_TOKEN --restart
-```
+What it rests on, untested:
 
-This path is untested on Vercel. It stays untested until a real deploy has run these steps. The self-hosted path above
-is the one the tests run.
+- The queue is shared between functions, so a send from any function reaches the session.
+- The World identity (the project and environment) is the same for every function of one deployment, so the epoch is stable.
+- A function's maximum duration is longer than the time a question waits. Otherwise the silence rule hands the session to a new function after 120 s, which reruns the hook.
+- A stop's takeover commits before the function returns.
 
 ## What it costs
 

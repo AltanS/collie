@@ -88,8 +88,8 @@ To show an agent built on durable-harness, see
 If your durable agent runs on Vercel's `durable-harness`, one wrapper and one route put it on your phone.
 
 > **Experimental.** This path is tested self-hosted, in one Node process on a local World. It is untested
-> on Vercel: no preview deployment has run it yet. Until one has, treat the Vercel steps as a plan, not
-> as a promise. The entry is `@colliepwa/durable-sdk/durable-harness`, and it serves a Pi agent only.
+> on Vercel: no preview deployment has run it yet. Until one has, treat Vercel as a plan, not
+> as a promise. The entry is `@colliepwa/durable-sdk/durable-harness`, and it serves a Pi agent only. A stop ends the turn, but a tool that is already running finishes and does its work.
 
 [durable-harness](https://www.npmjs.com/package/durable-harness) keeps a Pi agent's state in a log it
 calls a World. The agent has no process of its own to dial. So the route reads the log on every request,
@@ -186,32 +186,16 @@ one process. A send that a second process writes is never picked up, until the f
 
 ### On Vercel
 
-The same code runs as a function, with Vercel's World in place of the local one. Nothing here has run
-on Vercel yet.
+The same code is meant to run as a function with Vercel's World in place of the local one. Nothing has run on
+Vercel yet. The steps appear here after one preview deployment has attached, listed a session, answered one card and
+sent once the session was idle.
 
-1. Mount the route under a path that ends in `/session/v1`. In Next.js that is
-   `app/collie/session/v1/[...path]/route.ts`:
+What it rests on, untested:
 
-   ```js
-   import { collie } from "../../../../collie.js";
-
-   export const GET = collie;
-   export const POST = collie;
-   ```
-
-2. Set `COLLIE_TOKEN` in the project's environment, and deploy.
-
-3. Attach the deployment. The URL is its base, with `/collie` and without `/session/v1`:
-
-   ```bash
-   export COLLIE_TOKEN=your-32-byte-random-token-here
-   collie durable attach desk --url https://your-app.example.com/collie --token-env COLLIE_TOKEN
-   collie restart
-   ```
-
-The queue is shared on Vercel, so a send reaches the agent from any function. That is the design, and
-it is untested. The first Vercel check is one preview deployment: attach it, see a session, answer one
-card, send once the session is idle.
+- The queue is shared between functions, so a send from any function reaches the session.
+- The World identity (the project and environment) is the same for every function of one deployment, so the epoch is stable.
+- A function's maximum duration is longer than the time a question waits. Otherwise the silence rule hands the session to a new function after 120 s, which reruns the hook.
+- A stop's takeover commits before the function returns.
 
 ### What the phone can do
 
@@ -223,6 +207,8 @@ Read, answer, send when idle, stop, and read the history. Nothing else.
 | Send text | Only while the session is idle. The route takes the session over, submits the text and lets go. While the agent works, the phone does not offer Send |
 | Stop | The route takes the session over and aborts it. Every question the turn left open closes as decided by the agent. Nothing resumes the turn |
 | Read history | Every run of the agent is a conversation. A run that ended is a closed one |
+
+Anything that can write the run's journal stream in the World can write an answer, so write access to the World is approval authority; the bearer token guards the route, not the World, and the guard is not a sandbox: a tool not named in `risky` runs without asking.
 
 Steer, rename, close, reopen, belt buttons and starters are off. A conversation that the World drops
 by its retention rule leaves the list.
