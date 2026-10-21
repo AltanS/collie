@@ -21,6 +21,18 @@ export interface ComposerAttachment extends DraftAttachment {
 const CHIP_REMOVE_TAP_TARGET = "before:absolute before:-inset-3 before:content-['']";
 
 /**
+ * The 44px floor for a paste chip's face, which is a button the operator taps to open the editor
+ * (DESIGN.md §6, the same move as `STRIP_TAP_TARGET` in ui/labelled-strip.tsx). The face is `h-10`,
+ * 40px, inside a strip that scrolls sideways, so the reach may not leave the strip's padding box or
+ * it is clipped and stops taking taps (labelled-strip's note 2). An inset resolves against the
+ * padding box, 1px inside the border: `-top-[4px]` lands 3px above the face, inside the strip's
+ * `pt-1`, and `-bottom-[2px]` 1px below it, inside its `pb-0.5`, so 38 + 4 + 2 = 44 tall. Across,
+ * `min-w-11` keeps the face itself 44px at the least. Change the strip's padding and re-measure.
+ */
+const CHIP_PASTE_TAP_TARGET =
+  "relative min-w-11 before:absolute before:inset-x-0 before:-top-[4px] before:-bottom-[2px] before:content-['']";
+
+/**
  * One attachment waiting in the composer (ADR 0060). A photo with a preview is a 40x40 thumbnail;
  * anything else, a restored photo included (its blob URL died with the page), is a small tile with
  * an icon and the file name cut to fit. Its number sits in a badge on the top-left corner, the same
@@ -77,6 +89,7 @@ export function AttachmentChip({
           disabled={disabled}
           aria-label={t("composer.paste.editAria", { n: attachment.n })}
           className={cn(
+            CHIP_PASTE_TAP_TARGET,
             "flex h-10 max-w-44 flex-col justify-center gap-0.5 rounded-md border bg-muted/40 pr-6 pl-2 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:opacity-50",
             edge,
           )}

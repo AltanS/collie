@@ -69,4 +69,17 @@ describe("a collapsed paste chip", () => {
     screen.getByRole("button", { name: "Edit pasted text #1" }).click();
     expect(selected).toBe(true);
   });
+
+  it("reaches a 44px hit area inside the strip's padding", () => {
+    render(
+      <ul>
+        <AttachmentChip attachment={paste} onRemove={() => {}} onSelect={() => {}} />
+      </ul>,
+    );
+    const face = screen.getByRole("button", { name: "Edit pasted text #1" });
+    // h-10 (40px) with a 1px border: the padding box is 38px, and 4 + 2 of reach make 44.
+    for (const cls of ["relative", "h-10", "min-w-11", "before:absolute", "before:inset-x-0", "before:-top-[4px]", "before:-bottom-[2px]", "before:content-['']"]) {
+      expect(face).toHaveClass(cls);
+    }
+  });
 });
