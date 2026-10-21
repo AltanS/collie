@@ -200,5 +200,22 @@ describe("drafts", () => {
       localStorage.setItem(KEY, JSON.stringify({ text: "t", at: Date.now(), attachments: [{ ...chip, n: 5 }], next: 2 }));
       expect(loadDraftEntry(undefined, "w1:p1")?.next).toBe(6);
     });
+
+    it("round-trips a paste chip and counts its content toward the disk size cap", () => {
+      const pasteChip = { n: 1, path: "a\nb\nc\nd\ne", name: "a", kind: "paste" as const };
+      saveDraft(undefined, "w1:p1", "[Pasted #1]", [pasteChip], 2);
+      __resetDraftPrune();
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({
+        text: "[Pasted #1]",
+        attachments: [pasteChip],
+        next: 2,
+      });
+
+      const hugePaste = { n: 1, path: "x".repeat(8 * 1024 + 1), name: "xxx", kind: "paste" as const };
+      expect(fitsDraftStore("[Pasted #1]", [hugePaste])).toBe(false);
+      saveDraft(undefined, "w1:p1", "[Pasted #1]", [hugePaste], 2);
+      expect(localStorage.getItem(KEY)).toBeNull();
+      expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toEqual([hugePaste]);
+    });
   });
 });

@@ -42,3 +42,31 @@ describe("a chip whose marker is gone", () => {
     expect(screen.getByRole("button", { name: "Remove notes.md" })).toBeInTheDocument();
   });
 });
+
+describe("a collapsed paste chip", () => {
+  const paste: ComposerAttachment = {
+    n: 1,
+    path: "line 1\nline 2\nline 3\nline 4\nline 5",
+    name: "line 1",
+    kind: "paste",
+  };
+
+  it("shows line and character counts and calls onSelect when tapped", () => {
+    let selected = false;
+    render(
+      <ul>
+        <AttachmentChip
+          attachment={paste}
+          onRemove={() => {}}
+          onSelect={() => {
+            selected = true;
+          }}
+        />
+      </ul>,
+    );
+    expect(chip()).toHaveTextContent("5 lines · 34 chars");
+    expect(chip()).toHaveTextContent("line 1");
+    screen.getByRole("button", { name: "Edit pasted text #1" }).click();
+    expect(selected).toBe(true);
+  });
+});

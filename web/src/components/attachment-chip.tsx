@@ -1,7 +1,7 @@
-import { ArrowLeftToLine, FileText, Image, X } from "lucide-react";
+import { ArrowLeftToLine, ClipboardPaste, FileText, Image, X } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
-import { shortName } from "@/lib/attachments";
+import { pasteLineCount, shortName } from "@/lib/attachments";
 import type { DraftAttachment } from "@/lib/drafts";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -37,18 +37,27 @@ const CHIP_REMOVE_TAP_TARGET = "before:absolute before:-inset-3 before:content-[
 export function AttachmentChip({
   attachment,
   onRemove,
+  onSelect,
   disabled,
   inFront = false,
 }: {
   attachment: ComposerAttachment;
   onRemove: () => void;
+  onSelect?: () => void;
   disabled?: boolean;
   inFront?: boolean;
 }) {
   useLocale();
-  const Icon = attachment.kind === "image" ? Image : FileText;
+  const isPaste = attachment.kind === "paste";
+  const Icon = attachment.kind === "image" ? Image : isPaste ? ClipboardPaste : FileText;
   const inFrontNote = inFront ? t("composer.attach.inFront", { name: attachment.name }) : null;
   const edge = inFront ? "border-dashed border-foreground/60" : "border-border";
+  const pasteStats = isPaste
+    ? t("composer.paste.chipStats", {
+        lines: pasteLineCount(attachment.path),
+        chars: attachment.path.length,
+      })
+    : null;
   return (
     <li
       className="relative shrink-0"
@@ -61,6 +70,25 @@ export function AttachmentChip({
           alt={attachment.name}
           className={cn("size-10 rounded-md border object-cover", edge)}
         />
+      ) : isPaste ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          disabled={disabled}
+          aria-label={t("composer.paste.editAria", { n: attachment.n })}
+          className={cn(
+            "flex h-10 max-w-44 flex-col justify-center gap-0.5 rounded-md border bg-muted/40 pr-6 pl-2 text-left text-xs text-foreground transition-colors hover:bg-muted disabled:opacity-50",
+            edge,
+          )}
+        >
+          <span className="flex items-center gap-1 font-medium leading-none">
+            <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{pasteStats}</span>
+          </span>
+          <span className="truncate font-mono text-[10px] leading-tight text-muted-foreground">
+            {shortName(attachment.name, 22)}
+          </span>
+        </button>
       ) : (
         <div
           className={cn(
