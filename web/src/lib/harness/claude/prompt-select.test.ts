@@ -935,4 +935,103 @@ describe("detectPromptSelectRegion: an AskUserQuestion whose question has no que
     expect(stripped).not.toBe(text);
     expect(detectPromptSelectRegion(splitLines(parseAnsi(stripped)))).toBeNull();
   });
+
+  it("a chip header that ends in a question mark is not read as the question", () => {
+    const region = detectPromptSelectRegion(fixtureLines("claude--v2304-ask-chip-question-mark.txt"));
+    expect(region).not.toBeNull();
+    expect(region!.model.family).toBe("select");
+    expect(region!.model.question).toBe(
+      "The staging build passed every check. Pick how to proceed with the rollout.",
+    );
+    expect(region!.model.subject).toBeUndefined();
+    expect(region!.model.options.map((o) => o.label)).toEqual([
+      "Deploy now (Recommended)",
+      "Hold for review",
+      "Chat about this",
+    ]);
+  });
 });
+
+// Claude Code 2.1.304 single-question AskUserQuestion under a `☐ <header>` chip: when the question
+// carries a "?" and spans two paragraphs (separated by a bare `│` gutter row or a blank row) or wraps
+// past six rows (`MAX_QUESTION_ROWS`), `questionUnderChip` joins the full question below the chip so
+// the upper rows are neither dropped nor misclassified as `model.subject`.
+describe("detectPromptSelect: chip-bounded multi-paragraph and >6-row questions", () => {
+  const FIXTURE = "claude--v2304-ask-two-paragraph--w80.txt";
+
+  it("joins a two-paragraph 7-row question under `☐ Release` without leaking the first row into subject", () => {
+    const region = detectPromptSelectRegion(fixtureLines(FIXTURE));
+    expect(region).not.toBeNull();
+    const { model, startLine } = region!;
+    expect(model.family).toBe("select");
+    expect(model.question).toBe(
+      "The staging candidate passed all 24 smoke checks and the migration dry run on " +
+        "the replica database (see https://ci.example.test/runs/42?tab=checks for the " +
+        "full timing report, query plans, lock durations, and rollback verification " +
+        "steps across both regions). " +
+        "Which environment should we promote this build to next, and should the rollout " +
+        "pause after the first region?",
+    );
+    expect(model.subject).toBeUndefined();
+    expect(lineText(fixtureLines(FIXTURE)[startLine]!)).toMatch(/^─+$/);
+    expect(model.askRegion).not.toBeNull();
+    expect(model.askRegion!.split("\n")[0]).toMatch(/^─+$/);
+    expect(model.options.map((o) => o.label)).toEqual([
+      "Production",
+      "Canary",
+      "Hold",
+      "Chat about this",
+    ]);
+  });
+
+  it("joins a question that wraps past 6 rows and carries a '?' URL in its first paragraph", () => {
+    const raw = [
+      "─".repeat(60),
+      " ☐ Architecture ",
+      "",
+      "│ Context line 1: see https://example.com/docs?tab=api for details.",
+      "│ Context line 2: the existing worker pool runs 4 threads.",
+      "│ Context line 3: memory usage peaks during batch imports.",
+      "│ Context line 4: latency p99 must stay under 150ms.",
+      "",
+      "│ Given the constraints above, we have three migration paths",
+      "│ that trade off throughput against memory overhead.",
+      "│ Which migration path should we take?",
+      "",
+      "❯ 1. Worker threads (Recommended)",
+      "     Shared memory ring buffer",
+      "  2. Child processes",
+      "     Isolated heap per worker",
+      "  3. Type something.",
+      "─".repeat(60),
+      "  4. Chat about this",
+      "",
+      "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ].join("\n");
+    const m = detectPromptSelect(splitLines(parseAnsi(raw)));
+    expect(m).not.toBeNull();
+    expect(m!.question).toContain("Context line 1: see https://example.com/docs?tab=api");
+    expect(m!.question).toContain("Which migration path should we take?");
+    expect(m!.subject).toBeUndefined();
+    expect(m!.askRegion).not.toBeNull();
+    expect(m!.askRegion!.split("\n")[0]).toBe("─".repeat(60));
+  });
+
+  it("ignores a stray `☐` in scrollback above the dialog's top `─` rule", () => {
+    const raw = [
+      " ☐ Earlier task item from scrollback",
+      "Some earlier prose without a question mark.",
+      "─".repeat(60),
+      "✅ Do you want to proceed?",
+      "❯ 1. Yes",
+      "  2. No",
+      "",
+      "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ].join("\n");
+    const m = detectPromptSelect(splitLines(parseAnsi(raw)));
+    expect(m).not.toBeNull();
+    expect(m!.question).toBe("✅ Do you want to proceed?");
+    expect(m!.question).not.toContain("Some earlier prose");
+  });
+});
+
