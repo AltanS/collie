@@ -2397,6 +2397,68 @@ describe("Composer — clipboard image paste", () => {
     expect(screen.queryByText(/Image added/i)).not.toBeInTheDocument();
     expect(uploadCalls).toBe(0);
   });
+
+  it("collapses a 5+ line paste into a [Pasted #1] chip, lets the sheet edit or expand it, and sends the expanded text", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const longText = "line 1\nline 2\nline 3\nline 4\nline 5";
+
+    fireEvent.paste(box, {
+      clipboardData: {
+        items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+        getData: (type: string) => (type === "text/plain" ? longText : ""),
+      },
+    });
+
+    await waitFor(() => expect(box).toHaveValue("[Pasted #1] "));
+    const chipBtn = screen.getByRole("button", { name: "Edit pasted text #1" });
+    expect(chipBtn).toHaveTextContent("5 lines · 34 chars");
+
+    // Open the sheet and edit the pasted content; scrolling inside the textarea never triggers the
+    // sheet's pull-down dismiss gesture.
+    await user.click(chipBtn);
+    const sheetEditor = screen.getByRole("textbox", { name: "Edit pasted text #1" });
+    expect(sheetEditor).toHaveValue(longText);
+    fireEvent.touchStart(sheetEditor, { touches: [{ clientY: 100 }] });
+    fireEvent.touchMove(sheetEditor, { touches: [{ clientY: 250 }] });
+    fireEvent.touchEnd(sheetEditor);
+    expect(screen.getByRole("textbox", { name: "Edit pasted text #1" })).toBeInTheDocument();
+    fireEvent.change(sheetEditor, { target: { value: "edited 1\nedited 2\nedited 3\nedited 4\nedited 5" } });
+    expect(chipBtn).toHaveTextContent("5 lines · 44 chars");
+
+    // Close sheet and send with additional instructions
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.change(box, { target: { value: "[Pasted #1] please check" } });
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(recordedSends().at(-1)?.text).toBe(
+        "edited 1\nedited 2\nedited 3\nedited 4\nedited 5 please check",
+      ),
+    );
+  });
+
+  it("expands a collapsed paste chip back into the input box when requested from the sheet", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const longText = "alpha 1\nalpha 2\nalpha 3\nalpha 4\nalpha 5";
+
+    fireEvent.paste(box, {
+      clipboardData: {
+        items: [],
+        getData: (type: string) => (type === "text/plain" ? longText : ""),
+      },
+    });
+
+    await waitFor(() => expect(box).toHaveValue("[Pasted #1] "));
+    await user.click(screen.getByRole("button", { name: "Edit pasted text #1" }));
+    await user.click(screen.getByRole("button", { name: "Expand into input" }));
+
+    expect(screen.queryByRole("button", { name: "Edit pasted text #1" })).not.toBeInTheDocument();
+    expect(box).toHaveValue(`${longText} `);
+  });
 });
 
 describe("Composer — keys dock (in-flow, not an overlay)", () => {
@@ -4306,6 +4368,33 @@ describe("outcome at the thumb", () => {
     land(userTurn("hello there", "turn-1"));
     await waitFor(() => expect(refusalText()).toBe(""));
     expect(screen.getByRole("textbox")).toHaveValue("hello there plus more");
+  });
+
+  it("unknown, a paste chip's text is edited in the sheet, then the sent text lands: the notice retires, the edited chip stays (#511)", async () => {
+    server.use(...sendHandler(() => sendAnswer("x", "unknown", "no_evidence", { offers: ["keys"] })));
+    const user = userEvent.setup();
+    const { land } = renderComposerWithEntries();
+    const box = screen.getByRole("textbox");
+    const longText = "line 1\nline 2\nline 3\nline 4\nline 5";
+    fireEvent.paste(box, {
+      clipboardData: {
+        items: [],
+        getData: (type: string) => (type === "text/plain" ? longText : ""),
+      },
+    });
+    await waitFor(() => expect(box).toHaveValue("[Pasted #1] "));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(refusalText()).toMatch(/read the screen, then send again/i));
+
+    await user.click(screen.getByRole("button", { name: "Edit pasted text #1" }));
+    const sheetEditor = screen.getByRole("textbox", { name: "Edit pasted text #1" });
+    fireEvent.change(sheetEditor, { target: { value: "updated 1\nupdated 2\nupdated 3\nupdated 4\nupdated 5" } });
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    land(userTurn(longText, "turn-1"));
+    await waitFor(() => expect(refusalText()).toBe(""));
+    expect(box).toHaveValue("[Pasted #1] ");
+    expect(screen.getByRole("button", { name: "Edit pasted text #1" })).toHaveTextContent("5 lines · 49 chars");
   });
 
   it("no answer: says so at the thumb, keeps the draft and the request id, and the retry does not send twice", async () => {

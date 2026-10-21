@@ -45,7 +45,7 @@ export interface DraftAttachment {
   n: number;
   path: string;
   name: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "paste";
 }
 
 /** A pane's whole draft: the typed text (markers included), the chips, and the next chip number. */
@@ -156,7 +156,7 @@ function parse(raw: string | null): DraftEntry | null {
       if (typeof a !== "object" || a === null) continue;
       if (typeof a.n !== "number" || !isChipNumber(a.n)) continue;
       if (typeof a.path !== "string" || a.path === "" || typeof a.name !== "string") continue;
-      if (a.kind !== "image" && a.kind !== "file") continue;
+      if (a.kind !== "image" && a.kind !== "file" && a.kind !== "paste") continue;
       attachments.push({ n: a.n, path: a.path, name: a.name, kind: a.kind });
     }
     const next = typeof entry.next === "number" && isChipNumber(entry.next) ? entry.next : undefined;
@@ -177,10 +177,24 @@ function nextNumber(attachments: readonly DraftAttachment[], stored: number | un
   return stored === undefined ? floor : Math.max(stored, floor);
 }
 
+function draftCharCount(
+  text: string,
+  attachments: readonly Pick<DraftAttachment, "kind" | "path">[] = [],
+): number {
+  let total = text.length;
+  for (const a of attachments) {
+    if (a.kind === "paste") total += a.path.length;
+  }
+  return total;
+}
+
 /** Whether a draft is small enough for the disk tier — i.e. whether it will survive the app closing.
  *  The composer renders a notice from this; it is the only honest warning the user gets. */
-export function fitsDraftStore(text: string): boolean {
-  return text.length <= MAX_CHARS;
+export function fitsDraftStore(
+  text: string,
+  attachments: readonly Pick<DraftAttachment, "kind" | "path">[] = [],
+): boolean {
+  return draftCharCount(text, attachments) <= MAX_CHARS;
 }
 
 /** The disk tier's entry for a pane, expiring (and removing) anything past MAX_AGE_MS. */
@@ -257,7 +271,7 @@ export function saveDraft(
 
   const store = storage();
   if (!store) return;
-  if (!fitsDraftStore(text)) {
+  if (!fitsDraftStore(text, attachments)) {
     // CLEAR rather than skip: leaving the previous entry means a remount restores an older, shorter
     // draft, and the user acts on text they never wrote. The memory tier above still has the whole
     // thing, so this only bites when the process actually dies — which fitsDraftStore's notice has
@@ -275,14 +289,14 @@ export function saveDraft(
 /** Hold the memory tier under {@link MEMORY_MAX_CHARS}, oldest first, never evicting `keep`. */
 function evictMemory(keep: string): void {
   let total = 0;
-  for (const entry of memory.values()) total += entry.text.length;
+  for (const entry of memory.values()) total += draftCharCount(entry.text, entry.attachments);
   if (total <= MEMORY_MAX_CHARS) return;
   const byAge = [...memory.entries()]
     .filter(([key]) => key !== keep)
     .toSorted((a, b) => a[1].at - b[1].at);
   for (const [key, entry] of byAge) {
     memory.delete(key);
-    total -= entry.text.length;
+    total -= draftCharCount(entry.text, entry.attachments);
     if (total <= MEMORY_MAX_CHARS) return;
   }
 }
