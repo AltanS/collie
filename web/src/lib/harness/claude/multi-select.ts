@@ -12,12 +12,15 @@
 //     `❯ 1. Submit answers` / `2. Cancel`, with the same single-question stepper. Digit 1 submits,
 //     2 cancels; a `⚠ …not answered all questions` line means `incomplete`.
 //
-// This shape currently falls to the raw mirror because prompt-select bails on the multi-step glyph
-// and wizard bails on its ≥3-chip stepper requirement — so this detector adds a new surface rather
-// than re-arbitrating an existing one. Everything here is PURE over `StyledLine[]`, fixture-driven
-// (web/src/fixtures/panes/claude--select-multiselect-*.txt), and never touches a pane or the network.
+// The last checkbox row above the advance row is the question's answer field (`Type something`, ADR
+// 0113), modelled as `field` and never an option: its digit toggles its tick, and while `❯` is on it
+// every key is typed into it (grammar/ASK_FIELD_NOTES.md § Multi-select). Prompt-select bails on the
+// checkbox rows and wizard on a checkbox step, so this detector owns the shape alone. Everything here
+// is PURE over `StyledLine[]`, fixture-driven (web/src/fixtures/panes/claude--select-multiselect-*.txt,
+// claude--v2299-ask-field-*multi-*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
+import type { AnswerFieldPointer } from "../prompt-model";
 import {
   classifyFooter,
   selectFooterStart,
@@ -32,6 +35,7 @@ import { parseStepperLine } from "./wizard";
 import type { WizardStepChip } from "../wizard-model";
 import type {
   MultiPointer,
+  MultiSelectAnswerField,
   MultiSelectEscape,
   MultiSelectModel,
   MultiSelectOption,
@@ -136,44 +140,100 @@ function findSingleStepper(
  *  every `[✔]`/`[ ]` option checkbox, and the stepper's answered chip glyph (`☒`/`☑`→`☐`) normalised
  *  out — so it captures the SUBJECT + labels only, stable across the whole toggle + Submit-macro
  *  choreography (the pointer moves, boxes flip). The transient state (pointer, checked) is compared
- *  SEPARATELY by multiSelectEquals via the options[]. Pure of the buffer's absolute offset, so the
- *  frozen model and a fresh re-derivation of the SAME dialog produce byte-equal strings. */
-function coreSignature(texts: string[], from: number, to: number): string {
-  return texts
-    .slice(from, to + 1)
-    .map((t) =>
-      t
+ *  SEPARATELY by multiSelectEquals via the options[]. The answer field's row and every line its value
+ *  wrapped onto (`fieldLines`) collapse to one fixed token, so the signature survives typing, clearing
+ *  and re-wrapping the field (its text is compared separately, through `field`). Pure of the buffer's
+ *  absolute offset, so the frozen model and a fresh re-derivation of the SAME dialog produce
+ *  byte-equal strings. */
+function coreSignature(texts: string[], from: number, to: number, fieldLines: ReadonlySet<number>): string {
+  const out: string[] = [];
+  for (let i = from; i <= to; i++) {
+    if (fieldLines.has(i)) {
+      if (!fieldLines.has(i - 1)) out.push(FIELD_TOKEN);
+      continue;
+    }
+    out.push(
+      texts[i]!
         .replace(/❯/g, " ")
         .replace(/\[[ xX✔✓]\]/g, "[ ]")
         .replace(/[☒☑]/g, "☐"),
-    )
-    .join("\n");
+    );
+  }
+  return out.join("\n");
 }
+
+// What the answer field's lines read as in the core signature: no screen row can print it.
+const FIELD_TOKEN = "\u0000answer-field\u0000";
 
 /** Classify which row the `❯` pointer sits on across [`from` … `to`] (raw line text — the pointer is
  *  a leading glyph). `null` when no row carries it. */
-function pointerAt(
-  texts: string[],
-  from: number,
-  to: number,
-  advanceIdx: number,
-  fieldIdx: number,
-): MultiPointer {
+function pointerAt(texts: string[], from: number, to: number, rows: { advanceIdx: number; fieldIdx: number }): MultiPointer {
   for (let i = from; i <= to; i++) {
     if (!/^\s*❯/.test(texts[i]!)) continue;
     const trimmed = texts[i]!.trim();
-    // By index: a line that merely READS "Submit"/"Next" is not the advance row (see its location above).
-    if (i === advanceIdx) return "advance";
-    // By index too: the field reads "[✔] teal" once someone has typed into it.
-    if (i === fieldIdx) return "field";
+    // By index: a line that merely READS "Submit"/"Next" is not the advance row (see its location above),
+    // and the answer field is a place too, whatever it holds (it reads "[✔] teal" once typed into).
+    if (i === rows.advanceIdx) return "advance";
+    if (i === rows.fieldIdx) return "field";
     const parsed = parseOptionRow(trimmed);
     if (!parsed) return "other";
     if (CHAT_ESCAPE.test(parsed.label)) return "chat";
     const cb = checkboxState(parsed.label);
     if (cb && !isFreeTextLabel(cb.rest)) return "option";
-    return "other"; // the free-text "Type something" row, or an unrecognised pointed row
+    return "other"; // an unrecognised pointed row
   }
   return null;
+}
+
+/**
+ * The answer field at menu row `row` (by position: the last menu row above the advance row), recording
+ * its row and the lines its value wrapped onto in `lines`. The value is the row's checkbox text plus
+ * every non-blank line down to the advance row, rejoined with one space; the placeholder reads `""`.
+ * Null when the row carries no checkbox (not a multiSelect field).
+ */
+function readField(
+  texts: string[],
+  menu: readonly { index: number; n: number; label: string }[],
+  row: { index: number; n: number; label: string },
+  advanceIdx: number,
+  lines: Set<number>,
+): MultiSelectAnswerField | null {
+  const cb = checkboxState(row.label);
+  if (!cb) return null;
+  const parts = [cb.rest];
+  lines.add(row.index);
+  for (let i = row.index + 1; i < advanceIdx; i++) {
+    if (isBlank(texts[i]!)) continue;
+    parts.push(texts[i]!.trim());
+    lines.add(i);
+  }
+  const value = parts.join(" ").trim();
+  const pointer = fieldPointer(texts, menu, row.index, advanceIdx);
+  return {
+    n: row.n,
+    focused: pointer === "on",
+    text: isFreeTextLabel(value) ? "" : value,
+    checked: cb.checked,
+    pointer,
+    lines: lines.size,
+  };
+}
+
+/** Where `❯` stands relative to the field at line `fieldIdx`: on an option row above it, on it, on the
+ *  advance row or the chat escape below it, or nowhere on those rows. */
+function fieldPointer(
+  texts: string[],
+  menu: readonly { index: number; label: string }[],
+  fieldIdx: number,
+  advanceIdx: number,
+): AnswerFieldPointer {
+  const pointed = (i: number) => /^\s*❯/.test(texts[i]!);
+  if (pointed(fieldIdx)) return "on";
+  if (pointed(advanceIdx)) return "below";
+  const row = menu.find((r) => r.index !== fieldIdx && pointed(r.index));
+  if (row === undefined) return "none";
+  if (row.index > fieldIdx) return CHAT_ESCAPE.test(row.label) ? "below" : "none";
+  return "above";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -265,15 +325,18 @@ function detectCheckboxPhase(
   if (!stepper) return null;
   const stepperIdx = stepper.index;
 
-  // The "Type something" text field is the last checkbox row above the advance row, by POSITION: once
-  // someone types, the row reads "[✔] teal". While `❯` is on it every digit is typed INTO it (measured
-  // on Claude Code 2.1.283), so a toggle button would write its digit into someone's answer. The
-  // pointer there reads `field`, which is the lock: the macros move the pointer off with an arrow and
-  // read it back before any digit, and the commit comparison tells a focused field from an unfocused
-  // one. Off the field, the typed row toggles with its digit like any other row (measured) and stays
-  // an option. Until 1.22.5 the screen was not claimed at all while the pointer stood there, and fell
-  // to the unread-dialog card (Claude Code 2.1.302, the field capture of 2026-10-17).
-  const fieldIdx = menu.findLast((row) => row.index < advanceIdx)?.index ?? -1;
+  // The "Type something" answer field is the last menu row above the advance row, by POSITION: once
+  // someone types, the row reads "[✔] teal". It is modelled as `field`, never an option. While `❯` is
+  // on it every digit is typed INTO it (measured on Claude Code 2.1.283), which the pointer reads as
+  // `field` and `field.focused` carries: the macros move the pointer off with an arrow and read it
+  // back before any digit, and the commit comparison tells a focused field from an unfocused one. Off
+  // the field, its digit toggles its tick (measured). Until 1.22.5 the screen was not claimed at all
+  // while the pointer stood there, and fell to the unread-dialog card (Claude Code 2.1.302, the field
+  // capture of 2026-10-17).
+  const fieldRow = menu.findLast((row) => row.index < advanceIdx);
+  const fieldLines = new Set<number>();
+  const field = fieldRow === undefined ? null : readField(texts, menu, fieldRow, advanceIdx, fieldLines);
+  if (fieldRow !== undefined && field === null) return null; // the checkbox-prefix discriminator
 
   // The question: every non-blank line between the stepper and the first option, joined, without the
   // `│` gutter Claude paints down a question of more than one row.
@@ -285,8 +348,8 @@ function detectCheckboxPhase(
   const question = questionLines.join(" ");
 
   // Options: strip the checkbox prefix, lift `checked`, attach description sub-lines. "Chat about
-  // this" is captured as the escape; "Type something" stays with the composer. EVERY non-escape row
-  // must carry the checkbox prefix — a row without one means this is a single select, not multiSelect.
+  // this" is captured as the escape; the answer field row is the field above, never an option. EVERY
+  // non-escape row must carry the checkbox prefix — a row without one means this is a single select.
   const options: MultiSelectOption[] = [];
   let escape: MultiSelectEscape | null = null;
   for (let r = 0; r < menu.length; r++) {
@@ -295,6 +358,7 @@ function detectCheckboxPhase(
       escape = { n: row.n, label: row.label };
       continue;
     }
+    if (row === fieldRow) continue;
     const cb = checkboxState(row.label);
     if (!cb) return null; // the checkbox-prefix discriminator: bail to the single-select grammar
     if (isFreeTextLabel(cb.rest)) continue;
@@ -314,29 +378,26 @@ function detectCheckboxPhase(
   }
   if (options.length === 0) return null;
 
-  return {
-    model: {
-      phase: "checkbox",
-      question,
-      options,
-      escape,
-      steps: stepper.steps,
-      advanceLabel,
-      pointer: pointerAt(texts, firstOpt, fi, advanceIdx, fieldIdx),
-      pointerRow: null, // digit mode never reads it — the digit toggles pointer-independently
-      toggle: "digit",
-      // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a
-      // "· ctrl+g to edit in nano" hint depending on which row the ❯ sits on (present on the
-      // free-text/Submit/chat rows, absent on the checkbox rows). Since the Submit macro walks the
-      // pointer down the dialog, a footer-inclusive signature would mutate mid-macro and read as
-      // drift, aborting the submit. The footer is chrome anyway — classifyFooter gates detection.
-      signature: coreSignature(texts, stepperIdx, menu[menu.length - 1]!.index),
-      regionSignature: texts
-        .slice(stepperIdx, menu[menu.length - 1]!.index + 1)
-        .join("\n"),
-    },
-    startLine: stepperIdx,
+  const model: Extract<MultiSelectModel, { phase: "checkbox" }> = {
+    phase: "checkbox",
+    question,
+    options,
+    escape,
+    steps: stepper.steps,
+    advanceLabel,
+    pointer: pointerAt(texts, firstOpt, fi, { advanceIdx, fieldIdx: fieldRow?.index ?? -1 }),
+    pointerRow: null, // digit mode never reads it — the digit toggles pointer-independently
+    toggle: "digit",
+    // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a
+    // "· ctrl+g to edit in nano" hint depending on which row the ❯ sits on (present on the
+    // free-text/Submit/chat rows, absent on the checkbox rows). Since the Submit macro walks the
+    // pointer down the dialog, a footer-inclusive signature would mutate mid-macro and read as
+    // drift, aborting the submit. The footer is chrome anyway — classifyFooter gates detection.
+    signature: coreSignature(texts, stepperIdx, menu[menu.length - 1]!.index, fieldLines),
+    regionSignature: texts.slice(stepperIdx, menu[menu.length - 1]!.index + 1).join("\n"),
   };
+  if (field !== null) model.field = field;
+  return { model, startLine: stepperIdx };
 }
 
 /** The review screen. NO footer exists here (like the wizard's Submit step): the buffer tail is the
@@ -386,7 +447,7 @@ function detectReviewPhase(
       incomplete,
       pointer: null, // digit mode never reads it — review confirms on constant 1/2
       submit: "digit",
-      signature: coreSignature(texts, stepperIdx, fi),
+      signature: coreSignature(texts, stepperIdx, fi, new Set()),
       regionSignature: texts.slice(stepperIdx, fi + 1).join("\n"),
     },
     startLine: stepperIdx,

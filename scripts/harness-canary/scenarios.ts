@@ -20,7 +20,7 @@ import type { JournalAdapter } from "../../bridge/journal/types";
 import type { CanarySession } from "./herdr";
 import { judgeJournal, loadOwnSession } from "./journal";
 import { MESSAGES, NARROW_DRAFT_IDS, SEND_IDS, messageById, type CanaryMessage } from "./messages";
-import type { Adapter, Block, Line, Readers } from "./readers";
+import type { Adapter, BarItem, Block, Line, Readers } from "./readers";
 import type { Transport } from "./transport";
 import { failCase, notReachedCase, passCase, scenarioResult, type CaseResult, type ScenarioId, type ScenarioResult } from "./verdict";
 
@@ -41,6 +41,8 @@ const TURN_TIMEOUT_MS = 120_000;
  */
 const TOOL_TURN_TIMEOUT_MS = 300_000;
 const SEND_TIMEOUT_MS = 60_000;
+/** How long a pressed bar button has to paint its picker before the screen is kept. */
+const BAR_SETTLE_MS = 2_000;
 const EXIT_TIMEOUT_MS = 12_000;
 /** How long the exit window keeps sampling once the shell is back. */
 const EXIT_TAIL_MS = 1_500;
@@ -162,6 +164,7 @@ export async function runAgent(ctx: AgentContext): Promise<ScenarioResult[]> {
 
   if (want("start-exit")) results.push(scenarioResult(agent, "start-exit", startExit));
   if (want("options")) results.push(scenarioResult(agent, "options", await launchOptions(ctx)));
+  if (want("bar")) results.push(scenarioResult(agent, "bar", await pressBar(ctx)));
   return results;
 }
 
@@ -194,6 +197,47 @@ async function launchOptions(ctx: AgentContext): Promise<CaseResult[]> {
   return cases;
 }
 
+/**
+ * The bar buttons the `bar` scenario presses, in bar order. Compact is left out because it spends a
+ * model turn and an empty session has nothing to compact; a two-tap row is left out because the
+ * phone asks before it sends one.
+ */
+export function pressableBar(items: readonly BarItem[]): BarItem[] {
+  return items.filter((item) => item.id !== "compact" && item.confirm !== true);
+}
+
+/**
+ * Every pressable button of the agent's shipped harness bar, sent through the client's own
+ * `sendGuardedReply` on a live pane, the path the phone's bar sends on. A pass is the command sent
+ * and gone from the input box, and Escape bringing the empty input box back. It does not prove a
+ * picker opened, since what one looks like is each agent's own: the screen each press left is saved
+ * under `bar-<id>` for a person to read. No model turn is made.
+ */
+async function pressBar(ctx: AgentContext): Promise<CaseResult[]> {
+  const agent = ctx.profile.agent;
+  const items = pressableBar(ctx.readers.barFor?.(agent) ?? []);
+  if (items.length === 0) return [notReachedCase("bar", `no shipped harness bar for ${agent}`)];
+  const d = await Driver.open(ctx, `canary-${agent}-bar`, ctx.options.cols, "bar");
+  try {
+    const ready = await d.launch([]);
+    if (ready === null) return items.map((item) => notStarted(`bar-${item.id}`));
+    const cases: CaseResult[] = [];
+    let live = true;
+    for (const item of items) {
+      if (!live) {
+        cases.push(notReachedCase(`bar-${item.id}`, "the previous button left the input box unreachable"));
+        continue;
+      }
+      const r = await d.press(item);
+      cases.push(r.result);
+      live = r.closed;
+    }
+    return cases;
+  } finally {
+    d.close();
+  }
+}
+
 function notStarted(id: string): CaseResult {
   return notReachedCase(id, "the agent never came up idle");
 }
@@ -213,6 +257,18 @@ export function wordsOnScreen(texts: readonly string[], text: string): boolean {
   const flat = texts.join("").replace(/\s+/g, "");
   if (/\[Pasted (text|Content)/i.test(texts.join(" "))) return true;
   return probes(text).some((p) => flat.includes(p));
+}
+
+/**
+ * Whether the adapter read back its own opaque paste token, from a harness whose token says nothing
+ * of what it holds (OMP's `📄 #1`). The typed words can never reach the screen there, and the phone's
+ * contract for such a token is to show it and stand "Take over" down (`draftIsOpaque`), so
+ * recognising it IS the read. A harness that defines `draftCarriesSend` keeps the stricter check:
+ * its token can be matched to this send, and accepting any token would hide a mismatch.
+ */
+export function opaqueTokenRead(adapter: Adapter | undefined, draft: string | null): boolean {
+  if (adapter === undefined || draft === null || adapter.draftCarriesSend !== undefined) return false;
+  return adapter.draftIsOpaque?.(draft) === true;
 }
 
 /** The bullet glyphs an agent puts before its reply row. */
@@ -375,6 +431,48 @@ export class Driver {
     return null;
   }
 
+  /** One `bar` case: the button's command sent the way the phone's bar sends it, then Escape. */
+  async press(item: BarItem): Promise<{ result: CaseResult; closed: boolean }> {
+    const id = `bar-${item.id}`;
+    const outcome = await Promise.race([
+      this.ctx.readers.sendGuardedReply(this.paneId, item.command, this.agent),
+      Bun.sleep(SEND_TIMEOUT_MS).then(() => ({ status: "error" as const, error: "sendGuardedReply did not return in 60 s" })),
+    ]);
+    if (outcome.status !== "sent") {
+      const file = this.save(id, await this.screen());
+      const closed = await this.clearDraft(item.command);
+      return { result: failCase(id, `${item.command}: outcome ${outcome.status}: ${outcome.error} (${file})`), closed };
+    }
+    await Bun.sleep(BAR_SETTLE_MS);
+    const s = await this.screen();
+    const file = this.save(id, s);
+    const stuck = s.draft !== null && this.ctx.readers.draftCarriesSend(item.command, s.draft);
+    const closed = await this.escapeToComposer();
+    if (stuck) return { result: failCase(id, `${item.command} stayed in the input box (${file})`), closed };
+    if (!closed) return { result: failCase(id, `${item.command}: Escape did not bring the empty input box back (${file})`), closed };
+    return { result: passCase(id, `${item.command} sent, closed with Escape (${file})`), closed };
+  }
+
+  /**
+   * Escape until the agent is idle at its input box again, at most three times, then clear whatever
+   * the agent itself left in the box: Grok closes its /model picker on Escape and keeps `/model`
+   * typed (live, 1.0.52).
+   */
+  private async escapeToComposer(): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      this.keys(["Escape"]);
+      const deadline = Date.now() + CLEAR_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await Bun.sleep(POLL_MS * 2);
+        const s = await this.screen();
+        if (s.composer === false || !this.herdrIdle()) continue;
+        if (s.draft === null || s.draft.trim() === "") return true;
+        return this.clearDraft(s.draft);
+      }
+    }
+    return false;
+  }
+
   /** One `options` case: `command` brings the agent up, idle or asking first. */
   async started(id: string, command: string): Promise<CaseResult> {
     this.ctx.session.sendText(this.paneId, command);
@@ -434,7 +532,7 @@ export class Driver {
     let problems: string[] = ["not judged"];
     let landed = false;
     for (;;) {
-      landed = wordsOnScreen(s.texts.slice(-COMPOSER_ROWS), m.text);
+      landed = wordsOnScreen(s.texts.slice(-COMPOSER_ROWS), m.text) || opaqueTokenRead(adapter, s.draft);
       problems = this.draftProblems(s, m.text, adapter);
       if ((landed && problems.length === 0) || Date.now() >= deadline) break;
       await Bun.sleep(POLL_MS);
@@ -444,7 +542,7 @@ export class Driver {
     const result = !landed
       ? notReachedCase(m.id, "the typed words never showed on screen")
       : problems.length === 0
-        ? passCase(m.id)
+        ? passCase(m.id, opaqueTokenRead(adapter, s.draft) ? `read as the opaque token ${JSON.stringify(s.draft)}` : "")
         : failCase(m.id, problems.join(", "));
     const cleared = await this.clearDraft(m.text);
     return { result, cleared };
@@ -459,7 +557,9 @@ export class Driver {
     }
     if (adapter.composerReady && s.composer !== true) problems.push("composer not found");
     const carried =
-      this.ctx.readers.draftCarriesSend(sent, s.draft) || (s.draft !== null && adapter.draftCarriesSend?.(sent, s.draft) === true);
+      this.ctx.readers.draftCarriesSend(sent, s.draft) ||
+      (s.draft !== null && adapter.draftCarriesSend?.(sent, s.draft) === true) ||
+      opaqueTokenRead(adapter, s.draft);
     if (!carried) problems.push(`draft not read back (read ${JSON.stringify(s.draft?.slice(0, 40) ?? null)})`);
     return problems;
   }

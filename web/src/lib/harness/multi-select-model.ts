@@ -12,8 +12,28 @@
 // models, so `lib/blocks.ts` can re-export it without a cycle. The identity comparators at the bottom
 // are part of the same contract (harness/dialog-contract.ts wires kind → comparator).
 
-import { sameKeys, sameOptionalKeys } from "./prompt-model";
+import { sameKeys, sameOptionalKeys, type AnswerFieldPointer } from "./prompt-model";
 import type { WizardAnswer, WizardStepChip } from "./wizard-model";
+
+/**
+ * A checkbox question's own answer field (Claude's `Type something` row, ADR 0113): a text input whose
+ * row also carries a checkbox. Its digit toggles the tick and never focuses it; while it has focus
+ * every digit is typed into it and `Left` moves its caret, so no toggle, escape or step arrow may fire.
+ */
+export interface MultiSelectAnswerField {
+  /** The row's digit: it toggles the field's tick. */
+  n: number;
+  /** `❯` sits on the row: the terminal types every key into it. */
+  focused: boolean;
+  /** What the field holds, `""` while it shows its placeholder. */
+  text: string;
+  /** The row's checkbox: a ticked field is part of the answer. */
+  checked: boolean;
+  /** Where `❯` stands relative to the field. */
+  pointer: AnswerFieldPointer;
+  /** Visual lines the field covers: its row plus the lines its value wrapped onto. */
+  lines: number;
+}
 
 /** One checkable option of the current checkbox question. */
 export interface MultiSelectOption {
@@ -134,6 +154,11 @@ export type MultiSelectModel =
        * The toggle recipe (see {@link MultiSelectChoreography}). Compared by both comparators.
        */
       toggle: MultiSelectChoreography;
+      /**
+       * The question's answer field, when the harness models one (Claude). Absent ⇒ the question has
+       * none, and both comparators compare the model exactly as they would without this member.
+       */
+      field?: MultiSelectAnswerField;
       signature: string;
       /**
        * Literal contiguous text over the same span as `signature`. Two constraints pick that span,
@@ -191,22 +216,56 @@ export type MultiSelectModel =
 
 /** The review phase on its own, for the comparator legs and the renderer. */
 type MultiSelectReview = Extract<MultiSelectModel, { phase: "review" }>;
+/** The checkbox phase on its own, for the comparator legs. */
+type MultiSelectCheckbox = Extract<MultiSelectModel, { phase: "checkbox" }>;
 
 /** Are these the same wizard step? The `signature` normalises `☒/☑ → ☐` across the WHOLE chip line
  *  (it has to: the current question's chip flips on the first tick), which also erases which step you
  *  are on. Two questions of one wizard sharing a question text and option labels would otherwise be
  *  byte-identical to the guard, and a tap meant for the first would land on the second. Compared
  *  explicitly here, exactly as the preview comparator does. */
-function sameSteps(a: MultiSelectModel, b: MultiSelectModel): boolean {
-  if (a.phase !== "checkbox" || b.phase !== "checkbox") return true;
+function sameSteps(a: MultiSelectCheckbox, b: MultiSelectCheckbox, ownMark: "compare" | "skip"): boolean {
   if (a.steps === null || b.steps === null) return a.steps === b.steps;
   if (a.steps.length !== b.steps.length) return false;
-  return a.steps.every(
-    (s, i) =>
-      s.label === b.steps![i]!.label &&
-      s.answered === b.steps![i]!.answered &&
-      s.current === b.steps![i]!.current,
+  return a.steps.every((s, i) => {
+    const o = b.steps![i]!;
+    if (s.label !== o.label || s.current !== o.current) return false;
+    return (ownMark === "skip" && s.current) || s.answered === o.answered;
+  });
+}
+
+/**
+ * Whether the mid-flight identity may skip the current chip's answered mark. On a wizard's checkbox
+ * step that mark reads `☒` once anything on the step is ticked, the answer field included, and typing
+ * into an empty field ticks it while `ctrl+u ctrl+k` unticks it (ASK_FIELD_NOTES.md § Multi-select):
+ * the answer recipe flips the mark itself, and an identity that compared it would call its own typing
+ * drift. Skipping it hides nothing identity otherwise sees: every option's `checked` is still compared,
+ * and the field's own tick is state the identity deliberately ignores (the recipe verifies it
+ * directly). Only when BOTH models carry a field, so a harness without one compares as before; every
+ * other chip's mark, every label and the current chip are still compared, and the entry guard
+ * ({@link multiSelectEquals}) compares every mark.
+ */
+function ownMarkOf(a: MultiSelectCheckbox, b: MultiSelectCheckbox): "compare" | "skip" {
+  return a.field !== undefined && b.field !== undefined ? "skip" : "compare";
+}
+
+/** The checkbox screen's subject, recipe and options, shared by both comparators' checkbox legs. */
+function sameCheckboxCore(a: MultiSelectCheckbox, b: MultiSelectCheckbox): boolean {
+  return (
+    a.advanceLabel === b.advanceLabel &&
+    sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
+    a.question === b.question &&
+    a.toggle === b.toggle &&
+    a.options.length === b.options.length &&
+    a.options.every((o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked)
   );
+}
+
+/** The answer field's visible state: its digit, its text and its tick (not focus, not the pointer,
+ *  which the recipe and the advance walk move on purpose). Two models without a field agree. */
+function sameFieldState(a: MultiSelectAnswerField | undefined, b: MultiSelectAnswerField | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.n === b.n && a.text === b.text && a.checked === b.checked;
 }
 
 /** The review screen's recipe and what it shows: the submit mode, every declared key plan exactly
@@ -249,17 +308,13 @@ export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boo
   if (a.phase !== b.phase) return false;
   if (a.signature !== b.signature) return false;
   if (a.phase === "checkbox" && b.phase === "checkbox") {
+    // The answer field's text and tick are visible state: a toggle or a Submit tapped against a field
+    // someone changed at the desk since the render must refuse. So is whether the pointer is on it.
     return (
       (a.pointer === "field") === (b.pointer === "field") &&
-      sameSteps(a, b) &&
-      a.advanceLabel === b.advanceLabel &&
-      sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
-      a.question === b.question &&
-      a.toggle === b.toggle &&
-      a.options.length === b.options.length &&
-      a.options.every(
-        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
-      )
+      sameSteps(a, b, "compare") &&
+      sameCheckboxCore(a, b) &&
+      sameFieldState(a.field, b.field)
     );
   }
   if (a.phase === "review" && b.phase === "review")
@@ -282,16 +337,13 @@ export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel): b
   if (a.phase !== b.phase) return false;
   if (a.signature !== b.signature) return false;
   if (a.phase === "checkbox" && b.phase === "checkbox") {
+    // The answer field only by presence and digit: the answer recipe types, clears and ticks it, so
+    // its text and tick would read its own keystrokes as drift.
     return (
-      sameSteps(a, b) &&
-      a.advanceLabel === b.advanceLabel &&
-      sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
-      a.question === b.question &&
-      a.toggle === b.toggle &&
-      a.options.length === b.options.length &&
-      a.options.every(
-        (o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked,
-      )
+      sameSteps(a, b, ownMarkOf(a, b)) &&
+      sameCheckboxCore(a, b) &&
+      a.field?.n === b.field?.n &&
+      (a.field === undefined) === (b.field === undefined)
     );
   }
   if (a.phase === "review" && b.phase === "review") return sameReview(a, b);

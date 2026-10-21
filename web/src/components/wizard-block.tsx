@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
+import { AnswerFieldSurface, answerFieldCopy, stepOf, useAnswerEditor } from "@/components/answer-field-surface";
 import { AnswerList } from "@/components/answer-list";
 import { WizardStepper } from "@/components/wizard-stepper";
 import type { StyledLine, WizardModel, WizardOption } from "@/lib/blocks";
@@ -12,6 +13,8 @@ import {
   WIZARD_SUBMIT_KEYS,
 } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
+import { useLive } from "@/lib/liveness";
+import type { Scope } from "@/lib/scope";
 import { useLocale } from "@/hooks/use-locale";
 
 export interface WizardBlockProps {
@@ -26,8 +29,20 @@ export interface WizardBlockProps {
    * simply clears the busy state.
    */
   onAction: (keys: string[]) => void | Promise<void>;
+  /**
+   * Injected handler for an answer typed on the phone into the step's own field (ADR 0113,
+   * lib/wizard-action.ts `submitWizardAnswer`). Resolves whether the answer was sent, so a refused
+   * draft stays in the editor. Absent: the card offers no editor.
+   */
+  onAnswer?: (text: string) => boolean | Promise<boolean>;
   /** Read-only device or a gone pane: everything renders (for context) but can't be pressed. */
   disabled?: boolean;
+  /** The pane this card answers for. With it, the answer editor's Send enables only while the bridge
+   *  has answered a read for that pane lately (lib/liveness.ts, M46 spec 11). */
+  paneId?: string;
+  scope?: Scope;
+  /** The parent drew this screen from the on-device cache (M46 spec 10): the answer Send stays locked. */
+  stale?: boolean;
 }
 
 // Native, tappable rendering of Claude's multi-question AskUserQuestion wizard. Mirrors exactly
@@ -35,10 +50,34 @@ export interface WizardBlockProps {
 // the single source of truth for selections; Collie holds no form state of its own. Every visible
 // string (chip labels, question, options, answers) is a React text node — the XSS boundary is
 // unchanged. One control can be in flight at a time (spinner shows, the rest lock).
-export function WizardBlock({ wizard, lines, onAction, disabled }: WizardBlockProps) {
+//
+// A question step's `Type something.` field (ADR 0113) renders below the answers. While it has the
+// keyboard in the terminal, a digit is typed into it and `Left` moves its caret, so every option, the
+// escape row and both step arrows lock; the answer editor stays usable, because its recipe reaches
+// the field itself.
+export function WizardBlock({ wizard, lines, onAction, onAnswer, disabled, paneId, scope, stale }: WizardBlockProps) {
   useLocale();
+  // M46 spec 11, as PromptSelectBlock: `useLive` is called unconditionally; no `paneId`, no offline.
+  const live = useLive(paneId ?? "", scope);
+  const offline = stale === true || (paneId !== undefined && !live);
   const [sending, setSending] = useState<string | null>(null);
-  const locked = disabled || sending !== null;
+  const editor = useAnswerEditor();
+  const field = wizard.phase === "question" ? wizard.field : undefined;
+  const asked = { question: wizard.phase === "question" ? wizard.question : "", step: stepOf(wizard.steps) };
+  const locked = Boolean(disabled) || sending !== null || (field?.focused ?? false);
+  const answerLocked = Boolean(disabled) || offline || sending !== null;
+
+  // Resolves whether the answer landed: the editor closes only then, so a refused one keeps what was
+  // thumb-typed.
+  async function runAnswer(text: string): Promise<boolean> {
+    if (!onAnswer) return false;
+    setSending("answer");
+    try {
+      return await onAnswer(text);
+    } finally {
+      setSending(null);
+    }
+  }
 
   async function press(id: string, keys: string[]) {
     if (locked) return;
@@ -82,6 +121,23 @@ export function WizardBlock({ wizard, lines, onAction, disabled }: WizardBlockPr
           locked={locked}
           sendingId={sending}
           onPress={press}
+          answerField={
+            field && onAnswer ? (
+              <AnswerFieldSurface
+                field={field}
+                asked={asked}
+                copy={answerFieldCopy(t("prompt.feedback.answer.helpWizard"))}
+                ours={sending === "answer"}
+                anySending={sending !== null}
+                editor={editor}
+                onSend={() => void editor.send(field, asked, runAnswer, answerLocked)}
+                locked={answerLocked}
+                busyIcon={busyIcon}
+                showTyped
+                showFocused
+              />
+            ) : null
+          }
         />
       ) : (
         <ReviewStep wizard={wizard} locked={locked} sendingId={sending} onPress={press} />
@@ -96,12 +152,15 @@ function QuestionStep({
   locked,
   sendingId,
   onPress,
+  answerField,
 }: {
   question: string;
   options: WizardOption[];
   locked: boolean;
   sendingId: string | null;
   onPress: (id: string, keys: string[]) => void;
+  /** The step's answer field surface, between the answers and the escape row; null when none. */
+  answerField: ReactNode;
 }) {
   useLocale();
   const answers = options.filter((o) => !o.escape);
@@ -133,6 +192,7 @@ function QuestionStep({
           );
         })}
       </div>
+      {answerField}
       {/* The escape row ("Chat about this") ends the WHOLE wizard — the tool call resolves as
           declined — so it renders apart and de-emphasised, never like an answer. */}
       {escapes.map((option, i) => {

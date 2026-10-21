@@ -15,7 +15,9 @@ import {
   noEchoPrompt,
   paneBlocked,
   paneHeadsUp,
+  paneHeadsUpDismissed,
   paneHeadsUpDraft,
+  paneHeadsUpExplained,
   paneModelPicker,
   paneShell,
   paneStack,
@@ -197,6 +199,36 @@ export function PaneSection() {
         >
           <PhoneFrameCard height={800}>
             <PaneRouter home={homeSolo} fixture={paneHeadsUpDraft} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-heads-up-dismissed"
+          label="2: after Dismiss, the notice's follow-up lifts as a card of its five printed keys"
+          reach="Claude Code 2.1.304 answers Dismiss with a one-row follow-up over the same live box, its keys
+            on the head's own row (ADR 0109, addendum 2026-10-20). Its keys act only on a box that holds one digit."
+          note="Real pane view over a capture of the follow-up at 135 columns. It lifts as a card of the five
+            digits the row printed (That was helpful, Not relevant, Couldn't understand, Turn off suggestions,
+            Dismiss); the composer stays free, and a message of any other text goes in as typed."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneHeadsUpDismissed} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-heads-up-explained"
+          label="2: after Learn more, the explanation lifts as a card with its rows and three keys"
+          reach="Claude Code 2.1.304 answers Learn more with an explanation printed between the notice's head
+            and its keys, over the same live box (ADR 0109, addendum 2026-10-20)."
+          note="Real pane view over a capture of the explanation at 135 columns. The card's title is the
+            notice's text; under it the explanation's rows are mirrored as the terminal drew them, and the
+            card sends the three digits the key row printed (Understood, Chat in main session, Dismiss)."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneHeadsUpExplained} />
           </PhoneFrameCard>
         </Card>
       </Group>

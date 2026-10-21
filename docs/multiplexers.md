@@ -575,6 +575,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | Muse | Not measured | Enter | Yes | 1.4.7 |
 | Hermes | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
 | Cursor CLI (`cursor-agent`) | Queues the message | Enter | Yes | 2026.10.16 |
+| Kiro (`kiro-cli`) | Steers the turn; Collie holds a send until the turn ends | Enter | Short texts | 2.32.0 |
 
 A command, such as `/model`, always goes with Enter. A probed send types one extra character first.
 Collie checks that the character lands in the box, then removes it.
@@ -646,6 +647,15 @@ Collie checks that the character lands in the box, then removes it.
   The box shows at most six rows and scrolls a longer draft. Collie cannot read a taller message back, so it leaves the typed text in the box and does not press Enter.
   Its dialogs (a command approval, a question, the folder trust prompt) replace the box, so the screen reads as unreadable.
   Live probed sends passed on 2026.10.14 and 2026.10.16.
+
+- **Kiro** draws its box under a rule: a status bar, the folder, a blank row and a `›` prompt row.
+  Collie types only when that whole frame is on screen.
+  A newline goes in as Ctrl+J.
+  While a turn runs, the prompt row reads `Kiro is working`.
+  In Kiro, Enter then steers the text into that turn. Collie does not press Enter into a running turn.
+  Ctrl+S switches Kiro between steering and queueing, so Collie names no queue key.
+  So Collie holds a send while Kiro is busy, and sends it when the box reads free.
+  Its profile was checked on Herdr only, not on tmux or zellij.
 
 Grok, Antigravity and Muse are not installed on the build host.
 Their profiles rest on saved screens of each agent.

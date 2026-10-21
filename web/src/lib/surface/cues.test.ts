@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
+import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign } from "./cues";
 import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText } from "./frame";
@@ -526,4 +526,20 @@ describe("omp 18.11's running turn (issue 497)", () => {
       expect(readScreen(rows, "omp", OMP).surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
     },
   );
+});
+
+describe("running signs and the prompt row", () => {
+  it("running: Kiro's busy prompt row reads running, also with one more row under the box", () => {
+    // Given: the captured running Kiro screen, whose busy line stands on the prompt row, and the same
+    // screen with one more row under the box, so the prompt row is no longer the box's last row.
+    const idle = requireProfile("kiro").idle;
+    const rows = fixtureRows("kiro--v3-running-w120.txt");
+    const grown = perturbations(rows).find((p) => p.name === "one more status row at the bottom")!.rows;
+    // When: both screens' frames are found.
+    const frame = findInputFrame(rows, idle)!;
+    const grownFrame = findInputFrame(grown, idle)!;
+    // Then: both read running.
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(true);
+    expect(runningSign(grown, grownFrame, idle.runningRows)).toBe(true);
+  });
 });

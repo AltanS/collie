@@ -275,6 +275,31 @@
     "region": "✦ You should know · One of the notes says the payroll export\n  runs on an unencrypted laptop that goes home every night and\n  holds every employee's bank account number.\n  1: Learn more   2: Knew this already   0: Dismiss\n  \n─────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2304-heads-up-dismissed--w135.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Not relevant   3: Couldn’t understand   4: Turn off suggestions   0: Dismiss\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-dismissed--w65.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Not relevant\n  3: Couldn’t understand   4: Turn off suggestions\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    "detector": "menu",
+    "region": "✦ Dismissed.   1: That was helpful   2: Didn’t understand\n  0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every plain note in the sample folder and the example one…\n─────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-explained--w135.txt",
+    "detector": "menu",
+    "region": "✦ Heads up · One of the notes being read, 02-team, says a former CTO's admin access was never removed and was used yesterday from\n  an unknown address.\n\n  Former CTO's access may be in use now\n  - The file .tmp\\hu\\q\\02-team.md says the script that removes access when someone leaves missed the departed CTO's access.\n  - They still have owner rights on the GitHub organization and the AWS root keys, which give full control of the cloud account.\n  - The note says both were used yesterday from an unknown IP address. If that's true, someone may be in your systems right now.\n  - You asked for a reply of only \"done\", so the main agent may not mention this until it finishes, or may not mention it at all.\n  - If this note describes a real system, remove that GitHub access and replace those AWS keys now, then check what was done with\n    them.\n \n  1: Understood   2: Chat in main session   0: Dismiss\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2304-heads-up-explained--w65.txt",
+    "detector": "menu",
+    "region": "✦ Heads up · One of the notes being read, 09-support, says\n  the customer login site's security certificate expires\n  tonight at midnight, and its renewal has been failing for\n  two weeks.\n\n  Customer login certificate expires tonight\n  - You asked for the reply to be just \"done\", so this could\n    get lost.\n  - The note 09-support.md (in the .tmp\\hu\\t folder) says\n    the TLS certificate for the customer login site runs out\n    tonight at midnight. This certificate is what lets\n    browsers trust the site.\n  - It also says the job that renews it automatically has\n    failed silently for two weeks, so nobody was warned.\n  - If the note is true and the certificate lapses,\n    customers' browsers will show a security warning or\n    refuse to open the login page.\n  - If this is a real system, check the certificate's expiry\n    date and renew it by hand today.\n  \n  1: Understood   2: Chat in main session   0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every plain note in the sample folder and the example one…\n─────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude--working.txt",
     "detector": "menu",
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── collie upgrades ──\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
@@ -455,6 +480,106 @@
     "region": "←  ☒ Next step  ✔ Submit  →\n\nWhich of the larger items should I take on after the changes ship?\n\n  1. [✔] New checks first (Recommended)\n         Add the four checks the review asked for, so that the later items can be proven. Cheap: about 1-2 USD per full run.\n  2. [✔] Quick script fixes\n         Item 5 (one path resolver, errors name the expected form) and item 6 (every refusal prints the full next command). Low risk.\n  3. [✔] No second planning pass\n         Item 4: the plan is kept after the review and reused by the next run. Saves about 40% of the planning tokens.\n  4. [✔] Step cap + new commands\n         Item 1 (step cap, split tasks over 5 items) and items 3 and 7 (check --run, plan --json, commit-check). Biggest saving, medium risk, a design change.\n❯ 5. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  6. Chat about this"
   },
   {
+    "fixture": "claude--v2299-ask-field-single-focused-empty.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n  3. Blue\n     A cool color\n❯ 4. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-three-lines.txt",
+    "detector": "prompt-select",
+    "region": "❯ Call AskUserQuestion once more with ONE question: 'Which animal?' header 'Animal' options Cat, Dog. multiSelect false. Then reply with only the exact    \n  tool result verbatim.                                                                                                                                    \n\n● User answered Claude's questions:\n  ⎿  · Which animal? → A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of the day and \n     sleeps in the Otter\n\n● The user answered: \"Which animal?\"=\"A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of\n  the day and sleeps in the Otter\"\n\n✻ Crunched for 10s · done 1:51 AM\n \n❯ Call AskUserQuestion once more with ONE question: 'Which tree?' header 'Tree' options Oak, Pine. multiSelect false. Then reply with only the exact tool  \n  result verbatim.3                                                                                                                                        \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Tree \n\nWhich tree?\n\n  1. Oak\n     A broad hardwood tree\n  2. Pine\n     An evergreen conifer\n❯ 3. one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three\n     four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty one two three four five six\n     seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-typed.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n  3. Blue\n     A cool color\n❯ 4. Teal, like the sea\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-focused-wrapped.txt",
+    "detector": "prompt-select",
+    "region": "❯ Now call AskUserQuestion exactly once with THREE questions (multiSelect false on all): Q1 'Which fruit?' header 'Fruit' options Apple, Pear; Q2 'Which   \n  drink?' header 'Drink' options Tea, Coffee; Q3 'Which city?' header 'City' options Paris, Rome. After I answer, reply with only the exact tool result    \n  text verbatim, then stop.                                                                                                                                \n\n● User answered Claude's questions:\n  ⎿  · Which fruit? → Kiwi\n     · Which drink? → Tea\n     · Which city? → Lisbon\n\n● The user answered: \"Which fruit?\"=\"Kiwi\", \"Which drink?\"=\"Tea\", \"Which city?\"=\"Lisbon\"\n   \n✻ Worked for 6s · done 1:51 AM\n   \n❯ Call AskUserQuestion once more with ONE question: 'Which animal?' header 'Animal' options Cat, Dog. multiSelect false. Then reply with only the exact    \n  tool result verbatim.                                                                                                                                    \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Animal \n\nWhich animal?\n\n  1. Cat\n     A small domestic feline\n  2. Dog\n     A loyal domestic canine\n❯ 3. A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of the day and sleeps in the\n     branches when it is warm, which seems like a very sensible way to live if you ask me, honestly the best of all the animals\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-single-typed-off-row.txt",
+    "detector": "prompt-select",
+    "region": "\n ▐▛███▛█   Claude Code v2.1.299\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   ~\\sandbox\n\n\n❯ Testing a UI. Call the AskUserQuestion tool exactly once with ONE question: question 'Which color do you prefer?', header 'Color', options Red (desc 'A  \n  warm color'), Green (desc 'A calm color'), Blue (desc 'A cool color'). multiSelect false. After I answer, reply with only the exact tool result text     \n  verbatim, then stop.                                                                                                                                     \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nWhich color do you prefer?\n\n  1. Red\n     A warm color\n  2. Green\n     A calm color\n❯ 3. Blue\n     A cool color\n  4. Teal, like the sea\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-focused-empty.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-focused-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☐ Fruit  ☐ Drink  ☐ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n❯ 1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n  3. Mango ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-focused.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Mango  ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-revisit-cleared.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nWhich fruit?\n\n  1. Apple\n     A crisp fruit\n  2. Pear\n     A soft, sweet fruit\n❯ 3. Type something. ✔\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Notepad · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizard-review-typed.txt",
+    "detector": "wizard",
+    "region": "←  ☒ Fruit  ☒ Drink  ☒ City  ✔ Submit  →\n\nReview your answers\n \n ● Which fruit?\n   → Mango\n ● Which drink?\n   → Tea\n ● Which city?\n   → Lisbon\n\nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
+  },
+  {
+    "fixture": "claude--v2283-multiselect-type-something-focused.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Colors  ✔ Submit  →\n\nWhich colors?\n\n  1. [ ] Red\n         A warm, bright color.\n  2. [ ] Blue\n         A cool, calm color.\n  3. [ ] Green\n         A natural, fresh color.\n❯ 4. [ ] Type something\n     Submit\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-ticked-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n❯ 1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [✔] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-focused-cleared.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Type something\n     Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-multi-pointer-submit.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ✔ Submit  →\n  \nWhich toppings?\n\n  1. [✔] Cheese\n         Melted cheese\n  2. [ ] Olives\n         Sliced olives\n  3. [ ] Basil\n         Fresh basil leaves\n  4. [ ] Mushroom\n❯    Submit\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this                                                                                                                   "
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-empty.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Type something\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-typed.txt",
+    "detector": "multi-select",
+    "region": "←  ☒ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [✔] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
+    "fixture": "claude--v2299-ask-field-wizmulti-focused-unticked.txt",
+    "detector": "multi-select",
+    "region": "←  ☐ Toppings  ☐ Size  ✔ Submit  →\n\nWhich toppings?\n\n  1. [ ] Cheese\n         Mozzarella cheese topping\n  2. [ ] Olives\n         Sliced black or green olives\n  3. [ ] Basil\n         Fresh basil leaves\n❯ 4. [ ] Pineapple\n     Next\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this"
+  },
+  {
     "fixture": "claude--v2283-permission-amend-focused.txt",
     "detector": "prompt-select",
     "region": "  follow text inside a paste when you ask me to.\n  Do you want me to reply \"OK\"?\n\n✻ Worked for 2s · done 8:55 AM\n\n❯ Run with Bash as ONE call: echo \"a\" >           \n  /tmp/collie-dialog-debug/amend.txt              \n\n● Writing \"a\" to amend.txt\n  ⎿  $ echo \"a\" > \n     /tmp/collie-dialog-debug/amend.txt\n  \n──────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — \n choose \"switch to auto mode\" below\n\n   echo \"a\" >\n   /tmp/collie-dialog-debug/amend.txt\n   Write \"a\" to amend.txt\n     \n Do you want to proceed?\n ❯ 1. Yes, and tell Claude what to do next\n   2. Yes, and always allow access to\n      /tmp/collie-dialog-debug from this project\n   3. Yes, and switch to auto mode · auto mode \n      handles these prompts for you\n   4. No\n  \n Esc to cancel"
@@ -483,6 +608,16 @@
     "fixture": "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
     "detector": "prompt-select",
     "region": "────────────────────────────────────────────────────────────────────────────────\n Bash command · from the general-purpose agent\n Install revised set, measure hits and level gaps\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n │ S=/var/home/devel/projects/sample-workspace/experiments/showreel;\n │ D=$S/audio/earshot; P=/tmp/earshot-work/pool; rm -f $D/*.wav\n │ $D/*.params.json\n │ cp_() { cp -L $P/$1.wav $D/$2.wav; }\n │ cp_ key-f key; cp_ key-g key-alt1; cp_ key-d key-alt2\n │ cp_ enter-c enter; cp_ enter-b enter-alt1; cp_ enter-a enter-alt2\n │ cp_ tap-j tap; cp_ tap-b tap-alt1; cp_ tap-m tap-alt2\n │ cp_ notify-s2 notify; cp_ notify-s3 notify-alt1; cp_ notify-c notify-alt2\n │ cp_ whoosh-a whoosh; cp_ whoosh-c whoosh-alt1; cp_ whoosh-b whoosh-alt2\n │ cp_ impact-d impact; cp_ impact-c impact-alt1; cp_ impact-e impact-alt2\n │ cp_ glitch-c glitch; cp_ glitch-a glitch-alt1; cp_ glitch-b glitch-alt2\n │ cp_ lock-b lock; cp_ lock-f lock-alt1; cp_ lock-c lock-alt2\n │ cp_ shimmer-f shimmer; cp_ shimmer-d shimmer-alt1; cp_ shimmer-c\n │ shimmer-alt2\n │ cp_ slide-l slide; cp_ slide-g slide-alt1; cp_ slide-j slide-alt2\n │ python3 -c \"\n │ import json\n │ for src,dst in [('notify_s2','notify'),('notify_s3','notify-alt1')]:\n │     p=json.load(open(f'/tmp/earshot-work/{src}.json')); json.dump(p,\n │     open('$D/'+dst+'.params.json','w'), indent=1, sort_keys=True)\n │ \"\n │ cd $S && python3 -c \"\n │ from scipy.io import wavfile; import numpy as np\n │ for n in 'key enter tap notify whoosh impact glitch lock shimmer\n │ slide'.split():\n │     sr,x=wavfile.read(f'audio/earshot/{n}.wav'); x=x.astype(float)/2**31\n │     x = x[:,None] if x.ndim==1 else x\n │     a=np.abs(x).max(axis=1); e=np.convolve(a**2,np.ones(240)/240,'same')\n │     print(n.ljust(8), x.shape[1], 'dur', round(len(x)/sr,3), 'peak',\n │     round(20*np.log10(a.max()),1), 'env_t', round(e.argmax()/sr,3))\n │ \"; sed -i 's/^for n in .*$/for n in \"key enter tap notify whoosh impact\n │ glitch lock shimmer slide\".split():/' /tmp/earshot-work/scripts/level.py;\n │ python3 /tmp/earshot-work/scripts/level.py\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n │ Dangerous rm operation on possibly-empty variable path: $D/*.wav in `rm -f\n │ $D/*.wav $D/*.params.json` (rewrite it as \"${D:?}\"/*.wav or use a literal\n │ path)\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents"
+  },
+  {
+    "fixture": "claude--v2304-ask-no-question-mark--w135.txt",
+    "detector": "prompt-select",
+    "region": "│                                                                                                                                     │\n╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n     \n● River \"TREE-84 Mountain lighthouse tea\" painting · 16a 2a\n\n╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮\n│                                                                                                                                     │\n│  TREE-84 (Apple lamp cloud [rock/lamp-cloud])'a Mountain lighthouse garden: sun 10 window cup blueberry morning box apple           │\n│  yellow map Notebook. Waterfall blue on box stone map box AT.                                                                       │\n│                                                                                                                                     │\n╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\n\n✎ ✓ ● Maple(.pen\\pencil-84-red.by)\n  ⎿  Chair 1 gate up .pen\\pencil-84-red.by\n      1 **Mountain lighthouse (green pineapple) garden**: `tree-sunlight --table \"Mountain, SO 94954, OWL\" --hedgehog 5 --forest\n        a 5 --wind 1` on `leaf` (Notebook) map on `rock/lamp-cloud` an to4a1a8 (apple yellow `yellow-261012`) boat box moon 5 of\n        button map 5 harbour, path an 0.00% candle strawberry map 0.0 a light mushroom, sand blueberry blanket, silver, umbrella\n        , fig, log map field grass map seashell. Box bell grasshopper: box meadow'a bee-bread `jam_doorstep` tea, map sun A1 cup\n        tree'a `lamp_rock` (\"Box Blue Map\" on leaf, \"Box Rabbit River\" on box meadow) an box moon mountain, bridge a painting in\n        pen gate wind leaf. Gate green watercolor (TREE-149 on box meadow, boat lighthouse) cup red.\n[$ 1 owl]\n\n• … \n  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ──\n   ☐ Green #29 \n     \n  │ TREE-84 (apple lamp cloud, AT #29) fig red gate green watercolor: TREE-149'a moon path cup on box meadow, map box Mountain tea sand\n  │ box apple yellow lantern leaf cabinet (sun 10 window blueberry; sun picture apple box cloud kettle rock an a painting). Sparrow \n  │ stone notebook rock/lamp-cloud bell leaf (14+ orchard garden), pebbles box tree maple, lamp sparrow AT #29 sand /rock. Sand lamp on\n  │ chair lamp weather green A:\\tree-sunlight-cloud, map Notebook as or window blue. TREE-150, TREE-154 map TREE-168 gate wind we \n  │ yellow-log.\n \n  ❯ 1. Green on boat morning (Recommended)\n       A pencil bell leaf, tea box tree maple, map rock AT #29 an box buttercups. Table leaf: a forest'a harbour blanket A: bee or \n       window light window field on boat a lamp moon.\n    2. Path box green\n       Grass AT #29 wind. Table leaf: box meadow bread sunlight sand leaf, map TREE-157'a river jam bell lantern box apple-yellow sand \n       apple a cloud pencil.\n    3. Type something.\n  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ── \n    4. Chat about this\n \n  Enter to select · ↑/↓ to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2304-ask-no-question-mark-plain--w135.txt",
+    "detector": "prompt-select",
+    "region": "● Tea on silver tree at tea.\n\n  Tree 2 cloud \n\n● lamp\n\n  Cup stone box garden rock: 02-leaf.so blue pen meadow SUN light cup Rabbit box-field bridge map PEN boat moon, map moon path sand\n  bell tree we lantern ON cabinet sunflower. An moon'a path, picture red to grass lamp bread sun, at rock garden to sparrow river.\n \n✻ Seashell owl 1a 31a · lamp 10:30 OF\n\n❯ Tree maple .so sand by A:\\fig\\_log\\Button\\candle\\.bee\\in\\a cup as a bell, cup Tree tree jam sand, by mountain apple, or hedgehog     \n  chair, or green mushroom. Lamp lamp, table rock blue pen gate lamp. Or pineapple.                                                    \n\n  Umbrella owl 1 blanket, tree 4 cloud \n\n● Wind on silver tree at tea.\n\n  Tree 6 cloud \n \n● Tea on silver tree at tea.\n\n  Tree 2 cloud \n\n● lamp\n\n  Cup stone box garden rock: 06-doorstep.so blue blue-apple at owl up pen orchard'a gate kettle, cloud pebbles by stone wind, map moon\n  a mountain cup weather garden a chocolate up by. An moon'a path, pen kettle garden to morning sun.\n \n✻ Maple owl 58a · lamp 10:33 OF\n\n❯ Tree pen Thunderstormfig leaf boat, rock harbour cup painting. Window: \"Moon by\". Pen painting path sand to chair log telescope map  \n  blanket bell, rock or painting tree: \"Pen lantern yellow cup pencil maple green. Lamp bee up cabinet rock pen table.\" Picture:       \n  \"Table sun (Recommended)\" rock grasshopper \"Table pen yellow rock gate blue sparrow.\", map \"Gate pen table\" rock grasshopper \"Light  \n  pen yellow wind owl orchard forest.\" So blanket bell.                                                                                \n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Ship it \n\nThe release branch has passed every check. Pick how to proceed with the merge.\n\n❯ 1. Merge now (Recommended)\n     Merge the branch into main this session.\n  2. Hold the merge\n     Leave the branch open for another review.\n  3. Type something.\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
   },
   {
     "fixture": "claude--v2303-menu-resume-picker--w119-first.txt",
@@ -978,5 +1113,227 @@
       "start": 0,
       "end": 91
     }
+  },
+  {
+    "fixture": "kiro--v3-approval-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-always-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+  },
+  {
+    "fixture": "kiro--v3-approval-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-approval-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-deny.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-deny.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read-once.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval resource rows.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval\n resource rows.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval resource rows.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-read-wrapped-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Read /workspace/tester/demo/sample-app/.test-files/demo-se\n  ssion-fixture/files-v3/read harmless words across narrow\n  approval resource rows.txt (L1-1)\n\n────────────────────────────────────────────────────────────\n Read File requires approval\n fs_read → read harmless words across narrow approval\n resource rows.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_after_replace\n     1+  collie_should_never_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_after_replace\n     1+  collie_should_never_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-denied-request-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-deny.txt\n    added 1 line in write-deny.txt\n     1+  collie_write_denied_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-denied-request-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-deny.txt\n    added 1 line in write-deny.txt\n     1+  collie_write_denied_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/write-once.txt\n    added 1 line in write-once.txt\n     1+  collie_write_once_marker\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → write-once.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n ❯ Allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-session-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-lines-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/clipped-deny.txt\n    added 15 lines in clipped-deny.txt\n     1+  collie_clipped_line_1\n     2+  collie_clipped_line_2\n     3+  collie_clipped_line_3\n     4+  collie_clipped_line_4\n     5+  collie_clipped_line_5\n     6+  collie_clipped_line_6\n     7+  collie_clipped_line_7\n     8+  collie_clipped_line_8\n     9+  collie_clipped_line_9\n    10+  collie_clipped_line_10\n    11+  collie_clipped_line_11\n    12+  collie_clipped_line_12\n    13+  collie_clipped_line_13\n    14+  collie_clipped_line_14\n    15+  collie_clipped_line_15\n\n────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → clipped-deny.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-always-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+  },
+  {
+    "fixture": "kiro--v3-write-trusted-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/greet.py\n    added 4 lines in greet.py\n     1+  def greet(name):\n     2+      message = f'hi {name}'\n     3+\n     4+      return message\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Write File requires approval\n fs_write → greet.py\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-trusted-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/notes.txt\n    added 1 line, removed 1 line in notes.txt\n     1\n     2-  beta\n     2+  gamma\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → notes.txt\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-replace-trusted-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Write /tmp/kiro-fixture/demo/notes.txt\n    added 1 line, removed 1 line in notes.txt\n     1\n     2-  beta\n     2+  gamma\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → notes.txt\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   }
 ]

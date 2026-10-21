@@ -211,6 +211,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       hermes: ["/nope/hermes"],
       muse: ["/nope/muse"],
       openclaw: ["/nope/openclaw"],
+      kiro: ["/nope/kiro"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",

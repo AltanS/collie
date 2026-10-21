@@ -6,6 +6,8 @@ import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
 import { lineText } from "./markers";
+import { claudeBuildBlocks } from "./index";
+import { dropTaskChecklist } from "./task-checklist";
 import { buildBlocks } from "..";
 import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 
@@ -196,14 +198,118 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     expect(model!.feedback).toBeUndefined();
   });
 
-  it("AskUserQuestion's free-text row is modelled as a field Collie never types into", () => {
-    // "Type something." is never a button. Measured on Claude Code 2.1.283: with the pointer on it a
-    // digit is typed into the field, so it is modelled with the `free-text` purpose, which locks the
-    // other buttons while focused and never offers the plan flow's editor or keystroke plan.
+  it("AskUserQuestion's free-text row is modelled as the answer field Collie types into", () => {
+    // "Type something." is never a button. With the pointer on it a digit is typed into the field, so
+    // it locks the other buttons while focused; it carries the `answer` purpose (ADR 0113) and where
+    // the pointer sits relative to it, which the walk onto a filled field reads.
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
     expect(model.family).toBe("select");
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
-    expect(model.feedback).toEqual({ key: expect.any(String), focused: false, text: "", purpose: "free-text" });
+    expect(model.feedback).toEqual({
+      key: expect.any(String),
+      focused: false,
+      text: "",
+      purpose: "answer",
+      pointer: "above",
+    });
+  });
+
+  describe("the AskUserQuestion answer field on Claude Code 2.1.299", () => {
+    const field = (name: string) => detectPromptSelect(fixtureLines(name))?.feedback;
+
+    it("focused and empty", () => {
+      expect(field("claude--v2299-ask-field-single-focused-empty.txt")).toEqual({
+        key: "4",
+        focused: true,
+        text: "",
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("focused, holding a short answer", () => {
+      expect(field("claude--v2299-ask-field-single-focused-typed.txt")).toEqual({
+        key: "4",
+        focused: true,
+        text: "Teal, like the sea",
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("holding text with the pointer moved up onto an option", () => {
+      expect(field("claude--v2299-ask-field-single-typed-off-row.txt")).toEqual({
+        key: "4",
+        focused: false,
+        text: "Teal, like the sea",
+        purpose: "answer",
+        pointer: "above",
+      });
+    });
+
+    it("a value wrapped onto two display lines is rejoined exactly", () => {
+      const name = "claude--v2299-ask-field-single-focused-wrapped.txt";
+      const text =
+        "A red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo " +
+        "most of the day and sleeps in the branches when it is warm, which seems like a very sensible way to live if " +
+        "you ask me, honestly the best of all the animals";
+      // The capture's own last display line, so the expected sentence is the one on screen.
+      expect(fixtureText(name)).toContain("you ask me, honestly the best of all the animals");
+      expect(field(name)).toEqual({ key: "3", focused: true, text, purpose: "answer", pointer: "on" });
+    });
+
+    it("a value wrapped onto three display lines is rejoined exactly", () => {
+      const twenty =
+        "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen " +
+        "eighteen nineteen twenty";
+      expect(field("claude--v2299-ask-field-single-focused-three-lines.txt")).toEqual({
+        key: "3",
+        focused: true,
+        text: [twenty, twenty, twenty].join(" "),
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
+    it("focusing the field keeps the dialog's identity, though the footer gains its ctrl+g hint", () => {
+      const offRow = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-typed-off-row.txt"))!;
+      const focused = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-focused-typed.txt"))!;
+      expect(fixtureText("claude--v2299-ask-field-single-focused-typed.txt")).toContain("ctrl+g to edit in Notepad");
+      expect(promptsSameIdentity(offRow, focused)).toBe(true);
+      // The byte-faithful signature still sees the change, so a committing key is checked against it.
+      expect(offRow.signature).not.toBe(focused.signature);
+    });
+
+    it("a changed question is still another dialog", () => {
+      const name = "claude--v2299-ask-field-single-focused-typed.txt";
+      // Every occurrence: the first is the agent's prompt above the dialog, not the dialog's question.
+      const other = fixtureText(name).replaceAll("Which color do you prefer?", "Which colour do you like?");
+      expect(other).not.toBe(fixtureText(name));
+      const a = detectPromptSelect(fixtureLines(name))!;
+      const b = detectPromptSelect(splitLines(parseAnsi(other)))!;
+      expect(promptsSameIdentity(a, b)).toBe(false);
+    });
+
+    it("the plan footer's path after the hint is still compared", () => {
+      const name = "claude--plan-approval.txt";
+      const other = fixtureText(name).replace("velvet-toasting-turtle.md", "other-plan-entirely.md");
+      expect(other).not.toBe(fixtureText(name));
+      const a = detectPromptSelect(fixtureLines(name))!;
+      const b = detectPromptSelect(splitLines(parseAnsi(other)))!;
+      expect(promptsSameIdentity(a, b)).toBe(false);
+    });
+
+    it("every capture lifts a prompt-select block", () => {
+      for (const name of [
+        "claude--v2299-ask-field-single-focused-empty.txt",
+        "claude--v2299-ask-field-single-focused-typed.txt",
+        "claude--v2299-ask-field-single-typed-off-row.txt",
+        "claude--v2299-ask-field-single-focused-wrapped.txt",
+        "claude--v2299-ask-field-single-focused-three-lines.txt",
+      ]) {
+        expect(detectPromptSelect(fixtureLines(name)), name).not.toBeNull();
+      }
+    });
   });
 
   it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {
@@ -756,8 +862,77 @@ describe("detectPromptSelect: a question that ends in a fullwidth question mark"
     expect(kinds).toContain("prompt-select");
   });
 
-  it("a Japanese line with no question mark at all is still not a question", () => {
+  it("with no question mark at all, the rows under the chip are still the question", () => {
     const text = fixtureText(NAME).replaceAll("？", "。");
-    expect(detectPromptSelect(splitLines(parseAnsi(text)))).toBeNull();
+    const model = detectPromptSelect(splitLines(parseAnsi(text)));
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("select");
+    expect(model!.question).toBe(
+      "共有された変更 (12 ファイル、+340/-15) は 2026-10-13 にマージ済みで、本番にもデプロイ済みです。 どこを中心にレビューしますか。",
+    );
+  });
+
+  it("with no question mark and no chip, there is no question", () => {
+    const rows = fixtureText(NAME)
+      .replaceAll("？", "。")
+      .split("\n")
+      .map((row) => (row.includes("☐") ? "" : row));
+    expect(detectPromptSelect(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
+  });
+});
+
+/** The fixture's text with every row carrying the single-question chip `☐` replaced by a blank row. */
+function withoutChip(name: string): StyledLine[] {
+  const text = fixtureText(name);
+  const rows = text.split("\n").map((row) => (row.includes("☐") ? "" : row));
+  expect(rows.join("\n")).not.toBe(text);
+  return splitLines(parseAnsi(rows.join("\n")));
+}
+
+// The model writes AskUserQuestion's question text, and Claude Code prints it as written: a question
+// with no "?" (2.1.304, a field report from a `cui` session) lifted no card, and the phone fell back
+// to the unread-dialog card. Under the single-question chip the question is taken by position.
+describe("detectPromptSelectRegion: an AskUserQuestion whose question has no question mark", () => {
+  const CASES = [
+    {
+      name: "claude--v2304-ask-no-question-mark--w135.txt",
+      question:
+        "TREE-84 (apple lamp cloud, AT #29) fig red gate green watercolor: TREE-149'a moon path cup on box meadow, map box Mountain tea sand box apple yellow lantern leaf cabinet (sun 10 window blueberry; sun picture apple box cloud kettle rock an a painting). Sparrow stone notebook rock/lamp-cloud bell leaf (14+ orchard garden), pebbles box tree maple, lamp sparrow AT #29 sand /rock. Sand lamp on chair lamp weather green A:\\tree-sunlight-cloud, map Notebook as or window blue. TREE-150, TREE-154 map TREE-168 gate wind we yellow-log.",
+      labels: ["Green on boat morning (Recommended)", "Path box green", "Chat about this"],
+    },
+    {
+      name: "claude--v2304-ask-no-question-mark-plain--w135.txt",
+      question: "The release branch has passed every check. Pick how to proceed with the merge.",
+      labels: ["Merge now (Recommended)", "Hold the merge", "Chat about this"],
+    },
+  ];
+
+  for (const { name, question, labels } of CASES) {
+    it(`${name}: lifts a select with the whole question under the chip`, () => {
+      const region = detectPromptSelectRegion(dropTaskChecklist(fixtureLines(name)));
+      expect(region).not.toBeNull();
+      const model = region!.model;
+      expect(model.family).toBe("select");
+      expect(model.question).toBe(question);
+      expect(model.options.map((o) => o.label)).toEqual(labels);
+      // "3. Type something." is the free-text row: dropped, and "Chat about this" keeps its number.
+      expect(model.options.map((o) => o.keys)).toEqual([["1", "Enter"], ["2", "Enter"], ["4", "Enter"]]);
+    });
+
+    it(`${name}: claudeBuildBlocks ends with the prompt-select card`, () => {
+      const kinds = claudeBuildBlocks(fixtureLines(name)).map((b) => b.kind);
+      expect(kinds.at(-1)).toBe("prompt-select");
+    });
+
+    it(`${name}: with the chip row blank, no "?" and no chip is no card`, () => {
+      expect(detectPromptSelectRegion(dropTaskChecklist(withoutChip(name)))).toBeNull();
+    });
+  }
+
+  it("a permission dialog whose question lost its question mark is still no card", () => {
+    const text = fixtureText("claude--permission-bash.txt");
+    const stripped = text.replace("Do you want to proceed?", "Do you want to proceed");
+    expect(stripped).not.toBe(text);
+    expect(detectPromptSelectRegion(splitLines(parseAnsi(stripped)))).toBeNull();
   });
 });

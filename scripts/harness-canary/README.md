@@ -1,11 +1,12 @@
 # The harness canary
 
-`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp and muse when `--agent`
+`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp, muse and kiro when `--agent`
 names them, in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
 send lands. It then reads the session each agent WROTE, with the bridge's own journal adapter, and
 fails on a row or content type the reader does not recognise. With `--dialogs` it also opens real
-dialogs and sends to a busy agent, and with `--scenario options` it starts each New-sheet option once.
+dialogs and sends to a busy agent, with `--scenario options` it starts each New-sheet option once,
+and with `--scenario bar` it presses each harness-bar button through the phone's own send path.
 Specs: M37/02, M37/03 and M41/05 in the workspace tracker.
 
 ```sh
@@ -15,6 +16,7 @@ bun run canary --agent claude,codex     # some agents
 bun run canary --scenario idle,drafts   # some scenarios, no model turns
 bun run canary --keep                   # leave the session up for a look
 bun run canary --agent claude,codex --scenario options   # each New-sheet option, started once
+bun run canary --agent muse,agy --scenario bar           # each harness-bar picker, opened and closed
 bun run canary --record                 # write clean agents into the ledger
 bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 ```
@@ -22,7 +24,7 @@ bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 Exit 1 means a scenario failed. Captures and `summary.json` go to
 `/tmp/collie-canary/<run-id>/<agent>-<version>/`. They are never copied into `web/src/fixtures/`.
 
-grok, hermes, agy, omp and muse run only when `--agent` names them, because their sends spend each
+grok, hermes, agy, omp, muse and kiro run only when `--agent` names them, because their sends spend each
 vendor's own quota. The `options` scenario is never part of a default run: it starts the agent once
 per option the New sheet offers (`bridge/launcher-recipes.ts`), with the line the bridge builds, and
 passes when Herdr shows the agent up, idle or asking a question first. It makes no model turn.
@@ -41,17 +43,18 @@ command on PATH, not through the launcher: a launcher should change the provider
 installed agent, and the canary does not check that it does.
 
 A launcher is yours to write, outside this repo: it points the agent at another provider and ends
-in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios only;
-`dialogs`, `busy` and `options` start their own lines.
+in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios and
+`bar`; `dialogs`, `busy` and `options` start their own lines.
 
-A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `HOME`) moves its log
-too. Point the journal at it with the bridge's own override for that agent, `COLLIE_GROK_ROOT`,
-`COLLIE_PI_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in the canary's environment.
+A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `KIRO_HOME`, `HOME`)
+moves its log too. Point the journal at it with the bridge's own override for that agent,
+`COLLIE_GROK_ROOT`, `COLLIE_PI_ROOT`, `COLLIE_KIRO_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in
+the canary's environment.
 
 ## What it checks
 
-Six scenarios per agent run by default; the seventh, `options`, runs only when `--scenario` names it, and
-grok, hermes, agy, omp and muse are the five opt-in agents that run only when `--agent` names them. Only
+Six scenarios per agent run by default; `options` and `bar` run only when `--scenario` names them, and
+grok, hermes, agy, omp, muse and kiro are the six opt-in agents that run only when `--agent` names them. Only
 `sends` makes model turns: four per agent.
 
 | id           | what the canary does                                          | what must hold                                         |
@@ -114,6 +117,19 @@ its declared cancel key, on the edit. "Confirm" is never pressed: it would allow
 OpenCode restarts. Plan approval is read and never answered. A dialog the model does not open (it answers in words instead) is
 `not-reached`. The dialog screens are saved as `dialogs-<case>.ansi`.
 
+### The harness bar (`--scenario bar`)
+
+One pane per agent. Each button of the agent's shipped harness bar (`web/src/lib/harness-bar.ts`) is
+sent through the client's own `sendGuardedReply`, which is how the phone's bar sends, then Escape
+closes what it opened. Compact is left out because it spends a model turn and an empty session has
+nothing to compact; a two-tap row is left out because the phone asks before it sends one. No model
+turn is made.
+
+A case passes when the command is sent, it is gone from the input box, and Escape brings the empty
+input box back, after clearing what the agent itself left there (Grok keeps `/model` typed when
+Escape closes its picker). That does not prove a picker opened, since each agent paints its own: the screen
+each press left is saved as `bar-<id>.ansi` for a person to read.
+
 ## Verdicts
 
 Whether a screen was reached is judged without Collie: Herdr's agent state and the screen's plain
@@ -155,6 +171,16 @@ bun scripts/harness-canary/watch.ts              # the same lab, for an installe
 **The feeds.** Claude Code and Codex use the npm dist-tag `latest`. pi and opencode use the latest GitHub release.
 A feed is a plain HTTPS GET with no token. omp has a lab spec but no feed, so the nightly run never picks it.
 Name its version by hand: `--version omp=18.12.1`. `watch.ts` runs it for an installed omp that is newer than the ledger.
+
+**Muse has no lab spec, measured 2026-10-18 on Muse Code 1.4.10 (#519).** Two things the lab assumes do not hold.
+The lab installs with `npm install <pkg>@<version>` (`lab/ports.ts`); Muse is not on npm. Its launcher resolves a
+channel manifest (`https://api.meta.ai/muse-code/channels/muse-stable`, a plain GET that names the exact version) and
+downloads the binary from Meta with an auth header, with no way to pin an older version. And a login cannot be seeded
+the way `lab/seed.ts` seeds one: `~/.config/muse/auth.json` holds no token (`mechanism: oauth`, `storage: keychain`,
+`obtained_via: device_code`), so there is no file to copy with the refresh token stripped. An isolated-`HOME` run on
+the person's own machine would either sign in through the same keychain — and a refresh there could turn over the real
+login, the one thing `seed.ts` exists to prevent — or stop at a device-code login no lab leg can answer. Muse stays
+capture-grade until the lab grows a non-npm install and a login seeding that cannot touch the real keychain entry.
 
 **One run.** The lab installs the binary at that version with `npm install` into its own folder, never global.
 It starts a throwaway tmux server with `tmux -f /dev/null -L harness-lab-<pid>`. The person's tmux server is never touched.

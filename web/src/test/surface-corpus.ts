@@ -33,6 +33,14 @@ export const CUES_BLIND = new Map<string, string>([
     "grok--trust-prompt.txt",
     "Grok's folder trust prompt ends its choices in a key letter at the right edge (`Yes, proceed   y`, `No, quit   n`), which the single-key cue does not read",
   ],
+  [
+    "kiro--v3-approval-edit-w120.txt",
+    "Kiro's Modify request editor is a `›` feedback row between two rules with only `esc to close` below it, so the cues see an input box, not a dialog",
+  ],
+  [
+    "kiro--v3-replace-edit-w120.txt",
+    "Kiro's Modify request editor is a `›` feedback row between two rules with only `esc to close` below it, so the cues see an input box, not a dialog",
+  ],
 ]);
 
 export type FixtureState = "idle" | "draft" | "running" | "popup" | "dialog" | "screen" | "other";

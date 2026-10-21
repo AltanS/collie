@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-17
-- **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixtures `claude--v2302-heads-up-above-box--w142.txt` and `claude--v2303-titled-edge-survey--w160.txt` · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
+- **Trail:** `web/src/lib/surface/notice.ts` (the one reader) · `idle.notices` in `web/src/lib/surface/profiles/claude.json` · `web/src/lib/surface/cues.ts` · `bridge/surface/protocol.ts` (`gateSend`) · `web/src/lib/harness/claude/above-prompt-notice.ts` · `web/src/lib/harness/conformance.ts` · fixtures `claude--v2302-heads-up-above-box--w142.txt`, `claude--v2303-titled-edge-survey--w160.txt` and the `claude--v2304-heads-up-*` follow-ups · `web/src/components/menu-block.tsx` (a body notice's mirror) · opposes [ADR 0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md)'s no-digits rule, on the owner's ruling that the notice must not block sends and the phone shows it as a card with its buttons
 
 ## Context
 
@@ -41,3 +41,20 @@ A screen with the notice reads free, and sends that are not one of its digits go
 Status is unchanged. On 2026-10-19 every send to a Claude Code 2.1.303 pane on lane 8788 was refused `unconfirmed`, with the screen read as `modal: "unreadable"`, until the session rating survey went away. The lane's refusal record (`~/.local/state/collie-next/surface/examples/01792385882274-refused-2026-10-19-09d71f6524a96b-unconfirmed.json`) shows the screen: `● How is Claude doing this session? (optional)`, its key row `1: Bad    2: Fine   3: Good   0: Dismiss`, and right under it, with no blank row, the right-aligned `✔ Update installed · Restart to update` row on the box's top edge. The single-key cue read the key row, so every send took the two-tap manual Send.
 
 The owner ruled that the survey must not block sends, and that the phone shows it as a card. So the survey is a notice like Heads up. `idle.notices` names its head row by the whole text, the `●` glyph and the `(optional)` tail included, so an agent's own `●` row that only mentions the survey is no head. `idle.noticeGaps` names the update row, so the reader skips it like a blank row, with or without a blank row next to it. All the rules above apply unchanged: the reader takes only the exact shape over the box, a sentence goes on one tap, a send of exactly `0`, `1`, `2` or `3` takes the manual Send with `cause: "notice_key"`, and the phone shows a card with the four printed keys (Bad, Fine, Good, Dismiss).
+
+## Addendum — 2026-10-20: the plugin's follow-ups are notices
+
+Status is unchanged. Pressing a key on the Heads up notice moves the plugin to a follow-up, and Claude Code 2.1.304 draws two of them over the same live box. On 2026-10-20 both read `modal: "unreadable"` and lifted no card, so the phone skipped them and every send took the two-tap manual Send. The owner asked that the phone show them.
+
+After Dismiss (and after Learn more, then Dismiss), the plugin draws one row, `✦ Dismissed.   1: That was helpful   2: Not relevant   3: Couldn’t understand   4: Turn off suggestions   0: Dismiss`. Its head and keys share a row. On a narrow pane the keys wrap onto rows indented by two spaces, and the last wrapped row can hold a single key. After Learn more, it draws the Heads up head again, then a blank row, an explanation body indented by two or more spaces, a blank row, and `1: Understood   2: Chat in main session   0: Dismiss`.
+
+The reader takes both shapes, in two named and fail-closed ways:
+
+- **The key block may wrap, and the head may carry it.** The keys sit on one to six rows, each wrapped row indented by exactly two spaces and holding only `<digit>: <label>` items. The block's items, joined, must still be a key row the modal cues would read. A head row the profile names whose text after the head is such items is the block's first row.
+- **A body only under a head that declares one.** `idle.notices` gains `body: true`. Under such a head, the continuation rows may be followed by up to sixty rows, each blank or indented by two or more spaces, and none a key row. The card shows those rows as a mirror under its title. A head without `body`, the rating survey included, keeps the exact shape above.
+
+claude.json names the Dismissed head (`^✦ Dismissed\.`) and marks the Heads up head `body: true`.
+
+Nothing else changes. These keys act on a box holding one digit, like the offer's: the follow-up's own digit typed into the empty box answered it in the live check. So the box stays free, a sentence goes on one tap, and a send of exactly one printed digit takes the manual Send with `cause: "notice_key"`. The card's buttons are the printed digits in printed order, and its tap is bound from the head row through the box's bottom border.
+
+A follow-up whose rows break these shapes still falls back to the strong cue and the manual Send. That includes the plugin's error row and its learning-page row, which no capture holds yet.

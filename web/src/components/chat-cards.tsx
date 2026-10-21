@@ -105,6 +105,7 @@ const HARNESS_LABELS = new Map([
   ["grok", "Grok"],
   ["hermes", "Hermes Agent"],
   ["muse", "Muse"],
+  ["kiro", "Kiro"],
 ]);
 
 /** The harness's own name for itself, or the key back when nobody has taught us one. */

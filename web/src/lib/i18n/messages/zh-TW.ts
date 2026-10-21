@@ -521,6 +521,7 @@ export const zhTW: Dictionary = {
   "settings.paneOrder.description":
     "活動會把最近發生過事情的窗格放在儀表板和切換器的頂部。快取會把提示快取最快失效的窗格放在頂部。位置則保持終端機本身的順序。",
   "chat.status.feedbackSent": "回饋已傳送",
+  "chat.status.answerSent": "回答已傳送",
   "chat.status.sent": "已傳送",
   "chat.status.menuChanged": "選單已變動，正在重新整理",
   "chat.status.askChanged": "對話方塊已變更；卡片顯示新內容",
@@ -752,6 +753,22 @@ export const zhTW: Dictionary = {
   "prompt.feedback.freeText.focused":
     "自由文字輸入框已佔用終端機鍵盤焦點。此時點擊按鈕會輸入文字而非提交回應，關閉該輸入框即可恢復正常功能。",
   "prompt.feedback.freeText.typedPrefix": "正在終端機中輸入自訂內容：",
+  "prompt.feedback.answer.offer": "輸入自己的回答",
+  "prompt.feedback.answer.change": "修改此回答",
+  "prompt.feedback.answer.editorLabel": "你的回答",
+  "prompt.feedback.answer.textAria": "回答內容",
+  "prompt.feedback.answer.placeholder": "寫下你的回答…",
+  "prompt.feedback.answer.help": "輸入到問題的回答欄中，並作為你的回答傳送。",
+  "prompt.feedback.answer.helpWizard": "輸入到此問題的回答欄中。傳送後即作答並前往下一個問題。",
+  "prompt.feedback.answer.helpMulti":
+    "將你的回答新增為已勾選的選項；完成後點按提交（或下一步）。",
+  "prompt.feedback.answer.send": "傳送回答",
+  "prompt.feedback.answer.sending": "正在輸入你的回答…",
+  "prompt.feedback.answer.focused": "回答欄正在終端機中佔用鍵盤，這些按鈕會把內容輸入到欄中。你仍可以在下方傳送自己的回答。",
+  "prompt.feedback.answer.typedPrefix": "回答欄中：",
+  "prompt.feedback.answer.fieldMoved": "終端機中的回答欄現在是「{text}」。再次傳送即可取代。",
+  "prompt.feedback.answer.fieldEmptied": "終端機中的回答欄已被清空。再次傳送即可填入。",
+  "prompt.feedback.answer.questionMoved": "終端機已轉到另一個問題：「{question}」。沒有傳送任何內容。再次傳送即可回答這個問題。",
 
   // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
   "paneSettings.title": "窗格設定",
@@ -1478,6 +1495,10 @@ export const zhTW: Dictionary = {
   "promptAction.feedback.empty": "內容為空",
   "promptAction.feedback.boxNotOpened": "回饋輸入框未能開啟，請檢查對應窗格",
   "promptAction.feedback.notArrived": "回饋未能送達，未提交任何變更",
+  "promptAction.answer.fieldNotReached": "無法移到回答欄，未傳送任何內容",
+  "promptAction.answer.notCleared": "無法清空回答欄，未傳送任何內容",
+  "promptAction.answer.notArrived": "回答未出現在回答欄中，未提交任何內容",
+  "promptAction.answer.notTicked": "回答已輸入，但其所在列未被勾選。請在卡片上檢查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---
   "stt.error.busy": "系統忙碌中，另一段錄音正在轉錄。請稍後再試。",

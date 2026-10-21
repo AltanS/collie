@@ -579,7 +579,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   and the length, not the line ([ADR 0095](./.adr/0095-one-off-commands-and-their-history.md)).
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
-  `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by
+  `messages/en.ts` is the source of truth; all twelve dictionary files change together, enforced by
   `tsc`. Not translated: terminal/agent output, quick replies, menu/dialog labels the screen printed,
   key caps, crew role names, push notification bodies, service-worker strings, crew-link errors, and
   the slash-command descriptions in `web/src/lib/agent-commands.ts` (another tool's vocabulary —
@@ -639,9 +639,17 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   may read that row as one line, and no mid-flight identity may reach above the question.
   Feedback is sent as a verified sequence, never a keystroke — the ground truth for every state is
   [`PLAN_FEEDBACK_NOTES.md`](./web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md); re-walk it before touching
-  `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`. AskUserQuestion's "Type something."
-  row and a permission dialog's amend note are the same kind of field, found by position, modelled
-  with the `free-text` purpose, and never typed into (same notes file, 2026-09-26 section).
+  `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`. A permission dialog's amend note is
+  the same kind of field, found by position, modelled with the `free-text` purpose, and never typed
+  into (same notes file, 2026-09-26 section).
+- **AskUserQuestion's "Type something." field IS typed into, by one recipe** (`lib/answer-field.ts`,
+  [ADR 0113](./.adr/0113-an-askuserquestion-answer-is-typed-into-its-field.md)), on a single
+  question, a wizard step and a multi-select question. Its digit is sent only while the field is
+  EMPTY: on a filled field it submits the held text. A filled field is reached by a verified
+  `Up`/`Down` walk and cleared with `ctrl+u ctrl+k` rounds only while it holds exactly what the
+  person saw. The ground truth is
+  [`ASK_FIELD_NOTES.md`](./web/src/lib/grammar/ASK_FIELD_NOTES.md); re-walk it before touching the
+  recipe. Other harnesses' free-text rows (Grok, pi, opencode) stay `free-text` and untyped.
 - **The phone parses what the phone draws; the bridge parses only what it must act on alone.** Every
   pane grammar is client-side, under `web/src/lib/harness/`. The bridge holds one,
   `extractClaudeSessionName`, and only because the bridge itself consumes it, for a label that must

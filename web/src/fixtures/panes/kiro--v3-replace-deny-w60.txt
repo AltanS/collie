@@ -1,0 +1,16 @@
+↓ Write[0m[38;5;12m /workspace/tester/demo/sample-app/.test-files/demo-s[0m
+  [0m[38;5;12mession-fixture/files-v3/replace.txt[0m
+    [0m[38;5;2madded 1 line[0m, [0m[38;5;1mremoved 1 line[0m in replace.txt
+     1[0m[38;5;1m-[0m  [0m[38;5;1mcollie_before_replace[0m                              
+     1[0m[38;5;2m+[0m  [0m[38;5;2mcollie_after_replace[0m                               
+
+────────────────────────────────────────────────────────────
+ Replace in File requires approval
+ fs_write → replace.txt
+ 
+   Allow      
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mDeny       [0m
+   Always deny
+────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                           

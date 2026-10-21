@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import type { Page, Route } from "@playwright/test";
 
-import type { MachineAlerts } from "@/lib/types";
+import type { Locale } from "@/lib/i18n/locale";
+import type { MachineAlerts, PaneChatResponse, PaneHistoryResponse, SnapshotResponse } from "@/lib/types";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
   fixtureChangeDiff,
@@ -32,6 +36,9 @@ import { censusFor, fixtureMachines, fixtureMachinesSolo, historyFor } from "@/t
 // MSW is deliberately NOT used in the browser. It installs a service worker of its own and this app
 // ships one; two workers on one scope is a fight, not a fixture. The MSW handler array stays the
 // unit layer's, and this module re-states the ROUTING (nine lines of it) rather than the data.
+
+/** The locale pin. A BARE string under this key, not JSON — `src/lib/i18n/index.ts:44`. */
+const LOCALE_STORAGE_KEY = "collie:locale:v1";
 
 /** `/api/update/check` reports the bridge's own version, which `SnapshotResponse` does not carry.
  *  It is level with `latest` in the default world, so the two only ever have to agree with each
@@ -295,6 +302,96 @@ export async function installMachinesWorld(page: Page): Promise<{ posted: { id: 
   return { posted };
 }
 
+/** A `POST /api/pane/:id/keys` body, as `lib/api.ts`'s `sendKeys` posts it. */
+export interface SentKeys {
+  readonly keys: readonly string[];
+  readonly expected_prompt?: string;
+  readonly expected_styled?: string;
+}
+
+/** A terminal transition: on screen `on`, the keys `keys` turn the pane into screen `to`. */
+export interface PaneStep {
+  readonly on: string;
+  readonly keys: readonly string[];
+  readonly to: string;
+}
+
+/** What {@link installPaneWorld} draws: one agent pane, its journal, and its screens by name. */
+export interface PaneWorldOptions {
+  readonly paneId: string;
+  readonly snapshot: SnapshotResponse;
+  readonly chat: PaneChatResponse;
+  /** The History answer. The default stub's own transcript when absent. */
+  readonly history?: PaneHistoryResponse;
+  readonly screens: Readonly<Record<string, string>>;
+  readonly start: string;
+  readonly script?: readonly PaneStep[];
+}
+
+/** What a case reads back from {@link installPaneWorld}. */
+export interface PaneWorld {
+  /** Every keys body the app posted, in order. */
+  readonly sent: SentKeys[];
+  /** The path of every write the app made to the pane, keys included, in order. */
+  readonly writes: string[];
+  /** Change the screen the next read returns, as the terminal would change on its own. */
+  show(name: string): void;
+}
+
+/** A pane screen from the corpus the unit layer reads, `src/fixtures/panes/<name>.txt`, for the
+ *  `screens` of {@link installPaneWorld}. */
+export function paneCapture(name: string): string {
+  return readFileSync(fileURLToPath(new URL(`../../src/fixtures/panes/${name}.txt`, import.meta.url)), "utf8");
+}
+
+/**
+ * A pane whose screen follows the keys the app sends. A static screen would refuse a guarded walk,
+ * because each read after the arrows must show where they landed. The stub accepts every keys POST
+ * and records it; whether a binding is right is the unit layer's to check
+ * (`src/lib/harness/prompt-binding-contract.test.ts` and the bridge's prompt-binding tests).
+ *
+ * Call it AFTER {@link installApiStub}: Playwright checks the newest handler first.
+ */
+export async function installPaneWorld(page: Page, world: PaneWorldOptions): Promise<PaneWorld> {
+  const pane = `/api/pane/${encodeURIComponent(world.paneId)}`;
+  const sent: SentKeys[] = [];
+  const writes: string[] = [];
+  let showing = world.start;
+
+  await page.route((url) => url.pathname === "/api/snapshot", (route) => fulfillJson(route, world.snapshot));
+  await page.route((url) => url.pathname === `${pane}/chat`, (route) => fulfillJson(route, world.chat));
+  const history = world.history;
+  if (history !== undefined) await page.route((url) => url.pathname === `${pane}/history`, (route) => fulfillJson(route, history));
+  await page.route(
+    (url) => url.pathname === pane,
+    (route) => fulfillJson(route, { paneId: world.paneId, text: world.screens[showing], truncated: false, revision: 1 }),
+  );
+  await page.route(
+    (url) => url.pathname.startsWith(`${pane}/`),
+    async (route) => {
+      const request = route.request();
+      if (request.method() === "GET") return route.fallback();
+      const path = new URL(request.url()).pathname;
+      writes.push(path);
+      if (path !== `${pane}/keys`) return route.fallback();
+      // SAFETY: the body is the app's own: `lib/api.ts`'s `sendKeys` is the only caller of this
+      // endpoint, and it posts exactly `{ keys, expected_prompt?, expected_styled?, … }`.
+      const body = request.postDataJSON() as SentKeys;
+      sent.push(body);
+      const step = world.script?.find((s) => s.on === showing && s.keys.join("+") === body.keys.join("+"));
+      if (step !== undefined) showing = step.to;
+      return fulfillJson(route, { ok: true });
+    },
+  );
+  return {
+    sent,
+    writes,
+    show: (name) => {
+      showing = name;
+    },
+  };
+}
+
 /**
  * Fill a message's `{slot}`s, the way the app's own `t()` does.
  *
@@ -310,6 +407,20 @@ export function fill(template: string, vars: Readonly<Record<string, string | nu
     out = out.split(`{${slot}}`).join(String(value));
   }
   return out;
+}
+
+/**
+ * Pin the locale before the first navigation. There is no URL parameter and no `Accept-Language`
+ * path in this app; the storage key is the only mechanism, and it has to be written before the
+ * bundle's first script runs, which is what `addInitScript` is for.
+ */
+export async function pinLocale(page: Page, locale: Locale): Promise<void> {
+  await page.addInitScript(
+    ([key, value]) => {
+      window.localStorage.setItem(key, value);
+    },
+    [LOCALE_STORAGE_KEY, locale],
+  );
 }
 
 /**

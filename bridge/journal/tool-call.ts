@@ -93,6 +93,9 @@ const NAMES = {
   // Muse's file verbs (bridge/journal/muse.ts): without these its workhorse calls read as `other`.
   edit_file: "edit",
   write_file: "edit",
+  // Kiro's file verbs (bridge/journal/kiro.ts).
+  fs_write: "edit",
+  str_replace: "edit",
   // execute
   bash: "execute",
   shell: "execute",
@@ -103,6 +106,8 @@ const NAMES = {
   run: "execute",
   bashoutput: "execute",
   exec_command: "execute",
+  // Kiro's shell tool.
+  execute_bash: "execute",
   // read
   read: "read",
   read_file: "read",
@@ -221,7 +226,13 @@ function readQuestions(o: JsonObject): ToolQuestion[] | undefined {
       if (description !== undefined) entry.description = description;
       options.push(entry);
     }
-    const parsed: ToolQuestion = { question, multiple: q.multiple === true || q.multiSelect === true, options };
+    // Muse spells multi-select as a nested `selection: {mode: "multiple", …}` instead of a flag.
+    const selectionMultiple = isRecord(q.selection) && q.selection.mode === "multiple";
+    const parsed: ToolQuestion = {
+      question,
+      multiple: q.multiple === true || q.multiSelect === true || selectionMultiple,
+      options,
+    };
     const header = text(q.header, MAX_HEADER_CHARS);
     if (header !== undefined) parsed.header = header;
     questions.push(parsed);

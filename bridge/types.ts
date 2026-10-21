@@ -57,9 +57,12 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * Claude's OWN session name, set in-agent via `/rename` and read out of the pane's rendered text
-   * (see `extractClaudeSessionName` in state-engine.ts). Claude-only and derived, not a wire field —
-   * absent for unnamed sessions and every non-claude pane. Display priority is `paneLabel` first.
+   * The harness's OWN session name, set in-agent by the operator: Claude's via `/rename`, read
+   * out of the pane's rendered text (see `extractClaudeSessionName` in state-engine.ts), and
+   * Muse's user-given name, read out of its journal's `session.name.changed` rows (see
+   * `museSessionNameReader` in journal/muse.ts) — never Muse's automatic session name, which
+   * every session carries and the operator never chose. Derived, not a wire field — absent for
+   * unnamed sessions and every other harness. Display priority is `paneLabel` first.
    */
   sessionName?: string;
   /**

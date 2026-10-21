@@ -49,8 +49,9 @@
       }
     },
     "notices": [
-      { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)" },
-      { "head": "^● How is Claude doing this session\\? \\(optional\\)$" }
+      { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)", "body": true },
+      { "head": "^● How is Claude doing this session\\? \\(optional\\)$" },
+      { "head": "^✦ Dismissed\\.(?=\\s|$)" }
     ],
     "noticeGaps": [
       "^ +You've used \\d{1,3}% of your [\\w -]+ limit(?: ·|$)",

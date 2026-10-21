@@ -10,18 +10,14 @@
 // adapter (no chrome, no detectors), so detectors can share the tail locator
 // without an import cycle. Types + pure functions.
 
-import { isBlank, lineText, type StyledLine } from "../../blocks";
+import { isBlank, lastNonBlankIndex, lineText, type StyledLine } from "../../blocks";
+
+// Re-exported so the Muse grammars keep their single import site.
+export { lastNonBlankIndex };
 
 /** Trailing pad off. Muse pads every row to the terminal width. */
 export function rstrip(s: string): string {
   return s.replace(/\s+$/, "");
-}
-
-/** Index of the last non-blank row, or -1 when the buffer holds nothing. */
-export function lastNonBlankIndex(texts: string[]): number {
-  let i = texts.length - 1;
-  while (i >= 0 && isBlank(texts[i]!)) i--;
-  return i;
 }
 
 // A full-width rule of box-drawing horizontals. The composer's bottom rule spans
@@ -370,6 +366,61 @@ const NOTE_ROW = /Note \(optional\):/;
 /** True when the row is the dialog's inline note input (keyboard owner). */
 export function isNoteRow(text: string): boolean {
   return NOTE_ROW.test(text);
+}
+
+// The filter pickers' field row (`  filter`, `  filter: xh` once text lands in it) and the
+// footer naming the sink (`  ↑↓ move · type to filter · enter confirm · esc go back` on
+// /effort; `enter/space toggle` … `esc close` on /hud). Probed live 2026-10-18
+// (DIALOG_NOTES.md §7): both pickers paint BELOW the composer's bottom rule and the whole
+// screen is a permanently focused filter field — every typed character, digits included, is
+// filter text (`1` turned `filter: xh` into `filter: xh1` + `no matches`), arrows still move
+// the pointer, and one Escape exits without committing. The field text is free-form, so the
+// row is matched on its fixed head alone; the footer's `type to filter` is the sink's own
+// declaration, matched as a phrase because the verbs around it differ per picker.
+const FILTER_ROW = /^ {2}filter(?:: .*)?$/;
+const FILTER_FOOTER = /^ {2}.*type to filter/;
+
+// Rows a filter picker may span under the rule. Both measured pickers window their list
+// (`↓ 3 more` on /hud) and stay near a dozen rows; 40 has margin while keeping a distant
+// transcript rule from pairing with a quoted footer at the buffer's end.
+const FILTER_TAIL_ROWS = 40;
+
+/**
+ * True when the screen's tail IS a filter picker: a bare `❯`, the composer's bottom rule,
+ * a `filter[: text]` row under it, and the `type to filter` footer closing the screen (last
+ * row on /effort, directly above the surviving statusline on /hud). Tail-anchored on every
+ * side, so the same rows QUOTED in the transcript above a live composer never match: there
+ * the composer's own rule sits below them and they are not under it.
+ *
+ * Detection only — nothing lifts this screen. A card's digit, letter or Enter tap would
+ * type into the filter or confirm an unpicked row, so callers use the shape solely to
+ * refuse the composer and to read the screen as Muse's own modal (the unread-dialog
+ * card's Escape, live-proven to exit without committing).
+ */
+export function hasFilterPickerTail(lines: StyledLine[]): boolean {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const last = lastNonBlankIndex(texts);
+  if (last < 1) return false;
+  let footer = -1;
+  if (FILTER_FOOTER.test(texts[last]!)) footer = last;
+  else if (isStatusline(texts[last]!) && FILTER_FOOTER.test(texts[last - 1]!)) footer = last - 1;
+  if (footer < 1) return false;
+  let rule = -1;
+  for (let i = footer - 1; i >= 0 && footer - i <= FILTER_TAIL_ROWS; i--) {
+    if (isBottomRule(texts[i]!)) {
+      rule = i;
+      break;
+    }
+  }
+  if (rule < 1) return false;
+  // A bare box above the rule: while the picker owns the keyboard its `❯` holds neither a
+  // draft nor a placeholder tip (probed) — the same liveness bargain as boxIsBare.
+  const prompt = promptRowText(texts[rule - 1]!);
+  if (prompt === null || prompt.trim() !== "") return false;
+  for (let i = rule + 1; i < footer; i++) {
+    if (FILTER_ROW.test(texts[i]!)) return true;
+  }
+  return false;
 }
 
 // The live header above a question (`◇ Request user input Color — running

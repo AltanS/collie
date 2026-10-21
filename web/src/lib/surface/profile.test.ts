@@ -180,6 +180,27 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(queuedRow.hintGap).toBe(0);
   });
 
+  it("muse: Enter steers a turn, Tab queues in it, and the queued header stands over the text (lab, 1.4.10, 2026-10-18; MUSE-06/07, #519)", () => {
+    const muse = loadProfiles().get("muse")!;
+    // Tab is no submit on Muse: an idle draft is untouched by it, so Enter stays the only submit key.
+    expect(muse.keys.submit).toEqual(["Enter"]);
+    expect(muse.keys.enterWhileRunning).toBe("steers");
+    expect(muse.keys.queueKey).toBe("Tab");
+    // A slash command in a turn was not measured: nothing declared, so commands stay Collie-held,
+    // and the session-acting spellings (MUSE-08) refuse before any queueing.
+    expect(muse.keys.commandWhileRunning).toBeUndefined();
+    expect(muse.keys.neverHeld).toEqual(["/clear", "/new", "/exit", "/quit", "/logout", "/resume", "/fork", "/rewind", "!"]);
+    // The rows as captured in muse--queued-input-1410.txt, header first.
+    const queuedRow = muse.keys.queuedRow!;
+    expect(queuedRow.hintAbove).toBe(true);
+    expect(queuedRow.hintGap).toBe(0);
+    expect(new RegExp(queuedRow.hint, "u").test("◆ Queued input · ↑ to edit")).toBe(true);
+    expect(new RegExp(queuedRow.pattern, "u").exec("└ Reply with exactly: QUEUED-CAP-06")?.groups?.text).toBe("Reply with exactly: QUEUED-CAP-06");
+    // No harness that draws the hint under its texts has taken the field.
+    expect(parseProfile(rawClaude()).keys.queuedRow?.hintAbove).toBeUndefined();
+    expect(parseProfile(rawCodex()).keys.queuedRow?.hintAbove).toBeUndefined();
+  });
+
   it("claude: the footer rows name the agents panel and its hints, and no statusline row (incident 2026-10-16)", () => {
     const rows = parseProfile(rawClaude()).idle.volatile.below.footerRows!;
     const nameOf = (text: string): string | null => rows.find((row) => new RegExp(row.pattern, "u").test(text))?.name ?? null;
@@ -468,7 +489,9 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     collapse: { text: "[Image #1]", group: "", value: "" },
     submit: ["Enter"],
     probeStatus: "provisional",
-    enterWhileRunning: undefined,
+    // Muse Code 1.4.10 (lab, 2026-10-18): Enter steers a turn, Tab queues in it (MUSE-06, #519).
+    enterWhileRunning: "steers",
+    queueKey: "Tab",
     pasteSettleMs: 350,
   },
   {
@@ -584,7 +607,45 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     enterWhileRunning: "queues",
     rangeStatus: "provisional",
   },
+  {
+    id: "kiro",
+    binary: "kiro-cli",
+    versionOutput: "kiro-cli 2.32.0\n",
+    version: "2.32.0",
+    above: "2.32.1",
+    takes: [
+      { anchor: "top", row: "─".repeat(60) },
+      { anchor: "prompt", row: "› ask a question or describe a task ↵", draft: "ask a question or describe a task ↵" },
+      { anchor: "prompt", row: "› collie normal draft probe", draft: "collie normal draft probe" },
+      { anchor: "prompt", row: "›" },
+      { anchor: "bottom", row: "" },
+    ],
+    refuses: [
+      { anchor: "top", row: "──── hello" },
+      { anchor: "prompt", row: "  collie normal draft probe" },
+      { anchor: "prompt", row: "❯ collie normal draft probe" },
+    ],
+    collapse: { text: "40 lines ▸", group: "lines", value: "40" },
+    submit: ["Enter"],
+    probeStatus: "verified",
+    enterWhileRunning: "steers",
+  },
 ];
+
+describe("kiro's running signs", () => {
+  it("the busy prompt row, the hint and the queued row are all running rows, and a draft that names the busy line later is not", () => {
+    // Given: Kiro's profile as shipped.
+    const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "kiro.json"), "utf8"));
+    if (raw === undefined) throw new Error("kiro.json is not a JSON object");
+    const rows = (parseProfile(raw).idle.runningRows ?? []).map((source) => new RegExp(source, "u"));
+    const running = (text: string): boolean => rows.some((sign) => sign.test(text));
+    // Then: each sign matches its own row, and the prompt sign is anchored on the glyph and the busy words.
+    expect(running("›  Kiro is working · 1s · Type to steer · Ctrl+S to queue")).toBe(true);
+    expect(running("› ask why Kiro is working · so slowly")).toBe(false);
+    expect(running("ᗥ Thinking... (esc to cancel)")).toBe(true);
+    expect(running("  ◇ 1 message queued")).toBe(true);
+  });
+});
 
 describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
   const profile = (): Profile => loadProfiles().get(c.id)!;
@@ -742,10 +803,21 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "notices"], "no list")).path).toBe("idle.notices");
     expect(failure(change(rawClaude(), ["idle", "notices", 0], "no object")).path).toBe("idle.notices[0]");
     expect(parseProfile(rawClaude()).idle.notices).toEqual([
-      { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)" },
+      { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)", body: true },
       { head: "^● How is Claude doing this session\\? \\(optional\\)$" },
+      { head: "^✦ Dismissed\\.(?=\\s|$)" },
     ]);
     expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
+  });
+
+  it("accepts `body: true` on a notice head and rejects any other value", () => {
+    expect(parseProfile(change(rawClaude(), ["idle", "notices", 1, "body"], true)).idle.notices?.[1]).toEqual({
+      head: "^● How is Claude doing this session\\? \\(optional\\)$",
+      body: true,
+    });
+    for (const bad of [false, "true", 1, null, {}]) {
+      expect(failure(change(rawClaude(), ["idle", "notices", 0, "body"], bad)).path, JSON.stringify(bad)).toBe("idle.notices[0].body");
+    }
   });
 
   it("accepts a profile that names no hook", () => {
@@ -785,6 +857,7 @@ describe("parseProfile names the failing field", () => {
     ["a queued row pattern with no text group", ["keys", "queuedRow", "pattern"], "^❯ .*$", "keys.queuedRow.pattern"],
     ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
+    ["a queued row hintAbove that is not a boolean", ["keys", "queuedRow", "hintAbove"], "above", "keys.queuedRow.hintAbove"],
     ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
     ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],

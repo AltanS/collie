@@ -831,6 +831,101 @@
    "version": "2.1.299",
    "state": "dialog"
   },
+  "claude--v2299-ask-field-multi-focused-cleared.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-focused-unticked.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-pointer-submit.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-multi-ticked-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-three-lines.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-focused-wrapped.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-single-typed-off-row.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-review-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-cleared.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-focused.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizard-revisit-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-empty.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-typed.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
+  "claude--v2299-ask-field-wizmulti-focused-unticked.txt": {
+   "harness": "claude",
+   "version": "2.1.299",
+   "state": "dialog"
+  },
   "claude--v2299-ask-under-task-list.txt": {
    "harness": "claude",
    "version": "2.1.299",
@@ -981,6 +1076,31 @@
    "version": "2.1.302",
    "state": "running"
   },
+  "claude--v2304-heads-up-dismissed--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-dismissed--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-dismissed-after-explain--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-explained--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
+  "claude--v2304-heads-up-explained--w65.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "idle"
+  },
   "claude--v2303-titled-edge-working--w160.txt": {
    "harness": "claude",
    "version": "2.1.303",
@@ -1000,6 +1120,16 @@
    "harness": "claude",
    "version": "2.1.303",
    "state": "idle"
+  },
+  "claude--v2304-ask-no-question-mark--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
+  "claude--v2304-ask-no-question-mark-plain--w135.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
   },
   "claude--v2302-turn-ended-yn--w119.txt": {
    "harness": "claude",
@@ -2456,6 +2586,351 @@
    "version": "0.22.2",
    "state": "popup"
   },
+  "kiro--v2-idle-w119.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-approval-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-always-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-clipped-w40.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-approval-edit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-draft-cwd-wrapped-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-draft-wrapped-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "draft"
+  },
+  "kiro--v3-idle-oneline-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-idle-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-idle-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "idle"
+  },
+  "kiro--v3-mcp-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-clipped-w40.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-mcp-wrapped-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-read-wrapped-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-edit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-trusted-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-replace-trusted-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-running-steered-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "running"
+  },
+  "kiro--v3-running-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "running"
+  },
+  "kiro--v3-slash-help-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-menu-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-model-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-slash-quit-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "popup"
+  },
+  "kiro--v3-write-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-denied-request-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-denied-request-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-lines-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-always-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-trusted-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-write-viewport-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
   "muse--approval-date-147.txt": {
    "harness": "muse",
    "version": "1.4.7",
@@ -2561,10 +3036,20 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "muse--done-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "idle"
+  },
   "muse--done.txt": {
    "harness": "muse",
    "version": "unversioned",
    "state": "idle"
+  },
+  "muse--draft-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "draft"
   },
   "muse--draft-blank-row.txt": {
    "harness": "muse",
@@ -2596,9 +3081,34 @@
    "version": "unversioned",
    "state": "draft"
   },
+  "muse--filter-effort-nomatch.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-effort-typed.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-effort.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
+  "muse--filter-hud.txt": {
+   "harness": "muse",
+   "version": "unversioned",
+   "state": "dialog"
+  },
   "muse--fresh-idle.txt": {
    "harness": "muse",
    "version": "unversioned",
+   "state": "idle"
+  },
+  "muse--idle-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
    "state": "idle"
   },
   "muse--palette-exact.txt": {
@@ -2636,6 +3146,16 @@
    "version": "1.4.8",
    "state": "popup"
   },
+  "muse--queued-input-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "running"
+  },
+  "muse--probe-draft-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "draft"
+  },
   "muse--prompt-hint-1410.txt": {
    "harness": "muse",
    "version": "1.4.10",
@@ -2665,6 +3185,16 @@
    "harness": "muse",
    "version": "1.4.8",
    "state": "dialog"
+  },
+  "muse--running-checking-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "running"
+  },
+  "muse--running-command-1410.txt": {
+   "harness": "muse",
+   "version": "1.4.10",
+   "state": "running"
   },
   "muse--slash-palette-1410.txt": {
    "harness": "muse",

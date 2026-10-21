@@ -9,12 +9,12 @@
 // status inside it as separate styled segments — probed on `pane.read format:ansi`, 2026-08-21).
 // Pure functions, no I/O, no React.
 
-import { isBlank, lineText, type StyledLine } from "../../blocks";
+import { isBlank, lastNonBlankIndex, lineText, type StyledLine } from "../../blocks";
 
-// `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
-// neutral core (lib/blocks.ts). Re-exported here so the Grok grammars keep their single import site
+// `lineText`, `isBlank` and `lastNonBlankIndex` belong to rows, not to any grammar, so they live in
+// the neutral core (lib/blocks.ts). Re-exported here so the Grok grammars keep their single import site
 // — the same arrangement omp/markers.ts and claude/markers.ts use, for the same reason.
-export { isBlank, lineText };
+export { isBlank, lastNonBlankIndex, lineText };
 
 /**
  * Drop TRAILING whitespace only. Every one of Grok's box rows is padded out to the terminal's full
@@ -150,13 +150,6 @@ const CHIP_ROW = /^(?:Logged in with API key\s+│\s+)?\[stable\]$/;
 /** True when the row is exactly the startup screen's `[stable]` channel chip, or its API-key form. */
 export function isStatusChipRow(text: string): boolean {
   return CHIP_ROW.test(rstrip(text).trimStart());
-}
-
-/** Index of the last non-blank row in `texts`, or -1 when the buffer is all blank. */
-export function lastNonBlankIndex(texts: string[]): number {
-  let i = texts.length - 1;
-  while (i >= 0 && isBlank(texts[i]!)) i--;
-  return i;
 }
 
 // The `┃` gutter card shared by the permission and ask dialogs. Both paint the same option row

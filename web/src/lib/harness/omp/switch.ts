@@ -90,6 +90,7 @@
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
+import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -115,9 +116,6 @@ const BOXED = /^│ ([\s\S]*?)\s*│$/;
 /** omp's `MIN_VISIBLE`, and a bound well past any real terminal (sixty rows is a 172-row pane). */
 const MIN_WINDOW = 5;
 const MAX_WINDOW = 60;
-
-/** The bridge's cap on a bound region less a margin, as resume.ts. */
-const MAX_REGION_CHARS = 32_000;
 
 /** How far above the footer the title may sit: the window bound plus the fixed rows. */
 const TITLE_SCAN_WINDOW = MAX_WINDOW + 12;

@@ -1,0 +1,72 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mPhrase Some [0m[38;2;153;153;153ma2.1.304[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀[0m  [0m[38;2;153;153;153mSome 5.5 line some phrase · Sample Run[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153mA:\run\_the\Phrase\sample[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLine words .in some to A:\run\_the\Phrase\sample\.run\in\a the[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55min a line, the Line some run some, to sentence plain, to [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnotation words, to words notation. Some line, words line some [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mrun some line. An statement.[0m[48;2;55;55;55m                                   [0m
+
+  [0m[38;2;153;153;153mSentence run [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m example, line [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mNeutral the plain to notation words; 4 to 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mPlain example: 10 to 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m●[0m line
+
+  The plain in line: [0m[38;2;177;185;249m04-sample.in[0m some a example phrase the
+  phrase words notation'a line example run sentence TO example an
+  to neutral example phrase in run some statements, words
+  Phrase. In line'a line, an plain in a some line words notation.
+
+[0m[38;2;153;153;153m✻ Paragraph run 2a 5a · some 10:45 TO[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mSome plain .to line an A:\the\_run\Sample\phrase\.the\to\a run[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mto a some, run Some line the line, an notation words, an [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55msentence plain, an plain sentence. Line some, plain some line [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mthe line some. In paragraph.[0m[48;2;55;55;55m                                   [0m
+
+  [0m[38;2;153;153;153mNotation the [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m neutral, some [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m plain [0m
+
+[0m[38;2;255;255;255m● [0mExample run words an words; 4 in 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mPlain example: 10 in 12 some.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mline
+
+  The plain an line: [0m[38;2;177;185;249m09-example.an[0m some run THE statementst the
+  run sentence plain some neutral example an sentence, run the
+  neutral the run some neutral sentence run the plain. To line'a
+  line, in plain paragraph plain.
+
+[0m[38;2;153;153;153m✻ Sample run 1a 8a · some 10:46 IN[0m
+
+
+
+
+
+
+
+
+    
+
+                                                             [0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦[0m [0m[38;2;153;153;153mDismissed.   [0m[38;2;177;185;249m1[0m: That was helpful   [0m[38;2;177;185;249m2[0m: Didn’t understand
+  [0m[38;2;177;185;249m0[0m: Dismiss
+
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+❯ [0m[2mRead every plain note in the sample folder and the example one…[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mthe: [0m[38;2;63;185;106m 12%[0m[38;2;153;153;153m  |  run: 5a [0m[38;2;238;100;87m 44%[0m[38;2;153;153;153m (3a43a) · 7a [0m[38;2;239;92;92m 12%[0m[38;2;153;153;153m / A [0m[38;2;68;182;135m  0%[0m[38;2;153;153;153m (6a19a…[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle) · ← 2 agents[0m

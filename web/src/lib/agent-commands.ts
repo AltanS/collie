@@ -5,9 +5,9 @@
 // the UI sends `/command` (+ submit key) for no-arg commands, or inserts `/command ` into the
 // composer for the user to complete when the command takes an argument.
 //
-// `omp` is the one catalog sourced from CAPTURES rather than docs — see its section for the two rules
-// that follow from that, both of which apply to any future palette-sourced agent: only what a capture
-// actually shows, and nothing the capturing user's own machine contributed.
+// `omp` and `kiro` are the catalogs sourced from CAPTURES rather than docs — see omp's section for
+// the two rules that follow from that, both of which apply to any palette-sourced agent: only what a
+// capture actually shows, and nothing the capturing user's own machine contributed.
 //
 // A row marked `// harness-bar` has a BUTTON on the harness bar above the key rail
 // (`web/src/lib/harness-bar.ts`). Renaming or removing one of those commands changes a surface the
@@ -276,6 +276,26 @@ const GROK: readonly AgentCommand[] = [
   { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// ── Kiro ─────────────────────────────────────────────────────────────────────
+// Sourced from CAPTURES of kiro-cli 2.32.0's own `/` menu (V3), under omp's two rules above: only
+// what a capture shows, and nothing the capturing machine added. The menu ran with an empty
+// KIRO_HOME, so it lists built-in commands only. Each description is the menu's own, without its
+// "(tab for sub-commands)" note. `/model` and `/agent` open pickers the Kiro adapter does not lift:
+// the phone shows them on the raw mirror, to be driven with the keys pad and closed with Escape. So,
+// as for omp, `common: false`.
+const KIRO: readonly AgentCommand[] = [
+  // kiro--v3-slash-help-w120.txt
+  { command: "/help", description: "Show available commands", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-model-w120.txt
+  { command: "/model", description: "List or switch models", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-menu-w120.txt, the unfiltered menu's first rows.
+  { command: "/agent", description: "List or switch agents", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/compact", description: "Compact conversation history to reduce context usage", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/clear", description: "Clear the conversation and start a fresh session", takesArg: false, argHint: "", common: false, dangerous: true },
+  // kiro--v3-slash-quit-w120.txt
+  { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -286,6 +306,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["opencode", OPENCODE],
   ["omp", OMP],
   ["grok", GROK],
+  ["kiro", KIRO],
   // Herdr reports this agent under both names, and canonicalAgent() folds neither onto the other,
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],

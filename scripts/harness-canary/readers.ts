@@ -25,6 +25,7 @@ export interface Adapter {
   extractInputDraft(lines: Line[]): string | null;
   composerReady?(lines: Line[]): boolean;
   draftCarriesSend?(sent: string, draft: string): boolean;
+  draftIsOpaque?(draft: string): boolean;
 }
 
 export type ReplyOutcome =
@@ -40,6 +41,8 @@ export interface Readers {
   adapterFor(agent: string): Adapter | undefined;
   draftCarriesSend(sent: string, draft: string | null): boolean;
   sendGuardedReply(paneId: string, text: string, agent: string): Promise<ReplyOutcome>;
+  /** The shipped harness bar for an agent. Absent when the checkout predates `harness-bar.ts`. */
+  readonly barFor?: (agent: string) => readonly BarItem[];
   /**
    * Stamp a successful read into the readers' own lib/liveness.ts (M46). Absent when the checkout
    * predates it (`--readers` at v1.13.1), where the reply action has no liveness gate to satisfy.
@@ -47,6 +50,15 @@ export interface Readers {
   readonly markLive?: (paneId: string) => void;
 }
 
+/** One harness-bar button, as `web/src/lib/harness-bar.ts` ships it. */
+export interface BarItem {
+  readonly id: string;
+  readonly command: string;
+  readonly confirm?: boolean;
+}
+interface BarModule {
+  barFor(agent: string): readonly BarItem[];
+}
 interface LivenessModule {
   markLive(paneId: string): void;
 }
@@ -79,6 +91,7 @@ export async function loadReaders(root: string): Promise<Readers> {
   const harness: HarnessModule = await import(join(lib, "harness", "index.ts"));
   const reply: ReplyModule = await import(join(lib, "reply-action.ts"));
   const liveness: LivenessModule | undefined = await import(join(lib, "liveness.ts")).catch(() => undefined);
+  const bar: BarModule | undefined = await import(join(lib, "harness-bar.ts")).catch(() => undefined);
   return {
     root,
     parse: (text) => blocks.splitLines(ansi.parseAnsi(text)),
@@ -88,5 +101,6 @@ export async function loadReaders(root: string): Promise<Readers> {
     draftCarriesSend: (sent, draft) => reply.draftCarriesSend(sent, draft),
     sendGuardedReply: (paneId, text, agent) => reply.sendGuardedReply({ paneId, text, agent }),
     markLive: liveness === undefined ? undefined : (paneId) => liveness.markLive(paneId),
+    barFor: bar === undefined ? undefined : (agent) => bar.barFor(agent),
   };
 }

@@ -9,12 +9,12 @@
 // Pure functions, no I/O, no React.
 
 import type { AnsiSegment } from "../../ansi";
-import { isBlank, lineText, type StyledLine } from "../../blocks";
+import { isBlank, lastNonBlankIndex, lineText, type StyledLine } from "../../blocks";
 
-// `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
-// neutral core (lib/blocks.ts). Re-exported here so the Codex grammars keep their single import
+// `lineText`, `isBlank` and `lastNonBlankIndex` belong to rows, not to any grammar, so they live in
+// the neutral core (lib/blocks.ts). Re-exported here so the Codex grammars keep their single import
 // site — the same arrangement the other adapters use, for the same reason.
-export { isBlank, lineText };
+export { isBlank, lastNonBlankIndex, lineText };
 
 /** Drop TRAILING whitespace only. Codex pads rows to the pane width; an anchored `…$` regex
  *  would never match without this. Leading whitespace is load-bearing (it distinguishes the
@@ -442,13 +442,6 @@ export function promptText(text: string): string | null {
 
 /** The empty composer's placeholder, captured verbatim; chrome also requires its dim renderer style. */
 export const PLACEHOLDER = "Ask Codex to do anything";
-
-/** Index of the last non-blank row in `texts`, or -1 when the buffer is all blank. */
-export function lastNonBlankIndex(texts: string[]): number {
-  let i = texts.length - 1;
-  while (i >= 0 && isBlank(texts[i]!)) i--;
-  return i;
-}
 
 // Codex separates every section of a screen — prompt/status, options/footer, question/options —
 // with exactly one blank row (every 2026-08-22 capture). The gap helpers accept up to two so a

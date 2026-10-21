@@ -8,7 +8,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
+unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
 **walky talky: send is refused, "run this inside a pane"** · **walky talky: the message sits in the
@@ -158,6 +158,19 @@ The pane never reported a session, which its `agent-sessions` line lists by pane
 not taken a turn yet, which is not a fault: nothing is shown before it is measured, so the chip appears
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
+
+**A Kiro pane's History opens empty.** Check that the pane's Kiro holds a session lock:
+
+```sh
+cat ~/.kiro/sessions/*/*/.lock
+```
+
+Herdr names no session for a Kiro pane, so Collie finds it by the lock the running Kiro holds. That
+works only on Herdr, the one multiplexer that lists a pane's foreground processes, and only when exactly one Kiro process runs there. Otherwise History says the pane has no agent session.
+
+Collie reads Kiro V3 sessions, started with `--v3` or `--agent-engine v3`, or with V3 set as the
+engine in Kiro's own settings, so start Kiro again that way in that pane. Kiro has no Herdr hook to
+install. If its sessions live somewhere else, set `kiro_root`, then run `collie restart`.
 
 **A pane shows the terminal where you expected Chat.** Chat is the default for an agent pane, so one
 of two things holds. This device chose the terminal earlier: open the pane's **⋮** menu and tap

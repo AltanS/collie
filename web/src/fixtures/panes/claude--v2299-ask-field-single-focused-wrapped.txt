@@ -1,0 +1,30 @@
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mNow call AskUserQuestion exactly once with THREE questions (multiSelect false on all): Q1 'Which fruit?' header 'Fruit' options Apple, Pear; Q2 'Which [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdrink?' header 'Drink' options Tea, Coffee; Q3 'Which city?' header 'City' options Paris, Rome. After I answer, reply with only the exact tool result [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtext verbatim, then stop.[0m[48;2;55;55;55m                                                                                                                                [0m
+
+[0m[38;2;153;153;153m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which fruit? → Kiwi[0m
+     [0m[38;2;153;153;153m· Which drink? → Tea[0m
+     [0m[38;2;153;153;153m· Which city? → Lisbon[0m
+
+[0m[38;2;255;255;255m● [0mThe user answered: "Which fruit?"="Kiwi", "Which drink?"="Tea", "Which city?"="Lisbon"
+   
+[0m[38;2;153;153;153m✻ Worked for 6s · done 1:51 AM[0m
+   
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mCall AskUserQuestion once more with ONE question: 'Which animal?' header 'Animal' options Cat, Dog. multiSelect false. Then reply with only the exact [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtool result verbatim.[0m[48;2;55;55;55m                                                                                                                                    [0m
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Animal [0m
+
+[0m[1m[38;2;255;255;255mWhich animal?[0m
+
+  [0m[38;2;153;153;153m1. [0mCat
+     [0m[38;2;153;153;153mA small domestic feline[0m
+  [0m[38;2;153;153;153m2. [0mDog
+     [0m[38;2;153;153;153mA loyal domestic canine[0m
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m3. [0mA red panda, because it is small and climbs trees and has a striped tail and a round face and it eats bamboo most of the day and sleeps in the
+     branches when it is warm, which seems like a very sensible way to live if you ask me, honestly the best of all the animals
+[0m[38;2;153;153;153m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel[0m

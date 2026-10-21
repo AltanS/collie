@@ -209,7 +209,8 @@ export interface ForegroundProcess {
   readonly argv: readonly string[];
   /**
    * The process id, when the multiplexer reports it (Herdr does). The hook edges (M56 spec 11) use it
-   * to check that the pid an edge names is in the pane's foreground. Absent means "not reported".
+   * to check that the pid an edge names is in the pane's foreground, and `discover` may match it to
+   * the harness's own record of which process owns a session. Absent means "not reported".
    */
   readonly pid?: number;
 }
@@ -269,9 +270,10 @@ export interface JournalAdapter {
    * OPTIONAL, and absent everywhere but the harnesses whose panes carry no `agentSession`:
    * custom-source session reports never surface in the pane record (Herdr keeps a session only
    * from its own integrations), Muse has no integration of its own (journal/muse.ts), and OpenClaw
-   * reports through a source Herdr drops (journal/openclaw.ts). The history and chat routes call
-   * this when the pane names no session, and `toPaneWire` offers the History affordance on its
-   * presence, so a discoverable pane reads exactly like a reporting one.
+   * reports through a source Herdr drops (journal/openclaw.ts), and Herdr names none for a Kiro
+   * pane (journal/kiro-discovery.ts). The history and chat routes call this when the pane names no session, and
+   * `toPaneWire` offers the History affordance on its presence, so a discoverable pane reads
+   * exactly like a reporting one.
    *
    * Two clues, and an adapter takes the one its harness gives. `cwd` is the pane's folder, which is
    * enough where a folder holds one session (Muse). `screen` is the pane's visible text, for a

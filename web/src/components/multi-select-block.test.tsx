@@ -4,9 +4,18 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+// The api layer is mocked so a tap can run the real multi-select action against a scripted pane.
+vi.mock("@/lib/api", () => ({
+  fetchPane: vi.fn(),
+  sendKeys: vi.fn(),
+  sendReply: vi.fn(),
+}));
+
+import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type MultiSelectModel } from "@/lib/blocks";
 import { detectMultiSelect } from "@/lib/harness/claude/multi-select";
+import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { MultiSelectBlock } from "./multi-select-block";
 
 // Anchored on this file's directory (not `new URL(import.meta.url)`, which Vite rewrites to an asset).
@@ -16,6 +25,18 @@ function fixtureModel(name: string): MultiSelectModel {
   const model = detectMultiSelect(splitLines(parseAnsi(fixtureText(name))));
   if (!model) throw new Error(`fixture ${name} did not detect a multi-select dialog`);
   return model;
+}
+
+/** The wizmulti-focused-typed capture after one Up: the pointer off the field, on `3. Basil` above it. */
+function pointerOnBasil(text: string): string {
+  const lines = text.split("\n");
+  // The last match: the prompt echoed above the dialog names the same words.
+  const field = lines.findLastIndex((l) => l.includes("❯") && l.includes("Pineapple"));
+  const basil = lines.findLastIndex((l) => l.includes("[ ] Basil"));
+  if (field < 0 || basil < 0 || !lines[basil]!.startsWith("  ")) throw new Error("capture layout moved");
+  lines[field] = lines[field]!.replace("❯", " ");
+  lines[basil] = `❯${lines[basil]!.slice(1)}`;
+  return lines.join("\n");
 }
 
 describe("MultiSelectBlock — checkbox screen", () => {
@@ -223,5 +244,147 @@ describe("MultiSelectBlock — as a step of a wizard", () => {
   it("shows no stepper for a standalone single-question dialog", () => {
     render(<MultiSelectBlock multi={fixtureModel("claude--select-multiselect-single.txt")} onAction={vi.fn()} />);
     expect(screen.queryByRole("list", { name: "Questions" })).not.toBeInTheDocument();
+  });
+});
+
+// The question's own answer field (ADR 0113): a typed answer is one more ticked choice, so the card
+// shows it as a checkbox row; while the field has the keyboard in the terminal a digit is typed into
+// it and `Left` moves its caret, so a toggle, the escape and a step arrow first move the pointer off it
+// (lib/multi-select-action.ts `offField`). Only the field's own row locks: its digit would be typed.
+describe("MultiSelectBlock — the answer field", () => {
+  const OFFER = "Type your own answer";
+  const capture = (name: string) => fixtureModel(`claude--v2299-ask-field-${name}.txt`);
+
+  it("the offer opens the editor, which says the answer becomes a ticked choice", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByText(/Adds your answer as a ticked choice/)).toBeInTheDocument();
+  });
+
+  it("a typed field is a checkbox row of its own, and Change opens the editor holding it", async () => {
+    const onAction = vi.fn();
+    const onAnswer = vi.fn(() => true);
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-pointer-submit")} onAction={onAction} onAnswer={onAnswer} />);
+    const row = screen.getByRole("checkbox", { name: /Mushroom/ });
+    expect(row).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText(/In the answer field:/)).not.toBeInTheDocument();
+    await user.click(row);
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "toggle", n: 4 });
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+  });
+
+  it("a focused field leaves the options, the escape and Next step live, and a tap leaves the field first", async () => {
+    const focusedText = fixtureText("claude--v2299-ask-field-wizmulti-focused-typed.txt");
+    const offText = pointerOnBasil(focusedText);
+    const multi = fixtureModel("claude--v2299-ask-field-wizmulti-focused-typed.txt");
+    const queue = [focusedText, offText, offText];
+    vi.mocked(fetchPane).mockImplementation(async () => ({
+      paneId: "w1:p1",
+      text: queue.length > 1 ? queue.shift()! : queue[0]!,
+      truncated: false,
+      revision: 5,
+    }));
+    vi.mocked(sendKeys).mockResolvedValue({ ok: true });
+    const onAction = async (intent: MultiSelectIntent) => {
+      await submitMultiSelectIntent({
+        paneId: "w1:p1",
+        requestedLines: 600,
+        detectedRevision: 5,
+        agent: "claude",
+        sleep: async () => {},
+        multi,
+        intent,
+      });
+    };
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={multi} onAction={onAction} onAnswer={vi.fn()} />);
+
+    expect(screen.queryByText(/The answer field has the keyboard in the terminal/)).not.toBeInTheDocument();
+    for (const name of [/Cheese/, /Olives/, /Basil/]) {
+      expect(screen.getByRole("checkbox", { name })).toBeEnabled();
+    }
+    expect(screen.getByRole("checkbox", { name: /Pineapple/ })).toBeDisabled();
+    for (const name of [/Chat about this/, /Next step/, /^Next$/, /Change this answer/]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+
+    await user.click(screen.getByRole("checkbox", { name: /Olives/ }));
+    expect(vi.mocked(sendKeys).mock.calls.map((c) => c[1])).toEqual([["Up"], ["2"]]);
+  });
+
+  it("keeps the draft on screen when the answer is refused", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectBlock multi={capture("multi-ticked-empty")} onAction={vi.fn()} onAnswer={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+
+  // The open editor hides what the field holds, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    function holding(multi: MultiSelectModel, text: string): MultiSelectModel {
+      if (multi.phase !== "checkbox" || !multi.field) throw new Error("capture has no answer field");
+      return { ...multi, field: { ...multi.field, text } };
+    }
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "Desk words")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal now holds “Desk words”. Send again to replace it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const multi = capture("multi-pointer-submit");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal was emptied. Send again to fill it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mushroom");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Mushroom");
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const multi = capture("multi-ticked-empty");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<MultiSelectBlock multi={multi} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<MultiSelectBlock multi={holding(multi, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
   });
 });

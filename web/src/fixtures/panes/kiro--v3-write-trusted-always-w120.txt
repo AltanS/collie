@@ -1,0 +1,18 @@
+↓ Write[0m[38;5;12m /tmp/kiro-fixture/demo/greet.py[0m
+    [0m[38;5;2madded 4 lines[0m in greet.py
+     1[0m[38;5;2m+[0m  [0m[38;5;2mdef greet(name):[0m                                                                                               
+     2[0m[38;5;2m+[0m  [0m[38;5;2m    message = f'hi {name}'[0m                                                                                     
+     3[0m[38;5;2m+[0m                                                                                                                 
+     4[0m[38;5;2m+[0m  [0m[38;5;2m    return message[0m                                                                                             
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Write File requires approval
+ fs_write → greet.py
+ 
+   Allow       
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mAlways allow[0m
+   Deny        
+   Always deny 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to close · Enter to see more options
+                                                                                                                       

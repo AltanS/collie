@@ -600,6 +600,13 @@ export function resolveJournalRoots(
     // root's named profiles are found under it (bridge/journal/hermes.ts), so one root serves the
     // default profile and every named one.
     hermes: envRoots("COLLIE_HERMES_ROOT", hermesHome(env.HERMES_HOME, home), env),
+    // Kiro V3 writes its sessions under $KIRO_HOME/sessions, or ~/.kiro/sessions when KIRO_HOME is unset.
+    // kiro-cli 2.32.0 writes to ~/.kiro when KIRO_HOME is blank or spaces, so a blank value counts as unset.
+    kiro: envRoots(
+      "COLLIE_KIRO_ROOT",
+      join(env.KIRO_HOME?.trim() || join(home, ".kiro"), "sessions"),
+      env,
+    ),
     // Muse keeps date-partitioned session logs under the XDG data dir, one session.jsonl per
     // session uuid. Muse publishes no home var of its own, so the Collie override is the only
     // relocation.

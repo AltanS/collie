@@ -22,6 +22,7 @@ describe("hasBlockGrammar", () => {
     expect(hasBlockGrammar("muse")).toBe(true);
     expect(hasBlockGrammar("opencode")).toBe(true);
     expect(hasBlockGrammar("pi")).toBe(true);
+    expect(hasBlockGrammar("kiro")).toBe(true);
   });
 
   it("is false for every unregistered agent (no adapter ⇒ raw mirror)", () => {
@@ -39,6 +40,14 @@ describe("hasBlockGrammar", () => {
     expect(adapterFor("GROK")).toBeUndefined();
     expect(hasBlockGrammar("grok-build")).toBe(false);
     expect(adapterFor("grok")?.agent).toBe("grok");
+  });
+
+  it("registers Kiro only by its exact agent string", () => {
+    expect(adapterFor("kiro")?.agent).toBe("kiro");
+    for (const agent of ["Kiro", "kiro-cli", "kiro-v3", "kiro-beta", "amazon-q"]) {
+      expect(adapterFor(agent)).toBeUndefined();
+      expect(hasBlockGrammar(agent)).toBe(false);
+    }
   });
 
   it("is false for an absent agent", () => {

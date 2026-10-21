@@ -52,6 +52,12 @@ describe("buildRecipe", () => {
     expect(buildRecipe("claude", [])).toEqual({ ok: true, command: "claude", label: "Claude Code", noPrompts: false, options: [] });
   });
 
+  test("Kiro recipes retain the required V3 flag and offer no permission bypass", () => {
+    expect(buildRecipe("kiro", [])).toEqual({ ok: true, command: "kiro-cli", label: "Kiro", noPrompts: false, options: [] });
+    expect(recipeOptions("kiro")).toEqual([]);
+    expect(buildRecipe("kiro", ["trust-all"])).toEqual({ ok: false, reason: "unknown_option" });
+  });
+
   test("options in TABLE order, whatever order they were picked in", () => {
     const a = buildRecipe("claude", ["continue", "skip", "opus"]);
     const b = buildRecipe("claude", ["opus", "skip", "continue"]);
@@ -109,6 +115,10 @@ describe("scanNoPrompts", () => {
     ["hermes --yolo", true],
     ["agy --dangerously-skip-permissions", true],
     ["agy --mode plan", false],
+    ["kiro-cli chat --v3 --trust-all-tools", true],
+    ["kiro-cli chat -a", true],
+    ["kiro-cli chat --trust-tools fs_read", false],
+    ["make -a", false],
     ["make --always-approve", false],
     ["~/bin/opencode --auto", true],
     ["C:\\Tools\\opencode.exe --auto", true],

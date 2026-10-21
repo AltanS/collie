@@ -53,6 +53,7 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "bridge/mux/zellij/exec.ts", pattern: "startsWithSlash", count: 1, why: "zellij has no Windows build" },
   { file: "bridge/mux/tmux/adapter.ts", pattern: "splitOnSlash", count: 1, why: "tmux session path, tmux has no Windows build" },
   { file: "bridge/operator-commands.ts", pattern: "startsWithSlash", count: 1, why: "a slash command such as /model, not a path" },
+  { file: "bridge/journal/muse.ts", pattern: "startsWithSlash", count: 1, why: "a recorded slash command such as /model, not a path" },
   { file: "bridge/worktree-base.ts", pattern: "startsWithSlash", count: 1, why: "a git ref name, `/`-separated on every host, never a path" },
   { file: "bridge/worktree-base.ts", pattern: "splitOnSlash", count: 1, why: "the same git ref name, cut into its components" },
   { file: "bridge/worktree-branch.ts", pattern: "startsWithSlash", count: 1, why: "a new branch name, `/`-separated on every host, never a path" },

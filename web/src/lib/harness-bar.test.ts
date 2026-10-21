@@ -59,7 +59,7 @@ describe("the shipped bar", () => {
   });
 
   it("renders nothing for an agent with no bar, and for no agent at all", () => {
-    for (const agent of ["grok", "opencode", "agy", "antigravity", "bash", "", undefined, null]) {
+    for (const agent of ["grok", "opencode", "agy", "antigravity", "kiro", "bash", "", undefined, null]) {
       expect(barFor(agent), `${String(agent)} has no bar`).toEqual([]);
     }
   });
