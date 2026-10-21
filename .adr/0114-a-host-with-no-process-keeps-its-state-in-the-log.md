@@ -9,10 +9,9 @@
 - **Trail:** Altan, 2026-10-21: "i'd like collie to become the visual layer for these types of durable
   agents. we already have the sdk that supports Pi durable, lets add this one to it." Vercel's
   `durable-harness`, published 2026-10-15, makes Pi durable on a log it calls a World and has no
-  approval primitive and no phone screen. Three advisors reviewed the first design on 2026-10-21, each
-  from a different side, and argued for the roads this record closes: a small server beside the
-  functions that holds the state, one random epoch for each function instance, and a hook that waits in
-  memory and trusts that it is the only owner · `packages/durable-sdk/src/durable-harness/` ·
+  approval primitive and no phone screen. Three advisors reviewed the first design on 2026-10-21, each from a different side. It had
+  an epoch per deployment, a hook that waited in memory, and a run list for the whole World. They changed it to the
+  rules below, and the roads they turned down are the ones this record closes · `packages/durable-sdk/src/durable-harness/` ·
   `packages/durable-sdk/src/core/journal.ts` · `bridge/mux/durable/WIRE.md` (the appendix "A host with no
   process") · `docs/durable-agents.md` · the spike in the M66 tracker, spec 01 ·
   [ADR 0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) ·
