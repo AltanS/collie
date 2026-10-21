@@ -8,7 +8,7 @@
   [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) are not changed, and their exit applies.
 - **Trail:** Altan, 2026-10-21: "i'd like collie to become the visual layer for these types of durable
   agents. we already have the sdk that supports Pi durable, lets add this one to it." Vercel's
-  `durable-harness`, published 2026-10-15, makes Pi durable on a log it calls a World and has no
+  `durable-harness`, first published 2026-10-15 and beta.6 on 2026-10-19, makes Pi durable on a log it calls a World and has no
   approval primitive and no phone screen. Three advisors reviewed the first
   design on 2026-10-21, each from a different side. It had an epoch per deployment, a hook that waited in
   memory, and a run list for the whole World. They changed it to the rules below ·
@@ -43,7 +43,7 @@ a faux model, no key) answered what the design needed:
 - Taking a session over and aborting it stops the turn in all three states (a waiting hook, a running
   tool, a streaming reply) in about 15 ms, and nothing resumes it. A tool that is already running in the
   old process still runs to its end and does its side effect, while the log says it was aborted.
-- Pi's silence rule (`recoverAfterMs`) is set on each open, and a wake reopens with the default of 120 s.
+- durable-harness's silence rule (`recoverAfterMs`) is set on each storage open, and a wake reopens with the default of 120 s.
   A wake reruns the hook under the same tool call id.
 - On a local World the queue lives in the memory of one process. A send written by a second process is
   never picked up until the first process restarts.
@@ -108,7 +108,7 @@ release, a public repository that speaks the wire or an outside issue or discuss
 agent must exist. If neither does, the durable code moves to `experiments/`, and the `./durable-harness`
 entry goes with it, in the same commit. The package is deprecated, never unpublished
 ([ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md#the-exit)). A discussion that Altan opens on
-`vercel-labs/durable-harness` may count as the outside one. He decides that, not this record.
+`vercel-labs/durable-harness` may count as the outside one. Altan decides that, not this record.
 
 Two more things end the entry sooner. `durable-harness` is a beta, and the SDK pins it exactly: if a
 later version moves its API and the entry is not ported within one minor release of Collie, the entry
@@ -124,7 +124,7 @@ the cause, and the Vercel steps leave the page.
   World one session of 200 entries reads in 96 ms at p95, and ten such sessions in 988 ms at p95. Nothing
   is measured on Vercel.
 - A question that waits costs one journal read every 5 s after the first seconds. After 120 s of silence
-  Pi may hand the session to a new process, which reruns the hook under the same tool call id. The
+  durable-harness may hand the session to a new process, which reruns the hook under the same tool call id. The
   question stays one question.
 - The core gains seams (an injectable epoch, rev and turn id; an ask seeded from a record; a receipt
   store that can claim a request id) that the memory path does not use. The socket path stays

@@ -240,9 +240,9 @@ has none for this call. Then it reads the journal again, after 1 s, then 2 s, 4 
 you answer, the question expires or someone stops the turn. A rerun of the call finds its own question
 and waits for the same one, with the same expiry.
 
-Pi's `recoverAfterMs` is the silence after which a new process may take a session over. It belongs to
+durable-harness's `recoverAfterMs` is the silence after which a new process may take a session over. It belongs to
 each open, and its default is 120 s. While the hook waits, the session writes nothing, so on Vercel a
-new function takes the session after 120 s and reruns the hook under the same tool call id. A restart
+new function may take the session after 120 s and rerun the hook; the spike proved this on a local World after a restart, not on Vercel. The rerun keeps the same tool call id. A restart
 of a self-hosted process does the same at once. The
 question stays one question. If you pass a shorter `recoverAfterMs` to your open, a second live process
 can take the session from a live owner. Keep the default.
