@@ -1,0 +1,16 @@
+↓ Shell[0m[38;5;12m printf '%s %s %s %s\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie [0m
+  [0m[38;5;12mcollie_wrap_probe_delta[0m
+    ╰ description=Print the wrap probe, run_in_background=false
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Print the wrap probe requires approval
+ shell → printf '%s %s %s %s\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie
+ collie_wrap_probe_delta
+ 
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mAllow       [0m
+   Always allow
+   Deny        
+   Always deny 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                                                                                      

@@ -1123,43 +1123,109 @@
     "fixture": "kiro--v3-approval-allow-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-allow-w60.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message,\n      run_in_background=false\n\n────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-always-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
   },
   {
     "fixture": "kiro--v3-approval-deny-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-deny-w60.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message,\n      run_in_background=false\n\n────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-denied-request-allow-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_deny_probe\n    ╰ description=Print the deny probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-denied-request-deny-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_deny_probe\n    ╰ description=Print the deny probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub,\n      run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub,\n      run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-no-timeout-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-bare-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_bare_probe\n    ╰ run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Run Command requires approval\n shell → printf collie_bare_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-bare-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_bare_probe\n    ╰ run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Run Command requires approval\n shell → printf collie_bare_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe, run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n  collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe,\n      run_in_background=false\n\n───────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe, run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n  collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe,\n      run_in_background=false\n\n───────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-read-allow-w120.txt",

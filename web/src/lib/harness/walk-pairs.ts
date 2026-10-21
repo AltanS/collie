@@ -131,6 +131,11 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["kiro", "kiro--v3-approval-always-w120.txt", "kiro--v3-approval-deny-w120.txt"],
   ["kiro", "kiro--v3-approval-allow-w60.txt", "kiro--v3-approval-deny-w60.txt"],
   ["kiro", "kiro--v3-approval-denied-request-allow-w120.txt", "kiro--v3-approval-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w120.txt", "kiro--v3-shell-args-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w60.txt", "kiro--v3-shell-args-deny-w60.txt"],
+  ["kiro", "kiro--v3-shell-bare-allow-w120.txt", "kiro--v3-shell-bare-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w120.txt", "kiro--v3-shell-wrapped-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w60.txt", "kiro--v3-shell-wrapped-deny-w60.txt"],
   // Installed V3 file tools: Allow and Deny with the complete read/diff preview unchanged.
   ["kiro", "kiro--v3-read-allow-w120.txt", "kiro--v3-read-deny-w120.txt"],
   ["kiro", "kiro--v3-read-allow-w60.txt", "kiro--v3-read-deny-w60.txt"],

@@ -2836,6 +2836,61 @@
    "version": "2.32.0",
    "state": "running"
   },
+  "kiro--v3-shell-args-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-args-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-args-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-args-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-args-no-timeout-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-bare-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-bare-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-wrapped-allow-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-wrapped-allow-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-wrapped-deny-w120.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
+  "kiro--v3-shell-wrapped-deny-w60.txt": {
+   "harness": "kiro",
+   "version": "2.32.0",
+   "state": "dialog"
+  },
   "kiro--v3-slash-help-w120.txt": {
    "harness": "kiro",
    "version": "2.32.0",
