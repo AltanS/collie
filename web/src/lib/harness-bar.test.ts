@@ -36,8 +36,8 @@ describe("the shipped bar", () => {
     }
   });
 
-  it("names a bar for exactly the four harnesses this milestone drove from a phone", () => {
-    expect(BAR_AGENTS.toSorted()).toEqual(["claude", "codex", "omp", "pi"]);
+  it("names a bar for exactly the five harnesses this milestone drove from a phone", () => {
+    expect(BAR_AGENTS.toSorted()).toEqual(["claude", "codex", "muse", "omp", "pi"]);
   });
 
   it("gives Claude Model, Effort, Compact and Resume, in that order", () => {
@@ -58,6 +58,11 @@ describe("the shipped bar", () => {
     expect(barFor("omp").map((i) => i.id)).toEqual(["model", "compact", "tree", "resume"]);
   });
 
+  it("gives Muse Model, Effort, Compact and Resume, in Claude's order", () => {
+    expect(barFor("muse").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+    expect(barFor("muse").map((i) => i.command)).toEqual(["/model", "/effort", "/compact", "/resume"]);
+  });
+
   it("renders nothing for an agent with no bar, and for no agent at all", () => {
     for (const agent of ["grok", "opencode", "agy", "antigravity", "kiro", "bash", "", undefined, null]) {
       expect(barFor(agent), `${String(agent)} has no bar`).toEqual([]);
@@ -67,6 +72,7 @@ describe("the shipped bar", () => {
   it("reaches a bar through the catalog's own agent ladder", () => {
     expect(barFor("claude-code").map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
     expect(barFor("  CLAUDE ").map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
+    expect(barFor("muse-code").map((i) => i.id)).toEqual(barFor("muse").map((i) => i.id));
   });
 
   it("spells every shipped label as a harnessBar key", () => {

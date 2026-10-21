@@ -57,7 +57,7 @@ export interface HarnessBarItem {
  * section states the rule). Every bar row for one of these must name a capture, because there is no
  * published page to check it against.
  */
-export const CAPTURE_SOURCED: readonly string[] = ["omp"];
+export const CAPTURE_SOURCED: readonly string[] = ["omp", "muse"];
 
 // ── Claude Code ──────────────────────────────────────────────────────────────
 // Model, Effort, Compact, Resume — the four Altan drives Claude Code with from the phone. Each one
@@ -134,6 +134,40 @@ const OMP: readonly HarnessBarItem[] = [
   },
 ];
 
+// ── Muse ─────────────────────────────────────────────────────────────────────
+// Capture-sourced like omp (the catalog section states the rule), so every row names the capture
+// that proves it. Model, Effort, Compact, Resume in Claude's order: `/model` reaches Muse's model
+// picker, `/effort` its effort picker (minimal–xhigh), `/compact` its context compaction, and
+// `/resume` its session picker — each one bare, with Muse's own picker taking the screen, exactly
+// as Claude's bar does. `/hud` and `/loop` stay off the bar: the HUD picker is toggles, not a
+// destination, and a recurring prompt is not a thumb-reach frequent command.
+const MUSE: readonly HarnessBarItem[] = [
+  {
+    id: "model",
+    label: "harnessBar.model",
+    command: "/model",
+    evidence: `${PANES}/muse--palette-hint.txt`,
+  },
+  {
+    id: "effort",
+    label: "harnessBar.effort",
+    command: "/effort",
+    evidence: `${PANES}/muse--filter-effort.txt`,
+  },
+  {
+    id: "compact",
+    label: "harnessBar.compact",
+    command: "/compact",
+    evidence: `${PANES}/muse--slash-palette-1410.txt`,
+  },
+  {
+    id: "resume",
+    label: "harnessBar.resume",
+    command: "/resume",
+    evidence: `${PANES}/muse--resume-picker.txt`,
+  },
+];
+
 // ── durable ──────────────────────────────────────────────────────────────────
 // A durable program has no screen and no slash commands, so its section is not made of text the
 // phone types. Its two buttons are ACTIONS the program declared, and each row is gated by the
@@ -182,6 +216,7 @@ const BARS = new Map<string, readonly HarnessBarItem[]>([
   ["codex", CODEX],
   ["pi", PI],
   ["omp", OMP],
+  ["muse", MUSE],
 ]);
 
 /** The agent names a shipped bar is filed under — pinned in the tests. */

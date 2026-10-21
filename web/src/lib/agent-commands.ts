@@ -276,6 +276,60 @@ const GROK: readonly AgentCommand[] = [
   { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// ── Muse (Muse Code) ─────────────────────────────────────────────────────────
+// Sourced from CAPTURES of Muse Code 1.3.0–1.4.10's own screens, under omp's two rules above:
+// only what a capture shows, and nothing the capturing machine added. Muse publishes no command
+// reference to read, so every row below is vouched for by a fixture in
+// web/src/fixtures/panes/muse--*.txt — a palette row with Muse's own summary, a typed screen, a
+// probed picker, or Muse's own tip/hint line — each marked per row. The bare-`/` palette holds
+// ~79 rows (`↓ 72 more` past the seven on screen); the 72 unseen stay out until a capture shows
+// them. In particular `/new`, `/exit`, `/quit`, `/logout`, `/fork` and `/rewind` are named only by
+// the surface profile's `neverHeld` list, which is no capture, so none of them ships here.
+// Descriptions are Muse's own words, shortened only to one line; an argument hint is carried only
+// where a capture shows the hint (` [<model-id>]`, `[--last|<id-or-name>]`) or the usage
+// (`/loop 10m <prompt>`).
+const MUSE: readonly AgentCommand[] = [
+  // muse--slash-palette-1410.txt: the bare-`/` palette's seven visible rows, verbatim summaries.
+  { command: "/compact", description: "Summarize the conversation to free up context", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/clear", description: "Clear terminal and start a fresh session", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/copy", description: "Copy a response, code block, or ran command to the clipboard", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/deep-research", description: "Research a question across sources with cross-checking and citations", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/export", description: "Save the conversation, or the full session log", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/bug", description: "Report a bug to the team", takesArg: false, argHint: "", common: false, dangerous: false },
+  // muse--palette-exact.txt + muse--palette-partial.txt: `/usage` typed to its exact-match row
+  // ("Show session usage"), and the partial `/us` ran it (DIALOG_NOTES.md §7, #276).
+  { command: "/usage", description: "Show session usage", takesArg: false, argHint: "", common: true, dangerous: false },
+  // muse--palette-hint.txt: `/model [<model-id>]` typed, one row reading "Choose model".
+  // muse--palette-typed-arg.txt (`/model x`) proves it takes an argument.
+  { command: "/model", description: "Choose model", takesArg: true, argHint: "[<model-id>]", common: true, dangerous: false }, // harness-bar
+  // muse--palette-hint-skills.txt: `/resume [--last|<id-or-name>]` typed, "Resume an earlier
+  // Muse Code session". muse--resume-picker.txt is the picker it opens.
+  { command: "/resume", description: "Resume an earlier Muse Code session", takesArg: true, argHint: "[--last|<id-or-name>]", common: true, dangerous: false }, // harness-bar
+  // muse--slash-palette-1410.txt again ("Set the model's effort level"), opened live:
+  // muse--filter-effort.txt is the `/effort` picker (minimal/low/medium/high/xhigh). Bare like
+  // Claude's Effort button: the levels are the harness's list, and `/effort` prints them itself.
+  { command: "/effort", description: "Set the model's effort level", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  // muse--filter-hud.txt is the `/hud` picker open (Model/Effort/Path/Permissions/Context/Branch
+  // toggles); the typed `/hud` screen was probed but is deliberately not a fixture (fixtures
+  // README, MUSE-16 probe note). Bare: it is a toggle picker, not a command with arguments.
+  { command: "/hud", description: "Toggle statusline widgets on or off", takesArg: false, argHint: "", common: true, dangerous: false },
+  // The profile's rotating placeholder tip: `/loop 10m <prompt> schedules a recurring prompt`
+  // (muse--tip-loop.txt; DIALOG_NOTES.md documents the rotation). Usage shown, so it takes an arg.
+  { command: "/loop", description: "Schedule a recurring prompt", takesArg: true, argHint: "[interval] <prompt>", common: true, dangerous: false },
+  // Muse's own hint row under the 1.4.7 approval dialog: "Change approval defaults in /permissions"
+  // (muse--approval-ls-147.txt) — the tip-line rule, naming the command outright.
+  { command: "/permissions", description: "Change approval defaults", takesArg: false, argHint: "", common: false, dangerous: false },
+  // Built-in skill rows from the palette, tagged `built-in · default skill` — shipped with the CLI,
+  // not assembled from the capturing machine, so omp's rule 2 does not exclude them. Each is a
+  // `/`-prefixed row the palette runs; none was typed with an argument, so none takes one. `/plan`'s
+  // own summary is cut off at the pane edge, so it is described by what the row says it is.
+  // muse--palette-skill.txt.
+  { command: "/plan", description: "Invoke the built-in planning skill", takesArg: false, argHint: "", common: false, dangerous: false },
+  // muse--palette-hint-skills.txt, verbatim summaries.
+  { command: "/resume-claude", description: "Continue a Claude Code session here", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/resume-codex", description: "Continue a Codex session here", takesArg: false, argHint: "", common: false, dangerous: false },
+];
+
 // ── Kiro ─────────────────────────────────────────────────────────────────────
 // Sourced from CAPTURES of kiro-cli 2.32.0's own `/` menu (V3), under omp's two rules above: only
 // what a capture shows, and nothing the capturing machine added. The menu ran with an empty
@@ -311,6 +365,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],
   ["antigravity", AGY],
+  ["muse", MUSE],
 ]);
 
 /**
