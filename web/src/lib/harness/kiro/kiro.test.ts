@@ -10,7 +10,7 @@ import { kiroAdapter } from "./index";
 const PANES = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 const ALL = readdirSync(PANES).filter((name) => name.endsWith(".txt")).toSorted();
 const OWN = ALL.filter((name) => name.startsWith("kiro--"));
-const DIALOGS = OWN.filter((name) => !name.includes("viewport") && /(?:approval|read|write|replace)-.*(?:allow|always|deny)-w/.test(name));
+const DIALOGS = OWN.filter((name) => !name.includes("viewport") && /(?:approval|shell|read|write|replace)-.*(?:allow|always|deny)-w/.test(name));
 const raw = (name: string): string => readFileSync(join(PANES, name), "utf8");
 const linesOf = (text: string): StyledLine[] => splitLines(parseAnsi(text));
 const load = (name: string): StyledLine[] => linesOf(raw(name));
@@ -25,7 +25,7 @@ const base = (): PromptModel => approval(load(baseName));
 const mutate = (from: string, to: string): StyledLine[] => {
   const text = load(baseName).map(lineText).join("\n");
   expect(text).toContain(from);
-  return linesOf(text.replace(from, to));
+  return linesOf(text.replaceAll(from, to));
 };
 
 // All existing captures are the foreign/neutral negative leg, including other agents' composers.
@@ -105,6 +105,33 @@ describe("Kiro V3 approvals captured from kiro-cli 2.32.0", () => {
     // Then: no interactive prompt is emitted and text typing is blocked.
     expect(kiroAdapter.buildBlocks(lines).every((block) => block.kind === "raw")).toBe(true);
     expect(kiroAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it("binds the shell arguments that only the preview above the panel shows", () => {
+    // Given: two calls of one command, with and without `timeout`, that draw the same panel.
+    const withTimeout = load("kiro--v3-shell-args-allow-w120.txt");
+    const without = load("kiro--v3-shell-args-no-timeout-allow-w120.txt");
+    const panel = (lines: StyledLine[]): string[] => lines.slice(lines.findIndex((line) => lineText(line).startsWith("─"))).map(lineText);
+    expect(panel(withTimeout)).toEqual(panel(without));
+    // When: both are lifted.
+    const first = approval(withTimeout);
+    const second = approval(without);
+    // Then: the card shows every argument, and one call's approval cannot answer the other.
+    expect(first.subject?.map(lineText).join("\n")).toContain("cwd=sub, run_in_background=true, timeout=5000");
+    expect(promptsSameIdentity(first, second)).toBe(false);
+  });
+
+  it("stays on the terminal when the shell preview is missing or names another command", () => {
+    // Given: the real panel without its preview, and under a preview of a different command.
+    const lines = load(baseName);
+    const divider = lines.findIndex((line) => lineText(line).startsWith("─"));
+    const bare = lines.slice(divider);
+    const other = mutate("↓ Shell printf collie_approve_once_probe", "↓ Shell printf collie_other_request");
+    // When: the adapter tries to lift them.
+    // Then: neither is a native card, because the panel alone hides the other arguments.
+    for (const buffer of [bare, other]) {
+      expect(kiroAdapter.buildBlocks(buffer).every((block) => block.kind === "raw")).toBe(true);
+    }
   });
 
   it("does not lift transcript quotations or a modal left above a normal composer", () => {
