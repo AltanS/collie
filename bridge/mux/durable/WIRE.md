@@ -1388,3 +1388,88 @@ document. The version number stays 1; the spike's shapes are not supported.
     its id** (section 6). Every label on a card goes through the cleaner and a cap. No shape changes.
 33. **The descendant check runs only in the Bun entry of the SDK package** (`@colliepwa/durable-sdk`, on Linux,
     section 1A). A program on Node serves the same wire without it, and says so at start. No shape changes.
+
+## Appendix: A host with no process
+
+> **This appendix describes one host, the durable-harness host, and is a draft.** It is not part of version 1
+> and changes nothing above: an adapter reads such a host with the rules of sections 1 to 9. It records how that
+> host fills the wire when it has no process of its own (a function on Vercel, or one Node process that rebuilds
+> its answer from a log on every request), and what it keeps in the log beyond what Pi Durable already keeps. A
+> host with a process of its own does not use it. The core's seams for it are in
+> `packages/durable-sdk/src/core/` (`journal.ts`, `Pane.seedAsk`, `ReceiptStore.claim`).
+
+A host with no process starts nothing, so section 8 has nothing to hang on: there is no start to mint an epoch
+at, and no memory that outlives a request. Every request builds the state it needs from the **World**, the
+durable log, answers, and drops the state. One rule holds the whole design together: **every fact the phone can
+see is in the World before the response is written**, so a state rebuilt after a request equals the state that
+answered it. The core's tests check this for the memory store after every request of the protocol suite.
+
+### A.1 Identity and the epoch
+
+- **`epoch`** is a fact of the deployment's World and schema, never of a start. It is
+  `options.epoch`, else the `COLLIE_EPOCH` variable, else a hash of the wire version, the mapper's schema version,
+  the World's identity and the program's name. It MUST NOT be random on this host. It changes only when the
+  meaning of a cursor changes (a new mapper schema, another World). Section 8 rule 1 reads, for this host: a host
+  with no process start keeps one epoch per World and schema.
+- **Why it matters.** The adapter re-greets, and reads each pane with its old epoch and old cursor, whenever the
+  epoch changes (8.7 and 8.8). Two instances of one deployment MUST give one epoch, or the phone would reset
+  every pane on every request that lands on the other instance.
+- **`rev`** per pane is the number of events in the log plus the number of journal records plus the byte length of
+  the live partial (the reply still being written). All three only grow, so it never goes down inside a run. The snapshot's `rev` is the
+  sum of the pane revs and the number of runs. A run that leaves the list lowers it; the docs say so.
+- **`turnId`** is `safeId` of a hash over the session id and the slot of the oldest input that is not finished,
+  or, when idle, the slot of the last finished one. It is a fact of the log, so every instance computes the same.
+- **`ready`** is true once the World has answered. A World error is 503 `starting`.
+- **Panes.** One pane per run of the program's workflow, in every status. A finished run is a closed pane.
+
+### A.2 The journal
+
+The log of the harness keeps the conversation. It has no place for a question, an answer or a request id, so the
+host keeps those in a **journal**: one stream of the World per run, named `<runId>_collie`. The run id is in the
+name because some Worlds key a stream by name alone.
+
+- **Format.** JSON lines, UTF-8, one record per line. A reader MUST split on newlines, never on chunk
+  boundaries, and MUST ignore a line it cannot parse. A writer appends whole lines.
+- **Order.** The order of the stream is the order of the records. A rule below that says "first" means first in the stream.
+
+Four records. Every `at`, `openedAt` and `expiresAt` is ISO 8601 with a zone.
+
+| Record | Fields | Meaning |
+| --- | --- | --- |
+| `ask` | `askId`, `toolCallId`, `argsHash`, `ask`, `openedAt`, `expiresAt?` | A question was raised. `ask` is the wire's `Ask` (section 4). `argsHash` is a hash of the tool call's arguments. |
+| `answer` | `askId`, `revision`, `answer`, `requestId`, `nonce`, `at` | The phone answered. `nonce` is minted per attempt. |
+| `expire` | `askId`, `at`, `decidedBy?` | The ask closed with no answer. `decidedBy` is `timeout` (the default) or `program` (a stop of the turn). |
+| `receipt` | `phase`, `group`, `requestId`, `digest`, `reply?`, `at` | A request id. `phase` is `pending` before the act and `done` after it. Only a `done` carries `reply`. |
+
+How a reader folds them (`foldJournal` in the core is the reference, and is pure):
+
+1. The first `ask` record of an id stands. Its text, options and `expiresAt` are fixed from then on; a second one is ignored.
+2. The first terminal record (`answer` or `expire`) of an id wins, whatever its `revision`. A later one is ignored.
+3. An `ask` record after a terminal record of the same id is ignored: the ask is decided and never opens.
+4. An ask with no terminal record is open. A reader closes an open ask whose `expiresAt` has passed as decided by
+   `timeout`, at exactly `expiresAt`, so every instance says the same. The host MAY append the `expire` record
+   itself when its own timer fires; the reader does not wait for it.
+5. A `receipt` with `phase: "done"` closes the `pending` of its request id when the digest is the same. The first
+   `pending` of an id stands; a `pending` after a `done` is ignored.
+
+**The ask id** is derived from the pane id and the tool call id (section 6), so a rerun of the same tool call
+finds its own record and goes on under the same id with the original `expiresAt`. A rerun that asks about other
+arguments (a different `argsHash`) is not the same question and MUST be denied, not matched to the old answer.
+
+**An answer.** The host checks the revision against the open ask, then appends an `answer` record with a fresh
+`nonce`, then **reads the journal back**. It answers `taken` only when the winning record of that ask is its own
+(same `nonce`). When another record won, it answers 409 `decided` with that record's outcome (section 7.3). It
+never answers `taken` from what it wrote alone, because two instances can append at once and the stream decides.
+
+**Request ids** follow section 7.6 through the same stream. A request first appends a `receipt` `pending`, runs the act,
+and appends the `done` with the reply. A repeat of an id with a `done` gets the first reply with `replayed: true`. A repeat
+whose `pending` has no `done` yet is another instance's act in flight: it waits up to the write timeout, then answers 500
+`receipt-dropped` (an unknown outcome, section 7.6) and never runs the act again. A different digest under the same id is 409
+`request-id-reused`. A flush that fails after the act is a 5xx with no `done`.
+
+**Redaction.** The tool's arguments in an `ask` record are the redacted text the socket path shows, from the same
+ask policy (`toAskSpec` in the core), and never the raw arguments. The journal is as readable as the World, so it
+holds nothing the card would not show.
+
+**A stop.** When the host stops a turn, it appends an `expire` record with `decidedBy: "program"` for every ask that
+is still open, so no question is left waiting for a turn that is gone.
