@@ -54,7 +54,7 @@
       }
     },
     "runningRows": [
-      "\\bEsc:cancel\\b"
+      "^\\s*(?:[^\\s│❯][^│❯]*│\\s*)*Esc:cancel\\b"
     ],
     "dialogsInBox": true,
     "overlayRows": [

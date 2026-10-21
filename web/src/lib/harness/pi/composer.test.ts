@@ -410,16 +410,98 @@ describe("pi with an empty footer (issue 445)", () => {
   });
 });
 
+// Issue 544: an extension's editor (pi-powerline-footer, `ctx.ui.setEditorComponent`) draws both rules
+// and a ` > ` prompt one column in, its ` ↳ ` widget under the bottom rule, and a footer of five rows.
+describe("an extension's inset editor (issue 544)", () => {
+  const raw = readFileSync(new URL("../../../fixtures/panes/pi--v130-powerline-editor-running--w254.txt", import.meta.url), "utf8").split("\n");
+  const [TOP, PROMPT_ROW, BOTTOM] = [14, 15, 16];
+  const screen = (edit: (rows: string[]) => void): StyledLine[] => {
+    const rows = [...raw];
+    edit(rows);
+    return splitLines(parseAnsi(rows.join("\n")));
+  };
+  const glyph = (draft: string) => ` \x1b[0m\x1b[38;2;200;200;200m>\x1b[0m${draft}`;
+  const idleRule = (rows: string[]) => { rows[TOP] = rows[BOTTOM]!; };
+
+  it("reads the captured running editor as a composer with no draft and five status rows", () => {
+    const lines = fixture("pi--v130-powerline-editor-running--w254");
+    expect(locateComposer(lines)).toEqual({ layout: "inset", top: TOP, bottom: BOTTOM, statusStart: 18, end: 23 });
+    expect(composerDraft(lines)).toBeNull();
+    expect(composerStatusLines(lines).map((l) => lineText(l).slice(0, 6))).toEqual(["~/.pi/", "↑9 ↓28", "System", "Estima", "⏱ 3.5s"]);
+    // The widget row and the footer put the frame past the bridge's six-row tail window: unbound.
+    expect(composerPrompt(lines)).toBeNull();
+  });
+
+  it("reads a draft on the prompt row and a later row three spaces in", () => {
+    expect(composerDraft(screen((r) => { idleRule(r); r[PROMPT_ROW] = glyph(" hello from the probe"); }))).toBe("hello from the probe");
+    expect(composerDraft(screen((r) => { idleRule(r); r[PROMPT_ROW] = glyph(" hello"); r.splice(BOTTOM, 0, "   line two"); }))).toBe("hello line two");
+    expect(locateComposer(screen((r) => { idleRule(r); r.splice(BOTTOM + 1, 1); }))?.layout).toBe("inset");
+  });
+
+  it.each([
+    ["a top rule in column zero", (r: string[]) => { r[TOP] = `${r[BOTTOM]!.slice(1)} `; }],
+    ["a bottom rule in column zero", (r: string[]) => { idleRule(r); r[BOTTOM] = `${r[BOTTOM]!.slice(1)} `; }],
+    ["the prompt in column zero", (r: string[]) => { idleRule(r); r[PROMPT_ROW] = r[PROMPT_ROW]!.slice(1); }],
+    ["the whole frame two columns in", (r: string[]) => { idleRule(r); for (const i of [TOP, PROMPT_ROW, BOTTOM]) r[i] = ` ${r[i]!}`; }],
+    ["the bash-mode `$` glyph", (r: string[]) => { idleRule(r); r[PROMPT_ROW] = ` \x1b[38;2;200;200;200m$\x1b[0m ls`; }],
+    ["a list row one column in under the prompt", (r: string[]) => { idleRule(r); r[PROMPT_ROW] = glyph(" 1. Red"); r.splice(BOTTOM, 0, " 2. Green"); }],
+    ["no prompt row first inside", (r: string[]) => { idleRule(r); r[PROMPT_ROW] = " Which color?"; }],
+    ["two widget rows", (r: string[]) => { idleRule(r); r.splice(BOTTOM + 1, 0, " ↳ an earlier prompt"); }],
+    ["a tail of nine status rows", (r: string[]) => { idleRule(r); r.push(...Array<string>(4).fill("\x1b[38;2;126;136;142mextra\x1b[0m")); }],
+    ["two plain status rows at the end", (r: string[]) => { idleRule(r); r.push("plain one", "plain two"); }],
+  ])("refuses %s", (_name, edit) => {
+    expect(locateComposer(screen(edit))).toBeNull();
+  });
+
+  // Live, pi-powerline-footer 0.20.2 with no other extension's footer (2026-10-20): the bottom rule, or
+  // the widget row under it, ends the screen. A draft that wraps and a walky talky message (header row,
+  // body row) put their later rows three spaces in.
+  it.each([
+    ["pi--v130-powerline-editor-idle-widget--w120", null, 1],
+    ["pi--v130-powerline-editor-two-row-draft--w120", 'Use the question tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do nothing else.', 0],
+    ["pi--v130-powerline-editor-walky-draft--w120", "[walky-talky wt_0a1b2c3d4e5f] from operator (Phone) Reply with exactly WALKY-1 and nothing else.", 0],
+  ] as const)("reads %s with no status row under the box", (name, draft, widget) => {
+    const lines = fixture(name);
+    const composer = locateComposer(lines);
+    expect(composer).toMatchObject({ layout: "inset", statusStart: lines.length, end: lines.length });
+    expect(composer!.bottom).toBe(lines.length - 1 - widget);
+    expect(composerDraft(lines)).toBe(draft);
+    expect(composerStatusLines(lines)).toEqual([]);
+  });
+
+  it("finds no inset editor without its top rule, under two widget rows, or on pi's own selector", () => {
+    const live = readFileSync(new URL("../../../fixtures/panes/pi--v130-powerline-editor-idle-widget--w120.txt", import.meta.url), "utf8").split("\n");
+    const at = (edit: (rows: string[]) => void): StyledLine[] => {
+      const rows = [...live];
+      edit(rows);
+      return splitLines(parseAnsi(rows.join("\n")));
+    };
+    // eslint-disable-next-line no-control-regex
+    const top = live.findIndex((line) => /^ \x1b\[[0-9;]*m─{8}/u.test(line));
+    expect(locateComposer(at((r) => { r[top] = r[top]!.replace("────", ""); }))).toBeNull();
+    expect(locateComposer(at((r) => { r.splice(top, 2); }))).toBeNull();
+    expect(locateComposer(at((r) => { r.push(" ↳ a second widget row"); }))).toBeNull();
+    // pi's selector fills its own column-zero rules, as without the extension (the stock layout, and
+    // index.ts's modal check keeps it off the composer): never the inset one.
+    expect(locateComposer(fixture("pi--v130-powerline-model-selector--w120"))?.layout).not.toBe("inset");
+  });
+});
+
 // Design point 1 of issue 416 loosened the status rows by one plain last row. Nothing outside pi's
 // own captures reads as a pi editor because of it: the same three agy screens did before.
 describe("the status rule across the whole corpus", () => {
   const PANES = new URL("../../../fixtures/panes/", import.meta.url);
   const foreign = readdirSync(PANES).filter((n) => n.endsWith(".txt") && !n.startsWith("pi--")).toSorted();
 
-  it("finds a pi editor in no other harness's capture but agy's prompt rows", () => {
+  it("finds a pi editor in no other harness's capture but agy's prompt rows and Hermes's frame", () => {
     expect(foreign.length).toBeGreaterThan(400);
     const found = foreign.filter((name) => locateComposer(fixture(name.slice(0, -4))) !== null);
-    expect(found).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
+    // Hermes's classic CLI draws pi's own shape around its input: a rule, the input rows, a rule, and
+    // a status row the other side. pi's grammar runs on a pi pane only (the registry picks the adapter
+    // by agent), so the match is shape, not a misread. The exception stays honest: Hermes still draws it.
+    const drawnByHermes = (name: string): boolean => name.startsWith("hermes--");
+    expect(found.filter((name) => !drawnByHermes(name))).toEqual(["agy--after-plan-idle.txt", "agy--done.txt", "agy--fresh-idle.txt"]);
+    expect(found.some(drawnByHermes)).toBe(true);
   });
 
   it("keeps prose under a markdown rule out: a plain row straight under the rule is not a status row", () => {

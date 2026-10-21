@@ -40,6 +40,7 @@ until explicitly configured.
 - **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** always on: a device needs its token for every request, reads and writes, and an unpaired browser sees only the pair screen
 - **Crews**: several machines' Collies behind one URL, with operator-triggered failover
+- **Walky talky**: one agent session sends a short message to another, on any harness and across a crew, and you can message sessions from the phone; every message gets a receipt and a log entry, an address carries the pane's token so a message does not reach a new session in a reused pane id, and a crew machine signs it
 - **Durable agents**: a long-running durable agent is a session on the phone, with approvals and history (experimental)
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
@@ -170,6 +171,7 @@ and that is the only way to install it on a phone.
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
+| [**Walky talky**](./docs/walky-talky.md) | Messages between agent sessions: `collie walky who`, `send`, `reply`, `inbox` and `status`, pane tokens, receipts, how a message crosses a crew and how its outcome comes back, the phone's cards and composer, installing the skill into your agents, and the limits |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |

@@ -7,7 +7,7 @@ import { lineText, splitLines, type StyledLine } from "../blocks";
 import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_AUTOCOMPLETE_LINES } from "../harness/claude/autocomplete";
 import { displayWidth } from "../text-width";
-import { findInputFrame, frameAt, plainRows, type Frame } from "./frame";
+import { findInputFrame, frameAt, plainRows, type Frame, type FrameRow, type FrameRun } from "./frame";
 import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
@@ -149,8 +149,8 @@ describe("pinned dialog regions", () => {
   }
 });
 
-// Muse, Oh My Pi's Claude theme and pi's OmO extension paint Claude's own input box: a column-0 ❯
-// row between two bare U+2500 rules. The anchors are shape only, so the Claude profile finds a frame
+// Muse, Oh My Pi's Claude theme, pi's OmO extension and Hermes's classic CLI paint Claude's own input
+// box: a column-0 ❯ row between two bare U+2500 rules. The anchors are shape only, so the Claude profile finds a frame
 // there, and that is right: the frame says "a box is drawn", and the profile is picked by the binary
 // (the README contract: version and harness from the binary, never from the screen), so the Claude
 // profile is never applied to those panes. Every other non-Claude fixture yields null.
@@ -158,6 +158,7 @@ const DRAWS_THE_SAME_BOX = (name: string): boolean =>
   name.startsWith("muse--") ||
   name.startsWith("omp--v18-4-claude") ||
   name.startsWith("pi--omo-") ||
+  name.startsWith("hermes--") ||
   name === "pi--prose-quoted-omo-dialog-above-editor.txt";
 
 describe("non-Claude fixtures", () => {
@@ -165,7 +166,7 @@ describe("non-Claude fixtures", () => {
     const found = fixtureNames.filter((name) => !isClaudeFixture(name) && findInputFrame(fixtureRows(name), IDLE) !== null);
     expect(found.filter((name) => !DRAWS_THE_SAME_BOX(name))).toEqual([]);
     // The exception stays honest: each family it names still draws the box.
-    for (const family of ["muse--", "omp--v18-4-claude", "pi--omo-"]) {
+    for (const family of ["muse--", "omp--v18-4-claude", "pi--omo-", "hermes--"]) {
       expect(found.some((name) => name.startsWith(family)), family).toBe(true);
     }
   });
@@ -414,6 +415,39 @@ describe("findInputFrame", () => {
     expect(findInputFrame(mixed, IDLE)!.placeholder).toBe(false);
     expect(findInputFrame(lines(RULE, "❯", RULE), IDLE)!.placeholder).toBe(false);
     expect(findInputFrame(lines(RULE, "❯", RULE), IDLE)!.interior.text).toBe("");
+  });
+
+  it("marks a placeholder by its colours alone: a whole hole in the placeholder colour, no faint attribute (issue 510)", () => {
+    // Muse paints the empty box's tip — and the model's prompt suggestion, whose words no text list
+    // can name — in rgb(175,177,179) with no SGR 2, where typed text is rgb(31,35,40)
+    // (muse--tip-loop.txt and muse--draft-single.txt). The profile names the colour, so a hole
+    // painted in nothing else is a placeholder; one typed-colour run leaves it a draft.
+    const MUSE = requireProfile("muse").idle;
+    const GHOST = "rgb(175,177,179)";
+    const TYPED = "rgb(31,35,40)";
+    const box = (...rows: FrameRow[]): FrameRow[] => [{ segments: [{ text: RULE }] }, ...rows, { segments: [{ text: RULE }] }];
+    const promptRow = (...runs: FrameRun[]): FrameRow => ({ segments: [{ text: "❯ ", fg: "rgb(236,177,0)" }, ...runs] });
+
+    const hint = findInputFrame(box(promptRow({ text: "Run the test suite and fix any failures", fg: GHOST })), MUSE)!;
+    expect(hint.placeholder).toBe(true);
+    expect(hint.anchorsHit).toContain("placeholder-fg");
+    expect(hint.interior.text).toBe("Run the test suite and fix any failures");
+
+    const wrapped = findInputFrame(
+      box(promptRow({ text: "Run the test suite and", fg: GHOST }), { segments: [{ text: "  fix any failures", fg: GHOST }] }),
+      MUSE,
+    )!;
+    expect(wrapped.placeholder).toBe(true);
+
+    const mixed = findInputFrame(box(promptRow({ text: "Run the test suite", fg: GHOST }, { text: "x", fg: TYPED })), MUSE)!;
+    expect(mixed.placeholder).toBe(false);
+    const typedUnder = findInputFrame(
+      box(promptRow({ text: "Run the test suite and", fg: GHOST }), { segments: [{ text: "  then ship it", fg: TYPED }] }),
+      MUSE,
+    )!;
+    expect(typedUnder.placeholder).toBe(false);
+    const nearMiss = findInputFrame(box(promptRow({ text: "Run the test suite", fg: "rgb(175,176,180)" })), MUSE)!;
+    expect(nearMiss.placeholder).toBe(false);
   });
 
   it("a faint marker in front of a real draft is not a placeholder", () => {
@@ -713,5 +747,114 @@ describe("frame alternates (M56 spec 14)", () => {
 
   it("finds no box in a plain transcript", () => {
     expect(findInputFrame(lines("a", "   indented", "b"), OMP)).toBeNull();
+  });
+
+  // Hermes draws no rule under its input below 64 columns, and its rule spans the pane. Its open box
+  // walks up from the screen's last row over draft rows only: a box edge or a rule of 64 cells or more
+  // ends the walk with no box. A wide pane caught without its bottom rule is no box, and neither is a
+  // picker between a reply's short rule and the prompt.
+  it("walks Hermes's open box over draft rows only", () => {
+    const HERMES = requireProfile("hermes").idle;
+    expect(findInputFrame(lines("reply", "─".repeat(60), "❯ hello", "world"), HERMES)!.interior.text).toBe("hello world");
+    expect(findInputFrame(lines("reply", "─".repeat(63), "❯ hello"), HERMES)!.interior.text).toBe("hello");
+    expect(findInputFrame(lines("reply", "─".repeat(64), "❯ hello"), HERMES)).toBeNull();
+    expect(findInputFrame(lines(RULE, "╭─ ⚙ Model Picker ─╮", "╰──────────────────╯", "─".repeat(80), "❯ hello"), HERMES)).toBeNull();
+    expect(findInputFrame(lines("reply", "─".repeat(80), "❯ hello", "─".repeat(80)), HERMES)!.interior.text).toBe("hello");
+  });
+
+  // Hermes's input is at most eight rows (`_estimate_tui_input_height`, max_height=8); a longer
+  // draft scrolls inside them and its prompt row leaves the screen, so no taller box is read. The
+  // edges walk counts the rows under the prompt row (7), the open box's walk all of its rows (8).
+  it("reads Hermes's box up to its eight input rows, wide and narrow", () => {
+    const HERMES = requireProfile("hermes").idle;
+    const draft = (n: number): string[] => ["❯ r1", ...Array.from({ length: n - 1 }, (_, i) => `r${String(i + 2)}`)];
+    const eight = "r1 r2 r3 r4 r5 r6 r7 r8";
+    expect(findInputFrame(lines("reply", "─".repeat(80), ...draft(8), "─".repeat(80)), HERMES)!.interior.text).toBe(eight);
+    expect(findInputFrame(lines("reply", "─".repeat(60), ...draft(8)), HERMES)!.interior.text).toBe(eight);
+    expect(findInputFrame(lines("reply", "─".repeat(80), ...draft(9), "─".repeat(80)), HERMES)).toBeNull();
+    expect(findInputFrame(lines("reply", "─".repeat(60), ...draft(9)), HERMES)).toBeNull();
+  });
+});
+
+// Issue 497 (omp 18.11.3, the box composer, captured 2026-10-18): the box draws its right border on
+// every draft row, a wrapped row ends in `│` or `─╯` with fewer than eight spaces before it, and the
+// word completion paints a ghost suffix after the cursor. The draft reads as typed all the same.
+describe("omp 18.11's box composer (issue 497)", () => {
+  const OMP = requireProfile("omp").idle;
+  const squeeze = (text: string): string => text.replace(/\s+/gu, "");
+  const WRAP =
+    "Collie wrap probe: the quick brown fox jumps over the lazy dog while the phone sends a long single line that must wrap " +
+    "across two rows of the omp box at one hundred and thirty columns wide, ending here.";
+  const TWO = "First line of a two-line draft. Second line of the same draft.";
+  const PATH =
+    "look at /tmp/c497/uploads/w1-mx7k2p-1a2b3c4d-and-a-long-tail-so-the-path-fills-the-row-to-the-right-border-" +
+    "0123456789abcdef0123456789abcdef.png please";
+  const DRAFTS = [
+    { fixture: "omp--v18-11-nerd-box-wrapped--w130.txt", typed: WRAP },
+    { fixture: "omp--v18-11-nerd-box-wrapped--w80.txt", typed: WRAP },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w130.txt", typed: TWO },
+    { fixture: "omp--v18-11-nerd-box-two-lines--w80.txt", typed: TWO },
+    { fixture: "omp--v18-11-nerd-box-path-text--w130.txt", typed: PATH },
+    { fixture: "omp--v18-11-nerd-box-path-text--w80.txt", typed: PATH },
+    { fixture: "omp--v18-11-nerd-ghost-word--w130.txt", typed: "please push" },
+    { fixture: "omp--v18-11-nerd-ghost-word--w80.txt", typed: "please push" },
+    { fixture: "omp--v18-11-ghost-word--w130.txt", typed: "please push" },
+  ];
+
+  it.each(DRAFTS)("$fixture: the draft reads as typed, no right border and no ghost word in it", ({ fixture, typed }) => {
+    const frame = findInputFrame(fixtureRows(fixture), OMP);
+    expect(frame).not.toBeNull();
+    expect(frame!.placeholder).toBe(false);
+    expect(squeeze(frame!.interior.text)).toBe(squeeze(typed));
+  });
+
+  // The ghost rule, on one prompt row built as omp paints it: `╰─ `, the draft in the text colour, the
+  // word completion in the titanium theme's `dim` (#6b7280), padding, and the border in the accent.
+  const TEXT = "rgb(229,229,231)";
+  const GHOST = "rgb(107,114,128)";
+  const BORDER = "rgb(0,180,255)";
+  const TOP: FrameRow = { segments: [{ text: "╭── π > ◒ Haiku 4.5 ▶────────────────────────╮", fg: BORDER }] };
+  const box = (...runs: FrameRun[]): FrameRow[] => [
+    { segments: [{ text: "an answer" }] },
+    { segments: [] },
+    TOP,
+    { segments: [{ text: "╰─ ", fg: BORDER }, ...runs, { text: "        " }, { text: "─╯", fg: BORDER }] },
+  ];
+  const read = (rows: FrameRow[], idle = OMP): string | undefined => findInputFrame(rows, idle)?.interior.text;
+
+  it("cuts the word completion after the draft: the profile's colour, letters only, straight after a draft letter", () => {
+    expect(read(box({ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }))).toBe("please push");
+    expect(read(box({ text: "please push" }, { text: "ed", fg: GHOST }))).toBe("please push");
+  });
+
+  it("keeps a run that misses any test, so the box reads more than was typed and the send stops", () => {
+    const kept: [string, FrameRun[], string][] = [
+      ["another colour (an older theme's dim)", [{ text: "please push", fg: TEXT }, { text: "ed", fg: "rgb(111,115,119)" }], "please pushed"],
+      ["the colour with the dim attribute", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST, dim: true }], "please pushed"],
+      ["the colour in italics", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST, italic: true }], "please pushed"],
+      ["a run with punctuation", [{ text: "please push", fg: TEXT }, { text: "ed!", fg: GHOST }], "please pushed!"],
+      ["a run with a space in it", [{ text: "please push", fg: TEXT }, { text: "ed now", fg: GHOST }], "please pushed now"],
+      ["a run after a space", [{ text: "please ", fg: TEXT }, { text: "push", fg: GHOST }], "please push"],
+      ["a run in the draft's own style", [{ text: "please push", fg: GHOST }, { text: "ed", fg: GHOST }], "please pushed"],
+      ["a run with text after it", [{ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }, { text: " now", fg: TEXT }], "please pushed now"],
+      ["the whole draft", [{ text: "pushed", fg: GHOST }], "pushed"],
+    ];
+    for (const [name, runs, text] of kept) expect(read(box(...runs)), name).toBe(text);
+  });
+
+  it("keeps a run in the colour that ends a row the draft goes on past", () => {
+    const rows: FrameRow[] = [
+      { segments: [{ text: "an answer" }] },
+      TOP,
+      { segments: [{ text: "│  ", fg: BORDER }, { text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }, { text: "     " }, { text: "│", fg: BORDER }] },
+      { segments: [{ text: "╰─ ", fg: BORDER }, { text: "the branch", fg: TEXT }, { text: "     " }, { text: "─╯", fg: BORDER }] },
+    ];
+    expect(read(rows)).toBe("please pushed the branch");
+  });
+
+  it("keeps the run on a profile that names no ghost colour", () => {
+    const { inlineHint, ...bare } = OMP;
+    void inlineHint;
+    expect(read(box({ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }), bare)).toBe("please pushed");
   });
 });

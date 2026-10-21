@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { Activity, ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
@@ -18,11 +18,14 @@ import { hostCounts } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { type CrewData } from "@/lib/loaders";
 import { homePath, machinePath } from "@/lib/nav";
+import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
-import type { AgentView, CrewMemberStatus, CrewStatusResponse } from "@/lib/types";
+import { isReadOnly, type AgentView, type CrewMemberStatus, type CrewStatusResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BandMain } from "@/components/ui/strip-host";
+import { WalkyBroadcastSheet } from "@/components/walky-broadcast-sheet";
+import { WalkyIcon } from "@/components/walky-icon";
 
 // The crew census: the whole crew drawn as a FORMATION, and the answer to "how is my crew doing?".
 //
@@ -35,9 +38,10 @@ import { BandMain } from "@/components/ui/strip-host";
 // address, the enrolment, and on the lead itself the secret generation and who deputises for it.
 //
 // ── IT IS STILL A REPORT, NOT A CONSOLE ──────────────────────────────────────
-// There is no button here that changes anything, and that is the milestone's rule rather than an
+// There is no button here that changes the crew, and that is the milestone's rule rather than an
 // unfinished edge: join / leave / promote / rotate are CLI verbs (M5 non-goal), so the page names
-// what is wrong and stops. The one thing it does is what the ServerSwitcher does — take you to a
+// what is wrong and stops. The one write on the page is a message: "Message all agents" (M62) sends
+// words to the agents' own panes and changes nothing about who is in the crew. The one thing it does is what the ServerSwitcher does — take you to a
 // machine — and it is a deliberate second tap inside the sheet, never the node itself. Tapping a
 // node on a picture must be free to mean "tell me about this one".
 //
@@ -72,6 +76,13 @@ export function CrewRoute() {
   // The open sheet holds the member ID, not the member: the loader revalidates underneath an open
   // sheet on every poll, and a held object would go on rendering the census as it was when tapped.
   const [openId, setOpenId] = useState<string | null>(null);
+  // "Message all agents" (M62). A write, so a device that may not write is not offered it. Either
+  // write gate counts, as on the dashboard and in a pane: the proxy-asserted allowlist, or a missing
+  // or rejected pairing credential, which the bridge would answer with a 401 after the confirm.
+  const [messaging, setMessaging] = useState(false);
+  const { refused: notPaired } = usePairing();
+  const mayNotSend = isReadOnly(root?.device) || notPaired;
+  const mayNotSendId = useId();
   const selected = status?.members.find((m) => m.id === openId) ?? null;
 
   return (
@@ -121,10 +132,42 @@ export function CrewRoute() {
             onSelect={(m) => setOpenId(m.id)}
           />
         )}
+        {status !== null && (
+          // The lead's line is the crew's line (M60 spec 01, ADR 0110): members take the lead's line
+          // with the version it levels, Edge builds included, and step down with it.
+          <p className="text-xs text-muted-foreground" data-slot="crew-release-line">
+            {root?.update?.line === "edge" ? t("crew.releaseLine.edge") : t("crew.releaseLine.stable")}
+          </p>
+        )}
+        {status !== null && (
+          // The reason is a line under the button, not a tooltip: a phone has no hover to show one.
+          <div className="flex flex-col gap-1.5">
+            <Button
+              variant="outline"
+              className="h-11 w-full"
+              onClick={() => setMessaging(true)}
+              disabled={mayNotSend}
+              aria-describedby={mayNotSend ? mayNotSendId : undefined}
+            >
+              <WalkyIcon className="size-4" aria-hidden="true" />
+              {t("walky.crew.open")}
+            </Button>
+            {mayNotSend && (
+              <p id={mayNotSendId} className="text-xs text-muted-foreground">
+                {t("walky.crew.readOnly")}
+              </p>
+            )}
+          </div>
+        )}
       </BandMain>
 
       {/* Portalled to the body, exactly as the ServerSwitcher's sheet is: the sheet is `fixed`, and
           this route's scrolling `<main>` is a containing block that would otherwise clip it. */}
+      {status !== null &&
+        createPortal(
+          <WalkyBroadcastSheet open={messaging} onClose={() => setMessaging(false)} members={status.members} />,
+          document.body,
+        )}
       {status !== null &&
         createPortal(
           <BottomSheet

@@ -1,8 +1,9 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues } from "./cues";
+import { lineText, type StyledLine } from "../blocks";
+import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign } from "./cues";
 import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText } from "./frame";
 import { requireProfile } from "./profile";
@@ -56,10 +57,13 @@ describe("quoted dialogs in a transcript", () => {
 });
 
 describe("the bottom cluster", () => {
-  it("reads a rating survey over a live box as a single-key prompt", () => {
+  // Decided 2026-10-19 (ADR 0109): the rating survey over a live box is a notice, so its key row is no
+  // single-key prompt. Until then this case read it as one, and the screen as unreadable.
+  it("passes over the rating survey over a live box: the profile names it as a notice", () => {
     const read = readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", IDLE);
-    expect(read.cues?.cues.map((cue) => cue.kind)).toContain("single-key");
-    expect(read.surface.modal).toBe("unreadable");
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("single-key");
+    expect(read.cues?.strength).toBe("none");
+    expect(read.surface.modal).toBe("none");
   });
 
   it("passes over the profile's notice above a live box: its key row is no single-key prompt", () => {
@@ -380,7 +384,13 @@ describe("the typed command's own list at the box (idle.volatile.below.commandLi
     const rows = fixtureRows("claude--v2302-slash-model-list-above--w119.txt");
     const frame = findInputFrame(rows, IDLE)!;
     expect(frame.volatile.status).not.toBeNull();
-    expect(commandListAt(texts(rows), frame, LIST)).toEqual({ pointed: "/model", side: "above", first: frame.top - 4, last: frame.top - 1 });
+    expect(commandListAt(texts(rows), frame, LIST)).toEqual({
+      pointed: "/model",
+      side: "above",
+      first: frame.top - 4,
+      last: frame.top - 1,
+      entries: ["/model", "/auto-mode-setup", "/typescript:structure-module"],
+    });
     expect(ownCommandList(texts(rows), frame, IDLE)).not.toBeNull();
     const read = readScreen(rows, "claude", IDLE);
     expect(read.cues?.strength).toBe("none");
@@ -463,10 +473,14 @@ describe("a list that leaves the lead off, under the box only, over the harness'
     expect(read(screen("/mod", tall)).frame).toBeNull();
   });
 
-  it("the footer ends the list: one run to the screen's end, at most four rows, no blank row in it", () => {
+  it("the footer ends the list: one run to the screen's end, at most six rows, no blank row in it", () => {
     expect(read(screen("/model", MODEL, ["↑0 ↓0 $0.000 from an extension"])).own).toBe(true);
-    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four"])).own).toBe(true);
-    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five"])).own).toBe(false);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five", "row six"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [...FOOTER, "row three", "row four", "row five", "row six", "row seven"])).own).toBe(false);
+    // An extension's widget under the editor (issue 544, pi-powerline-footer's ` ↳ ` last prompt) opens
+    // the footer too, over the extension's own footer rows; any other row one column in does not.
+    expect(read(screen("/model", MODEL, [" ↳ the last prompt", ...FOOTER, "row three", "row four", "row five"])).own).toBe(true);
+    expect(read(screen("/model", MODEL, [" Do you want to proceed?", ...FOOTER])).own).toBe(false);
     expect(read(screen("/model", MODEL, [FOOTER[0]!, "", FOOTER[1]!])).own).toBe(false);
     // A row that is neither list nor footer between them: no list.
     expect(read(screen("/model", [...MODEL, " Do you want to proceed?"])).own).toBe(false);
@@ -475,5 +489,129 @@ describe("a list that leaves the lead off, under the box only, over the harness'
   it("a list over the box is never read on a profile that names only the side under it", () => {
     const rows = screen("/model", [], FOOTER, ["→ model          <provider/model> — Select model"]);
     expect(read(rows)).toMatchObject({ list: null, own: false });
+  });
+});
+
+// Issue 497 (omp 18.11.3, captured 2026-10-18): with a tool running, stock omp names the tool's intent
+// on its working row (`󱊷 Running sleep and echo command`) instead of `Working…`, and the Nerd Font
+// preset draws no braille there. The box's top edge carries the turn's spinner and timer
+// (`╭── ⠋ 13s  󰪣 Haiku 4.5 …`, pi-tui status-line/segments.ts), and the timer reads `1m` past a minute.
+describe("omp 18.11's running turn (issue 497)", () => {
+  const OMP = requireProfile("omp").idle;
+  const RUNNING = [
+    "omp--v18-11-nerd-running-tool--w130.txt",
+    "omp--v18-11-nerd-running-tool--w80.txt",
+    "omp--v18-11-nerd-running-tool-minute--w130.txt",
+    "omp--v18-11-nerd-running-tool-minute--w80.txt",
+  ];
+
+  it.each(RUNNING)("%s: the top edge's spinner and timer are a running sign, and the Surface reads a turn", (name) => {
+    const rows = fixtureRows(name);
+    const frame = findInputFrame(rows, OMP)!;
+    expect(frame.interior.text).toBe("");
+    expect(runningSign(rows, frame, OMP.runningRows)).toBe(true);
+    expect(readScreen(rows, "omp", OMP).surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("an idle box's top edge, with no spinner, is no running sign", () => {
+    const rows = fixtureRows("omp--v18-11-nerd-ghost-word--w130.txt");
+    expect(runningSign(rows, findInputFrame(rows, OMP)!, OMP.runningRows)).toBe(false);
+  });
+
+  it.each(["omp--v18-11-nerd-skill-pointed--w80.txt", "omp--v18-11-skill-pointed--w130.txt", "omp--v18-11-nerd-slash-model--w130.txt"])(
+    "%s: the list is the typed command's own, so the Surface reads the box free",
+    (name) => {
+      const rows = fixtureRows(name);
+      const frame = findInputFrame(rows, OMP);
+      expect(ownCommandList(rows.map(rowText), frame, OMP)).not.toBeNull();
+      expect(readScreen(rows, "omp", OMP).surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    },
+  );
+});
+
+describe("running signs and the prompt row", () => {
+  // The prompt row holds the operator's draft, and a profile's running rows are read there too (a
+  // harness may swap its prompt glyph while a turn runs). So a pattern that names a hint must stand
+  // where the real running row puts it, or a draft that types the hint reads as a running turn and the
+  // send is refused as `turn_running`. Grok and opencode name their hints; their patterns are anchored.
+  // Tests from @aahung's PR #460, adapted to `runningRows` (the PR's field was `runningPrompt`).
+  const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
+  const cases = [
+    { fixture: "grok--draft-single.txt", harness: "grok", phrase: "Esc:cancel" },
+    { fixture: "oc--draft-single.txt", harness: "opencode", phrase: "esc interrupt" },
+  ];
+  for (const { fixture, harness, phrase } of cases) {
+    it(`running: a ${harness} draft that types \`${phrase}\` is not a running turn (synthetic prompt row on the real ${fixture})`, () => {
+      // Given: the captured draft with its text replaced by the harness's own running hint.
+      const idle = requireProfile(harness).idle;
+      const rows = fixtureRows(fixture);
+      const captured = findInputFrame(rows, idle)!;
+      const prompt = captured.interior.prompt;
+      const typed = lineText(rows[prompt]!).replace(captured.interior.text, phrase.padEnd(captured.interior.text.length));
+      const screen = rows.map((row, i) => (i === prompt ? plain(typed) : row));
+      // When: the frame is found again and its turn read.
+      const frame = findInputFrame(screen, idle)!;
+      // Then: the box holds the phrase, the pattern still finds the phrase, and the turn is idle.
+      expect(frame.interior.text).toBe(phrase);
+      expect(typed).toContain(phrase);
+      expect(idle.runningRows!.some((source) => new RegExp(source, "u").test(typed.trimEnd()))).toBe(false);
+      expect(runningSign(screen, frame, idle.runningRows)).toBe(false);
+      expect(readScreen(screen, harness, idle).surface.turn).toBe("idle");
+    });
+  }
+
+  it("running: a longer grok draft that names `Esc:cancel` among other words is not a running turn (synthetic)", () => {
+    const idle = requireProfile("grok").idle;
+    const rows = fixtureRows("grok--draft-single.txt");
+    const captured = findInputFrame(rows, idle)!;
+    const prompt = captured.interior.prompt;
+    const text = "press Esc:cancel to stop";
+    const typed = lineText(rows[prompt]!).replace(captured.interior.text, text.padEnd(captured.interior.text.length));
+    const screen = rows.map((row, i) => (i === prompt ? plain(typed) : row));
+    const frame = findInputFrame(screen, idle)!;
+    expect(frame.interior.text).toBe(text);
+    expect(runningSign(screen, frame, idle.runningRows)).toBe(false);
+  });
+
+  it.each([
+    ["grok", "grok--working.txt"],
+    ["opencode", "oc--working.txt"],
+    ["opencode", "oc--draft-while-working.txt"],
+  ])("running: the %s hint in %s, on its real row, is a running turn", (harness, fixture) => {
+    const idle = requireProfile(harness).idle;
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, idle)!;
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(true);
+    expect(readScreen(rows, harness, idle).surface.turn).toBe("running");
+  });
+
+  it.each([
+    ["grok", "grok--fresh-idle.txt"],
+    ["grok", "grok--draft-single.txt"],
+    ["grok", "grok--draft-wrapped.txt"],
+    ["grok", "grok--done.txt"],
+    ["opencode", "oc--fresh-idle.txt"],
+    ["opencode", "oc--draft-single.txt"],
+    ["opencode", "oc--draft-wrapped.txt"],
+    ["opencode", "oc--draft-multiline.txt"],
+  ])("running: the %s idle or draft screen %s is not a running turn", (harness, fixture) => {
+    const idle = requireProfile(harness).idle;
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, idle)!;
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(false);
+  });
+
+  it("running: Kiro's busy prompt row reads running, also with one more row under the box", () => {
+    // Given: the captured running Kiro screen, whose busy line stands on the prompt row, and the same
+    // screen with one more row under the box, so the prompt row is no longer the box's last row.
+    const idle = requireProfile("kiro").idle;
+    const rows = fixtureRows("kiro--v3-running-w120.txt");
+    const grown = perturbations(rows).find((p) => p.name === "one more status row at the bottom")!.rows;
+    // When: both screens' frames are found.
+    const frame = findInputFrame(rows, idle)!;
+    const grownFrame = findInputFrame(grown, idle)!;
+    // Then: both read running.
+    expect(runningSign(rows, frame, idle.runningRows)).toBe(true);
+    expect(runningSign(grown, grownFrame, idle.runningRows)).toBe(true);
   });
 });

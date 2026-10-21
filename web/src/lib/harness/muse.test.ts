@@ -8,6 +8,7 @@ import { buildBlocks } from "./index";
 import { museAdapter } from "./muse";
 import { describeAdapterConformance } from "./conformance";
 import { detectCheckboxRegion } from "./muse/checkbox";
+import { hasFilterPickerTail } from "./muse/markers";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 
@@ -52,14 +53,21 @@ const PINNED = [
   "muse--ask-toppings-notes-open.txt",
   "muse--ask-toppings-review.txt",
   "muse--ask-toppings.txt",
+  "muse--done-1410.txt",
   "muse--done.txt",
+  "muse--draft-1410.txt",
   "muse--draft-blank-row.txt",
   "muse--draft-image-chip.txt",
   "muse--draft-paste-token.txt",
   "muse--draft-quoted-path.txt",
   "muse--draft-single.txt",
   "muse--draft-wrapped.txt",
+  "muse--filter-effort-nomatch.txt",
+  "muse--filter-effort-typed.txt",
+  "muse--filter-effort.txt",
+  "muse--filter-hud.txt",
   "muse--fresh-idle.txt",
+  "muse--idle-1410.txt",
   "muse--palette-exact.txt",
   "muse--palette-hint-moved.txt",
   "muse--palette-hint-skills.txt",
@@ -67,9 +75,17 @@ const PINNED = [
   "muse--palette-partial.txt",
   "muse--palette-skill.txt",
   "muse--palette-typed-arg.txt",
+  "muse--probe-draft-1410.txt",
+  "muse--prompt-hint-1410.txt",
+  "muse--prompt-hint-typed-1410.txt",
+  "muse--prompt-hint.txt",
+  "muse--queued-input-1410.txt",
   "muse--quoted-dialogs-bare.txt",
   "muse--resume-picker-moved.txt",
   "muse--resume-picker.txt",
+  "muse--running-checking-1410.txt",
+  "muse--running-command-1410.txt",
+  "muse--slash-palette-1410.txt",
   "muse--tasks-popup-approval.txt",
   "muse--tasks-popup-draft.txt",
   "muse--tasks-popup.txt",
@@ -115,6 +131,14 @@ const NOT_READY = [
   "muse--ask-color-notes-open.txt",
   "muse--ask-color-notes-typed.txt",
   "muse--ask-toppings-notes-open.txt",
+  // The filter pickers decline to raw like the notes captures: the filter field owns the
+  // keyboard (every typed character, digits included, is filter text — probed), so the
+  // composer gate fails and the unread-dialog card offers Escape alone. See the filter
+  // describe at the end of this file.
+  "muse--filter-effort-nomatch.txt",
+  "muse--filter-effort-typed.txt",
+  "muse--filter-effort.txt",
+  "muse--filter-hud.txt",
 ];
 
 const ownFixtures = LIFTED;
@@ -126,6 +150,10 @@ const allOpencodeFixtures = readdirSync(PANES_DIR)
   .toSorted();
 
 describeAdapterConformance(museAdapter, {
+  // Muse 1.4.10 paints the bare-`/` slash palette inside the box under the prompt row (measured
+  // live 2026-10-18): the composer is ready, but the prompt row sits more than the bridge's tail
+  // window above the bottom rule, so no region can bind and the sweep goes out unbound there.
+  unboundComposerFixtures: ["muse--slash-palette-1410.txt"],
   ownFixtures,
   foreignFixtures: [
     ...allClaudeFixtures,
@@ -153,7 +181,8 @@ describe("submitSettleMs — Muse 1.4.4 swallows an Enter sent right behind the 
 describe("composerReady — the gate the reply path pre-flights on", () => {
   it.each(
     neutralFixtures.filter(
-      (f) => !f.includes("notes-open") && !f.includes("notes-typed"),
+      (f) =>
+        !f.includes("notes-open") && !f.includes("notes-typed") && !f.startsWith("muse--filter-"),
     ),
   )("%s: the composer is on screen ⇒ true", (name) => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
@@ -624,4 +653,121 @@ describe("muse: the /resume session picker lifts as a menu (1.4.8)", () => {
   it("changes its signature when the highlight moves", () => {
     expect(menuOf("muse--resume-picker-moved.txt")?.signature).not.toBe(menuOf("muse--resume-picker.txt")?.signature);
   });
+});
+
+// ── The filter pickers: /effort and /hud (MUSE-16, #519) ──────────────────────────────────────
+//
+// Probed live against Muse (scratch pane, 2026-10-18; DIALOG_NOTES.md §7): both pickers paint
+// BELOW the composer's bottom rule — bare `❯`, rule, title, `filter[: text]`, rows, a footer
+// naming `type to filter` — and the whole screen is a permanently focused filter field. Every
+// typed character is filter text: `xh` narrowed /effort to its sole row, and `1` appended to the
+// filter (`filter: xh1`, `no matches`) instead of answering anything. Arrows still move the
+// pointer (wrapping) and one Escape exits without committing (effort and HUD verified unchanged
+// afterwards). So no card may offer digit, letter or Enter taps here — they would type into the
+// filter or confirm a row the operator never picked. The honest slice is the safety floor: the
+// tail reads as Muse's own modal, the composer refuses, and the unread-dialog card offers the
+// declared Escape alone. The fixtures are the probed tails verbatim from the Voice rule down
+// (the transcript above them held account panes and was cut; panes/README.md says so).
+
+describe("muse: a filter picker owns the keyboard and offers Escape alone", () => {
+  const load = (name: string): StyledLine[] =>
+    splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const FILTERS = [
+    "muse--filter-effort.txt",
+    "muse--filter-effort-typed.txt",
+    "muse--filter-effort-nomatch.txt",
+    "muse--filter-hud.txt",
+  ];
+
+  it.each(FILTERS)("%s: modal on screen, composer refused, no draft, card with Escape", (name) => {
+    const lines = load(name);
+    expect(hasFilterPickerTail(lines), name).toBe(true);
+    expect(museAdapter.modalOnScreen!(lines), name).toBe(true);
+    expect(museAdapter.composerReady!(lines), name).toBe(false);
+    expect(museAdapter.composerPrompt!(lines), name).toBeNull();
+    expect(museAdapter.extractInputDraft!(lines), name).toBeNull();
+    // The adapter itself lifts nothing: no option buttons exist whose keys could leak into
+    // the filter. The only control is the unread-dialog card's declared Escape.
+    expect(museAdapter.buildBlocks(lines).every((b) => b.kind === "raw"), name).toBe(true);
+    const blocks = buildBlocks(lines, { agent: "muse" });
+    expect(blocks.map((b) => b.kind), name).toEqual(["unread-dialog"]);
+    expect(blocks[0]!.kind === "unread-dialog" && blocks[0]!.cancel.key, name).toBe("Escape");
+  });
+
+  it("the typed /hud geometry (filter text over a surviving statusline) reads the same", () => {
+    // The probed typed twin (`filter: eff`, rows narrowed) is not a fixture: under a foreign
+    // Surface profile its few under-rule rows walk as a statusline, so the generic corpus
+    // cannot hold it yet (its own profile reads it unreadable). The adapter's read is pinned
+    // here on the captured rows with the filter text the probe typed.
+    const hud = load("muse--filter-hud.txt");
+    const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+    const i = hud.findLastIndex((l) => /^ {2}filter$/.test(lineText(l).trimEnd()));
+    expect(i).toBeGreaterThan(0);
+    const typed = [...hud.slice(0, i), row("  filter: eff"), ...hud.slice(i + 1)];
+    expect(hasFilterPickerTail(typed)).toBe(true);
+    expect(museAdapter.composerReady!(typed)).toBe(false);
+    expect(buildBlocks(typed, { agent: "muse" }).map((b) => b.kind)).toEqual(["unread-dialog"]);
+  });
+
+  it("a quoted filter picker above a live composer is not a picker", () => {
+    // The agent prints the /effort screen into the transcript: its filter and footer rows sit
+    // ABOVE the composer's own bottom rule, so the tail test never sees them as a tail, the
+    // box stays sendable and no card draws (the #260 bargain, on this shape).
+    const idle = load("muse--fresh-idle.txt");
+    const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+    const voice = idle.findLastIndex((l) => lineText(l).includes("Voice input"));
+    expect(voice).toBeGreaterThan(0);
+    const quoted = [
+      ...idle.slice(0, voice),
+      row("  Effort  |  Select Meta reasoning effort"),
+      row("  filter: xh"),
+      row("⟩ xhigh                 current"),
+      row("  ↑↓ move · type to filter · enter confirm · esc go back"),
+      ...idle.slice(voice),
+    ];
+    expect(hasFilterPickerTail(quoted)).toBe(false);
+    expect(museAdapter.composerReady!(quoted)).toBe(true);
+    expect(buildBlocks(quoted, { agent: "muse" }).map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  it("the filter row or the footer alone is not a picker", () => {
+    const effort = load("muse--filter-effort.txt");
+    const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+    const swap = (match: RegExp, text: string): StyledLine[] => {
+      const i = effort.findLastIndex((l) => match.test(lineText(l)));
+      if (i < 0) throw new Error(`no row matches ${match}`);
+      return [...effort.slice(0, i), row(text), ...effort.slice(i + 1)];
+    };
+    // No filter row: a menu under the rule Collie has not measured keeps today's raw read.
+    expect(hasFilterPickerTail(swap(/^ {2}filter$/, "  search"))).toBe(false);
+    // No footer naming the sink: the same rows without `type to filter` are not evidence.
+    const noFooter = swap(/type to filter/, "  ↑↓ move · enter confirm · esc go back");
+    expect(hasFilterPickerTail(noFooter)).toBe(false);
+    expect(museAdapter.modalOnScreen!(noFooter)).toBe(false);
+    expect(buildBlocks(noFooter, { agent: "muse" }).map((b) => b.kind)).toEqual(["raw"]);
+  });
+
+  it("real dialogs still lift and still read modal", () => {
+    for (const name of ["muse--approval-ls.txt", "muse--ask-color.txt", "muse--ask-toppings.txt"]) {
+      const lines = load(name);
+      expect(hasFilterPickerTail(lines), name).toBe(false);
+      expect(museAdapter.modalOnScreen!(lines), name).toBe(true);
+      expect(buildBlocks(lines, { agent: "muse" }).some((b) => b.kind !== "raw"), name).toBe(true);
+    }
+  });
+
+  it("the /resume picker still lifts as a menu and is not a filter tail", () => {
+    // Its footer names `tab focus sort/filter`, never `type to filter`, and it paints no
+    // filter row under a composer rule: the menu lift (and any later /model menu) owns it.
+    const lines = load("muse--resume-picker.txt");
+    expect(hasFilterPickerTail(lines)).toBe(false);
+    expect(buildBlocks(lines, { agent: "muse" }).map((b) => b.kind)).toContain("menu");
+  });
+
+  it.each(["muse--fresh-idle.txt", "muse--draft-single.txt", "muse--quoted-dialogs-bare.txt"])(
+    "%s: no filter tail on a composer screen",
+    (name) => {
+      expect(hasFilterPickerTail(load(name)), name).toBe(false);
+    },
+  );
 });

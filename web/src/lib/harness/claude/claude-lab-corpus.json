@@ -2065,13 +2065,14 @@
       "cols": 82,
       "rows": 49,
       "state": "survey-rating-above-box",
-      "notes": "session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291 (the survey is time- and sample-gated); the 2.1.278 bytes stay. The strings are still in the 2.1.291 binary, and its options now read '1: Learn more   2: Know this already   0: Dismiss' in one variant.] [2.1.302: that variant is live as the you-should-know plugin's Heads up notice ('1: Learn more   2: Knew this already   0: Dismiss'), a different shape read by surface/notice.ts and kept free (claude--v2302-heads-up-above-box--w142.txt, ADR 0109); this survey stays unreadable.]",
+      "notes": "session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey [2026-10-06: not reproduced on 2.1.291 (the survey is time- and sample-gated); the 2.1.278 bytes stay. The strings are still in the 2.1.291 binary, and its options now read '1: Learn more   2: Know this already   0: Dismiss' in one variant.] [2.1.302: that variant is live as the you-should-know plugin's Heads up notice ('1: Learn more   2: Knew this already   0: Dismiss'), a different shape read by surface/notice.ts and kept free (claude--v2302-heads-up-above-box--w142.txt, ADR 0109).] [2026-10-19: the survey is a notice too (ADR 0109, after a field refusal on lane 8788): the box stays free and the survey lifts as a card with its four printed keys.]",
       "expected": {
         "hasInputBox": true,
         "draft": null,
         "tail": "statusline",
         "dialogLive": false,
-        "blockKind": "raw"
+        "blockKind": "menu",
+        "keys": ["0", "1", "2", "3"]
       }
     },
     {

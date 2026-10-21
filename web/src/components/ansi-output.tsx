@@ -28,13 +28,14 @@ import {
   segmentClassName,
   segmentStyle,
 } from "@/components/mirror-space";
-import { renderCells } from "@/components/painted-cells";
-import { widePieces } from "@/lib/text-width";
+import { renderCells, renderWideCells } from "@/components/painted-cells";
 import { AuthedImageCard } from "@/components/authed-image-card";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks, type LinkMatch } from "@/lib/links";
 import { findFilePaths } from "@/lib/file-paths";
 import { isPlainClick, useFileLinks, type FileLinkOpener } from "@/components/file-links";
+import { useWalkyLog } from "@/components/walky-log";
+import { findWalkyIds } from "@/lib/walky";
 
 /**
  * A link in the mirror: an autolinked URL (opens a new tab), or a path the agent printed that
@@ -179,6 +180,14 @@ const NO_BLOCK_RUNS: readonly (readonly TableRun[])[] = Object.freeze([]);
 //      and win inline hit-testing, so a tap on visible text goes to the text. Only empty space
 //      beside a link can bleed to the anchor.
 // Don't convert it to a px value, and don't "fix" it to fit the line box — that would undo (1).
+// A walky talky row (M62), the envelope's header or any row that prints an id, once the pane's log has vouched for it: a muted tone and a
+// mark at its left edge, for that line only. The mark is an OUTSET box-shadow in `currentColor`,
+// so it takes no width, no padding and no border and the row's text does not move by a pixel (DESIGN.md
+// §2); it is drawn on an inline wrapper, so it adds no text node and no find or link offset. There is no
+// `dark:` variant anywhere in it: the colour is whatever the mirror's text already is, and the mirror's
+// own filter carries it into the light theme (.adr/0002).
+const WALKY_ROW_CLASS = "opacity-70 shadow-[-3px_0_0_0_currentColor]";
+
 const LINK_CLASS =
   "underline decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
 
@@ -255,27 +264,6 @@ function preClass(
 //     it also means a run narrower than the phone simply does not scroll.
 const TABLE_RUN_CLASS =
   "inline-block w-full max-w-full align-bottom whitespace-pre break-normal overflow-x-auto overflow-y-hidden overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
-
-// The mirror's monospace stack carries no CJK face, so a double-width character falls back to a
-// font whose advance is not two ASCII cells, and every wall to its right drifts off the column the
-// terminal put it in. Inside a table run each one is held to exactly `2ch`, which is two cells of the
-// monospace face, so a CJK table's walls line up again. Only inside a run: in prose an inline-block
-// per ideograph would change how the line wraps, and nothing there needs the column back.
-const WIDE_CELL_CLASS = "inline-block w-[2ch] text-center";
-
-function renderWideCells(run: string): ReactNode {
-  const pieces = widePieces(run);
-  if (!pieces.some((p) => p.wide)) return renderCells(run);
-  return pieces.map((p, k) =>
-    p.wide ? (
-      <span key={k} className={WIDE_CELL_CLASS}>
-        {p.text}
-      </span>
-    ) : (
-      <Fragment key={k}>{renderCells(p.text)}</Fragment>
-    ),
-  );
-}
 
 // Faithful, colored mirror of a pane's recent terminal output. Rendering flows through the Block AST
 // (blocks.ts): parseAnsi → styled lines → typed blocks → React. Text is always rendered as React
@@ -362,6 +350,9 @@ export const AnsiOutput = memo(function AnsiOutput({
   // The mirror is agent output and is not translated — but the two strings the image cluster
   // renders are Collie's own words, so this subscribes for the same reason every t() caller does.
   useLocale();
+  // The pane's walky talky list. A header row earns its style only when the log holds the row's id; a
+  // pane with no messages pays nothing (renderLine reads the text of no row at all).
+  const walkyLog = useWalkyLog();
   // Built here only when the caller did not already build them (see the prop). Skipping the parse
   // too is the point: AgentChat's polling path pays for one parse per screen, not two.
   const blocks = useMemo(
@@ -464,7 +455,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   // span per painted run, with no style object (components/painted-cells.tsx).
   let offset = 0;
   let currentAssigned = false;
-  // Set per line by renderLine: a table run's rows hold their wide characters to two columns.
+  // Fixed-column rows use two-cell glyphs; wrapping prose keeps its natural advances.
   let paintCells = renderCells;
 
   // A run of plain text at global offset `start` → nodes, with find matches split out and
@@ -564,7 +555,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   // untouched: a detected table owns its own rows, and nothing beyond them.
   const renderLine = (line: StyledLine, li: number, lead: boolean, inRun: boolean): ReactNode => {
     if (li > 0) offset += 1; // the "\n" separating this line from the previous
-    paintCells = inRun ? renderWideCells : renderCells;
+    paintCells = inRun || !wrap ? renderWideCells : renderCells;
     const segNodes = line.segments.map((s, si) => {
       const segStart = offset;
       offset += s.text.length;
@@ -576,11 +567,24 @@ export const AnsiOutput = memo(function AnsiOutput({
     });
     // A run's own rows are never clipped; see `inRun` above. Outside a run this is unchanged: a
     // repeated rule, or a framed menu row, keeps the single-row clip it has always had.
-    const content = line.noWrap && wrap && !inRun ? (
+    const clipped = line.noWrap && wrap && !inRun ? (
       <span className="inline-block max-w-full overflow-hidden align-bottom whitespace-pre break-normal [&_a]:break-normal">{segNodes}</span>
     ) : (
       segNodes
     );
+    // A tagged row is the SAME nodes inside one wrapper span; a row of no message is returned as it was.
+    // The header row, and any other row that prints an id the log holds (the agent's own `collie walky send`
+    // output, a reply line): the same tag. The id is looked up, never trusted.
+    const tagged =
+      walkyLog !== null && walkyLog.byId.size > 0 && findWalkyIds(lineText(line)).some((hit) => walkyLog.byId.has(hit.id));
+    const content =
+      tagged ? (
+        <span data-slot="walky-row" className={WALKY_ROW_CLASS}>
+          {clipped}
+        </span>
+      ) : (
+        clipped
+      );
     return (
       <Fragment key={li}>
         {li > 0 && lead ? "\n" : null}

@@ -1,0 +1,15 @@
+↓ Read[0m[38;5;12m /workspace/tester/demo/sample-app/.test-files/demo-se[0m
+  [0m[38;5;12mssion-fixture/files-v3/read harmless words across narrow [0m
+  [0m[38;5;12mapproval resource rows.txt (L1-1)[0m
+
+────────────────────────────────────────────────────────────
+ Read File requires approval
+ fs_read → read harmless words across narrow approval
+ resource rows.txt
+ 
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mAllow      [0m
+   Deny       
+   Always deny
+────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                           

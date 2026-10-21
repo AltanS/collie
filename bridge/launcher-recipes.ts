@@ -10,10 +10,10 @@ import type { LaunchCheckResponse } from "./types.ts";
 //
 // ── EVERY FLAG HERE WAS READ OFF THE CLI'S OWN `--help` ─────────────────────────────────────────
 // On 2026-10-09, on the development host, through a login shell: Claude Code 2.1.295, Codex 0.162.0,
-// opencode 1.18.35, pi 0.87.1, omp; grok and agy on 2026-10-12 (their rows below). A harness not
-// installed there (muse) lists no option: a flag nobody saw is a flag that may not exist. Hermes
-// lists none either: Herdr 0.9.0 does not detect a pane started by v0.21.7's launcher. When a CLI
-// renames a flag, a row built from the old one stops matching its rebuild and drops out at read
+// opencode 1.18.35, pi 0.87.1, omp; grok and agy on 2026-10-12, muse on 2026-10-21 (their rows
+// below). A flag nobody saw is a flag that may not exist, so a harness with no checked option lists
+// none. Hermes lists none: Herdr 0.9.0 does not detect a pane started by v0.21.7's launcher. When a
+// CLI renames a flag, a row built from the old one stops matching its rebuild and drops out at read
 // time (bridge/launchers-added.ts), so a stale chip can never type a stale line.
 //
 // ── GROUPS ARE ONE-OF ───────────────────────────────────────────────────────────────────────────
@@ -96,6 +96,14 @@ const RECIPE_TABLE = {
     { id: "plan", label: "Plan mode", args: "--mode plan", group: "permissions" },
     { id: "continue", label: "Continue last", args: "--continue" },
   ],
+  // Muse 1.4.11, read off `muse --help` on 2026-10-21. Bypass chips only: model ids depend on the
+  // provider and resume is a subcommand (`muse resume --last`), not a flag, so neither would be a
+  // real flag. The canary's `options` scenario starts each chip's line alone.
+  muse: [
+    { id: "yolo", label: "Yolo mode", args: "--yolo", group: "mode", noPrompts: true },
+    { id: "never", label: "Never ask", args: "--approval-mode never", group: "mode", noPrompts: true },
+    { id: "no-questions", label: "No question prompts", args: "--disable-request-user-input", noPrompts: true },
+  ],
 } satisfies Record<string, readonly RecipeOption[]>;
 
 /** The options each harness offers. A harness with no entry offers none: its recipe is its binary. */
@@ -151,12 +159,19 @@ const NO_PROMPT_FLAGS: ReadonlySet<string> = new Set([
   "--dangerously-bypass-approvals-and-sandbox",
   "--yolo",
   "--ask-for-approval=never",
+  // Muse (`--yolo` is above, under Codex, and counts for every command word)
+  "--disable-approval",
+  "--disable-request-user-input",
+  "--approval-mode=never",
+  // Kiro CLI
+  "--trust-all-tools",
 ]);
 
 /** Flags whose VALUE decides it, written as two words: `--permission-mode bypassPermissions`. */
 const NO_PROMPT_PAIRS: readonly (readonly [string, string])[] = [
   ["--permission-mode", "bypassPermissions"],
   ["--ask-for-approval", "never"],
+  ["--approval-mode", "never"],
 ];
 
 /**
@@ -178,6 +193,7 @@ export function scanNoPrompts(line: string): boolean {
     if (first === "codex" && word === "-a" && next === "never") return true;
     if (first === "opencode" && word === "--auto") return true;
     if (first === "grok" && word === "--always-approve") return true;
+    if (first === "kiro-cli" && word === "-a") return true;
   }
   return false;
 }

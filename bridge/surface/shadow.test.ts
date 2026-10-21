@@ -20,7 +20,9 @@ const screen = (name: string): string => readFileSync(join(PANES, name), "utf8")
 
 const IDLE = "claude-lab--idle-after-turn--w82.txt";
 const PERMISSION = "claude-lab--permission-bash--w82.txt";
-const SURVEY = "claude-lab--survey-rating-above-box--w82.txt";
+/** The /usage panel over a live box: a strong cue no reader lifts. (The rating survey stood here until
+ *  2026-10-19, when it became a notice, ADR 0109.) */
+const PANEL = "claude--v2301-usage-panel-over-box--w82.txt";
 /** A dialog fixture whose screen still shows a live box: the Surface sees no modal, the old reader a block. */
 const AGENTS = "claude-lab--agents-screen--w82.txt";
 /** The harness id the fixtures were captured under; the profile is picked by it. Test files are
@@ -94,7 +96,7 @@ describe("surface shadow", () => {
 
   test("a strong cue no reader lifted reads unreadable and is counted", async () => {
     const r = rig();
-    r.mux.set("w1:p1", SURVEY, 3);
+    r.mux.set("w1:p1", PANEL, 3);
     await r.shadow.observe([agent("w1:p1")]);
     expect(r.shadow.surfaceOf("w1:p1")!.modal).toBe("unreadable");
     expect(r.shadow.report().counters[`${HARNESS}@2.1.296`]!.modal).toEqual({ unreadable: 1 });

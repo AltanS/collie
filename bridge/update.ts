@@ -8,6 +8,7 @@ import { herdrActionCommand } from "./front-door.ts";
 import type { ReleaseNotes, ReleaseNotesGroup } from "./release-notes.ts";
 import type { CrewMode, UpdateLinkChange, UpdateStatus } from "./types.ts";
 import type { UpdateRun } from "./update-run.ts";
+import type { LineReading, ReleaseLine } from "./update-line.ts";
 
 // Update-availability signal, surfaced on the (access-gated) /api/snapshot as `update`. Two
 // independent questions the running plugin can answer about itself:
@@ -36,8 +37,18 @@ const PRERELEASE_SEMVER_TAG = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A
 const TAGS_TIMEOUT_MS = 10_000;
 // The release reading (`collie-release.json`, M27/06) is bounded far tighter than the tag list,
 // because it is an EXTRA inside the same check budget: the tags are the answer, this is a footnote
-// on it. A release that does not answer in three seconds reads as one that says nothing.
+// on it. A release that does not answer in three seconds reads as one that says nothing. The ONE
+// thing it can take away is a tag whose release is not published yet (a 404, #503); a timeout or a
+// 5xx never hides a version.
 const RELEASE_READING_TIMEOUT_MS = 3_000;
+// The first release that publishes `collie-release.json` (1.8.0, M27/06). From it on, a 404 at the
+// sidecar's URL cannot mean "this release publishes none": it means the tag exists and its release
+// does not yet (#503). Below it a 404 is the ordinary answer of a published release and stays one.
+const FIRST_SIDECAR_VERSION = "1.8.0";
+// How many times one check hides a tag whose release is not published and looks again at what is
+// next in line. One is the real case (a release being cut); the bound keeps a run of orphaned tags
+// from turning a check into a crawl.
+const UNPUBLISHED_ROUNDS_MAX = 4;
 // bridgeStale is read on every snapshot poll; recompute the on-disk stamp at most this often so a
 // busy poll loop doesn't stat the source tree dozens of times a second (the value barely changes).
 const STALE_TTL_MS = 5_000;
@@ -324,6 +335,11 @@ export function shouldNotify(a: {
    * from one this install already pushed, and it is the same object the snapshot shows.
    */
   urgent?: UpdateUrgentReading;
+  /**
+   * This machine is on the Edge line (M60 spec 01): no window is consulted, so a new build is
+   * pushed at the next check. The 09:00 floor still holds, for the reason it holds for urgent.
+   */
+  edge?: boolean;
 }): NotifyVerdict {
   if (!a.latest) return { send: false };
   if (compareSemver(a.latest, a.current) <= 0) return { send: false };
@@ -346,7 +362,7 @@ export function shouldNotify(a: {
   // An urgent delta that has already been announced is a patch train on the DAILY window: the
   // interruption was spent, and what is left is the ordinary cadence for the kind of release it is.
   const window = patchOnly && a.urgent === undefined ? DIGEST_PATCH_WINDOW_MS : DIGEST_WINDOW_MS;
-  if (!unannouncedUrgent && !Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) {
+  if (a.edge !== true && !unannouncedUrgent && !Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) {
     return { send: false };
   }
   // THE FLOOR IS NEVER SKIPPED, not even by an urgent release. "Today" is what urgent asks for, not
@@ -666,8 +682,10 @@ export function githubTagsFetcher(
 // BEFORE it confirms, that the update changes the link its crew talks over — and be told generically,
 // off a number, rather than off a hard-coded release name that would have to be edited every time.
 //
-// It is a courtesy, never a gate. Absent, unreachable, truncated or foreign all read the same way:
-// no change. Every release before 1.8.0 published none at all.
+// It is a courtesy on the wording, and a gate on exactly one thing (#503). Absent, unreachable,
+// truncated or foreign all read the same way for the crew link: no change. Every release before
+// 1.8.0 published none at all. But from 1.8.0 on it is published WITH the release, so its 404 means
+// the tag is not a release yet, and the check does not offer that version (`publishedTags`).
 
 /** What a release says about itself. Unknown fields are ignored — additive is free. */
 export interface ReleaseReading {
@@ -790,10 +808,14 @@ export function newestUrgent(
  * What one read of a release's sidecar came back with.
  *
  * THREE ANSWERS, NOT TWO, and the third is the one that can be remembered: a reading, a definite
- * ABSENCE (the release published no such asset — GitHub says 404, which is every release before
- * 1.8.0), and a failure (a timeout, a 5xx, a body that is not the document). An absence is a fact
- * about a published release and never changes; a failure is a fact about this minute. The monitor
- * caches the first two for its lifetime and asks again after the third.
+ * ABSENCE (GitHub says 404), and a failure (a timeout, a 5xx, a body that is not the document). A
+ * failure is a fact about this minute and is asked again next check.
+ *
+ * A 404 has TWO meanings, told apart by the version and not by the fetcher (#503). Before 1.8.0 it
+ * is a fact about a published release, which never grew the asset and never will, so the monitor
+ * remembers it for its lifetime. From 1.8.0 on every release carries the asset, so a 404 means the
+ * tag exists and its release is not published yet: that version is not offered, and the verdict is
+ * dropped at the next check, because the release goes out within minutes.
  */
 export type ReleaseReadingResult = ReleaseReading | "absent" | null;
 
@@ -811,8 +833,10 @@ export function releaseReadingFetcher(
       };
       if (mirror !== null) init.redirect = MIRROR_FETCH.redirect;
       const res = await fetch(releaseReadingUrl(repo, version, mirror), init);
-      // 404 is the ordinary answer for every release before 1.8.0, and it is DEFINITE: that release
-      // is published and will never grow the asset. Every other bad status is this minute's problem.
+      // 404 is "no such asset": the ordinary answer for every release before 1.8.0 (published, and it
+      // will never grow the asset), and for a newer release it is "tagged, not published yet" (#503).
+      // The monitor tells the two apart by version. Every other bad status is this minute's problem,
+      // and stays null: a 5xx must never hide an update.
       if (res.status === 404) return "absent";
       if (!res.ok) return null;
       // SAFETY: `Response.json()` output IS a JsonValue by construction; the parser checks it.
@@ -1171,6 +1195,10 @@ export interface UpdateMonitorDeps {
    * Called for the newest release, and for each of the newest few in the delta when the monitor asks
    * whether any of them is urgent (ADR 0046). The monitor remembers a reading and an absence for its
    * lifetime, so a published release is asked about once; a failure is asked again next check.
+   *
+   * It is also the proof that a release is PUBLISHED (#503): the tag exists minutes before the
+   * release does, and until then every asset answers 404. For a release from 1.8.0 on, `"absent"`
+   * therefore means "tagged, not published yet", and the monitor does not offer that version.
    */
   fetchReleaseReading: (version: string) => Promise<ReleaseReadingResult>;
   /**
@@ -1188,6 +1216,21 @@ export interface UpdateMonitorDeps {
    * without it reports no current notes, which the Updates page shows as no list.
    */
   currentNotes?: () => Promise<ReleaseNotes | null>;
+  /**
+   * What this machine's release line offers from a list of published tags (M60 spec 01, ADR 0110):
+   * `bridge/update-line.ts`'s `lineReading` over `update-line.json`, read on every call so a switch
+   * through the route is seen at once. Optional: a monitor without it resolves on ADR 0020's rules
+   * exactly as before, with no line and no way back.
+   */
+  lineOffer?: (tags: readonly string[], installed: string) => LineReading;
+  /**
+   * This machine's line as the record says it NOW (M60 spec 01), read on every {@link UpdateMonitor.status}.
+   * The line is a fact of `update-line.json`, not of a release check: without this seam a machine
+   * whose check never succeeded (offline, rate-limited, the rig's dead mirror) reported no line, so
+   * the Updates card and the Crew page said Stable while the record, and the crew header, said Edge.
+   * Optional: a monitor without it names the line of the last resolve, as before.
+   */
+  line?: () => ReleaseLine;
 }
 
 /** What `GET /api/update/check` carries about what releases changed (1.21.1). */
@@ -1198,9 +1241,21 @@ export interface UpdateNotes {
   offered: ReleaseNotes[];
 }
 
+/** What a routine update would take from a tag list: the newest, and every version above this one. */
+interface RoutineOffer {
+  readonly latest: string | null;
+  readonly newer: readonly string[];
+}
+
 export class UpdateMonitor {
   private latest: string | null = null;
   private newerVersions: string[] = [];
+  // THE LINE AND THE WAY BACK (M60 spec 01), from the last resolve. `line` is null on a monitor with
+  // no line seam, which reports none; `back` is the Stable release "Go back now" targets, or null.
+  private line: ReleaseLine | null = null;
+  private back: { readonly to: string; readonly exceptions: readonly string[] } | null = null;
+  // The published tags the last check found, so a switch of line re-resolves without a request.
+  private published: string[] | null = null;
   private majorAvailable: string | null = null;
   private checkedAt: number | null = null;
   // CACHED WITH THE READING, never in a store of its own (M27/06): it is a fact about the release
@@ -1219,6 +1274,11 @@ export class UpdateMonitor {
   // the map above — without this, one check would spend two requests on one version to learn the
   // same "could not read it" twice.
   private checkReadings = new Map<string, ReleaseReading | null>();
+  // THE VERSIONS THIS CHECK FOUND TAGGED BUT NOT PUBLISHED (#503): a sidecar that answered 404 for a
+  // release from 1.8.0 on. Cleared with `checkReadings` when the next check starts, so the verdict
+  // lives one poll interval and never longer. It is NOT the `readings` map on purpose: that one is
+  // for facts that never change, and "not published yet" changes the minute the release goes out.
+  private unpublished = new Set<string>();
   private staleAt = Number.NEGATIVE_INFINITY;
   private staleValue = false;
   private swappedAt = Number.NEGATIVE_INFINITY;
@@ -1249,12 +1309,20 @@ export class UpdateMonitor {
    * so a crash mid-send leaves an under-delivered nag rather than a duplicate.
    */
   private async runCheck(): Promise<void> {
-    let tags: string[];
+    let names: string[];
     try {
-      tags = (await this.deps.fetchTags()).map((t) => t.name);
+      names = (await this.deps.fetchTags()).map((t) => t.name);
     } catch {
       return; // network / timeout — keep prior state, retry next tick
     }
+    // A fresh page of "what did this check learn", so a read that failed last time is tried again,
+    // and a release that was tagged but not published last time is asked about again.
+    this.checkReadings = new Map();
+    this.unpublished = new Set();
+    // A TAG IS NOT A RELEASE (#503). The tag exists minutes before `release.yml` publishes the
+    // release, and in that window the version cannot be installed: every asset answers 404. Offer
+    // only what is published, and fall back to the next newest tag the check would have offered.
+    const tags = await this.publishedTags(names);
     // Two answers, never one (ADR 0020): the newest tag the operator can take on a routine `update` —
     // which stays inside the running major, and which includes that major's prereleases IFF this
     // install is itself on one — and, separately, whether a MAJOR is out at all. The banner and the
@@ -1262,13 +1330,9 @@ export class UpdateMonitor {
     // announced. A version we can't parse a major out of (`unknown`) falls back to the old "newest of
     // anything", because an install that can't name its major can't be gated on it either.
     const major = majorOf(this.deps.current);
-    this.latest =
-      major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, this.deps.current);
+    this.published = tags;
+    this.resolve(tags);
     this.majorAvailable = major === null ? null : latestReleaseAboveMajor(tags, major);
-    // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
-    this.newerVersions = updatesNewerThan(tags, this.deps.current);
-    // A fresh page of "what did this check learn", so a read that failed last time is tried again.
-    this.checkReadings = new Map();
     this.checkedAt = this.deps.now();
     // ONE SMALL GET INSIDE THIS CHECK'S BUDGET (M27/06), and only when there is a release to ask
     // about. It cannot fail the check: the fetcher answers null for everything that is not the
@@ -1298,6 +1362,9 @@ export class UpdateMonitor {
       lastPushedAt: store.lastPushedAt(),
       now: new Date(this.deps.now()),
       urgent: this.urgent ?? undefined,
+      // EDGE NUDGES AT ONCE (M60 spec 01): a volunteer on Edge asked for the next build the day it
+      // is out. Stable keeps today's windows.
+      edge: this.lineNow() === "edge",
     });
     if (!verdict.send) return;
     await store.setLastNotified(verdict.versions[verdict.versions.length - 1] ?? current, this.nowIso());
@@ -1305,9 +1372,106 @@ export class UpdateMonitor {
   }
 
   /**
+   * The routine answer from `tags`: `latest` and `newerVersions`, and on a monitor with a line seam,
+   * the line and the way back. One place, so a check and a switch of line resolve alike.
+   *
+   * Two answers, never one (ADR 0020): the newest tag the operator can take on a routine `update`,
+   * which stays inside the running major, and separately whether a MAJOR is out at all (the caller's
+   * `majorAvailable`). A version we can't parse a major out of (`unknown`) falls back to the old
+   * "newest of anything", because an install that can't name its major can't be gated on it either.
+   */
+  private resolve(tags: string[]): void {
+    const { current } = this.deps;
+    const major = majorOf(current);
+    const reading = major === null ? undefined : this.deps.lineOffer?.(tags, current);
+    if (reading !== undefined) {
+      this.latest = reading.latest;
+      this.newerVersions = [...reading.newer];
+      this.line = reading.line;
+      this.back = reading.back === null ? null : { to: reading.back, exceptions: reading.exceptions };
+      return;
+    }
+    this.latest = major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, current);
+    // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
+    this.newerVersions = updatesNewerThan(tags, current);
+    this.line = null;
+    this.back = null;
+  }
+
+  /**
+   * The line changed (M60 spec 01): resolve again from the tags the last check found, with no
+   * request, so the snapshot after a switch already shows what the new line offers. The next check
+   * reads the sidecars of anything newly offered.
+   */
+  lineChanged(): void {
+    if (this.published !== null) this.resolve(this.published);
+  }
+
+  /** The line to report: the record's, read now, or the last resolve's on a monitor without that seam. */
+  private lineNow(): ReleaseLine | null {
+    return this.deps.line?.() ?? this.line;
+  }
+
+  /** The routine offer from `tags`, without touching the cached answer. {@link publishedTags} asks. */
+  private offerOf(tags: string[]): RoutineOffer {
+    const { current } = this.deps;
+    const major = majorOf(current);
+    const reading = major === null ? undefined : this.deps.lineOffer?.(tags, current);
+    if (reading !== undefined) return { latest: reading.latest, newer: [...reading.newer] };
+    return {
+      latest: major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, current),
+      newer: updatesNewerThan(tags, current),
+    };
+  }
+
+  /**
+   * `names` without the tags whose release is not published yet (#503).
+   *
+   * The proof of publication is the sidecar `collie-release.json` answering at the download URL the
+   * bridge already reads it from. A 404 there is "tagged, not published yet" and the tag is taken out,
+   * so every answer built from the list after this (the banner's `latest`, the digest's
+   * `newerVersions`, `majorAvailable`) falls back to the next newest tag the check would otherwise
+   * have offered. A timeout, a 5xx or an unreadable body is NOT a 404: those read as null, the tag
+   * stays, and a flaky fetch can never hide an update.
+   *
+   * No request of its own. It asks about the versions the rest of the check asks about anyway (the
+   * newest {@link URGENT_READING_CAP} of the delta, which include `latest`), through the same
+   * memoised {@link reading}; the one addition is the newest release of a higher major, which the
+   * banner also names. A published release is asked about once per process, an unpublished one once
+   * per check, and no timer is added: the next ordinary check asks again.
+   */
+  private async publishedTags(names: readonly string[]): Promise<string[]> {
+    const { current } = this.deps;
+    const major = majorOf(current);
+    let tags = [...names];
+    const asked = new Set<string>();
+    for (let round = 0; round < UNPUBLISHED_ROUNDS_MAX; round++) {
+      const offer = this.offerOf(tags);
+      const top = offer.latest;
+      const above = major === null ? null : latestReleaseAboveMajor(tags, major);
+      // Only a version NEWER than this install can be an offer, so only those are asked about.
+      const wanted = [...offer.newer.slice(-URGENT_READING_CAP), top, above].filter(
+        (v): v is string => v !== null && compareSemver(v, current) > 0,
+      );
+      const next = [...new Set(wanted)].filter((v) => !asked.has(v));
+      if (next.length === 0) break;
+      for (const v of next) asked.add(v);
+      await Promise.all(next.map((v) => this.reading(v)));
+      const gone = new Set(next.filter((v) => this.unpublished.has(v)));
+      if (gone.size === 0) break;
+      tags = tags.filter((tag) => {
+        const parsed = parsePrereleaseTag(tag);
+        return parsed === null || !gone.has(versionOfTag(parsed));
+      });
+    }
+    return tags;
+  }
+
+  /**
    * One release's `collie-release.json`, memoised. Never throws. A reading and a definite absence are
    * both kept; a FAILED read is kept out of the map, so a network blip is never remembered as "this
-   * release says nothing" and the next check asks again.
+   * release says nothing" and the next check asks again. The one 404 that is NOT kept is the one for a
+   * release from 1.8.0 on: that is "not published yet" (#503), remembered for this check only.
    */
   private async reading(version: string): Promise<ReleaseReading | null> {
     const held = this.readings.get(version);
@@ -1315,6 +1479,15 @@ export class UpdateMonitor {
     const thisCheck = this.checkReadings.get(version);
     if (thisCheck !== undefined) return thisCheck;
     const fetched = await this.deps.fetchReleaseReading(version);
+    // Tagged, not published (#503). From 1.8.0 on every release carries the sidecar, so a 404 is not
+    // "this release says nothing", it is "this release is not out". That verdict is this check's
+    // alone: it is kept out of `readings`, or the minute the release went out it would still be
+    // remembered as missing.
+    if (fetched === "absent" && compareSemver(version, FIRST_SIDECAR_VERSION) >= 0) {
+      this.unpublished.add(version);
+      this.checkReadings.set(version, null);
+      return null;
+    }
     this.checkReadings.set(version, fetched === "absent" ? null : fetched);
     // A reading and an ABSENCE are both facts about a published release, and a published release does
     // not change. A failure is a fact about this minute, so it is not remembered.
@@ -1469,6 +1642,11 @@ export class UpdateMonitor {
     // the daily cadence, which is every ordinary release and every check that has not run yet.
     if (this.urgent !== null) status.urgent = this.urgent;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
+    // The line and the way back (M60 spec 01), on the same rule: absent on a monitor with no line
+    // seam, and `back` absent in every case but an Edge build ahead of Stable on the Stable line.
+    const line = this.lineNow();
+    if (line !== null) status.line = line;
+    if (this.back !== null) status.back = { to: this.back.to, exceptions: [...this.back.exceptions] };
     if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind, this.deps.instance);
     return status;
   }

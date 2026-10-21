@@ -1,0 +1,40 @@
+
+ [38;2;205;154;34mWarning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
+[39m [38;2;205;154;34mand restart tmux.[39m
+
+
+
+
+
+
+
+
+
+
+
+
+ [38;2;215;135;175m Anthropic: Claude Haiku 4.5[39m [38;5;244m[39m [38;2;108;118;123mthink:off[39m [38;5;244m[39m [38;2;0;175;175m project[39m [38;5;244m[39m  [38;2;126;136;142m0/200k (0.0%) 󰁨[39m
+[38;2;95;168;204m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[38;2;205;154;34mOnly showing models from configured providers. Use /login to add providers.[39m
+
+> [7m [0m
+
+[38;2;167;152;215m→ ✓ anthropic/claude-haiku-4.5[39m [38;2;157;165;169m[openrouter] · default[39m
+    ~anthropic/claude-fable-latest [38;2;157;165;169m[openrouter][39m
+    ~anthropic/claude-haiku-latest [38;2;157;165;169m[openrouter][39m
+    ~anthropic/claude-opus-latest [38;2;157;165;169m[openrouter][39m
+    ~anthropic/claude-sonnet-latest [38;2;157;165;169m[openrouter][39m
+    ~deepseek/deepseek-flash-latest [38;2;157;165;169m[openrouter][39m
+    ~deepseek/deepseek-pro-latest [38;2;157;165;169m[openrouter][39m
+    ~deepseek/deepseek-v4-flash-latest [38;2;157;165;169m[openrouter][39m
+    ~google/gemini-flash-latest [38;2;157;165;169m[openrouter][39m
+    ~google/gemini-pro-latest [38;2;157;165;169m[openrouter][39m
+[38;2;157;165;169m  (1/395)[39m
+
+[38;2;157;165;169m  Model Name: Anthropic: Claude Haiku 4.5[39m
+
+[38;2;104;183;141m  Model catalogs refreshed.[39m
+
+[38;2;126;136;142m  Enter to select · Ctrl+S to set as default · Escape/Ctrl+C to cancel[39m
+[38;2;95;168;204m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

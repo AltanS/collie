@@ -85,6 +85,23 @@ describe("classifyToolCall", () => {
     ).toEqual({ kind: "task", agent: "Explore", summary: "find the parser" });
   });
 
+  test("a subagent call names its type, else its model, else nothing, and never the word agent", () => {
+    const input = { description: "map the routes" };
+    expect(classifyToolCall("Agent", { ...input, subagent_type: "Explore", model: "opus" }, "x")).toEqual({
+      kind: "task",
+      agent: "Explore",
+      summary: "map the routes",
+    });
+    expect(classifyToolCall("Agent", { ...input, model: "sonnet" }, "x")).toEqual({
+      kind: "task",
+      agent: "sonnet",
+      summary: "map the routes",
+    });
+    const bare = classifyToolCall("Agent", input, "x");
+    expect(bare).toEqual({ kind: "task", summary: "map the routes" });
+    expect(Object.keys(bare)).toEqual(["kind", "summary"]);
+  });
+
   test("an absent optional field is absent, not `undefined`", () => {
     // A key holding `undefined` survives a deep compare and a structured clone, so it would travel to
     // the phone as a present-but-empty field.
@@ -151,6 +168,30 @@ describe("classifyToolCall: a question is recognised by its input", () => {
     expect(classifyToolCall("q", { questions: [null, { question: "no options" }] }, "s")).toEqual({ kind: "other", name: "q", summary: "s" });
     expect(classifyToolCall("q", { questions: [] }, "s").kind).toBe("other");
     expect(classifyToolCall("q", { questions: "nope" }, "s").kind).toBe("other");
+  });
+
+  test("Muse's `selection.mode` means multiple", () => {
+    const multi = classifyToolCall(
+      "request_user_input",
+      {
+        questions: [
+          {
+            id: "fruit",
+            question: "Which fruit?",
+            options: [{ label: "Apple" }, { label: "Banana" }],
+            selection: { mode: "multiple", min_selections: 1, max_selections: 2 },
+          },
+        ],
+      },
+      "",
+    );
+    expect(multi.kind === "question" && multi.questions[0]).toMatchObject({ multiple: true });
+    const single = classifyToolCall(
+      "request_user_input",
+      { questions: [{ id: "fruit", question: "Q?", options: ["a"], selection: { mode: "single" } }] },
+      "",
+    );
+    expect(single.kind === "question" && single.questions[0]?.multiple).toBe(false);
   });
 
   test("a runaway input is capped", () => {
@@ -231,7 +272,6 @@ describe("classifyToolCall: Gentle Shell's other tools", () => {
     });
     expect(classifyToolCall("subagent_continue", { task_id: "t-1", label: "Fix the test", prompt: "Long prompt" }, "")).toEqual({
       kind: "task",
-      agent: "agent",
       summary: "Fix the test",
     });
   });
@@ -239,7 +279,6 @@ describe("classifyToolCall: Gentle Shell's other tools", () => {
   test("a continue with no label is named by the one-line summary, never the whole prompt", () => {
     expect(classifyToolCall("subagent_continue", { task_id: "t-1", prompt: "Line one\nLine two" }, "t-1")).toEqual({
       kind: "task",
-      agent: "agent",
       summary: "t-1",
     });
   });

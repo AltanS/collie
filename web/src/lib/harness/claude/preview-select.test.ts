@@ -423,3 +423,128 @@ describe("detectPreviewSelect — a dialog rule wrapped beside a theme's gutter"
     expect(kinds).toContain("preview-select");
   });
 });
+
+// Issue 543: the preview variant finds its question by the same question-mark test, so a question that
+// ends in a fullwidth "？" must still be read there too.
+describe("detectPreviewSelect: a question that ends in a fullwidth question mark", () => {
+  it("reads the question and the options of the single-question preview dialog", () => {
+    const text = fixtureText("claude--select-preview.txt");
+    expect(text).toContain("Which widget design should we use?");
+    const wide = text.replaceAll("Which widget design should we use?", "どのウィジェットのデザインにしますか？");
+    const model = detectPreviewSelect(splitLines(parseAnsi(wide)));
+    expect(model).not.toBeNull();
+    expect(model!.question).toBe("どのウィジェットのデザインにしますか？");
+    expect(model!.options.map((o) => o.label)).toEqual(["Boxy", "Rounded", "Minimal"]);
+  });
+
+  it("with no question mark at all, the rows under the chip are still the question", () => {
+    const text = fixtureText("claude--select-preview.txt").replaceAll(
+      "Which widget design should we use?",
+      "Pick a widget design below.",
+    );
+    const model = detectPreviewSelect(splitLines(parseAnsi(text)));
+    expect(model).not.toBeNull();
+    expect(model!.question).toBe("Pick a widget design below.");
+    expect(model!.options.map((o) => o.label)).toEqual(["Boxy", "Rounded", "Minimal"]);
+  });
+
+  it("a chip header that ends in a question mark is not read into the question", () => {
+    const text = fixtureText("claude--select-preview.txt")
+      .replace(" ☐ Design ", " ☐ Design? ")
+      .replaceAll("Which widget design should we use?", "Pick a widget design below.");
+    const model = detectPreviewSelect(splitLines(parseAnsi(text)));
+    expect(model).not.toBeNull();
+    expect(model!.question).toBe("Pick a widget design below.");
+  });
+
+  it("with no question mark and no chip, there is no question", () => {
+    const rows = fixtureText("claude--select-preview.txt")
+      .replaceAll("Which widget design should we use?", "Pick a widget design below.")
+      .split("\n")
+      .map((row) => (row.includes("☐") ? "" : row));
+    expect(detectPreviewSelect(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
+  });
+});
+
+// Claude Code 2.1.304 preview-select with CJK option labels: each CJK character occupies 2 terminal
+// display columns (1 UTF-16 code unit), so slicing by UTF-16 index (`slice(0, noteCol)`) shifts the
+// column boundary right into the preview box and attaches its left border ("┌───", "│ +--") to the
+// option labels.
+describe("detectPreviewSelect: CJK and combining-mark option labels split by display width", () => {
+  it("splits CJK option labels cleanly from the preview box on both pointer states", () => {
+    const first = detectPreviewSelect(fixtureLines("claude--v2304-select-preview-cjk.txt"));
+    expect(first).not.toBeNull();
+    expect(first!.question).toBe("どのウィジェットのデザインにしますか？");
+    expect(first!.options).toEqual([
+      { label: "カード型", n: 1, pointed: true, chosen: false },
+      { label: "コンパクト", n: 2, pointed: false, chosen: false },
+      { label: "ミニマル", n: 3, pointed: false, chosen: false },
+    ]);
+    expect(first!.preview[0]).toBe("┌──────────────────────────────────────────┐");
+
+    const moved = detectPreviewSelect(fixtureLines("claude--v2304-select-preview-cjk-moved.txt"));
+    expect(moved).not.toBeNull();
+    expect(moved!.options).toEqual([
+      { label: "カード型", n: 1, pointed: false, chosen: false },
+      { label: "コンパクト", n: 2, pointed: true, chosen: false },
+      { label: "ミニマル", n: 3, pointed: false, chosen: false },
+    ]);
+    expect(moved!.preview[0]).toBe("┌──────────────────────────────────────────┐");
+    expect(moved!.coreSignature).toBe(first!.coreSignature);
+  });
+
+  it("splits wrapped CJK continuation labels without leaking into the preview column", () => {
+    const raw = [
+      "─".repeat(80),
+      " ☐ 版型 ",
+      "",
+      "請選擇你要使用的版型？",
+      "",
+      "❯ 1. 雙欄卡片版型         ┌────────────────────┐",
+      "     含側邊預覽面板       │ +----------------+ │",
+      "  2. 單欄緊湊列表         │ |   預覽畫面     | │",
+      "                          │ +----------------+ │",
+      "                          └────────────────────┘",
+      "",
+      "                          Notes: press n to add notes",
+      "─".repeat(80),
+      "  Chat about this",
+      "",
+      "Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel",
+    ].join("\n");
+    const m = detectPreviewSelect(splitLines(parseAnsi(raw)));
+    expect(m).not.toBeNull();
+    expect(m!.options.map((o) => o.label)).toEqual([
+      "雙欄卡片版型 含側邊預覽面板",
+      "單欄緊湊列表",
+    ]);
+    expect(m!.preview[0]).toBe("┌────────────────────┐");
+    expect(m!.preview[1]).toBe("│ +----------------+ │");
+  });
+
+  it("accounts for zero-width combining marks in narrow option labels", () => {
+    // "❯ 1. Café" is 10 UTF-16 code units but 9 display columns (combining acute = 0 cols),
+    // so UTF-16 slice(0, 26) leaves a leading space on `right` and shifts the preview box right.
+    const raw = [
+      "─".repeat(80),
+      " ☐ Menu ",
+      "",
+      "Which item should we highlight?",
+      "",
+      "❯ 1. Café                 ┌────────────────────┐",
+      "  2. Plain                │ +----------------+ │",
+      "                          └────────────────────┘",
+      "",
+      "                          Notes: press n to add notes",
+      "─".repeat(80),
+      "  Chat about this",
+      "",
+      "Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel",
+    ].join("\n");
+    const m = detectPreviewSelect(splitLines(parseAnsi(raw)));
+    expect(m).not.toBeNull();
+    expect(m!.options.map((o) => o.label)).toEqual(["Café", "Plain"]);
+    expect(m!.preview[0]).toBe("┌────────────────────┐");
+  });
+});
+

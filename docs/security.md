@@ -47,8 +47,9 @@ a monitor or a load balancer asks, and `/api/pair`, which a device needs before 
 input box read as free, how often it could not be read, and how often a person sent by hand past a
 screen Collie could not read). The counts name no pane, no text and no person.
 
-The device header gates writes and one read, the [Files view](changes.md#files), which can show
-every file under a workspace's folder
+The device header gates writes and two reads: the [Files view](changes.md#files), which can show
+every file under a workspace's folder, and the New page's
+[Browse](configure.md#favourite-and-recent-folders), which lists folder names under home
 ([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
 
 ```bash
@@ -185,6 +186,10 @@ Key security boundaries and risks:
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
   ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
+- **The New page's Browse lists folder names under your home.** Names only, with the Files view's
+  limits: no dot-folders unless typed, no `.git`, no Collie state or config folder, no link out of
+  home, at most 200 rows. It needs an authorised device too
+  ([Favourite and recent folders](configure.md#favourite-and-recent-folders)).
 - **Every paired device can read files under the workspace's folder.** That includes `.env`
   files. Pair only the devices you trust with the shell itself.
 - **Credential files under a workspace's folder are readable.** A workspace opened in `~/.claude`,
@@ -210,6 +215,10 @@ Key security boundaries and risks:
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
   [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
+- **Each machine keeps the shell lines you send through Collie.** Sent keeps a line you send to a
+  shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
+  device can read it, as it can read the panes. Some secrets are still kept
+  ([Sent: the shell lines you sent](#sent-the-shell-lines-you-sent)).
 - **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
   Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
@@ -250,6 +259,7 @@ Key security boundaries and risks:
 | `COLLIE_DEVICE_HEADER` | Name of the header your proxy injects with a device id. |
 | `COLLIE_DEVICE_ALLOWLIST` | Comma-separated device ids allowed to write; every other device stays read-only ([`docs/deployment.md`](deployment.md)). |
 | `COLLIE_REDACT=off` | Turns off the secret mask on pane text, diffs and file text ([below](#what-leaves-the-machine-is-masked)). On by default. |
+| `COLLIE_SENT=off` | Keeps no record of the shell lines you send ([below](#sent-the-shell-lines-you-sent)). On by default. |
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case
@@ -324,6 +334,52 @@ entirely.
 Why it is built this way: [ADR 0096](../.adr/0096-speech-can-stay-on-the-phone.md). The setup steps
 are in [Voice input and Web Push](voice-and-push.md#whistle-speech-to-text-on-your-phone-or-your-host).
 
+## Walky talky
+
+Walky talky carries messages between agent sessions, so this section says what a message proves and
+what it does not. The commands are in [Walky talky](walky-talky.md).
+
+```sh
+# in .env, then run `collie restart`
+COLLIE_WALKY=off
+```
+
+That line makes this machine refuse every message for its panes. The CLI on the machine can still send.
+
+- **A crew key signs a message across machines.** A member signs a message with its crew key. The
+  lead checks the signature against the key it pinned for that member, then adds its own signature
+  for the machine that receives it. A solo install has no crew key. It signs nothing and sends nothing
+  off the machine.
+- **The receiver checks the sender, through the lead's word.** A member pins only its lead. So the
+  lead sends the sender's certificate with the message, and signs a short statement that this
+  certificate belongs to that member of the crew. The receiving machine checks that statement, then
+  checks the sender's signature against the certificate. If any check fails, it refuses the message.
+  It still trusts the lead about who is in the crew.
+- **Only the lead can write an outcome back.** The lead sends a member the outcomes of that member's
+  own messages. The member takes them only from its pinned lead, and only for a message it sent and
+  still logs. Outcomes and the record of what the lead got stay in memory, and go after 10 minutes.
+- **The phone's card needs the log.** The phone draws a message card only when the bridge's own log
+  holds that message id. A header that an agent only prints on the screen stays plain text, with the
+  mark "no log record on this machine".
+- **A pane token is no secret.** The token in an address, such as `#k3f9`, keeps a message from
+  reaching a new session that took a closed pane's id. `collie walky who` prints it to every agent,
+  and `<stateDir>/walky/instances.json` is readable by your user. It proves nothing about who sends.
+- **Every machine a message crosses keeps it.** The sender's machine, the lead and the receiving
+  machine each log the message in `<stateDir>/walky/`. The log keeps 7 days and at most 2,000 lines.
+  Never put a secret in a message.
+- **An agent's message is a peer's words.** The pane gets one line with the sender's header and no
+  body. The agent reads the body as the output of `collie walky inbox <id>`, which a harness treats
+  as data and not as your instruction. The installed skill tells the agent to weigh it and never to
+  run a destructive command because a peer asked.
+
+> **Note.** An agent runs as your user, so it can read the crew key and open the local socket. It
+> could sign a message or claim a pane that is not its own. The signature protects a message on its
+> way between machines and tells the receiver which machine sent it. It does not protect you from a
+> program on the same machine that lies about itself.
+
+Walky talky adds no outbound call. A message to another machine rides the crew link that already
+exists, and no model, cloud service or third party sees it.
+
 ## What leaves the machine is masked
 
 Collie masks known secret shapes in pane text and file content before it reaches a phone.
@@ -379,6 +435,47 @@ A push notification also names a pane only by the name you gave it: the pane's l
 any program can set that title, and a title can hold a path, a command or a secret. A pane with no
 such name is called by its harness, for example `claude`.
 
+## Sent: the shell lines you sent
+
+Each machine keeps a record of the shell lines you send through Collie, so you can find and send one again.
+
+```bash
+# in your .env, to keep no record on this machine
+COLLIE_SENT=off
+```
+
+| question | answer |
+| --- | --- |
+| What is kept | A line you send to a shell pane, and each one-off command from the New page. For each line: the text, its folder, the time, and which of the two it was. |
+| What is never kept | Prompts to an agent, text for a program, keys from the Keys board, and Type mode. |
+| Where | `sent.jsonl` in the state folder, `~/.local/state/collie/` unless `COLLIE_STATE_DIR` moves it. The file is mode 0600, in a folder at 0700. |
+| How long | At most 5000 lines on each machine, and none older than 365 days. |
+| Who can read it | A paired device, as it can read the panes the lines went to. |
+| In a crew | Each machine keeps its own file. The lead asks its members when your phone asks, and keeps no copy. |
+
+Collie sends every line you tap, and then decides whether to keep it. It keeps nothing about a line
+that:
+
+- starts with a space or a tab,
+- sets a variable, such as `TOKEN=abc deploy` or `export AWS_SECRET_ACCESS_KEY=…`,
+- holds a URL with a password, such as `https://user:pass@host`,
+- holds a word such as `password`, `secret`, `token`, `bearer` or `authorization`,
+- holds a shape the secret mask knows, such as a `ghp_…` or `sk-…` key,
+- is longer than 4096 characters.
+
+Such a line leaves no row, no count and no log line with its text.
+
+To keep one line out, start it with a space. The shell runs it as usual, and Collie keeps nothing.
+
+> **Caution.** The check is a guess. It keeps a password you pass as a plain argument, such as
+> `mysql -pPASS`, and any secret with a shape it does not know. Start such a line with a space.
+
+To forget one line, use Forget on its row in the Sent sheet. To forget a whole machine, use Clear
+Sent. Both work while `COLLIE_SENT=off` is set. The audit log records each forget with a count, never
+the line. Every line goes through the secret mask before it leaves the machine.
+
+Why it is built this way: [ADR 0107](../.adr/0107-sent-keeps-shell-lines-per-machine.md).
+
 ## Secret files on Windows
 
 On Windows (experimental), Collie keeps its secret files private to your account, SYSTEM and
@@ -422,6 +519,9 @@ you or your machine, only the static user-agent `collie-update-check`.
 The Whistle model download is the other outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
+
+Walky talky adds no outbound call. A message to another machine rides the crew link and goes
+nowhere else ([Walky talky](#walky-talky)).
 
 If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
 start and once an hour. That call is yours to turn on, and it sends nothing about you either.

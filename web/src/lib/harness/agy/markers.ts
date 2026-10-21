@@ -1,9 +1,9 @@
-import { isBlank, lineText } from "../../blocks";
+import { hasQuestionMark, isBlank, lineText } from "../../blocks";
 import { CLAUDE_RULE_GLYPH_CLASS } from "../../rule-glyphs";
 import { displayWidth } from "../../text-width";
 import type { PromptFamily } from "../prompt-model";
 
-export { isBlank, lineText };
+export { hasQuestionMark, isBlank, lineText };
 
 const RULE_ONLY = new RegExp(`^[${CLAUDE_RULE_GLYPH_CLASS}]+$`);
 

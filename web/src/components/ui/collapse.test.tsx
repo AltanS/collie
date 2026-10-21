@@ -69,6 +69,36 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(container.firstElementChild).toHaveClass("grid-rows-[0fr]", "opacity-0");
   });
 
+  it("runs sideways on axis x: columns instead of rows, the same exit and the same unmount", () => {
+    // The belt's agents mark (actions-row.tsx) comes and goes inside a row, so it grows a WIDTH.
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <Collapse axis="x" open>
+        <button type="button">mark</button>
+      </Collapse>,
+    );
+    const box = container.firstElementChild!;
+    expect(box).toHaveAttribute("data-axis", "x");
+    expect(box).toHaveClass("grid-cols-[1fr]", "opacity-100");
+    expect(box.className).not.toMatch(/grid-rows-/);
+
+    rerender(
+      <Collapse axis="x" open={false}>
+        <button type="button">mark</button>
+      </Collapse>,
+    );
+    expect(box).toHaveAttribute("data-state", "closed");
+    expect(box).toHaveClass("grid-cols-[0fr]", "opacity-0");
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS - 1);
+    });
+    expect(screen.getByRole("button", { name: "mark" })).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(screen.queryByRole("button", { name: "mark" })).toBeNull();
+  });
+
   it("does not animate a notice that was already true at first paint", () => {
     // ReadOnly and HostStale are usually known at loader time, so the notice is part of the FIRST
     // frame. There is no shift to smooth over there, and animating it would manufacture one.
@@ -140,6 +170,57 @@ describe("Collapse — animated presence for anything in flow", () => {
       vi.advanceTimersByTime(64);
     });
     expect(container.firstElementChild).toHaveAttribute("data-state", "open");
+  });
+
+  it("with appear, a Collapse that MOUNTS open still goes closed to open, so it slides in", () => {
+    // The belt's pinned block mounts only once something is pinned, so the X or the agents mark
+    // that brings it mounts its Collapse already open. Without `appear` that is the first-paint
+    // case above and it pops in; with it, the mount is painted closed and opens two frames later.
+    vi.useFakeTimers();
+    const { container } = render(
+      <Collapse axis="x" appear open>
+        <button type="button">mark</button>
+      </Collapse>,
+    );
+    const box = container.firstElementChild!;
+    expect(screen.getByRole("button", { name: "mark" })).toBeInTheDocument();
+    expect(box).toHaveAttribute("data-state", "closed");
+    expect(box).toHaveClass("grid-cols-[0fr]", "opacity-0", "overflow-hidden");
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(box).toHaveAttribute("data-state", "closed");
+    act(() => {
+      vi.advanceTimersByTime(64);
+    });
+    expect(box).toHaveAttribute("data-state", "open");
+    expect(box).toHaveClass("grid-cols-[1fr]", "opacity-100");
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS + 16);
+    });
+    expect(box).toHaveClass("overflow-visible");
+  });
+
+  it("with appear under reduced motion, a Collapse that mounts open is simply open", () => {
+    preferReducedMotion(true);
+    const { container } = render(
+      <Collapse appear open>
+        <p>copy</p>
+      </Collapse>,
+    );
+    expect(container.firstElementChild).toHaveAttribute("data-state", "open");
+  });
+
+  it("takes its held copy out of reach while it leaves", () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <Collapse open>
+        <button type="button">undo</button>
+      </Collapse>,
+    );
+    expect(container.firstElementChild!.firstElementChild).not.toHaveAttribute("inert");
+    rerender(<Collapse open={false}>{null}</Collapse>);
+    expect(container.firstElementChild!.firstElementChild).toHaveAttribute("inert");
   });
 
   it("spends the same number in CSS and in JavaScript", () => {

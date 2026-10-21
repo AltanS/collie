@@ -345,3 +345,61 @@ for (const theme of ["dark", "light"]) {
     expect(pixel(await shoot(spots.painted))).toEqual(pixel(await shoot(spots.background)));
   });
 }
+
+// ── A double-width character holds its two cells, so the wall after it keeps its column ─────────
+//
+// This one is a WIDTH, and jsdom lays nothing out either. The mirror's monospace stack carries no
+// CJK face, so a Hangul syllable or an ideograph falls back to a font whose advance is not two
+// ASCII cells, and every wall to its right lands off the column the terminal put it in
+// (components/painted-cells.tsx). Wrapped prose keeps the natural advances. With wrapping off the
+// screen is a grid, and `renderWideCells` holds each wide character to `2ch`.
+//
+// The three dividers below stand at column 40 of the terminal: an English, a Korean and a Chinese
+// row, padded to the same cell count. They must land on one x, within a CSS pixel. The measure is
+// the divider's own character, taken by Range, and it is read against the other two dividers and
+// never against a constant, so the case holds at the phone and the tablet size and with whichever
+// fallback face the host picks. Without the two-cell hold the three differ by several pixels.
+
+const COLUMN = 40;
+const DIVIDER = "\u2502";
+const COLUMNS_SCREEN = [
+  "CJK column probe",
+  `  1. coffee${" ".repeat(COLUMN - 11)}${DIVIDER} details`,
+  `\u001b[1m\u2192 2. 커피\u001b[0m${" ".repeat(COLUMN - 9)}${DIVIDER} details`,
+  `  3. 中文${" ".repeat(COLUMN - 9)}${DIVIDER} details`,
+].join("\n");
+
+test("a wide character holds two cells, so the dividers of three scripts share a column", async ({
+  page,
+}) => {
+  // Registered after the beforeEach's route, so it answers first.
+  const reply = { paneId: PANE_ID, text: COLUMNS_SCREEN, truncated: false, revision: 1 };
+  await page.route(/\/api\/pane\/w2%3Ap2(?:\?.*)?$/, (route) => route.fulfill({ json: reply }));
+  await page.addInitScript(() =>
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ wrap: false })),
+  );
+  await page.reload();
+  const mirror = page.locator("pre").filter({ hasText: "CJK column probe" });
+  await expect(mirror).toBeVisible();
+  await expect(mirror).toHaveCSS("white-space", "pre");
+  await page.evaluate(() => document.fonts.ready);
+
+  const lefts = await mirror.evaluate((pre, divider) => {
+    const positions: number[] = [];
+    const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const at = node.textContent!.indexOf(divider);
+      if (at < 0) continue;
+      range.setStart(node, at);
+      range.setEnd(node, at + 1);
+      positions.push(range.getBoundingClientRect().left);
+    }
+    return positions;
+  }, DIVIDER);
+
+  const seen = JSON.stringify(lefts);
+  expect(lefts, seen).toHaveLength(3);
+  expect(Math.max(...lefts) - Math.min(...lefts), seen).toBeLessThan(1);
+});

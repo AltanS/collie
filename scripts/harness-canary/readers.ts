@@ -25,6 +25,7 @@ export interface Adapter {
   extractInputDraft(lines: Line[]): string | null;
   composerReady?(lines: Line[]): boolean;
   draftCarriesSend?(sent: string, draft: string): boolean;
+  draftIsOpaque?(draft: string): boolean;
 }
 
 export type ReplyOutcome =
@@ -40,6 +41,8 @@ export interface Readers {
   adapterFor(agent: string): Adapter | undefined;
   draftCarriesSend(sent: string, draft: string | null): boolean;
   sendGuardedReply(paneId: string, text: string, agent: string): Promise<ReplyOutcome>;
+  /** The shipped harness bar for an agent. Absent when the checkout predates `harness-bar.ts`. */
+  readonly barFor?: (agent: string) => readonly BarItem[];
   /**
    * Stamp a successful read into the readers' own lib/liveness.ts (M46). Absent when the checkout
    * predates it (`--readers` at v1.13.1), where the reply action has no liveness gate to satisfy.
@@ -47,6 +50,15 @@ export interface Readers {
   readonly markLive?: (paneId: string) => void;
 }
 
+/** One harness-bar button, as `web/src/lib/harness-bar.ts` ships it. */
+export interface BarItem {
+  readonly id: string;
+  readonly command: string;
+  readonly confirm?: boolean;
+}
+interface BarModule {
+  barFor(agent: string): readonly BarItem[];
+}
 interface LivenessModule {
   markLive(paneId: string): void;
 }
@@ -62,9 +74,34 @@ interface HarnessModule {
   buildBlocks(lines: Line[], ctx: { agent: string }): Block[];
   adapterFor(agent: string | undefined): Adapter | undefined;
 }
-interface ReplyModule {
+interface DraftMatchModule {
   draftCarriesSend(sent: string, draft: string | null): boolean;
-  sendGuardedReply(args: { paneId: string; text: string; agent: string }): Promise<ReplyOutcome>;
+}
+interface SendTextReply {
+  readonly outcome: string | null;
+  readonly reason: string | null;
+  readonly detail: string | null;
+}
+type SendTextOutcome =
+  | { readonly status: "answered"; readonly reply: SendTextReply }
+  | { readonly status: "noAnswer" | "refused"; readonly error: string };
+interface ReplyModule {
+  draftCarriesSend?(sent: string, draft: string | null): boolean;
+  sendGuardedReply?(args: { paneId: string; text: string; agent: string }): Promise<ReplyOutcome>;
+  sendText?(args: { paneId: string; text: string; held: null }): Promise<SendTextOutcome>;
+}
+
+function mapSendTextOutcome(res: SendTextOutcome): ReplyOutcome {
+  if (res.status !== "answered") {
+    return { status: res.status === "refused" ? "blocked" : "error", error: res.error };
+  }
+  const { outcome, reason, detail } = res.reply;
+  if (outcome === "sent" || outcome === "effective") return { status: "sent" };
+  const head = reason === null ? (outcome ?? "unknown") : `${outcome ?? "unknown"} (${reason})`;
+  const error = detail === null || detail === "" ? head : `${head}: ${detail}`;
+  if (outcome === "refused") return { status: "blocked", error };
+  if (outcome === "typed_not_submitted" || outcome === "unknown") return { status: "stalled", error };
+  return { status: "error", error };
 }
 
 /**
@@ -78,15 +115,30 @@ export async function loadReaders(root: string): Promise<Readers> {
   const blocks: BlocksModule = await import(join(lib, "blocks.ts"));
   const harness: HarnessModule = await import(join(lib, "harness", "index.ts"));
   const reply: ReplyModule = await import(join(lib, "reply-action.ts"));
+  const draftMatch: DraftMatchModule | undefined = await import(join(lib, "draft-match.ts")).catch(() => undefined);
   const liveness: LivenessModule | undefined = await import(join(lib, "liveness.ts")).catch(() => undefined);
+  const bar: BarModule | undefined = await import(join(lib, "harness-bar.ts")).catch(() => undefined);
+  const carriesSend = draftMatch?.draftCarriesSend ?? reply.draftCarriesSend;
+  if (carriesSend === undefined) {
+    throw new Error(`loadReaders(${root}): neither draft-match.ts nor reply-action.ts exports draftCarriesSend`);
+  }
+  const sendReply = reply.sendGuardedReply;
+  const sendText = reply.sendText;
+  if (sendReply === undefined && sendText === undefined) {
+    throw new Error(`loadReaders(${root}): reply-action.ts exports neither sendGuardedReply nor sendText`);
+  }
   return {
     root,
     parse: (text) => blocks.splitLines(ansi.parseAnsi(text)),
     lineText: (line) => blocks.lineText(line),
     buildBlocks: (lines, agent) => harness.buildBlocks(lines, { agent }),
     adapterFor: (agent) => harness.adapterFor(agent),
-    draftCarriesSend: (sent, draft) => reply.draftCarriesSend(sent, draft),
-    sendGuardedReply: (paneId, text, agent) => reply.sendGuardedReply({ paneId, text, agent }),
+    draftCarriesSend: (sent, draft) => carriesSend(sent, draft),
+    sendGuardedReply:
+      sendReply !== undefined
+        ? (paneId, text, agent) => sendReply({ paneId, text, agent })
+        : (paneId, text) => sendText!({ paneId, text, held: null }).then(mapSendTextOutcome),
     markLive: liveness === undefined ? undefined : (paneId) => liveness.markLive(paneId),
+    barFor: bar === undefined ? undefined : (agent) => bar.barFor(agent),
   };
 }

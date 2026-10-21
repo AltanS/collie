@@ -1,0 +1,110 @@
+{
+  "id": "kiro",
+  "identity": {
+    "binary": "kiro-cli",
+    "versionCommand": [
+      "kiro-cli",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "2.32.0 - 2.32.0",
+      "status": "verified",
+      "verifiedThrough": "2.32.0",
+      "verifiedOn": "2026-10-17"
+    }
+  ],
+  "idle": {
+    "frame": {
+      "walk": "interior",
+      "top": {
+        "pattern": "^─+$",
+        "minCells": 20,
+        "column": 0
+      },
+      "prompt": {
+        "pattern": "^›(?: (?<draft>.*))?$",
+        "column": 0
+      },
+      "bottom": {
+        "pattern": "^",
+        "column": 0,
+        "open": true
+      },
+      "continuation": "^ {2}(?<text>\\S.*)$",
+      "continuationIndent": 2,
+      "maxDraftRows": 60,
+      "maxTailRows": 2
+    },
+    "placeholders": {
+      "texts": [
+        "ask a question or describe a task ↵"
+      ],
+      "prefixes": [
+        "Kiro is working ·"
+      ],
+      "sgr": 0
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 0,
+        "footerMaxRows": 0
+      }
+    },
+    "runningRows": [
+      "\\(esc to cancel\\)$",
+      "^\\s*◇ \\d+ messages? queued\\b",
+      "^›\\s+Kiro is working · "
+    ]
+  },
+  "keys": {
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "steers",
+    "neverHeld": [
+      "/clear",
+      "/quit",
+      "/sessions",
+      "!"
+    ]
+  },
+  "collapse": {
+    "pattern": "(?:(?<lines>\\d+) lines|(?<chars>\\d+) chars) ▸"
+  },
+  "reservedLeads": [
+    "/",
+    "!",
+    "@"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "verified",
+    "note": "kiro-cli 2.32.0 on Herdr, 2026-10-17: inert in the approval panel; the box shows it as a plain character; live probed sends passed, one line with Enter and two lines with Ctrl+J then Enter. Not checked on tmux or zellij"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}

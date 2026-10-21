@@ -42,6 +42,9 @@ const session: Session = { paneId: null, startNote: "not started" };
 /** How long a reply on Haiku may take before the case gives up on it. */
 const REPLY_MS = 120_000;
 
+/** Prompts the Load older case seeds: the live page holds the last six, so the seventh is the older page. */
+const HISTORY_PROMPTS = 7;
+
 test.describe("claude", () => {
   // Not serial: a failed scenario must not skip the next one. The session survives a worker restart
   // because openSession keeps its pane id in the run folder.
@@ -198,33 +201,41 @@ test.describe("claude", () => {
 
   test("5 Load older with an empty phone cache: the pin leaves the row free", async ({ browser, rig }) => {
     await runScenario(H, "load-older", session, async (pane, trail) => {
-      // History deeper than the first page (40 turns): one prompt, 48 Read calls, one entry each.
+      // History deeper than the first page. Since 1.23.0 a page is the last six prompts with all that
+      // follows each (at least 40 rows, at most 400), so the cold page starts at the SECOND of seven
+      // prompts and the first one is the older page. Each prompt reads four tiny files in one message
+      // and replies with a marker: about ten rows a prompt, well over the 40-row floor, one cheap turn.
       const project = harnessDirs(H).project;
-      for (let i = 1; i <= 48; i++) writeFileSync(join(project, `note-${String(i).padStart(2, "0")}.txt`), `note ${String(i)}\n`);
+      for (let i = 1; i <= 4; i++) writeFileSync(join(project, `note-${String(i).padStart(2, "0")}.txt`), `note ${String(i)}\n`);
       const deep = await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`).catch(() => null);
       if (!coldPageHasOlder(asJsonObject(deep))) {
-        spendTurn(H, "load-older: 48 reads");
         const seed = await phoneOn(browser, rig, pane, PHONE);
         try {
-          const t = await sendFromComposer(seed.page, seed.recorder, "Use the Read tool on each of the 48 files note-01.txt to note-48.txt, one Read call per file, all in a single message. Then reply with only the word DONE.", "send the history prompt");
-          if (!t.worked) throw new Error(`the history prompt was refused: ${tapWords(t)}`);
+          for (let n = 1; n <= HISTORY_PROMPTS; n++) {
+            spendTurn(H, `load-older: history prompt ${String(n)} of ${String(HISTORY_PROMPTS)}`);
+            const t = await sendFromComposer(seed.page, seed.recorder, `Use the Read tool on each of the 4 files note-01.txt to note-04.txt, one Read call per file, all in a single message. Then reply with exactly DONE-${String(n)} and nothing else.`, `send history prompt ${String(n)}`);
+            if (!t.worked) throw new Error(`history prompt ${String(n)} was refused: ${tapWords(t)}`);
+            // Claude's own reply line: the prompt row above it also holds the marker, after "❯ ".
+            await rig.screenUntil(pane, new RegExp(`^\\s*(?:⏺|●)\\s*DONE-${String(n)}\\b`, "m"), 180_000, 200);
+            await waitIdle(rig, pane, REPLY_MS);
+          }
         } finally {
           await seed.context.close();
         }
-        await rig.screenUntil(pane, /^\s*(?:⏺|●)\s*DONE\b/m, 240_000, 200);
-        await waitIdle(rig, pane, REPLY_MS);
       }
       const cold = asJsonObject(await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`)) ?? {};
       const upserts = jsonRows(cold.upserts);
       if (!coldPageHasOlder(cold)) throw new NotReached(`the session holds no more than one page (${String(upserts.length)} turns)`);
       const lastPrompt = asJsonObject(cold.lastPrompt);
       const reported = lastPrompt !== undefined && !upserts.some((row) => row.uuid === lastPrompt.uuid);
-      // The fix under test (3f522a27) is about the REPORTED pin: the last prompt sits outside the page.
-      if (!reported) throw new NotReached(`the last prompt sits inside the cold page (${String(upserts.length)} turns), so no reported pin`);
+      // Since the six-prompt pages (1.23.0) the last prompt sits on the first page by construction, so
+      // the case checks the Load older row itself: attached, nothing covers its centre, a tap adds older
+      // rows, and the pin leaves the row free before and after. (A reported pin, 3f522a27, now needs one
+      // turn of more than 400 rows.)
       // A FRESH context: the phone holds no history of this session, so its thread is the newest page.
       const context = await phoneContext(browser, rig, PHONE);
       const page = await context.newPage();
-      const notes: string[] = [`cold page: ${String(upserts.length)} turns, last prompt ${reported ? "outside it (reported pin)" : "inside it"}`];
+      const notes: string[] = [`cold page: ${String(upserts.length)} turns, last prompt ${reported ? "outside it (reported pin)" : "on it"}`];
       const log = trail.log;
       try {
         const olderReads: number[] = [];
@@ -264,8 +275,17 @@ test.describe("claude", () => {
           .catch(() => false);
         const after = await page.locator("[data-block]").count();
         notes.push(`older read ${olderReads.length === 0 ? "never sent" : `answered ${olderReads.join(",")}`}; thread blocks ${String(before)} -> ${String(after)}`);
+        // The row stays free afterwards: when more older turns remain the Load older row is still there,
+        // and the pin, shown now that the reader is below the first prompt, must not sit over it.
+        await page.waitForTimeout(500);
+        const rowAgain = (await loadOlder.count()) > 0;
+        if (rowAgain) await loadOlder.scrollIntoViewIfNeeded().catch(() => undefined);
+        const rowBox = rowAgain ? await loadOlder.boundingBox() : null;
+        const pinNow = (await pin.isVisible().catch(() => false)) ? await pin.boundingBox() : null;
+        const coveredAfter = rowBox !== null && pinNow !== null && pinNow.y < rowBox.y + rowBox.height && rowBox.y < pinNow.y + pinNow.height;
+        notes.push(`after the tap: pin ${pinNow === null ? "not shown" : "shown"}, Load older row ${rowAgain ? (coveredAfter ? "covered by the pin" : "clear of the pin") : "gone (no older turns left)"}`);
         const shotAfter = await capture(page, "claude-5-load-older-after");
-        const verdict = pinShown && !covered && hit.includes(message("chat.scrollback.loadOlder")) && olderReads.includes(200) && grew ? "pass" : "fail";
+        const verdict = !covered && !coveredAfter && hit.includes(message("chat.scrollback.loadOlder")) && olderReads.includes(200) && grew ? "pass" : "fail";
         return { verdict, taps: 1, minTaps: 1, note: notes.join("; "), taps_log: log, captures: [shotBefore, shotAfter] };
       } finally {
         await context.close();

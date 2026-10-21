@@ -39,13 +39,25 @@ import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
+import walkyTalky from "../docs/walky-talky.md" with { type: "text" };
 import windows from "../docs/windows.md" with { type: "text" };
 
 // The agent-facing brief, which is not one of the pages: it is hand-written, it carries two
 // placeholder tokens `cli/docs.ts` fills at print time, and `collie skill` prints it alone.
 import SKILL_TEMPLATE from "./skill.md" with { type: "text" };
 
-export { SKILL_TEMPLATE };
+// The walky talky skill an installer writes into a harness (`cli/skill-install.ts`). Its placeholders
+// are filled when it is rendered for a target, not when it is printed.
+import WALKY_TALKY_SKILL_TEXT from "./skills/walky-talky.md" with { type: "text" };
+
+/**
+ * The skill template with LF line ends. A Windows checkout with autocrlf hands the import CRLF, and a
+ * `\r` in the rendered text would break the trust lines and make every installed copy read `stale`.
+ * The template is written as text for a harness, so LF is its only form.
+ */
+const WALKY_TALKY_SKILL_TEMPLATE = WALKY_TALKY_SKILL_TEXT.replaceAll("\r\n", "\n");
+
+export { SKILL_TEMPLATE, WALKY_TALKY_SKILL_TEMPLATE };
 
 export interface DocPage {
   /** The file stem, which is the name an operator types: `crew` for `docs/crew.md`. */
@@ -145,6 +157,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "multiplexers",
     purpose: "Pointing Collie at Herdr, tern, tmux, zellij or tuios, and what each terminal can answer",
     text: multiplexers,
+  },
+  {
+    name: "walky-talky",
+    purpose: "Messages between agent sessions: who, send, reply, inbox, receipts, the phone, the skill and limits",
+    text: walkyTalky,
   },
   {
     name: "voice-and-push",

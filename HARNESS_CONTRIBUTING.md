@@ -280,6 +280,15 @@ signature that moves when a row the dialog was derived from changes** (Herdr's `
 this is the entire freshness check), and a non-empty region text that is literally on screen (the
 bridge binds the write to it).
 
+**The region must end inside the bridge's tail window, six non-blank rows.** When your harness paints
+live chrome of its own under a dialog (Hermes keeps a spinner, a countdown, a status bar and the input
+under every panel), never stretch the region down over rows that tick: every tap would then answer
+"changed". Bind the dialog alone, account for every row below it in the grammar, and declare the
+window with `bindTail` from `tailLinesFor` in `web/src/lib/tail-lines.ts`. The phone sends it as
+`expected_tail_lines`, which the bridge accepts from 6 to 12 rows
+([ADR 0108](./.adr/0108-a-dialog-over-live-chrome-declares-its-tail.md)). The conformance suite
+checks both that the declared window binds and that the default one would not.
+
 ## The two gates
 
 - **CI gate — the conformance suite.**

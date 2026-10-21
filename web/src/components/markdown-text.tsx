@@ -1,9 +1,14 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
 import { CopyableBlock } from "@/components/ui/copyable-block";
+import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
+import { useWalkyChips } from "@/components/walky-log";
+import { useLocale } from "@/hooks/use-locale";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
+import { t } from "@/lib/i18n";
 import { headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
+import { closeStretch, composeStretches, liftStretches, parseStretches, stretches as allStretches } from "@/lib/stretch";
 import { splitHighlight } from "@/lib/transcript-search";
 
 // Renders the Markdown AST as React elements. Every string from the log reaches the DOM as a TEXT
@@ -43,6 +48,115 @@ const LinkContext = createContext<LinkResolver | null>(null);
 export type ImageResolver = (src: string, alt: string) => ReactNode | null;
 
 const ImageContext = createContext<ImageResolver | null>(null);
+
+/**
+ * Whether this device draws cc-stretch `{{short|long}}` stretches in agent replies as tappable
+ * phrases (Settings → Display, `stretchText`). The screen provides it, reading its display prefs once:
+ * `useDisplayPrefs` holds its state per call, so a read in every MarkdownText would be dozens of
+ * separate copies. Without a provider it is false, and the markup reads as written.
+ */
+export const StretchTextContext = createContext(false);
+
+/** How a stretch span or its closer changes which of this text's stretches are open, by key. */
+interface StretchControl {
+  open: (key: string) => void;
+  close: (key: string) => void;
+}
+
+// Threaded the way the find query is, so a stretch deep inside emphasis or a table cell reaches it.
+const StretchControlContext = createContext<StretchControl | null>(null);
+
+/** Enter and Space press an inline `role="button"`, as they press a real button. */
+function onPressKey(e: React.KeyboardEvent, press: () => void): void {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  // Space would otherwise scroll the page.
+  e.preventDefault();
+  press();
+}
+
+const FOCUS_RING = "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/** One stretch hue's classes: a closed stretch's underline, and the ink of an open one's added words and closer. */
+interface StretchHueClass {
+  underline: string;
+  soft: string;
+  faded: string;
+}
+
+/**
+ * Each stretch hue's classes, by the hue lib/stretch.ts gives it (0 to 3). Literal strings, so
+ * Tailwind finds every class; the colours are the `--stretch-*` tokens in index.css.
+ */
+const STRETCH_HUE_CLASS = new Map<number, StretchHueClass>([
+  [0, { underline: "decoration-stretch-1", soft: "text-stretch-1", faded: "text-stretch-1-faded" }],
+  [1, { underline: "decoration-stretch-2", soft: "text-stretch-2", faded: "text-stretch-2-faded" }],
+  [2, { underline: "decoration-stretch-3", soft: "text-stretch-3", faded: "text-stretch-3-faded" }],
+  [3, { underline: "decoration-stretch-4", soft: "text-stretch-4", faded: "text-stretch-4-faded" }],
+]);
+
+/** lib/stretch.ts hands out hues 0 to 3 only; a hue outside them would be its bug, drawn in the primary ink stretches had before they had hues. */
+const NO_HUE_CLASS: StretchHueClass = { underline: "decoration-primary", soft: "text-primary", faded: "text-primary" };
+
+function hueClass(hue: number): StretchHueClass {
+  return STRETCH_HUE_CLASS.get(hue) ?? NO_HUE_CLASS;
+}
+
+/**
+ * A closed stretch: its short form, in its own ink, underlined in its hue, and pressed to open.
+ * An inline span and not a <button>, because a button is an atomic inline box and a phrase several
+ * words long has to wrap across lines like the prose around it.
+ */
+function StretchSpan({ span }: { span: Extract<MdSpan, { kind: "stretch" }> }) {
+  const control = useContext(StretchControlContext);
+  if (control === null) return <Spans spans={span.spans} />;
+  const press = () => control.open(span.key);
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-expanded={false}
+      onClick={press}
+      onKeyDown={(e) => onPressKey(e, press)}
+      className={`cursor-pointer underline decoration-2 underline-offset-2 ${hueClass(span.hue).underline} ${FOCUS_RING}`}
+    >
+      <Spans spans={span.spans} />
+    </span>
+  );
+}
+
+/** Words an open stretch added, in its hue: soft for the stretch opened last, faded for the others. */
+function TintSpan({ span }: { span: Extract<MdSpan, { kind: "tint" }> }) {
+  const colours = hueClass(span.hue);
+  return (
+    <span className={span.faded ? colours.faded : colours.soft}>
+      <Spans spans={span.spans} />
+    </span>
+  );
+}
+
+/**
+ * The `«` after an open stretch's long form, in its stretch's soft hue, pressed to close it and every
+ * stretch opened inside it. Its hit area reaches past the glyph by a transparent `::before`, so a
+ * one-character target is tappable without drawing any larger (DESIGN.md §6).
+ */
+function StretchClose({ span }: { span: Extract<MdSpan, { kind: "stretch-close" }> }) {
+  useLocale();
+  const control = useContext(StretchControlContext);
+  if (control === null) return null;
+  const press = () => control.close(span.key);
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label={t("markdown.stretch.close")}
+      onClick={press}
+      onKeyDown={(e) => onPressKey(e, press)}
+      className={`relative cursor-pointer ${hueClass(span.hue).soft} before:absolute before:-inset-x-2 before:-inset-y-1.5 before:content-[''] ${FOCUS_RING}`}
+    >
+      «
+    </span>
+  );
+}
 
 /** One image span: the screen's drawing of it, or its alt text when the screen draws none. */
 function ImageSpan({ src, alt }: { src: string; alt: string }) {
@@ -146,6 +260,17 @@ function PathChip({ target, text }: { target: FileLinkTarget; text: string }) {
 }
 
 /**
+ * Plain prose, with find hits marked and each walky talky message id the pane's log holds drawn as a chip
+ * that opens the Messages sheet on it (components/walky-id-chip.tsx). Inside a link the text stays text:
+ * a button in an anchor is not a thing. An id the log lacks is the text it was.
+ */
+function ProseHit({ text }: { text: string }) {
+  const inLink = useContext(InLinkContext);
+  if (inLink) return <Hit text={text} />;
+  return <WalkyIds text={text} plain={Hit} />;
+}
+
+/**
  * A run of plain prose. Every path in it that resolves under the Changes root, and that the bridge
  * said exists (ADR 0088), becomes a chip; the rest, and every other path, stays text. Asking the
  * opener is what queues a path for that check. With no opener (History, a Files preview)
@@ -155,18 +280,18 @@ function TextRun({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
   const found = useMemo(() => (open === null || inLink ? [] : findFilePaths(text)), [open, inLink, text]);
-  if (open === null || found.length === 0) return <Hit text={text} />;
+  if (open === null || found.length === 0) return <ProseHit text={text} />;
   const nodes: ReactNode[] = [];
   let at = 0;
   for (const f of found) {
     const target = open(f);
     if (target === null) continue;
-    if (f.start > at) nodes.push(<Hit key={`t${at}`} text={text.slice(at, f.start)} />);
+    if (f.start > at) nodes.push(<ProseHit key={`t${at}`} text={text.slice(at, f.start)} />);
     nodes.push(<PathChip key={`p${f.start}`} target={target} text={text.slice(f.start, f.end)} />);
     at = f.end;
   }
-  if (nodes.length === 0) return <Hit text={text} />;
-  if (at < text.length) nodes.push(<Hit key={`t${at}`} text={text.slice(at)} />);
+  if (nodes.length === 0) return <ProseHit text={text} />;
+  if (at < text.length) nodes.push(<ProseHit key={`t${at}`} text={text.slice(at)} />);
   return <>{nodes}</>;
 }
 
@@ -174,6 +299,9 @@ function TextRun({ text }: { text: string }) {
 function CodeSpan({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
+  const chips = useWalkyChips();
+  // A span that is one message id the log holds is the id chip; a span that holds more than an id stays the code chip.
+  if (chips !== null && !inLink && chips.holds(text.trim())) return <WalkyIdChip id={text.trim()} onOpen={chips.open} />;
   const found = open === null || inLink ? null : codeSpanPath(text);
   const target = found === null || open === null ? null : open(found);
   if (target !== null) return <PathChip target={target} text={text} />;
@@ -266,6 +394,12 @@ function Span({ span }: { span: MdSpan }) {
       return <LinkSpan span={span} />;
     case "image":
       return <ImageSpan src={span.src} alt={span.alt} />;
+    case "stretch":
+      return <StretchSpan span={span} />;
+    case "stretch-close":
+      return <StretchClose span={span} />;
+    case "tint":
+      return <TintSpan span={span} />;
     default:
       return <TextRun text={span.text} />;
   }
@@ -304,6 +438,39 @@ const ALIGN_CLASS = new Map<string, string>([
   ["center", "text-center"],
   ["right", "text-right"],
 ]);
+
+/** This text's open stretches, each by the sequence it was opened at, and the last sequence handed out. */
+interface OpenStretches {
+  keys: ReadonlyMap<string, number>;
+  opened: number;
+}
+
+/**
+ * The blocks to draw and the control over this text's stretches. With `drawn` false the control is
+ * null and the blocks are the plain parse, exactly as the text was drawn before stretches existed.
+ */
+function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, query: string) {
+  const segments = useMemo(() => (drawn ? parseStretches(text) : null), [drawn, text]);
+  const [open, setOpen] = useState<OpenStretches>(() => ({ keys: new Map(), opened: 0 }));
+  // A FIND ALWAYS WINS (transcript-view.tsx): while a query is on screen every stretch is drawn open,
+  // so a hit inside a long form is painted rather than hidden behind its short form. Sequence 0 makes
+  // none of them the newest, so every one is drawn faded.
+  const finding = drawn && query.trim() !== "";
+  const blocks = useMemo(() => {
+    if (segments === null) return parseMarkdown(text, { images: withImages });
+    const shown = finding ? new Map(allStretches(segments).map((s) => [s.key, 0])) : open.keys;
+    const composed = composeStretches(segments, shown);
+    return liftStretches(parseMarkdown(composed.source, { images: withImages }), composed);
+  }, [segments, text, withImages, finding, open]);
+  const control = useMemo<StretchControl>(
+    () => ({
+      open: (key) => setOpen((was) => ({ keys: new Map(was.keys).set(key, was.opened + 1), opened: was.opened + 1 })),
+      close: (key) => setOpen((was) => ({ ...was, keys: closeStretch(was.keys, key) })),
+    }),
+    [],
+  );
+  return { blocks, control: segments === null ? null : control };
+}
 
 /** `chat` is agent prose, sized for a phone transcript. `document` is a file the operator opened to read. */
 export type MarkdownVariant = "chat" | "document";
@@ -431,6 +598,7 @@ export function MarkdownText({
   resolveImage,
   headingIds = false,
   variant = "chat",
+  stretches = false,
 }: {
   text: string;
   className?: string;
@@ -444,19 +612,27 @@ export function MarkdownText({
   headingIds?: boolean;
   /** `document` sizes headings as a page. Chat, the default, renders exactly as it always did. */
   variant?: MarkdownVariant;
+  /**
+   * This text is agent reply prose, which may carry cc-stretch `{{short|long}}` stretches. They are
+   * drawn as tappable phrases only where the screen's {@link StretchTextContext} says so too.
+   */
+  stretches?: boolean;
 }) {
   const withImages = resolveImage !== undefined;
-  const blocks = useMemo(() => parseMarkdown(text, { images: withImages }), [text, withImages]);
+  const drawsStretches = useContext(StretchTextContext);
+  const { blocks, control } = useStretchBlocks(text, withImages, stretches && drawsStretches && text.includes("{{"), query);
   const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
   return (
     <QueryContext.Provider value={query}>
       <LinkContext.Provider value={resolveLink ?? null}>
         <ImageContext.Provider value={resolveImage ?? null}>
-          <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
-            {blocks.map((block, i) => (
-              <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
-            ))}
-          </div>
+          <StretchControlContext.Provider value={control}>
+            <div className={`font-content space-y-2 text-sm break-words ${className ?? ""}`}>
+              {blocks.map((block, i) => (
+                <Block key={i} block={block} anchor={anchors?.[i] ?? null} variant={variant} />
+              ))}
+            </div>
+          </StretchControlContext.Provider>
         </ImageContext.Provider>
       </LinkContext.Provider>
     </QueryContext.Provider>

@@ -6,7 +6,7 @@ import { installApiStub } from "./fixtures/api";
 
 // THE TOP OF THE DASHBOARD, measured in a real engine (2026-10-07, "One control bar"). Under the
 // header: ONE line of state words with the needs-you switch at its right end, then ONE row holding
-// the workspace select and the order select (`components/agent-list.tsx`, `dash-selects.tsx`).
+// the workspace filter and the order select (`components/agent-list.tsx`, `dash-selects.tsx`).
 //
 // The line must stay one line at 360, 390 and 412px. jsdom has no layout, so the degrade rule is
 // unit-tested against a fake one (`status-counts.test.tsx`); this is the engine that settles it:
@@ -22,13 +22,13 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-const workspace = (page: Page) => page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] });
+const workspace = (page: Page) => page.getByRole("button", { name: new RegExp(`^${en["home.workspaceFilter.aria"]} `, "u") });
 const order = (page: Page) => page.getByRole("combobox", { name: en["paneOrder.aria"] });
 const needsYou = (page: Page) => page.getByRole("button", { name: en["home.needsYouOnly"] });
 const summary = (page: Page) => page.getByRole("main").getByRole("button", { name: /^(\d+ needs you|Nothing needs you)/u });
 
 for (const width of [360, 390, 412]) {
-  test(`the summary is one line, and the two selects share one row, at ${width}px`, async ({ page }) => {
+  test(`the summary is one line, and the two controls share one row, at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     await expect(workspace(page)).toBeVisible();
@@ -51,7 +51,7 @@ for (const width of [360, 390, 412]) {
     expect(row.height).toBeLessThan(24);
     expect(row.pageScrolls).toBe(false);
 
-    // The switch ends the summary's row; both selects share the row under it, workspace first.
+    // The switch ends the summary's row; both controls share the row under it, workspace first.
     const [sum, sw, ws, ord] = await Promise.all([summary(page), needsYou(page), workspace(page), order(page)].map((l) => l.boundingBox()));
     expect(sw!.x).toBeGreaterThan(sum!.x);
     expect(Math.abs(sw!.y + sw!.height / 2 - (sum!.y + sum!.height / 2))).toBeLessThan(4);
@@ -64,19 +64,22 @@ for (const width of [360, 390, 412]) {
   });
 }
 
-test("the workspace select shows one workspace alone and the order select re-ranks, both remembered", async ({ page }) => {
+test("the workspace filter shows chosen workspaces alone and the order select re-ranks, both remembered", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toBeVisible();
 
-  const collie = await workspace(page).getByRole("option", { name: /^collie/u }).textContent();
-  await workspace(page).selectOption({ label: collie! });
+  const sheet = page.getByRole("dialog", { name: en["home.workspaceFilter.title"] });
+  await workspace(page).click();
+  await sheet.getByRole("checkbox", { name: /^collie/u }).click();
   await expect(page.getByRole("heading", { name: "webapp" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "collie" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "webapp" })).toHaveCount(0);
 
-  await workspace(page).selectOption("all");
+  await workspace(page).click();
+  await sheet.getByRole("checkbox", { name: en["home.workspaceFilter.all"] }).click();
+  await page.keyboard.press("Escape");
   await order(page).selectOption("activity");
   await expect(page.getByRole("heading", { name: new RegExp(`^${en["paneOrder.recent"]}`, "u") })).toBeVisible();
   await page.reload();

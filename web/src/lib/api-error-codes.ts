@@ -162,6 +162,10 @@ export const API_ERROR_CODES = [
   "update.peers_packaged",
   "update.packaged",
   "update.start_failed",
+  "update.request_id_required",
+  "update.rollback_unavailable",
+  "update.back_unavailable",
+  "update.line_invalid",
 
   // Reopening a durable program's closed conversation, POST /api/durable/conversation/:id/reopen
   "durable.reopen_failed",

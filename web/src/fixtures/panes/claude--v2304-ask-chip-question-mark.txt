@@ -1,0 +1,19 @@
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLoad AskUserQuestion via ToolSearch ("select:AskUserQuestion") if needed, then call the AskUserQuestion tool now to [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mask me ONE question with the exact text below: header "Deploy?", question "The staging build passed every check. Pick[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mhow to proceed with the rollout.", multiSelect false, with 2 options: 1) label "Deploy now (Recommended)", [0m[48;2;55;55;55m           [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdescription "Promote to production immediately"; 2) label "Hold for review", description "Keep on staging until [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtomorrow". Do nothing else afterward.[0m[48;2;55;55;55m                                                                                 [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Deploy? [0m
+
+[0m[1m[38;2;255;255;255mThe staging build passed every check. Pick how to proceed with the rollout.[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mDeploy now (Recommended)[0m
+     [0m[38;2;153;153;153mPromote to production immediately[0m
+  [0m[38;2;153;153;153m2. [0mHold for review
+     [0m[38;2;153;153;153mKeep on staging until tomorrow[0m
+  [0m[38;2;153;153;153m3. Type something.[0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

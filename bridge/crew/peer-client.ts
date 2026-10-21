@@ -17,7 +17,7 @@ import {
   PREFLIGHT_FRESH,
   PREFLIGHT_HEADER,
 } from "./router.ts";
-import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
+import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
@@ -27,6 +27,7 @@ import { parseCollisionReport, parsePairingReport, type PairingSync } from "./st
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
+import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
 
 // The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
@@ -47,14 +48,18 @@ import { CREW_VERSION_FIELD } from "../update-action.ts";
 //     peer-client.test.ts therefore exercises the real decision logic against a fake, not a socket.
 
 /**
- * §20's two request headers, as one value the sweep passes down. `null`/absent for either ⇒ that
- * header is simply not sent, which is the closed reading on the far end.
+ * The request headers the sweep passes down per member: §20's two, and §21's walky ack. `null`/absent
+ * for any ⇒ that header is simply not sent, which is the closed reading on the far end.
  */
 export interface FollowHeaders {
   /** The lead's own settled release (`X-Crew-Lead-Release`), or null while it may state nothing. */
   readonly leadRelease?: string | null;
+  /** The lead's line and step (`X-Crew-Lead-Line`, M60 spec 01), sent only beside the release. */
+  readonly leadLine?: string | null;
   /** `<member-name>;<run-id>` (`X-Crew-Update-Turn`), for the ONE member holding the turn. */
   readonly turn?: string | null;
+  /** The cursor of the last walky report this lead read from this member (`X-Crew-Walky-Ack`, §21). */
+  readonly walkyAck?: string | null;
 }
 
 /** How long a peer has to answer before the poll gives up on it, by default (§10.1). */
@@ -774,8 +779,11 @@ export class PeerClient {
     // become a lead that polls more slowly.
     if (follow.leadRelease !== undefined && follow.leadRelease !== null) {
       headers[LEAD_RELEASE_HEADER] = follow.leadRelease;
+      if (follow.leadLine !== undefined && follow.leadLine !== null) headers[LEAD_LINE_HEADER] = follow.leadLine;
     }
     if (follow.turn !== undefined && follow.turn !== null) headers[UPDATE_TURN_HEADER] = follow.turn;
+    // §21's ack, on the same dial and for the same reason: the member drops what this lead has read.
+    if (follow.walkyAck !== undefined && follow.walkyAck !== null) headers[WALKY_ACK_HEADER] = follow.walkyAck;
     if (Object.keys(headers).length === 0) return this.json(link, "snapshot", params);
     return this.json(
       link,
@@ -783,6 +791,25 @@ export class PeerClient {
       params,
       { headers },
       freshPreflight ? this.deps.patientTimeoutMs : undefined,
+    );
+  }
+
+  /**
+   * `POST /crew/v1/walky/outcomes` — the lead hands a member the outcomes of the messages that member
+   * sent to other machines (§21, added 2026-10-18).
+   *
+   * A forwarded write in every way but the forward: the pinned handshake and the dial attestation,
+   * {@link WRITE_BUDGET_MS}, no §8.6 signature (lead → peer pins), and every status the member chose
+   * kept, because its 404 is the answer of a member before the push and not a broken link.
+   */
+  walkyOutcomes(link: CrewLink, payload: string): Promise<PeerOutcome<Response>> {
+    return this.proxy(
+      link,
+      WALKY_OUTCOMES_ROUTE,
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+      WRITE_BUDGET_MS,
+      false,
     );
   }
 
@@ -829,6 +856,10 @@ export class PeerClient {
    * (§10.1). Absent — every forwarded read — is the poll budget plus a cold link's bootstrap credit,
    * exactly as before. `forward.ts` is the only caller that passes it, and it passes it on the same
    * read/write split §5 and §10.3 are already written in terms of.
+   *
+   * `sign` is false for every forward, whose body is a stream (§8.6). One caller passes true: a
+   * member's walky talky message to its lead (§21), whose body is a small JSON string and whose route
+   * is in the signed set, and which reads the lead's own status (a 404 is an older lead).
    */
   async proxy(
     link: CrewLink,
@@ -836,8 +867,9 @@ export class PeerClient {
     params?: Record<string, string>,
     init: CrewRequestInit = {},
     budgetMs?: number,
+    sign = false,
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "passthrough", budgetMs, false);
+    return this.dial(link, route, params, init, "passthrough", budgetMs, sign);
   }
 
   /**

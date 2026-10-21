@@ -12,6 +12,8 @@ import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { SttWireIdentity } from "./stt/config.ts";
+import type { PaneSubagent } from "./subagents.ts";
+import type { PaneTodo } from "./todos.ts";
 import type { UpdateRun } from "./update-run.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
@@ -22,6 +24,8 @@ export type { ChatBody, ChatEntry, ChatOlderBody, ChatWindowBody } from "./journ
 export type { CacheStateName, PaneCache } from "./cache/engine.ts";
 export type { Confidence } from "./cache/claims.ts";
 export type { GitHead } from "./git-head.ts";
+export type { PaneTodo, PaneTodoStatus } from "./todos.ts";
+export type { PaneSubagent } from "./subagents.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -53,9 +57,12 @@ export interface AgentView {
   /** User-set pane label (herdr `pane.rename`), when one is set; absent when the pane is unlabelled. */
   paneLabel?: string;
   /**
-   * Claude's OWN session name, set in-agent via `/rename` and read out of the pane's rendered text
-   * (see `extractClaudeSessionName` in state-engine.ts). Claude-only and derived, not a wire field —
-   * absent for unnamed sessions and every non-claude pane. Display priority is `paneLabel` first.
+   * The harness's OWN session name, set in-agent by the operator: Claude's via `/rename`, read
+   * out of the pane's rendered text (see `extractClaudeSessionName` in state-engine.ts), and
+   * Muse's user-given name, read out of its journal's `session.name.changed` rows (see
+   * `museSessionNameReader` in journal/muse.ts) — never Muse's automatic session name, which
+   * every session carries and the operator never chose. Derived, not a wire field — absent for
+   * unnamed sessions and every other harness. Display priority is `paneLabel` first.
    */
   sessionName?: string;
   /**
@@ -177,6 +184,19 @@ export interface AgentView {
    */
   cache?: PaneCache;
   /**
+   * The pane's active todo list, read from the session's task files or journal by the todo tracker
+   * (bridge/todos.ts). Attached at serialise time and ABSENT, NEVER A PLACEHOLDER: a pane with no
+   * tasks carries no key at all.
+   */
+  todos?: PaneTodo[];
+  /**
+   * The subagents of this pane's session that have not finished yet, read from the session's
+   * subagent meta files by the subagent tracker (bridge/subagents.ts). Claude Code only in this
+   * release. Attached at serialise time and ABSENT, NEVER A PLACEHOLDER: a pane with none running
+   * carries no key at all, never `[]`.
+   */
+  subagents?: PaneSubagent[];
+  /**
    * The model this pane's agent is on, as its harness names it: a `/model` chosen since the last turn
    * first (Claude), else the model that turn ran on (`claude-opus-5-5`, `provider:model` for opencode
    * and pi). Read by the cache tracker's probe and attached at serialise time exactly as {@link cache}
@@ -185,6 +205,15 @@ export interface AgentView {
    * ABSENT, NEVER A PLACEHOLDER: no journal adapter, no session, no turn yet, or an older bridge.
    */
   model?: string;
+  /**
+   * The effort this pane's agent runs at, in its harness's own word: pi's thinking level, Claude's
+   * `/effort`, Codex's reasoning effort, opencode's variant (`high`, `xhigh`, `max`). A level set
+   * since the last turn first, as {@link model} does. Rides only beside {@link model}, from the same
+   * probe. Display only: the phone draws it after the model and nothing decides on it.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: no model, a log that names no level, or an older bridge.
+   */
+  effort?: string;
   /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
@@ -214,6 +243,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    *  has a journal adapter. Says nothing about whether the log is readable — a named session whose
    *  file is missing still answers `available:false` with reason `no-log`. */
   hasSession?: boolean;
+  /**
+   * The pane's walky talky instance token (bridge/walky/instances.ts): four characters of [a-z0-9]
+   * that name the session holding this pane id now. A multiplexer reuses a pane id once the pane
+   * closes; the token does not carry over, so `<member>/<pane>#<token>` reaches this pane only.
+   * Absent from a bridge built without walky talky, and from an older member (CREW_PROTOCOL §21).
+   */
+  instance?: string;
   /**
    * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
    * paneId)` address (CREW_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
@@ -564,15 +600,20 @@ export function journalAgentOf(pane: AgentView): string {
  * session is addressable — reported on the pane record, or discoverable by an adapter that finds
  * its own (`JournalAdapter.discover`). Keyed off the live `agent` either way, so an exited
  * agent's pane still offers no affordance and reads like every other shell pane.
+ *
+ * `instance` is the pane's walky talky instance token, from the bridge's instance registry; absent,
+ * the wire carries no `instance` key.
  */
 export function toPaneWire(
   pane: AgentView,
   hasJournal: (agent: string) => boolean,
   discoversSessions: (agent: string) => boolean = () => false,
+  instance?: string,
 ): PaneWire {
   const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
   const addressable = agentSession !== undefined || discoversSessions(pane.agent);
-  return addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
+  const wire: PaneWire = addressable && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
+  return instance === undefined ? wire : { ...wire, instance };
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. From `workspace.list`. */
@@ -1126,6 +1167,18 @@ export interface UpdateStatus {
    */
   newerVersions?: string[];
   /**
+   * This machine's release line (M60 spec 01, ADR 0110): `stable`, ADR 0020's strict releases, or
+   * `edge`, which adds the `-edge.N` pre-releases. Absent on an older bridge, which is Stable.
+   */
+  line?: "stable" | "edge";
+  /**
+   * BACK TO STABLE, case 2 (M60 spec 01): this machine is on Stable, runs an Edge build, and no
+   * Stable release is at or above it. `to` is the newest Stable below it, the target of "Go back
+   * now". `exceptions` names every state file that build cannot read (ADR 0110; empty by rule), which
+   * the page shows before the button. Absent in every other case.
+   */
+  back?: { to: string; exceptions: string[] };
+  /**
    * The detached updater's run record (`<state dir>/update.json`, M15/04) — read from disk on every
    * snapshot, so a bridge that has just been restarted BY an update reports the run it is part of
    * instead of coming up with nothing to say. Absent when this install has never updated through the
@@ -1258,7 +1311,19 @@ export type ReopenConversationResponse =
  * with no session; a 404 is the answer for a bridge with no route.
  */
 export type PaneChatResponse =
-  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: false;
+      reason: "disabled" | "no-session" | "no-log";
+      /**
+       * Why a `no-session` answer has no session, when the bridge knows a reason the person can act
+       * on. `shared-folder`: another pane runs the same harness in the same folder, and this pane's
+       * command line names no session, so Collie will not guess which log is this pane's (#508).
+       * Additive-optional (CREW_PROTOCOL.md §7.1): absent on every other answer and from an older
+       * member, and a phone that predates it reads the plain `no-session`.
+       */
+      detail?: "shared-folder";
+    }
   | ({ paneId: string; available: true } & ChatBody);
 
 /**
@@ -1883,6 +1948,53 @@ export type RecentRunsResponse =
   | { ok: true; removed: number }
   | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };
 
+// ── Sent: the shell lines a person sent through Collie, per machine (ADR 0107, bridge/sent.ts) ──
+
+/** `GET /api/sent`. One answer per bridge asked; a lead's `scope=all` merges its members' into it. */
+export interface SentAnswer {
+  /** Newest first, at most `limit`. */
+  entries: SentEntry[];
+  /** A later page exists on at least one machine: ask again with `before` set to the last `at`. */
+  more: boolean;
+  /** This bridge records nothing (`COLLIE_SENT=off`). */
+  off: boolean;
+  /** One per machine asked; a solo bridge lists itself. */
+  machines: SentMachine[];
+}
+
+/** One distinct line on one machine: its newest record, and how many records it has. */
+export interface SentEntry {
+  /** Stable per line on its machine: the first 16 hex characters of the line's sha256. */
+  id: string;
+  line: string;
+  /** Absolute, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the newest record. */
+  at: number;
+  /** A line sent to a shell pane, or a one-off run from the New page. Never a harness name. */
+  kind: "shell" | "run";
+  count: number;
+  /** The machine id the crew already uses; `local` on a bridge that never enrolled. */
+  host: string;
+}
+
+/** One machine a `GET /api/sent` asked. */
+export interface SentMachine {
+  host: string;
+  label: string;
+  ok: boolean;
+  /** That machine records nothing (`COLLIE_SENT=off`). */
+  off?: boolean;
+  /** Why it did not answer: a Collie that predates Sent, no connection, or no answer in 2 s. */
+  reason?: "old_version" | "unreachable" | "timeout";
+}
+
+/** `POST /api/sent/remove` and `/api/sent/clear`. `removed` is how many records went. */
+export interface SentRemoveResponse {
+  ok: true;
+  removed: number;
+}
+
 /**
  * POST /api/launch/check `{ run }` (ADR 0095, amendment): what a one-off line would be, before it runs.
  * A READ: it runs nothing and stores nothing. `noPrompts` is {@link scanNoPrompts}'s answer on the
@@ -1967,6 +2079,27 @@ export interface FoldersResponse {
   recent: string[];
   favourites: string[];
   home: string;
+}
+
+/** One sub-folder in a browse answer: its name only, and whether it holds a `.git` entry (#467). */
+export interface FolderBrowseEntry {
+  name: string;
+  git: boolean;
+}
+
+/**
+ * GET /api/folders/browse — the New page's folder browser (#467, bridge/folder-browse.ts). `path` is
+ * the nearest folder that exists at or above the asked text, spelled under home as the text was;
+ * `filter` is the rest of the text after it ("" when the text named a folder); `folders` are the
+ * sub-folders of `path` whose names start with `filter`, case-insensitive, sorted by name, at most
+ * 200; `parent` is the folder above `path`, or `null` at home, the bound.
+ */
+export interface FolderBrowseResponse {
+  path: string;
+  parent: string | null;
+  folders: FolderBrowseEntry[];
+  filter: string;
+  truncated: boolean;
 }
 
 /**

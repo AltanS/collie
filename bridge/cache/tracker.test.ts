@@ -673,6 +673,47 @@ describe("the model label", () => {
     expect(tracker.model("ses-b")).toBeUndefined();
   });
 
+  test("carries the effort beside the model, and a probe that names none keeps the last one", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("pi");
+    state.probe = probe({ model: "anthropic:claude-opus-5-5", effort: "high" });
+    const tracker = new CacheTracker({ pi: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.model("ses-1")).toBe("anthropic:claude-opus-5-5");
+    expect(tracker.effort("ses-1")).toBe("high");
+
+    c.advance(2000);
+    state.stat = { size: 20, mtimeMs: 200 };
+    state.probe = probe({ model: "anthropic:claude-opus-5-5", effort: "low" });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.effort("ses-1")).toBe("low");
+
+    c.advance(2000);
+    state.stat = { size: 30, mtimeMs: 300 };
+    state.probe = probe({ model: "anthropic:claude-opus-5-5" });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.effort("ses-1")).toBe("low");
+
+    tracker.forget(["ses-1"]);
+    expect(tracker.effort("ses-1")).toBeUndefined();
+  });
+
+  test("a model that names no effort carries none", async () => {
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ model: "claude-opus-5-5" });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.effort("ses-1")).toBeUndefined();
+  });
+
+  test("a hostile effort is trimmed and capped", async () => {
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ model: "claude-opus-5-5", effort: `  ${"e".repeat(500)}  ` });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.effort("ses-1")).toHaveLength(24);
+  });
+
   test("a hostile name is trimmed and capped", async () => {
     const { adapter, state } = fakeAdapter("claude");
     state.probe = probe({ model: `  ${"m".repeat(500)}  ` });

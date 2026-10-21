@@ -18,7 +18,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **URL** | `collie url` | Print the tailnet URL |
 | **QR** | `collie qr` | The same URL as a scannable code |
 | **Version** | `collie version` | The running version (`0.x.y+sha`) |
-| **Skill** | `collie skill` | The agent-facing brief on Collie, for an AI coding agent working in your terminal (also `collie --skill`) |
+| **Skill** | `collie skill` | The agent-facing brief on Collie, for an AI coding agent working in your terminal (also `collie --skill`). `collie skill install`, `uninstall`, `sync`, `status` and `print` manage the walky talky skill in your agents' instruction files; `collie update` runs `sync` after each update ([Install the skill](walky-talky.md#install-the-skill)) |
 | **Docs** | `collie docs` · `collie docs <name>` · `collie docs --all` | These pages, printed out of the binary itself |
 | **Update** | `collie update` | Stage the newest release of your major, flip to it, restart and verify (`--check` preflights, `--status` reports, `--major` crosses one) |
 | **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
@@ -29,6 +29,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Logs** | `collie logs` | Tail the service log |
 | **Config** | `collie config show` · `collie config check` · `collie config init` | Print every setting with its source, validate the file, or write a commented `config.toml` ([the config file](configure.md#the-config-file)) |
 | **Durable agents** | `collie durable attach <name> --socket <path>` · `collie durable attach <name> --url <url> --token-env <VAR>` · `collie durable detach <name>` · `collie durable list` | Add a durable agent to `sources.json`, remove it, or list each durable agent with the state the running bridge gives it. `attach` and `detach` apply at the next restart, or at once with `--restart`. Flags, output and exit codes: [Durable agents](durable-agents.md#the-three-verbs) |
+| **Walky talky** | `collie walky who` · `collie walky send <address> <text>` · `collie walky reply <id> <text>` · `collie walky inbox` · `collie walky status <id>` | Message an agent session from a terminal, or from one agent to another ([Walky talky](walky-talky.md)) |
 | **Voice** | `collie stt setup` · `stt test` · `stt status` · `stt off` | Configure / check / disable [voice input](voice-and-push.md#voice-input-optional) |
 | **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
 | **Push test** | `collie push-test` | Send one notification to prove it works |

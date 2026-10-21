@@ -354,7 +354,11 @@ function Footer({
     first = (
       <Button size="lg" className="flex-1" disabled={busy} onClick={onStart}>
         {busy && <Loader2 aria-hidden="true" className="size-4 motion-safe:animate-spin" />}
-        {t("updateScreen.action.start")}
+        {screen.ask?.kind === "rollback"
+          ? t("updateScreen.action.startRollback")
+          : screen.ask?.kind === "back"
+            ? t("updateScreen.action.startBack")
+            : t("updateScreen.action.start")}
       </Button>
     );
     second = (

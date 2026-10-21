@@ -51,8 +51,11 @@ import {
   parseApiTags,
   parseRemoteTags,
   planToTag,
+  lineChoice,
+  type LineChoice,
   planUpdate,
   type ReleaseTag,
+  rollbackTarget,
   wantsToTag,
 } from "./update.ts";
 
@@ -128,6 +131,13 @@ export interface PreflightReport {
   readonly installKind?: InstallKind["kind"];
   readonly checks: readonly PreflightCheck[];
   readonly crew?: readonly PreflightMember[];
+  /**
+   * The build `collie update --rollback` would go back to, when this install keeps one (M60 spec 01):
+   * the version `current` names now and the older one on disk. ABSENT when there is none, which is
+   * every in-place checkout, every packaged install, and a first install. The phone offers Roll back
+   * from this field, and `POST /api/update/rollback` refuses without it. Additive: the schema stays.
+   */
+  readonly rollback?: { readonly from: string; readonly to: string };
 }
 
 /**
@@ -441,6 +451,7 @@ export async function upstreamCheck(
   deps: UpdateCheckDeps,
   install: InstallKind,
   toTag: string | null = null,
+  choice: LineChoice = lineChoice(deps, []),
 ): Promise<PreflightCheck> {
   const configured = updateRepoOf(deps.ctx.env);
   const installed = manifestVersionFrom(deps.files.read(join(deps.ctx.root, "herdr-plugin.toml")));
@@ -475,7 +486,10 @@ export async function upstreamCheck(
   // lead asks before it spawns anything (M16/04), and it is answered by the same `listTags()`
   // through the same `tagRemote()` — no second listing, no credential, no new mechanism.
   if (toTag !== null) {
-    const pinned = planToTag({ tags: listed.tags, installed, wanted: toTag });
+    // The SAME line choice the verb will make (M60 spec 01): an Edge tag on an Edge machine, a lower
+    // one only with `--downgrade`. A preflight that judged with other rules would green-light a run
+    // the verb then refuses.
+    const pinned = planToTag({ tags: listed.tags, installed, wanted: toTag, ...choice });
     return pinned.kind === "refused"
       ? red("upstream", pinned.reason, "the release this collie was asked to take is not one it may take")
       : green("upstream", `${pinned.target.tag} resolves on github.com/${configured} — this install may take it`);
@@ -484,7 +498,14 @@ export async function upstreamCheck(
   const head = isCheckout(install)
     ? deps.exec.capture("git", gitArgs(deps.ctx.root, ["rev-parse", "HEAD"])).stdout.trim()
     : "";
-  const plan = planUpdate({ tags: listed.tags, installed, head, crossMajor: false });
+  const plan = planUpdate({
+    tags: listed.tags,
+    installed,
+    head,
+    crossMajor: false,
+    line: choice.line,
+    rejected: choice.rejected,
+  });
   if (plan.kind === "unknown-version") {
     return plan.newest === null
       ? red(
@@ -696,6 +717,7 @@ export async function instanceChecks(
   deps: UpdateCheckDeps,
   toTag: string | null = null,
   known: InstallKind | null = null,
+  choice: LineChoice = lineChoice(deps, []),
 ): Promise<PreflightCheck[]> {
   const install = known ?? classifyInstall(probeInstall(deps, deps.ctx.root));
   if (install.kind === "packaged") {
@@ -708,7 +730,7 @@ export async function instanceChecks(
     return [
       await doctorCheck(deps),
       green(PACKAGE_CHECK_ID, PACKAGED_SENTENCE, cmd ?? undefined),
-      packagedRemedy(await upstreamCheck(deps, install, toTag), deps.ctx.root),
+      packagedRemedy(await upstreamCheck(deps, install, toTag, choice), deps.ctx.root),
       serviceCheck(deps),
     ];
   }
@@ -720,7 +742,7 @@ export async function instanceChecks(
   const checks: PreflightCheck[] = [await doctorCheck(deps), diskCheck(deps, install)];
   if (buildsFromSource(install)) checks.push(bunCheck(deps));
   if (isCheckout(install)) checks.push(treeCheck(deps));
-  checks.push(await upstreamCheck(deps, install, toTag));
+  checks.push(await upstreamCheck(deps, install, toTag, choice));
   checks.push(serviceCheck(deps));
   return checks;
 }
@@ -990,6 +1012,8 @@ export interface PreflightOptions {
    * resolution and the health gate cost one subprocess between them rather than two.
    */
   readonly toTag?: string | null;
+  /** The line, the rejected builds and `--downgrade`, as the verb would read them (M60 spec 01). */
+  readonly choice?: LineChoice;
   /**
    * Route corrections for the member walk, keyed by member id.
    *
@@ -1013,7 +1037,7 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
   // on) and the checks are chosen by it, and two probes could answer differently under a package
   // swap mid-run.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
-  const checks = await instanceChecks(deps, opts.toTag ?? null, install);
+  const checks = await instanceChecks(deps, opts.toTag ?? null, install, opts.choice ?? lineChoice(deps, []));
   // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `crew` key in the report.
   const crew = opts.local === true ? undefined : await crewChecks(deps, opts.overrides ?? {});
   // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
@@ -1023,7 +1047,10 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
     ...checks.map((c) => c.verdict),
     ...(crew ?? []).map(topLevelMemberVerdict),
   ]);
-  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
+  const base: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
+  // No network and no build: the version directories on disk ARE the answer (`rollbackTarget`).
+  const back = rollbackTarget(deps, deps.ctx.root, install.kind);
+  const report = back.kind === "ready" ? { ...base, rollback: { from: back.fromVersion, to: back.toVersion } } : base;
   return crew === undefined ? report : { ...report, crew };
 }
 
@@ -1046,6 +1073,10 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
   deps.io.out("");
   deps.io.out("instance:");
   for (const c of report.checks) deps.io.out(checkLine(c, colour));
+  if (report.rollback !== undefined) {
+    deps.io.out("");
+    deps.io.out(`rollback: ${report.rollback.to} is kept on disk (collie update --rollback)`);
+  }
   if (report.crew === undefined) return;
   deps.io.out("");
   deps.io.out("crew:");
@@ -1067,7 +1098,7 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
  * learns to pass `--force` to.
  */
 export async function cmdUpdateCheck(deps: UpdateCheckDeps, args: readonly string[] = []): Promise<number> {
-  const report = await preflight(deps, { local: wantsLocal(args), toTag: wantsToTag(args) });
+  const report = await preflight(deps, { local: wantsLocal(args), toTag: wantsToTag(args), choice: lineChoice(deps, args) });
   if (args.includes("--json")) {
     // stdout and nothing else: the whole point of `--json` is that spec 05 and spec 06 can read it.
     deps.io.out(JSON.stringify(report, null, 2));

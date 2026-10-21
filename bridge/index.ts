@@ -19,6 +19,7 @@ import { DiskWatch } from "./machine-disks.ts";
 import { MachineSampler } from "./machine-stats.ts";
 import { machineRosterOf, MachineWatch, SOLO_MACHINE_ID, type MachineRosterEntry } from "./machines.ts";
 import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
+import { museSessionNameReader } from "./journal/muse.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
@@ -80,6 +81,7 @@ import { AskGuardStore } from "./durable/guard.ts";
 import { OldLeadNotice } from "./durable/old-lead.ts";
 import { AddedLauncherStore, addedFileIo } from "./launchers-added.ts";
 import { RecentRunStore, recentRunFileIo } from "./recent-runs.ts";
+import { SentStore, sentFileIo, sentRecorder } from "./sent.ts";
 import { WorktreeChoiceStore } from "./worktree-choices.ts";
 import { filePairingIo, type PairedRegistry, PairingStore } from "./pairing.ts";
 import {
@@ -113,9 +115,17 @@ import {
   crewTimeoutBudget,
   crewTimeoutClampWarning,
   PeerClient,
+  WRITE_BUDGET_MS,
 } from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
-import { leadReleaseHeader, LEG_WALL_CLOCK_MS, CrewFollower, UpdateTurns } from "./crew/follow.ts";
+import {
+  leadLineHeader,
+  leadReleaseHeader,
+  LEG_WALL_CLOCK_MS,
+  CrewFollower,
+  type LeadStep,
+  UpdateTurns,
+} from "./crew/follow.ts";
 import { createCrewRouter, type CrewRouterDeps } from "./crew/router.ts";
 import {
   checkpointMarker,
@@ -128,6 +138,8 @@ import {
   type PairingCollision,
 } from "./crew/staleness.ts";
 import { signDial, signRequest } from "./crew/signing.ts";
+import type { JsonValue } from "./json.ts";
+import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import {
   armThresholdMs,
   armThresholdWarning,
@@ -186,8 +198,11 @@ import {
 import { bootSources, ENV_SOURCE_NAME, planPrograms, PROGRAMS_OFF_LOG, programsOff, sourcesPath, sourceTransportEnv, type DurableSource, type ProgramPlan } from "./sources.ts";
 import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
+import { SubagentTracker } from "./subagents.ts";
+import { TodoTracker } from "./todos.ts";
 import {
   bridgeStampSync,
+  compareSemver,
   githubReleaseUrl,
   mirrorValue,
   releaseFetchers,
@@ -197,6 +212,15 @@ import {
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
+import {
+  afterRollback,
+  diskWriter,
+  lineReading,
+  readUpdateLineSync,
+  type ReleaseLine,
+  withLine,
+  writeUpdateLine,
+} from "./update-line.ts";
 import {
   FreshPreflightGate,
   launchUpdateRunner,
@@ -223,6 +247,26 @@ import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
 import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { labelOf } from "./walky/address.ts";
+import {
+  crewSkipped,
+  crewTargets,
+  CREW_WALKY_ROUTE,
+  leadRouteRemote,
+  memberRouteRemote,
+  olderThanWalky,
+  WalkyCrew,
+  WalkyLeadSide,
+  WalkyReport,
+  type CrewDialAnswer,
+} from "./walky/crew.ts";
+import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
+import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
+import { WalkyLog } from "./walky/log.ts";
+import { RefusalCounter } from "./walky/refusals.ts";
+import { WalkySeen } from "./walky/seen.ts";
+import { WalkyService } from "./walky/service.ts";
+import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -743,11 +787,20 @@ await activity.load();
 const journals = cfg.transcript
   ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] })
   : null;
+// The name the operator gave a Muse session, for the engines' pane naming (journal/muse.ts).
+// It reads the same logs the journal does, so it lives and dies with the same switch: with
+// transcripts off no engine is handed a reader, and muse panes keep their fallbacks exactly as
+// before. One reader for the whole bridge — its per-session scans are keyed by session id, so
+// two collie sessions watching one herd share the fold instead of re-walking the log.
+const museNames = cfg.transcript ? museSessionNameReader(cfg.journalRoots.muse) : undefined;
 const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
 const paneCache =
   journals === null
     ? null
     : new CacheTracker(journals, { overrides: () => cacheRulesReader() }, () => Date.now());
+const todos = journals === null ? null : new TodoTracker(journals, Date.now);
+// Each pane's running subagents (bridge/subagents.ts), read on the same poll as the todo list.
+const subagents = journals === null ? null : new SubagentTracker(journals, Date.now);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -815,6 +868,10 @@ const addedLaunchers = new AddedLauncherStore(addedFileIo(cfg.stateDir));
 // The one-off lines a phone ran on this machine, newest first (ADR 0095, bridge/recent-runs.ts).
 // Nothing is written until the first run that works.
 const recentRuns = new RecentRunStore(recentRunFileIo(cfg.stateDir));
+
+// Sent: the shell lines a person sent through Collie on this machine (ADR 0107, bridge/sent.ts).
+// Nothing is written until the first line is kept; `COLLIE_SENT=off` keeps none.
+const sentStore = new SentStore(sentFileIo(cfg.stateDir), { off: cfg.sent === "off", home: homedir() });
 
 // The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
 // `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
@@ -957,6 +1014,12 @@ const updateMonitor = new UpdateMonitor({
   // What this version changed (1.21.1), from the CHANGELOG.md that ships beside package.json in every
   // checkout and payload. Read on the first Updates page open, once; no network.
   currentNotes: currentNotesReader(rootDir, currentVersion, githubReleaseUrl(updateRepo, currentVersion)),
+  // This machine's release line (M60 spec 01), read off disk on every resolve so a switch through
+  // `POST /api/update/line` is seen at once. A missing file is Stable with nothing rejected.
+  lineOffer: (tags, installed) => lineReading(readUpdateLineSync(cfg.stateDir), tags, installed),
+  // The line itself, read per status, so the card and the Crew page name it before any check has
+  // succeeded (an offline machine, the rig's dead mirror), the same line the crew header carries.
+  line: () => readUpdateLineSync(cfg.stateDir).line,
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions, linkChange, urgent) =>
     void push.send({
@@ -1050,11 +1113,21 @@ const preflightCache = new PreflightCache({
  * a binary install checks the release manifest and this platform's `sha256`, and on a checkout
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
-const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string | null }) => {
+const startDetachedUpdate = (a: {
+  major: boolean;
+  runId: string;
+  toTag?: string | null;
+  rollback?: boolean;
+  downgrade?: boolean;
+  line?: ReleaseLine | null;
+}) => {
   const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
     major: a.major,
+    rollback: a.rollback === true,
+    downgrade: a.downgrade === true,
+    line: a.line ?? null,
     stamp: String(Date.now()),
     hasSystemdRun: Bun.which("systemd-run") !== null,
     hasSetsid: Bun.which("setsid") !== null,
@@ -1087,6 +1160,11 @@ const updateAction = canRunUpdate
       lockHeld: () => updateLockHeld(cfg.stateDir),
       newRunId,
       start: startDetachedUpdate,
+      // The phone's rollback (M60 spec 01): the same spawn, verb `update --rollback --run-id`.
+      rollback: (a: { runId: string }) => startDetachedUpdate({ major: false, runId: a.runId, rollback: true }),
+      // "Go back now" (M60 spec 01): the one person-started downgrade, to the monitor's Stable target.
+      back: (a: { runId: string; to: string }) =>
+        startDetachedUpdate({ major: false, runId: a.runId, toTag: `v${a.to}`, downgrade: true }),
       beginCrewRun: (a: { runId: string; to: string }) => {
         updateTurns.begin(a.runId, a.to, Date.now());
         // §20's FIRST immediate sweep: the operator has confirmed, so the first turn goes out on a
@@ -1145,13 +1223,54 @@ const crewFollower =
         // Re-read on every decision, never captured: it IS the memory, and the record on disk is
         // what survives this machine's own restart.
         run: () => readUpdateRun(cfg.stateDir),
+        // The Edge builds this member rolled back from (ADR 0110), never taken again.
+        rejected: () => readUpdateLineSync(cfg.stateDir).rejected,
         // ONE subprocess answers guards 6 and 8: `--to-tag` turns the `upstream` check into "does
         // this exact release resolve here, and may this install take it", resolved through
         // `listTags()` / `anonymousTagUrl()` over anonymous HTTPS with no credential.
-        preflight: async (tag) => parsePreflightReport((await runPreflight([...preflightCommand(collieBinary), "--to-tag", tag])).stdout),
-        start: ({ tag, runId }) => startDetachedUpdate({ major: false, runId, toTag: tag }),
+        preflight: async (tag, how) =>
+          parsePreflightReport(
+            (
+              await runPreflight([
+                ...preflightCommand(collieBinary),
+                "--to-tag",
+                tag,
+                ...(how?.down === true ? ["--downgrade"] : []),
+                ...(how?.line === undefined ? [] : ["--line", how.line]),
+              ])
+            ).stdout,
+          ),
+        start: (a) => {
+          followLeadLine(a);
+          return startDetachedUpdate({
+            major: false,
+            runId: a.runId,
+            toTag: a.tag,
+            downgrade: a.down === true,
+            line: a.line ?? null,
+          });
+        },
       })
     : undefined;
+
+/**
+ * THE CREW FOLLOWS THE LEAD ON BOTH LINES (M60 spec 01, ADR 0110). A member that follows takes its
+ * lead's line for its own, so its own Updates page and its next follow agree with the crew. A step
+ * after the lead's rollback also marks the Edge build this member leaves as rejected, as the lead's
+ * own rollback did. A lead older than the line header sends none, and nothing is written.
+ * Best-effort: a failed write must not stop the follow.
+ */
+function followLeadLine(a: { readonly line?: ReleaseLine; readonly step?: LeadStep }): void {
+  if (a.line === undefined) return;
+  try {
+    const before = readUpdateLineSync(cfg.stateDir);
+    const moved = withLine(before, a.line, Date.now());
+    const record = a.step === "rollback" ? afterRollback(moved, crewVersion, Date.now()) : moved;
+    if (record !== before) writeUpdateLine(diskWriter, cfg.stateDir, record);
+  } catch (err) {
+    console.warn(`[crew] follow: could not take the lead's release line (${String(err)})`);
+  }
+}
 
 /**
  * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
@@ -1164,7 +1283,7 @@ const oldLead = crew.mode === "peer" && runsPrograms ? new OldLeadNotice() : und
 const onFollow =
   crewFollower === undefined && oldLead === undefined
     ? undefined
-    : (a: { readonly leadRelease: string | null; readonly turn: string | null }): void => {
+    : (a: { readonly leadRelease: string | null; readonly turn: string | null; readonly leadLine?: string | null }): void => {
         oldLead?.observe(a.leadRelease);
         crewFollower?.observe(a);
       };
@@ -1343,7 +1462,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
   const herdr = withBeaconsIfBlind(built.adapter, target);
-  const engine = new StateEngine(herdr, cfg.pollMs);
+  const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
   // herd change, and while it's healthy the interval relaxes to the safety-net cadence. Events are
@@ -1392,6 +1511,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
       );
     };
     engine.onUpdate((s) => void probeThenWarn(s.agents));
+  }
+  if (todos !== null) {
+    engine.onUpdate((s) => void todos.refresh(s.agents, { session: name }).catch(() => {}));
+  }
+  if (subagents !== null) {
+    engine.onUpdate((s) => void subagents.refresh(s.agents, { session: name }).catch(() => {}));
   }
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
@@ -1489,6 +1614,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,
+          // A blind send on one of this session's shell panes joins Sent (ADR 0107); any other pane is left out.
+          blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
         })
       : undefined;
   const asks =
@@ -1634,6 +1761,120 @@ edgeRouter?.start();
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
 hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
+
+// Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
+// socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's
+// Send Protocol; a session with no protocol keeps the inbox only. This machine's member id names its
+// panes on a crew (`local` on a solo install), and its crew key signs each message it builds.
+// Every pane carries an instance token (bridge/walky/instances.ts, `<stateDir>/walky/instances.json`):
+// a multiplexer reuses a pane id, and the token tells the pane a sender meant from a new session that
+// took its id. A pane out of sight for 30 seconds loses its token, and its inbox goes with it.
+const walkyInstances = new WalkyInstances(join(cfg.stateDir, "walky"));
+/** Every pane of every session, without its token: what the instance registry observes. */
+const walkyRawPanes = (): Omit<WalkyPane, "instance">[] =>
+  registry.ordered().flatMap((rt) => {
+    const { agents, shellPanes } = rt.engine.current();
+    const of = (view: AgentView, agent: boolean): Omit<WalkyPane, "instance"> => {
+      const head = gitHeads.get(view.cwd);
+      const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
+      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, terminal: rt.send !== undefined };
+    };
+    const out = agents.map((view) => of(view, true));
+    for (const view of shellPanes) out.push(of(view, false));
+    return out;
+  });
+const walkyHost: WalkyHost = {
+  panes: () => walkyInstances.stamp(walkyRawPanes()),
+  send: async (pane, sendId, text): Promise<SendResult> => {
+    const protocol = registry.get(pane.session)?.send;
+    if (protocol === undefined) return { outcome: "refused", reason: "no terminal" };
+    const answer = await protocol.handle({ id: sendId, text, mode: "send" }, { session: pane.session, paneId: pane.paneId, harness: pane.harness ?? "" });
+    const receipt = answer.receipt;
+    if (receipt === undefined) return { outcome: "unknown" };
+    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+  },
+  sendState: (sendId) => {
+    const record = sendStore?.get(sendId) ?? null;
+    if (record === null) return null;
+    const receipt = record.receipt;
+    // A request with no receipt yet still runs; the start-up recovery ends a crashed one `unknown`.
+    if (receipt === undefined) return { outcome: "held" };
+    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+  },
+  cancelHeld: (session, paneId, sendId) => {
+    registry.get(session)?.send?.cancelHeld(session, paneId, sendId);
+  },
+};
+const walkyMemberId = crew.mode === "solo" ? null : (trustStore.current()?.self.memberId ?? null);
+const walkyLog = new WalkyLog(join(cfg.stateDir, "walky"));
+// A pane instance that went takes its inbox with it: a new session that takes the id starts empty.
+walkyInstances.onDrop((session, paneId, token) => walkyLog.inboxDrop(session, paneId, token));
+// Look at the panes every 10 seconds even when no message asks, so a closed pane is dropped on time.
+const walkyInstanceTimer = setInterval(() => walkyInstances.observe(walkyRawPanes()), INSTANCE_TICK_MS);
+walkyInstanceTimer.unref();
+// Dedupe beside the log, kept a day and apart from its rotation: the same id never types twice.
+const walkySeen = new WalkySeen(join(cfg.stateDir, "walky"));
+// How many messages this machine refused, per reason and with no body: for `doctor` and the Crew page.
+const walkyRefusals = new RefusalCounter(join(cfg.stateDir, "walky"));
+// Across the crew (CREW_PROTOCOL §21). A member hands every message for another machine to its lead,
+// signed; the lead delivers and routes it on with its attestation. The lead's half needs the lead
+// runtime, which is built after the sessions, so it is assigned below and read through this holder.
+let walkyLeadClient: PeerClient | null = null;
+// The lead runtime's own crew client, kept for the outcomes push (§21): assigned where the lead is built.
+let crewLeadClient: PeerClient | null = null;
+let walkyLeadHalf: {
+  readonly route: RouteRemote;
+  readonly targets: () => ReturnType<typeof crewTargets>;
+  readonly skipped: () => ReturnType<typeof crewSkipped>;
+} | null = null;
+const walkyRoute: RouteRemote | undefined =
+  walkyMemberId === null
+    ? undefined
+    : crew.mode === "lead"
+      ? (message, members) => (walkyLeadHalf === null ? Promise.reject(new Error("the crew is not wired yet")) : walkyLeadHalf.route(message, members))
+      : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload) });
+const walky = new WalkyService({
+  log: walkyLog,
+  seen: walkySeen,
+  refusals: walkyRefusals,
+  host: walkyHost,
+  memberId: walkyMemberId,
+  enabled: () => cfg.walky,
+  machine: hostname(),
+  keyPem: () => (walkyMemberId === null ? null : (trustStore.current()?.self.keyPem ?? null)),
+  warn: (line) => console.warn(line),
+  routeRemote: walkyRoute,
+  remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
+  outcomesOnLead: crew.mode === "peer",
+  leadName: () => trustStore.current()?.lead?.memberId ?? null,
+  remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
+});
+// A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes, until
+// its lead acks them.
+const walkyReport = crew.mode === "peer" && walkyMemberId !== null ? new WalkyReport(walkyMemberId) : null;
+walkyReport?.listen(walkyLog);
+// A lead acks each member's report on its next sweep, and pushes back to each member the outcomes of
+// the messages that member sent to other machines (§21). In memory only.
+const walkyLeadSide =
+  crew.mode === "lead" && walkyMemberId !== null ? new WalkyLeadSide({ self: walkyMemberId, log: walkyLog, push: (memberId, payload) => walkyPushOutcomes(memberId, payload) }) : null;
+walkyLeadSide?.listen();
+const walkyCrew = new WalkyCrew({
+  service: walky,
+  trust: () => trustStore.current(),
+  audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+});
+const walkyRecovered = walky.deliverer.recover();
+if (walkyRecovered > 0) console.log(`[walky] settled ${String(walkyRecovered)} message(s) left open by the last run`);
+const walkyServer = new WalkyServer({
+  socketPath: walkySocketPath(cfg.stateDir),
+  host: HOST,
+  service: walky,
+  targets: () => {
+    const live = new Set(registry.ordered().map((runtime) => runtime.name));
+    return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
+  },
+});
+if (await walkyServer.start()) console.log(`[walky] socket at ${walkySocketPath(cfg.stateDir)}`);
 const refreshTimer = setInterval(() => {
   void registry.refresh();
   void checkpointRuntime();
@@ -1877,6 +2118,7 @@ const crewLead = (() => {
     members: () => trustStore.current()?.peers ?? [],
   });
   const client = crewPeerClient(data);
+  crewLeadClient = client;
   return new CrewLead({
     registry: crewRegistry,
     // §13's refuse-before-forward budget: this lead's own cap, not a constant (COLLIE_MAX_UPLOAD_MB).
@@ -1889,6 +2131,13 @@ const crewLead = (() => {
     // mid-life, and the roster changes under a running bridge.
     follow: {
       leadRelease: () => leadReleaseHeader({ version: crewVersion, run: readUpdateRun(cfg.stateDir) }),
+      // The lead's line, and its step after a rollback or a switch back to Stable (M60 spec 01).
+      leadLine: () =>
+        leadLineHeader({
+          version: crewVersion,
+          run: readUpdateRun(cfg.stateDir),
+          line: readUpdateLineSync(cfg.stateDir).line,
+        }),
       leadRun: () => readUpdateRun(cfg.stateDir),
       turns: updateTurns,
       enrolledAt: (memberId) =>
@@ -1921,8 +2170,16 @@ const crewLead = (() => {
     },
     // ADR 0084: a member's own load, off the answer this sweep already parsed, on this lead's clock.
     onMachineStats: (memberId, sample, at) => machineWatch?.observe(memberId, sample, at),
+    // §21: how a message this lead routed ended on that member, into this lead's own walky log, and
+    // the report's cursor, acked on the next dial of that member. Then the outcomes go back.
+    onWalkyReceipts: (memberId, receipts, cursor) => {
+      walkyLeadSide?.report(memberId, receipts, cursor);
+    },
+    walkyAck: (memberId) => walkyLeadSide?.ackFor(memberId) ?? null,
+    onWalkySwept: (memberIds) => walkyLeadSide?.swept(memberIds),
     onPeerGone: (memberId) => {
       peerNotifier?.forget(memberId);
+      walkyLeadSide?.forget(memberId);
       // A member that left takes its last sample and its day of history with it (ADR 0084).
       machineWatch?.forget(memberId);
       // The client remembers one thing that reaches a verdict, how long this member has been
@@ -2022,6 +2279,59 @@ const crewLead = (() => {
   });
 })();
 
+// Walky talky's lead half (§21): a message for another member goes to that member through the lead's
+// own forward, with this lead's attestation beside it; `who` lists every member's agent panes from the
+// bodies the sweep already holds.
+if (crewLead !== undefined && walkyMemberId !== null) {
+  const lead = crewLead;
+  walkyLeadHalf = {
+    route: leadRouteRemote({
+      self: walkyMemberId,
+      // A member whose reported version predates walky talky is refused `older member` without a dial.
+      older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
+      members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
+      // A message from another member travels with that member's pinned certificate and this lead's
+      // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).
+      senderCert: (memberId) => (trustStore.current()?.peers ?? []).find((member) => member.memberId === memberId && member.status === "enrolled")?.certPem ?? null,
+      signing: () => {
+        const held = trustStore.current();
+        return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
+      },
+      post: async (memberId, segment, payload): Promise<CrewDialAnswer> => {
+        const resolved = lead.resolve({ kind: "member", id: memberId });
+        if (resolved === undefined || resolved.kind !== "peer") return { kind: "refused", reason: "no such member" };
+        const url = new URL(`http://collie.invalid/api/pane/${encodeURIComponent(segment)}/walky`);
+        url.searchParams.set("host", memberId);
+        const req = new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload });
+        const res = await lead.forward(req, url, resolved, {
+          device: null,
+          audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+        });
+        const body = await res.json().catch(() => null);
+        // SAFETY: `Response.json()` output IS a JsonValue by construction; only `code` and `error` are read here.
+        const row = asJsonObject(body as JsonValue);
+        // The lead's own refusals (§10.3): nothing reached the member, or it may have and is not re-sent.
+        if (row?.code === "write_outcome_unknown") return { kind: "unknown", reason: "crew: outcome unknown" };
+        if (row?.code === "host_unreachable" || row?.code === "host_incompatible") {
+          return { kind: "refused", reason: asJsonString(row.error) ?? String(row.code) };
+        }
+        // SAFETY: as above.
+        return { kind: "answer", status: res.status, body: body as JsonValue | null };
+      },
+    }),
+    targets: () =>
+      crewTargets(
+        lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+        !cfg.redact,
+      ),
+    skipped: () =>
+      crewSkipped(
+        lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
+        !cfg.redact,
+      ),
+  };
+}
+
 /**
  * `GET /api/crew`'s body, asked for per request and answered from memory (bridge/crew/status-wire.ts).
  *
@@ -2090,7 +2400,7 @@ function settleUpdateGate(): void {
   // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
   // a trace left nowhere. Once per run id per process, so a poll tick cannot make it a stream.
   console.log(`[crew] update ${start.runId}: levelling peers to ${start.to}`);
-  updateTurns.begin(start.runId, start.to, Date.now());
+  updateTurns.begin(start.runId, start.to, Date.now(), start.down);
   crewLead?.resweep();
 }
 
@@ -2205,6 +2515,66 @@ if (crewLead) {
  * door that terminates TLS before the process ({@link takeoverDialTls}). There the crew secret and
  * the dial attestation are the whole of it, and both ride EVERY call this client makes.
  */
+/**
+ * A member's one dial to its lead for walky talky (§21): the ordinary crew client, signed per §8.6
+ * and attested on every dial, with no pin for the lead (its address is a front door that terminates
+ * TLS, the CLI's rule). Built on first use and kept (`walkyLeadClient`): the store is read on every dial.
+ */
+async function walkyToLead(payload: string): Promise<CrewDialAnswer> {
+  const data = trustStore.current();
+  const lead = data?.lead ?? null;
+  if (data === null || lead === null) return { kind: "refused", reason: "this machine has no lead" };
+  walkyLeadClient ??= new PeerClient({
+    self: data.self.memberId,
+    secret: () => trustStore.current()?.crew?.secret ?? null,
+    timeoutMs: crewTimeoutBudget(cfg.pollMs),
+    patientTimeoutMs: crewHelloBudget(cfg.pollMs),
+    fetch: (url, init) => fetch(url, init),
+    sign: (parts) => signRequest(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
+    tls: (link) => takeoverDialTls(trustStore.current(), link.memberId),
+  });
+  const outcome = await walkyLeadClient.proxy(
+    { memberId: lead.memberId, address: lead.address },
+    CREW_WALKY_ROUTE,
+    undefined,
+    { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+    WRITE_BUDGET_MS,
+    true,
+  );
+  if (outcome.ok) {
+    const body = await outcome.value.json().catch(() => null);
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; `receiptsOfAnswer` reads it.
+    return { kind: "answer", status: outcome.status, body: body as JsonValue | null };
+  }
+  // Nothing was sent, or the lead answered and refused: the message did not land there.
+  if (outcome.state !== "unreachable") return { kind: "refused", reason: `lead: ${outcome.reason}` };
+  if (outcome.authRefused === true) return { kind: "refused", reason: "signature" };
+  if (outcome.attempted === false) return { kind: "refused", reason: `lead: ${outcome.reason}` };
+  // It may have landed (§10.3): never re-sent, and said so.
+  return { kind: "unknown", reason: `crew: ${outcome.reason}` };
+}
+
+/**
+ * The lead's push of a member's walky outcomes (§21, added 2026-10-18): `POST /crew/v1/walky/outcomes`
+ * on that member, through this lead's own crew client, pinned and attested like every lead → peer dial.
+ */
+async function walkyPushOutcomes(memberId: string, payload: string): Promise<CrewDialAnswer> {
+  const lead = crewLead;
+  const client = crewLeadClient;
+  if (lead === undefined || client === null) return { kind: "refused", reason: "this machine does not lead" };
+  const resolved = lead.resolve({ kind: "member", id: memberId });
+  if (resolved === undefined || resolved.kind !== "peer") return { kind: "refused", reason: "no such member" };
+  const outcome = await client.walkyOutcomes(resolved.link, payload);
+  if (outcome.ok) {
+    const body = await outcome.value.json().catch(() => null);
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; only the status is acted on.
+    return { kind: "answer", status: outcome.status, body: body as JsonValue | null };
+  }
+  if (outcome.state === "unreachable" && outcome.attempted !== false && outcome.authRefused !== true) return { kind: "unknown", reason: `crew: ${outcome.reason}` };
+  return { kind: "refused", reason: outcome.reason };
+}
+
 function takeoverClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
@@ -2409,6 +2779,12 @@ const server = startServer({
   // The preflight and the handoff, or undefined on an install with no compiled binary to run —
   // where the route answers 503 and the phone says so (M15/05).
   updateAction,
+  // The release line record (M60 spec 01): `update-line.json` in the state dir, read per request.
+  updateLine: {
+    read: () => readUpdateLineSync(cfg.stateDir),
+    write: (record) => writeUpdateLine(diskWriter, cfg.stateDir, record),
+    now: Date.now,
+  },
   // The bare `<semver>+<sha>` this process answers `/api/health` and `/crew/v1/hello` with — one
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).
@@ -2420,7 +2796,11 @@ const server = startServer({
   // Built above so the cache tracker probes through the same adapters this serves history from.
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
+  todos: todos ?? undefined,
+  subagents: subagents ?? undefined,
   gitHeads,
+  walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
+  walky,
   cacheWatch,
   folders,
   worktreeReceipts,
@@ -2432,6 +2812,12 @@ const server = startServer({
   worktreeChoices,
   addedLaunchers,
   recentRuns,
+  sent: sentStore,
+  // The name Sent gives this machine: the crew's member id, or `local` with the host name (ADR 0107).
+  sentSelf: () => {
+    const data = trustStore.current();
+    return data === null ? { id: SOLO_MACHINE_ID, name: hostname() } : crewSelfOf(data);
+  },
   // Every machine's load and its alert rules (ADR 0084). Undefined on a peer, whose routes then 404.
   machines: machineWatch,
   crew,
@@ -2446,6 +2832,7 @@ const server = startServer({
   // enrolled has no store, gets no handler, and so registers no crew route at all (§11). The
   // surface is handed back by server.ts so a peer answers its lead out of the same closures its own
   // browser routes use — the same snapshot body, and the same session-scoped handlers (§5).
+  walkyCrew,
   crewRouter:
     trustStore.current() === null
       ? undefined
@@ -2453,6 +2840,19 @@ const server = startServer({
           createCrewRouter({
             store: trustStore,
             audit,
+            // §21: a lead takes a member's message; a member reports how messages from elsewhere ended.
+            walky: {
+              fromMember: (body, member) => walkyCrew.fromMember(body, member),
+              report:
+                walkyReport === null
+                  ? undefined
+                  : (ack) => {
+                      walkyReport.ack(ack);
+                      return walkyReport.report();
+                    },
+              // §21 (added 2026-10-18): a member takes its lead's push of how its own messages ended.
+              outcomes: crew.mode === "peer" ? (body, from) => walkyCrew.outcomes(body, from) : undefined,
+            },
             transportPinned,
             // Present only on a two-anchored peer. Its presence is what makes a dial attestation
             // mandatory and identity signature-resolved (§8.1's 2026-08-20 amendment).
@@ -2535,9 +2935,11 @@ const shutdown = async () => {
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);
+  clearInterval(walkyInstanceTimer);
   edgeRouter?.stop();
   hookTarget?.remove();
   holdServer?.stop();
+  walkyServer.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

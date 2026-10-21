@@ -1,0 +1,74 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mPhrase Some [0m[38;2;153;153;153ma2.1.304[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mSome 5.5 line some phrase · Sample Run[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153mA:\run\_the\Phrase\sample[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLine words .in some to A:\run\_the\Phrase\sample\.run\in\a the in a line, the Line some run some, to sentence plain, to notation [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mwords, to words notation. Some line, words line some run some line. An statement.[0m[48;2;55;55;55m                                                    [0m
+
+  [0m[38;2;153;153;153mSentence run [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m example, line [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mNeutral 4 in 12 an the, plain an notation words.
+
+  [0m[38;2;153;153;153mLine [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mRun an 11 to 12.
+
+  [0m[38;2;153;153;153mSome [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m plain [0m
+
+[0m[38;2;255;255;255m● [0msome
+
+  Run words run sample line: [0m[38;2;177;185;249m08-the.in [0msome run sample phrase some line the line Sentence statement paragraphp phrase, sentence
+  notation, in run SOME phrase. An line'a line, the notation sample to example.
+
+[0m[38;2;153;153;153m✻ Statement the 1a 27a · line 10:28 IN[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                   [0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦[0m [0m[38;2;153;153;153mDismissed.[0m   [0m[38;2;177;185;249m1[0m: That was helpful   [0m[38;2;177;185;249m2[0m: Not relevant   [0m[38;2;177;185;249m3[0m: Couldn’t understand   [0m[38;2;177;185;249m4[0m: Turn off suggestions   [0m[38;2;177;185;249m0[0m: Dismiss
+
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ 
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mrun: [0m[38;2;63;185;106m 12%[0m[38;2;153;153;153m  |  the: 5a [0m[38;2;215;167;55m 28%[0m[38;2;153;153;153m (4a01a) · 7a [0m[38;2;232;165;49m  7%[0m[38;2;153;153;153m / A [0m[38;2;68;182;135m  0%[0m[38;2;153;153;153m (6a19a)  |  an: $  22.56  |  A: 146A line  |  Some 5.5  |  line  |  A:\run\_…[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle) · ← 2 agents[0m

@@ -19,6 +19,7 @@ import {
   fetchCrew,
   fetchMachines,
   fetchPane,
+  fetchPaneWalky,
   fetchSnapshot,
   isApiErrorStatus,
   isPairingRefusal,
@@ -72,6 +73,7 @@ import type {
   UpdateInfo,
   WorkspaceView,
 } from "@/lib/types";
+import type { WalkyRow } from "@/lib/walky";
 
 // A superseded revalidation is aborted via the loader's request.signal; that surfaces as an
 // AbortError we must RETHROW so React Router discards the stale run — swallowing it into the
@@ -216,6 +218,21 @@ export interface PaneData {
    * herd for. A missing row is then "not known", never "gone" (see {@link savedPaneRow}).
    */
   savedPane?: AgentView;
+  /**
+   * The pane's walky talky messages, newest first, each with its receipt (M62), or `null` when the
+   * list could not be read (an older bridge, a failed read, a saved copy). It is the cross-check
+   * behind the Chat card and the mirror row: an envelope header on a screen is only text until its id
+   * is found here (lib/walky.ts). `null` claims nothing either way; an empty list claims "none".
+   * Optional in the TYPE only, so hand-built fixtures stay valid.
+   */
+  walky?: WalkyRow[] | null;
+  /**
+   * How many times this pane's walky list has been read from the bridge in this page's life (M62). The
+   * list KEEPS its identity across a quiet poll, so identity cannot say "the list was read again";
+   * this number can. The Chat mark "no log record on this machine" waits for it to advance once
+   * (components/walky-log.tsx). A failed read does not count: it answered the old list again.
+   */
+  walkyReads?: number;
 }
 
 // ── THE COLD OPEN (M46 spec 10) ───────────────────────────────────────────────
@@ -634,6 +651,11 @@ async function stalePane(paneId: string, scope: Scope, lines: number, outage = f
     lastSeenAt,
     stale,
     savedPane,
+    // The walky list the pane last had (M62), so a failed mirror read does not turn every card and
+    // tagged row back into plain text for one poll. The count stays too: nothing was read again. A
+    // device refused for want of pairing is shown no kept message, as it is shown no kept text.
+    walky: refused ? null : (lastWalky.get(key) ?? null),
+    walkyReads: walkyReadCounts.get(key) ?? 0,
   };
 }
 
@@ -666,6 +688,37 @@ function holdsNoEchoPrompt(text: string): boolean {
 export function prefetchPaneData(paneId: string, scope: Scope | undefined): Promise<void> {
   if (isLostLatched()) return Promise.resolve();
   return prefetchPane(paneId, scope, getRequestedLines(paneId, scope));
+}
+
+/** The last list each pane answered, so one failed poll does not turn every card back into plain text. */
+const lastWalky = new Map<string, WalkyRow[]>();
+/** How many reads of each pane's list the bridge answered, so the screen can tell "read again" from "same list". */
+const walkyReadCounts = new Map<string, number>();
+
+/**
+ * The pane's walky talky list, or `null` when it could not be read (M62). Never throws: the list is
+ * the cross-check for a card and a row style, and a screen that cannot be checked simply draws
+ * nothing extra. A failed or superseded poll answers the list the pane last had, so a card does not
+ * flicker back to plain text for one bad read; a pane that never had one (an older bridge with no
+ * route) stays `null`.
+ */
+async function readWalky(paneId: string, scope: Scope, signal: AbortSignal | undefined): Promise<WalkyRow[] | null> {
+  // A pane on a crew member is read the same way: the lead forwards `?host=` to the member, whose own
+  // log answers (CREW_PROTOCOL.md §21). A member that predates walky talky, or one that is down, is a
+  // refusal, which lands below as a list that could not be read.
+  const key = paneKey(paneId, scope);
+  try {
+    const fresh = await fetchPaneWalky(paneId, scope, signal);
+    // The previous list's own objects wherever nothing changed, so a poll that brought no new message
+    // hands the screen the same reference and no card, and no mirror, draws again for it.
+    const previous = lastWalky.get(key);
+    const rows = previous === undefined ? fresh : shareEqual(previous, fresh);
+    lastWalky.set(key, rows);
+    walkyReadCounts.set(key, (walkyReadCounts.get(key) ?? 0) + 1);
+    return rows;
+  } catch {
+    return lastWalky.get(key) ?? null;
+  }
 }
 
 export async function paneLoader({
@@ -715,9 +768,13 @@ export async function paneLoader({
       error: false,
       authError: false,
       stale: false,
+      walky: await readWalky(paneId, scope, request?.signal),
+      walkyReads: walkyReadCounts.get(key) ?? 0,
     };
   }
 
+  // The walky list is asked beside the mirror, not after it: the two reads share the poll's deadline.
+  const walkyRead = readWalky(paneId, scope, request?.signal);
   try {
     // On a 304 fetchPane returns the cached body, so `read.text` is populated either way; the
     // `?? lastPaneText` is just belt-and-suspenders. Both paths are a success (not the error
@@ -777,6 +834,8 @@ export async function paneLoader({
       error: false,
       authError: false,
       stale: false,
+      walky: await walkyRead,
+      walkyReads: walkyReadCounts.get(key) ?? 0,
     };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
@@ -811,7 +870,9 @@ export interface DevicesData {
  * What a route renders when the loader did not run or threw. Exported because two callers need the
  * same fallback: the Settings System page's `useLoaderData()` default, and its tests.
  */
-export const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: false };
+// `error: true`, because this shape means "nobody asked the bridge" (#512): as a clean answer it
+// would render an empty registry as the fact that nothing is paired.
+export const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: true };
 
 export async function devicesLoader({ request }: { request?: Request } = {}): Promise<DevicesData> {
   try {

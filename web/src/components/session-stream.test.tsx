@@ -64,6 +64,7 @@ function renderStream(
       fontSize={14}
       listRef={listRef}
       onSendQueuedNow={onSendQueuedNow}
+      agent="muse"
     />,
   );
 }
@@ -116,6 +117,27 @@ describe("SessionStream", () => {
     renderStream(feedOf({ status: { kind: "unavailable", reason: "no-log" } }));
     expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
     expect(screen.queryByText("Send a message to start.")).toBeNull();
+  });
+
+  // #508: the bridge refused to guess between two Muse sessions in one folder. The empty Chat says
+  // why and how to fix it, on a new pane too, since nothing will appear on its own.
+  it("names a shared folder and its remedy under the empty state, and only when the bridge says so", () => {
+    const line =
+      "Two Muse sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.";
+    for (const starting of [false, true]) {
+      const r = renderStream(
+        feedOf({ status: { kind: "unavailable", reason: "no-session", detail: "shared-folder" } }),
+        true,
+        false,
+        starting,
+      );
+      expect(screen.getByText(line)).toBeInTheDocument();
+      expect(screen.getByText(/no agent session/)).toBeInTheDocument();
+      expect(screen.queryByText("Send a message to start.")).toBeNull();
+      r.unmount();
+    }
+    renderStream(feedOf({ status: { kind: "unavailable", reason: "no-session" } }));
+    expect(screen.queryByText(/share this folder/)).toBeNull();
   });
 
   // ADR 0073 point 7: a 404 means "update this member", never "this pane has nothing to show".
@@ -332,6 +354,100 @@ describe("SessionStream", () => {
     );
     expect(screen.getByText("Read")).toBeInTheDocument();
   });
+  describe("an agent call in a turn of steps", () => {
+    const exec = (n: number): ChatEntry["parts"][number] => ({
+      kind: "tool",
+      id: `x${n}`,
+      name: "Bash",
+      summary: `cmd ${n}`,
+      call: { kind: "execute", command: `cmd ${n}` },
+      result: { text: "" },
+    });
+    const agent = (result?: string): ChatEntry["parts"][number] => {
+      const part: ChatEntry["parts"][number] = {
+        kind: "tool",
+        id: "ag1",
+        name: "Agent",
+        summary: "Map the routes",
+        call: { kind: "task", agent: "Explore", summary: "Map the routes", agentId: "a1" },
+      };
+      if (result !== undefined) part.result = { text: result };
+      return part;
+    };
+    const turn = (middle: ChatEntry["parts"][number]) =>
+      feedOf({
+        status: { kind: "live" },
+        entries: [
+          entry("a", BASE, "", {
+            parts: [...[1, 2, 3, 4, 5].map(exec), middle, ...[6, 7, 8].map(exec)],
+          }),
+        ],
+      });
+
+    it("draws one fold of five, the agent card, then one fold of three, in that order", () => {
+      renderStream(turn(agent("Found 23 routes.")));
+      const blocks = [...document.querySelectorAll("[data-block]")];
+      expect(blocks).toHaveLength(3);
+      expect(blocks[0]).toHaveTextContent("5 commands");
+      expect(blocks[1]).toHaveTextContent("Agent · Explore");
+      expect(blocks[1]).toHaveTextContent("Map the routes");
+      expect(blocks[2]).toHaveTextContent("3 commands");
+      expect(screen.queryByText(/agent$/)).toBeNull();
+    });
+
+    it("shows a running agent as running, and a finished one as a tappable card with its report", () => {
+      const running = renderStream(turn(agent()));
+      expect(screen.getByRole("img", { name: /running/i })).toBeInTheDocument();
+      running.unmount();
+      renderStream(turn(agent("Found 23 routes.")));
+      expect(screen.queryByRole("img", { name: /running/i })).toBeNull();
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+    });
+
+    it("draws a turn of only an agent call as the card with no fold, with tool calls on or off", () => {
+      const only = feedOf({ status: { kind: "live" }, entries: [entry("a", BASE, "", { parts: [agent("Done.")] })] });
+      const on = renderStream(only, true);
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+      expect(screen.queryByText("1 agent")).toBeNull();
+      on.unmount();
+      renderStream(only, false);
+      expect(screen.getByRole("button", { name: /Agent · Explore/ })).toBeInTheDocument();
+      expect(screen.queryByText("1 agent")).toBeNull();
+    });
+  });
+
+  it("draws the agent's own walky talky send as its card between two folds, even with tool calls off", () => {
+    const exec = (n: number, command: string): ChatEntry["parts"][number] => ({
+      kind: "tool",
+      id: `w${n}`,
+      name: "Bash",
+      summary: command,
+      call: { kind: "execute", command },
+      result: { text: "" },
+    });
+    const feed = feedOf({
+      status: { kind: "live" },
+      entries: [
+        entry("a", BASE, "", {
+          parts: [
+            exec(1, "ls"),
+            exec(2, "pwd"),
+            exec(3, 'collie walky send bluefin/w6:p3 "Merged."'),
+            exec(4, "git status"),
+            exec(5, "git log"),
+          ],
+        }),
+      ],
+    });
+    renderStream(feed, false);
+    const blocks = [...document.querySelectorAll("[data-block]")];
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toHaveTextContent("2 commands");
+    expect(blocks[1]!.querySelector('[data-slot="walky-tool-badge"]')).not.toBeNull();
+    expect(blocks[1]).not.toHaveTextContent("command");
+    expect(blocks[2]).toHaveTextContent("2 commands");
+  });
+
   // ── the tail row: a turn in flight ────────────────────────────────────────
   // The mirror shows the agent's own spinner; this body draws the record, and a record gains nothing
   // while a compaction runs. Without this row a compacting session looked exactly like a finished one.

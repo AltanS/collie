@@ -1,10 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
-import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
+import { StatusDot } from "@/components/status-badge";
+import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
@@ -21,13 +22,16 @@ import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { KeyBoardEditor } from "@/components/key-board-editor";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
+import { SentSheet } from "@/components/sent-sheet";
+import { SuggestionStrip } from "@/components/suggestion-strip";
+import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { SendOfferStrip } from "@/components/send-offer-strip";
-import { HeldRows, type HeldAction } from "@/components/composer-held";
+import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
@@ -41,9 +45,13 @@ import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
+import { WalkyAimStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
+import { WalkyIcon } from "@/components/walky-icon";
+import { useLongPress } from "@/hooks/use-long-press";
+import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
-import { commandsFor } from "@/lib/agent-commands";
+import { commandsFor, suggestCommands, type AgentCommand } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
 import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
 import {
@@ -72,23 +80,37 @@ import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
+import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
+import type { PaneSubagent, PaneTodo } from "@/lib/types";
+import { AgentsSheet, subagentName } from "@/components/agents-sheet";
+import { SubagentSheetCtx, type SubagentTarget } from "@/components/chat-cards";
 import { DirectTypingStrip } from "@/components/direct-typing-strip";
 import { VoiceTakeover } from "@/components/voice-takeover";
 import { usePhoneEngineUse } from "@/hooks/use-phone-engine";
 import { useSttRecorder } from "@/hooks/use-stt-recorder";
 import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import type { TranscriptEntry } from "@/lib/types";
+import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
   focusInput: () => void;
+  /**
+   * Open the box for a message to another session (M62): the Reply of the pane's Messages sheet. The
+   * strip above the box names the target, and Send posts through `POST /api/walky` with `replyTo`,
+   * until the person turns it off or the message leaves.
+   */
+  startMessage: (aim: WalkyAim) => void;
 }
 
 interface ComposerProps {
   paneId: string;
+  /** The pane's current session instance (`AgentView.instance`). "Send as message" addresses it. */
+  instance?: string | undefined;
   /**
    * The pane's input surface as the bridge last read it (M56 spec 06): what owns the agent's keyboard.
    * The Send slot is a pure function of this and the three facts below (`lib/send-slot.ts`). The
@@ -104,6 +126,8 @@ interface ComposerProps {
   agent: string | undefined | null;
   /** True for a bare shell pane — tweaks the placeholder copy. */
   isShell: boolean;
+  /** The pane's folder, absolute. Sent (M61) lists "This folder" with it; absent, it offers the machine only. */
+  cwd?: string | undefined;
   /* NO `status` AND NO `stale` HERE ANY MORE. The composer took the pane's state as a prop for one
      reason: the status band above the controls row drew it as a word. That band is gone (see the
      long note at the row below), the word went with it rather than moving, and the state is the
@@ -162,6 +186,13 @@ interface ComposerProps {
    * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
    */
   held?: readonly HeldRow[] | undefined;
+  /**
+   * The Chat window's journal turns, as AgentChat already read them. Their one job here is settling
+   * a send that ended `unknown` (#511, `lib/unknown-send.ts`): when the sent text lands as a new
+   * user turn, the kept draft and its notice retire as sent. Absent or empty until Chat is read —
+   * then nothing retires, which is the safe side.
+   */
+  chatEntries?: readonly TranscriptEntry[] | undefined;
 
   /**
    * The pane switcher, in two pieces: a Switch pill pinned at the actions belt's right end
@@ -181,10 +212,11 @@ interface ComposerProps {
   };
 
   /**
-   * Where the terminal-draft notice floats (ADR 0061): an absolutely positioned box the pane view
-   * keeps at the bottom edge of the mirror, above the card dock and the belt. The notice is portalled
-   * into it, so it covers terminal text and never takes a row of the composer's own flow. Absent
-   * (a composer mounted alone, as in its tests), the notice floats above the composer itself.
+   * Where the floating cards go (ADR 0061): an absolutely positioned box the pane view keeps at the
+   * bottom edge of the mirror, above the card dock and the belt. The terminal-draft notice (or the
+   * offline note) and the held-send card are portalled into it, so they cover terminal text and never
+   * take a row of the composer's own flow. Absent (a composer mounted alone, as in its tests), they
+   * float above the composer itself.
    */
   draftNoticeSlot?: HTMLElement | null;
 
@@ -216,6 +248,13 @@ interface ComposerProps {
    * the pill would have nothing to show.
    */
   screen?: { on: boolean; onToggle: () => void };
+  /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
+  todos?: readonly PaneTodo[];
+  /**
+   * The pane's subagents that have not finished yet (bridge/subagents.ts), drawn as the agents mark
+   * on the belt's fixed block and an in-flow dock when non-empty. A finished one leaves the list and stays in Chat.
+   */
+  subagents?: readonly PaneSubagent[];
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -231,7 +270,11 @@ interface ComposerProps {
 // decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
-type ComposerDrawer = "quick" | "cmd" | "keys" | null;
+type ComposerDrawer = "quick" | "cmd" | "keys" | "todos" | null;
+
+/** The card key a subagent sheet opened from the belt carries. No Chat card uses it. */
+const BELT_SUBAGENT_KEY = "belt-subagent:";
+
 
 
 // Grace window after a send during which a terminal draft matching what we just sent is treated as
@@ -337,7 +380,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, surface, unreachableNote, scope, agent, isShell, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -518,6 +561,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [sending, setSending] = useState(false);
   // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
   const protocolIntent = useRef<IntentId | null>(null);
+  // A send that ended `unknown`, remembered until the journal settles it (#511, lib/unknown-send.ts):
+  // the person may submit the stranded text by hand, and the user turn landing in Chat is then the
+  // proof it went through. Memory only, like the notice it retires; a new send replaces it.
+  const [pendingUnknown, setPendingUnknown] = useState<UnknownSend | null>(null);
+  // The journal as this render has it, for the send path to snapshot which turns predate a send.
+  const chatEntriesRef = useRef(chatEntries);
+  chatEntriesRef.current = chatEntries;
+  // The settling effect below must fire on the journal and the remembered send, not on every
+  // render's fresh closure — the latest-value ref says that outright, as `noticeNoEchoRef` does.
+  const clearComposedDraftRef = useRef(clearComposedDraft);
+  clearComposedDraftRef.current = clearComposedDraft;
   const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
   // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
@@ -587,6 +641,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the outcome lands, not on the render after. `noticeNoEcho` is the only writer of both — go through
   // it, or the two disagree and the gap is measured in stored passwords.
   const [noEcho, setNoEcho] = useState<{ prompt: string; typed: boolean } | null>(null);
+  // True while Type mode was armed by the password-prompt handoff: the field then shows dots.
+  // `noEcho` cannot gate that, because arming clears the notice and it also gates draft saves and
+  // the refusal strip. Set in the handoff, cleared by the effect after useDirectTyping below.
+  const [handoffMask, setHandoffMask] = useState(false);
   // Why the last text did not go, or what became of it: the sentence, what the bridge saw on the screen,
   // its own words, and the way on (the card, the screen, the Keys dock). It stands at the Send slot until
   // the next send, a tap on an offer, or the strip's x. Every outcome that is not a send lands here and
@@ -640,17 +698,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const fileRef = useRef<HTMLInputElement>(null);
   // The camera-roll half of the picker. See the two inputs below.
   const photoRef = useRef<HTMLInputElement>(null);
+  // The idle cover leaves this composer mounted. Its inert wrapper blocks new DOM input, but
+  // cannot revoke keys already waiting in direct mode's sender; the mode must disarm explicitly.
+  const idleLocked = useLocked();
+  const catchingUp = useCatchingUp();
+  const directSuspended = locked || idleLocked || catchingUp;
   const direct = useDirectTyping({
     paneKey: `${scopeId}\0${paneId}`,
     inputRef,
     // The ref, not `input`: the password-prompt handoff clears the draft and arms in one tick.
     replyDraft: () => inputValueRef.current,
-    canActivate: () => !(locked || sending || uploading),
-    // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
-    // deliberately not added here: the mode already disarms on a failed batch, which is the same
-    // event observed directly rather than inferred from a timer, and it fires whether or not any
-    // banner has decided the connection counts as lost yet.
-    suspended: locked,
+    canActivate: () => !(directSuspended || sending || uploading),
+    // Field locks and the idle cover both revoke direct mode. A LOST CONNECTION is deliberately
+    // not added here: the mode already disarms on a failed batch, the same event observed directly
+    // rather than inferred from a timer, whether or not a banner has declared the connection lost.
+    suspended: directSuspended,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
@@ -665,6 +727,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // falls back to shell) — a change there disarms with a notice.
     agentKey: agent ?? "shell",
   });
+  // The mask belongs to the handoff's armed session only. A refused arm, a Stop or any disarm ends
+  // it, so a later Type mode armed by hand shows clear text.
+  useEffect(() => {
+    if (handoffMask && !direct.active) setHandoffMask(false);
+  }, [direct.active, handoffMask]);
 
   // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
   //
@@ -718,8 +785,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // hands the button straight back. `direct.active` keeps it, because there the same button is the
   // "stop typing into the terminal" control and that must not be displaceable.
   // A chip is something to send (ADR 0060), so a box holding only chips shows Send, not the mic.
+  // Message mode (M62): "Send as message" from the Send button's long press, and a Reply handed in by
+  // the pane's Messages sheet. The draft goes when the bridge took the message, as a reply's does.
+  const walky = useWalkyComposer({
+    paneId,
+    instance,
+    scope,
+    onTaken: () => {
+      clearComposedDraft();
+      revalidator.revalidate();
+    },
+  });
+
   const hasDraft = input.trim() !== "" || attachments.length > 0;
   const micIsPrimary = micShown && !direct.active && !hasDraft;
+  // The Send button's hold (M62). Offered only where a message could leave: not on a locked field, not
+  // offline, not while Type mode owns the button as its Stop control, and not mid-send.
+  const canMessage = hasDraft && !locked && !offline && !direct.active && !sending && !walky.sending;
+  const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
   //
@@ -853,7 +936,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
 
-  useImperativeHandle(ref, () => ({ focusInput: focusInputImmediately }), []);
+  const startMessage = walky.startMessage;
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusInput: focusInputImmediately,
+      startMessage: (aim) => {
+        startMessage(aim);
+        focusInputImmediately();
+      },
+    }),
+    [startMessage],
+  );
 
   useEffect(
     () => () => {
@@ -917,6 +1011,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }, [effectiveRaw]);
 
+  // The journal settling an `unknown` send (#511): the sent text has landed as a user turn, so it
+  // DID go through — however the person got it submitted. The notice and any offer retire, and the
+  // draft goes ONLY while the field still holds exactly what it held at the tap: words typed since
+  // are the person's next message, never this send's to clear. No "Sent ✓" and no preview — the
+  // phone never saw this send land; it only stops claiming the outcome is unknown. A stranded
+  // terminal line still echoing the same text is marked handled, as a verified send marks it, so
+  // the "Draft in terminal" preview drops instead of outliving its own submission.
+  useEffect(() => {
+    if (pendingUnknown === null || chatEntries === undefined) return;
+    if (findUnknownSendMatch(pendingUnknown, chatEntries) === undefined) return;
+    setPendingUnknown(null);
+    setProtocolOffer(null);
+    setSendRefusal(null);
+    if (pendingUnknown.isDraft && inputValueRef.current === pendingUnknown.draftText) clearComposedDraftRef.current();
+    if (effectiveRaw !== null && normalizeDraft(effectiveRaw) === normalizeDraft(pendingUnknown.sentText)) {
+      setHandledKey(normalizeDraft(effectiveRaw));
+      setPreviewLatched(false);
+    }
+  }, [pendingUnknown, chatEntries, effectiveRaw]);
+
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
   // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
   // streams straight into it (display-only; it can never write back into the phone-owned input). There
@@ -933,17 +1047,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // The floating notice (ADR 0061). The wrapper passes touches through (`pointer-events-none`) and
   // the notice takes them back, so the mirror under the empty part of the slot still scrolls.
-  // Portalled into the pane view's slot when there is one; otherwise it floats above this
-  // composer's own top edge.
+  // `floating` below puts it in the pane view's slot when there is one; otherwise it floats above
+  // this composer's own top edge.
   const draftNotice =
     showPreview && !previewDismissed && effectiveRaw !== null ? (
-      <div
-        data-slot="terminal-draft-notice"
-        className={cn(
-          "pointer-events-none",
-          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
-        )}
-      >
+      <div data-slot="terminal-draft-notice" className="pointer-events-none">
         <TerminalDraftPreview
           text={effectiveRaw}
           // No Take over when the line is only the harness's own opaque token (Claude's
@@ -955,21 +1063,51 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       </div>
     ) : null;
 
-  // The offline draft note shares that slot, and the slot holds one notice: when both are due, the
+  // The offline draft note shares that place, and it holds one notice: when both are due, the
   // terminal draft wins and the note waits (still `shown`) until that notice is gone or dismissed.
   const offlineNote =
     draftNotice === null && draftNote === "shown" && offline ? (
-      <div
-        data-slot="offline-draft-note"
-        className={cn(
-          "pointer-events-none",
-          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
-        )}
-      >
+      <div data-slot="offline-draft-note" className="pointer-events-none">
         <OfflineDraftNote onDismiss={() => setDraftNote("spent")} />
       </div>
     ) : null;
   const floatingNotice = draftNotice ?? offlineNote;
+
+  // The sends the bridge holds for this pane (M56 spec 15) float in the same place as ONE card, so a
+  // held send moves nothing (ADR 0061, amended 2026-10-18). It is keyed by pane: the card's Show all
+  // is per pane and in memory, and a pane switch starts it collapsed. Rendered only while there is a
+  // row, so an empty queue leaves nothing in the slot.
+  const heldCard =
+    heldRows !== undefined && heldRows.length > 0 ? (
+      <HeldCard
+        key={`${scopeId}|${paneId}`}
+        paneId={paneId}
+        scope={scope}
+        rows={heldRows}
+        canAct={isLead(scope) && !locked}
+        sending={sending}
+        onSend={resendHeld}
+        onChanged={onSent}
+      />
+    ) : null;
+
+  // The place both float in: a column, the held card on top and the draft or offline notice nearest
+  // the belt, with a small gap. Pass-through wrapper (`pointer-events-none`); each card takes touches
+  // back. In the pane view's slot the slot does the positioning; alone, the column floats above this
+  // composer's own top edge. No `Collapse`: it is absolute, so it holds no space at all.
+  const floating =
+    heldCard !== null || floatingNotice !== null ? (
+      <div
+        data-slot="floating-cards"
+        className={cn(
+          "pointer-events-none flex flex-col gap-1.5",
+          draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
+        )}
+      >
+        {heldCard}
+        {floatingNotice}
+      </div>
+    ) : null;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
@@ -991,7 +1129,58 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The operator's own palette rows, resolved against the shipped catalog for both the button's
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
-  const commands = commandsFor(agent, operatorCommands);
+  const claudeCommands = useClaudeCommands(drawer === "cmd", agent, paneId, scope, operatorCommands);
+  const commands = commandsFor(agent, operatorCommands, claudeCommands);
+  const todoList = todos ?? [];
+  const todoDone = todoList.filter((item) => item.status === "completed").length;
+  const todoLabel =
+    todoList.length > 0
+      ? translate("composer.controls.tasks", { done: todoDone, total: todoList.length })
+      : "";
+  // The running subagents: the agents mark on the belt's fixed block, and the Agents sheet it opens
+  // (agents-sheet.tsx). The list is a sheet over the page, not a dock in flow, so opening it moves
+  // nothing (Altan, 2026-10-19: "we hate layout shifts"). A tap on a row opens the SAME sheet an Agent
+  // card in Chat opens (subagent-sheet.tsx), through the context the pane route provides, as a second
+  // layer over the list: the list stays open under it, so closing the transcript comes back to it.
+  const subagentList = subagents ?? [];
+  const agentsLabel =
+    subagentList.length > 0 ? translate("composer.controls.agents", { count: subagentList.length }) : "";
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const subagentSheet = useContext(SubagentSheetCtx);
+  const beltSubagent = useRef<SubagentTarget | null>(null);
+  const openSubagent = (subagent: PaneSubagent) => {
+    if (subagentSheet === null) return;
+    // `agent` is the name `agentLabel` draws; absent, the sheet reads plain "Agent", as a card does.
+    const target: SubagentTarget = {
+      cardKey: `${BELT_SUBAGENT_KEY}${subagent.agentId}`,
+      agent: subagentName(subagent),
+      summary: subagent.description,
+      agentId: subagent.agentId,
+      status: "running",
+    };
+    beltSubagent.current = target;
+    subagentSheet.open(target);
+  };
+  // Both sheets hear one Escape (each listens on the window), so the list ignores a close while a
+  // transcript it opened stands over it: Escape takes the top layer away and leaves the list.
+  const transcriptOver = subagentSheet?.activeCardKey?.startsWith(BELT_SUBAGENT_KEY) === true;
+  const closeAgents = () => {
+    if (!transcriptOver) setAgentsOpen(false);
+  };
+  // A sheet opened from the belt has no Chat card to tell it the subagent ended. When the subagent
+  // leaves the running list, the sheet hears it from here, stops polling and shows the report.
+  const runningIds = subagentList.map((s) => s.agentId).join(" ");
+  const activeSheetKey = subagentSheet?.activeCardKey ?? null;
+  const syncSubagent = subagentSheet?.sync;
+  useEffect(() => {
+    const target = beltSubagent.current;
+    if (target === null || syncSubagent === undefined || activeSheetKey !== target.cardKey) return;
+    if (target.agentId !== undefined && runningIds.split(" ").includes(target.agentId)) return;
+    syncSubagent({ ...target, status: "done" });
+  }, [activeSheetKey, runningIds, syncSubagent]);
+  // The suggestions above the box read the agent's command list only (the shipped catalog, or the
+  // operator's rows): never the skill and command files the palette finds on disk.
+  const commandSuggestions = locked || direct.active || isShell ? [] : suggestCommands(input, commandsFor(agent, operatorCommands));
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -1002,6 +1191,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // answer, so it opens the camera roll and no sheet is drawn.
   const asksWhich = offersFiles(limits);
   const [picking, setPicking] = useState(false);
+  // The Send button's long-press menu (M62): one row today, "Send as message". Opened by a HOLD, never
+  // armed by it: the row is a named choice, and the hold alone sends nothing.
+  const [sendMenu, setSendMenu] = useState(false);
   /**
    * THE ATTACH BUTTON'S OWN PRESS ECHO.
    *
@@ -1053,11 +1245,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setTimeout(focusInputImmediately, 0);
   }
 
+  // SENT (M61): on a shell pane, the lines sent through Collie come back from a sheet (the belt's
+  // Sent, or the strip's "All") and as suggestions above the box. Both only put a line in the box.
+  // Sending it is the person's own tap on Send, which runs the ordinary Send Protocol with a request
+  // id of its own.
+  const [sentOpen, setSentOpen] = useState(false);
+  // Whether the text box has focus: the suggestion strip is there only then, like a keyboard's.
+  const [boxFocused, setBoxFocused] = useState(false);
+  const suggestionsOn = isShell && sentSuggestionsOf(prefs);
+  const suggestions = useSentSuggestions({ enabled: suggestionsOn, scope, cwd });
+  function pickSent(line: string) {
+    direct.deactivateSilently();
+    updateInput(line);
+    focusInputEnd();
+  }
+
   // What a confirmed send (`sent` or `effective`) does to this composer: the draft goes, the check
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
   function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" = "sent") {
+    // The bridge has a new line now (a shell pane only: the read is off elsewhere).
+    suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
@@ -1106,8 +1315,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   async function send(value: string, isDraft: boolean): Promise<boolean> {
-    const t = value.trim();
-    if (!t || locked || sending) return false;
+    // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
+    // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
+    // check and the mode read the fully trimmed text on both, so neither sees a difference.
+    const trimmed = value.trim();
+    const t = isShell ? value.trimEnd() : trimmed;
+    if (!trimmed || locked || sending) return false;
     if (offlineRef.current) {
       setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
       return false;
@@ -1119,7 +1332,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(t), null);
+    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null);
   }
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
@@ -1131,6 +1344,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }): Promise<boolean> {
     setSending(true);
     setSendRefusal(null);
+    setPendingUnknown(null); // a new send supersedes the last one's open question (#511)
+    // What an `unknown` answer would have to be settled against (#511): when this send started,
+    // which journal turns already stood, and what the field held. Snapshotted before the request,
+    // so a turn landing while it is in flight still counts as this send's.
+    const sentAt = Date.now();
+    const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
+    const draftAtSend = inputValueRef.current;
     // A send ends the belt X's Undo window: the operator has moved on, and an Undo landing after
     // the send would put back a draft the pane has since answered.
     endUndoWindow();
@@ -1159,6 +1379,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const offered = reading.offers.length > 0 && resend === undefined;
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
       setSendRefusal(readingRefusal(reading), reply.surface ?? shownSurface, offered);
+      // An `unknown` outcome is an open question the journal can still answer (#511): remember the
+      // send, so its text landing as a user turn retires this notice and the kept draft. A resend
+      // carries no text of its own to recognise, so it is never remembered.
+      if (reading.note === "unknown" && resend === undefined) {
+        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+      }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
       // A display read only; the bridge's answer is the verdict.
@@ -1206,9 +1432,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
   function onSendClick() {
+    // A reply in message mode goes to the other session through the bridge's walky route, and is not
+    // typed into this pane by us, so the destructive-command guard (a shell concern) does not apply.
+    if (walky.aim !== null) {
+      void walky.sendMessage(composeLine(input, attachments));
+      return;
+    }
     // The line the terminal gets: every chip's marker swapped for its path (ADR 0060). Both the
     // destructive check and the send read THIS, never the draft with its markers in it.
-    const line = composeLine(input, attachments);
+    const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
@@ -1310,6 +1542,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function insertCommand(value: string) {
     direct.deactivateSilently();
     updateInputFrom((prev) => (prev.trim() ? `${prev.trimEnd()} ${value}` : value));
+    focusInputEnd();
+  }
+  function selectSuggestion(command: AgentCommand) {
+    direct.deactivateSilently();
+    updateInput(`${command.command} `);
     focusInputEnd();
   }
 
@@ -1596,7 +1833,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
               // refused chord greys its own button instead of being discovered by a failed send.
               unsupportedKeys={unsupportedKeys}
-              onSend={pressKeys}
+              // A dock key moves or ends the pane's line behind Type mode's field (use-direct-typing.ts,
+              // the line-end rule). In Type mode it queues behind the field's unsent text on the hook's
+              // own sender, so it can never overtake it; outside Type mode it goes out through pressKeys.
+              onSend={(keys) => direct.sendPaneKeys(keys)}
               presets={keyPresets}
               board={keyBoard}
               onQueueChange={setQueuedKeys}
@@ -1614,6 +1854,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               isShell={isShell}
               disabled={locked || offline || sending}
             />
+          </ComposerDock>
+        )}
+        {drawer === "todos" && todoList.length > 0 && (
+          <ComposerDock title={todoLabel} onClose={closeDrawer}>
+            <ul className="mt-2 divide-y divide-border border-t border-border">
+              {todoList.map((item) => {
+                const dotStatus =
+                  item.status === "completed" ? "done" : item.status === "in_progress" ? "working" : "idle";
+                return (
+                  <li
+                    key={item.id}
+                    className={cn(
+                      "flex items-start gap-2.5 px-3 py-2 text-sm leading-snug",
+                      item.status === "in_progress" && "bg-status-working/8",
+                      item.status === "completed" && "text-muted-foreground",
+                    )}
+                  >
+                    <StatusDot
+                      status={dotStatus}
+                      surface={item.status === "in_progress" ? "bg-status-working/8" : "bg-background"}
+                      className="mt-1"
+                    />
+                    <span className="min-w-0 flex-1 break-words">{item.text}</span>
+                  </li>
+                );
+              })}
+            </ul>
           </ComposerDock>
         )}
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
@@ -1738,6 +2005,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled: locked,
                 onSelect: () => requestDrawer(drawer === "quick" ? null : "quick"),
               },
+              // Sent (M61): the shell lines sent through Collie, on a shell pane only. The bridge's own
+              // `kind` decides that (`isShell`); no list of harness names lives in the web.
+              ...(isShell
+                ? [
+                    {
+                      id: "sent",
+                      icon: ListEnd,
+                      label: translate("sent.button"),
+                      disabled: locked,
+                      onSelect: () => setSentOpen(true),
+                    },
+                  ]
+                : []),
               // Withdrawn rather than greyed when this pane has no commands at all: there is no
               // palette to open, which is a different thing from one this device may not use.
               ...(commands.length > 0
@@ -1748,6 +2028,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       label: translate("composer.controls.agent"),
                       disabled: locked,
                       onSelect: () => requestDrawer("cmd"),
+                    },
+                  ]
+                : []),
+              ...(todoList.length > 0
+                ? [
+                    {
+                      id: "todos",
+                      icon: ListTodo,
+                      label: todoLabel,
+                      on: drawer === "todos",
+                      expanded: drawer === "todos",
+                      onSelect: () => requestDrawer(drawer === "todos" ? null : "todos"),
                     },
                   ]
                 : []),
@@ -1777,6 +2069,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
           changes={changesPill}
+          // The running subagents: a small mark with their count in the pinned block, right of the X
+          // and left of Files, only while the count is above zero. A tap opens the Agents sheet.
+          agents={
+            subagentList.length > 0
+              ? {
+                  count: subagentList.length,
+                  label: agentsLabel,
+                  expanded: agentsOpen,
+                  onClick: () => setAgentsOpen(true),
+                }
+              : undefined
+          }
           hand={hand}
           // The X on the pinned block while the box holds a draft, then Undo in its place until
           // the next act (M40 spec 04). See `clearSlot` for when it shows.
@@ -1798,9 +2102,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The terminal-draft notice is NOT one of these strips any more (ADR 0061). It floats over
             the mirror's bottom edge, out of this flow, so a draft stranding or clearing on the host
             never moves the belt or the field. The offline draft note left this flow for the same
-            reason and shares that slot, one notice at a time. See `floatingNotice` above; it renders
-            here. */}
-        {draftNoticeSlot ? createPortal(floatingNotice, draftNoticeSlot) : floatingNotice}
+            reason and shares that place, one notice at a time, and so does the held-send card
+            (amended 2026-10-18), above the notice. See `floating` above; it renders here. */}
+        {draftNoticeSlot ? createPortal(floating, draftNoticeSlot) : floating}
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
@@ -1842,6 +2146,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // spot.
                       updateInput("");
                       requestDrawer(null);
+                      setHandoffMask(true);
                       direct.activate();
                     }
               }
@@ -1858,6 +2163,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {/* Armed indicator for direct typing, deliberately NOT only on the button and textarea —
               see the component. */}
           {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+        </Collapse>
+        {/* WHERE A MESSAGE IS GOING AND WHAT BECAME OF THE LAST ONE (M62). The aim stands while a reply is
+            in the box; the note stands until it is dismissed. Both are conditions with a control. */}
+        <Collapse open={walky.aim !== null}>
+          {walky.aim !== null && <WalkyAimStrip aim={walky.aim} onCancel={walky.clearAim} />}
+        </Collapse>
+        <Collapse open={walky.note !== null}>
+          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} />}
         </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
@@ -1974,8 +2287,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
-        {/* The sends the bridge holds for this pane (M56 spec 15), directly above the box so they move with it. */}
-        <HeldRows paneId={paneId} scope={scope} rows={heldRows ?? []} canAct={isLead(scope) && !locked} sending={sending} onSend={resendHeld} onChanged={onSent} />
+        {/* THE SUGGESTION STRIP, directly above the box: one row, one look, one source per pane.
+            A shell pane offers lines sent before (M61), only while the box has focus and the Settings
+            switch is on; not with "Type into terminal" armed (the box is not where the words go), a
+            dialog card up, a locked composer or a chip in the box. An agent pane offers its own
+            commands for a typed `/` or `$` token (#475), whatever that switch says; a tap fills and
+            never sends. */}
+        {isShell ? (
+          suggestionsOn && (
+            <SuggestionStrip
+              open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
+              typed={input}
+              source={{ kind: "sent", lines: suggestions.lines, onPick: pickSent, onAll: () => setSentOpen(true) }}
+            />
+          )
+        ) : (
+          <SuggestionStrip
+            open={commandSuggestions.length > 0}
+            typed={input}
+            source={{ kind: "commands", commands: commandSuggestions, onPick: selectSuggestion }}
+          />
+        )}
         <div
           data-slot="composer-box"
           className={cn(
@@ -2028,7 +2360,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   }
             }
             onSelect={direct.active ? undefined : rememberCaret}
-            onBlur={direct.active ? undefined : rememberCaret}
+            onFocus={() => setBoxFocused(true)}
+            onBlur={(e) => {
+              setBoxFocused(false);
+              if (!direct.active) rememberCaret(e);
+            }}
             onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
             onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}
             onKeyDown={
@@ -2078,6 +2414,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               hand === "left" && "pr-2",
+              // Dots only for the handoff from a password prompt. Type mode keeps the line in the
+              // field until Enter (issue 534), so there the field would hold the secret in clear.
+              // A Type mode the operator armed by hand shows clear text, as every release before
+              // did, so a command can be read back while it is typed.
+              direct.active && handoffMask && "[-webkit-text-security:disc]",
               // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
               // family the mirror above it renders in, not the app's chrome face. `font-mono` is
               // the mirror's own default; the style below follows the operator's mirror-family
@@ -2174,6 +2515,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               }}
             />
           </AnchoredMenu>
+          {/* The Send button's long-press menu, anchored the same way as the attach picker (see above).
+              One row, a named choice: the text goes to this pane as a walky talky message from the
+              operator through the bridge's own route, which logs it, types it when the screen allows
+              and answers a receipt. The menu closes before the send, so the outcome strip is what shows. */}
+          <AnchoredMenu
+            open={sendMenu}
+            onClose={() => setSendMenu(false)}
+            label={translate("walky.composer.menu")}
+            className={hand === "left" ? "right-auto left-0" : undefined}
+          >
+            <ActionRow
+              icon={<WalkyIcon aria-hidden="true" className="size-4 shrink-0" />}
+              label={translate("walky.composer.sendAsMessage")}
+              onClick={() => {
+                setSendMenu(false);
+                void walky.sendMessage(composeLine(input, attachments));
+              }}
+            />
+          </AnchoredMenu>
           {askOwnsKeys && hasDraft ? (
             // A modal ask owns the agent's keyboard, so the refusal is shown HERE, in the Send slot,
             // and never in the header: on a phone that line is scrolled off or under
@@ -2246,7 +2606,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Button
               data-slot="composer-primary"
               size="icon"
-              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
+              {...sendHold}
+              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]")}
               onClick={direct.active ? () => direct.deactivate() : onSendClick}
               disabled={locked || sending || (offline && !direct.active)}
               title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}
@@ -2294,12 +2655,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         />
       )}
 
+      {/* The running subagents, over the page: the agents mark opens it, and nothing in flow moves. */}
+      <AgentsSheet
+        open={agentsOpen && subagentList.length > 0}
+        onClose={closeAgents}
+        title={agentsLabel}
+        subagents={subagentList}
+        onOpen={openSubagent}
+      />
+
+      {isShell && <SentSheet open={sentOpen} onClose={() => setSentOpen(false)} cwd={cwd} scope={scope} onPick={pickSent} />}
+
       {/* Slash-command palette */}
       <CommandPalette
         open={drawer === "cmd"}
         onClose={closeDrawer}
         agent={agent}
+        paneId={paneId}
+        scope={scope}
         mine={operatorCommands}
+        found={claudeCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

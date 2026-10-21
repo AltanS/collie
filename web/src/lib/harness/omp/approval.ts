@@ -87,6 +87,7 @@
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
 import type { StyledLine } from "../../blocks";
+import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -120,9 +121,6 @@ const PRESETS: readonly Preset[] = [
 /** The two tools whose approval body is captured, and so the only two lifted. */
 const LIFTED_TOOLS = new Set(["bash", "write"]);
 
-/** The bridge's cap on a bound region less a margin, as resume.ts. */
-const MAX_REGION_CHARS = 32_000;
-
 /** How tall the body may be before the scan stops: a bound against scrollback, not a layout fact. */
 const MAX_BODY_ROWS = 200;
 
@@ -151,35 +149,6 @@ const FRAME_START = /^[│╭╰├┌└]/;
  *  wrap anywhere inside it still matches. */
 const OMP_ELISION = /\[…\d+chelided…\]/;
 const SAFETY_SECTION = "Provider safety checks:";
-/** Characters that change how a line reads without being seen: the soft hyphen, the Arabic letter mark,
- *  zero-width and directional marks, the line and paragraph separators, the bidi embeddings, overrides
- *  and isolates, the invisible operators, variation selectors, the byte-order mark and the tag
- *  characters, plus every C0 or C1 control. A body that carries one is not shown as a card, because
- *  the card is what someone approves from. Found by code point, so no pattern holds a raw control or
- *  combining character. */
-function hasHiddenCharacter(row: string): boolean {
-  for (const ch of row) {
-    const code = ch.codePointAt(0)!;
-    if (
-      code < 0x20 ||
-      (code >= 0x7f && code <= 0x9f) ||
-      code === 0xad ||
-      code === 0x61c ||
-      code === 0x180e ||
-      (code >= 0x200b && code <= 0x200f) ||
-      code === 0x2028 ||
-      code === 0x2029 ||
-      (code >= 0x202a && code <= 0x202e) ||
-      (code >= 0x2060 && code <= 0x206f) ||
-      (code >= 0xfe00 && code <= 0xfe0f) ||
-      code === 0xfeff ||
-      (code >= 0xe0000 && code <= 0xe007f)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Detect omp's tool-approval dialog at the tail of `lines`. Returns a `prompt-select` model whose

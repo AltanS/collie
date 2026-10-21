@@ -1,0 +1,13 @@
+── Voice input (⌥ + v to start) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Effort  |  Select Meta reasoning effort
+  filter
+
+  minimal
+  low
+  medium
+  high
+⟩ xhigh                 current
+
+  ↑↓ move · type to filter · enter confirm · esc go back

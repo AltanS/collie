@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowUpToLine, CornerDownLeft, History, Loader2 } from "lucide-react";
 
-import { ItemView, PendingTurn, ToolGroup, groupRuns } from "@/components/chat-cards";
+import { ItemView, PendingTurn, ToolGroup, groupRuns, standsAlone } from "@/components/chat-cards";
 import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -270,6 +270,24 @@ export function chatStatusKey(status: ChatStatus): MessageKey | null {
 }
 
 /**
+ * The second line under an empty Chat whose session the bridge refused to guess: another pane runs
+ * the same harness in this folder and this pane's command line names no session (#508). The bridge
+ * gives the reason (`detail: "shared-folder"`), and the sentence names the remedy, because an empty
+ * Chat with no reason is the next issue. `null` on every other reading, and on an older bridge that
+ * sends no detail.
+ */
+export function sharedFolderLine(status: ChatStatus, agent: string | undefined): string | null {
+  if (status.kind !== "unavailable" || status.detail !== "shared-folder") return null;
+  return t("chat.empty.sharedFolder", { harness: harnessName(agent) });
+}
+
+/** The harness as a person names it: Herdr's agent string with its first letter capitalised. */
+function harnessName(agent: string | undefined): string {
+  if (agent === undefined || agent === "") return "agent";
+  return agent.charAt(0).toUpperCase() + agent.slice(1);
+}
+
+/**
  * The reader's own text size, as three token overrides rather than one `font-size`.
  *
  * Tailwind compiles `text-sm` to `font-size: var(--text-sm)`, and a custom property CASCADES, so
@@ -310,6 +328,7 @@ export function SessionStream({
   asks,
   durable = false,
   questionPending = false,
+  agent,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -367,6 +386,8 @@ export function SessionStream({
    * question itself, which the banner and the running question card carry.
    */
   questionPending?: boolean;
+  /** The pane's agent string, named in the shared-folder line ({@link sharedFolderLine}). */
+  agent?: string;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -615,7 +636,10 @@ export function SessionStream({
   const status = window.status;
   const missing =
     status.kind === "unavailable" && (status.reason === "no-log" || status.reason === "no-session");
-  const explain = starting && missing ? null : chatStatusKey(status);
+  // A shared folder is no "nothing yet": no session will appear until the agent is restarted, so a
+  // new pane says it too (#508).
+  const shared = sharedFolderLine(status, agent);
+  const explain = starting && missing && shared === null ? null : chatStatusKey(status);
   const empty = blocks.length === 0;
   // The window answered, or the pane is new and nothing is missing that should be there. Either way
   // what the stream draws is the thread, and the thread may be running or empty.
@@ -663,8 +687,9 @@ export function SessionStream({
       {blocks.map((group, index) => (
         <div key={group[0]!.id} data-block data-n={group.length} className={STREAM_BLOCK}>
           {/* A group of one is an ordinary block, EXCEPT a lone tool call while tool calls are off:
-              that one folds too, or "off" would leave every single-step turn drawn in full. */}
-          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool") ? (
+              that one folds too, or "off" would leave every single-step turn drawn in full. An agent
+              call and a question never fold (`standsAlone`), so they are drawn either way. */}
+          {group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!)) ? (
             <ItemView item={group[0]!} />
           ) : (
             <ToolGroup items={group} liveOpens={showToolCalls} />
@@ -754,6 +779,11 @@ export function SessionStream({
           )}
         >
           {t(explain)}
+          {shared !== null && (
+            <span data-slot="shared-folder" className="mt-2 block text-xs leading-snug">
+              {shared}
+            </span>
+          )}
         </p>
       )}
       {/* Nothing wrong, nothing said yet: one quiet line that says how to begin. `empty` alone is not

@@ -7,12 +7,24 @@
   answers a question this one did not ask.
 - **Amended:** 2026-10-10 — the live body gained `lastPrompt`, on the same terms as `queued` and in a
   blockquote under it.
+- **Amended:** 2026-10-19 — the gap a resume may read as an append is 8 MB (`CATCH_UP_BYTES`), apart
+  from the 2 MB window (`FIRST_TAIL_BYTES`). Claude Code writes an attached image into the log as one
+  row of about a megabyte, so three phone screenshots in one message outgrew the window between two
+  polls, read as a lost position, and emptied the Chat thread. A reset still reads only the last 2 MB,
+  and `LiveWindow.trim` bounds the window by weight after a large append.
+- **Amended:** 2026-10-19 — a page is counted in turns, not rows. The first answer and each `?before=`
+  page cover the last six prompts (`LIVE_TURNS`, a `user` row a person sent) and everything after each,
+  at least `DEFAULT_CHAT_LIMIT` (40) rows and at most `MAX_PAGE_ROWS` (400). A Claude Code turn with
+  many tool calls is many assistant rows, so a forty-row page was one or two prompts, and every thread
+  opened truncated and needed "Load older" at once (four panes measured on 2026-10-19 held 35 assistant
+  rows, 3 prompts and 2 notes, in a window of 137 rows). The window bound and the `?after=` delta are
+  unchanged. `bridge/journal/turns.ts` holds the rule.
 - **Changes:** adds `GET /api/pane/:id/chat` and `bridge/journal/live.ts`. It closes off two options
   people will reasonably propose again: a WebSocket, and a `seq`-cursored delta.
   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) is untouched — this reads the agent's
   own log, not a screen. [ADR 0031](./0031-freshness-is-a-declared-promise.md) is unchanged: this
   route declares nothing new about freshness, it rides the poll that is already declared.
-- **Trail:** `bridge/journal/live.ts` · `bridge/journal/cursor.ts` · `bridge/journal/reduce.ts` ·
+- **Trail:** `bridge/journal/live.ts` · `bridge/journal/turns.ts` · `bridge/journal/cursor.ts` · `bridge/journal/reduce.ts` ·
   `bridge/server.ts` (§ `paneChat`) · `bridge/crew/forward.ts` ·
   [CREW_PROTOCOL.md §5, §7.1, §9.1, §10.1](../CREW_PROTOCOL.md) ·
   `.tracker/M41-chat-reads-one-journal/08-the-live-window-and-the-cursor-route.md`
@@ -220,3 +232,22 @@ back WHOLE as `added` rather than mutating it in place, which opencode does on e
 streaming reply and hermes does by re-composing. The window was taking that as a new turn, putting one
 turn at a second `seq` and leaving the client's merge to move a turn that never moved. An `added`
 whose uuid is already held is now a change in place, keeping its `seq`.
+
+## Addendum — 2026-10-19: a session with no log yet, and the session tag (#526)
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten.
+
+pi names a new session before it writes the file: on launch and after `/new`, Herdr reports a `path`
+ref to a log that pi writes only when the first reply is saved. `resolve` answered null for it, the
+route said "no log", and the phone kept the previous session's thread, because a status over held
+turns keeps the turns. Two changes close it, and neither touches the other harnesses' "no log".
+
+- **A ref whose log is not written yet is a new empty session**, where the adapter can confine the
+  place the log will be (`TranscriptSource.pending`, pi only: an id ref names no place). The window is
+  keyed by that place, answers no turns with `hasOlder: false`, and starts reading when the file
+  appears, because `resolve` then answers the same key.
+- **Every live answer carries `session`**, an opaque tag of the window's key (a salted hash, never the
+  path). Rule 1 now reads: a `gen` OR a `session` other than the one held replaces everything, older
+  pages included, and an older page of another session is thrown away. `gen` alone cannot say "another
+  session", because one session's window also bumps it on a reset. A bridge one release behind sends
+  no tag, and `gen` decides alone.

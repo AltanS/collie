@@ -187,6 +187,17 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("folders/star")).toBeNull();
   });
 
+  test("the folder browser crosses the link as a READ — it lists the member's own disk (#467)", () => {
+    expect(crewRouteFor("/api/folders/browse")).toBe("folders/browse");
+    expect(apiPathFor("folders/browse")).toBe("/api/folders/browse");
+    expect(crewRouteFor("/api/folders/browse/x")).toBeNull();
+    // A GET that changes nothing: attempted against a stale member, on the read budget, never audited.
+    expect(forwardKind("folders/browse")).toBe("read");
+    expect(forwardAuditAction("folders/browse")).toBeNull();
+    // Names only, never session text: the lead does not read or mask the answer.
+    expect(textAnswerOf("folders/browse")).toBeNull();
+  });
+
   test("a blob crosses the link as a READ — the bytes live on the member that named them", () => {
     const hash = "a".repeat(64);
     expect(crewRouteFor(`/api/blobs/${hash}`)).toBe(`blobs/${hash}`);
@@ -296,6 +307,12 @@ describe("which routes cross a link", () => {
     expect(crewRouteFor("/api/durable/conversation/c1/close")).toBeNull();
     expect(crewRouteFor("/api/durable/conversations/x")).toBeNull();
     expect(apiPathFor("durable/conversation/c1/items")).toBe("/api/durable/conversation/c1/items");
+    // Walky talky's message from the lead (CREW_PROTOCOL.md §21): one opaque pane segment, then the
+    // literal `walky`, on a route of its own beside `PANE_ROUTE` in server.ts.
+    const walky = server.match(/^const WALKY_PANE_ROUTE = (.+);$/m)![1]!;
+    expect(walky).toBe("/^\\/api\\/pane\\/([^/]+)\\/walky$/");
+    expect(crewRouteFor("/api/pane/x/walky")).toBe("pane/x/walky");
+    expect(crewRouteFor("/api/pane/x/walky/y")).toBeNull();
   });
 
   test("history: the program's list and items are reads, a reopen is a write audited as durable.reopen, and the items are masked as History", () => {
@@ -767,6 +784,19 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     expect(res.status).toBe(404);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.route).toBe("folders");
+  });
+
+  test("a `?host=` browse reaches the member with its text, and the member's answer — a refusal included — comes back", async () => {
+    const refusal = `{"error":"unknown-path"}`;
+    const { transport, calls } = transportOf(() => ok(new Response(refusal, { status: 404 })));
+    const [req, url] = get(`/api/folders/browse?host=laptop&path=${encodeURIComponent("~/src/plek")}`);
+    const res = await forward(req, url, { transport, state: DEAD });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe("folders/browse");
+    expect(calls[0]!.params).toEqual({ path: "~/src/plek" });
+    expect(calls[0]!.budgetMs).toBeUndefined();
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe(refusal);
   });
 
   test("a READ to a dead member is still attempted — a stale mirror is worth asking for", async () => {

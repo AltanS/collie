@@ -47,6 +47,7 @@ const THEMED_FIXTURES = [
   "claude--v2302-wizard-long-question--w54.txt",
   "claude--v2302-preview-wrapped-rule--w141.txt",
   "claude--v2302-wizard-review-long-q--w140.txt",
+  "claude--v2304-ask-no-question-mark--w135.txt",
 ];
 const GUTTER_WIDTHS = [1, 2, 3, 4];
 // The gutter's first cell: a background-coloured space, the way the observed theme plugin draws it.

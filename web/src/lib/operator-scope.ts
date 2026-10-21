@@ -13,6 +13,7 @@ export const AGENT_FAMILIES = [
   "opencode",
   "omp",
   "grok",
+  "kiro",
   "agy",
   "antigravity",
 ] as const;

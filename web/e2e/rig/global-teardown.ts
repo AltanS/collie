@@ -5,7 +5,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { HARNESS_IDS, SETUPS } from "./harnesses";
-import { SCENARIOS, type LedgerRow } from "./leg";
+import type { LedgerRow } from "./leg";
+import { SCENARIOS, scenarioApplies, type Leg } from "./scenarios";
 import { P } from "./rig-lib";
 
 const WEB = resolve(import.meta.dirname, "..", "..");
@@ -14,11 +15,13 @@ function pad(text: string, width: number): string {
   return text.length >= width ? text : text + " ".repeat(width - text.length);
 }
 
-export function table(rows: readonly LedgerRow[]): string {
+/** The harness x scenario table of one leg: a row for each case that leg runs, and only those. */
+export function table(rows: readonly LedgerRow[], leg: Leg = "solo"): string {
   const head = ["harness", "scenario", "verdict", "taps", "note"];
   const body: string[][] = [];
   for (const harness of HARNESS_IDS) {
     for (const scenario of SCENARIOS) {
+      if (!scenarioApplies(scenario, harness, leg)) continue;
       // The last row a case wrote for this cell wins: a case records once, a rerun appends.
       const row = rows.findLast((r) => r.harness === harness && r.scenario === scenario.id);
       body.push([harness, scenario.title, row?.verdict ?? "not reached", row?.taps === null || row?.taps === undefined ? "-" : row.minTaps === undefined ? String(row.taps) : `${String(row.taps)}/${String(row.minTaps)}`, row?.note ?? "the case did not run"]);
@@ -65,7 +68,12 @@ function scrubKey(roots: readonly string[]): void {
   }
 }
 
-export default async function globalTeardown(): Promise<void> {
+/**
+ * The end of a run of one leg: scrub the key, print and write the table, bring the rig down. The solo
+ * leg's teardown is this with `solo`; crew-teardown.ts calls it with `crew`, and `rig.ts down` then
+ * stops the crew rig, because the crew leg's processes carry COLLIE_RIG_CREW (crew-env.ts).
+ */
+export async function finishRun(leg: Leg): Promise<void> {
   const id = process.env.COLLIE_RIG_RUN_ID ?? "adhoc";
   const ledger = join(P.results, id, "ledger.jsonl");
   const rows: LedgerRow[] = existsSync(ledger)
@@ -75,9 +83,13 @@ export default async function globalTeardown(): Promise<void> {
         .map((line): LedgerRow => JSON.parse(line))
     : [];
   scrubKey([join(P.results, id), P.logs, join(WEB, "e2e", "rig", "test-results")]);
-  const text = table(rows);
+  const text = table(rows, leg);
   writeFileSync(join(P.results, id, "table.md"), `${text}\n`);
-  console.log(`\nBrowser leg, run ${id} (results in ${join(P.results, id)}):\n\n${text}\n`);
+  console.log(`\nBrowser leg${leg === "crew" ? " (crew)" : ""}, run ${id} (results in ${join(P.results, id)}):\n\n${text}\n`);
   if (process.env.COLLIE_RIG_KEEP === "1") return;
-  execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "down"], { cwd: WEB, stdio: "inherit", timeout: 60_000 });
+  execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "down", ...(leg === "crew" ? ["--crew"] : [])], { cwd: WEB, stdio: "inherit", timeout: 90_000 });
+}
+
+export default async function globalTeardown(): Promise<void> {
+  await finishRun("solo");
 }

@@ -1,0 +1,38 @@
+
+  [0m[38;5;3m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[1m[38;5;3m⚠ [0m[1mWorkspace Trust Required[0m                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Cursor Agent can execute code and access files in this directory.                                                                                                               [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Do you trust the contents of this directory?                                                                                                                                    [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m    [0m[1m[38;5;6m/private/tmp/collie-cursor-lab[0m                                                                                                                                                [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [a] Trust this workspace[0m                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [q] Quit[0m                                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[38;5;4m⏳ Trusting workspace...[0m                                                                                                                                                        [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+  Cursor Agent
+  [0m[2mv2026.10.14-941492e[0m
+  [0m[2mTip: Use /config to customize Cursor settings and behavior.[0m
+
+
+ [0m[38;2;47;50;57m▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[0m
+ [0m[48;2;47;50;57m → /[0m[7m[48;2;47;50;57m [0m[48;2;47;50;57m                                                                                                                                                                                 [0m
+ [0m[38;2;47;50;57m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[0m
+   → [0m[1m/model [filter][0m           [0m[1mSelect model (Tab to edit)[0m
+   [0m[2m  /goal [objective][0m         [0m[2mStart a durable goal that continues while idle[0m
+   [0m[2m  /add-dir [path][0m           [0m[2mAdd a directory to the current workspace[0m
+   [0m[2m  /save-workspace <name>[0m    [0m[2mPersist the current workspace directories[0m
+   [0m[2m  /load-workspace <name>[0m    [0m[2mLoad a saved workspace by name[0m
+   [0m[2m  /run-everything[0m           [0m[2mToggle Run Everything (currently enabled)[0m
+   [0m[2m  /auto-review[0m              [0m[2mToggle Auto-review (currently disabled)[0m
+   [0m[2m  /plan [prompt][0m            [0m[2mCreate a plan or show existing plan with options[0m
+   [0m[2m  /ask[0m                      [0m[2mToggle ask mode (Q&A, read-only; no edits or command execution)[0m
+     [0m[2m↓ more below[0m

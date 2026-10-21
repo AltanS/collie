@@ -16,6 +16,9 @@
 //   • `urgent` — present only when the release's CHANGELOG section opens with an `**Urgent.**` line
 //     (ADR 0046). It carries that line's own sentence, and it is why the phone keeps the daily
 //     digest cadence for a patch that must not wait a week.
+//   • `line` — `"edge"` on an Edge build (`1.23.0-edge.1`, M60 spec 01), and ABSENT on a Stable one,
+//     so a Stable release's document stays byte for byte what it was. An Edge build reads its base
+//     version's CHANGELOG section: the suffix lives in the tag, never in the file.
 //   • `notes`: the section's bullets as the release page lists them: each bold lead, under its
 //     group (1.21.1). The Updates page shows them before the operator confirms. Leads only: the
 //     detail and the commit links stay on the release page, which the phone links to.
@@ -30,6 +33,7 @@ import { readFileSync } from "node:fs";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { parseSection, parseUrgent } from "./release-notes.ts";
+import { isEdgeVersion } from "./release-version.ts";
 
 /** The document, exactly as it is published. `urgent` is absent, never null, when the release is an
  *  ordinary one — an absent key is what every reader before ADR 0046 already handles. */
@@ -37,6 +41,8 @@ export interface ReleaseReadingDocument {
 	version: string;
 	crewProtocol: number;
 	urgent?: { reason: string };
+	/** `"edge"` on an Edge build. Absent is Stable, which is every release before M60 too. */
+	line?: "edge";
 	/** The section's groups, each as its bullets' bold leads. Absent when the section has none. */
 	notes?: { name: string; leads: string[] }[];
 }
@@ -53,6 +59,7 @@ export function buildReleaseReading(
 	const urgent = parseUrgent(changelog, version);
 	const doc: ReleaseReadingDocument = { version, crewProtocol };
 	if (urgent) doc.urgent = urgent;
+	if (isEdgeVersion(version)) doc.line = "edge";
 	// The same parse the release page is built from, so the phone and the page list the same lines.
 	// It throws on a section the page could not print, which stops the release here, one step
 	// before the notes step would have stopped it anyway.

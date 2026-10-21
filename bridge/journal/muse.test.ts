@@ -1,10 +1,17 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
-import { isMuseSessionId, museJournal, parseMuseTranscript, createMuseReducer } from "./muse.ts";
+import {
+  isMuseSessionId,
+  museJournal,
+  museSessionNameReader,
+  parseMuseTranscript,
+  createMuseReducer,
+} from "./muse.ts";
 import type { JsonValue } from "../json.ts";
+import { RENAME_TITLE_MAX } from "../mux/durable/clean.ts";
 
 // Row builders mirroring the verified on-disk shape (bridge/journal/muse.ts header): the envelope
 // fields the adapter reads plus the payload under test, nothing else.
@@ -47,6 +54,14 @@ function taskEvent(id: string, event: JsonValue): string {
 
 function textBlock(text: string): JsonValue {
   return { kind: "text", text };
+}
+
+/** The on-disk slash-command row: a bare `/name` under `record.command`, no args or output field. */
+function commandInvoked(id: string, command: JsonValue): string {
+  return row(id, "command.invoked", {
+    kind: "command_invoked",
+    record: { schema_version: 1, session_id: UUID_A, command },
+  });
 }
 
 describe("isMuseSessionId", () => {
@@ -192,6 +207,183 @@ describe("parseMuseTranscript turns", () => {
       },
     });
     expect(parseMuseTranscript(line)).toEqual([]);
+  });
+});
+
+describe("parseMuseTranscript slash commands", () => {
+  test("a command.invoked row renders once, as the operator's own line", () => {
+    const entries = parseMuseTranscript(commandInvoked("row-1", "/model"));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      uuid: "row-1",
+      ts: "2026-10-02T01:25:54.495Z",
+      role: "user",
+      parts: [{ kind: "text", text: "/model" }],
+    });
+  });
+
+  test("a command between turns does not double with the accepted prompt beside it", () => {
+    const entries = parseMuseTranscript(
+      [
+        accepted("row-1", [textBlock("do it")]),
+        commandInvoked("row-2", "/compact"),
+        runEvent("row-3", { kind: "assistant_message_committed", message_id: "m1", text: "done" }),
+      ].join("\n"),
+    );
+    expect(entries.map((e) => e.uuid)).toEqual(["row-1", "row-2", "row-3"]);
+    expect(entries[1]).toMatchObject({ role: "user", parts: [{ kind: "text", text: "/compact" }] });
+  });
+
+  test("malformed command rows render nothing", () => {
+    const entries = parseMuseTranscript(
+      [
+        commandInvoked("row-1", ""),
+        commandInvoked("row-2", "   "),
+        commandInvoked("row-3", "model"),
+        commandInvoked("row-4", 42),
+        row("row-5", "command.invoked", { kind: "command_invoked" }),
+        row("row-6", "command.invoked", {}),
+      ].join("\n"),
+    );
+    expect(entries).toEqual([]);
+  });
+
+  test("command_intake plumbing is not a slash command and renders nothing", () => {
+    const entries = parseMuseTranscript(
+      [
+        row("row-1", "runtime.command_intake.received", {
+          kind: "command_intake",
+          record: { kind: "received", command_id: "c1", command: { kind: "session_start" } },
+        }),
+        row("row-2", "runtime.command_intake.settled", {
+          kind: "command_intake",
+          record: { kind: "settled", command_id: "c1", outcome: { kind: "accepted" } },
+        }),
+      ].join("\n"),
+    );
+    expect(entries).toEqual([]);
+  });
+});
+
+describe("parseMuseTranscript plain-text results carry no exit code (data-absent)", () => {
+  // On disk, a numeric exit code exists ONLY inside the JSON-envelope result text; the batch item
+  // itself is {tool_call_index, tool_call_id, text} and nothing else. A plain-text result therefore
+  // renders verbatim with no code and no error flag — pinned here so a future log format that DOES
+  // record one shows up as a failing test instead of a silently missed field.
+  test("a plain-text bash result renders verbatim, with no exitCode and no isError", () => {
+    const entries = parseMuseTranscript(
+      [
+        runEvent("row-1", {
+          kind: "assistant_tool_calls_committed",
+          message_id: "m1",
+          tool_calls: [
+            { id: "fc_0", call_id: "call_1", name: "bash", args: JSON.stringify({ command: "ls" }) },
+          ],
+        }),
+        runEvent("row-2", {
+          kind: "tool_result_batch_committed",
+          message_id: "m1",
+          results: [{ tool_call_index: 0, tool_call_id: "call_1", text: "a\nb" }],
+        }),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "a\nb" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    expect(part != null && part.kind === "tool" && part.call?.kind === "execute" ? part.call.exitCode : "n/a").toBeUndefined();
+  });
+
+  test("an envelope without exit_code (the cancelled shape) unwraps its output, still no code", () => {
+    const entries = parseMuseTranscript(
+      [
+        runEvent("row-1", {
+          kind: "assistant_tool_calls_committed",
+          message_id: "m1",
+          tool_calls: [
+            { id: "fc_0", call_id: "call_1", name: "bash_input", args: JSON.stringify({ chars: "x" }) },
+          ],
+        }),
+        runEvent("row-2", {
+          kind: "tool_result_batch_committed",
+          message_id: "m1",
+          results: [
+            {
+              tool_call_index: 0,
+              tool_call_id: "call_1",
+              text: JSON.stringify({ terminal_status: "cancelled", terminal_reason: "stopped", output: "partial" }),
+            },
+          ],
+        }),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "partial" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+  });
+});
+
+describe("parseMuseTranscript plain-text harness verdicts carry error state (MUSE-29)", () => {
+  // The harness answers a refused or failed call in plain text — no JSON envelope, and no sampled
+  // row records a number beside it (bridge/journal/muse.ts) — with its own verdict prefix. Chat and
+  // History derive the card state from result.isError/result.denied, so without these flags a
+  // refusal or a failure renders as a success.
+  test("a plain-text `tool denied:` command result is denied, never an error, with no exit code", () => {
+    const text = "tool denied: approval aborted\nThe user rejected this action.";
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "rm -rf /" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({
+      kind: "tool",
+      result: { text, denied: true },
+      call: { kind: "execute", command: "rm -rf /" },
+    });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    if (part?.kind === "tool" && part.call?.kind === "execute") {
+      expect(part.call).not.toHaveProperty("exitCode");
+    } else throw new Error("expected an execute call");
+  });
+
+  test("a plain-text `tool failed:` command result is an error, with no invented exit code", () => {
+    const text = "tool failed: unmanaged shell backgrounding is not allowed; use bash session_id polling instead";
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "sleep 999 &" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text, isError: true } });
+    expect(part).not.toMatchObject({ result: { denied: true } });
+    if (part?.kind === "tool" && part.call?.kind === "execute") {
+      expect(part.call).not.toHaveProperty("exitCode");
+    } else throw new Error("expected an execute call");
+  });
+
+  test("the verdict prefix is the harness's, not prose: a near-miss stays flagless", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "ls" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "a tool failed: oops" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "a tool failed: oops" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    expect(part).not.toMatchObject({ result: { denied: true } });
+  });
+
+  test("an orphan `tool failed:` result keeps its error state unattached", () => {
+    const text = "tool failed: No such file or directory (os error 2)";
+    const entries = parseMuseTranscript(batchResults("row-9", [{ tool_call_id: "call_x", text }]));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      role: "assistant",
+      parts: [{ kind: "tool", name: "result", result: { text, isError: true } }],
+    });
   });
 });
 
@@ -434,6 +626,198 @@ describe("parseMuseTranscript tool calls", () => {
   });
 });
 
+describe("parseMuseTranscript edit diffs, question answers and image assets (#519)", () => {
+  // Shapes below mirror the corpus measured 2026-10-18 (3,114 edit_file results,
+  // 112 request_user_input calls, 37 user assets), sanitised — see muse.ts.
+  const EDIT_TEXT = [
+    "edited",
+    "changed lines: lines 2-3",
+    "--- original",
+    "+++ updated",
+    "@@",
+    "-const oldValue = 1;",
+    "+const newValue = 2;",
+    "+const extra = 3;",
+  ].join("\n");
+
+  test("an edit_file batch diff enriches the edit call with hunks and counts, never `created`", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [
+          { call_id: "call_1", name: "edit_file", args: { path: "/a/b.ts", find: "old", replace: "new" } },
+        ]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: EDIT_TEXT }]),
+      ].join("\n"),
+    );
+    const call = entries[0]?.parts?.[0];
+    expect(call).toMatchObject({
+      kind: "tool",
+      call: {
+        kind: "edit",
+        path: "/a/b.ts",
+        added: 2,
+        removed: 1,
+        diff: [{ header: "@@", lines: ["-const oldValue = 1;", "+const newValue = 2;", "+const extra = 3;"] }],
+      },
+    });
+    expect(call).not.toMatchObject({ call: { created: true } });
+    if (call?.kind === "tool" && call.call?.kind === "edit") expect(call.call).not.toHaveProperty("created");
+  });
+
+  test("an edit_file result with no diff lines leaves the call unenriched", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "edit_file", args: { path: "/a/b.ts", find: "x", replace: "y" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "error: find text not found" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "edit", path: "/a/b.ts", added: 0, removed: 0 } });
+    if (part?.kind === "tool" && part.call?.kind === "edit") expect(part.call).not.toHaveProperty("diff");
+  });
+
+  test("a write_file result pins the data absence: no diff and no `created` is fabricated from the content arg", () => {
+    // Muse's write_file batch text is only "wrote N bytes to <path>": no diff and
+    // nothing tells a new file from an overwrite (Claude's `originalFile` has no Muse
+    // counterpart), so the call must stay at its classified 0/0 with neither field.
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [
+          { call_id: "call_1", name: "write_file", args: { path: "/a/new.ts", content: "one\ntwo\n" } },
+        ]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "wrote 8 bytes to /a/new.ts" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "edit", path: "/a/new.ts", added: 0, removed: 0 } });
+    if (part?.kind === "tool" && part.call?.kind === "edit") {
+      expect(part.call).not.toHaveProperty("diff");
+      expect(part.call).not.toHaveProperty("created");
+    } else throw new Error("expected an edit call");
+  });
+
+  const QUESTION_ARGS = {
+    questions: [
+      {
+        id: "fruit",
+        header: "Fruit",
+        question: "Which fruit?",
+        options: [
+          { label: "Apple", description: "round" },
+          { label: "Banana" },
+        ],
+      },
+      {
+        id: "extras",
+        header: "Extras",
+        question: "Any extras?",
+        options: [{ label: "Nuts" }, { label: "Honey" }],
+        selection: { mode: "multiple", min_selections: 0, max_selections: 2 },
+      },
+      {
+        id: "note",
+        header: "Note",
+        question: "Anything else?",
+        options: [{ label: "Nothing" }],
+      },
+    ],
+  };
+
+  test("a request_user_input batch answer lands on the question call, keyed by question id not order", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "request_user_input", args: QUESTION_ARGS }]),
+        batchResults("row-2", [
+          {
+            tool_call_id: "call_1",
+            text: JSON.stringify({
+              status: "answered",
+              answers: [
+                { id: "note", free_text: "extra napkins" },
+                { id: "extras", selected_labels: ["Nuts", "Honey"] },
+                { id: "fruit", selected_label: "Banana" },
+              ],
+            }),
+          },
+        ]),
+      ].join("\n"),
+    );
+    expect(entries[0]?.parts?.[0]).toMatchObject({
+      kind: "tool",
+      call: {
+        kind: "question",
+        questions: [{ multiple: false }, { multiple: true }, { multiple: false }],
+        answers: [["Banana"], ["Nuts", "Honey"], ["extra napkins"]],
+      },
+    });
+  });
+
+  test("an interrupted request_user_input carries no answers", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "request_user_input", args: QUESTION_ARGS }]),
+        batchResults("row-2", [
+          {
+            tool_call_id: "call_1",
+            text: JSON.stringify({ status: "interrupted", answers: [{ id: "fruit", selected_label: "Apple" }] }),
+          },
+        ]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts?.[0];
+    expect(part).toMatchObject({ call: { kind: "question" } });
+    if (part?.kind === "tool" && part.call?.kind === "question") expect(part.call).not.toHaveProperty("answers");
+    else throw new Error("expected a question call");
+  });
+
+  test("a text block already carrying Muse's [Image #n] placeholder is not placeholdered twice", () => {
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("look at [Image #1] please"),
+        {
+          kind: "asset",
+          asset: {
+            schema_version: 1,
+            algorithm: "sha256",
+            digest: "a".repeat(64),
+            media_type: "image/png",
+            byte_length: 42,
+            width: 10,
+            height: 10,
+          },
+        },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "look at [Image #1] please" }]);
+  });
+
+  test("a user asset pins the data absence: a hash and a path never become invented pixels", () => {
+    // The log carries only a content digest (+ sometimes a since-deleted source_path);
+    // no blob store exists under Muse's data dirs, so the turn stays a marked text
+    // placeholder and no image part / data URL is fabricated.
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("check this"),
+        {
+          kind: "asset",
+          asset: {
+            schema_version: 1,
+            algorithm: "sha256",
+            digest: "b".repeat(64),
+            media_type: "image/png",
+            byte_length: 42,
+            width: 10,
+            height: 10,
+            source_path: "/tmp/no-longer-there.png",
+          },
+        },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
+    expect(JSON.stringify(entries)).not.toContain("data:image");
+  });
+});
+
 describe("createMuseReducer queue and unknowns", () => {
   test("queued bodies list until their drain, oldest-first on duplicates", () => {
     const reducer = createMuseReducer();
@@ -647,6 +1031,31 @@ describe("museJournal discover", () => {
     ).resolves.toEqual({ kind: "id", value: UUID_A });
   });
 
+  // #508: with another muse pane in the folder, the newest log may be that pane's.
+  test("a shared folder with no argv session reads no session, never the newest log", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(adapter.discover?.("/same", { shared: true })).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse"] }] }),
+    ).resolves.toBeNull();
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse", "resume", "--last"] }] }),
+    ).resolves.toBeNull();
+  });
+
+  test("a shared folder still reads the session the pane's argv names", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
+    sessionLog(root, "2026-10-02", UUID_B, [metadataRow("/same")]);
+    const adapter = museJournal([root]);
+    await expect(
+      adapter.discover?.("/same", { shared: true, processes: [{ argv: ["muse", "resume", UUID_A] }] }),
+    ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+
   test("the first argv match wins", async () => {
     const root = await fixtureRoot();
     sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same")]);
@@ -657,5 +1066,133 @@ describe("museJournal discover", () => {
         processes: [{ argv: ["muse", "resume", UUID_A] }, { argv: ["muse", "resume", UUID_B] }],
       }),
     ).resolves.toEqual({ kind: "id", value: UUID_A });
+  });
+});
+
+// The pane-name reader (MUSE-36). A Muse session's user-given name lives only in its own log:
+// the last `session.name.changed` row, and only when that change came from the user — every
+// session also carries an automatic name (`icy-chromosphere` and friends) that Muse never paints
+// or titles, so surfacing it would name every pane at random. The reader binds a pane to a log
+// ONLY exactly — a reported ref or a `resume <uuid>` argv — never the cwd walk `discover` falls
+// back to, because a name read off a neighbouring session's log is worse than no name.
+function nameRow(sessionId: string, newName: string | null, source: "user" | "automatic"): string {
+  return row(`name-${newName ?? "none"}-${source}`, "session.name.changed", {
+    authority_id: "auth-1",
+    operation_id: "op-1",
+    session_id: sessionId,
+    previous_name: null,
+    new_name: newName,
+    source,
+  });
+}
+
+describe("museSessionNameReader", () => {
+  test("reads the user-given name from the pane's own log, bound by resume argv", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "cerulean-mirach", "automatic"),
+      nameRow(UUID_A, "landing-page", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader(undefined, [{ argv: ["muse", "resume", UUID_A] }])).resolves.toBe("landing-page");
+  });
+
+  test("reads it from a reported ref with no foreground argv at all", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_A, "landing-page", "user")]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBe("landing-page");
+  });
+
+  test("an automatic name alone is no name: the session reads unnamed", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "cerulean-mirach", "automatic"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("no exact binding says nothing, however many named logs share the folder", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/same"), nameRow(UUID_A, "not-yours", "user")]);
+    const reader = museSessionNameReader([root]);
+    // A fresh `muse` (bare argv) names no session, and the reader takes no cwd to guess from.
+    await expect(reader(undefined, [{ argv: ["muse"] }])).resolves.toBeUndefined();
+    await expect(reader(undefined, undefined)).resolves.toBeUndefined();
+  });
+
+  test("a rename appended after the first read is picked up on the next one", async () => {
+    const root = await fixtureRoot();
+    const path = sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "first-name", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    const ref = { kind: "id", value: UUID_A } as const;
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, `${nameRow(UUID_A, "second-name", "user")}\n`);
+    await expect(reader(ref, undefined)).resolves.toBe("second-name");
+  });
+
+  test("a torn final row is not read until its newline lands", async () => {
+    const root = await fixtureRoot();
+    const path = sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "first-name", "user"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    const ref = { kind: "id", value: UUID_A } as const;
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, nameRow(UUID_A, "torn-name", "user")); // no newline yet
+    await expect(reader(ref, undefined)).resolves.toBe("first-name");
+    appendFileSync(path, "\n");
+    await expect(reader(ref, undefined)).resolves.toBe("torn-name");
+  });
+
+  test("the last change wins: an automatic change after a user rename unnames the session", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [
+      metadataRow("/a"),
+      nameRow(UUID_A, "landing-page", "user"),
+      nameRow(UUID_A, "fresh-auto", "automatic"),
+    ]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("a name row naming another session is ignored", async () => {
+    const root = await fixtureRoot();
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_B, "someone-else", "user")]);
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeNull();
+  });
+
+  test("an exact id with no log on disk says nothing, not unnamed", async () => {
+    const root = await fixtureRoot();
+    const reader = museSessionNameReader([root]);
+    await expect(reader({ kind: "id", value: UUID_A }, undefined)).resolves.toBeUndefined();
+  });
+
+  // #533 shipped the name as the log wrote it, trimmed and nothing else. It is agent-written text
+  // that reaches the pane header, the dashboard and a push title, so it is cleaned like a pane title.
+  test("a hostile name comes back one capped line with no control character", async () => {
+    const root = await fixtureRoot();
+    const hostile = `\x1b[31mred\x1b[0m first\nsecond${"x".repeat(30_000)}`;
+    sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a"), nameRow(UUID_A, hostile, "user")]);
+    const reader = museSessionNameReader([root]);
+    const name = await reader({ kind: "id", value: UUID_A }, undefined);
+    expect(typeof name).toBe("string");
+    const shown = name ?? "";
+    expect(shown.startsWith("red first second")).toBe(true);
+    const controls = [...shown].filter((ch) => {
+      const code = ch.codePointAt(0) ?? 0;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+    expect([...shown].length).toBe(RENAME_TITLE_MAX);
+    expect(shown.endsWith("…")).toBe(true);
   });
 });

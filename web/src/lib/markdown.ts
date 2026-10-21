@@ -49,7 +49,19 @@ export type MdSpan =
    * WRITTEN and nothing has vetted it: the screen decides whether it names a file it may load, and
    * draws `alt` otherwise (ADR 0090).
    */
-  | { kind: "image"; alt: string; src: string };
+  | { kind: "image"; alt: string; src: string }
+  /**
+   * A closed stretchtext stretch: `spans` is its short form, `key` names it for opening, `hue` is its
+   * colour (0 to 3). Produced only by `liftStretches` in lib/stretch.ts, never by this parser.
+   */
+  | { kind: "stretch"; key: string; hue: number; spans: MdSpan[] }
+  /** The closer after an open stretch's long form, in its stretch's hue. Produced only by `liftStretches` in lib/stretch.ts, never by this parser. */
+  | { kind: "stretch-close"; key: string; hue: number }
+  /**
+   * Words an open stretch's long form added, in its stretch's hue, `faded` unless that stretch was
+   * opened last. Produced only by `liftStretches` in lib/stretch.ts, never by this parser.
+   */
+  | { kind: "tint"; hue: number; faded: boolean; spans: MdSpan[] };
 
 export type MdBlock =
   | { kind: "heading"; level: number; spans: MdSpan[] }
@@ -108,8 +120,9 @@ function externalHref(raw: string): string | null {
 // The lookbehind keeps it to a URL that STARTS somewhere: no `xhttp://`, and no second match inside
 // a URL this alternative already took. The tail class is what stops "see http://x." from swallowing
 // the full stop, and "(http://x)" from swallowing the bracket — a URL may not END on sentence
-// punctuation, though it may contain it.
-const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"']*[^\\s<>`\"'.,:;!?)\\]}])";
+// punctuation, though it may contain it. Neither class takes a stretch marker (U+E000 to U+E006, see
+// lib/stretch.ts), so a URL that ends a stretch's short form or a tinted run stops before the marker that ends it.
+const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"'\\uE000-\\uE006]*[^\\s<>`\"'.,:;!?)\\]}\\uE000-\\uE006])";
 
 // The pieces of a link, each bounded, each with a branch that cannot match what the other can:
 //  - LABEL holds anything but a bracket, or ONE image (`![alt](src)`), which is how a badge is
@@ -529,8 +542,22 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
 /** What a run of spans reads as, flattened: the text a heading slug or a length check is made of. */
 export function spansText(spans: readonly MdSpan[]): string {
   return spans
-    .map((s) => (s.kind === "text" || s.kind === "code" ? s.text : s.kind === "image" ? s.alt : spansText(s.spans)))
+    .map((s) => spanText(s))
     .join("");
+}
+
+function spanText(span: MdSpan): string {
+  switch (span.kind) {
+    case "text":
+    case "code":
+      return span.text;
+    case "image":
+      return span.alt;
+    case "stretch-close":
+      return "";
+    default:
+      return spansText(span.spans);
+  }
 }
 
 /**

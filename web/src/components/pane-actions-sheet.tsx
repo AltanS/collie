@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Copy, GitBranchPlus, Maximize2, MessagesSquare, Monitor, Pencil, Pin, PinOff, ScrollText, Search, SlidersHorizontal, SquareTerminal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
+import { WalkyIcon } from "@/components/walky-icon";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
@@ -62,6 +63,12 @@ interface PaneActionsSheetProps {
    *  absent over plain HTTP, a supported deploy), so an unusable row is HIDDEN — the same "a row is a
    *  thing you can do" rule find/history/zen follow. */
   onCopyOutput?: () => void;
+  /**
+   * Open the pane's Messages sheet (M62): the walky talky messages kept for this pane, newest first. A
+   * read in the sense find and history are, so the row sits with them and outside every write gate. The
+   * pane view passes it; the strip does not, and absence is the gate as it is for the others.
+   */
+  onMessages?: () => void;
   /** Open this pane's own settings — today one switch, the prompt-cache warning (ADR 0042).
    *
    *  The FOURTH read row, and it is a read in the sense the other three are: it changes a preference on
@@ -165,6 +172,7 @@ export function PaneActionsSheet({
   onHistory,
   onCopyOutput,
   onSettings,
+  onMessages,
   openInRename = false,
   onZen,
   paneView,
@@ -416,6 +424,18 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onCopyOutput();
+              }}
+            />
+          )}
+          {/* The pane's walky talky messages: one more way to LOOK at what happened here, so it sits with
+              the looking rows. Close-then-act, for the reason the find row states. */}
+          {onMessages && (
+            <ActionRow
+              icon={<WalkyIcon className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("walky.sheet.row")}
+              onClick={() => {
+                onClose();
+                onMessages();
               }}
             />
           )}

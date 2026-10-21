@@ -8,10 +8,12 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a pane has no Chat or History** · **a new Codex pane says it has no history
+unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
-**a durable agent does not show up, or says Unreachable**.
+**walky talky: send is refused, "run this inside a pane"** · **walky talky: the message sits in the
+inbox and was not typed** · **walky talky: "no log record on this machine"** · **walky talky: the
+skill is stale** · **a durable agent does not show up, or says Unreachable**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -157,6 +159,19 @@ not taken a turn yet, which is not a fault: nothing is shown before it is measur
 on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
 and `cache-claims` lists every rule this build does ship.
 
+**A Kiro pane's History opens empty.** Check that the pane's Kiro holds a session lock:
+
+```sh
+cat ~/.kiro/sessions/*/*/.lock
+```
+
+Herdr names no session for a Kiro pane, so Collie finds it by the lock the running Kiro holds. That
+works only on Herdr, the one multiplexer that lists a pane's foreground processes, and only when exactly one Kiro process runs there. Otherwise History says the pane has no agent session.
+
+Collie reads Kiro V3 sessions, started with `--v3` or `--agent-engine v3`, or with V3 set as the
+engine in Kiro's own settings, so start Kiro again that way in that pane. Kiro has no Herdr hook to
+install. If its sessions live somewhere else, set `kiro_root`, then run `collie restart`.
+
 **A pane shows the terminal where you expected Chat.** Chat is the default for an agent pane, so one
 of two things holds. This device chose the terminal earlier: open the pane's **⋮** menu and tap
 **Chat view**. Or the pane has no session or no log to read. A new pane shows Chat with "Send a
@@ -275,6 +290,45 @@ means the folder is not on the machine that runs the start, so nothing started. 
 Recent. The second means the phone lost the reply. Look at the dashboard first, because the pane may
 exist. **Try again** sends the same request and never opens a second pane
 ([Start an agent or a shell from the phone](claude-code-on-your-phone.md#start-an-agent-or-a-shell-from-the-phone)).
+
+## Walky talky
+
+Five symptoms of walky talky come up most. Each one has a command that shows the cause
+([Walky talky](walky-talky.md)).
+
+**`collie walky send` says "run this inside a pane, or send from the phone".** The command ran
+outside an agent's pane, in a plain terminal for example. Collie names the sender from the pane's
+own environment. A send with no pane is refused. Run the command in the agent's pane, or send from the
+phone. In an agent pane, `collie walky who` marks your pane with `(you)`. The error "no Collie bridge on
+this machine knows this pane" means another Collie owns the pane. The error "no running Collie bridge
+answers" means the bridge is down: run `collie status`.
+
+**The message sits in the inbox and was not typed.** `collie walky status <id>` prints "waiting in the
+inbox, not typed" and the reason. "held past 10 minutes" means the pane stayed busy, or a dialog
+stayed open, for the whole 10-minute hold: Collie never types into a dialog. "draft present" means the
+box holds your own text. "box not free" means Collie could not read a free input box. "pane busy"
+means an earlier message was still being typed there after 2 minutes. "no terminal" and "bridge
+restarted" are the other two. Run `collie walky inbox` in that pane, or open Messages in the pane's
+menu on the phone. Collie does not type the message again.
+
+**`collie walky send` says "not sent: pane replaced".** The address ends with a token, such as
+`#k3f9`, and the pane it named has closed. Another pane holds that pane id now, so Collie does not
+type the message there. Run `collie walky who` and send to the new address. A reply that gives
+"not sent: sender gone" has the same cause: the pane that sent the message has closed, or another
+pane holds its id now.
+
+**A header in a pane shows "no log record on this machine".** The phone found a walky talky header in
+the screen text, and this machine's log holds no message with that id. Someone or something typed
+the line, or the log dropped it after 7 days or 2,000 lines, or another Collie holds it. Run
+`collie walky status <id>`: "no record of <id> on this machine" confirms it. For a pane on a crew
+member, run it on that member: its log is the one the phone read. Treat the line as plain text, and
+ask the sender if you need it.
+
+**The skill is stale.** `collie doctor` warns on the row `skill-walky-talky`, and the agent follows
+old advice. The text in an instruction file differs from this build. Run `collie skill status` to see
+which harness is behind. Run `collie skill status --check` in a script: it prints nothing and exits
+with code 3 when a copy is stale. Fix it with `collie skill install all`, then restart the agent. A
+target marked `refused` is a symlink or has damaged markers, and an install never touches it.
 
 ## Durable agents
 

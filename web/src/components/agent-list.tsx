@@ -15,7 +15,7 @@ import { machinesHiddenFrom } from "@/lib/hidden-machines";
 import { pinMatcher, type Pin } from "@/lib/pins";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import { NeedsYouSwitch } from "@/components/needs-you-switch";
-import { PaneOrderSelect, WorkspaceSelect } from "@/components/dash-selects";
+import { PaneOrderSelect, WorkspaceFilter } from "@/components/dash-selects";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { showsPinHint, usePinHintRetired } from "@/lib/pin-hint";
 import type { Scope } from "@/lib/scope";
@@ -84,16 +84,17 @@ interface AgentListProps {
    */
   newTab?: HeadingNewTab;
   /**
-   * The workspace filter the select on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
-   * shows one workspace alone; `hidden` drops workspaces from the list while their options stay in
-   * the select, marked hidden, still carrying their state in words, so a hidden workspace that needs
-   * you is never silent. Keys from `workspacePrefKey` (machine, session, workspace name). Omit both and the list shows everything.
+   * The workspace filter the control on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
+   * shows the chosen workspaces only (issue #527); `hidden` drops workspaces from the list while
+   * their rows stay in the filter, marked hidden, still carrying their state in words, so a hidden
+   * workspace that needs you is never silent. Keys from `workspacePrefKey` (machine, session,
+   * workspace name). Omit both and the list shows everything.
    */
-  isolated?: string | null;
+  isolated?: readonly string[];
   hidden?: readonly string[];
-  /** Pick a workspace in the select: isolate it, or clear the filter (null). */
-  onIsolate?: (key: string | null) => void;
-  /** Flip a workspace's hidden state. The select calls it for each hidden workspace on "Show hidden workspaces". */
+  /** Choose workspaces in the filter: the keys to show, in the list's order, or none for all of them. */
+  onIsolate?: (keys: string[]) => void;
+  /** Flip a workspace's hidden state. The filter calls it for each hidden workspace on "Show hidden workspaces". */
   onToggleHidden?: (key: string) => void;
   /**
    * The machines this device leaves off the dashboard, as STORED (lib/hidden-machines.ts, issue
@@ -115,7 +116,7 @@ interface AgentListProps {
   /**
    * The "needs you" switch (issue 270, ADR 0066; the old Focus tab, now a switch by ADR 0085): a group
    * shows only its panes that need you, and a group with none is dropped. A filter, never a sort. The
-   * workspace select, the summary line and every heading's counts still count ALL panes, so the filter never
+   * workspace filter, the summary line and every heading's counts still count ALL panes, so the filter never
    * understates the herd.
    */
   needsYouOnly?: boolean;
@@ -144,7 +145,7 @@ interface AgentListProps {
    */
   order?: PaneOrder;
   /**
-   * Store a new order. Given, the order select is drawn at the right of the workspace select on the
+   * Store a new order. Given, the order select is drawn at the right of the workspace filter on the
    * Dashboard; withheld, it is not, and the list keeps whatever `order` says.
    */
   onOrderChange?: (order: PaneOrder) => void;
@@ -266,7 +267,7 @@ export function AgentList({
   tabs,
   servers,
   newTab,
-  isolated = null,
+  isolated = NO_KEYS,
   hidden = NO_KEYS,
   onIsolate,
   onToggleHidden,
@@ -388,8 +389,10 @@ export function AgentList({
   const attention = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
   const groups = groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs, servers });
   if (groups.length === 0) return null;
-  // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped.
-  const isolatedGroup = isolated === null ? undefined : groups.find((g) => workspacePrefKey(g) === isolated);
+  // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped,
+  // and when every key is stale the list shows everything.
+  const isolatedSet = new Set(isolated);
+  const isolatedGroups = groups.filter((g) => isolatedSet.has(workspacePrefKey(g)));
   const hiddenSet = new Set(hidden);
   // THE MACHINE FILTER (issue #288), one clause beside hide: a group on a hidden machine leaves
   // `shown`, so the Dashboard, Crew and Changes follow at once. Isolate still wins, because the isolated
@@ -397,10 +400,12 @@ export function AgentList({
   // (ADR 0070). The addressed machine is never in this set, so the filter cannot empty the list, and
   // on a solo list the set is empty and the clause never matches (lib/hidden-machines.ts).
   const machineHidden = machinesHiddenFrom(hiddenMachines, servers, addressedHost);
-  const shown = isolatedGroup
-    ? [isolatedGroup]
-    : groups.filter((g) => !hiddenSet.has(workspacePrefKey(g)) && !machineHidden.has(groupHost(g)));
-  const strip = stripEntries(groups, machineHidden, isolatedGroup?.key);
+  const shown =
+    isolatedGroups.length > 0
+      ? isolatedGroups
+      : groups.filter((g) => !hiddenSet.has(workspacePrefKey(g)) && !machineHidden.has(groupHost(g)));
+  const isolatedKeys = new Set(isolatedGroups.map((g) => g.key));
+  const strip = stripEntries(groups, machineHidden, isolatedKeys);
   const allClear = attention.length === 0;
   // THE PINNED GROUP (ADR 0070). Drawn from EVERY workspace, before isolate and hide apply, and never
   // through the needs-you switch: a pin means "always show me this one", and the summary line above
@@ -425,9 +430,10 @@ export function AgentList({
   const rankedRows = ranked && !renderBody ? inRankOrder(drawn.flatMap((d) => d.rows), ranks) : NO_PANES;
   const firstUrgentRow = rankedRows.find((p) => ATTENTION.has(bucketOf(p)));
   const jumpTo = (g: WorkspaceGroup) => {
-    // The target may be filtered out: isolate it, which is also the scroll.
+    // The target may be filtered out: add it to the chosen workspaces (or choose it alone when the
+    // list shows everything), which is also the scroll.
     if (!drawn.some((d) => d.group === g)) {
-      onIsolate?.(workspacePrefKey(g));
+      onIsolate?.(groups.filter((x) => x === g || isolatedGroups.includes(x)).map(workspacePrefKey));
       return;
     }
     document.getElementById(groupDomId(g.key))?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -552,11 +558,11 @@ export function AgentList({
           Every row of the block is 44px and the block draws the same on every pane tab: a tab with
           its own body (Changes) keeps the switch and the order select as invisible slots, so a switch
           between tabs moves neither the line nor the row nor anything below it (DESIGN.md §2,
-          `e2e/dashboard-footer.spec.ts`). The workspace select stays live on Changes, where it
+          `e2e/dashboard-footer.spec.ts`). The workspace filter stays live on Changes, where it
           narrows the workspaces that body lists.
-          The workspace select is the old strip's filter, whole: the options run in the list's own order,
-          each with its state in words, the isolated workspace shows alone, a hidden workspace or
-          machine has its way back as an option (components/dash-selects.tsx). */}
+          The workspace filter is the old strip's filter, whole: its sheet's rows run in the list's own
+          order, each with its state in words, the chosen workspaces show (issue #527), a hidden
+          workspace or machine has its way back as a row (components/dash-selects.tsx). */}
       <div className="flex flex-col gap-1">
         {/* The twenty-times-a-day glance, in ONE slot of one height: every state counted, with its
             word where the line has room for it, once for the whole dashboard (the headings below
@@ -576,13 +582,13 @@ export function AgentList({
           summary
         )}
         <div className="flex items-center gap-2">
-          <WorkspaceSelect
+          <WorkspaceFilter
             className="min-w-0 flex-1"
             entries={strip}
-            isolatedKey={isolatedGroup?.key}
+            isolatedKeys={isolatedKeys}
             isHidden={(g) => hiddenSet.has(workspacePrefKey(g))}
             servers={servers}
-            onIsolate={(group) => onIsolate?.(group === null ? null : workspacePrefKey(group))}
+            onIsolate={(chosen) => onIsolate?.(chosen.map(workspacePrefKey))}
             onShowHidden={onToggleHidden && ((hiddenGroups) => hiddenGroups.forEach((g) => onToggleHidden(workspacePrefKey(g))))}
             onShowMachine={onShowMachine}
           />

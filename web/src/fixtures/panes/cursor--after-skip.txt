@@ -1,0 +1,74 @@
+
+  [0m[38;5;3m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[1m[38;5;3m⚠ [0m[1mWorkspace Trust Required[0m                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Cursor Agent can execute code and access files in this directory.                                                                                                               [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Do you trust the contents of this directory?                                                                                                                                    [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m    [0m[1m[38;5;6m/private/tmp/collie-cursor-lab[0m                                                                                                                                                [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [a] Trust this workspace[0m                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [q] Quit[0m                                                                                                                                                                      [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[38;5;4m⏳ Trusting workspace...[0m                                                                                                                                                        [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+  Cursor Agent
+  [0m[2mv2026.10.14-941492e[0m
+  [0m[2mTip: Use /config to customize Cursor settings and behavior.[0m
+
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+ [0m[48;2;53;56;67m Run the shell command: sleep 25 && echo finished. Then reply with one word: ok                                                                                                       [0m
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+
+  $ sleep 25 && echo finished [0m[2m26s[0m
+    [0m[2mfinished[0m
+
+  ok
+
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+ [0m[48;2;53;56;67m reply with the single word: pong                                                                                                                                                     [0m
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+
+  pong
+
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+ [0m[48;2;53;56;67m Run the shell command: sleep 30 && echo second. Then reply with one word: done                                                                                                       [0m
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+
+  $ sleep 30 && echo second [0m[2m31s[0m
+    [0m[2msecond[0m
+
+  done
+
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+ [0m[48;2;53;56;67m queued note                                                                                                                                                                          [0m
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+
+  [0m[2m[38;5;7m [0m [0m[1mRead[0m [0m[2mnotes.txt[0m
+
+  [0m[38;5;3m [0m [0m[1mAskQuestion[0m [0m[2mClarify queued note (1)[0m                                             [0m[2mQuestions skipped by user[0m
+    1. Your message was just "queued note". What should I do with it? (notes.txt currently contains "hello".)
+      [0m[2m[ ] Append "queued note" to notes.txt[0m
+      [0m[2m[ ] Just acknowledge it, no file changes[0m
+
+  I skipped the question, so I haven't changed anything. What should I do with "queued note"? For example, I can append it to [0m[38;2;168;181;230mnotes.txt[0m, which currently contains "hello".
+
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+ [0m[48;2;53;56;67m Run the shell command: touch approved.txt                                                                                                                                            [0m
+ [0m[48;2;53;56;67m                                                                                                                                                                                      [0m
+
+  $ touch approved.txt [0m[2mWaiting for approval...[0m
+
+
+ [0m[2m┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐[0m
+ [0m[2m│[0m $  touch approved.txt [0m[2min .[0m                                                                                                                                                         [0m[2m│[0m
+ [0m[2m└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[0m
+ [0m[38;2;47;50;57m▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄[0m
+ [0m[48;2;47;50;57m [0m[2m[48;2;47;50;57m→ [0m[7m[48;2;47;50;57mT[0m[2m[48;2;47;50;57mell the agent what to do instead (Enter to send, empty to skip, Esc to cancel)[0m[48;2;47;50;57m                                                                                     [0m[2m[48;2;47;50;57mctrl+c to stop[0m[48;2;47;50;57m [0m
+ [0m[38;2;47;50;57m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[0m

@@ -145,6 +145,19 @@ describe("PromptSelectBlock — the subject and the question are on the card", (
     }
   });
 
+  // 2026-10-19 on 2.1.303: the card read "PERMISSION REQUIRED / Do you want to proceed? / 1 Yes / 2 No",
+  // because a 26-row command put the dialog's edge out of the reader's reach.
+  it("2.1.303 background agent Bash permission with a tall command: the command and the dangerous-rm warning are on the card", () => {
+    const model = fixtureModel("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+    const { container } = render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    expect(container.querySelector('[data-slot="prompt-subject-title"]')!.textContent).toBe("Bash command · from the general-purpose agent");
+    const subject = container.querySelector('[data-slot="prompt-subject"] pre')!;
+    expect(subject.textContent).toContain("rm -f $D/*.wav $D/*.params.json");
+    expect(subject.textContent).toContain("Dangerous rm operation on possibly-empty variable path: $D/*.wav");
+    expect(subject.textContent).not.toMatch(/[╌│]/);
+    expect(within(container).getAllByRole("button").map((b) => b.textContent)).toEqual(["1Yes", "2No"]);
+  });
+
   // jsdom lays nothing out, so the measurements the fade reads (`scrollHeight`, `clientHeight`,
   // `scrollTop` on the scrolling <pre>) are stubbed, and this pins the structure only: whether the
   // fade element exists for each measured state. How it looks is for a real browser.
@@ -768,6 +781,114 @@ describe("PromptSelectBlock — Grok's z row is not Claude's plan-feedback compo
     expect(screen.getByText(/free-text row has the keyboard/)).toBeInTheDocument();
     expect(screen.queryByText(/feedback box has the keyboard/)).toBeNull();
     for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+  });
+});
+
+// ADR 0113: AskUserQuestion's `Type something.` field is typed into from the phone. Real 2.1.299
+// captures: the field empty (pointer on row 1), holding text with the pointer elsewhere, and focused.
+describe("PromptSelectBlock — AskUserQuestion's answer field", () => {
+  const OFFER = "Type your own answer";
+
+  it("the offer opens an empty editor", async () => {
+    const model = fixtureModel("claude--select-menu.txt");
+    expect(model.feedback?.purpose).toBe("answer");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Send answer" })).toBeDisabled();
+  });
+
+  it("with text in the field: shows it, and Change opens the editor holding it", async () => {
+    const model = fixtureModel("claude--v2299-ask-field-single-typed-off-row.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/In the answer field:/)).toHaveTextContent("In the answer field: Teal, like the sea");
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Teal, like the sea");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Teal, like the sea" });
+  });
+
+  it("focused and empty: the banner AND the offer, with the options locked", async () => {
+    const model = fixtureModel("claude--v2299-ask-field-single-focused-empty.txt");
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Red/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Navy");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Navy" });
+  });
+
+  it("keeps the draft on screen when a send is refused", async () => {
+    const model = fixtureModel("claude--select-menu.txt");
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={model} onAction={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+
+  // The open editor hides the field's own card, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    const holding = (model: PromptModel, text: string): PromptModel => ({ ...model, feedback: { ...model.feedback!, text } });
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const model = fixtureModel("claude--select-menu.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<PromptSelectBlock prompt={holding(model, "Desk words")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal now holds “Desk words”. Send again to replace it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Phone words" });
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const model = fixtureModel("claude--v2299-ask-field-single-typed-off-row.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<PromptSelectBlock prompt={holding(model, "")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "The answer field in the terminal was emptied. Send again to fill it.",
+      );
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Teal, like the sea");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Teal, like the sea" });
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const model = fixtureModel("claude--select-menu.txt");
+      const onAction = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(<PromptSelectBlock prompt={model} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<PromptSelectBlock prompt={holding(model, "")} onAction={onAction} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "Phone words" });
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
   });
 });
 

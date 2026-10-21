@@ -1,0 +1,14 @@
+↓ Shell[0m[38;5;12m printf collie_approve_once_probe[0m
+    ╰ description=Print the probe message, run_in_background=false
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Print the probe message requires approval
+ shell → printf collie_approve_once_probe
+ 
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mAllow       [0m
+   Always allow
+   Deny        
+   Always deny 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                                                                                       

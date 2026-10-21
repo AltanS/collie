@@ -1,4 +1,4 @@
-import { commandsFor } from "./agent-commands";
+import { commandsFor, suggestCommands } from "./agent-commands";
 
 describe("commandsFor", () => {
   it("returns the Claude catalog for 'claude'", () => {
@@ -26,6 +26,15 @@ describe("commandsFor", () => {
     expect(cmds.length).toBeGreaterThan(0);
     expect(cmds.some((c) => c.command === "/unshare")).toBe(true); // opencode-specific command
     expect(cmds.some((c) => c.command === "/branch")).toBe(false); // in Claude's and omp's, not here
+  });
+
+  it("offers only the verified Kiro V3 built-ins and confirms disruptive commands", () => {
+    const commands = commandsFor("kiro");
+    expect(commands.map((c) => c.command)).toEqual(["/help", "/model", "/agent", "/compact", "/clear", "/quit"]);
+    expect(commands.filter((c) => c.dangerous).map((c) => c.command)).toEqual(["/clear", "/quit"]);
+    // The pickers the adapter does not lift are not surfaced first.
+    expect(commands.filter((c) => c.common).map((c) => c.command)).toEqual(["/compact"]);
+    expect(commandsFor("kiro-cli")).toEqual([]);
   });
 
   it("returns the Grok catalog for 'grok'", () => {
@@ -314,3 +323,116 @@ describe("commandsFor with the operator's own rows", () => {
     expect(commandsFor("omp", [mine]).some((c) => c.command === "/mine")).toBe(false);
   });
 });
+
+describe("commandsFor with the commands found on the pane's machine", () => {
+  const toSpec = { command: "/to-spec", description: "Write the spec", argHint: "" };
+  const deploy = { command: "/deploy", description: "Ship it", argHint: "[env]" };
+
+  it("joins Claude's catalog as searchable staged rows, never on the first screen", () => {
+    const all = commandsFor("claude", [], [toSpec, deploy]);
+    expect(all.find((c) => c.command === "/to-spec")).toEqual({
+      command: "/to-spec",
+      description: "Write the spec",
+      takesArg: true,
+      argHint: "",
+      common: false,
+      dangerous: false,
+    });
+    expect(all.find((c) => c.command === "/deploy")).toEqual({
+      command: "/deploy",
+      description: "Ship it",
+      takesArg: true,
+      argHint: "[env]",
+      common: false,
+      dangerous: false,
+    });
+  });
+
+  it("leaves shipped built-in rows untouched when a discovered file shares the name", () => {
+    const local = { command: "/clear", description: "My own clear", argHint: "[force]" };
+    const rows = commandsFor("claude", [], [local]).filter((c) => c.command === "/clear");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      command: "/clear",
+      description: "Start a fresh conversation with empty context",
+      takesArg: false,
+      argHint: "",
+      common: true,
+      dangerous: true,
+    });
+  });
+
+  it("is replaced when the operator's own rows address the pane (ADR 0018)", () => {
+    const mine = { agent: "claude", command: "/to-spec", description: "My own to-spec", takesArg: false, argHint: "" };
+    const rows = commandsFor("claude", [mine], [toSpec, deploy]);
+    expect(rows.map((c) => c.command)).toEqual(["/to-spec"]);
+    expect(rows[0]).toMatchObject({ description: "My own to-spec", common: true, takesArg: false });
+  });
+
+  it("stays out of every other harness", () => {
+    expect(commandsFor("codex", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(false);
+  });
+});
+
+describe("suggestCommands (#458)", () => {
+  it("ranks command prefix matches ahead of command and description substring matches", () => {
+    const all = [
+      ...commandsFor("claude"),
+      {
+        command: "/to-compact-note",
+        description: "Substring on command",
+        takesArg: false,
+        argHint: "",
+        common: false,
+        dangerous: false,
+      },
+    ];
+    const hits = suggestCommands("/co", all).map((c) => c.command);
+    expect(hits.slice(0, 6)).toEqual([
+      "/compact",
+      "/context",
+      "/code-review",
+      "/config",
+      "/copy",
+      "/cost",
+    ]);
+    expect(hits.indexOf("/to-compact-note")).toBeGreaterThan(hits.indexOf("/cost"));
+    expect(hits.indexOf("/to-compact-note")).toBeLessThan(hits.indexOf("/export"));
+    // `/compact` matches via description ("Summarize the conversation to free up context; optional focus").
+    const descOnly = suggestCommands("/summarize", all).map((c) => c.command);
+    expect(descOnly).toContain("/compact");
+  });
+
+  it("lists common commands first on a bare `/`, and `$` skills on a bare `$`", () => {
+    const claude = suggestCommands("/", commandsFor("claude"));
+    expect(claude[0]?.common).toBe(true);
+    expect(claude.some((c) => !c.common)).toBe(true);
+
+    const codexWithSkill = [
+      ...commandsFor("codex"),
+      {
+        command: "$imagegen",
+        description: "Generate or edit images",
+        takesArg: true,
+        argHint: "[request]",
+        common: false,
+        dangerous: false,
+      },
+    ];
+    const codexSkills = suggestCommands("$", codexWithSkill).map((c) => c.command);
+    expect(codexSkills).toEqual(["$imagegen"]);
+
+    // Claude has no `$` commands, so `$` returns nothing there.
+    expect(suggestCommands("$100", commandsFor("claude"))).toEqual([]);
+  });
+
+  it("closes on empty input, non-sigil start, or any whitespace (including after a tap adds a trailing space)", () => {
+    const all = commandsFor("claude");
+    expect(suggestCommands("", all)).toEqual([]);
+    expect(suggestCommands("hello", all)).toEqual([]);
+    expect(suggestCommands(" /compact", all)).toEqual([]);
+    expect(suggestCommands("/compact ", all)).toEqual([]);
+    expect(suggestCommands("/compact focus", all)).toEqual([]);
+  });
+});
+

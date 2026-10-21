@@ -6,7 +6,8 @@ import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
 // The notice a harness draws above its live box: a head row the profile names, up to three indented
-// continuation rows, one row of `<digit>: <label>` keys, then only blank rows down to the box.
+// continuation rows, a block of `<digit>: <label>` keys (`<letter>: <label>` under a `letters` head), then
+// only blank rows down to the box.
 
 const IDLE = requireProfile("claude").idle;
 const NOTICES = IDLE.notices ?? [];
@@ -107,14 +108,150 @@ describe("readAboveNotice", () => {
     expect(noticeOf(screen(["✦ Heads up ·", "  on your main PC.", KEYS]))?.text).toBe("Heads up · on your main PC.");
   });
 
-  it("does not read the rating survey over the box", () => {
-    expect(noticeOf(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"))).toBeNull();
+  // Decided 2026-10-19 (ADR 0109, after every send on lane 8788 was refused under it): the rating survey
+  // is a notice the profile names. This case read null until then.
+  it("reads the rating survey over the box as a notice, with its four printed keys", () => {
+    for (const name of ["claude-lab--survey-rating-above-box--w82.txt", "claude--v2303-titled-edge-survey--w160.txt"]) {
+      const notice = noticeOf(fixtureRows(name));
+      expect(notice?.text, name).toBe("How is Claude doing this session? (optional)");
+      expect(notice?.keys, name).toEqual([
+        { key: "1", label: "Bad" },
+        { key: "2", label: "Fine" },
+        { key: "3", label: "Good" },
+        { key: "0", label: "Dismiss" },
+      ]);
+    }
+  });
+
+  it("reads the survey over the update row, and the same with a blank row between them", () => {
+    const survey = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
+    const update = `${" ".repeat(20)}✔ Update installed · Restart to update`;
+    for (const between of [[update], ["", update], [update, ""]]) {
+      const notice = noticeOf(screen([...survey, ...between]));
+      expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
+    }
+  });
+
+  // 2026-10-21, Claude Code 2.1.306: the survey's second question prints letter keys, under a head the
+  // profile marks `letters`. Every phone send was refused under it until then.
+  const TRANSCRIPT = [
+    "● Can Anthropic look at your session transcript to help us improve Claude Code?",
+    "  Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys",
+  ];
+  const LETTER_KEYS = "  y: Yes    n: No     d: Don't ask again";
+
+  it("reads the transcript question's capture with its three printed letter keys", () => {
+    const notice = noticeOf(fixtureRows("claude--v2306-transcript-survey--w153.txt"));
+    expect(notice?.text).toBe(
+      "Can Anthropic look at your session transcript to help us improve Claude Code? Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys",
+    );
+    expect(notice?.keys).toEqual([
+      { key: "y", label: "Yes" },
+      { key: "n", label: "No" },
+      { key: "d", label: "Don't ask again" },
+    ]);
+  });
+
+  it("reads the transcript question over the update row of either wording", () => {
+    for (const word of ["update", "apply"]) {
+      const update = `${" ".repeat(20)}✔ Update installed · Restart to ${word}`;
+      expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, update]))?.keys.map((k) => k.key), word).toEqual(["y", "n", "d"]);
+    }
+  });
+
+  it("reads letter keys only under a `letters` head, and digits under it never", () => {
+    expect(noticeOf(screen(["● How is Claude doing this session? (optional)", LETTER_KEYS]))).toBeNull();
+    expect(noticeOf(screen([HEAD, LETTER_KEYS]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  1: Yes    2: No     0: Dismiss"]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  y: Yes    2: No     d: Don't ask again"]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  yes: Yes    n: No"]))).toBeNull();
+  });
+
+  it("does not read digits a `letters` head carries on its own row", () => {
+    const lettered = [{ head: "^● Can Anthropic look", letters: true as const }];
+    const rows = plainRows(["● done", "", "● Can Anthropic look   1: Yes   2: No", RULE, "❯ ", RULE, "  model · ctx 3%"]);
+    const frame = findInputFrame(rows, IDLE);
+    expect(readAboveNotice(rows.map(rowText), frame!.top, lettered, GAPS)).toBeNull();
+    expect(readAboveNotice(rows.map(rowText), frame!.top, [{ head: "^● Can Anthropic look" }], GAPS)?.keys.map((k) => k.key)).toEqual(["1", "2"]);
+  });
+
+  it("does not read the survey's head when the agent's prose quotes it with other rows under it", () => {
+    const quoted = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss", "  That is the survey row I saw."];
+    expect(noticeOf(screen(quoted))).toBeNull();
+    expect(noticeOf(screen(["● The survey said: How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"]))).toBeNull();
   });
 
   it("reads nothing with no notice shapes", () => {
     const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
     expect(readAboveNotice(rows.map(rowText), findInputFrame(rows, IDLE)!.top, [], GAPS)).toBeNull();
   });
+});
+
+// The follow-ups Claude Code 2.1.304's plugin draws after a key on its notice: the Dismissed row, whose
+// head carries the first keys, and the explanation under a head the profile marks `body`.
+describe("the notice's follow-ups", () => {
+  const DISMISSED = "✦ Dismissed.   1: That was helpful   2: Not relevant";
+  const EXPLAINED_KEYS = "  1: Understood   2: Chat in main session   0: Dismiss";
+  const bodyRows = (count: number): string[] => Array.from({ length: count }, (_, i) => `  - body row ${String(i)}`);
+
+  it("reads an inline head: the head row carries the keys", () => {
+    const notice = noticeOf(screen([`${DISMISSED}   0: Dismiss`, ""]));
+    expect(notice?.text).toBe("Dismissed.");
+    expect(notice?.keys).toEqual([
+      { key: "1", label: "That was helpful" },
+      { key: "2", label: "Not relevant" },
+      { key: "0", label: "Dismiss" },
+    ]);
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(2);
+    expect(notice?.body).toBeNull();
+  });
+
+  it("reads an inline head over a wrapped key block whose last row holds one key", () => {
+    const notice = noticeOf(screen([DISMISSED, "  3: Couldn’t understand   4: Turn off suggestions", "  0: Dismiss", ""]));
+    expect(notice?.text).toBe("Dismissed.");
+    expect(notice?.keys.map((k) => k.key)).toEqual(["1", "2", "3", "4", "0"]);
+    expect(notice?.keys.at(2)).toEqual({ key: "3", label: "Couldn’t understand" });
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(4);
+  });
+
+  it("reads a body under a head the profile marks `body`, its blank edges trimmed", () => {
+    const notice = noticeOf(screen([HEAD, "  cont", "", "  A title row", "  - one bullet", "    its wrapped row", "  - another", "", EXPLAINED_KEYS, ""]));
+    expect(notice?.text).toBe(`${HEAD.slice(2)} cont`);
+    expect(notice?.body).toEqual({ first: 5, last: 8 });
+    expect(notice?.keys.map((k) => k.label)).toEqual(["Understood", "Chat in main session", "Dismiss"]);
+    expect(notice?.first).toBe(2);
+    expect(notice?.last).toBe(10);
+  });
+
+  it("reads the plain offer under a body head with no body", () => {
+    expect(noticeOf(screen([HEAD, "  one", KEYS]))?.body).toBeNull();
+  });
+
+  it("reads a body of 58 rows between its two blank rows", () => {
+    expect(noticeOf(screen([HEAD, "", ...bodyRows(58), "", EXPLAINED_KEYS]))?.body).toEqual({ first: 4, last: 61 });
+  });
+
+  it("reads a key block of six rows", () => {
+    const six = ["  1: One   2: Two", "  3: Three", "  4: Four", "  5: Five", "  6: Six", "  0: Dismiss"];
+    expect(noticeOf(screen([HEAD, ...six]))?.keys.map((k) => k.key)).toEqual(["1", "2", "3", "4", "5", "6", "0"]);
+  });
+
+  const failClosed: [string, string[]][] = [
+    ["the same body under a head without `body`", ["● How is Claude doing this session? (optional)", "", "  A title row", "  - one bullet", "", EXPLAINED_KEYS]],
+    ["a body row indented by one space", [HEAD, "", "  A title row", " - one bullet", "", EXPLAINED_KEYS]],
+    ["a body row at the left edge", [HEAD, "", "  A title row", "- one bullet", "", EXPLAINED_KEYS]],
+    ["61 body rows", [HEAD, "", ...bodyRows(61), "", EXPLAINED_KEYS]],
+    ["a key row inside the body", [HEAD, "", "  A title row", "  1: Yes   2: No", "  - one bullet", "", EXPLAINED_KEYS]],
+    ["a key block of seven rows", [HEAD, "  1: One   2: Two", "  3: Three", "  4: Four", "  5: Five", "  6: Six", "  7: Seven", "  0: Dismiss"]],
+    ["an inline head whose keys hold a letter key", ["✦ Dismissed.   1: That was helpful   y: Yes", "  0: Dismiss"]],
+  ];
+  for (const [name, over] of failClosed) {
+    it(`fails closed on ${name}`, () => {
+      expect(noticeOf(screen(over))).toBeNull();
+    });
+  }
 });
 
 describe("a row the profile names between the notice and the box (idle.noticeGaps)", () => {

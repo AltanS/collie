@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ComponentProps } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { clearStatus, useStatus } from "@/lib/status";
+import { setLocale, whenLocaleReady } from "@/lib/i18n";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -15,13 +16,16 @@ import { CrewProvider } from "./crew-provider";
 import { Composer } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
-import { type ServerSummary } from "@/lib/types";
+import { type PaneSubagent, type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
+import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
 import { offersFor, SEND_REASONS, type SendReason } from "@/lib/surface/send";
 import { WAY_OUT_STATES, type WayOutState } from "@/lib/way-out";
 import { wayOutCase } from "@/test/way-out-states";
+import { COLLAPSE_MS } from "./ui/collapse";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
@@ -100,7 +104,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     ...overrides,
@@ -122,7 +126,7 @@ function ComposerForReload() {
       text="pane output"
       terminalDraft={null}
       rawTerminalDraft={null}
-      prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+      prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
       display={{ open: false, onToggle: vi.fn() }}
       onSent={vi.fn()}
     />
@@ -150,7 +154,7 @@ function renderComposerWithStatus(
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     ...overrides,
@@ -172,6 +176,43 @@ function renderComposerWithStatus(
 }
 
 let lastContainer: HTMLElement | null = null;
+
+/** A composer whose Chat entries the test can land one at a time, as the journal read would. */
+function renderComposerWithEntries(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
+  let landEntry: (entry: TranscriptEntry) => void = () => undefined;
+  function Harness() {
+    const [entries, setEntries] = useState<readonly TranscriptEntry[]>([]);
+    landEntry = (entry) => setEntries((prev) => [...prev, entry]);
+    return (
+      <CrewProvider servers={undefined}>
+        <StatusSentinel />
+        <Composer
+          paneId="w1:p1"
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={FREE}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          {...overrides}
+          chatEntries={entries}
+        />
+      </CrewProvider>
+    );
+  }
+  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+  render(<RouterProvider router={router} />);
+  return { land: (entry: TranscriptEntry) => act(() => landEntry(entry)) };
+}
+
+function userTurn(text: string, uuid: string): TranscriptEntry {
+  return { uuid, ts: new Date().toISOString(), role: "user", parts: [{ kind: "text", text }] };
+}
 
 /** `renderComposerWithStatus`, plus the render's own container to query (DESIGN.md §9). */
 function renderWithContainer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
@@ -276,7 +317,7 @@ describe("Composer — send", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
     };
@@ -736,6 +777,20 @@ describe("Composer: password prompt", () => {
     expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
     expectLeaving(screen.queryByRole("button", { name: /use type/i }));
   });
+
+  it("the handoff masks the Type mode field, because the next line is the secret", async () => {
+    const user = userEvent.setup();
+    refuseUnconfirmed();
+    renderComposerWithStatus({ isShell: true, agent: undefined, surface: SHELL, text: SUDO });
+    const box = screen.getByPlaceholderText(/shell command/i);
+
+    await user.type(box, "hunter2hunter2");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: /use type/i }));
+
+    const typeBox = await screen.findByPlaceholderText(/type into the terminal/i);
+    expect(typeBox).toHaveClass("[-webkit-text-security:disc]");
+  });
 });
 
 describe("Composer — typing into the terminal", () => {
@@ -804,7 +859,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
@@ -822,6 +877,32 @@ describe("Composer — typing into the terminal", () => {
     await waitFor(() =>
       expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
+  });
+
+  it.each(["idle lock", "catch-up"])("disarms behind the %s cover and never restores automatically", (cover) => {
+    renderComposer();
+    startDirectTyping();
+    try {
+      act(() => {
+        if (cover === "idle lock") setLocked(true);
+        else beginCatchUp();
+      });
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+      // A named choice cannot re-arm while the view is still covered, even if invoked directly.
+      fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+      expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
+      act(() => {
+        setLocked(false);
+        endCatchUp();
+      });
+      expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+      expect(startDirectTyping()).toBeInTheDocument();
+    } finally {
+      act(() => {
+        setLocked(false);
+        endCatchUp();
+      });
+    }
   });
 
   // The mirror stops tracking the pane when the page is backgrounded, so the next keystroke would
@@ -934,7 +1015,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
@@ -978,7 +1059,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
@@ -1070,7 +1151,10 @@ describe("Composer — typing into the terminal", () => {
     await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
     expect(keyCalls.flat()).not.toContain("Enter");
     expect(replyCalls).toBe(0);
-    expect(box).toHaveValue("");
+    // The field keeps the line until Enter (issue 534). Type mode armed by hand shows clear text,
+    // so a command can be read back; only the password handoff masks it.
+    expect(box).toHaveValue("b a");
+    expect(box).not.toHaveClass("[-webkit-text-security:disc]");
     expect(screen.getByTestId("status")).toHaveTextContent(/typing into the terminal/i);
   });
 
@@ -1215,7 +1299,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
           />
@@ -1253,6 +1337,7 @@ describe("Composer — the draft field wears its own size", () => {
         chatFontSize: 14,
         fontFamily: "jetbrains",
         expandClippedReply: true,
+        stretchText: false,
         rawTerminal: false,
         tapToFocus: true,
       },
@@ -1563,7 +1648,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       readOnly: false,
       surface: FREE,
       text: "pane output",
-      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
       ...rest,
@@ -1693,9 +1778,13 @@ describe("Composer — terminal-draft preview", () => {
     strandDraft("floating");
     await screen.findByText(/draft in terminal/i);
 
+    // The floating column does the positioning (it is shared with the held-send card); the notice's
+    // own wrapper is only the pass-through.
     const wrapper = screen.getByText("floating").closest('[data-slot="terminal-draft-notice"]')!;
-    expect(wrapper.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
     expect(wrapper.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+    const column = wrapper.closest('[data-slot="floating-cards"]')!;
+    expect(column.className).toMatch(/(?:^|\s)absolute(?=\s|$)/);
+    expect(column.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
     // No Collapse around it: nothing in the composer's flow grows when it arrives.
     expect(wrapper.closest('[data-slot="collapse"]')).toBeNull();
     // The notice itself takes touches back from the pass-through wrapper.
@@ -1899,7 +1988,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
-      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
     };
@@ -2011,7 +2100,7 @@ describe("Composer — no draft preview while its own send is in flight", () => 
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
-      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
     };
@@ -2733,7 +2822,7 @@ describe("Composer — draft persistence", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
       display: { open: false, onToggle: vi.fn() },
       onSent: vi.fn(),
       ...overrides,
@@ -3692,7 +3781,7 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
           text="pane output"
           terminalDraft={null}
           rawTerminalDraft={null}
-          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
           display={{ open: false, onToggle: vi.fn() }}
           onSent={vi.fn()}
         />
@@ -4180,6 +4269,45 @@ describe("outcome at the thumb", () => {
     expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
   });
 
+  // #511: the person submits the stranded text by hand (Keys → Enter), the exchange lands in Chat,
+  // and the journal's own user turn is the evidence the send went through. The notice and the kept
+  // draft retire as sent; without that turn nothing is retired, and a draft edited since the send
+  // is the person's new work, not the send's.
+  async function sendUnknownWithEntries() {
+    server.use(...sendHandler(() => sendAnswer("x", "unknown", "no_evidence", { offers: ["keys"] })));
+    const user = userEvent.setup();
+    const { land } = renderComposerWithEntries();
+    await user.type(screen.getByRole("textbox"), "hello there");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(refusalText()).toMatch(/read the screen, then send again/i));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+    return { user, land };
+  }
+
+  it("unknown, then the text lands as a user turn in Chat: the notice and the draft retire as sent (#511)", async () => {
+    const { land } = await sendUnknownWithEntries();
+    land(userTurn("hello there", "turn-1"));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
+    await waitFor(() => expect(refusalText()).toBe(""));
+  });
+
+  it("unknown, then an unrelated user turn lands: the notice and the draft stay (#511)", async () => {
+    const { land } = await sendUnknownWithEntries();
+    land(userTurn("something typed at the desk", "turn-1"));
+    // Give a wrong retirement its chance to happen before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there");
+    expect(refusalText()).toMatch(/read the screen, then send again/i);
+  });
+
+  it("unknown, the draft is edited, then the sent text lands: the notice retires, the edited draft stays (#511)", async () => {
+    const { user, land } = await sendUnknownWithEntries();
+    await user.type(screen.getByRole("textbox"), " plus more");
+    land(userTurn("hello there", "turn-1"));
+    await waitFor(() => expect(refusalText()).toBe(""));
+    expect(screen.getByRole("textbox")).toHaveValue("hello there plus more");
+  });
+
   it("no answer: says so at the thumb, keeps the draft and the request id, and the retry does not send twice", async () => {
     server.use(http.post("/api/send", () => new HttpResponse("down", { status: 502 })));
     const user = userEvent.setup();
@@ -4381,3 +4509,369 @@ describe("the cap (M56 spec 09)", () => {
     expect(recordedSends()[2]!.capAck).toBeUndefined();
   });
 });
+
+describe("Composer tasks dock", () => {
+  it("hides the Tasks button when there are no todos, and toggles the minimal list dock when present", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    expect(screen.queryByRole("button", { name: /^Tasks / })).not.toBeInTheDocument();
+
+    cleanup();
+    renderComposer({
+      readOnly: true,
+      todos: [
+        { id: "1", text: "Audit journal adapters", status: "completed" },
+        { id: "2", text: "Render todo dock", status: "in_progress", activeForm: "Rendering todo dock" },
+        { id: "3", text: "Run tests", status: "pending" },
+      ],
+    });
+
+    const pill = screen.getByRole("button", { name: "Tasks 1/3" });
+    expect(pill).not.toBeDisabled();
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Audit journal adapters")).not.toBeInTheDocument();
+
+    await user.click(pill);
+    expect(pill).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Audit journal adapters")).toBeInTheDocument();
+    expect(screen.getByText("Render todo dock")).toBeInTheDocument();
+    expect(screen.getByText("Run tests")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close Tasks 1/3" }));
+    expect(pill).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Audit journal adapters")).not.toBeInTheDocument();
+  });
+
+  it("renders the translated Tasks button in zh-TW", async () => {
+    setLocale("zh-TW");
+    await whenLocaleReady("zh-TW");
+    try {
+      renderComposer({
+        todos: [
+          { id: "1", text: "第一項", status: "completed" },
+          { id: "2", text: "第二項", status: "in_progress" },
+        ],
+      });
+      expect(await screen.findByRole("button", { name: "待辦 1/2" })).toBeInTheDocument();
+    } finally {
+      setLocale("en");
+    }
+  });
+});
+
+describe("Composer agents mark and sheet", () => {
+  // A fixed instant, not the wall clock: a slow CI shard once crossed a minute boundary between the
+  // fixture and the render and read "6m" for a fixture written as five minutes.
+  const NOW = Date.parse("2026-10-19T12:00:00.000Z");
+  const RUNNING: PaneSubagent[] = [
+    { agentId: "acc7972eef92651f4", agentType: "general-purpose", model: "opus", description: "Agents pill on the belt", startedAt: new Date(NOW - 5 * 60_000).toISOString(), spawnDepth: 1 },
+    { agentId: "a71a608a981ceee4a", agentType: "Explore", model: "inherit", description: "Palette lists plugin skills", spawnDepth: 1 },
+  ];
+
+  /** The pane route's subagent sheet, faked: it records what it was asked to open and to sync. */
+  function SheetHost({ subagents, open, sync }: { subagents: readonly PaneSubagent[]; open: (t: SubagentTarget) => void; sync: (t: SubagentTarget) => void }) {
+    const [active, setActive] = useState<string | null>(null);
+    const handle = useMemo<SubagentSheetHandle>(
+      () => ({
+        activeCardKey: active,
+        open: (target) => {
+          open(target);
+          setActive(target.cardKey);
+        },
+        sync,
+      }),
+      [active, open, sync],
+    );
+    return (
+      <SubagentSheetCtx.Provider value={handle}>
+        <Composer
+          paneId="w1:p1"
+          agent="claude"
+          isShell={false}
+          gone={false}
+          readOnly={false}
+          surface={FREE}
+          text="pane output"
+          terminalDraft={null}
+          rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+          display={{ open: false, onToggle: vi.fn() }}
+          onSent={vi.fn()}
+          subagents={subagents}
+        />
+      </SubagentSheetCtx.Provider>
+    );
+  }
+
+  it("has no agents mark when the pane carries no subagents", () => {
+    renderComposer();
+    expect(screen.queryByRole("button", { name: /^Agents / })).not.toBeInTheDocument();
+    cleanup();
+    renderComposer({ subagents: [] });
+    expect(screen.queryByRole("button", { name: /^Agents / })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="belt-agents"]')).toBeNull();
+  });
+
+  /** The names of the buttons in the belt's fixed block, left to right, found from the Files button. */
+  function fixedBlock(): (string | null)[] {
+    const files = screen.getByRole("button", { name: "Files" });
+    const block = files.parentElement!;
+    return Array.from(block.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
+  }
+
+  it("puts the agents mark in the belt's fixed block, not in the scroller, with the count at the glyph's top right", () => {
+    renderComposer({
+      todos: [{ id: "1", text: "Run tests", status: "pending" }],
+      subagents: RUNNING,
+      changesPill: { onClick: vi.fn(), label: "Files" },
+      pullHandle: { ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" },
+    });
+    const mark = screen.getByRole("button", { name: "Agents 2" });
+    expect(mark).toHaveAttribute("data-slot", "belt-agents");
+    const count = mark.querySelector<HTMLElement>('[data-slot="belt-agents-count"]')!;
+    expect(count.textContent).toBe("2");
+    // The corner badge at the glyph's top right, absolutely placed so a count that steps moves nothing.
+    expect(count).toHaveClass("absolute", "top-0.5", "right-0.5", "tabular-nums");
+    expect(count.className).not.toMatch(/bottom-|translate/);
+    // The fixed block, not the scroller: the mark, then Files, then the Switch mark.
+    expect(fixedBlock()).toEqual(["Agents 2", "Files", "Switch pane"]);
+    const scroller = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!.parentElement!;
+    expect(scroller.contains(mark)).toBe(false);
+    // The Tasks pill stays on the scrolling run of controls, where PR 476 put it.
+    const controls = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+    expect(within(controls).getByRole("button", { name: "Tasks 0/1" })).toBeInTheDocument();
+    expect(within(controls).queryByRole("button", { name: /^Agents / })).toBeNull();
+  });
+
+  it("opens a sheet over the page titled with the count, listing each subagent with its label, task and age", async () => {
+    // Pinned to NOW, so the age is five minutes plus a few milliseconds whatever the runner's speed.
+    // The sheet's own timers need the clock to tick (`shouldAdvanceTime`), or the click never settles.
+    vi.useFakeTimers({ now: NOW, shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderComposer({ subagents: RUNNING });
+      const pill = screen.getByRole("button", { name: "Agents 2" });
+      expect(pill).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Agents pill on the belt")).not.toBeInTheDocument();
+
+      await user.click(pill);
+      expect(pill).toHaveAttribute("aria-expanded", "true");
+      const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+      const rows = within(sheet).getAllByRole("button").filter((b) => b.dataset.slot === "belt-subagent");
+      expect(rows).toHaveLength(2);
+      // The model names the first; `inherit` names nothing, so the second reads by its type.
+      expect(within(rows[0]!).getByText("Agent · opus")).toBeInTheDocument();
+      expect(within(rows[0]!).getByText("Agents pill on the belt")).toBeInTheDocument();
+      expect(within(rows[0]!).getByText("5m")).toBeInTheDocument();
+      expect(within(rows[1]!).getByText("Agent · Explore")).toBeInTheDocument();
+
+      await user.click(within(sheet).getByRole("button", { name: "Close" }));
+      expect(pill).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("moves nothing in flow: the box and Keys keep their nodes, and every new element sits in the fixed sheet", async () => {
+    // Altan, 2026-10-19: "we hate layout shifts. agents list should be a sheet or overlay". The list
+    // was an in-flow dock that pushed the composer; now it floats, so opening it adds nothing in flow.
+    const user = userEvent.setup();
+    renderComposer({ subagents: RUNNING, changesPill: { onClick: vi.fn(), label: "Files" } });
+    const container = document.body;
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const keys = screen.getByRole("button", { name: /^Keys/ });
+    const before = new Set(container.querySelectorAll("*"));
+
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+    expect(sheet).toHaveClass("fixed");
+    // The same nodes, still in the document: nothing re-mounted them.
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBe(box);
+    expect(screen.getByRole("button", { name: /^Keys/ })).toBe(keys);
+    // Every element that was not there before is the sheet or inside it.
+    const added = Array.from(container.querySelectorAll("*")).filter((el) => !before.has(el));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.filter((el) => !sheet.contains(el))).toEqual([]);
+    // And nothing that was there before has gone.
+    expect(Array.from(before).filter((el) => !container.contains(el))).toEqual([]);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Agents 2" })).toBeNull();
+    expect(new Set(container.querySelectorAll("*"))).toEqual(before);
+  });
+
+  it("stands right of the X: clear, agents, Files, Switch pane, with a draft in the box", async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      subagents: RUNNING,
+      changesPill: { onClick: vi.fn(), label: "Files" },
+      pullHandle: { ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" },
+    });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "a draft");
+    expect(fixedBlock()).toEqual(["Clear message", "Agents 2", "Files", "Switch pane"]);
+  });
+
+  it("comes and goes through Collapse on its x axis, and unmounts after the exit", () => {
+    vi.useFakeTimers();
+    try {
+      const props = {
+        paneId: "w1:p1",
+        agent: "claude",
+        isShell: false,
+        gone: false,
+        readOnly: false,
+        surface: FREE,
+        text: "pane output",
+        terminalDraft: null,
+        rawTerminalDraft: null,
+        prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
+        display: { open: false, onToggle: vi.fn() },
+        onSent: vi.fn(),
+        changesPill: { onClick: vi.fn(), label: "Files" },
+      } satisfies ComponentProps<typeof Composer>;
+      let setList: (next: readonly PaneSubagent[]) => void = () => {};
+      function Live() {
+        const [list, set] = useState<readonly PaneSubagent[]>(RUNNING);
+        setList = set;
+        return <Composer {...props} subagents={list} />;
+      }
+      const router = createMemoryRouter([{ path: "/", element: <Live /> }]);
+      render(<RouterProvider router={router} />);
+      const mark = screen.getByRole("button", { name: "Agents 2" });
+      const box = mark.closest<HTMLElement>('[data-slot="collapse"]')!;
+      expect(box).toHaveAttribute("data-axis", "x");
+      // `appear`: the mark may be what mounts the pinned block, so it starts closed and opens after
+      // two frames rather than popping in.
+      expect(box).toHaveAttribute("data-state", "closed");
+      act(() => {
+        vi.advanceTimersByTime(64);
+      });
+      expect(box).toHaveAttribute("data-state", "open");
+
+      // A count that steps changes the numeral and nothing else: the same box, still open.
+      act(() => setList([RUNNING[0]!]));
+      expect(screen.getByRole("button", { name: "Agents 1" }).closest('[data-slot="collapse"]')).toBe(box);
+      expect(box).toHaveAttribute("data-state", "open");
+
+      act(() => setList([]));
+      expect(box).toHaveAttribute("data-state", "closed");
+      expect(box).toHaveClass("grid-cols-[0fr]");
+      // Held through the exit, gone after it.
+      expect(screen.getByRole("button", { name: "Agents 1" })).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(COLLAPSE_MS + 1);
+      });
+      expect(screen.queryByRole("button", { name: /^Agents / })).toBeNull();
+      expect(document.querySelector('[data-slot="collapse"][data-axis="x"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a row tap opens the subagent transcript over the list, sends nothing, and the list stays under it", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn<(t: SubagentTarget) => void>();
+    const sync = vi.fn<(t: SubagentTarget) => void>();
+    const router = createMemoryRouter([{ path: "/", element: <SheetHost subagents={RUNNING} open={open} sync={sync} /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    const rows = document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]');
+    await user.click(rows[1]!);
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0]![0]).toMatchObject({ agentId: "a71a608a981ceee4a", agent: "Explore", summary: "Palette lists plugin skills", status: "running" });
+    expect(recordedSends()).toHaveLength(0);
+    // A second layer, not a step away: the list is still open under the transcript.
+    expect(screen.getByRole("dialog", { name: "Agents 2" })).toBeInTheDocument();
+    // One Escape is heard by both sheets; the list ignores it while the transcript stands over it.
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Agents 2" })).toBeInTheDocument();
+  });
+
+  it("tells the open sheet the subagent ended once it leaves the running list", async () => {
+    const user = userEvent.setup();
+    const open = vi.fn<(t: SubagentTarget) => void>();
+    const sync = vi.fn<(t: SubagentTarget) => void>();
+    let setList: (next: readonly PaneSubagent[]) => void = () => {};
+    function Live() {
+      const [list, set] = useState<readonly PaneSubagent[]>(RUNNING);
+      setList = set;
+      return <SheetHost subagents={list} open={open} sync={sync} />;
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Live /> }]);
+    render(<RouterProvider router={router} />);
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    await user.click(document.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]')[0]!);
+    expect(sync).not.toHaveBeenCalled();
+
+    act(() => setList([RUNNING[1]!]));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]![0]).toMatchObject({ agentId: "acc7972eef92651f4", status: "done" });
+  });
+});
+
+describe("Composer command suggestions (#458)", () => {
+  beforeEach(() => __resetOperatorCommands());
+  afterEach(() => __resetOperatorCommands());
+
+  it("shows matching commands above the composer on `/`, and a tap fills with a trailing space without sending", async () => {
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(document.querySelector('[data-slot="command-suggestions"]')).toBeNull();
+
+    await user.type(box, "/co");
+    const list = await screen.findByRole("group", { name: "Agent commands" });
+    expect(within(list).getByText("/compact")).toBeInTheDocument();
+    expect(within(list).getByText("/context")).toBeInTheDocument();
+    expect(within(list).getByText("/cost")).toBeInTheDocument();
+
+    // Tapping stages the command + a trailing space, never sends, and closes the list.
+    await user.click(within(list).getByText("/compact"));
+    expect(box).toHaveValue("/compact ");
+    expect(recordedSends()).toEqual([]);
+    expectLeaving(screen.queryByRole("group", { name: "Agent commands" }));
+  });
+
+  it("uses the operator's command list when one addresses the pane, and hides suggestions in Type mode", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          operatorCommands: [
+            {
+              agent: "claude",
+              command: "/deploy-staging",
+              description: "Deploy staging",
+              takesArg: true,
+              argHint: "<tag>",
+            },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    await user.type(box, "/");
+    const list = await screen.findByRole("group", { name: "Agent commands" });
+    expect(within(list).getByText("/deploy-staging")).toBeInTheDocument();
+    expect(within(list).queryByText("/compact")).toBeNull();
+
+    // Clearing the draft closes the list, and typing `/` in Type mode never opens it.
+    await user.clear(box);
+    expectLeaving(screen.queryByRole("group", { name: "Agent commands" }));
+    await user.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    await user.type(box, "/de");
+    expect(
+      document
+        .querySelector('[data-slot="command-suggestions"]')
+        ?.closest('[data-slot="collapse"]')
+        ?.getAttribute("data-state") ?? "closed",
+    ).toBe("closed");
+  });
+});
+

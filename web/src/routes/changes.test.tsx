@@ -6,12 +6,12 @@ import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHANGES_POLL_MS } from "@/hooks/use-visible-interval";
-import { keepChangeCount, resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
+import { keepChangeCount, keptChangeCount, resetChangeCountCache } from "@/hooks/use-workspace-change-counts";
 import { resetChangesListCache } from "@/lib/changes-list-cache";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { NavState } from "@/lib/nav";
-import type { AgentView, PaneChangesResponse } from "@/lib/types";
+import type { AgentView, PaneChangesResponse, WorkspaceView } from "@/lib/types";
 import { summarizeChanges } from "@/lib/workspace-changes";
 import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -22,12 +22,13 @@ import { ChangesRoute } from "./changes";
 // The panes the loader answers with. A case that needs a pane to carry more (a branch) swaps them;
 // `afterEach` puts the fixture back.
 let loaderAgents: AgentView[] = fixtureAgents;
+let loaderWorkspaces: WorkspaceView[] = [];
 
 const connected = (): HomeData => ({
   bridge: "connected",
   agents: loaderAgents,
   shellPanes: [],
-  workspaces: [],
+  workspaces: loaderWorkspaces,
   tabs: [],
   device: undefined,
   sessions: [],
@@ -86,6 +87,7 @@ afterEach(() => {
   resetChangesListCache();
   resetChangeCountCache();
   loaderAgents = fixtureAgents;
+  loaderWorkspaces = [];
 });
 
 describe("ChangesRoute — the branch in the header", () => {
@@ -341,6 +343,41 @@ describe("ChangesRoute — the first frame", () => {
     await waitFor(() => expect(totalsText()).toBe("+1 −1"));
     await release();
     await waitFor(() => expect(totalsText()).toBe("+10 −2"));
+  });
+
+  it("a pane outside its workspace's folder neither seeds from nor overwrites the workspace's kept totals (#509)", async () => {
+    loaderAgents = [{ ...fixtureAgents[0]!, cwd: "/private/tmp/scratch" }, ...fixtureAgents.slice(1)];
+    loaderWorkspaces = [
+      {
+        workspaceId: "w1",
+        number: 1,
+        label: "webapp",
+        focused: false,
+        activeTabId: "w1:t1",
+        tabCount: 1,
+        paneCount: 1,
+        folder: "/home/you/webapp",
+      },
+    ];
+    const kept = { kind: "changed", files: 9, added: 1, removed: 1 } as const;
+    keepChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP, kept);
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/changes/, async ({ request }) => {
+        if (new URL(request.url).searchParams.has("path")) return undefined;
+        await gate;
+        return HttpResponse.json(fixtureChanges);
+      }),
+    );
+    renderAt("/pane/w1%3Ap1/changes");
+    await waitFor(() => expect(document.querySelector('[data-slot="changes-skeleton"]')).not.toBeNull());
+    // Not the workspace's totals: this pane's list is its own folder's, still unread.
+    expect(totals()).toBeNull();
+    await act(() => release());
+    await waitFor(() => expect(totalsText()).toBe("+10 −2"));
+    // And its own sum never lands in the workspace's kept answer.
+    expect(keptChangeCount({ scope: {}, workspaceId: "w1" }, LOOKUP)).toEqual(kept);
   });
 
   it("with nothing kept, draws no totals and a skeleton list, then both once the answer lands", async () => {

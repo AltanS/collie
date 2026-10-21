@@ -9,7 +9,7 @@
 //
 // The union is deliberately SMALL and closed. Ten kinds cover every tool the seven adapters have met,
 // because tool vocabularies overlap almost completely: each harness has a read, a shell, a grep and
-// an edit under some spelling. The tenth, `plan`, is a task list the agent keeps rewriting (ADR 0110):
+// an edit under some spelling. The tenth, `plan`, is a task list the agent keeps rewriting (ADR 0114):
 // it fits none of the nine, and as `other` every update is a line that says only that the list
 // changed. A tool outside the ten is not an error, it is `other`, and it still carries a name and a
 // summary, so an unrecognised tool degrades to exactly what the view drew before this module existed.
@@ -73,9 +73,12 @@ export type ToolCall =
   | { kind: "fetch"; url: string }
   /** A file was removed or renamed. `to` is the destination of a move. */
   | { kind: "delete" | "move"; path: string; to?: string }
-  /** A subagent ran. `ongoing`: it returned before its work ended and no end notice has arrived. */
-  | { kind: "task"; agent: string; summary: string; ongoing?: true }
-  /** A task list the agent keeps up to date (ADR 0110). The list is the whole list as of this call. */
+  /**
+   * A subagent ran. `agentId` names the subagent's own log when the harness records one. `ongoing`:
+   * it returned before its work ended and no end notice has arrived.
+   */
+  | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
+  /** A task list the agent keeps up to date (ADR 0114). The list is the whole list as of this call. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /**
    * The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is
@@ -106,6 +109,9 @@ const NAMES = {
   // Muse's file verbs (bridge/journal/muse.ts): without these its workhorse calls read as `other`.
   edit_file: "edit",
   write_file: "edit",
+  // Kiro's file verbs (bridge/journal/kiro.ts).
+  fs_write: "edit",
+  str_replace: "edit",
   // execute
   bash: "execute",
   shell: "execute",
@@ -116,6 +122,8 @@ const NAMES = {
   run: "execute",
   bashoutput: "execute",
   exec_command: "execute",
+  // Kiro's shell tool.
+  execute_bash: "execute",
   // Gentle Shell's jobs return at once and end later; `background` marks them (see below).
   bash_background: "execute",
   monitor: "execute",
@@ -325,7 +333,13 @@ function readQuestions(o: JsonObject): ToolQuestion[] | undefined {
       if (description !== undefined) entry.description = description;
       options.push(entry);
     }
-    const parsed: ToolQuestion = { question, multiple: q.multiple === true || q.multiSelect === true, options };
+    // Muse spells multi-select as a nested `selection: {mode: "multiple", …}` instead of a flag.
+    const selectionMultiple = isRecord(q.selection) && q.selection.mode === "multiple";
+    const parsed: ToolQuestion = {
+      question,
+      multiple: q.multiple === true || q.multiSelect === true || selectionMultiple,
+      options,
+    };
     const header = text(q.header, MAX_HEADER_CHARS);
     if (header !== undefined) parsed.header = header;
     questions.push(parsed);
@@ -396,13 +410,16 @@ export function classifyToolCall(name: string, input: JsonValue | undefined, sum
       if (to !== undefined) call.to = to;
       return call;
     }
-    case "task":
-      return {
-        kind: "task",
-        agent: str(o, "subagent_type", "agent", "agent_type") ?? "agent",
-        // Never `prompt`: it is the whole message to the agent, and the one-line summary is its name.
-        summary: str(o, "description", "label", "task") ?? summary,
-      };
+    case "task": {
+      // NO WORD STANDS IN FOR A MISSING NAME. A Claude Code Agent call that names no subagent type
+      // carries its `model` ("opus", "sonnet") instead, and that says more than the word "agent" did.
+      // With neither, the field is absent and the card draws plain "Agent".
+      // Never `prompt`: it is the whole message to the agent, and the one-line summary is its name.
+      const call: ToolCall = { kind: "task", summary: str(o, "description", "label", "task") ?? summary };
+      const agent = str(o, "subagent_type", "agent", "agent_type") ?? str(o, "model");
+      if (agent !== undefined) call.agent = agent;
+      return call;
+    }
     case "plan":
       // Hermes's `todo` with `merge: true` carries only the items it changed: drawn as the list, it
       // would claim every other task was gone.

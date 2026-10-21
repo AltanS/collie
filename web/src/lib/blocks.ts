@@ -328,7 +328,7 @@ function styledLine(segments: AnsiSegment[]): StyledLine {
   return { segments };
 }
 
-// The two generic StyledLine probes. They live HERE, in the core AST module that imports nothing
+// The generic StyledLine probes. They live HERE, in the core AST module that imports nothing
 // from harness/, because they are properties of a StyledLine and of no grammar: the renderer
 // (components/ansi-output.tsx) and every harness adapter need them, and a second copy in a
 // harness-specific module would make a neutral consumer import a harness. harness/claude/markers
@@ -343,6 +343,24 @@ export function lineText(line: StyledLine): string {
 /** True when a line is empty or only whitespace. */
 export function isBlank(text: string): boolean {
   return text.trim().length === 0;
+}
+
+// The question marks a dialog's question may carry: the ASCII "?", the fullwidth "？" (U+FF1F) that
+// Japanese and Chinese text ends a question with, and the Arabic "؟" (U+061F). The Greek question
+// mark is the ";" of ordinary prose, so it is not one.
+const QUESTION_MARK = /[?\uFF1F\u061F]/;
+
+/** True when a row carries a question mark in any of the scripts above. The harness readers find a
+ *  dialog's question by this, so a question that ends in "？" is still a question. */
+export function hasQuestionMark(text: string): boolean {
+  return QUESTION_MARK.test(text);
+}
+
+/** The index of the last row holding visible text, or -1 when every row is blank. */
+export function lastNonBlankIndex(texts: readonly string[]): number {
+  let i = texts.length - 1;
+  while (i >= 0 && isBlank(texts[i]!)) i--;
+  return i;
 }
 
 /** Drop a trailing run of blank lines (keeps the raw block above the buttons tight). Exported for the

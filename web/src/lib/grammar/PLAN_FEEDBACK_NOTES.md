@@ -202,8 +202,12 @@ Both were read back out of the agent's own transcript, not inferred from the scr
 
 ## Two sibling fields (measured 2026-09-26, Claude Code 2.1.283)
 
-Two more rows behave like this one, and `prompt-select.ts` now models both with the `free-text`
-purpose: read, shown, and never typed into. Fixtures `claude--v2283-*`, table in the fixtures README.
+Two more rows behave like this one. `prompt-select.ts` models the permission amend note with the
+`free-text` purpose: read, shown, and never typed into. AskUserQuestion's field was modelled the
+same way until 2026-10-14; it is now the `answer` purpose and typed into by its own recipe, measured
+in [`ASK_FIELD_NOTES.md`](./ASK_FIELD_NOTES.md) (ADR 0113). Its rules differ from this row's: its
+digit SUBMITS a filled field, and `ctrl+u ctrl+k` does clear it. Fixtures `claude--v2283-*`, table
+in the fixtures README.
 
 | Row | Opens | Focused digit | Pointer leaves | Footer |
 |---|---|---|---|---|
@@ -218,4 +222,4 @@ differently (esc)` is a real option: the `(esc)` suffix is what a placeholder ne
 The field is found by position, because typing replaces the placeholder: on AskUserQuestion it is
 the row above the rule that sets off `Chat about this`; on a permission dialog it is a first row
 reading `Yes, …` or a last row reading `No, …`. A wizard or multiSelect step with the pointer on
-its field is not claimed at all, because neither model has a lock.
+its field is claimed too, with the field in its model (`ASK_FIELD_NOTES.md`).

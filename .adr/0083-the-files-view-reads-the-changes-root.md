@@ -1,6 +1,12 @@
 # 0083 — The Files view reads the Changes root
 
 - **Status:** Accepted. Amended by [ADR 0086](./0086-reads-need-the-pairing-token.md): reads need the pairing token, so the context's "reads were open" is no longer true.
+- **Reused by:** `GET /api/folders/browse`, the New page's folder browser (#467, 2026-10-19,
+  `bridge/folder-browse.ts`). It lists folder NAMES under home on this ADR's rules with home's real
+  path as the root: the shape check of point 3, real-path containment of point 4 (a link out is
+  refused, not followed), the deny list of point 5 with dot-folders also hidden unless typed, the one
+  refusal of point 6, a cap of 200 rows, and the `device-read` gate of point 9. Home as the root is
+  the one difference from point 2, whose bound exists to stop a workspace root from being home.
 - **Date:** 2026-10-05
 - **Shipped in:** pending (1.17.0)
 - **Relates to:** [ADR 0065](./0065-the-changes-view-reads-git-read-only.md), whose last bullet named a

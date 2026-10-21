@@ -1,0 +1,12 @@
+[0m[38;2;218;165;32mcode_execution, computer_use, connections, cronjob, [0m
+[0m[38;2;218;165;32mdelegation, file, image_gen, memory, session_search, skills,[0m
+[0m[38;2;218;165;32mterminal, todo, tts, vision, web[0m [0m[2m[38;2;184;134;11m·[0m [0m[2mprovider: custom[0m
+
+[0m[38;2;255;248;220mWelcome to Hermes Agent! Type your message or /help for [0m
+[0m[38;2;255;248;220mcommands.[0m
+[0m[2m[38;2;184;134;11m✦ Tip: group_sessions_per_user: true gives each person their[0m
+[0m[2m[38;2;184;134;11mown session in group chats.[0m
+
+[0m[38;2;192;192;192m[48;2;26;26;46m ☤ [0m[1m[38;2;255;215;0m[48;2;26;26;46mlab-model[0m[38;2;138;122;74m[48;2;26;26;46m · -- · 13s[0m[38;2;192;192;192m[48;2;26;26;46m [0m
+[0m[38;2;205;127;50m────────────────────────────────────────────────────────────[0m
+[0m[38;2;255;248;220m❯ [0mCLARIFY-ONE

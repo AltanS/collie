@@ -19,6 +19,13 @@ function pane(over: Partial<AgentView> = {}): AgentView {
 
 const REF = { kind: "id", value: "01a0a28c-ba4b-76f2-a3d8-637a1b190f6a" } as const;
 
+describe("toPaneWire instance", () => {
+  test("carries the walky instance token when the registry gives one, and no key when not", () => {
+    expect(toPaneWire(pane(), () => false, () => false, "k3f9").instance).toBe("k3f9");
+    expect("instance" in toPaneWire(pane(), () => false)).toBe(false);
+  });
+});
+
 describe("toPaneWire hasSession", () => {
   test("a reported ref plus an adapter offers History", () => {
     const wire = toPaneWire(pane({ agentSession: { ...REF } }), () => true);

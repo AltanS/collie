@@ -5,38 +5,61 @@
 // ISOLATION, IN ONE PLACE.
 //   - Everything lives under STATE_ROOT, on disk (`~/.cache/collie-lab/browser-leg-state`). Not /tmp:
 //     bluefin's /tmp is tmpfs, and an out-of-memory crash wiped a /tmp lab on 2026-10-12.
-//   - Herdr: its own server under its own XDG_CONFIG_HOME (STATE_ROOT/rig/xdg). Every herdr call
-//     below goes through `herdrEnv()`, which drops every inherited HERDR_* name (the operator's agent
-//     session sets HERDR_SOCKET_PATH and HERDR_PANE_ID) and points XDG_CONFIG_HOME at the rig's home.
-//     The operator's own Herdr server and its panes are never named, read or written.
+//   - Herdr: its own server under its own XDG_CONFIG_HOME. Every herdr call below goes through
+//     `herdrEnv()`, which drops every inherited HERDR_* name (the operator's agent session sets
+//     HERDR_SOCKET_PATH and HERDR_PANE_ID) and points XDG_CONFIG_HOME at the rig's home. The operator's
+//     own Herdr server and its panes are never named, read or written. That one folder is the only
+//     part of the rig outside STATE_ROOT: Herdr binds its sockets under XDG_CONFIG_HOME and a socket
+//     path holds at most 107 bytes, so the folder is a short one in $XDG_RUNTIME_DIR or /tmp, named
+//     from a hash of STATE_ROOT (sock-path.ts). `rig.ts up` checks the length; `down` removes it.
 //   - The bridge: `bun bridge/index.ts` from this checkout on 127.0.0.1:18700-18799, with fresh state
 //     and config dirs and every inherited COLLIE_* name dropped. No `collie` verb is ever run.
 //   - Every kill is by a pid the rig recorded, after /proc/<pid>/cmdline matched. No pkill.
+//
+// THE CREW RIG (`rig.ts up --crew`, the crew leg). A second machine beside the first: the LEAD is the
+// rig above, and the MEMBER is a second Herdr server (session `collie-rig-member`, its own short XDG
+// home) and a second bridge with its own state, config and HOME under `<rig>/member/`. The crew rig
+// has its own default state root (`browser-leg-crew-state`), so the solo leg and the crew leg never
+// share a rig folder, a Herdr home or a port. `COLLIE_RIG_CREW=1` selects it (crew-env.ts sets it).
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import { createConnection } from "node:net";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../src/lib/json";
+import { XDG_HOME_NAME, shortXdgHome } from "./sock-path";
+
+/** True for the crew rig (lead and member); the solo rig otherwise. */
+export const CREW = process.env.COLLIE_RIG_CREW === "1";
 
 /** The leg's own folder on disk. The guard below refuses any path outside it. */
-export const STATE_ROOT = resolve(process.env.COLLIE_RIG_STATE ?? join(homedir(), ".cache", "collie-lab", "browser-leg-state"));
+export const STATE_ROOT = resolve(process.env.COLLIE_RIG_STATE ?? join(homedir(), ".cache", "collie-lab", CREW ? "browser-leg-crew-state" : "browser-leg-state"));
 if (!STATE_ROOT.startsWith(join(homedir(), ".cache", "collie-lab") + "/")) {
   throw new Error(`the rig state must live under ~/.cache/collie-lab/, not ${STATE_ROOT}`);
 }
 
 /** The Herdr session name. It exists only under the rig's XDG home. */
 export const SESSION = "collie-rig";
+/** The member's Herdr session name, under the member's own XDG home. */
+export const MEMBER_SESSION = "collie-rig-member";
+/** The crew's member ids: the label each side enrols under (`crew invite --as`, `crew join --label`). */
+export const LEAD_ID = "rig-lead";
+export const MEMBER_ID = "rig-member";
+/** The label the rig's one paired device carries: an operator's walky talky message names it. */
+export const DEVICE_LABEL = "browser-leg";
 /** The bridge's port range. Far from every Collie lane (8787-8799, 5198, 5199). */
 export const PORT_LO = 18700;
 export const PORT_HI = 18799;
 
 const RIG = join(STATE_ROOT, "rig");
+const RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
 export const P = {
   rig: RIG,
   state: join(RIG, "state"), // COLLIE_STATE_DIR
   config: join(RIG, "config"), // HERDR_PLUGIN_CONFIG_DIR
-  xdg: join(RIG, "xdg"), // XDG_CONFIG_HOME for herdr only
+  xdg: shortXdgHome(STATE_ROOT, SESSION, RUNTIME_DIR !== undefined && existsSync(RUNTIME_DIR) ? RUNTIME_DIR : undefined), // XDG_CONFIG_HOME for herdr only; short, so its sockets fit sun_path
   xdgState: join(RIG, "xdg-state"), // XDG_STATE_HOME for herdr only (its agent-detection status file)
   logs: join(RIG, "logs"),
   work: join(RIG, "work"), // cwd of the view workspace
@@ -49,6 +72,66 @@ export const P = {
   results: join(STATE_ROOT, "results"), // one folder per run: ledger, table, screen captures
 } as const;
 
+/** One machine of the rig: the lead (the solo rig is a lead with no member) or the crew's member. */
+export type Machine = "lead" | "member";
+export const MACHINES: readonly Machine[] = ["lead", "member"];
+
+/** What one machine of the rig owns: its Herdr session and home, and its bridge's dirs. */
+export interface MachineDirs {
+  readonly machine: Machine;
+  readonly session: string;
+  readonly state: string;
+  readonly config: string;
+  readonly xdg: string;
+  readonly xdgState: string;
+  readonly work: string;
+  readonly bridgeHome: string;
+  readonly homeCfg: string;
+  readonly herdrCfg: string;
+  /** The parent of this machine's harness folders. */
+  readonly harness: string;
+}
+
+const MEMBER_ROOT = join(RIG, "member");
+const DIRS = {
+  lead: { machine: "lead", session: SESSION, state: P.state, config: P.config, xdg: P.xdg, xdgState: P.xdgState, work: P.work, bridgeHome: P.bridgeHome, homeCfg: P.homeCfg, herdrCfg: P.herdrCfg, harness: P.harness },
+  member: {
+    machine: "member",
+    session: MEMBER_SESSION,
+    state: join(MEMBER_ROOT, "state"),
+    config: join(MEMBER_ROOT, "config"),
+    // Its own hash input, so the member's Herdr home is never the lead's.
+    xdg: shortXdgHome(join(STATE_ROOT, "member"), MEMBER_SESSION, RUNTIME_DIR !== undefined && existsSync(RUNTIME_DIR) ? RUNTIME_DIR : undefined),
+    xdgState: join(MEMBER_ROOT, "xdg-state"),
+    work: join(MEMBER_ROOT, "work"),
+    bridgeHome: join(MEMBER_ROOT, "bridge-home"),
+    homeCfg: join(MEMBER_ROOT, "config", "home-config.toml"),
+    herdrCfg: join(MEMBER_ROOT, "herdr-config.toml"),
+    harness: join(STATE_ROOT, "harness", "member"),
+  },
+} as const satisfies Record<Machine, MachineDirs>;
+
+export function machineDirs(machine: Machine): MachineDirs {
+  return DIRS[machine];
+}
+
+/** Read a `--on lead|member` flag out of an argument list; the lead when it is absent. */
+export function machineFlag(args: readonly string[]): Machine {
+  const at = args.indexOf("--on");
+  if (at === -1) return "lead";
+  const value = args[at + 1];
+  if (value !== "lead" && value !== "member") throw new Error("--on takes lead or member");
+  return value;
+}
+
+/** The member's half of a crew rig: its port, its Herdr socket and the pids the daemon started. */
+export interface MemberRun {
+  readonly port: number;
+  socket: string;
+  herdrPid: number | null;
+  bridgePid: number | null;
+}
+
 /** What the rig daemon records about the processes it started. */
 export interface Run {
   readonly worktree: string;
@@ -59,12 +142,44 @@ export interface Run {
   bridgePid: number | null;
   ready: boolean;
   readonly startedAt: string;
+  /** Set on a crew rig only: the member, and the ids both sides enrolled under. */
+  member?: MemberRun;
+  leadId?: string;
+  memberId?: string;
 }
 
 export function assertUnderRoot(path: string): string {
   const full = resolve(path);
   if (full !== STATE_ROOT && !full.startsWith(`${STATE_ROOT}/`)) throw new Error(`refusing a path outside ${STATE_ROOT}: ${full}`);
   return full;
+}
+
+/** A socket path Herdr reported must sit in that machine's own Herdr home. */
+export function assertUnderXdg(path: string, machine: Machine = "lead"): string {
+  const full = resolve(path);
+  const xdg = DIRS[machine].xdg;
+  if (!full.startsWith(`${xdg}/`)) throw new Error(`refusing a socket outside ${xdg}: ${full}`);
+  return full;
+}
+
+/** The Herdr home may sit in /tmp: use it only when it is a real directory of this user that nobody else can enter. */
+export function assertPrivateDir(dir: string): void {
+  const st = lstatSync(dir);
+  const uid = process.getuid?.();
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) {
+    throw new Error(`refusing ${dir}: it is not a directory of this user with mode 0700`);
+  }
+}
+
+/**
+ * Remove the rig's Herdr home once its session has no running server. It refuses any folder that does
+ * not carry the rig's own name, and leaves the folder alone while Herdr could still use it.
+ */
+export function retireXdgHome(machine: Machine = "lead"): void {
+  const xdg = DIRS[machine].xdg;
+  if (!XDG_HOME_NAME.test(basename(xdg))) throw new Error(`refusing to remove ${xdg}: not a rig Herdr home`);
+  if (!existsSync(xdg) || sessionRunning(machine)) return;
+  rmSync(xdg, { recursive: true, force: true });
 }
 
 export function readRun(): Run | null {
@@ -149,16 +264,17 @@ export function memGuard(what: string): void {
 // ── Herdr, always the rig's own ──────────────────────────────────────────────────────────────────
 
 /** The environment for herdr and the panes it starts: no inherited HERDR_ or CLAUDE names. */
-export function herdrEnv() {
+export function herdrEnv(machine: Machine = "lead") {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     if (/^(HERDR_|CLAUDECODE$|CLAUDE_CODE_|CLAUDE_PID$|CLAUDE_EFFORT$|COLLIE_)/.test(key)) continue;
     out[key] = value;
   }
-  out.XDG_CONFIG_HOME = P.xdg;
-  out.XDG_STATE_HOME = P.xdgState;
-  out.HERDR_CONFIG_PATH = P.herdrCfg;
+  const d = DIRS[machine];
+  out.XDG_CONFIG_HOME = d.xdg;
+  out.XDG_STATE_HOME = d.xdgState;
+  out.HERDR_CONFIG_PATH = d.herdrCfg;
   out.HERDR_DISABLE_SOUND = "1";
   return out;
 }
@@ -169,15 +285,26 @@ export interface HerdrResult {
   readonly err: string;
 }
 
-/** One herdr call in the rig's home. `session: false` leaves out `--session collie-rig`. */
-export function herdr(args: readonly string[], opts: { session?: boolean } = {}): HerdrResult {
-  const argv = opts.session === false ? [...args] : ["--session", SESSION, ...args];
-  const r = spawnSync("herdr", argv, { env: herdrEnv(), encoding: "utf8", timeout: 30_000 });
+/** One herdr call in a machine's home. `session: false` leaves out `--session <its session>`. */
+export function herdr(args: readonly string[], opts: { session?: boolean; machine?: Machine } = {}): HerdrResult {
+  const machine = opts.machine ?? "lead";
+  const argv = opts.session === false ? [...args] : ["--session", DIRS[machine].session, ...args];
+  const r = spawnSync("herdr", argv, { env: herdrEnv(machine), encoding: "utf8", timeout: 30_000 });
   return { code: r.status ?? 1, out: r.stdout ?? "", err: r.stderr ?? "" };
 }
 
-export function herdrJson(args: readonly string[]): JsonObject {
-  const r = herdr(args);
+/** True while a machine's Herdr session has a running server. */
+export function sessionRunning(machine: Machine = "lead"): boolean {
+  try {
+    const doc: { sessions: { name: string; running: boolean }[] } = JSON.parse(herdr(["session", "list", "--json"], { session: false, machine }).out);
+    return doc.sessions.some((s) => s.name === DIRS[machine].session && s.running);
+  } catch {
+    return false;
+  }
+}
+
+export function herdrJson(args: readonly string[], machine: Machine = "lead"): JsonObject {
+  const r = herdr(args, { machine });
   const doc = asJsonObject(parseJson(r.out)) ?? {};
   if (r.code !== 0 || doc.error !== undefined) {
     throw new Error(`herdr ${args.slice(0, 2).join(" ")}: ${asJsonString(asJsonObject(doc.error)?.message) ?? (r.err || r.out).trim()}`);
@@ -185,21 +312,64 @@ export function herdrJson(args: readonly string[]): JsonObject {
   return asJsonObject(doc.result) ?? {};
 }
 
-/** A new workspace in the rig's Herdr with one shell pane; returns the pane id. */
-export function newWorkspacePane(cwd: string, label: string): string {
-  const ws = herdrJson(["workspace", "create", "--cwd", cwd, "--label", label, "--no-focus"]);
+/** A new workspace in a machine's Herdr with one shell pane; returns the pane id. */
+export function newWorkspacePane(cwd: string, label: string, machine: Machine = "lead"): string {
+  const ws = herdrJson(["workspace", "create", "--cwd", cwd, "--label", label, "--no-focus"], machine);
   const paneId = asJsonString(asJsonObject(ws.root_pane)?.pane_id) ?? null;
   if (paneId === null) throw new Error("herdr gave no pane id");
   return paneId;
 }
 
 /** Close a rig pane, and with it the harness in it. */
-export function paneClose(paneId: string): void {
-  herdr(["pane", "close", paneId]);
+export function paneClose(paneId: string, machine: Machine = "lead"): void {
+  herdr(["pane", "close", paneId], { machine });
 }
 
 /** Type a line into a rig pane and press Enter (`herdr pane run`). */
-export function paneRun(paneId: string, line: string): void {
-  const r = herdr(["pane", "run", paneId, line]);
+export function paneRun(paneId: string, line: string, machine: Machine = "lead"): void {
+  const r = herdr(["pane", "run", paneId, line], { machine });
   if (r.code !== 0) throw new Error(`herdr pane run: ${(r.err || r.out).trim()}`);
+}
+
+// ── walky talky, through a machine's own socket ──────────────────────────────────────────────────
+
+/** A machine's walky talky socket: `<state>/walky/sock`, the one `collie walky` asks (bridge/walky/socket.ts). */
+export function walkySocket(machine: Machine = "lead"): string {
+  return join(DIRS[machine].state, "walky", "sock");
+}
+
+/**
+ * One request line to a machine's walky socket and its one answer line, as `collie walky` sends it
+ * (`cli/walky.ts` askSocket) but with no pane markers: the answer is the machine's, not a pane's. So
+ * `{ op: "status", id }` reads a message's receipts the way `collie walky status <id>` does on that
+ * machine. Null when nothing answered in `ms`.
+ */
+export async function askWalky(machine: Machine, body: JsonObject, ms = 10_000): Promise<JsonObject | null> {
+  const line = `${JSON.stringify({ v: 1, markers: [], ...body })}\n`;
+  const conn = createConnection({ path: walkySocket(machine) });
+  conn.on("error", () => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((done) => {
+    timer = setTimeout(() => done(null), ms);
+  });
+  const answered = (async (): Promise<string | null> => {
+    const connected = await once(conn, "connect").then(
+      () => true,
+      () => false,
+    );
+    if (!connected) return null;
+    conn.setEncoding("utf8");
+    conn.write(line);
+    let text = "";
+    for await (const chunk of conn) {
+      text += String(chunk);
+      const at = text.indexOf("\n");
+      if (at >= 0) return text.slice(0, at);
+    }
+    return text === "" ? null : text;
+  })();
+  const raw = await Promise.race([answered, late]);
+  clearTimeout(timer);
+  conn.destroy();
+  return raw === null ? null : (asJsonObject(parseJson(raw)) ?? null);
 }

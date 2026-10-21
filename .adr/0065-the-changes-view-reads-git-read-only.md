@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-09-23
 - **Shipped in:** pending
+- **Amended in scope by:** [ADR 0112](./0112-a-pane-outside-its-workspace-folder-reads-its-own.md)
+  — §3's "every pane in one workspace shows the same list" holds for the panes inside the
+  workspace folder; a pane whose own folder is outside it reads its own folder instead (#509).
+  Nothing below is retracted: the root rule, the bound and discovery apply as written.
 - **Trail:** GitHub discussion 258 and issues 256 / 257 (@lighcen: "show me what the agent changed")
   · `bridge/changes.ts` · `bridge/server.ts` (`PANE_ROUTE`, `paneChanges`) ·
   `bridge/changes-root.ts` (`workspaceRoot`) · `WORKSPACE_CHANGES_ROUTE`, `workspaceChanges` ·

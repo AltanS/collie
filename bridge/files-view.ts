@@ -295,7 +295,7 @@ export interface FilesContext {
 }
 
 /** A host that folds case whatever the platform: the deny checks err towards refusing. */
-function foldingHost(host: Host): Host {
+export function foldingHost(host: Host): Host {
   return host.caseInsensitive ? host : { ...host, caseInsensitive: true };
 }
 
@@ -322,27 +322,40 @@ async function resolveRoot(ctx: FilesContext): Promise<Resolved | null> {
   if (st === null || !st.isDirectory()) return null;
   const homeReal = await fs.realpath(ctx.home).catch(() => ctx.home);
   if (!withinBound(rootReal, homeReal, host) || !withinBound(rootReal, ctx.home, host)) return null;
+  const denied = await deniedFolders(ctx.privateFolders, fs);
+  return { rootReal, denied, host, fs };
+}
+
+/**
+ * Each private folder as given and as its real path, whichever spelling a target reaches. Shared
+ * with the New page's folder browser (bridge/folder-browse.ts), which denies the same folders.
+ */
+export async function deniedFolders(privateFolders: readonly string[], fs: Pick<FilesFs, "realpath"> = NODE_FILES_FS): Promise<string[]> {
   const denied: string[] = [];
-  for (const folder of ctx.privateFolders) {
+  for (const folder of privateFolders) {
     if (folder.trim() === "") continue;
     denied.push(folder);
     const real = await fs.realpath(folder).catch(() => null);
     if (real !== null && real !== folder) denied.push(real);
   }
-  return { rootReal, denied, host, fs };
+  return denied;
 }
 
 /**
  * Whether a real path is one this view never shows: a `.git` segment, a state secret's basename, or
- * a private folder's inside.
+ * a private folder's inside (`denied`, from {@link deniedFolders}). Case-folded on every host.
  */
-function isDeniedReal(real: string, r: Resolved): boolean {
-  const parts = splitPath(r.host, real).parts;
+export function isDeniedPath(real: string, denied: readonly string[], host: Host = HOST): boolean {
+  const parts = splitPath(host, real).parts;
   if (parts.some(isGitSegment)) return true;
   const base = parts.at(-1);
   if (base !== undefined && isStateSecretName(base)) return true;
-  const fold = foldingHost(r.host);
-  return r.denied.some((folder) => isInside(fold, real, folder));
+  const fold = foldingHost(host);
+  return denied.some((folder) => isInside(fold, real, folder));
+}
+
+function isDeniedReal(real: string, r: Resolved): boolean {
+  return isDeniedPath(real, r.denied, r.host);
 }
 
 /**

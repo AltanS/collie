@@ -120,6 +120,26 @@ const SPEC14: readonly ProfileCase[] = [
     idleMin: 14,
     quote: ["Here is the dialog you asked about:", "  Pick a color", "  > 1. Red", "    2. Blue", "  ↑↓ navigate • Enter to select • Esc to cancel", "", "That is all it shows."],
   },
+  {
+    id: "hermes",
+    idleMin: 3,
+    quote: [
+      "Here is the dialog you asked about:",
+      "╭─ Hermes Agent needs your input ────╮",
+      "│ ▸ Pick a color                     │",
+      "│   ❯ 1. Red                         │",
+      "│     2. Blue                        │",
+      "╰────────────────────────────────────╯",
+      "  ↑/↓ to select, Enter to lock, Tab next question",
+      "",
+      "That is all it shows.",
+    ],
+  },
+  {
+    id: "cursor",
+    idleMin: 2,
+    quote: ["Here is the dialog you asked about:", "  Run this command?", "  → Run (once) (y)", "    Skip & tell the agent what to do instead (esc or n)", "", "That is all it shows."],
+  },
 ];
 
 /** The spec 14 cases with these ids, in the order given. An id that has no case throws, so a part file cannot silently drop a profile. */

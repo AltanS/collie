@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { draftIssue, ISSUE_LABEL, labelExists, LEDGER_REL, moveProfile, openIssue, profileRel, publishPass, realGit, writeIssueFiles, type Git, type GitResult, type PassInput } from "./publish";
@@ -7,7 +7,25 @@ import { type RedactContext } from "./redact";
 import { judge, type LabFacts, type ScreenFact } from "./verdict";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
-const PROFILE = readFileSync(join(ROOT, profileRel("claude")), "utf8");
+/**
+ * Claude's profile and ledger row as these tests were written against them: verified through
+ * 2.1.296. The real files move each time a lab pass is merged (2.1.302 on 2026-10-18), and a test
+ * that moves them to 2.1.301 must not fail because the repo already holds a newer version.
+ */
+function frozenProfile(text: string): string {
+  return text
+    .replace(/"range": "2\.1\.0 - [0-9.]+"/u, '"range": "2.1.0 - 2.1.296"')
+    .replace(/"verifiedThrough": "[0-9.]+"/u, '"verifiedThrough": "2.1.296"')
+    .replace(/"verifiedOn": "[0-9-]+"/u, '"verifiedOn": "2026-10-12"');
+}
+function frozenLedger(text: string): string {
+  // SAFETY: the repo's own verified-versions.json, which verified-versions.test.ts pins to this shape.
+  const ledger = JSON.parse(text) as { agents: { claude: { version: string; verified: string } } };
+  ledger.agents.claude.version = "2.1.296";
+  ledger.agents.claude.verified = "2026-10-12";
+  return `${JSON.stringify(ledger, null, 2)}\n`;
+}
+const PROFILE = frozenProfile(readFileSync(join(ROOT, profileRel("claude")), "utf8"));
 const ctx: RedactContext = { home: "/home/alice", user: "alice", host: "bluefin", labDirs: [] };
 
 let dirs: string[] = [];
@@ -26,8 +44,8 @@ function makeRepo(): string {
   const repo = join(temp(), "repo");
   mkdirSync(join(repo, "web", "src", "lib", "harness"), { recursive: true });
   mkdirSync(join(repo, "web", "src", "lib", "surface", "profiles"), { recursive: true });
-  cpSync(join(ROOT, LEDGER_REL), join(repo, LEDGER_REL));
-  cpSync(join(ROOT, profileRel("claude")), join(repo, profileRel("claude")));
+  writeFileSync(join(repo, LEDGER_REL), frozenLedger(readFileSync(join(ROOT, LEDGER_REL), "utf8")));
+  writeFileSync(join(repo, profileRel("claude")), PROFILE);
   writeFileSync(join(repo, "README.md"), "# fixture\n");
   const git = (...args: string[]): void => {
     const done = realGit(repo, args);
@@ -49,9 +67,13 @@ describe("moveProfile", () => {
     expect(changed).toHaveLength(3);
   });
 
-  test("a version that is not newer is refused", () => {
-    expect(() => moveProfile(PROFILE, "2.1.296", "2026-10-16")).toThrow(/not newer/);
-    expect(() => moveProfile(PROFILE, "2.1.100", "2026-10-16")).toThrow(/not newer/);
+  test("a version older than verifiedThrough is refused", () => {
+    expect(() => moveProfile(PROFILE, "2.1.295", "2026-10-16")).toThrow(/older than verifiedThrough/);
+    expect(() => moveProfile(PROFILE, "2.1.100", "2026-10-16")).toThrow(/older than verifiedThrough/);
+  });
+
+  test("a version the range already reaches leaves the text as it is, with the person's date", () => {
+    expect(moveProfile(PROFILE, "2.1.296", "2026-10-18")).toBe(PROFILE);
   });
 });
 
@@ -80,6 +102,34 @@ describe("publishPass", () => {
     // The repo it branched from is untouched: still on main, still clean, still at the old version.
     expect(realGit(repo, ["status", "--porcelain"]).stdout.trim()).toBe("");
     expect(JSON.parse(readFileSync(join(repo, LEDGER_REL), "utf8")).agents.claude.version).not.toBe("2.1.301");
+  });
+
+  test("a profile that already reaches the version: the commit moves the row alone and says so", () => {
+    const repo = makeRepo();
+    const labRoot = temp();
+    const profilePath = join(repo, profileRel("claude"));
+    writeFileSync(profilePath, moveProfile(PROFILE, "2.1.301", "2026-10-14"));
+    const git = (...args: string[]): void => {
+      const done = realGit(repo, ["-c", "user.name=t", "-c", "user.email=t@t", ...args]);
+      if (done.code !== 0) throw new Error(done.stderr);
+    };
+    git("commit", "--quiet", "-am", "a person moved the range by hand");
+    const done = publishPass(input(repo, labRoot));
+    expect(done.files).toEqual([LEDGER_REL]);
+    const files = realGit(done.worktree, ["show", "--name-only", "--format=", "HEAD"]).stdout.trim().split("\n");
+    expect(files).toEqual([LEDGER_REL]);
+    expect(realGit(done.worktree, ["log", "-1", "--format=%B"]).stdout).toContain("This commit moves one file: the verified-versions row.");
+    expect(readFileSync(join(done.worktree, profileRel("claude")), "utf8")).toContain('"verifiedOn": "2026-10-14"');
+  });
+
+  test("a pass that cannot commit leaves no branch and no worktree, so the next try is not refused", () => {
+    const repo = makeRepo();
+    const labRoot = temp();
+    expect(() => publishPass({ ...input(repo, labRoot), version: "2.1.100" })).toThrow(/older than verifiedThrough/);
+    expect(realGit(repo, ["branch", "--list", "harness-lab/*"]).stdout.trim()).toBe("");
+    expect(existsSync(join(labRoot, "worktrees", "claude-2.1.100"))).toBe(false);
+    expect(realGit(repo, ["worktree", "list"]).stdout.trim().split("\n")).toHaveLength(1);
+    expect(() => publishPass({ ...input(repo, labRoot), version: "2.1.100" })).toThrow(/older than verifiedThrough/);
   });
 
   test("a second run on the same pair refuses and changes nothing", () => {

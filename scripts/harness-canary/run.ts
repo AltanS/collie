@@ -18,6 +18,7 @@ import { hermes } from "./agents/hermes";
 import { agy } from "./agents/agy";
 import { omp } from "./agents/omp";
 import { muse } from "./agents/muse";
+import { kiro } from "./agents/kiro";
 import { launchedThrough, type AgentProfile } from "./agents/profile";
 import { CANARY_SESSION, CanarySession, listSessions } from "./herdr";
 import { canaryJournals } from "./journal";
@@ -30,7 +31,7 @@ import { runAgent } from "./scenarios";
 import { installTransport } from "./transport";
 import { DEFAULT_SCENARIOS, applyKnownGaps, exitCode, notReachedCase, recordable, renderTable, scenarioResult, type ScenarioResult } from "./verdict";
 
-const PROFILES = { claude, codex, opencode, pi, grok, hermes, agy, omp, muse } satisfies Record<CanaryAgent, AgentProfile>;
+const PROFILES = { claude, codex, opencode, pi, grok, hermes, agy, omp, muse, kiro } satisfies Record<CanaryAgent, AgentProfile>;
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/, "");
 
 function log(line: string): void {
@@ -136,10 +137,10 @@ async function main(options: CanaryOptions): Promise<number> {
     // of the canary has always been this checkout's (README § "Proof against 1.13.1").
     const journals = canaryJournals();
     adapters = new Map(options.agents.map((a) => [a, readers.adapterFor(a) !== undefined]));
-    const usesProfileLaunch = options.scenarios.some((s) => DEFAULT_SCENARIOS.includes(s));
+    const usesProfileLaunch = options.scenarios.some((s) => DEFAULT_SCENARIOS.includes(s) || s === "bar");
     for (const agent of options.agents) {
-      // Only the default scenarios start through the profile; `dialogs`, `busy` and `options` type
-      // their own lines, so a launcher is neither used nor credited when none of those run.
+      // Only the default scenarios and `bar` start through the profile; `dialogs`, `busy` and
+      // `options` type their own lines, so a launcher is neither used nor credited when none of those run.
       const launcher = usesProfileLaunch ? viaLauncher(options.via, agent) : null;
       // The version comes from the profile's own command on PATH, never through the launcher; the
       // canary does not check that a launcher runs that same binary.

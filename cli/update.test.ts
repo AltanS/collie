@@ -44,6 +44,7 @@ import { WINDOWS_CHECKOUT_SENTENCE } from "./install-kind.ts";
 import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor, parseReleaseManifest } from "../bridge/update.ts";
+import { parseUpdateLine } from "../bridge/update-line.ts";
 import {
   type ApplyArgs,
   applyArgv,
@@ -56,9 +57,14 @@ import {
   smokeReason,
   majorVerdict,
   nextMajorRelease,
+  lineChoice,
   parseApiTags,
   parseRemoteTags,
+  rollbackTarget,
   planToTag,
+  stampCheckout,
+  wantsDowngrade,
+  wantsLine,
   planUpdate,
   platformId,
   pruneVersions,
@@ -862,7 +868,7 @@ describe("update", () => {
     // own parser and the BRIDGE's own predicate, and the pair it hands the turn queue is asserted
     // here. Either side moving alone fails this test, which is what the old arrangement could not do.
     // `at` is the record's own `updatedAt`, which is what ages the run on a restart (M20/01).
-    expect(crewTurnStart(parseUpdateRun(written))).toEqual({ runId: "r-99", to: STAGED_TARGET, at: run.updatedAt });
+    expect(crewTurnStart(parseUpdateRun(written))).toEqual({ runId: "r-99", to: STAGED_TARGET, at: run.updatedAt, down: false });
   });
 
   test("a run started from a terminal is recorded with no id, never a blank one", async () => {
@@ -947,7 +953,9 @@ describe("update", () => {
   test("nothing to take and the install is intact: no build, no restart, and the verdict stands", async () => {
     const h = noop();
     stamp(h, "0.32.0");
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(built(h)).toBe(false);
     expect(h.restarts).toBe(0);
     expect(h.io.stdout.join("\n")).toContain("already current");
@@ -1327,6 +1335,8 @@ const manifestDoc = (over: JsonObject = {}) => ({
 interface BinaryOptions {
   tags?: readonly { name: string; commit: { sha: string } }[];
   manifest?: JsonObject | null;
+  /** Fail the manifest GET with this instead of answering it. `manifest: null` is the 404 case. */
+  manifestFailure?: { status: number | null; message: string };
   /** The digest the download reports — a different one is the corruption case. */
   digest?: string;
   tagsFailure?: { status: number | null; message: string };
@@ -1342,6 +1352,8 @@ interface BinaryOptions {
   others?: readonly string[];
   /** What `current/bin/collie hooks status --check` answers. Default: exit 0, i.e. nothing to say. */
   hooksCheck?: Partial<import("./sys.ts").ExecResult>;
+  /** What `current/bin/collie skill status --check` answers. Default: exit 0. */
+  skillCheck?: Partial<import("./sys.ts").ExecResult>;
   /** What `/api/health` answers, in order — the detached runner's gate polls it (M15/04). */
   health?: readonly HealthReply[];
   /** Extra scripted answers, appended after the fixture's own — e.g. a failing systemd bus probe. */
@@ -1390,6 +1402,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
     ],
     version("1.0.0"),
     [`${INST}/current/bin/collie hooks status --check`, over.hooksCheck ?? { code: EXIT.OK }],
+    [`${INST}/current/bin/collie skill status --check`, over.skillCheck ?? { code: EXIT.OK }],
   ];
   const seed: SeededFiles = {
     [`${BROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.0.0"\n',
@@ -1417,6 +1430,9 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
             ? { ok: true as const, value: over.tags ?? apiTags("v1.0.0", `v${NEW}`) }
             : { ok: false as const, failure: over.tagsFailure },
         );
+      }
+      if (over.manifestFailure !== undefined) {
+        return Promise.resolve({ ok: false as const, failure: over.manifestFailure });
       }
       const manifest = over.manifest === undefined ? manifestDoc() : over.manifest;
       return Promise.resolve(
@@ -1989,7 +2005,10 @@ describe("collie update on a binary install", () => {
 
   test("Linux still unpacks with `tar -xzf`, the exact vector it always ran", async () => {
     const h = binaryHarness();
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    // A binary update that hands off is not "nothing to take".
+    expect(told).toBe(0);
     expect(h.exec.calls).toContain(`tar -xzf ${INST}/.staging/${PAYLOAD}.tar.gz -C ${INST}/.staging/x`);
   });
 
@@ -2131,7 +2150,9 @@ describe("collie update on a binary install", () => {
 
   test("already current reads exactly as it does on a checkout — the paths are indistinguishable", async () => {
     const h = binaryHarness({ tags: apiTags("v1.0.0") });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is the newest release of major 1.");
     expect(h.restarts).toBe(0);
   });
@@ -2206,6 +2227,129 @@ describe("collie update --rollback", () => {
   });
 });
 
+describe("the phone's rollback: collie update --rollback --run-id (M60 spec 01)", () => {
+  const ROLLBACK_APPLY: Omit<ApplyArgs, "handoff"> = {
+    to: "0.9.0",
+    from: "1.0.0",
+    version: "0.9.0",
+    commit: "",
+    kind: "binary",
+    rollback: true,
+  };
+
+  test("hands the flip to the detached runner as a rollback run, and moves nothing itself", async () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-7"])).toBe(EXIT.OK);
+    // The restart would kill the bridge that asked: this process flips nothing and restarts nothing.
+    expect(h.link.ops).toEqual([]);
+    expect(h.restarts).toBe(0);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run).toMatchObject({ state: "staging", from: "1.0.0", to: "0.9.0", runId: "r-7", action: "rollback" });
+    const argv = h.exec.ran[0]?.command ?? [];
+    expect(argv[0]).toBe("systemd-run");
+    expect(argv).toContain("--rollback");
+    expect(argv.slice(argv.indexOf("--to"), argv.indexOf("--to") + 2)).toEqual(["--to", "0.9.0"]);
+    // Nothing downloaded: the build is already on disk.
+    expect(h.files.ops.join("\n")).not.toContain(".staging/");
+  });
+
+  test("with nothing older on disk it is refused before any record or lock is written", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-7"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("nothing to roll back to — 1.0.0 is the only version installed");
+    expect(h.files.read(RUN_FILE)).toBeNull();
+    expect(h.files.read(LOCK_FILE)).toBeNull();
+    expect(h.exec.ran).toEqual([]);
+  });
+
+  test("the runner flips back, checks the older build's health, prunes nothing, and levels the crew down", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], health: [{ version: "0.9.0" }] });
+    expect(await runner(h, ROLLBACK_APPLY)).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`symlink versions/0.9.0 ${INST}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    const written = h.files.read(RUN_FILE);
+    const run = parseUpdateRun(written);
+    expect(run).toMatchObject({ state: "done", from: "1.0.0", to: "0.9.0", action: "rollback" });
+    expect(h.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    // The version rolled away from stays: it is the one most likely wanted back.
+    expect(h.files.ops.join("\n")).not.toContain(".trash");
+    expect(h.files.exists(`${BROOT}/bin/collie`)).toBe(true);
+    // A done rollback with a run id levels the crew DOWN to the build it went back to (ADR 0110).
+    expect(
+      crewTurnStart(written === null ? null : parseUpdateRun(written.replace('"state"', '"runId":"r-7","state"')))?.down,
+    ).toBe(true);
+  });
+
+  test("an older build that does not come up is rolled FORWARD again, and says so", async () => {
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" },
+      health: [{ down: true }, { down: true }, { down: true }, { down: true }, { version: "1.0.0" }],
+    });
+    expect(await runner(h, ROLLBACK_APPLY)).toBe(EXIT.FAIL);
+    // Flipped to the older build, then once back to the one it left.
+    expect(h.link.ops.filter((o) => o.startsWith("symlink"))).toEqual([
+      `symlink versions/0.9.0 ${INST}/.current.new`,
+      `symlink versions/1.0.0 ${INST}/.current.new`,
+    ]);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))).toMatchObject({ state: "rolled-back", action: "rollback" });
+    expect(h.io.stderr.join("\n")).toContain("rolled forward to 1.0.0 again");
+  });
+
+  test("the runner's argv carries --rollback only for a rollback, and reads it back", () => {
+    const argv = applyArgv({ ...ROLLBACK_APPLY, handoff: 42 });
+    expect(argv).toContain("--rollback");
+    expect(parseApplyArgs(argv.slice(1))).toEqual({ ...ROLLBACK_APPLY, handoff: 42 });
+    expect(applyArgv({ ...BINARY_APPLY, handoff: 42 })).not.toContain("--rollback");
+  });
+});
+
+describe("rollbackTarget: the one answer to \"is there a previous build\" (M60 spec 01)", () => {
+  test("a binary install: the newest complete version below current, by semver", () => {
+    const h = binaryHarness({ others: ["0.9.0", "0.10.0", "0.8.0", "2.0.0"] });
+    expect(rollbackTarget(h.deps, BROOT, "binary")).toEqual({
+      kind: "ready",
+      layout: "binary",
+      from: "1.0.0",
+      to: "0.10.0",
+      fromVersion: "1.0.0",
+      toVersion: "0.10.0",
+      commit: "",
+    });
+  });
+
+  test("a binary payload's own build stamp names the commit the health gate checks", () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    h.files.write(`${INST}/versions/0.9.0/web/dist/build-info.json`, JSON.stringify({ version: "0.9.0", sha: "abc1234" }));
+    const t = rollbackTarget(h.deps, BROOT, "binary");
+    expect(t.kind === "ready" ? t.commit : null).toBe("abc1234");
+  });
+
+  test("a binary install with only the live version has none, and says why", () => {
+    expect(rollbackTarget(binaryHarness().deps, BROOT, "binary")).toEqual({ kind: "none", reason: "1.0.0 is the only version installed" });
+  });
+
+  test("a staged checkout: the newest complete worktree below current, with its marker's commit", () => {
+    const h = stagedHarness({ versions: { "v0.8.0": "0.8.0", "v0.9.0": "0.9.0", "v0.9.1": null, "v1.0.0": "1.0.0" } });
+    expect(rollbackTarget(h.deps, WT("v1.0.0"), "detached-checkout")).toEqual({
+      kind: "ready",
+      layout: "checkout",
+      from: "v1.0.0",
+      to: "v0.9.0",
+      fromVersion: "1.0.0",
+      toVersion: "0.9.0",
+      commit: "abc1234",
+    });
+  });
+
+  test("packaged and in-place installs keep no previous build", () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(rollbackTarget(h.deps, BROOT, "packaged").kind).toBe("none");
+    expect(rollbackTarget(h.deps, ROOT, "detached-checkout").kind).toBe("none");
+    expect(rollbackTarget(h.deps, ROOT, "unknown").kind).toBe("none");
+  });
+});
+
 // ── The hooks nudge after a successful update ────────────────────────────────
 // The gap it closes: a new build registers a beacon hook event, the operator's `settings.json` does
 // not carry it, and until now only a manual `doctor` or `hooks status` ever said so. What is pinned
@@ -2272,6 +2416,140 @@ describe("the hooks nudge", () => {
     const h = binaryHarness({ others: ["0.9.0"], hooksCheck: { code: EXIT.STATE } });
     await cmdUpdate(h.deps, ["--rollback"]);
     expect(h.exec.calls.join("\n")).not.toContain("hooks status --check");
+  });
+});
+
+// ── The skill follows the update (ADR 0111) ──────────────────────────────────
+// After every successful swap the NEW binary runs `skill sync --json` through the stable name, for the
+// reason the hooks nudge asks it: the running process is the old build, and its embedded skill text is
+// exactly the one that may have moved on. Nothing the sync does can fail the update.
+// `COLLIE_SKILL_SYNC=off` keeps the old behaviour: `skill status --check` and one note.
+
+const SKILL_NUDGE = "newer walky talky skill";
+const SKILL_CHECK = `${INST}/current/bin/collie skill status --check`;
+const SKILL_SYNC = `${INST}/current/bin/collie skill sync --json`;
+const SYNC_NOTE = "skill sync did not run";
+const CLAUDE_SKILL = "/home/u/.claude/skills/collie-walky-talky/SKILL.md";
+const synced = (over: Partial<Record<"changed" | "refused" | "skipped", unknown[]>> = {}): string =>
+  JSON.stringify({ changed: [], refused: [], skipped: [], ...over });
+const ONE_INSTALL = synced({ changed: [{ harness: "claude", path: CLAUDE_SKILL, action: "installed" }] });
+
+describe("the skill sync after a swap", () => {
+  const ROLLBACK: Omit<ApplyArgs, "handoff"> = { ...BINARY_APPLY, to: "0.9.0", version: "0.9.0", rollback: true };
+  const SWITCH: Omit<ApplyArgs, "handoff"> = { ...BINARY_APPLY, to: "0.9.0", version: "0.9.0", switch: true };
+
+  test("an update runs it in the NEW binary through `current`, within 30 s, and prints its lines", async () => {
+    const h = binaryHarness({ answers: [[SKILL_SYNC, { stdout: ONE_INSTALL }]] });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(SKILL_SYNC);
+    expect(h.exec.timeouts).toContainEqual({ call: SKILL_SYNC, ms: 30_000 });
+    // The child resolves its own root, never this process's (#283).
+    expect(h.exec.overrides).toContainEqual({ call: SKILL_SYNC, env: { COLLIE_PLUGIN_ROOT: null } });
+    expect(h.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+    // The sync replaces the note: no second question, no note.
+    expect(h.exec.calls).not.toContain(SKILL_CHECK);
+    expect(h.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+  });
+
+  test("a rollback and a switch through the runner run it too, so the agents follow the build down", async () => {
+    for (const a of [ROLLBACK, SWITCH]) {
+      const h = binaryHarness({
+        others: ["0.9.0", "0.8.0"],
+        health: [{ version: "0.9.0" }],
+        answers: [[SKILL_SYNC, { stdout: synced({ changed: [{ harness: "codex", path: "/home/u/.codex/AGENTS.md", action: "updated" }] }) }]],
+      });
+      expect(await runner(h, a)).toBe(EXIT.OK);
+      expect(h.exec.calls).toContain(SKILL_SYNC);
+      expect(h.io.stdout).toContain("updated codex /home/u/.codex/AGENTS.md");
+    }
+  });
+
+  test("the in-place checkout path runs it in the binary `build` just wrote", async () => {
+    const built = posixKey(collieBinary(ROOT, hostFor("linux")));
+    const h = harness({ answers: [...LINKED, ...SHALLOW, [`${built} skill sync --json`, { stdout: ONE_INSTALL }]] });
+    expect(await cmdApplyUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`${built} skill sync --json`);
+    expect(h.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+  });
+
+  test("both terminal rollbacks run it after the flip", async () => {
+    const binary = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0", answers: [[SKILL_SYNC, { stdout: ONE_INSTALL }]] });
+    expect(await cmdUpdate(binary.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(binary.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    expect(binary.exec.calls).toContain(SKILL_SYNC);
+    expect(binary.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+
+    const staged = stagedHarness({
+      versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
+      answers: [[`${CURRENT}/bin/collie skill sync --json`, { stdout: ONE_INSTALL }]],
+    });
+    expect(await cmdUpdate(staged.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(staged.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    expect(staged.exec.calls).toContain(`${CURRENT}/bin/collie skill sync --json`);
+    expect(staged.io.stdout).toContain(`installed claude ${CLAUDE_SKILL}`);
+  });
+
+  test("nothing changed prints nothing, and a build without the verb is silence too", async () => {
+    const quiet = binaryHarness({ answers: [[SKILL_SYNC, { stdout: synced({ skipped: [{ harness: "gemini", path: "/x", reason: "not on this machine" }] }) }]] });
+    expect(await runner(quiet, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(quiet.io.stdout).toEqual([`✓ updated to ${NEW}`]);
+
+    // A rollback to a build before the verb: `collie skill sync` prints the general brief and exits 0.
+    const old = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0", answers: [[SKILL_SYNC, { stdout: "# Collie\nThe brief.\n" }]] });
+    expect(await cmdUpdate(old.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(old.io.stdout.join("\n")).not.toContain("The brief");
+    expect(old.io.stdout.join("\n")).not.toContain(SYNC_NOTE);
+  });
+
+  test("a refusal is a line, not a failure", async () => {
+    const h = binaryHarness({
+      answers: [[SKILL_SYNC, { stdout: synced({ refused: [{ harness: "codex", path: "/home/u/.codex/AGENTS.md", reason: "/home/u/.codex/AGENTS.md is a symlink" }] }) }]],
+    });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.io.stdout).toContain("refused codex /home/u/.codex/AGENTS.md: /home/u/.codex/AGENTS.md is a symlink");
+    expect(h.io.stderr).toEqual([]);
+  });
+
+  test("a failed, timed-out or unstartable sync never fails the update, and says one note", async () => {
+    const failed = binaryHarness({ answers: [[SKILL_SYNC, { code: EXIT.FAIL, stderr: "error: skill sync stopped — EACCES\n" }]] });
+    expect(await runner(failed, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(failed.io.stdout).toContain(
+      "note: skill sync did not run: error: skill sync stopped — EACCES; run `collie skill sync`.",
+    );
+
+    const slow = binaryHarness({ answers: [[SKILL_SYNC, { code: 124 }]] });
+    expect(await runner(slow, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(slow.io.stdout.join("\n")).toContain("skill sync did not run: it took longer than 30 s");
+
+    const boom = binaryHarness();
+    const real = boom.deps.exec.capture.bind(boom.deps.exec);
+    boom.deps.exec.capture = (tool, args, ...rest) => {
+      if (args.join(" ") === "skill sync --json") throw new Error("ENOEXEC: posix_spawn");
+      return real(tool, args, ...rest);
+    };
+    expect(await runner(boom, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(boom.io.stdout).toContain(`✓ updated to ${NEW}`);
+    expect(boom.io.stdout.join("\n")).toContain("skill sync did not run: ENOEXEC: posix_spawn");
+    expect(boom.io.stderr).toEqual([]);
+  });
+
+  test("COLLIE_SKILL_SYNC=off falls back to the check and the one note", async () => {
+    const h = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" }, skillCheck: { code: EXIT.STATE } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(h.exec.calls).not.toContain(SKILL_SYNC);
+    expect(h.exec.calls).toContain(SKILL_CHECK);
+    expect(h.io.stdout.join("\n")).toContain(SKILL_NUDGE);
+    expect(h.io.stdout.join("\n")).toContain("collie skill sync");
+
+    const quiet = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" } });
+    expect(await runner(quiet, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(quiet.io.stdout.join("\n")).not.toContain(SKILL_NUDGE);
+
+    // A terminal rollback never nudged, and with the sync off it still does not.
+    const back = binaryHarness({ env: { COLLIE_SKILL_SYNC: "off" }, others: ["0.9.0"], currentSays: "0.9.0", skillCheck: { code: EXIT.STATE } });
+    expect(await cmdUpdate(back.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(back.exec.calls.join("\n")).not.toContain("skill status --check");
+    expect(back.exec.calls.join("\n")).not.toContain("skill sync");
   });
 });
 
@@ -2492,6 +2770,13 @@ describe("the staged checkout path", () => {
     expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
   });
 
+  test("a staged update that hands off is not reported as nothing to take", async () => {
+    const h = legacyClone();
+    let told = 0;
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(0);
+  });
+
   test("prune after health, never during staging: an update removes no version directory", async () => {
     // Pruning here would destroy the rollback target of the very update that may need it. The order
     // is stage, flip, restart, health passes (spec 04), THEN prune.
@@ -2502,7 +2787,10 @@ describe("the staged checkout path", () => {
 
   test("a staged install that is already current stages nothing at all", async () => {
     const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    let told = 0;
+    // The hook is how a lead's `crew update` tells "nothing to take" from "handed off": same exit code.
+    expect(await cmdUpdate({ ...h.deps, nothingToTake: () => void told++ })).toBe(EXIT.OK);
+    expect(told).toBe(1);
     expect(h.io.stdout.join("\n")).toContain("already current");
     expect(h.exec.calls.join("\n")).not.toContain("worktree add");
     expect(h.link.ops).toEqual([]);
@@ -2585,6 +2873,22 @@ describe("collie update --rollback on a staged checkout", () => {
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("names 0.8.0, not 0.9.0");
     expect(h.link.ops).toEqual([]);
+  });
+
+  test("from the phone (--run-id) it becomes a detached rollback run over the same target", async () => {
+    const h = stagedHarness({ versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback", "--run-id", "r-8"])).toBe(EXIT.OK);
+    expect(h.link.ops).toEqual([]);
+    expect(parseUpdateRun(h.files.read(`${STATE}/update.json`))).toMatchObject({
+      state: "staging",
+      from: "v1.0.0",
+      to: "v0.9.0",
+      runId: "r-8",
+      action: "rollback",
+    });
+    const argv = h.exec.ran[0]?.command ?? [];
+    expect(argv).toContain("--rollback");
+    expect(argv.slice(argv.indexOf("--commit"), argv.indexOf("--commit") + 2)).toEqual(["--commit", "abc1234"]);
   });
 
   test("a rollback that does not come up is rolled FORWARD again", async () => {
@@ -3292,7 +3596,7 @@ describe("staging reports itself while it builds", () => {
     // later — about a process that exited cleanly with the real diagnosis already on the terminal.
     // The phone reads that record as a live run and disables the button, so the retry is not on
     // offer either. `abort` is the state machine's own word for it.
-    const h = binaryHarness({ manifest: null });
+    const h = binaryHarness({ manifestFailure: { status: 500, message: "HTTP 500" } });
     expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
     const run = parseUpdateRun(h.files.read(RUN_FILE));
     expect(run?.state).toBe("idle");
@@ -3302,6 +3606,59 @@ describe("staging reports itself while it builds", () => {
     expect(run?.reason).toContain("staging");
     // Nothing was launched, so nothing is coming later to correct the record.
     expect(h.exec.spawned).toEqual([]);
+  });
+
+  describe("a tag whose release is not published yet (#503)", () => {
+    // release.yml pushes the tag first and publishes the release last, and in between every asset
+    // under the tag answers 404. The phone was offered the version in that window and printed only
+    // "staging stopped before the new version was laid down" for the two updates it started.
+    const LINE = `error: Collie ${NEW} is tagged, but its release is not published yet. Try again in a few minutes. Nothing was changed.`;
+
+    test("a manifest 404 says the release is not out, and the phone reads the same words", async () => {
+      const h = binaryHarness({ manifest: null });
+      const fetched: string[] = [];
+      h.deps.net = { ...h.deps.net, download: (url) => (fetched.push(url), Promise.reject(new Error("no download expected"))) };
+      expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+
+      const err = h.io.stderr.join("\n");
+      expect(err).toContain(LINE);
+      // Not the generic network sentence, which is what the operator and the phone had before.
+      expect(err).not.toContain("failed (HTTP 404)");
+
+      const run = parseUpdateRun(h.files.read(RUN_FILE));
+      expect(run?.state).toBe("idle");
+      expect(run?.to).toBe(NEW);
+      expect(run?.reason).toBe(`${NEW} is not published yet, try again in a few minutes`);
+
+      // Changed nothing, and fetched nothing.
+      expect(fetched).toEqual([]);
+      expect(h.link.ops).toEqual([]);
+      expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+      expect(currentTarget(h)).toBe(BROOT);
+      expect(h.exec.spawned).toEqual([]);
+    });
+
+    test("it is the same on a plain run with no run id", async () => {
+      const h = binaryHarness({ manifest: null });
+      expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+      expect(h.io.stderr.join("\n")).toContain(LINE);
+    });
+
+    test("every other manifest failure keeps its own message and the generic reason", async () => {
+      for (const [failure, line] of [
+        [{ status: 500, message: "HTTP 500" }, `error: the release manifest for ${NEW} failed (HTTP 500). Nothing was changed.`],
+        [{ status: 403, message: "HTTP 403" }, "GitHub rate-limited the release manifest for"],
+        [{ status: null, message: "connection refused" }, "could not reach github.com"],
+      ] as const) {
+        const h = binaryHarness({ manifestFailure: failure });
+        expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+        const err = h.io.stderr.join("\n");
+        expect(err).toContain(line);
+        expect(err).not.toContain("not published yet");
+        const run = parseUpdateRun(h.files.read(RUN_FILE));
+        expect(run?.reason).toBe("staging stopped before the new version was laid down");
+      }
+    });
   });
 
   test("a second update beside a live one writes nothing: `update.json` keeps one writer", async () => {
@@ -3494,5 +3851,216 @@ describe("a source checkout on Windows (M43 spec 08)", () => {
     const h = legacyClone();
     await cmdUpdate(h.deps, []);
     expect(h.io.stderr.join("\n")).not.toContain("On Windows");
+  });
+});
+
+describe("two release lines: Stable and Edge (M60 spec 01)", () => {
+  const TAGS = parseApiTags([
+    { name: "v1.0.0", sha: "a" },
+    { name: "v1.1.0", sha: "b" },
+    { name: "v1.2.0-edge.1", sha: "c" },
+    { name: "v1.2.0-edge.2", sha: "d" },
+    { name: "v1.2.0-beta.1", sha: "e" },
+    { name: "v2.0.0", sha: "f" },
+  ]);
+  const LINE_FILE = `${STATE}/update-line.json`;
+  const lineDoc = (line: "stable" | "edge", rejected: string[] = []) =>
+    JSON.stringify({ schema: 1, line, rejected, changedAt: 1 });
+
+  test("--to-tag takes an Edge tag only on an Edge machine", () => {
+    const stable = planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.2.0-edge.1" });
+    expect(stable.kind === "refused" && stable.reason).toContain("this machine is on the Stable line");
+    const edge = planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.2.0-edge.1", line: "edge" });
+    expect(edge.kind === "pinned" && edge.target.tag).toBe("v1.2.0-edge.1");
+    // An old beta is still never a target, on either line.
+    const beta = planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.2.0-beta.1", line: "edge" });
+    expect(beta.kind === "refused" && beta.reason).toContain("prerelease");
+  });
+
+  test("--to-tag takes a LOWER tag only with --downgrade, and never across a major", () => {
+    const plain = planToTag({ tags: TAGS, installed: "1.2.0-edge.2", wanted: "v1.1.0", line: "stable" });
+    expect(plain.kind === "refused" && plain.reason).toContain("never downgrades without `--downgrade`");
+    const down = planToTag({ tags: TAGS, installed: "1.2.0-edge.2", wanted: "v1.1.0", downgrade: true });
+    expect(down.kind === "pinned" && down.target.tag).toBe("v1.1.0");
+    // A crew member following its lead's rollback down to an Edge build it still may take.
+    const edgeDown = planToTag({ tags: TAGS, installed: "1.2.0-edge.2", wanted: "v1.2.0-edge.1", downgrade: true });
+    expect(edgeDown.kind).toBe("pinned");
+    const crossing = planToTag({ tags: TAGS, installed: "2.0.0", wanted: "v1.1.0", downgrade: true });
+    expect(crossing.kind === "refused" && crossing.reason).toContain("crosses a major");
+    // Equal is nothing, with or without the flag.
+    expect(planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.1.0", downgrade: true }).kind).toBe("refused");
+  });
+
+  test("a build this machine rolled back from is refused as a target, except as the way down", () => {
+    const up = planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.2.0-edge.2", line: "edge", rejected: ["1.2.0-edge.2"] });
+    expect(up.kind === "refused" && up.reason).toContain("rolled back from");
+    const plan = planUpdate({ tags: TAGS, installed: "1.1.0", head: "", crossMajor: false, line: "edge", rejected: ["1.2.0-edge.2"] });
+    expect(plan.kind === "advance" && plan.target.tag).toBe("v1.2.0-edge.1");
+  });
+
+  test("planUpdate offers Edge builds on the Edge line, and only Stable releases on Stable", () => {
+    const edge = planUpdate({ tags: TAGS, installed: "1.1.0", head: "", crossMajor: false, line: "edge" });
+    expect(edge.kind === "advance" && edge.target.tag).toBe("v1.2.0-edge.2");
+    const stable = planUpdate({ tags: TAGS, installed: "1.1.0", head: "", crossMajor: false });
+    expect(stable.kind).toBe("current");
+    // An Edge build on Stable rides no prerelease train: there is nothing above it to take.
+    const ahead = planUpdate({ tags: TAGS, installed: "1.2.0-edge.1", head: "", crossMajor: false, line: "stable" });
+    expect(ahead.kind).toBe("current");
+  });
+
+  test("the flags, and the line read from update-line.json with --line over it", () => {
+    expect(wantsLine(["update", "--line", "edge"])).toBe("edge");
+    expect(wantsLine(["update", "--line=stable"])).toBe("stable");
+    expect(wantsLine(["update", "--line", "nightly"])).toBeNull();
+    expect(wantsDowngrade(["update", "--downgrade"])).toBe(true);
+    expect(wantsDowngrade(["update"])).toBe(false);
+    const h = binaryHarness();
+    expect(lineChoice(h.deps, [])).toEqual({ line: "stable", rejected: [], downgrade: false });
+    h.files.write(LINE_FILE, lineDoc("edge", ["1.2.0-edge.2"]));
+    expect(lineChoice(h.deps, [])).toEqual({ line: "edge", rejected: ["1.2.0-edge.2"], downgrade: false });
+    expect(lineChoice(h.deps, ["--line", "stable", "--downgrade"])).toEqual({
+      line: "stable",
+      rejected: ["1.2.0-edge.2"],
+      downgrade: true,
+    });
+  });
+
+  test("a binary install on the Edge line takes the Edge build", async () => {
+    const h = binaryHarness({ tags: apiTags("v1.0.0", "v1.1.0-edge.1") });
+    h.files.write(LINE_FILE, lineDoc("edge"));
+    await cmdUpdate(h.deps, []);
+    // The fixture's payload answers as 1.1.0, so the smoke stops it; the target is what is asserted.
+    expect(h.io.stdout.join("\n")).toContain("binary install: v1.1.0-edge.1 for linux-x64");
+    // The same tags on Stable: nothing to take.
+    const stable = binaryHarness({ tags: apiTags("v1.0.0", "v1.1.0-edge.1") });
+    expect(await cmdUpdate(stable.deps, [])).toBe(EXIT.OK);
+    expect(stable.io.stdout.join("\n")).not.toContain("v1.1.0-edge.1");
+    expect(stable.files.read(RUN_FILE)).toBeNull();
+  });
+
+  test("Go back now flips to the kept Stable build: no download, no build, a switch run", async () => {
+    const h = stagedHarness({ current: "v1.1.0-edge.2", versions: { "v1.0.1": "1.0.1", "v1.1.0-edge.2": "1.1.0-edge.2" } });
+    expect(await cmdUpdate(h.deps, ["--to-tag", "v1.0.1", "--downgrade", "--run-id", "r-9"])).toBe(EXIT.OK);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run).toMatchObject({ state: "staging", from: "v1.1.0-edge.2", to: "v1.0.1", runId: "r-9", action: "switch" });
+    const argv = h.exec.ran[0]?.command ?? [];
+    expect(argv).toContain("--switch");
+    expect(argv).not.toContain("--rollback");
+    expect(h.exec.calls.join("\n")).not.toContain("worktree add");
+    expect(h.exec.calls.join("\n")).not.toContain("ls-remote");
+    expect(h.io.stdout.join("\n")).toContain("through the build this machine kept");
+  });
+
+  test("a kept build across a major is not a way down", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], tags: apiTags("v0.9.0", "v1.0.0") });
+    expect(await cmdUpdate(h.deps, ["--to-tag", "v0.9.0", "--downgrade", "--run-id", "r-9"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("crosses a major");
+  });
+
+  test("without --downgrade the same tag is refused, as it always was", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], tags: apiTags("v0.9.0", "v1.0.0", "v1.1.0") });
+    expect(await cmdUpdate(h.deps, ["--to-tag", "v0.9.0", "--run-id", "r-9"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("never downgrades");
+    expect(h.files.read(RUN_FILE)).toBeNull();
+  });
+
+  test("the runner reads --switch back, prunes nothing after it, and says it went back", async () => {
+    const SWITCH_APPLY: Omit<ApplyArgs, "handoff"> = {
+      to: "0.9.0",
+      from: "1.0.0",
+      version: "0.9.0",
+      commit: "",
+      kind: "binary",
+      switch: true,
+    };
+    expect(parseApplyArgs(applyArgv({ ...SWITCH_APPLY, handoff: 42 }).slice(1))).toEqual({ ...SWITCH_APPLY, handoff: 42 });
+    const h = binaryHarness({ others: ["0.9.0", "0.8.0"], health: [{ version: "0.9.0" }] });
+    expect(await runner(h, SWITCH_APPLY)).toBe(EXIT.OK);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))).toMatchObject({ state: "done", to: "0.9.0", action: "switch" });
+    expect(h.io.stdout.join("\n")).toContain("✓ went back to 0.9.0");
+    expect(h.files.ops.join("\n")).not.toContain(".trash");
+  });
+
+  test("while on Edge the last Stable build is kept beside live and previous, outside the count", () => {
+    const versions = {
+      "v1.0.0": "1.0.0",
+      "v1.0.1": "1.0.1",
+      "v1.1.0-edge.0": "1.1.0-edge.0",
+      "v1.1.0-edge.1": "1.1.0-edge.1",
+      "v1.1.0-edge.2": "1.1.0-edge.2",
+    };
+    const h = stagedHarness({ current: "v1.1.0-edge.2", versions });
+    expect(pruneVersions(h.deps, checkoutLayout(CLONE), 2).toSorted()).toEqual(["v1.0.0", "v1.1.0-edge.0"]);
+    expect(h.files.exists(`${VERSIONS}/v1.0.1`)).toBe(true);
+    expect(h.files.exists(`${VERSIONS}/v1.1.0-edge.1`)).toBe(true);
+  });
+
+  test("back on Stable, pruning is what it always was", () => {
+    const h = stagedHarness({
+      current: "v1.0.2",
+      versions: { "v1.0.1": "1.0.1", "v1.1.0-edge.1": "1.1.0-edge.1", "v1.0.2": "1.0.2" },
+    });
+    // 1.1.0-edge.1 sorts above 1.0.2, so it is the newest other build and the one kept.
+    expect(pruneVersions(h.deps, checkoutLayout(CLONE), 2)).toEqual(["v1.0.1"]);
+  });
+
+  test("a rollback off an Edge build puts the machine on Stable and rejects the build", async () => {
+    const h = stagedHarness({ current: "v1.1.0-edge.2", versions: { "v1.0.1": "1.0.1", "v1.1.0-edge.2": "1.1.0-edge.2" } });
+    h.files.write(LINE_FILE, lineDoc("edge"));
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    const record = parseUpdateLine(h.files.read(LINE_FILE));
+    expect(record.line).toBe("stable");
+    expect(record.rejected).toEqual(["1.1.0-edge.2"]);
+    expect(h.io.stdout.join("\n")).toContain("on the Stable line again");
+  });
+
+  test("an Edge build that fails its health check is rejected; the line stays Edge (ADR 0110)", async () => {
+    const edge = "1.1.0-edge.1";
+    const h = binaryHarness({
+      others: ["0.9.0", edge],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" },
+      health: [{ version: "1.0.0" }],
+    });
+    h.files.write(LINE_FILE, lineDoc("edge"));
+    expect(await runner(h, { ...BINARY_APPLY, to: edge, version: edge })).toBe(EXIT.FAIL);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("rolled-back");
+    const record = parseUpdateLine(h.files.read(LINE_FILE));
+    expect(record.line).toBe("edge");
+    expect(record.rejected).toEqual([edge]);
+    expect(h.io.stderr.join("\n")).toContain(`${edge} is marked as rolled back from and is not offered again.`);
+  });
+
+  test("a strict release that fails its health check is not rejected, and writes no line record", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" }, health: [{ version: "1.0.0" }] });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(h.files.read(LINE_FILE)).toBeNull();
+  });
+
+  test("a rollback off a Stable build writes no line record", async () => {
+    const h = stagedHarness({ versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(h.files.read(LINE_FILE)).toBeNull();
+  });
+
+  test("an Edge tag's checkout is stamped with the full version and marked assume-unchanged", () => {
+    const files = fakeFiles({
+      "/co/herdr-plugin.toml": 'id = "herdr.collie"\nversion = "1.2.0"\n',
+      "/co/package.json": '{\n  "name": "collie",\n  "version": "1.2.0"\n}\n',
+      "/co/web/package.json": '{\n  "name": "web",\n  "version": "1.2.0"\n}\n',
+    });
+    const exec = posixExec();
+    const io = capture();
+    const host = hostFor("linux");
+    expect(stampCheckout({ files, exec, io, host }, "/co", "v1.2.0-edge.3")).toBe(true);
+    expect(files.read("/co/herdr-plugin.toml")).toContain('version = "1.2.0-edge.3"');
+    expect(files.read("/co/package.json")).toContain('"version": "1.2.0-edge.3"');
+    expect(files.read("/co/web/package.json")).toContain('"version": "1.2.0-edge.3"');
+    expect(exec.calls.join("\n")).toContain(
+      "git -C /co update-index --assume-unchanged -- herdr-plugin.toml package.json web/package.json",
+    );
+    // A Stable tag stamps nothing and runs nothing.
+    const quiet = posixExec();
+    expect(stampCheckout({ files, exec: quiet, io, host }, "/co", "v1.2.0")).toBe(true);
+    expect(quiet.calls).toEqual([]);
   });
 });

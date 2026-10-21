@@ -13,6 +13,7 @@ import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
+import { SentStore, sentFileIo } from "./sent.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
@@ -319,9 +320,18 @@ const PANE_WIRE_KEYS = {
   // pane in this baseline names a session a probe could read, so no golden byte moved — which is the
   // claim the feature makes, not an aside. The bridge never guesses a number before it measures one.
   cache: true,
+  // The pane's active todo list (bridge/todos.ts). Not a crew dimension, and absent here: the
+  // baseline builds no todo tracker, so no golden byte moved.
+  todos: true,
+  // The pane's running subagents (bridge/subagents.ts). Not a crew dimension, and absent here: the
+  // baseline builds no subagent tracker, so no golden byte moved.
+  subagents: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
   // here for the same reason, so no golden byte moved.
   model: true,
+  // Not a crew dimension: the effort beside that model, from the same probe, and absent here for the
+  // same reason, so no golden byte moved.
+  effort: true,
   // Not crew dimensions: the operator's name for this pane's one-pane tab, and the pane's position in
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
@@ -360,6 +370,10 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the pane's held sends (M56 spec 15). They ride with `sendProtocol` and only
   // when a send is held, and this harness builds no Send Protocol, so no golden byte moved.
   held: true,
+  // Not a crew dimension: the pane's walky talky instance token (bridge/walky/instances.ts, added
+  // 2026-10-18). A live solo bridge carries it on every pane, the change this baseline records on
+  // purpose; the harness builds its wire with no instance registry, so no golden byte moved.
+  instance: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -405,6 +419,11 @@ const UPDATE_STATUS_KEYS = {
   // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
   // release — an urgent one is rare by construction, so the golden bodies below carry no such key.
   urgent: true,
+  // The release line and the way back to Stable (M60 spec 01). Optional: the line rides beside a
+  // monitor with the line seam, and `back` only on an Edge build ahead of Stable on the Stable line,
+  // so the golden bodies below carry neither key.
+  line: true,
+  back: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -481,6 +500,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "badge",
       "cache",
       "cwd",
+      "effort",
       "focused",
       "gitHead",
       "hasSession",
@@ -489,6 +509,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "hold",
       "hooks",
       "host",
+      "instance",
       "kind",
       "lastActiveAt",
       "lastSeenAt",
@@ -502,6 +523,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "sessionName",
       "soleTabName",
       "status",
+      "subagents",
       "subtitle",
       "surface",
       "tabId",
@@ -509,6 +531,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "todos",
       "turnId",
       "workspaceId",
       "workspaceLabel",
@@ -519,6 +542,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   test("the supporting wire types are unchanged too", () => {
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
     expect(Object.keys(UPDATE_STATUS_KEYS).toSorted()).toEqual([
+      // The way back to Stable (M60 spec 01) — optional, present only on an Edge build ahead of
+      // Stable on the Stable line.
+      "back",
       "bridgeStale",
       "checkedAt",
       "current",
@@ -530,6 +556,8 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "installKind",
       "latest",
       "latestUrl",
+      // The release line (M60 spec 01) — optional, present beside a monitor with the line seam.
+      "line",
       // Whether the release ahead changes the CREW WIRE (M27/06) — optional, and absent on a solo
       // install, which has no link to change.
       "linkChange",
@@ -706,12 +734,20 @@ describe("solo zero-tax — routes", () => {
       // `send` and `abort` name the turn the phone saw (ADR 0101): writes, forwarded the same way, and
       // only a pane whose adapter takes guarded controls takes them; a Herdr pane gets the refusal.
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/",
+      // The slash commands Claude Code would load in the pane's cwd: a read of this machine's disk,
+      // asked only when the palette opens, so a solo instance pays nothing per poll.
+      "/^\\/api\\/pane\\/([^/]+)\\/claude-commands$/",
       // Which paths exist under the Files root (ADR 0088), asked in one batch for the pane view's
       // links: a read with the Files gate, one `lstat` per path, not forwarded across a crew link.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/exist$/",
       // One picture under the Files root, as its bytes (ADR 0090): the Files read's checks and gate,
       // the type read off the bytes, forwarded to the owning member like `files`.
       "/^\\/api\\/pane\\/([^/]+)\\/files\\/image$/",
+      // One Claude subagent's own JSONL transcript, read on demand when the subagent sheet opens.
+      "/^\\/api\\/pane\\/([^/]+)\\/subagent\\/([^/]+)$/",
+      // Walky talky's list for one pane (M62): the messages that reached it, newest first. A read, gated
+      // like the pane read, this collie's own panes only until spec 03 makes it forwardable.
+      "/^\\/api\\/pane\\/([^/]+)\\/walky$/",
       // A space's rename (M53 spec 05): a write, forwarded to the owning member, and only an adapter that
       // declares `renameSpace` takes it; every other bridge answers it the refusal.
       "/^\\/api\\/space\\/([^/]+)\\/rename$/",
@@ -757,6 +793,10 @@ describe("solo zero-tax — routes", () => {
       // forwards to the member whose folders they are. A solo instance registers both and answers
       // about its own `folders.json`, which it writes only once the operator uses it (see §6 below).
       "/api/folders",
+      // The New page's folder browser (#467) — a SOLO read beside them, named here rather than
+      // exempted. It lists folder names under home on the Files view's bound and gate (ADR 0083),
+      // writes nothing, and forwards with `?host=` like the list.
+      "/api/folders/browse",
       "/api/folders/star",
       // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
@@ -821,6 +861,14 @@ describe("solo zero-tax — routes", () => {
       // collie's own sessions only. No crew route.
       "/api/send/*",
       "/api/send/receipts",
+      // Sent (ADR 0107): this machine's record of shell lines, one read and two writes, three SOLO routes
+      // that legitimately extend this list, named here rather than exempted. Session-scoped through the
+      // same closure `/api/launch` rides, the read on the read gate and the writes on the write gate, so
+      // a `?host=` call reaches that member's own `sent.jsonl`. A solo instance registers all three and
+      // answers about its own file, which it writes only once a shell line is kept (see §6 below).
+      "/api/sent",
+      "/api/sent/clear",
+      "/api/sent/remove",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
       // here rather than exempted, exactly as device pairing is. It is off until an operator
@@ -845,13 +893,28 @@ describe("solo zero-tax — routes", () => {
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
       // (`collie crew update`), never over the link (ADR 0016).
       "/api/update",
+      // "Go back now" from Edge to Stable (M60 spec 01) — solo, no crew sibling, for the rollback
+      // route's reason.
+      "/api/update/back",
       "/api/update/check",
       // Closing the update band (M17/08) — solo, no crew sibling: it writes the lead's own update
       // record, and the band a peer's operator closes is that machine's own decision.
       "/api/update/dismiss",
+      // This machine's release line, Stable or Edge (M60 spec 01) — solo, no crew sibling: a member
+      // takes its lead's line from §20's `X-Crew-Lead-Line`, never over a route.
+      "/api/update/line",
+      // Rolling back from the phone (M60 spec 01) — solo, no crew sibling, for the update route's
+      // reason: it moves this machine's own build. The crew follows the lead's rollback over §20's
+      // headers, never over a route of its own.
+      "/api/update/rollback",
       // The digest's "remind me next digest" dismiss — solo, no crew sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",
+      // Walky talky (M62): a message from the phone as an operator (a write under the device gate), and
+      // the list of reachable targets (a read). SOLO routes; an address on another member is the crew
+      // seam's business, never a route here.
+      "/api/walky",
+      "/api/walky/who",
       "/api/workspace",
       // The New sheet's branch from a FOLDER (M48, ADR 0093): the plan it shows before Start, and the
       // create. Two SOLO routes, named here rather than exempted. Session-scoped through the gate and
@@ -892,6 +955,7 @@ const CONFIG_KEYS = {
   dialMode: true,
   auditContent: true,
   redact: true,
+  sent: true,
   commandsFile: true,
   keysFile: true,
   quickRepliesFile: true,
@@ -925,6 +989,7 @@ const CONFIG_KEYS = {
   multiSession: true,
   surfaceShadow: true,
   sendProtocol: true,
+  walky: true,
   skipServe: true,
   basePath: true,
   uploadExtraTypes: true,
@@ -968,6 +1033,7 @@ describe("solo zero-tax — config", () => {
       "readLines",
       "redact",
       "sendProtocol",
+      "sent",
       "skipServe",
       "socketPath",
       "stateDir",
@@ -984,6 +1050,8 @@ describe("solo zero-tax — config", () => {
       "vapidPrivate",
       "vapidPublic",
       "vapidSubject",
+      // Walky talky (M62): whether this machine takes messages for its panes. A solo switch, on by default.
+      "walky",
       "zellijBin",
     ]);
     expect(keys.filter((k) => /crew|peer|lead|federat/i.test(k))).toEqual([]);
@@ -1008,7 +1076,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401) and the two `COLLIE_ACCESS_*` keys (ADR 0081) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) and `COLLIE_SENT` (ADR 0107) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -1035,6 +1103,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_HERDR_DIAL",
       "COLLIE_HERMES_ROOT",
       "COLLIE_HOST",
+      "COLLIE_KIRO_ROOT",
       "COLLIE_MAX_UPLOAD_MB",
       "COLLIE_MULTI_SESSION",
       "COLLIE_MUSE_ROOT",
@@ -1051,6 +1120,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_READ_LINES",
       "COLLIE_REDACT",
       "COLLIE_SEND_PROTOCOL",
+      "COLLIE_SENT",
       "COLLIE_SKIP_SERVE",
       "COLLIE_STATE_DIR",
       "COLLIE_SUBMIT_KEYS",
@@ -1066,6 +1136,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_VAPID_PRIVATE",
       "COLLIE_VAPID_PUBLIC",
       "COLLIE_VAPID_SUBJECT",
+      "COLLIE_WALKY",
       "COLLIE_ZELLIJ_BIN",
     ]);
   });
@@ -1150,6 +1221,10 @@ const STATE_DIR_ENTRIES = [
   // Created by a bridge that sends text, which is the default since spec 06: with COLLIE_SEND_PROTOCOL=0
   // nothing builds the store, so such an instance never has this folder.
   "sends",
+  // Sent (ADR 0107): the shell lines a person sent through Collie on this machine, one JSON record per
+  // line. Written by use and by nothing else: absent until the first line sent to a shell pane, or the
+  // first one-off run, that the skip rules keep. `COLLIE_SENT=off` never writes it.
+  "sent.jsonl",
   "snooze.json",
   // One receipt per starter a phone ran on a durable program (ADR 0102). Written by use and by nothing
   // else: absent until the first starter run, which only a peer on `COLLIE_MUX=durable` can offer.
@@ -1166,6 +1241,10 @@ const STATE_DIR_ENTRIES = [
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.
+  // This machine's release line and the builds it rolled back from (M60 spec 01, ADR 0110). A NEW
+  // file, absent until the line is switched or an Edge build is rolled back from; absent reads as
+  // Stable with nothing rejected.
+  "update-line.json",
   "update-runner.log",
   "update-state.json",
   // The detached updater's run record and its lock (M15/04). WRITTEN BY THE CLI, never by the
@@ -1177,6 +1256,10 @@ const STATE_DIR_ENTRIES = [
   // The Whistle model's folder, `whistle/` (ADR 0096): the model, its manifest and a download's
   // part file. Absent until a write device taps "Download to host" or the operator runs
   // `collie stt whistle`; nothing else creates it.
+  // Walky talky (M62): the local socket `walky/sock` (0600, made at start like the hold socket), and
+  // the message log and per-pane inboxes, written by use and by nothing else: absent until the first
+  // message reaches this machine. On Windows the socket is not built.
+  "walky",
   "whistle",
   // The ref each new worktree was cut from (ADR 0089, amended). Written by use and by nothing else:
   // absent until the first create that named a starting point succeeds. Driven in "the worktree
@@ -1357,6 +1440,26 @@ describe("solo zero-tax — the filesystem", () => {
       await bases.record("/home/op/repo/.worktrees/x", { base: "main", createdAt: 1 });
       expect(await readdir(stateDir)).toEqual(["worktree-bases.json"]);
       expect(STATE_DIR_ENTRIES).toContain("worktree-bases.json");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  // The same shape for Sent (ADR 0107): building the store writes nothing, a skipped line writes
+  // nothing, the switch off writes nothing, and the first kept line writes the one file.
+  test("Sent appears only on use: a shell line the skip rules keep", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "collie-solo-baseline-"));
+    try {
+      const off = new SentStore(sentFileIo(stateDir), { off: true, home: "/home/op" });
+      expect(await off.record("git status", "/home/op/proj", "shell")).toBe("skipped");
+      const sent = new SentStore(sentFileIo(stateDir), { home: "/home/op" });
+      expect(await sent.record(" git status", "/home/op/proj", "shell")).toBe("skipped");
+      expect(await sent.record("export AWS_SECRET_ACCESS_KEY=x", "/home/op/proj", "shell")).toBe("skipped");
+      expect(await sent.clear()).toBe(0);
+      expect(await readdir(stateDir)).toEqual([]);
+      expect(await sent.record("git status", "/home/op/proj", "shell")).toBe("recorded");
+      expect(await readdir(stateDir)).toEqual(["sent.jsonl"]);
+      expect(STATE_DIR_ENTRIES).toContain("sent.jsonl");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

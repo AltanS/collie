@@ -5,6 +5,7 @@
 // keyed by absolute path, which is why one store can serve every agent and every herdr session at
 // once: two sessions fronting panes whose agents write into the same root still hit the same entry.
 
+import { pageStart } from "./turns.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry, TranscriptPage } from "./types.ts";
 
 /** How many parsed journals to keep hot. Each is re-parsed only when its file's size/mtime moves. */
@@ -27,7 +28,7 @@ export type EntryPage = { window: TranscriptEntry[]; hasMore: boolean };
 
 export function pageEntries(
   entries: TranscriptEntry[],
-  opts: { limit: number; before?: string },
+  opts: { limit: number; before?: string; turns?: true },
 ): EntryPage {
   // An unknown cursor (log rewritten under us, a stale client, or a synthesised cursor whose row
   // fell out of the window) degrades to "newest", never to an empty page — the user asked for older
@@ -39,7 +40,10 @@ export function pageEntries(
           const i = entries.findIndex((e) => e.uuid === opts.before);
           return i === -1 ? entries.length : i;
         })();
-  const start = Math.max(0, end - opts.limit);
+  // `turns`: the page reaches back over the last prompts and not a fixed row count (journal/turns.ts),
+  // with `limit` as its floor. History pages keep counting rows.
+  const start =
+    opts.turns === true ? pageStart(end, opts.limit, (i) => entries[i]!) : Math.max(0, end - opts.limit);
   return { window: entries.slice(start, end), hasMore: start > 0 };
 }
 
@@ -56,7 +60,7 @@ export class TranscriptStore {
   async page(
     adapter: JournalAdapter,
     ref: AgentSessionRef,
-    opts: { limit: number; before?: string },
+    opts: { limit: number; before?: string; turns?: true },
   ): Promise<Omit<TranscriptPage, "paneId"> | null> {
     const entry = await this.cached(adapter, ref);
     if (entry === null) return null;

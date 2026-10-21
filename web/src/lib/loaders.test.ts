@@ -8,7 +8,9 @@ import {
   fixtureCrewSnapshot,
   fixtureCrewStatus,
   fixtureSnapshot,
+  fixtureWalkyAgent,
   paneTextWithDraft,
+  setWalkyRows,
 } from "@/test/handlers";
 
 // loaders.ts keeps a module-level "last good" cache, so each test re-imports the module fresh
@@ -1448,5 +1450,104 @@ describe("paneLoader — the pane's saved row", () => {
     (await import("./pairing")).markNotPaired();
     failPane();
     expect((await paneAt("/pane/w1:p1")).savedPane).toBeUndefined();
+  });
+});
+
+describe("paneLoader and the walky talky list (M62)", () => {
+  const open = (paneId: string) => new Request(`http://localhost/pane/${encodeURIComponent(paneId)}`);
+  // The loader writes the mirror through to the on-device store; let that settle before the fake database goes.
+  afterEach(async () => (await import("./store")).__storeIdle());
+  const failWalky = () => server.use(http.get(/\/api\/pane\/[^/]+\/walky/, () => new HttpResponse(null, { status: 404 })));
+
+  it("carries the rows the bridge keeps for the pane", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(data.walky).toEqual([fixtureWalkyAgent]);
+  });
+
+  it("answers an empty list when the bridge holds none", async () => {
+    const { paneLoader } = await import("./loaders");
+    expect((await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") })).walky).toEqual([]);
+  });
+
+  it("answers null from a bridge that has no such route, and still reads the mirror", async () => {
+    failWalky();
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(data.walky).toBeNull();
+    expect(data.error).toBe(false);
+    expect(data.text).not.toBe("");
+  });
+
+  it("keeps the last list through one failed poll, so a card does not turn back into text", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    failWalky();
+    const again = await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(again.walky).toEqual([fixtureWalkyAgent]);
+  });
+
+  it("reads a crew member pane's list through the lead, with the member as `host`", async () => {
+    // The lead forwards it to the member, whose own log answers (CREW_PROTOCOL.md §21).
+    const asked: string[] = [];
+    server.use(http.get(/\/api\/pane\/[^/]+\/walky/, ({ request }) => (asked.push(request.url), HttpResponse.json({ messages: [fixtureWalkyAgent] }))));
+    const { paneLoader } = await import("./loaders");
+    const data = await paneLoader({ params: { paneId: "w1:p1" }, request: new Request("http://localhost/pane/w1%3Ap1?h=badger") });
+    expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!).searchParams.get("host")).toBe("badger");
+    expect(new URL(asked[0]!).searchParams.get("limit")).toBe("50");
+    expect(data.walky).toEqual([fixtureWalkyAgent]);
+  });
+
+  it("answers null for a member pane whose list the lead refuses: an older member, or one that is down", async () => {
+    // A null list claims nothing: no card, and no "no log record on this machine" mark.
+    const { paneLoader } = await import("./loaders");
+    for (const [paneId, status, body] of [
+      ["w1:p5", 404, "that machine runs a Collie older than walky talky and keeps no messages"],
+      ["w1:p6", 503, JSON.stringify({ ok: false, code: "host_unreachable", error: "host otter: connection refused", host: "otter" })],
+    ] as const) {
+      server.use(http.get(/\/api\/pane\/[^/]+\/walky/, () => new HttpResponse(body, { status })));
+      const data = await paneLoader({ params: { paneId }, request: new Request(`http://localhost/pane/${encodeURIComponent(paneId)}?h=otter`) });
+      expect(data.walky).toBeNull();
+      expect(data.walkyReads).toBe(0);
+    }
+  });
+
+  it("keeps the last list and its read count when the MIRROR read fails, so a card does not turn back into text", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const first = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(first.walky).toEqual([fixtureWalkyAgent]);
+    failPane();
+    const degraded = await paneLoader({ params: { paneId: "w1:p8" }, request: open("w1:p8") });
+    expect(degraded.error).toBe(true);
+    expect(degraded.walky).toEqual([fixtureWalkyAgent]);
+    expect(degraded.walkyReads).toBeGreaterThanOrEqual(first.walkyReads ?? 0);
+  });
+
+  it("shows a device refused for want of pairing no kept message when the mirror read fails", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    (await import("./pairing")).markNotPaired();
+    failPane();
+    const refused = await paneLoader({ params: { paneId: "w1:p9" }, request: open("w1:p9") });
+    expect(refused.error).toBe(true);
+    expect(refused.walky).toBeNull();
+  });
+
+  it("counts each answered read, keeps the list's identity across a quiet poll, and does not count a failed one", async () => {
+    setWalkyRows([fixtureWalkyAgent]);
+    const { paneLoader } = await import("./loaders");
+    const first = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    const second = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    // The same rows object, yet a read in between: the count is what tells the two polls apart.
+    expect(second.walky).toBe(first.walky);
+    expect(second.walkyReads).toBe((first.walkyReads ?? 0) + 1);
+    failWalky();
+    const failed = await paneLoader({ params: { paneId: "w1:p7" }, request: open("w1:p7") });
+    expect(failed.walkyReads).toBe(second.walkyReads);
   });
 });

@@ -36,7 +36,7 @@ function sameHead(a: GitHead, b: GitHead): boolean {
 const trim = (path: string): string => path.replace(/[\\/]+$/, "");
 
 /** Whether `path` is `folder` or sits inside it, on either separator, trailing ones ignored. */
-function isSameOrUnder(path: string, folder: string): boolean {
+export function isSameOrUnder(path: string, folder: string): boolean {
   const p = trim(path);
   const f = trim(folder);
   if (f === "") return true;

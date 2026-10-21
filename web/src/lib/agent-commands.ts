@@ -5,9 +5,9 @@
 // the UI sends `/command` (+ submit key) for no-arg commands, or inserts `/command ` into the
 // composer for the user to complete when the command takes an argument.
 //
-// `omp` is the one catalog sourced from CAPTURES rather than docs — see its section for the two rules
-// that follow from that, both of which apply to any future palette-sourced agent: only what a capture
-// actually shows, and nothing the capturing user's own machine contributed.
+// `omp` and `kiro` are the catalogs sourced from CAPTURES rather than docs — see omp's section for
+// the two rules that follow from that, both of which apply to any palette-sourced agent: only what a
+// capture actually shows, and nothing the capturing user's own machine contributed.
 //
 // A row marked `// harness-bar` has a BUTTON on the harness bar above the key rail
 // (`web/src/lib/harness-bar.ts`). Renaming or removing one of those commands changes a surface the
@@ -17,6 +17,7 @@
 //
 // To regenerate: re-run the per-agent doc-fetch agents (see CHANGELOG) and replace the arrays.
 
+import type { ClaudeCommand } from "@/lib/api";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
 import type { OperatorCommand } from "@/lib/types";
 
@@ -275,6 +276,26 @@ const GROK: readonly AgentCommand[] = [
   { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
+// ── Kiro ─────────────────────────────────────────────────────────────────────
+// Sourced from CAPTURES of kiro-cli 2.32.0's own `/` menu (V3), under omp's two rules above: only
+// what a capture shows, and nothing the capturing machine added. The menu ran with an empty
+// KIRO_HOME, so it lists built-in commands only. Each description is the menu's own, without its
+// "(tab for sub-commands)" note. `/model` and `/agent` open pickers the Kiro adapter does not lift:
+// the phone shows them on the raw mirror, to be driven with the keys pad and closed with Escape. So,
+// as for omp, `common: false`.
+const KIRO: readonly AgentCommand[] = [
+  // kiro--v3-slash-help-w120.txt
+  { command: "/help", description: "Show available commands", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-model-w120.txt
+  { command: "/model", description: "List or switch models", takesArg: false, argHint: "", common: false, dangerous: false },
+  // kiro--v3-slash-menu-w120.txt, the unfiltered menu's first rows.
+  { command: "/agent", description: "List or switch agents", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/compact", description: "Compact conversation history to reduce context usage", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/clear", description: "Clear the conversation and start a fresh session", takesArg: false, argHint: "", common: false, dangerous: true },
+  // kiro--v3-slash-quit-w120.txt
+  { command: "/quit", description: "Quit the application", takesArg: false, argHint: "", common: false, dangerous: true },
+];
+
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
@@ -285,6 +306,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["opencode", OPENCODE],
   ["omp", OMP],
   ["grok", GROK],
+  ["kiro", KIRO],
   // Herdr reports this agent under both names, and canonicalAgent() folds neither onto the other,
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],
@@ -317,8 +339,9 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
 export function commandsFor(
   agent: string | undefined | null,
   mine: readonly OperatorCommand[] = [],
+  found: readonly ClaudeCommand[] = [],
 ): readonly AgentCommand[] {
-  const shipped = catalogFor(agent);
+  const shipped = withFound(agent, catalogFor(agent), found);
   const aimed = rowsFor(mine, agent, (row) => row.command);
   // Rule 2: nothing of yours points here, so this pane was never part of what you were choosing.
   if (aimed.length === 0) return shipped;
@@ -336,8 +359,75 @@ export function commandsFor(
   }));
 }
 
+/**
+ * The reference catalog with the on-disk skill and command candidates folded in, Claude only.
+ * Shipped built-in rows stay untouched (`common`, `dangerous`, `takesArg`, `description`); discovered
+ * candidates join as searchable rows (`common: false`) with `takesArg: true` so tapping one stages
+ * `/cmd ` into the composer for review rather than submitting immediately.
+ */
+function withFound(
+  agent: string | undefined | null,
+  shipped: readonly AgentCommand[],
+  found: readonly ClaudeCommand[],
+): readonly AgentCommand[] {
+  if (found.length === 0 || canonicalAgent(agent?.toLowerCase().trim() ?? "") !== "claude") return shipped;
+  const seen = new Set(shipped.map((row) => row.command));
+  const merged = [...shipped];
+  for (const row of found) {
+    if (seen.has(row.command)) continue;
+    seen.add(row.command);
+    merged.push({
+      command: row.command,
+      description: row.description,
+      takesArg: true,
+      argHint: row.argHint,
+      common: false,
+      dangerous: false,
+    });
+  }
+  return merged;
+}
+
 /** The agent names the shipped catalog is filed under — pinned against AGENT_FAMILIES in the tests. */
 export const CATALOG_AGENTS: readonly string[] = [...CATALOG.keys()];
+
+/**
+ * Commands matching a single-token `/` or `$` draft in the composer (`^([/$])\S*$`).
+ *
+ * Prefix matches on the command name come first, then substring matches on the command name, then
+ * substring matches on the description. A bare sigil (`/` or `$`) lists common commands first and
+ * the rest after, so Codex's `$` skills (which are `common: false`) still show on `$`. Returns `[]`
+ * when the draft is empty, has whitespace, starts with neither sigil, or no command in `commands`
+ * uses that sigil.
+ */
+export function suggestCommands(
+  draft: string,
+  commands: readonly AgentCommand[],
+): readonly AgentCommand[] {
+  if (!/^([/$])\S*$/u.test(draft) || commands.length === 0) return [];
+  const sigil = draft[0]!;
+  const pool = commands.filter((c) => c.command.startsWith(sigil));
+  if (pool.length === 0) return [];
+  if (draft.length === 1) {
+    return [...pool.filter((c) => c.common), ...pool.filter((c) => !c.common)];
+  }
+  const q = draft.toLowerCase();
+  const bare = q.slice(1);
+  const prefix: AgentCommand[] = [];
+  const nameHit: AgentCommand[] = [];
+  const descHit: AgentCommand[] = [];
+  for (const c of pool) {
+    const cmd = c.command.toLowerCase();
+    if (cmd.startsWith(q)) {
+      prefix.push(c);
+    } else if (cmd.includes(bare)) {
+      nameHit.push(c);
+    } else if (c.description.toLowerCase().includes(bare)) {
+      descHit.push(c);
+    }
+  }
+  return [...prefix, ...nameHit, ...descHit];
+}
 
 function catalogFor(agent: string | undefined | null): readonly AgentCommand[] {
   if (!agent) return [];

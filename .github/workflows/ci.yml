@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release-*"]
 
 # A new push to a PR supersedes the old run — don't burn a runner on the stale one.
 concurrency:

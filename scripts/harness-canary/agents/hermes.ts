@@ -1,5 +1,6 @@
-// Hermes Agent in the canary, with the provider in the operator's own config. Collie has no adapter
-// for hermes: raw mirror, one-step send. Asked for by name only (args.ts § DEFAULT_AGENTS).
+// Hermes Agent in the canary, with the provider in the operator's own config. Collie reads its
+// classic CLI with the adapter in web/src/lib/harness/hermes/. Asked for by name only
+// (args.ts § DEFAULT_AGENTS): a send spends the operator's own provider quota.
 
 import { backspaceSweep, launchLine, pointedRow, type AgentProfile } from "./profile";
 

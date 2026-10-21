@@ -401,9 +401,10 @@ On a crew (several machines, one phone-facing lead), each machine reads its own 
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
 
 The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
-Grok, Hermes, Muse and Antigravity. One that is not on the machine's login `PATH` stays in the list,
-disabled, marked "not installed". For another terminal agent, declare a row for it as above: it shows
-in the **Command** select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
+Grok, Hermes, Kiro, Muse and Antigravity. Kiro starts with its tool permissions left as you set
+them. An agent that is not on the machine's login `PATH` stays in the list, disabled, marked "not
+installed". For another terminal agent, declare a row for it as above: it shows in the **Command**
+select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
@@ -740,6 +741,20 @@ A tap on a row fills the Folder field and starts nothing, so you can still chang
 beside a row moves it to **Favourites**, up to 12, in the order you starred them. A second tap on the
 star moves it back to the top of Recent.
 
+**Browse** sits under the two lists. A tap on it lists the sub-folders of the folder in the field, or
+of home when the field is blank. Tap a folder to go into it, and the field follows. **Up**, or a part
+of the path above the list, goes back. A folder that is a Git repository carries a `git` badge.
+**Use this folder** fills the field, like a tap on a Recent row.
+
+When the field holds a path that does not exist, such as `~/src/plektra-`, Browse opens at the
+nearest folder that does (`~/src`) and lists only the names that start with the rest (`plektra-`).
+So typing in the field narrows the list. A path outside your home shows "Nothing to browse here".
+
+Browse reads folder names only, under your home folder, with the limits of the Files view. It hides
+dot-folders unless you type the dot, never lists `.git` or Collie's own state and config folders,
+does not follow a link out of home, and shows at most 200 folders. It creates nothing, and it needs
+a paired device, as Files does.
+
 The list belongs to the machine, not to the phone. Each machine keeps its own in `folders.json` in
 its state directory, `~/.local/state/collie/folders.json` unless `COLLIE_STATE_DIR` moves it. Every
 device you use sees the same list, and the file appears only after the first start in a folder or
@@ -748,7 +763,8 @@ folder the branch's own folder goes in.
 
 In a [crew](crew.md), each machine keeps the folders that exist on it, and the page shows the list
 of the machine you picked. A machine that runs an older Collie has no list, and the page then shows
-none for it.
+none for it. Browse lists the disk of the machine you picked too, and an older machine says it needs
+an update.
 
 ## Secret masking
 
@@ -845,6 +861,8 @@ the card's **Send now** button sends the whole queue to the running turn at once
 offers it, because the button presses Ctrl+Enter, the key that agent defines for this. The button is
 hidden on a read-only device and on a saved copy.
 
+The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
+
 One thing in Chat is known to be incomplete. Hermes can remove a turn from its log after Collie
 read it, for example when it compacts. Chat then keeps showing that turn until the session is read
 again. The terminal never has this problem.
@@ -864,6 +882,11 @@ reads the session name off the footer of `openclaw tui` (`agent main (main) | se
 opens that agent's session database under `$OPENCLAW_STATE_DIR`, or `~/.openclaw`, read-only. Set
 `openclaw_root` when the state folder is somewhere else. The pane must report itself to Herdr as
 agent `openclaw`. Collie never reads OpenClaw's config file or its gateway token.
+
+Kiro needs no Herdr integration either: Herdr names a `kiro-cli` pane agent `kiro`, and Collie finds
+the pane's session by the lock the running Kiro holds in it. Collie reads Kiro V3 sessions, started
+with `--v3` or `--agent-engine v3`, or with V3 set as the engine in Kiro's own settings. A V1 or V2
+session has no Chat or History. Set `kiro_root` when Kiro keeps its sessions somewhere else.
 
 `herdr integration status` shows which integrations are installed. A hook is read when the agent
 starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the

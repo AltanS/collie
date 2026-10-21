@@ -3,7 +3,7 @@ name: Windows
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release-*"]
 
 # Same rule as ci.yml: a new push supersedes the old run.
 concurrency:

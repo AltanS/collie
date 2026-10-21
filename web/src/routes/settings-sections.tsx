@@ -12,9 +12,11 @@ import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { KeepChatControl } from "@/components/keep-chat-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { HandControl } from "@/components/hand-control";
+import { SentSuggestionsControl } from "@/components/sent-suggestions-control";
 import { SpeechControl } from "@/components/speech-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HarnessBarControl } from "@/components/harness-bar-control";
+import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
@@ -55,6 +57,8 @@ import { useScope } from "@/lib/session";
 // ── THE SPLIT ────────────────────────────────────────────────────────────────
 // Appearance — how this phone PRESENTS itself. Anything you would change to make the app look
 //              different, including what the mirror renders with.
+// Harnesses  — what Chat lifts out of each harness's own screen, per harness. The status line is
+//              the first member; it sits after Appearance because it decides what the screen shows.
 // Device     — how this phone TREATS you. Feedback, input, and what the pane menu is allowed to
 //              offer. Nothing here changes a pixel until you do something.
 // Voice      — how your voice becomes text: a hub with this phone's own choice and hands-free, and
@@ -107,6 +111,18 @@ export function SettingsAppearanceRoute() {
   );
 }
 
+export function SettingsHarnessesRoute() {
+  return (
+    <SettingsPage title="settings.section.harnesses.title">
+      {/* One card, one row per harness the web has an adapter for, Claude Code first. Its own page
+          rather than a card on Appearance: the rows are per HARNESS, a list that grows with every
+          adapter, and Appearance is a handful of cards about the phone. Each switch is a standing
+          per-device choice about what Chat lifts out of that harness's screen. */}
+      <HarnessPrefsControl />
+    </SettingsPage>
+  );
+}
+
 export function SettingsDeviceRoute() {
   return (
     <SettingsPage title="settings.section.device.title">
@@ -116,6 +132,9 @@ export function SettingsDeviceRoute() {
           sheet offers the "Zen mode" row at all. Off by default, because zen takes away every way
           back except one floating button. */}
       <ZenControl />
+      {/* Whether a shell pane offers lines from Sent above its box as you type (M61). A standing choice
+          about this phone's composer, stored with the display prefs. */}
+      <SentSuggestionsControl />
       {/* How a pane's Changes view finds repos (ADR 0065). Read by the pane menu, not by here. */}
       <ChangesControl />
       {/* What this phone keeps of each pane's Chat, and for how long (M46 spec 09). Here, beside the

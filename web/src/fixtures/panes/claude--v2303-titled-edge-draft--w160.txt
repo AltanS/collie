@@ -1,0 +1,21 @@
+
+[0m[38;2;78;186;101m● [0m[1mlorem[0m(ips dolors ame cons adipis) [0m[38;2;153;153;153melit 5.5[0m
+[0m[38;2;153;153;153m  ⎿  [0mloremipsumdo sitam[0m[38;2;153;153;153m (↓ co adipis · elit+s do eiusmo)[0m
+
+[0m[38;2;153;153;153m●[0m loremips dolorsi ame consecte adipis eli seddoei tem
+[0m[38;2;153;153;153m  ⎿  $ lo /ips/dolo/sitam/consecte/adipis-elitseddo && eiusmo_temporin=utla etdolor 40 ~/.magna/aliqua-eni/mini-1.22/ven/quisno exer ullamc 2>&1 | labo -n [0m
+     [0m[38;2;153;153;153m"loremip\|dolo" | /sit/ame/con; adipisc 20 eli -s doeiusmod=tem incididu 'utl -e ~/dolo/magnaa-enim min --veniamq -1; nostrudex --ulla la-nisial comm…[0m
+  
+[0m[38;2;153;153;153m✻ Brewed for 4m 14s · done 6:51 AM · 1 shell still running[0m
+                                                                                                                        [0m[38;2;78;186;101m✔ Update installed · Restart to update[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1.23.0 ─[0m
+[0m[38;2;153;153;153m❯ [0mok merge the five, running the crew update now
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m16%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m96%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m7%[0m[38;5;246m/4h:35m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;71m32%[0m[38;5;246m/1d:19h[0m
+  [0m[38;5;75m[Fable[0m[38;5;246m·high[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m~/projects/collie-workspace[0m[38;2;153;153;153m [0m[38;5;109mon main[0m[38;5;179m*[0m
+  [0m[38;2;255;107;128m⏵⏵ bypass permissions on[0m[38;2;153;153;153m · [0m[38;2;0;204;204m1 shell[0m[38;2;153;153;153m · ← 11 agents[0m
+
+[0m[1m  ● main[0m
+[0m[38;2;153;153;153m  ◯ general-purpose  Running update and crew tests                                                                                 1h 0m 34s · ↓ 341.0k tokens[0m
+[0m[38;2;153;153;153m  ◯ general-purpose  Blaming protocol.test.ts lint failure                                                                         [0m     [0m[38;2;153;153;153m4m 0s · ↓ 69.2k tokens[0m
+[0m[38;2;153;153;153m  ◯ general-purpose  Listing Claude fixtures in README.md[0m                                                                                 [0m[38;2;153;153;153m34s · ↓ 63.2k tokens[0m

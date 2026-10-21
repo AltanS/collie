@@ -58,7 +58,8 @@ export interface MenuBlockProps {
 // There are NO digit buttons, and there never will be: in the `/model` picker a digit confirms AND
 // persists the choice as the user's default (.adr/0009). Only footer-named keys and arrows ship. The
 // one card with digits is a notice above a live box (`liveBox`, ADR 0109): its digits are the keys
-// its own row prints as `<digit>: <label>`, never a number read off a list row.
+// its own row prints as `<digit>: <label>` (letters, under a head the profile marks `letters`), never a
+// number read off a list row.
 export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
@@ -95,9 +96,13 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   // render it. One predicate, two uses below: it also decides the chip row, because a card with
   // chips to show is exactly a card that no longer needs the mirror.
   const readsBody = scale.length >= 2 && current >= 0;
-  // A notice card's title is the notice's whole text, so mirroring its rows would say it twice; its
-  // rows stay one tap away behind the Terminal toggle, as a card that reads the body keeps them.
+  // A notice card's title is the notice's whole text, so mirroring all its rows would say it twice; its
+  // rows stay one tap away behind the Terminal toggle, as a card that reads the body keeps them. The
+  // one part a notice card does mirror is the explanation printed after Learn more (`liveBox.body`):
+  // the title holds only the head's text, and the explanation is what the person tapped to read, its
+  // headings and bullets drawn as the terminal drew them, so it shows under the title by itself.
   const mirrors = !readsBody && menu.liveBox === undefined;
+  const noticeBody = menu.liveBox?.body;
 
   /** The arrow presses that walk the marker from `current` to `target`, in order. */
   const stepKeys = (target: number): string[] => {
@@ -129,6 +134,8 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
           show, so rendering both would repeat the same scale twice, wrapped fragments and all; its
           way back to these rows is the Terminal toggle above instead (ADR 0056). */}
       {mirrors && <RawMirror lines={lines} />}
+
+      {noticeBody !== undefined && <RawMirror lines={lines.slice(noticeBody.start, noticeBody.end + 1)} />}
 
       {/* The draft note's line is always there on a notice card and only its text comes and goes, so a
           poll that sees a draft appear never moves the buttons under a thumb (DESIGN.md §2). */}

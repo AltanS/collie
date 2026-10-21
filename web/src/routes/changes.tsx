@@ -72,7 +72,7 @@ import { unavailableKey } from "@/lib/changes-reason";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { changeAt, EMPTY_CHANGE_INDEX, indexChanges, markFolder, type MarkedFolder, type RootChange } from "@/lib/files-marks";
 import { baseName, formatBytes, headerFolder, previewKindFor, rootPathOf } from "@/lib/files-view";
-import { scopeGitHead } from "@/lib/git-head";
+import { isSameOrUnder, scopeGitHead } from "@/lib/git-head";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { isAbortError } from "@/lib/loaders";
 import { t, tn, type MessageKey } from "@/lib/i18n";
@@ -117,8 +117,9 @@ import { summarizeChanges, type WorkspaceChangeCount } from "@/lib/workspace-cha
 
 // The Changes view (ADR 0065): what changed under a WORKSPACE's folder since the last commit,
 // read-only. Two routes share it: `/pane/:paneId/changes` (the bridge resolves the pane's workspace)
-// and `/space/:spaceId/changes` (the workspace asked directly). Every pane of a workspace shows the
-// same list, and the header names the workspace and its folder so the scope is never a guess.
+// and `/space/:spaceId/changes` (the workspace asked directly). Every pane inside a workspace's
+// folder shows the same list; a pane parked outside it shows its own folder's instead (#509, ADR
+// 0112), and the header names the workspace and its folder so the scope is never a guess.
 //
 // ONE SCREEN, TWO BODIES (ADR 0083, 2026-10-06). By default the body is the root folder as a tree,
 // one folder at a time, with every change marked on its row: a changed file wears its status letter
@@ -937,17 +938,30 @@ function ChangesScreen() {
   const rootHead = scopeGitHead(headPanes, rootFolder);
 
   // The header's count line: the tab's kept answer until this visit's first read, then what the
-  // list sums to, which the tab keeps in turn so the way back shows it at once.
+  // list sums to, which the tab keeps in turn so the way back shows it at once. The kept answer is
+  // the WORKSPACE's, so a pane parked outside its workspace's folder (#509) — whose list is its
+  // own folder's, not the workspace's — neither seeds from it nor writes its own sum over it. Only
+  // a mux folder can leave a pane outside the root (a common-ancestor root holds every pane), so
+  // the space's folder is the whole test the snapshot offers; an unknown cwd keeps the old deal.
   const workspaceId = target.kind === "space" ? spaceId : pane?.workspaceId;
-  const [seedCount] = useState(() => (workspaceId === undefined ? undefined : keptChangeCount({ scope, workspaceId }, lookup)));
+  const outsideSpaceFolder =
+    target.kind === "pane" &&
+    pane !== undefined &&
+    space?.folder !== undefined &&
+    pane.cwd.trim() !== "" &&
+    !isSameOrUnder(pane.cwd, space.folder);
+  const [seedCount] = useState(() =>
+    workspaceId === undefined || outsideSpaceFolder ? undefined : keptChangeCount({ scope, workspaceId }, lookup),
+  );
   const listCount = useMemo(() => (list.phase === "ready" ? summarizeChanges(list.data) : null), [list]);
   let headerCount: WorkspaceChangeCount;
   if (listCount !== null && (answered || seedCount === undefined)) headerCount = listCount;
   else if (seedCount !== undefined) headerCount = seedCount;
   else headerCount = list.phase === "error" ? COUNT_UNAVAILABLE : COUNT_LOADING;
   useEffect(() => {
-    if (answered && listCount !== null && workspaceId !== undefined) keepChangeCount({ scope, workspaceId }, lookup, listCount);
-  }, [answered, listCount, workspaceId, scope, lookup]);
+    if (!outsideSpaceFolder && answered && listCount !== null && workspaceId !== undefined)
+      keepChangeCount({ scope, workspaceId }, lookup, listCount);
+  }, [answered, listCount, workspaceId, scope, lookup, outsideSpaceFolder]);
   // The rows fade in once, on the list screen; any other screen ends that for good.
   if (listArrive && !showList) setListArrive(false);
 

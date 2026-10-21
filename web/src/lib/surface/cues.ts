@@ -32,7 +32,7 @@
 //
 // Pure: the same rows always give the same answer.
 
-import { commandListNear, type CommandListRead } from "./command-list";
+import { commandListNear, pointsAt, type CommandListRead } from "./command-list";
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
@@ -257,16 +257,16 @@ function signPatterns(sources: readonly string[]): readonly RegExp[] {
 
 /**
  * Whether a found frame's volatile rows show a running sign. `profileSigns` are the profile's own
- * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge and the top
- * edge included, for a harness that marks a turn there (a spinner frame on its status row, a hint only
- * a turn shows, a label in the top rule).
+ * running rows (`idle.runningRows`): patterns read on the volatile rows, the bottom edge, the top
+ * edge and the prompt row included, for a harness that marks a turn there (a spinner frame on its
+ * status row, a hint only a turn shows, a label in the top rule, a prompt glyph only a turn draws).
  */
 export function runningSign(rows: readonly FrameRow[], frame: Frame, profileSigns: readonly string[] = []): boolean {
   const texts = rows.map(rowText);
   if (volatileRows(texts, frame).some((i) => isRunningRow(texts[i]!))) return true;
   if (profileSigns.length === 0) return false;
   const patterns = signPatterns(profileSigns);
-  return [...volatileRows(texts, frame), frame.bottom, frame.top].some((i) => {
+  return [...volatileRows(texts, frame), frame.bottom, frame.top, frame.interior.prompt].some((i) => {
     const text = texts[i]!.trimEnd();
     return text.length > 0 && patterns.some((pattern) => pattern.test(text));
   });
@@ -408,21 +408,22 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
  * the sides the profile names ({@link commandListNear}). Null when the profile names no list or neither
  * side holds one.
  */
-export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined): CommandListRead | null {
-  return commandListNear(texts, frame.top, frame.bottom, list);
+export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined, rows?: readonly FrameRow[]): CommandListRead | null {
+  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt);
 }
 
 /**
  * The typeahead of the command the box holds, or null: the profile's command list on either side of
- * a found frame, its pointer on an entry whose command is exactly the box's text (`/model` is pointed
- * at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed, so the
- * list is no dialog and its rows are read for no cue. A list that points at another command, or at
- * none, is read as before.
+ * a found frame, its pointer on an entry whose command is the box's text ({@link pointsAt}: `/model` is
+ * pointed at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed,
+ * so the list is no dialog and its rows are read for no cue. A list that points at another command, or
+ * at none, is read as before.
  */
-export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): CommandListRead | null {
+export function ownCommandList(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null, styled?: readonly FrameRow[]): CommandListRead | null {
   if (frame === null || idle === null || frame.placeholder) return null;
-  const list = commandListAt(texts, frame, idle.volatile.below.commandList);
-  return list !== null && list.pointed !== null && list.pointed === frame.interior.text.trim() ? list : null;
+  const rows = idle.volatile.below.commandList;
+  const list = commandListAt(texts, frame, rows, styled);
+  return list !== null && pointsAt(list, frame.interior.text, rows) ? list : null;
 }
 
 /** The rows with the rows `first` to `last` read as blank. */
@@ -434,6 +435,21 @@ function withoutSpan(rows: readonly FrameRow[], span: { readonly first: number; 
 /** The rows with a command list's rows read as blank. */
 export function withoutCommandList(rows: readonly FrameRow[], list: CommandListRead | null): readonly FrameRow[] {
   return withoutSpan(rows, list);
+}
+
+/**
+ * The rows with the box's own prompt glyph read as blank ({@link Frame.ownPrompt}): the prompt row's
+ * text in front of the draft hole turns into spaces, so the columns hold. Every other row, and the
+ * rows of a frame whose layout names no own glyph, stay as they are.
+ */
+function withoutOwnPrompt(rows: readonly FrameRow[], frame: Frame): readonly FrameRow[] {
+  const mark = frame.ownPrompt;
+  if (mark === undefined) return rows;
+  return rows.map((row, i) => {
+    if (i !== mark.row) return row;
+    const text = rowText(row);
+    return { segments: [{ text: " ".repeat(Math.min(mark.end, text.length)) + text.slice(mark.end) }] };
+  });
 }
 
 /**
@@ -449,16 +465,18 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
  * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
- * and a notice over the box ({@link noticeOver}) are left out of both.
+ * and a notice over the box ({@link noticeOver}) are left out of both, and the box's own prompt glyph
+ * ({@link withoutOwnPrompt}) out of the second.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle));
+  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows));
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
+  // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
   const at = frame.top;
-  const down = readCues(rows.slice(at), null, null);
+  const down = readCues(withoutOwnPrompt(rows, frame).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };

@@ -128,6 +128,14 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2302-slash-effort-list--w120--h40.txt",
     "claude--v2302-slash-model-list--w120--h40.txt",
     "claude--v2302-heads-up-above-box--w142.txt",
+    // The Heads up follow-ups, 2.1.304 (derived): the box stands under each.
+    "claude--v2304-heads-up-dismissed--w135.txt",
+    "claude--v2304-heads-up-dismissed--w65.txt",
+    "claude--v2304-heads-up-dismissed-after-explain--w65.txt",
+    "claude--v2304-heads-up-explained--w135.txt",
+    "claude--v2304-heads-up-explained--w65.txt",
+    // The notice over the agents panel at 69 columns (derived from a bridge read): the box stands.
+    "claude--v2302-notice-over-agents-panel--w69.txt",
     // The fix rig's Herdr pane, 120 x 36 (captured 2026-10-17): a screen whose rows reach the bottom
     // with an empty box, and the same pane with the list under a box holding `/model`; the box stands.
     "claude--v2302-idle-full-screen--w120--h36.txt",
@@ -136,6 +144,13 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2302-turn-ending-stop-hooks--w119.txt",
     "claude--v2302-working-agents-panel--w119.txt",
     "claude--v2302-working-list-echo--w119.txt",
+    // A session name in the top edge (lane 8788, 2026-10-19): the titled edge is the box's edge.
+    "claude--v2303-titled-edge-draft--w160.txt",
+    "claude--v2303-titled-edge-idle--w160.txt",
+    "claude--v2303-titled-edge-survey--w160.txt",
+    "claude--v2303-titled-edge-working--w160.txt",
+    // The survey's transcript question, 2.1.306 (captured 2026-10-21): the box stands under it.
+    "claude--v2306-transcript-survey--w153.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

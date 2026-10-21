@@ -18,9 +18,14 @@ import {
   CREW_SECRET_PATH,
   CREW_SNAPSHOT_PATH,
   CREW_TAKEOVER_PATH,
+  CREW_WALKY_OUTCOMES_PATH,
+  CREW_WALKY_PATH,
   CREW_WARRANT_PATH,
   type SnapshotSource,
 } from "./router.ts";
+import type { JsonValue } from "../json.ts";
+import type { CrewAnswer } from "../walky/crew.ts";
+import type { WalkyReceipt } from "../walky/types.ts";
 import { signDial, signRequest, DIAL_HEADER, MAX_SKEW_MS, SIGNATURE_HEADER, TIMESTAMP_HEADER } from "./signing.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo, type Warrant } from "./trust-store.ts";
 import { mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
@@ -501,7 +506,7 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
 
   test("a peer reads both follow headers and hands them to its own decision, unchanged", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -516,12 +521,33 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual(ownSnapshot());
-    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7" }]);
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7", leadLine: null }]);
+  });
+
+  test("the lead's release line rides beside the release, verbatim (M60 spec 01)", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    await call(handler, CREW_SNAPSHOT_PATH, {
+      headers: {
+        ...authed,
+        "x-crew-lead-release": "1.23.0-edge.1",
+        "x-crew-lead-line": "stable;rollback",
+        "x-crew-update-turn": "laptop;r-8",
+      },
+    });
+    expect(seen).toEqual([{ leadRelease: "1.23.0-edge.1", turn: "laptop;r-8", leadLine: "stable;rollback" }]);
   });
 
   test("a turn for somebody else reaches the peer verbatim, and its own guards refuse it", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -534,12 +560,12 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     });
     // The ROUTER does not decide whose turn it is — it carries the value, and `follow.ts` refuses a
     // turn that does not name this member. Deciding it here would be a second answer to one question.
-    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "basement;r-7" }]);
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "basement;r-7", leadLine: null }]);
   });
 
   test("an older peer ignores the follow headers: absent, blank and unwired all read the same", async () => {
     const h = harness(peerStore());
-    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const seen: { leadRelease: string | null; turn: string | null; leadLine?: string | null }[] = [];
     const handler = createCrewRouter({
       store: h.store,
       audit: h.audit,
@@ -552,8 +578,8 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
       headers: { ...authed, "x-crew-lead-release": "  ", "x-crew-update-turn": "" },
     });
     expect(seen).toEqual([
-      { leadRelease: null, turn: null },
-      { leadRelease: null, turn: null },
+      { leadRelease: null, turn: null, leadLine: null },
+      { leadRelease: null, turn: null, leadLine: null },
     ]);
 
     // And a build wired with no follower at all answers the identical body: it ignores both headers,
@@ -2699,5 +2725,159 @@ describe("version negotiation", () => {
       expected: 2,
       received: null,
     });
+  });
+});
+
+describe("POST /crew/v1/walky — a member hands its lead a message (§21)", () => {
+  const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "desk/w1:p1", state: "accepted", verified: "origin", at: T0, by: "desk" };
+
+  function walkyRig(answer: CrewAnswer = { status: 200, body: { receipts: [receipt] } }) {
+    const h = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: { body: JsonValue | undefined; member: string }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      walky: {
+        fromMember: async (body, from) => {
+          seen.push({ body, member: from.memberId });
+          return answer;
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a signed request from a pinned member reaches the walky handler as that member, and its receipts come back", async () => {
+    const { h, handler, seen } = walkyRig();
+    const res = (await call(handler, CREW_WALKY_PATH, signedPost("laptop", CREW_WALKY_PATH, { v: 1, id: "wt_aaaaaaaaaaa1" }, T0)))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ receipts: [receipt] });
+    expect(seen).toEqual([{ body: { v: 1, id: "wt_aaaaaaaaaaa1" }, member: "laptop" }]);
+    // Not a membership route: the replay floor is not advanced and the store is not written.
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+    expect(h.writes()).toBe(0);
+  });
+
+  test("a replay is admitted again inside the window and answered by the handler: the message id dedupes", async () => {
+    const { h, handler, seen } = walkyRig();
+    const init = () => signedPost("laptop", CREW_WALKY_PATH, { id: "wt_aaaaaaaaaaa1" }, T0);
+    expect((await call(handler, CREW_WALKY_PATH, init()))!.status).toBe(200);
+    expect((await call(handler, CREW_WALKY_PATH, init()))!.status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect(h.data().peers[0]!.signedAt).toBe(0);
+  });
+
+  test("a bad signature, an unknown member and an unsigned request are the uniform 401, and reach no handler", async () => {
+    const { handler, seen } = walkyRig();
+    const forged = signedPost("laptop", CREW_WALKY_PATH, { id: "wt_aaaaaaaaaaa1" }, T0);
+    const tampered: RequestInit = { ...forged, body: JSON.stringify({ id: "wt_bbbbbbbbbbb1" }) };
+    for (const init of [tampered, signedPost("stranger", CREW_WALKY_PATH, {}, T0), post({})]) {
+      const res = (await call(handler, CREW_WALKY_PATH, init))!;
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("a message the handler cannot verify is the same uniform 401, audited as a refusal", async () => {
+    const { h, handler } = walkyRig({ status: 401, body: { error: "unauthorized" } });
+    const res = (await call(handler, CREW_WALKY_PATH, signedPost("laptop", CREW_WALKY_PATH, {}, T0)))!;
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+  });
+
+  test("a collie that does not lead answers 404, even to its own lead", async () => {
+    const h = harness(peerStore());
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true, walky: { fromMember: async () => ({ status: 200, body: { receipts: [] } }) } });
+    const res = (await call(handler, CREW_WALKY_PATH, post({})))!;
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("the walky report rides the snapshot answer (§21)", () => {
+  const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w1:p9", state: "delivered", verified: "lead", at: T0, by: "laptop" };
+
+  test("the report sits beside the body with its cursor, an empty one is omitted, and the lead's ack reaches it first", async () => {
+    const h = harness(peerStore());
+    const acks: (string | null)[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      walky: {
+        report: (ack) => {
+          acks.push(ack);
+          return ack === "0a1b2c3d.1" ? null : { receipts: [receipt], cursor: "0a1b2c3d.1" };
+        },
+      },
+    });
+    const first = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(first).toMatchObject({ bridge: "connected", walky: { receipts: [receipt], cursor: "0a1b2c3d.1" } });
+    // The header's name is matched in any case, as HTTP says.
+    const second = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-crew-walky-ack": "0a1b2c3d.1" } }))!.json();
+    expect(second).not.toHaveProperty("walky");
+    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "X-Crew-Walky-Ack": "  " } });
+    expect(acks).toEqual([null, "0a1b2c3d.1", null]);
+  });
+});
+
+describe("POST /crew/v1/walky/outcomes — the lead hands a member its outcomes (§21, added 2026-10-18)", () => {
+  const receipt: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "other/w1:p9", state: "delivered", verified: "origin", at: T0, by: "other" };
+
+  function outcomesRig(store: TrustStoreData, answer: CrewAnswer = { status: 200, body: { written: 1 } }) {
+    const h = harness(store);
+    const seen: { body: JsonValue | undefined; from: string }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      walky: {
+        outcomes: (body, from) => {
+          seen.push({ body, from });
+          return answer;
+        },
+      },
+    });
+    return { h, handler, seen };
+  }
+
+  test("a member takes it from its lead and answers the count", async () => {
+    const { handler, seen } = outcomesRig(peerStore());
+    const res = (await call(handler, CREW_WALKY_OUTCOMES_PATH, post({ receipts: [receipt] })))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({ written: 1 });
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    expect(seen).toEqual([{ body: JSON.parse(JSON.stringify({ receipts: [receipt] })) as JsonValue, from: "desk" }]);
+  });
+
+  test("a refusal from the handler is the uniform 401, audited; a 400 says why", async () => {
+    const refused = outcomesRig(peerStore(), { status: 401, body: { error: "unauthorized" } });
+    const res = (await call(refused.handler, CREW_WALKY_OUTCOMES_PATH, post({ receipts: [] })))!;
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(refused.h.lines.some((line) => line.action === "crew.refused")).toBe(true);
+    const malformed = outcomesRig(peerStore(), { status: 400, body: { error: "an outcomes push needs a `receipts` list" } });
+    const bad = (await call(malformed.handler, CREW_WALKY_OUTCOMES_PATH, post({})))!;
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "an outcomes push needs a `receipts` list" });
+  });
+
+  test("a lead never reaches the handler, and a member build that does not wire it answers 404", async () => {
+    // A lead never takes it: a lead admits a member only by §8.6's signature, which this lead → peer
+    // route does not carry, so even a member's signed request is the uniform 401 and reaches nothing.
+    const h0 = harness(leadStore({ peers: [member({ memberId: "laptop" })] }));
+    const seen: JsonValue[] = [];
+    const lead = createCrewRouter({ store: h0.store, audit: h0.audit, now: () => T0, walky: { outcomes: (body) => (seen.push(body ?? null), { status: 200, body: { written: 0 } }) } });
+    expect((await call(lead, CREW_WALKY_OUTCOMES_PATH, signedPost("laptop", CREW_WALKY_OUTCOMES_PATH, { receipts: [] }, T0)))!.status).toBe(401);
+    expect(seen).toEqual([]);
+    const h = harness(peerStore());
+    const unwired = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
+    expect((await call(unwired, CREW_WALKY_OUTCOMES_PATH, post({ receipts: [] })))!.status).toBe(404);
   });
 });

@@ -10,6 +10,13 @@
 // model says so (`liveBox`): it owns no keyboard, and its buttons are the printed digits alone, in the
 // printed order (ADR 0009: a key comes only from what the row prints). The shape itself is read once,
 // by surface/notice.ts, the same reader the Surface and the bridge's send gate use.
+//
+// The session rating survey is the second shape the profile names (ADR 0109 addendum, 2026-10-19):
+//
+//   ● How is Claude doing this session? (optional)
+//     1: Bad    2: Fine   3: Good   0: Dismiss
+//
+// often with the update row (`✔ Update installed · Restart to update`) between its keys and the box.
 
 import { lineText, type StyledLine } from "../../blocks";
 import { readCuesFor } from "../../surface/cues";
@@ -21,8 +28,9 @@ import { CLAUDE_IDLE } from "./markers";
 
 /**
  * The bridge binds a tap only to a region that ends inside the last this-many non-blank rows of its
- * fresh read (`DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts). A card whose region could not
- * bind there would only ever be refused, so it does not lift.
+ * fresh read (`DEFAULT_PROMPT_TAIL_LINES` in bridge/prompt-binding.ts), the footer run the profile
+ * names under the box (`Frame.volatile.named`) not counted. A card whose region could not bind there
+ * would only ever be refused, so it does not lift.
  */
 const BRIDGE_TAIL_ROWS = 6;
 
@@ -50,8 +58,15 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
   if (notice === null) return null;
   // A dialog stacked over the notice holds the keys (the bridge reads the screen `unreadable`): no card.
   if (readCuesFor(lines, frame, CLAUDE_IDLE).strength === "strong") return null;
-  const rowsUnder = texts.slice(frame.bottom + 1).filter((text) => text.trim().length > 0).length;
+  // The footer run the profile names (Claude Code's agents panel) is not counted, from its first named
+  // row down, as the bridge cuts it. A generic footer, any short run after a blank row, is counted.
+  const underEnd = frame.volatile.named[0]?.row ?? texts.length;
+  const rowsUnder = texts.slice(frame.bottom + 1, underEnd).filter((text) => text.trim().length > 0).length;
   if (rowsUnder >= BRIDGE_TAIL_ROWS) return null;
+  const draft = extractInputDraft(lines) !== null;
+  // The body's rows, counted from the head row the card's lines start on; left out when there is none.
+  const liveBox: NonNullable<MenuModel["liveBox"]> =
+    notice.body === null ? { draft } : { draft, body: { start: notice.body.first - notice.first, end: notice.body.last - notice.first } };
   return {
     startLine: notice.first,
     endLine: notice.last,
@@ -60,7 +75,7 @@ export function detectAbovePromptNotice(lines: StyledLine[]): AbovePromptNoticeR
       actions: notice.keys.map((key) => ({ label: key.label, keys: [key.key] })),
       nav: { upDown: false },
       signature: texts.slice(notice.first, frame.bottom + 1).join("\n"),
-      liveBox: { draft: extractInputDraft(lines) !== null },
+      liveBox,
     },
   };
 }

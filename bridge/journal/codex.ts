@@ -9,7 +9,18 @@
 //                                                      "function_call"|"function_call_output", …}}
 //   {"timestamp":"…","type":"event_msg","payload":{"type":"user_message"|"agent_message"|
 //                                                  "agent_reasoning"|"token_count", …}}
-// `{timestamp,type,payload}` are the ONLY top-level keys.
+// `{timestamp,type,payload}` were the ONLY top-level keys up to 0.156; 0.163 adds `ordinal`, a row
+// number that counts across the files of one conversation (below). The parser reads none of it.
+//
+// A REWIND STARTS A NEW FILE (measured on codex 0.163.0, 2026-10-19, issue #523). Esc-Esc, pick an
+// earlier prompt, Enter: Codex keeps the session id and writes the rest of the conversation to a
+// SEGMENT, `rollout-<ISO-ts>-<session-uuid>_<segment-uuid>.jsonl`, in the date folder of the rewind.
+// The old file is never written again. The segment's `session_meta` names what it kept, by pointer:
+//   "history_base":{"thread_id":"<session-uuid or an earlier segment-uuid>",
+//                   "end_ordinal_exclusive":17,"end_byte_offset":63091}
+// The conversation is bytes [0, end_byte_offset) of that base, then the segment. A second rewind
+// points at the first segment, so a chain is read newest to oldest. No row is copied, so nothing is
+// deduped. See CodexTranscriptSource.
 //
 // THE TRAP: ROWS ARE DOUBLE-BOOKED. The same conversation is written twice — once as `response_item`
 // (the API-shaped record) and once as `event_msg` (the UI event stream). Measured on one session: 29
@@ -44,7 +55,18 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
-import { containedRealpath, exists, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
+import {
+  containedRealpath,
+  exists,
+  FIRST_TAIL_BYTES,
+  head,
+  loadTail,
+  MAX_TRANSCRIPT_BYTES,
+  readSinceFile,
+  rootList,
+  statFile,
+} from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall, type ToolCall } from "./tool-call.ts";
 import type {
@@ -520,52 +542,124 @@ export function createCodexReducer(): RowReducer {
 }
 
 /**
+ * How long a resolved path is trusted before {@link CodexTranscriptSource.resolve} looks for a newer
+ * segment. A rewind moves the conversation to a new file under the SAME session id, so the cache can
+ * no longer hold a hit for good. Every poll asks (the cache probe, the tracker, the Chat window), and
+ * a walk per ask is a readdir per date folder per pane, so the walk runs at most once per this long.
+ * The cost is that Chat follows a rewind up to this late.
+ */
+export const CODEX_RESCAN_MS = 2000;
+
+/** Most links of a rewind chain followed. A chain past it reads as clipped, not as an error. */
+export const CODEX_MAX_CHAIN = 64;
+
+/** The most of a file read to find its `session_meta` row. Measured: 19 KB on 0.163.0. */
+const META_BYTES = 256 * 1024;
+
+/** One file of a conversation, and how many of its bytes belong to it: `[0, end)`. */
+interface ChainLink {
+  readonly path: string;
+  readonly end: number;
+}
+
+/** Where a segment's retained history lives, read off its `session_meta.history_base`. */
+interface HistoryBase {
+  readonly id: string;
+  readonly end: number;
+}
+
+/**
+ * The pointer in a `session_meta` row, or null for anything else.
+ *
+ * The id is checked against the uuid shape BEFORE it can become part of a file name, exactly as a
+ * Herdr id is: the file is Codex's, but a name built from its contents is still a name built.
+ */
+export function codexHistoryBase(firstLine: string): HistoryBase | null {
+  let row: JsonValue;
+  try {
+    // SAFETY: `JSON.parse` output IS a JsonValue by construction.
+    row = JSON.parse(firstLine) as JsonValue;
+  } catch {
+    return null;
+  }
+  const meta = asRecord(row);
+  if (meta === null || meta.type !== "session_meta") return null;
+  const base = asRecord(asRecord(meta.payload)?.history_base);
+  if (base === null) return null;
+  const id = base.thread_id;
+  const end = base.end_byte_offset;
+  if (typeof id !== "string" || !isCodexSessionId(id)) return null;
+  if (typeof end !== "number" || !Number.isSafeInteger(end) || end < 0) return null;
+  return { id: id.toLowerCase(), end };
+}
+
+/**
  * Real filesystem source rooted at Codex's `sessions` directory.
  *
  * Resolution is a targeted walk rather than Claude's flat scan, because the uuid is in the FILENAME
  * under date-partitioned directories (`YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`). We walk newest-date
  * first, so a live session is found after reading a handful of directory entries rather than the
- * whole year. The hit is cached; a cached path is re-verified before use, since a session can be
- * deleted while the bridge is up.
+ * whole year.
  *
- * No continuation-following, deliberately: Codex reports its session on the `SessionStart` hook (which
+ * THE ACTIVE FILE IS THE NEWEST ONE OF THE SESSION. Herdr cannot say which file it is: Codex's hook
+ * reports the session id, and a rewind keeps that id (file header), so the pane record reads the same
+ * before and after. What does change is the file set: a rewind adds a segment and never writes the
+ * old file again. So `resolve` answers the newest file whose name carries the session id, the plain
+ * one or a `_<segment>` one. Newest is the largest name in the newest date folder that has one: the
+ * name starts with the time to the second, and two segments in one second are told apart by their
+ * uuids, which are time-ordered (v7). A hit is trusted for {@link CODEX_RESCAN_MS}, then walked again.
+ *
+ * THE CONVERSATION IS A CHAIN. The active segment holds only what came after the rewind; `load` and a
+ * resetting `readSince` put the retained history in front of it, by following `history_base`
+ * pointers to the session's own files ({@link CODEX_MAX_CHAIN} links, a file seen twice ends it). The
+ * key stays the active file's path and its `stat` stays the active file's, which is right because a
+ * base is frozen: the only thing that changes a conversation's prefix is another rewind, and that
+ * changes the path.
+ *
+ * No continuation-following beyond that: Codex reports its session on the `SessionStart` hook (which
  * fires only at the first prompt, see `REPORTS_SESSION_ON_FIRST_PROMPT` in `registry.ts`), so a
- * resumed conversation re-reports its NEW id and the pane record follows it. That's the failure
- * Claude's followContinuation exists to paper over, and Codex's hook simply doesn't have it.
+ * resumed conversation re-reports its NEW id and the pane record follows it.
  */
 export class CodexTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  private readonly pathCache = new Map<string, { path: string; at: number }>();
 
   private readonly roots: string[];
 
   /** One sessions directory or several (a second `CODEX_HOME`), searched in order. */
-  constructor(roots: string | readonly string[]) {
+  constructor(
+    roots: string | readonly string[],
+    private readonly now: () => number = () => Date.now(),
+  ) {
     this.roots = rootList(roots);
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
     if (ref.kind !== "id" || !isCodexSessionId(ref.value)) return null;
-    const sessionId = ref.value;
+    const sessionId = ref.value.toLowerCase();
     const cached = this.pathCache.get(sessionId);
-    if (cached !== undefined) {
-      if (await exists(cached)) return cached;
-      this.pathCache.delete(sessionId);
+    if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS && (await exists(cached.path))) {
+      return cached.path;
     }
+    this.pathCache.delete(sessionId);
 
-    const suffix = `-${sessionId.toLowerCase()}.jsonl`;
+    // The id is uuid-shaped (checked above), so it is safe inside a pattern.
+    const own = new RegExp(`-${sessionId}(?:_[0-9a-f-]{36})?\\.jsonl$`);
     for (const root of this.roots) {
-      const hit = await this.findUnder(root, suffix);
+      const hit = await this.findUnder(root, (name) => own.test(name));
       // A hit that failed containment is `null` too — that root has nothing it may serve for this
       // uuid either way, and the next root is asked on its own terms (files.ts header).
       if (hit === null) continue;
-      this.pathCache.set(sessionId, hit);
+      this.pathCache.set(sessionId, { path: hit, at: this.now() });
       return hit;
     }
     return null;
   }
 
-  /** Newest first at every level: a session being read is almost always today's. */
-  private async findUnder(root: string, suffix: string): Promise<string | null> {
+  /**
+   * The newest file under `root` whose name `match` accepts: newest date folder first, and the
+   * largest name inside the first folder that has one.
+   */
+  private async findUnder(root: string, match: (lowerName: string) => boolean): Promise<string | null> {
     for (const year of await descending(root)) {
       for (const month of await descending(join(root, year))) {
         for (const day of await descending(join(root, year, month))) {
@@ -576,9 +670,10 @@ export class CodexTranscriptSource implements TranscriptSource {
           } catch {
             continue;
           }
-          const hit = names.find(
-            (n) => n.startsWith("rollout-") && n.toLowerCase().endsWith(suffix),
-          );
+          const hit = names
+            .filter((n) => n.startsWith("rollout-") && match(n.toLowerCase()))
+            .toSorted()
+            .at(-1);
           if (hit === undefined) continue;
           return containedRealpath(join(dir, hit), root);
         }
@@ -587,9 +682,81 @@ export class CodexTranscriptSource implements TranscriptSource {
     return null;
   }
 
+  /**
+   * The file a `history_base` names: the session's plain file when the id is the session's own, its
+   * `_<segment>` file otherwise. Looked up in every root, contained by the root that answered.
+   */
+  private async findBase(sessionId: string, baseId: string): Promise<string | null> {
+    const suffix = baseId === sessionId ? `-${sessionId}.jsonl` : `-${sessionId}_${baseId}.jsonl`;
+    for (const root of this.roots) {
+      const hit = await this.findUnder(root, (name) => name.endsWith(suffix));
+      if (hit !== null) return hit;
+    }
+    return null;
+  }
+
+  /**
+   * The files in front of `active`, newest first, and whether the chain reached a file with no
+   * pointer. `broken` is a base that is gone, a loop, or a chain past {@link CODEX_MAX_CHAIN}: the
+   * caller shows what it has and calls it clipped, as it does a log over the byte cap.
+   */
+  private async chain(active: string, firstLine: string): Promise<{ links: ChainLink[]; broken: boolean }> {
+    const sessionId = /-([0-9a-f-]{36})(?:_[0-9a-f-]{36})?\.jsonl$/i.exec(active)?.[1]?.toLowerCase();
+    const links: ChainLink[] = [];
+    if (sessionId === undefined) return { links, broken: false };
+    const seen = new Set([active]);
+    let base = codexHistoryBase(firstLine);
+    while (base !== null) {
+      if (links.length >= CODEX_MAX_CHAIN) return { links, broken: true };
+      const path = await this.findBase(sessionId, base.id);
+      if (path === null || seen.has(path)) return { links, broken: true };
+      seen.add(path);
+      const st = await statFile(path);
+      if (st === null) return { links, broken: true };
+      links.push({ path, end: Math.min(base.end, st.size) });
+      base = codexHistoryBase(await firstLineOf(path));
+    }
+    return { links, broken: false };
+  }
+
+  /**
+   * The retained history in front of `active`, as whole rows, at most `budget` bytes of it.
+   *
+   * Over the budget the OLDEST end is cut, as {@link loadTail} cuts a long log, and the cut row is
+   * dropped rather than handed on as a fragment. `complete` is false then, and when the chain broke.
+   */
+  private async prefix(
+    active: string,
+    firstLine: string,
+    budget: number,
+  ): Promise<{ text: string; complete: boolean }> {
+    const { links, broken } = await this.chain(active, firstLine);
+    const parts: string[] = [];
+    let left = Math.max(0, budget);
+    for (const link of links) {
+      const take = Math.min(link.end, left);
+      let text = take === 0 ? "" : await Bun.file(link.path).slice(link.end - take, link.end).text();
+      // The pointer names a row boundary; a cut that is not on one keeps only the whole rows.
+      const last = text.lastIndexOf("\n");
+      text = last === -1 ? "" : text.slice(0, last + 1);
+      const cut = take < link.end;
+      if (cut) text = text.slice(text.indexOf("\n") + 1);
+      parts.unshift(text);
+      left -= take;
+      if (cut) return { text: parts.join(""), complete: false };
+    }
+    return { text: parts.join(""), complete: !broken };
+  }
+
   stat = statFile;
 
-  load = loadTail;
+  /** The History read: the retained history, then the active file, under the one byte cap. */
+  load = async (path: string): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }> => {
+    const tail = await loadTail(path);
+    if (!tail.complete) return tail;
+    const before = await this.prefix(path, firstLineIn(tail.text), MAX_TRANSCRIPT_BYTES - tail.size);
+    return { ...tail, text: before.text + tail.text, complete: before.complete };
+  };
 
   /**
    * The live read, with one contract on its caller that no other harness imposes.
@@ -602,8 +769,38 @@ export class CodexTranscriptSource implements TranscriptSource {
    *
    * That is not a defect of the cursor, it is what `reset` means: the answer replaces what you hold,
    * uuids included.
+   *
+   * A reset that read the active file from byte 0 also carries the retained history in front, inside
+   * the same first-read bound, so Chat opens on the turns a rewind kept. The cursor still counts bytes
+   * of the active file only; an append never needs the prefix again, because a base never changes.
    */
-  readSince = readSinceFile;
+  readSince = async (key: string, cursor: Cursor): Promise<ReadSince> => {
+    const read = await readSinceFile(key, cursor);
+    if (!read.reset || !read.fromStart) return read;
+    // An active file with no whole row yet: hold no position, so the read that finds its first row is
+    // a reset again and carries the prefix. An append would never fetch it.
+    if (read.lines.length === 0) return { ...read, cursor: NO_CURSOR };
+    const used = Buffer.byteLength(read.lines.join("\n")) + 1;
+    const before = await this.prefix(key, read.lines[0] ?? "", FIRST_TAIL_BYTES - used);
+    if (before.text === "") return { ...read, fromStart: before.complete };
+    const rows = before.text.slice(0, -1).split("\n");
+    return { ...read, lines: [...rows, ...read.lines], fromStart: before.complete };
+  };
+}
+
+/** The first row of a text, without its newline. */
+function firstLineIn(text: string): string {
+  const end = text.indexOf("\n");
+  return end === -1 ? text : text.slice(0, end);
+}
+
+/** The first row of a file — its `session_meta` — read within {@link META_BYTES}. */
+async function firstLineOf(path: string): Promise<string> {
+  try {
+    return firstLineIn(await head(path, META_BYTES));
+  } catch {
+    return "";
+  }
 }
 
 /** Directory entries, newest-name first. Empty when the directory doesn't exist. */
@@ -656,6 +853,7 @@ async function codexCacheProbe(
   let stamp = "";
   let turnId = "";
   let model: string | undefined;
+  let effort: string | undefined;
   let usage: JsonObject | undefined;
 
   walkBack(tail.lines, (raw): true | undefined => {
@@ -676,6 +874,8 @@ async function codexCacheProbe(
     if (turnId === "" && entry.type === "turn_context" && payload !== null) {
       turnId = asText(payload.turn_id) ?? "";
       model = asText(payload.model);
+      // The reasoning effort rides on the same row as the model, so the two always name one turn.
+      effort = asText(payload.effort);
     }
     // `true` stops the walk; `undefined` keeps it going. Everything needed is in hand.
     return lastRequestAt !== 0 && usage !== undefined && turnId !== "" ? true : undefined;
@@ -696,5 +896,6 @@ async function codexCacheProbe(
   if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
   if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
   if (model !== undefined) probe.model = model;
+  if (effort !== undefined) probe.effort = effort;
   return probe;
 }

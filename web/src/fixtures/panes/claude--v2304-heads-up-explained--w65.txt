@@ -1,0 +1,72 @@
+
+
+  [0m[38;2;153;153;153mNotation the [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m neutral, some [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m plain [0m
+
+[0m[38;2;255;255;255m● [0mExample run words an sentence plain; 4 an 12 line.
+
+  [0m[38;2;153;153;153mSome [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m plain [0m
+
+[0m[38;2;255;255;255m●[0m Words neutral: 10 an 12 line.
+
+  [0m[38;2;153;153;153mSome [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m plain [0m
+ 
+[0m[38;2;255;255;255m● [0msome
+
+  Run words to some: [0m[38;2;177;185;249m04-phrase.to [0mline a neutral sample run
+  sample plain sentence'a some neutral the notation AN neutral in
+  an example neutral sample to the line paragraphp, plain
+  Sample. To some'a some, in words to a line some plain sentence.
+
+[0m[38;2;153;153;153m✻ Statement the 2a 5a · line 10:45 AN[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLine words .an some in A:\run\_the\Phrase\sample\.run\an\a the[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55man a line, the Line some run some, in sentence plain, in [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mnotation words, in words notation. Some line, words line some [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mrun some line. To statement.[0m[48;2;55;55;55m                                   [0m
+
+  [0m[38;2;153;153;153mSentence run [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m example, line [0m[1m[38;2;153;153;153m4[0m[38;2;153;153;153m words [0m
+
+[0m[38;2;255;255;255m● [0mNeutral the plain in plain; 4 to 12 line.
+
+  [0m[38;2;153;153;153mSome [0m[1m[38;2;153;153;153m6[0m[38;2;153;153;153m plain [0m
+
+[0m[38;2;255;255;255m●[0m Words neutral: 10 to 12 line.
+
+  [0m[38;2;153;153;153mSome [0m[1m[38;2;153;153;153m2[0m[38;2;153;153;153m plain [0m
+ 
+[0m[38;2;255;255;255m● [0msome
+
+  Run words in some: [0m[38;2;177;185;249m09-neutral.in [0mline the RUN paragraphpa run
+  the notation words line example neutral in notation, the run
+  example run the line example notation the run words. An some'a
+  some, to words statement words.
+
+[0m[38;2;153;153;153m✻ Phrase the 1a 8a · line 10:46 TO[0m
+                                                             [0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦ [0m[38;2;153;153;153mHeads up · [0mOne of the notes being read, 09-support, says
+  the customer login site's security certificate expires
+  tonight at midnight, and its renewal has been failing for
+  two weeks.
+
+  [0m[1mCustomer login certificate expires tonight[0m
+  - You asked for the reply to be just "done", so this could
+    get lost.
+  - The note [0m[38;2;177;185;249m09-support.md [0m(in the [0m[38;2;177;185;249m.tmp\hu\t [0mfolder) says
+    the [0m[1mTLS certificate [0mfor the customer login site runs out
+    [0m[1mtonight at midnight[0m. This certificate is what lets
+    browsers trust the site.
+  - It also says the job that renews it automatically has
+    [0m[1mfailed silently for two weeks[0m, so nobody was warned.
+  - If the note is true and the certificate lapses,
+    customers' browsers will show a security warning or
+    refuse to open the login page.
+  - [0m[1mIf this is a real system, check the certificate's expiry[0m
+    [0m[1mdate and renew it by hand today.[0m
+  
+  [0m[38;2;177;185;249m1[0m: Understood   [0m[38;2;177;185;249m2[0m: Chat in main session   [0m[38;2;177;185;249m0[0m: Dismiss
+
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+❯ [0m[2mRead every plain note in the sample folder and the example one…[0m
+[0m[38;2;136;136;136m─────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153mrun: [0m[38;2;63;185;106m 12%[0m[38;2;153;153;153m  |  the: 5a [0m[38;2;238;100;87m 44%[0m[38;2;153;153;153m (3a43a) · 7a [0m[38;2;239;92;92m 12%[0m[38;2;153;153;153m / A [0m[38;2;68;182;135m  0%[0m[38;2;153;153;153m (6a19a…[0m
+  [0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle) · ← 2 agents[0m

@@ -1,0 +1,75 @@
+{
+  "id": "cursor",
+  "identity": {
+    "binary": "cursor-agent",
+    "versionCommand": ["cursor-agent", "--version"],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "2026.10.14 - 2026.10.16",
+      "status": "provisional",
+      "verifiedThrough": null,
+      "verifiedOn": null
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": { "pattern": "^ ▄+$", "minCells": 8, "column": 1 },
+      "prompt": { "pattern": "^  (?:→|!(?= |$))(?: (?<draft>.*?))?(?: {2,}ctrl\\+c to stop)?$", "column": 2 },
+      "bottom": { "pattern": "^ ▀+$", "minCells": 8, "column": 1 },
+      "continuationIndent": 4,
+      "maxDraftRows": 100,
+      "maxTailRows": 14
+    },
+    "placeholders": {
+      "texts": ["Plan, search, build anything", "Add a follow-up"],
+      "sgr": 2
+    },
+    "volatile": {
+      "above": { "maxRows": 8 },
+      "below": {
+        "maxRows": 4,
+        "footerMaxRows": 2,
+        "commandList": {
+          "pointer": "^ {3}→ (?<command>/\\S+)(?: +\\S.*)?$",
+          "entry": "^ {5}(?<command>/\\S+)(?: +\\S.*)?$",
+          "wrapped": "^ {5}[↑↓] more (?:above|below)$"
+        }
+      }
+    },
+    "runningRows": ["^\\s*[⠀-⣿]{1,2} [A-Z][a-z]+\\b"]
+  },
+  "keys": {
+    "submit": ["Enter"],
+    "newline": ["ctrl+j"],
+    "interrupt": ["ctrl+c"],
+    "clear": { "key": "Backspace", "slack": 16 },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    },
+    "enterWhileRunning": "queues",
+    "neverHeld": ["/clear", "/exit", "/quit", "/logout", "/resume", "/fork", "!"],
+    "queuedRow": {
+      "pattern": "^ │ ○ (?<text>\\S.*?)\\s*│\\s*$",
+      "hint": "^ │ enter steer · ↑ select/edit · esc cancel\\s*│\\s*$",
+      "hintGap": 0
+    }
+  },
+  "collapse": {
+    "pattern": "\\[Pasted text #(?<n>\\d+)(?: \\+(?<lines>\\d+) lines)?\\]"
+  },
+  "reservedLeads": ["/", "!", "@"],
+  "probe": {
+    "char": "⌁",
+    "status": "verified",
+    "note": "Lab 2026-10-17 on Herdr: inert after the type and after Backspace on the shell-command approval dialog of Cursor CLI 2026.10.14; live probed sends passed on an idle box on 2026.10.14 and 2026.10.16"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {}
+}

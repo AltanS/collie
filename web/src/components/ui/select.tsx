@@ -25,7 +25,8 @@ interface SelectProps extends Omit<ComponentProps<"select">, "className"> {
  * the tap floor (DESIGN.md §6), and nothing about the select changes its box when the value does
  * (§2): the native control sizes itself to its widest option, not to the chosen one.
  *
- * The dashboard's workspace and order selects use it, and so does the New page (the machine, the
+ * The dashboard's order select uses it (the workspace filter beside it copies the box onto a button that
+ * opens a sheet, because it chooses several), and so does the New page (the machine, the
  * agent and the command; the old new-space sheet's Repository and Agent fields did before it). The three
  * Settings selects (language, typeface, terminal font) carry the same construction by hand and have
  * not been moved onto this yet.

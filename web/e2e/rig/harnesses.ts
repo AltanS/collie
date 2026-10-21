@@ -22,18 +22,18 @@
 // on when COLLIE_RIG_KEY_FILE is set (COLLIE_RIG_PI_TURNS=0 / COLLIE_RIG_OMP_TURNS=0 turn one off).
 // On 2026-10-17 pi's own auth.json key answered 401 and omp had no credential, so without a key
 // file both stay off. The model is set here, or with COLLIE_RIG_PI_MODEL / COLLIE_RIG_OMP_MODEL.
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
 import { BIN } from "./bins";
-import { P } from "./rig-lib";
+import { machineDirs, type Machine } from "./rig-lib";
+import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
-export type HarnessId = "claude" | "pi" | "omp";
-export const HARNESS_IDS: readonly HarnessId[] = ["claude", "pi", "omp"];
+export { HARNESS_IDS, type HarnessId };
 
 export interface HarnessSetup {
   readonly id: HarnessId;
@@ -87,9 +87,12 @@ export const SETUPS = {
   },
 } satisfies Readonly<Record<HarnessId, HarnessSetup>>;
 
-/** The folders of one harness under STATE_ROOT/harness/<id>/. */
-export function harnessDirs(id: HarnessId) {
-  const root = join(P.harness, id);
+/**
+ * The folders of one harness under STATE_ROOT/harness/<id>/, or STATE_ROOT/harness/member/<id>/ for
+ * a harness that runs on the crew rig's member: each machine's bridge reads its own harnesses' journals.
+ */
+export function harnessDirs(id: HarnessId, machine: Machine = "lead") {
+  const root = join(machineDirs(machine).harness, id);
   return {
     root,
     project: join(root, "project"),
@@ -117,6 +120,44 @@ function copySecret(from: string, to: string): boolean {
 /** The names the rig's pane shell carries that a harness must not see: the rig's Herdr home. */
 const UNSET = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HERDR_CONFIG_PATH"];
 
+/** This checkout: web/e2e/rig/harnesses.ts is three levels below it. */
+const WORKTREE = resolve(import.meta.dirname, "..", "..", "..");
+/** The walky talky skill's template, the one `collie skill install` renders. */
+const SKILL_TEMPLATE = join(WORKTREE, "cli", "skills", "walky-talky.md");
+const BLOCK_BEGIN = "<!-- collie:walky-talky v1 begin -->";
+const BLOCK_END = "<!-- collie:walky-talky v1 end -->";
+
+/**
+ * A `collie` on PATH that runs this checkout's CLI. The rig's agents are started from a shell whose
+ * `collie` is the installed release, which may predate the verb under test. The shim runs no verb by
+ * itself; the agent's own `collie walky` reaches its machine's bridge through COLLIE_STATE_DIR, which
+ * the shim sets to that machine's state dir (the lead's or the member's), so an agent on the member
+ * asks the member's bridge and never the lead's.
+ */
+function writeCollieShim(root: string, stateDir: string): string {
+  const dir = join(root, "bin");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(dir, "collie"), `#!/bin/sh\nCOLLIE_STATE_DIR=${sq(stateDir)}\nexport COLLIE_STATE_DIR\nexec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
+  chmodSync(join(dir, "collie"), 0o700);
+  return dir;
+}
+
+/**
+ * The walky talky skill, rendered from its template into a harness's scratch config (never the
+ * operator's): a whole file for Claude, the managed block for a harness that reads one instruction
+ * file. Written by hand rather than by `collie skill install`, which also writes into every real profile.
+ */
+function writeWalkySkill(path: string, form: "file" | "block"): void {
+  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  if (form === "file") {
+    writeFileSync(path, rendered, { mode: 0o600 });
+    return;
+  }
+  const body = rendered.startsWith("---\n") ? rendered.slice(rendered.indexOf("\n---\n", 4) + "\n---\n".length).replace(/^\n+/u, "") : rendered;
+  writeFileSync(path, `${BLOCK_BEGIN}\n${body.replace(/\n+$/u, "")}\n${BLOCK_END}\n`, { mode: 0o600 });
+}
+
 /** The line to type into a fresh shell pane, and the harness's project folder. */
 export interface PreparedHarness {
   readonly line: string;
@@ -125,15 +166,17 @@ export interface PreparedHarness {
 
 /**
  * Write the harness's scratch config and start script, and return the line to type into a fresh
- * shell pane. Each call starts a NEW session: the project folder stays, the agent's history of it
- * is the agent's own business.
+ * shell pane of `machine`'s Herdr. Each call starts a NEW session: the project folder stays, the
+ * agent's history of it is the agent's own business.
  */
-export function prepareHarness(id: HarnessId): PreparedHarness {
-  const d = harnessDirs(id);
+export function prepareHarness(id: HarnessId, machine: Machine = "lead"): PreparedHarness {
+  const d = harnessDirs(id, machine);
+  const stateDir = machineDirs(machine).state;
   for (const dir of [d.root, d.project]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(d.project, "README.md"), "Scratch project of the Collie browser leg. Nothing here matters.\n");
   const env: string[] = [];
   let argv: string[];
+  const bin = writeCollieShim(d.root, stateDir);
   if (id === "claude") {
     // The OAuth file without its refresh token, `.claude.json` with this project trusted, and an
     // empty MCP file. Throws (LabDeferred) when the access token has under 25 minutes left.
@@ -153,7 +196,10 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
         },
       ];
     }
-    writeFileSync(join(d.config, "settings.json"), `${JSON.stringify({ hooks }, null, 2)}\n`, { mode: 0o600 });
+    // `collie walky` is the verb the walky talky cases run through the agent, so it needs no permission
+    // card of its own: the cases that test a dialog use another command.
+    writeFileSync(join(d.config, "settings.json"), `${JSON.stringify({ hooks, permissions: { allow: ["Bash(collie walky:*)"] } }, null, 2)}\n`, { mode: 0o600 });
+    writeWalkySkill(join(d.config, "skills", "collie-walky-talky", "SKILL.md"), "file");
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");
     argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE)];
   } else {
@@ -164,6 +210,8 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
     const integration = id === "pi" ? "herdr-agent-state.ts" : "herdr-omp-agent-state.ts";
     if (existsSync(join(realAgent, "extensions", integration))) copyFileSync(join(realAgent, "extensions", integration), join(d.agent, "extensions", integration));
     if (id === "pi") {
+      // pi reads $PI_CODING_AGENT_DIR/AGENTS.md; the skill goes in as the block `collie skill install pi` writes.
+      writeWalkySkill(join(d.agent, "AGENTS.md"), "block");
       // With a key file the key comes from the environment, and an auth.json would win over it.
       if (KEY_FILE === null) copySecret(join(realAgent, "auth.json"), join(d.agent, "auth.json"));
       else rmSync(join(d.agent, "auth.json"), { force: true });
@@ -195,12 +243,19 @@ export function prepareHarness(id: HarnessId): PreparedHarness {
       `XDG_CACHE_HOME=${sq(join(d.home, ".cache"))}`,
     );
   }
+  // `collie walky` inside a harness finds a bridge through its own state dir and the hook target
+  // registry under the REAL home (cli/beacon.ts edgeStateDirs). The rig's bridge registers under its
+  // own HOME (P.bridgeHome), so without this the CLI never reaches it, and it would ask the
+  // operator's live bridges instead. Its machine's state dir is the one bridge a rig agent may talk to.
+  env.push(`COLLIE_STATE_DIR=${sq(stateDir)}`);
+  // The worktree's own `collie` first on PATH, so an agent's `collie walky` runs the build under test.
   const unset = UNSET.map((name) => `-u ${name}`).join(" ");
+  const path = `export PATH=${sq(bin)}:"$PATH"\n`;
   // The provider key: ONE name read from the key file in a subshell, exported to the harness only.
   // The script holds the file's path, never the key, and prints nothing.
   const keyEnv = SETUPS[id].keyEnv;
   const key = KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
-  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
+  writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${path}${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
   chmodSync(d.start, 0o700);
   return { line: `exec ${sq(d.start)}`, project: d.project };
 }

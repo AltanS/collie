@@ -34,6 +34,10 @@ const EDIT = fx("claude--permission-edit.txt");
 const IDLE = fx("claude--v2301-idle.txt");
 const UNREAD = fx("claude-lab--tasks-panel--w40.txt");
 const W82 = fx("claude-lab--permission-bash-v2291--w82.txt");
+const BG_RM = fx("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+const BG_RM_W80 = fx("claude--v2303-permission-bash-bg-agent-rm--w80.txt");
+const RESUME_FIRST = fx("claude--v2303-menu-resume-picker--w160-first.txt");
+const RESUME_SECOND = fx("claude--v2303-menu-resume-picker--w160-second.txt");
 
 const HARNESS = "claude";
 const PANE = "%1";
@@ -266,6 +270,58 @@ describe("the ask binding covers the dialog block only", () => {
     expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "no_plan", keys: [] });
     expect(reply.detail).toBe(NO_EDGE_DETAIL);
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+// The 2026-10-19 incident (2.1.303): a background agent's Bash permission with the dangerous-rm
+// warning and a tall command. The dialog's edge sat past the old scan window, the lift had no region,
+// and both taps were refused `no_plan` with no key sent.
+describe("a background agent's Bash permission with a tall command", () => {
+  test.each([
+    ["w160", BG_RM],
+    ["w80", BG_RM_W80],
+  ])("%s: the lift has a region from the edge, and each option has a digit plan", (_width, screen) => {
+    const dialog = liftOf(screen);
+    expect(dialog.kind).toBe("permission");
+    expect(dialog.labels).toEqual(["Yes", "No"]);
+    expect(dialog.region).not.toBeNull();
+    expect(dialog.region!.split("\n")[0]).toMatch(/^─+$/u);
+    expect(dialog.region).toContain("Dangerous rm operation on possibly-empty variable path");
+    expect(planFor(dialog, 0)).toEqual({ walk: [], commit: ["1"], label: "Yes" });
+    expect(planFor(dialog, 1)).toEqual({ walk: [], commit: ["2"], label: "No" });
+  });
+
+  test.each([
+    ["Yes", "1"],
+    ["No", "2"],
+  ])("a tap on %s sends its digit through the gate", async (label, key) => {
+    const { pane, poll, answer } = rig(BG_RM, HARNESS, "2.1.303");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === key) p.screen = IDLE;
+    };
+    const ask = poll()!;
+    expect(ask.kind).toBe("permission");
+    const reply = await answer(ask, idOf(ask, label));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: [key] });
+    expect(pane.keysSeen).toEqual([key]);
+  });
+});
+
+// The 2026-10-19 incident (2.1.303, 160 columns): the /resume picker's title counts the pointer,
+// `(1 of 50)` then `(2 of 50)` after one Down, and the verify read refused the walked tap
+// `ask_mismatch` with no Enter.
+describe("the /resume picker with a counted title", () => {
+  test("a tap on the second session walks Down, reads the pointer back on it, and sends Enter", async () => {
+    const { pane, poll, answer } = rig(RESUME_FIRST, HARNESS, "2.1.303");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down") p.screen = RESUME_SECOND;
+      if (keys.join(",") === "Enter") p.screen = IDLE;
+    };
+    const ask = poll()!;
+    expect(ask.kind).toBe("question");
+    const reply = await answer(ask, idOf(ask, "website refactoring"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+    expect(pane.keysSeen).toEqual(["Down", "Enter"]);
   });
 });
 
@@ -617,6 +673,15 @@ describe("changed, replaced and repeated asks are refused with no key", () => {
     const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(fx("claude--v2283-permission-amend-focused.txt"))), HARNESS));
     expect(dialog).not.toBeNull();
     expect(planFor(dialog!, 0)).toBeNull();
+  });
+
+  test("a wizard step whose answer field has focus has no plan for any option: a digit would be typed into the field", () => {
+    for (const name of ["claude--v2299-ask-field-wizard-focused-empty.txt", "claude--v2299-ask-field-wizard-focused-typed.txt"]) {
+      const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(fx(name))), HARNESS));
+      expect(dialog?.blockKind).toBe("wizard");
+      const plans = [0, 1, 2, 3, 4, 5].map((i) => planFor(dialog!, i));
+      expect(plans).toEqual([null, null, null, null, null, null]);
+    }
   });
 });
 

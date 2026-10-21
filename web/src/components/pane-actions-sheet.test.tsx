@@ -660,3 +660,19 @@ describe("PaneActionsSheet — a saved copy", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("PaneActionsSheet — Messages (M62)", () => {
+  it("shows no Messages row on a door that passes no callback", () => {
+    renderSheet();
+    expect(screen.queryByRole("button", { name: "Messages" })).toBeNull();
+  });
+
+  it("closes the sheet first, then opens the Messages sheet, and stays a read row on a read-only device", async () => {
+    const user = userEvent.setup();
+    const onMessages = vi.fn();
+    const props = renderSheet({ onMessages, readOnly: true });
+    await user.click(screen.getByRole("button", { name: "Messages" }));
+    expect(onMessages).toHaveBeenCalledOnce();
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onMessages.mock.invocationCallOrder[0]!);
+  });
+});

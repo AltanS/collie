@@ -13,15 +13,17 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All fifteen cases (three harnesses, five cases
-  each) pass on the first tap. A case that fails, or is not reached, holds the tag.
+- **Before every release tag**, on the release head. All thirty-four cases pass on the first tap:
+  twenty-seven on the solo leg (three harnesses with five cases each, and twelve walky talky cases) and
+  seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One run costs about 5 minutes, about 5 Claude Haiku turns on the subscription, and about 5 pi turns
-and 5 omp turns on OpenRouter Haiku 4.5 (a few cents). The turn cap is 15 per harness. "Cost of one
-run" below has the detail.
+One solo run costs about 11 minutes, about 17 Claude Haiku turns on the subscription, and about 11 pi turns
+and 9 omp turns on OpenRouter Haiku 4.5 (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
+and 4 pi turns, and the nightly run does both. The turn cap is 20 per harness. "Cost of one run" below
+has the detail.
 
 ### The nightly runner
 
@@ -33,9 +35,17 @@ bun web/e2e/rig/nightly.ts          # runs the leg if this tuple has no row yet
 `nightly.ts` needs only Bun and node builtins, so it runs from a checkout with no `node_modules`. It
 never writes into the checkout it starts from. It keeps a clone of its own at
 `~/.cache/collie-lab/browser-leg-nightly/clone`, fetches `origin/main` into it and checks it out
-detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the leg. The leg uses a
-rig state of its own (`~/.cache/collie-lab/browser-leg-nightly/state`), so a leg that a person runs by
-hand is never taken down by a nightly run.
+detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the solo leg, then the
+crew leg (below), in the same run and under the same ledger row. Each leg uses a rig state of its own
+(`~/.cache/collie-lab/browser-leg-nightly/state` and `.../crew-state`, set through `COLLIE_RIG_STATE`),
+so a leg that a person runs by hand is never taken down by a nightly run, and the two legs share no
+folder, Herdr home, port or socket. The solo rig is down before the crew rig comes up.
+
+**The crew leg in a nightly run.** It runs `bunx playwright test -c e2e/rig/crew.config.ts` in the clone's
+`web/`, with the same environment as the solo leg, so the key file passes through untouched. It needs
+nothing that the solo leg does not need: it has the same 8 GB memory guard, because the solo rig is down
+first. If the solo leg could not start (it wrote no table), the crew leg does not run and the row is
+`failed`. If the solo leg ran and a case failed, the crew leg still runs, for a full picture of the tuple.
 
 **Once per tuple.** A tuple is the main commit, the Claude Code version, the pi version and the omp
 version. The versions come from the binaries `bins.ts` names. The ledger
@@ -51,26 +61,123 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   on the next start.
 - A live `running` row holds the line for every other tuple, so two runs never share the clone or the
   rig.
-- A run that cannot finish writes `failed`. A run in which a case failed writes `fail`. A case that
-  was not reached, or is not applicable, proves nothing, so it makes the row `failed`.
+- A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
+  case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
+  `failed`. The row is `pass` only when both legs passed every case (27 solo cases and 7 crew cases). A
+  `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
 free memory, no key file, a binary or the remote that will not answer, and a ledger that cannot be
 read. These cost nothing and write no row. Each appends one line to
-`~/.local/state/collie-browser-leg/notify.log`. A `fail` or `failed` run appends one line too.
-`--plan` names the same blockers and writes nothing.
+`~/.local/state/collie-browser-leg/notify.log`. A `fail` or `failed` run appends one line too, and it
+names each leg that did not pass (`solo leg: ...; crew leg: ...`). `--plan` names the same blockers,
+says that the crew leg is included, and writes nothing.
 
 **The key.** `COLLIE_RIG_KEY_FILE` comes from the runner's own environment and goes on to the leg. The
 runner checks only that it names a readable file. It never reads, prints or copies the key.
 
-**Output and exit code.** One line per harness, then the path of the run's `table.md`. The row keeps
-the verdict counts and the results folder, and the run log sits under
+**Output and exit code.** One line per harness (the counts of both legs added up, the crew cases run
+under Claude), then the path of the solo leg's `table.md` and the path of the crew leg's. The row keeps
+the verdict counts, the solo results folder and table (`results`, `table`) and the crew leg's
+(`crewResults`, `crewTable`). Rows from before the crew leg have no crew fields. The run log sits under
 `~/.cache/collie-lab/browser-leg-nightly/logs/`. Exit 0: the leg passed, or there was nothing to do.
 Exit 1: a case failed. Exit 2: the run could not start or could not finish.
 
-Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves the clone, rig state
-and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
+Flags: `--state-dir DIR` moves the ledger and `notify.log`, `--root DIR` moves the clone, the rig states
+(`state`, `crew-state`) and logs (under `~/.cache/collie-lab`), `--repo URL` names another remote. The logic is tested without
 a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
+
+## The cases
+
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 21) run on the harnesses the
+last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
+
+| # | Case | Harnesses | Spec |
+| --- | --- | --- | --- |
+| 1 | Model picker: the first tap on the commit row commits | claude, pi, omp | `claude.spec.ts`, `others.spec.ts` |
+| 2 | Permission card: Yes from the phone runs the command | claude, pi, omp | same |
+| 3 | Question card: pick-many on Claude, pick-one on pi and omp | claude, pi, omp | same |
+| 4 | A send while the agent streams a long reply | claude, pi, omp | same |
+| 5 | Load older with an empty phone cache: seven prompts, so the six-prompt cold page has an older page. The Load older row is attached, nothing covers its centre, a tap adds older rows, and the pin leaves the row free | claude, pi, omp | same |
+| 6 | Walky talky: hold Send, tap "Send as message". The pane gets one prompt, header and body. The receipt says `delivered`. Chat shows the "Message from" card with the operator badge | claude | `walky.spec.ts` |
+| 7 | The same operator message, to a pi pane and to an omp pane | pi, omp | `walky-harnesses.spec.ts` |
+| 8 | Agent to agent through the skill, pi to Claude and back: the receiver's pane gets a one-line nudge with no body, its `collie walky inbox <id>` output shows the body, `collie walky reply` comes back and the sender's pane shows the reply nudge; Claude's Chat draws the agent card | pi (with Claude) | `walky-harnesses.spec.ts` |
+| 9 | A message the pane cannot take: over an open permission card nothing is typed into the dialog (the Send Protocol holds the message and types it after the answer); over a draft the receipt is `inbox-only` with a reason, the draft is untouched, and the agent's `collie walky inbox` lists the message | claude | `walky.spec.ts` |
+| 10 | A broadcast (`to: all`): one receipt per agent pane, each typed and answered, the shell pane skipped | claude | `walky.spec.ts` |
+| 11 | A forged header: a prompt that opens like an operator message and one that opens like an agent's nudge, both with an id the log lacks, stay plain turns with the "no log record" mark and draw no card | claude | `walky.spec.ts` |
+| 12 | Crew leg. "Message all agents" on the lead's Crew page: the sheet counts 2 agents on 2 machines, Send asks "Message 2 agents on 2 machines?", and Send there posts. Both panes get the header and body, the lead's `collie walky status` shows both receipts `delivered` (the member's through its sweep report), the member's pane opened on the phone through the lead (`?h=`) shows the header line, and both agents answer | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 13 | Crew leg. Claude on the lead runs `collie walky who` and sends to pi's address as `who` printed it, with its pane instance token (`#` and four characters). pi's pane gets the one-line nudge, `collie walky inbox <id>` shows the body, pi answers with `collie walky reply`, and Claude's pane shows the reply nudge. The lead's `collie walky status <id>` says `delivered` within 60 s (the member's report reached the lead), and the member's `collie walky status <reply id>` says `delivered` within 60 s (the lead pushed the outcome back to the sender's machine) | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 14 | Crew leg. The member's bridge stops: the lead's Crew page names it unreachable, the sheet counts 1 agent on 1 machine, the bridge takes the message for the lead's pane only and answers `rig-member/all` with a refused receipt ("host rig-member is unreachable"), which the sheet draws as a "not sent" row. The member then starts again and is reachable before the case ends | claude (lead) | `walky-crew.spec.ts` |
+| 15 | Crew leg. Release lines (M60 spec 01). On the lead's Updates page, the Release line control reads Stable; a tap on Edge shows the receipt, and `GET /api/update/line` on the lead says `edge` with nothing installed (no run record moves). The Crew page then says the members follow the lead's line, Edge. A tap on Stable puts it back, with its receipt. The member's own follow (an Edge build up, a rollback down) needs a published Edge tag behind a release mirror, which this rig does not serve; the unit suites in `bridge/crew/follow.test.ts` carry that half | claude (lead) | `walky-crew.spec.ts` |
+| 16 | A message during a running turn. A long numbered list streams (160 items on Claude, 180 on pi, 80 on omp). The operator holds Send and taps "Send as message" while it runs. The list runs to its last line, the agent then answers the body, the header is on the screen once, and the receipt ends at `delivered`. The phone's line under the box goes from "queued" to "typed into the pane". Claude holds the message until the turn is over. pi (Alt+Enter) and omp (Ctrl+Q) take it into their queue during the turn, so the note says when the header showed. A message must never steer the turn | claude, pi, omp | `walky.spec.ts`, `walky-harnesses.spec.ts` |
+| 17 | A message over a question card. Claude asks a pick-one question (no option has a preview). A message sent while the card shows is not typed into the dialog and its receipt stays `accepted`. The phone answers the question (Cherry), and then the message is typed once, the receipt says `delivered` and the agent answers the body. Case 9 does the same over a permission card | claude | `walky.spec.ts` |
+| 18 | An address of a pane that closed. A second Claude starts, `who` prints its address with a token, and its pane closes. After the bridge's 30 s sweep another Claude starts. A message to the old `#token` address is refused, and the new pane gets nothing. Herdr does not give a closed pane's id to the next pane, so the refusal is `no such pane` here. `pane replaced` needs a multiplexer that reuses ids (tmux, zellij), and the unit tests carry it | claude | `walky.spec.ts` |
+| 19 | Crew leg. Member to lead. pi on the member runs `collie walky who` (which lists its own machine and points to the lead), then sends to Claude's address on the lead, taken from the lead's `who` and put in the prompt. Claude's pane gets the one-line nudge with no body, reads it with `collie walky inbox <id>` and replies. The member's `collie walky status <id>` says `delivered` (the lead pushed the outcome back), and the lead's status of the reply says `delivered` (the member's report). Case 13 is the mirror image | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 20 | Crew leg. Walky talky off on the member. The member's bridge restarts with `COLLIE_WALKY=off`. Claude on the lead sends to pi and reads `not sent: off`; the lead's status says `refused (off)`; pi's pane gets nothing. The Crew page's message to that machine (the sheet's "Send to" set to it) draws the receipt row `rig-member/all` with `not sent: off`, and the member counts the refusals in its own `refusals.json`. The lead's "Not sent on this machine" line counts only the lead's own refusals, so it stays empty. The member then restarts without the setting and is reachable | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six wait in its inbox (`draft present`) and cost no model turn. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched | claude (lead), pi (member) | `walky-crew.spec.ts` |
+
+The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
+pi and omp prove that their screens take the message. The table prints a row only for a harness a case
+runs on, and only for the cases of its own leg (`scenarioApplies` in `scenarios.ts`). Case 10 posts
+the request the Crew page's "Message all agents" sheet posts, to prove the fan-out on the solo rig;
+the sheet itself, tapped on the Crew page, is proved on the crew leg (case 12). Cases 8 and 9 use the
+`collie walky` verbs inside the agent: each harness starts with a `collie` first on PATH that runs this
+checkout's CLI (`harnesses.ts`), and with the walky talky skill in its scratch config. Claude's scratch
+settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
+
+## The crew leg
+
+A second Playwright config, `crew.config.ts`, runs the walky talky cases that need a crew (12 to 14 and 19 to 21), and the release-line case (15)
+against two machines on this one host:
+
+- **The lead** is the solo rig: Herdr session `collie-rig`, its attached client, and a bridge on a
+  free port in 18700-18799, with the phone paired to it.
+- **The member** is a second Herdr server, session `collie-rig-member`, with its own short XDG home
+  (`$XDG_RUNTIME_DIR/collie-rig-<8 hex>`, hashed from `<state root>/member`, so it is never the
+  lead's), its own attached client, and a second bridge on the next free port. Its state, config,
+  HOME and harness folders sit under `<state root>/rig/member/` and `<state root>/harness/member/`.
+- **The enrolment** runs the real verbs as functions, the way `integration/crew-harness.test.ts`
+  does (`crew-enrol.ts`): `cmdCrewInvite` on the lead, `cmdJoin` on the member with `--insecure
+  --address 127.0.0.1:<member port>`, then a restart of the lead. Every restart is the rig's own:
+  kill the recorded pid, start the bridge again with the same dirs and port. The member comes back in
+  peer mode, with a pinned TLS listener, so the rig reads it only through the lead (`?host=`).
+
+The crew leg has its own state root, `~/.cache/collie-lab/browser-leg-crew-state`, so it never shares
+a rig folder, a Herdr home, a port or a ledger row with the solo leg, and both can run at once.
+
+```sh
+cd web && COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/crew.config.ts
+```
+
+A harness runs on either machine with that machine's own `collie` shim and skill: the shim sets
+`COLLIE_STATE_DIR` to its machine's state dir, so an agent on the member asks the member's bridge.
+Claude runs on the lead and pi on the member. Case 14 waits on the lead's own sweep: the sweep rides
+the lead's poll (`bridge/crew/lead.ts`, CREW_PROTOCOL §10.1), the next dial is refused, and one
+failed call makes the member `unreachable` (`registry.ts` `record`). The idle poll is 12 s, so the
+case allows 90 s. It took 5 to 8 s in the runs of 2026-10-18.
+
+**Cost of one run.** About 4 minutes, 6 Claude Haiku turns (the broadcast, the send to pi, the reply
+nudge, the broadcast with the member down, the reply to pi's message in case 19, the send in case 20) and
+4 pi turns on OpenRouter Haiku 4.5 (the broadcast, the nudge, and the send and the reply nudge of case 19).
+Case 21 spends no turn: its sender is a throwaway Claude that never takes a prompt, and pi's box holds a
+draft. Memory: two Herdr servers, two bridges and a browser, under the same 8 GB guard.
+
+**By hand.** Add `--crew` to any command, or the command reaches the solo rig:
+
+```sh
+bun e2e/rig/rig.ts up --crew                       # lead + member, enrolled, phone paired
+bun e2e/rig/rig.ts status --crew                   # both machines' pids and ports
+bun e2e/rig/rig.ts start pi --on member --crew     # a harness on the member (or --on lead)
+bun e2e/rig/rig.ts read <pane> 60 --on member --crew
+bun e2e/rig/rig.ts crew stop-member                # stop the member's bridge by its recorded pid
+bun e2e/rig/rig.ts crew start-member               # start it again, same dirs and port
+bun e2e/rig/rig.ts crew start-member --env COLLIE_WALKY=off   # the same, with walky talky off (the only setting it takes)
+bun e2e/rig/rig.ts down --crew
+```
+
+`crew stop-member` and `crew start-member` signal the rig's daemon, which owns every process and is
+the one writer of `rig.json`. The member's Herdr and its agents keep running, as on a machine whose
+Collie stopped.
 
 ## Prerequisites
 
@@ -95,7 +202,16 @@ tap with the bridge's receipt, `table.md` holds the table, and the phone screens
 captures sit beside them.
 
 By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
-After a crash, `bun e2e/rig/rig.ts down` stops what the rig started.
+After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
+"The crew leg" below.
+
+Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
+Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
+Herdr would exit with "local socket name length exceeds capacity of sun_path". So the rig keeps this one
+folder outside the state root: `$XDG_RUNTIME_DIR/collie-rig-<8 hex>`, or `/tmp/collie-rig-<8 hex>` when
+that is unset, mode 0700. The hex is a hash of the state root, so two rigs with two state roots never
+share a folder. `up` checks the path length first and stops at once with the path and its size
+(`sock-path.ts`); `down` removes the folder. Everything else of the rig stays under the state root.
 
 For development, `COLLIE_RIG_KEEP=1` leaves the rig and the harnesses up after a run,
 `COLLIE_RIG_REUSE=1` takes a rig that is already up, and `COLLIE_RIG_PANE_CLAUDE=<pane>` (or `_PI`,
@@ -122,14 +238,22 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 ## Cost of one run
 
-- Claude: 5 model turns on Haiku: the permission request, the pick-many question, the long list plus
-  one message sent while it streams, and one prompt that makes 48 Read calls. The picker needs no
-  turn. A run caps each harness at 15 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
+- Claude: 23 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
+  request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
+  replies with a marker), and 12 for walky talky: the operator's message (6), the nudge from pi (8), the
+  permission request, the message that waited behind it and the inbox read (9), the broadcast (10), the
+  forged header (11, two), the long list and the message sent during it (16), and the question and the
+  message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: 5 turns each on Haiku 4.5 with a key file, none without. Their "Load older" history is
-  one prompt and 45 shell lines (`!echo`), which run without the model. omp's permission case runs
+- pi and omp: 11 turns each on Haiku 4.5 with a key file, none without. Walky talky adds 6 on pi (case 7,
+  the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
+  broadcast and the two of case 16). Their "Load older" history is
+  seven prompts ("Reply with exactly DONE-n") and 45 shell lines (`!echo`) after the first, which run
+  without the model and pad the rows past the 40-row page floor. omp's permission case runs
   omp with `--approval-mode write`, so a bash call asks.
-- Time: about 5 minutes for all three harnesses, about 2 of them for Claude alone. A case that waits
+- The crew leg (cases 12 to 15 and 19 to 21) adds 6 Claude turns and 4 pi turns, and about 4 minutes plus the rig's
+  start. A nightly run is therefore about 15 minutes, 29 Claude turns, 21 pi turns and 15 omp turns.
+- Time: about 11 minutes for all three harnesses, about 3 of them for Claude alone. A case that waits
   out its reply timeouts adds up to 4 minutes.
 
 ## What it never touches
@@ -137,8 +261,14 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 - The operator's Herdr server and its panes. Every `herdr` call runs with the rig's own
   `XDG_CONFIG_HOME` and drops every inherited `HERDR_*` name (`rig-lib.ts`).
 - Any Collie lane, port 8787-8799, 5198, 5199, or a `collie*.service` unit. The bridge listens on
-  127.0.0.1:18700-18799 with its own HOME, state and config.
-- Any `collie` CLI verb. The rig pairs with the bridge's own pairing module.
+  127.0.0.1:18700-18799 with its own HOME, state and config. The crew leg's two bridges do the same,
+  each with its own.
+- Any `collie` CLI verb. The rig pairs with the bridge's own pairing module, and the crew leg enrols
+  with the verbs' own functions, whose restart, `serve`, `exec` and push are the rig's stand-ins.
+- The operator's bridges, from inside a harness. Each harness starts with `COLLIE_STATE_DIR` set to
+  the rig's state dir. So a `collie walky` that an agent runs in a rig pane reaches the rig's bridge
+  first. Without it, the CLI looks for bridges in the hook target registry under the real home. The
+  rig's bridge is not listed there, because it registers under its own HOME.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
   0600: Claude's OAuth file without its refresh token, omp's `agent.db`, and pi's `auth.json` only

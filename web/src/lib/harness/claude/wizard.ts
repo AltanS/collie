@@ -17,13 +17,22 @@
 
 import type { StyledLine } from "../../blocks";
 import { classifyFooter, selectFooterStart, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
-import { checkboxState, freeTextRowIndex, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import {
+  checkboxState,
+  coreRegionSignature,
+  freeTextRowIndex,
+  isFreeTextLabel,
+  parseOptionRow,
+  trailingMenuRows,
+} from "./prompt-select";
+import type { AnswerFieldPointer } from "../prompt-model";
 import {
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
   WIZARD_NEXT_KEYS,
   WIZARD_SUBMIT_KEYS,
   type WizardAnswer,
+  type WizardAnswerField,
   type WizardModel,
   type WizardOption,
   type WizardStepChip,
@@ -33,7 +42,7 @@ import {
 // harness-NEUTRAL contract (harness/wizard-model.ts): what any adapter promises when it emits a
 // `wizard` block. Re-exported here so this file stays the one import site for everything about the
 // Claude wizard grammar.
-export type { WizardAnswer, WizardModel, WizardOption, WizardStepChip };
+export type { WizardAnswer, WizardAnswerField, WizardModel, WizardOption, WizardStepChip };
 export { WIZARD_BACK_KEYS, WIZARD_CANCEL_KEYS, WIZARD_NEXT_KEYS, WIZARD_SUBMIT_KEYS };
 
 /** Detection result for buildBlocks: the model plus the stepper header's line index — the wizard
@@ -128,6 +137,15 @@ const REVIEW_SCAN_WINDOW = 48;
 const CHAT_ESCAPE = /^chat about this\b/i;
 /** The chosen-row marker a revisited answered question shows: "2. UI ✔". */
 const CHOSEN_SUFFIX = /\s*✔\s*$/;
+/** A row the `❯` pointer stands on. */
+const POINTER_ROW = /^\s*❯/;
+
+/** One numbered row of the step's menu: its line, its digit and its label. */
+interface OptionRow {
+  index: number;
+  n: number;
+  label: string;
+}
 
 /**
  * Detect a multi-question wizard at the tail of `lines`: either a question step (select footer +
@@ -167,7 +185,7 @@ function detectQuestionPhase(
   // 1,2,…,m run of them (see trailingMenuRows) — a numbered body above the current question's options
   // sits above it and drops out, the same body-list hazard prompt-select guards against.
   const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
-  const rows: { index: number; n: number; label: string }[] = [];
+  const rows: OptionRow[] = [];
   for (let i = from; i < footerAt; i++) {
     const parsed = parseOptionRow(texts[i]!);
     if (parsed) rows.push({ index: i, ...parsed });
@@ -202,50 +220,110 @@ function detectQuestionPhase(
     if (!isBlank(texts[i]!)) questionLines.push(questionRowText(texts[i]!));
   }
 
-  // The "Type something." text field, found by position (freeTextRowIndex) because typing replaces
-  // its placeholder. While `❯` is on it every digit is typed INTO it (measured on Claude Code
-  // 2.1.283), so no answer button may be offered and the WizardModel has no lock: the screen is not
-  // claimed. Off the field, the row is still an input, never an answer.
-  const field = freeTextRowIndex(texts, menu);
-  if (field >= 0 && /^\s*❯/.test(texts[menu[field]!.index]!)) return null;
   if (questionLines.length === 0) return null;
   const question = questionLines.join(" ");
 
-  // Options: description sub-lines attach like prompt-select's; free-text rows ("Type something.")
-  // stay with the composer; "Chat about this" is kept but flagged — it aborts the whole wizard.
+  const { options, field, fieldLines } = readRows(texts, menu, footerAt);
+  if (options.length === 0) return null;
+
+  const model: Extract<WizardModel, { phase: "question" }> = {
+    phase: "question",
+    steps: stepper.chips,
+    question,
+    options,
+    coreSignature: coreRegionSignature(texts, stepperIdx, fi, fieldLines),
+    signature: texts.slice(stepperIdx, fi + 1).join("\n"),
+  };
+  if (field !== undefined) model.field = field;
+  return { model, startLine: stepperIdx };
+}
+
+/** A question step's rows: its options, and its answer field with the lines that field covers. */
+interface StepRows {
+  options: WizardOption[];
+  field?: WizardAnswerField;
+  /** The field's row and every line its value wrapped onto, collapsed as one in `coreSignature`. */
+  fieldLines: Set<number>;
+}
+
+/**
+ * Options and the answer field. The "Type something." field is found by POSITION (freeTextRowIndex),
+ * because typing replaces its placeholder, and it is modelled, never an option: while `❯` is on it
+ * every digit is typed into it (ASK_FIELD_NOTES.md), which `field.focused` carries so the card and
+ * `submitWizardKeys` can refuse an option. Option description sub-lines attach like prompt-select's;
+ * any other placeholder row is dropped; "Chat about this" is kept but flagged — it aborts the wizard.
+ */
+function readRows(texts: string[], menu: readonly OptionRow[], footerAt: number): StepRows {
+  const fieldAt = freeTextRowIndex(texts, menu);
   const options: WizardOption[] = [];
+  const rows: StepRows = { options, fieldLines: new Set() };
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
-    if (r === field || isFreeTextLabel(row.label)) continue;
     const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : footerAt;
+    if (r === fieldAt) {
+      rows.field = readField(texts, menu, fieldAt, nextIdx, rows.fieldLines);
+      continue;
+    }
+    if (isFreeTextLabel(row.label)) continue;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
       if (isBlank(t) || isRuleRow(texts, i) || parseOptionRow(t)) continue;
       desc.push(t.trim());
     }
-    const chosen = CHOSEN_SUFFIX.test(row.label);
     const label = row.label.replace(CHOSEN_SUFFIX, "");
     options.push({
       label,
       description: desc.length ? desc.join(" ") : undefined,
       keys: [String(row.n)],
-      chosen,
+      chosen: CHOSEN_SUFFIX.test(row.label),
       escape: CHAT_ESCAPE.test(label),
     });
   }
-  if (options.length === 0) return null;
+  return rows;
+}
 
+/**
+ * The answer field at `menu[fieldAt]`, recording its row and its wrapped lines in `lines`. The value is
+ * the label plus every line it wrapped onto (up to a rule or the next row), rejoined with one space,
+ * without the trailing ` ✔` of a revisited step (two spaces before it while the caret cell shows);
+ * the placeholder reads as `""`.
+ */
+function readField(
+  texts: string[],
+  menu: readonly OptionRow[],
+  fieldAt: number,
+  end: number,
+  lines: Set<number>,
+): WizardAnswerField {
+  const row = menu[fieldAt]!;
+  const parts = [row.label];
+  lines.add(row.index);
+  for (let i = row.index + 1; i < end; i++) {
+    const t = texts[i]!;
+    if (isRuleRow(texts, i) || parseOptionRow(t) !== null) break;
+    if (isBlank(t)) continue;
+    parts.push(t.trim());
+    lines.add(i);
+  }
+  const joined = parts.join(" ");
+  const value = joined.replace(CHOSEN_SUFFIX, "").trim();
+  const pointer = fieldPointer(texts, menu, fieldAt);
   return {
-    model: {
-      phase: "question",
-      steps: stepper.chips,
-      question,
-      options,
-      signature: texts.slice(stepperIdx, fi + 1).join("\n"),
-    },
-    startLine: stepperIdx,
+    key: String(row.n),
+    focused: pointer === "on",
+    text: isFreeTextLabel(value) ? "" : value,
+    chosen: CHOSEN_SUFFIX.test(joined),
+    pointer,
   };
+}
+
+/** Where `❯` stands relative to the field at `menu[fieldAt]`: above it, on it, below it, or nowhere. */
+function fieldPointer(texts: string[], menu: readonly OptionRow[], fieldAt: number): AnswerFieldPointer {
+  const pointed = menu.findIndex((row) => POINTER_ROW.test(texts[row.index]!));
+  if (pointed < 0) return "none";
+  if (pointed === fieldAt) return "on";
+  return pointed < fieldAt ? "above" : "below";
 }
 
 /** The Submit review step. NO footer exists here (verified): the buffer tail is the

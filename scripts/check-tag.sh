@@ -29,6 +29,11 @@
 # local tag is the failure that matters; a tag that exists locally and never reached the remote is a
 # push away and git itself says so.
 #
+# AN EDGE TAG PUBLISHES TOO (M60 spec 01). `v<x.y.z>-edge.N` goes on a commit whose files say plain
+# `x.y.z`, and release.yml publishes it as a GitHub pre-release. A cut version that carries only Edge
+# tags is therefore published, on the Edge line, and is not the failure this script exists for. It
+# passes, with one line naming the Edge tag and the Stable tag still to come.
+#
 # Betas 33 to 41 stay unreachable ON PURPOSE. Do not back-fill them. Their commits are superseded by
 # the betas that followed, and a tag cut today would claim a release nobody ever tested.
 #
@@ -69,6 +74,7 @@ read_toml_version() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\(
 
 # Collected as "version<TAB>sha" lines; sha is what the tag would be cut on.
 missing=""
+edge_notes=""
 checked=0
 
 want_tag() {
@@ -77,7 +83,20 @@ want_tag() {
   [ -n "$version" ] || return 0
   checked=$((checked + 1))
   git rev-parse -q --verify "refs/tags/v${version}" >/dev/null 2>&1 && return 0
+  # Published on Edge: the newest `v<version>-edge.N` by number, when there is one.
+  edge="$(git tag -l "v${version}-edge.*" | grep -E "^v${version//./\\.}-edge\.(0|[1-9][0-9]*)\$" | sort -t. -k4,4n | tail -1 || true)"
+  if [ -n "$edge" ]; then
+    edge_notes="${edge_notes}${version}	${edge}"$'\n'
+    return 0
+  fi
   missing="${missing}${version}	${sha}"$'\n'
+}
+
+say_edge_notes() {
+  while IFS=$'\t' read -r version edge; do
+    [ -n "$version" ] || continue
+    echo "  ${version} is published on Edge as ${edge}; tag v${version} when Stable supersedes it."
+  done <<<"$edge_notes"
 }
 
 if [ "$#" -eq 0 ]; then
@@ -107,7 +126,12 @@ if [ "$checked" -eq 0 ]; then
 fi
 
 if [ -z "$missing" ]; then
-  echo "✓ every release checked ($checked) has a local v<version> tag"
+  if [ -n "$edge_notes" ]; then
+    echo "✓ every release checked ($checked) has a local v<version> tag or an Edge tag"
+    say_edge_notes
+  else
+    echo "✓ every release checked ($checked) has a local v<version> tag"
+  fi
   exit 0
 fi
 

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { setupServer } from "msw/node";
 
-import { handlers, resetSends, resetTypedDraft } from "./handlers";
+import { handlers, resetSends, resetTypedDraft, resetWalky } from "./handlers";
 
 // The MSW server, and NOTHING that needs a document.
 //
@@ -23,5 +23,6 @@ afterEach(() => {
   server.resetHandlers();
   resetTypedDraft(); // the fake pane's input line, so a draft can't leak into the next test
   resetSends(); // the fake bridge's Send Protocol requests
+  resetWalky(); // and its walky talky rows and posts
 });
 afterAll(() => server.close());

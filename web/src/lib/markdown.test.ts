@@ -160,6 +160,22 @@ describe("parseInline", () => {
     expect(spans[2]).toEqual({ kind: "text", text: "." });
   });
 
+  // A stretch marker (lib/stretch.ts) that ends a short form must stay outside the link, or the
+  // stretch around it never closes.
+  it("a bare URL stops before a stretch marker", () => {
+    const spans = parseInline("see https://x.example/a\uE002 now");
+    expect(spans[1]).toEqual({ kind: "link", href: "https://x.example/a", spans: [{ kind: "text", text: "https://x.example/a" }] });
+    expect(spans[2]).toEqual({ kind: "text", text: "\uE002 now" });
+  });
+
+  it("a bare URL stops before a tint marker", () => {
+    for (const marker of ["\uE005", "\uE006"]) {
+      const spans = parseInline(`see https://x.example/a${marker} now`);
+      expect(spans[1]).toEqual({ kind: "link", href: "https://x.example/a", spans: [{ kind: "text", text: "https://x.example/a" }] });
+      expect(spans[2]).toEqual({ kind: "text", text: `${marker} now` });
+    }
+  });
+
   it("a URL inside a code span stays code", () => {
     expect(parseInline("`http://in-code:1`")).toEqual([{ kind: "code", text: "http://in-code:1" }]);
   });

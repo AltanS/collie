@@ -1,11 +1,12 @@
 # The harness canary
 
-`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp and muse when `--agent`
+`bun run canary` starts claude, codex, opencode and pi, and grok, hermes, agy, omp, muse and kiro when `--agent`
 names them, in a Herdr session of its own, types drafts
 and a few real sends, and checks with Collie's own code what the phone would read and whether each
 send lands. It then reads the session each agent WROTE, with the bridge's own journal adapter, and
 fails on a row or content type the reader does not recognise. With `--dialogs` it also opens real
-dialogs and sends to a busy agent, and with `--scenario options` it starts each New-sheet option once.
+dialogs and sends to a busy agent, with `--scenario options` it starts each New-sheet option once,
+and with `--scenario bar` it presses each harness-bar button through the phone's own send path.
 Specs: M37/02, M37/03 and M41/05 in the workspace tracker.
 
 ```sh
@@ -15,6 +16,7 @@ bun run canary --agent claude,codex     # some agents
 bun run canary --scenario idle,drafts   # some scenarios, no model turns
 bun run canary --keep                   # leave the session up for a look
 bun run canary --agent claude,codex --scenario options   # each New-sheet option, started once
+bun run canary --agent muse,agy --scenario bar           # each harness-bar picker, opened and closed
 bun run canary --record                 # write clean agents into the ledger
 bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 ```
@@ -22,7 +24,7 @@ bun run canary --readers /tmp/c1131     # judge with another checkout's readers
 Exit 1 means a scenario failed. Captures and `summary.json` go to
 `/tmp/collie-canary/<run-id>/<agent>-<version>/`. They are never copied into `web/src/fixtures/`.
 
-grok, hermes, agy, omp and muse run only when `--agent` names them, because their sends spend each
+grok, hermes, agy, omp, muse and kiro run only when `--agent` names them, because their sends spend each
 vendor's own quota. The `options` scenario is never part of a default run: it starts the agent once
 per option the New sheet offers (`bridge/launcher-recipes.ts`), with the line the bridge builds, and
 passes when Herdr shows the agent up, idle or asking a question first. It makes no model turn.
@@ -41,17 +43,18 @@ command on PATH, not through the launcher: a launcher should change the provider
 installed agent, and the canary does not check that it does.
 
 A launcher is yours to write, outside this repo: it points the agent at another provider and ends
-in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios only;
-`dialogs`, `busy` and `options` start their own lines.
+in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios and
+`bar`; `dialogs`, `busy` and `options` start their own lines.
 
-A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `HOME`) moves its log
-too. Point the journal at it with the bridge's own override for that agent, `COLLIE_GROK_ROOT`,
-`COLLIE_PI_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in the canary's environment.
+A launcher that moves the agent's home (`GROK_HOME`, `PI_CODING_AGENT_DIR`, `KIRO_HOME`, `HOME`)
+moves its log too. Point the journal at it with the bridge's own override for that agent,
+`COLLIE_GROK_ROOT`, `COLLIE_PI_ROOT`, `COLLIE_KIRO_ROOT` or `COLLIE_MUSE_ROOT` (a comma list), in
+the canary's environment.
 
 ## What it checks
 
-Six scenarios per agent run by default; the seventh, `options`, runs only when `--scenario` names it, and
-grok, hermes, agy, omp and muse are the five opt-in agents that run only when `--agent` names them. Only
+Six scenarios per agent run by default; `options` and `bar` run only when `--scenario` names them, and
+grok, hermes, agy, omp, muse and kiro are the six opt-in agents that run only when `--agent` names them. Only
 `sends` makes model turns: four per agent.
 
 | id           | what the canary does                                          | what must hold                                         |
@@ -114,6 +117,19 @@ its declared cancel key, on the edit. "Confirm" is never pressed: it would allow
 OpenCode restarts. Plan approval is read and never answered. A dialog the model does not open (it answers in words instead) is
 `not-reached`. The dialog screens are saved as `dialogs-<case>.ansi`.
 
+### The harness bar (`--scenario bar`)
+
+One pane per agent. Each button of the agent's shipped harness bar (`web/src/lib/harness-bar.ts`) is
+sent through the client's own `sendText`, which is how the phone's bar sends, then Escape
+closes what it opened. Compact is left out because it spends a model turn and an empty session has
+nothing to compact; a two-tap row is left out because the phone asks before it sends one. No model
+turn is made.
+
+A case passes when the command is sent, it is gone from the input box, and Escape brings the empty
+input box back, after clearing what the agent itself left there (Grok keeps `/model` typed when
+Escape closes its picker). That does not prove a picker opened, since each agent paints its own: the screen
+each press left is saved as `bar-<id>.ansi` for a person to read.
+
 ## Verdicts
 
 Whether a screen was reached is judged without Collie: Herdr's agent state and the screen's plain
@@ -153,13 +169,36 @@ bun scripts/harness-canary/watch.ts              # the same lab, for an installe
 ```
 
 **The feeds.** Claude Code and Codex use the npm dist-tag `latest`. pi and opencode use the latest GitHub release.
-A feed is a plain HTTPS GET with no token.
+A feed is a plain HTTPS GET with no token. omp has a lab spec but no feed, so the nightly run never picks it.
+Name its version by hand: `--version omp=18.12.1`. `watch.ts` runs it for an installed omp that is newer than the ledger.
+
+**Muse has no lab spec, measured 2026-10-18 on Muse Code 1.4.10 (#519).** Two things the lab assumes do not hold.
+The lab installs with `npm install <pkg>@<version>` (`lab/ports.ts`); Muse is not on npm. Its launcher resolves a
+channel manifest (`https://api.meta.ai/muse-code/channels/muse-stable`, a plain GET that names the exact version) and
+downloads the binary from Meta with an auth header, with no way to pin an older version. And a login cannot be seeded
+the way `lab/seed.ts` seeds one: `~/.config/muse/auth.json` holds no token (`mechanism: oauth`, `storage: keychain`,
+`obtained_via: device_code`), so there is no file to copy with the refresh token stripped. An isolated-`HOME` run on
+the person's own machine would either sign in through the same keychain — and a refresh there could turn over the real
+login, the one thing `seed.ts` exists to prevent — or stop at a device-code login no lab leg can answer. Muse stays
+capture-grade until the lab grows a non-npm install and a login seeding that cannot touch the real keychain entry.
 
 **One run.** The lab installs the binary at that version with `npm install` into its own folder, never global.
 It starts a throwaway tmux server with `tmux -f /dev/null -L harness-lab-<pid>`. The person's tmux server is never touched.
 Claude gets an isolated `CLAUDE_CONFIG_DIR` under `~/.cache/collie-lab/harness-lab/<harness>-<version>/`.
 Claude starts with `--strict-mcp-config` and an empty MCP config, so no MCP server of the person runs.
+Every other harness gets a `HOME` of its own in that folder. The lab makes the folders it names before the start:
+Codex 0.163.0 stops at once, with status 1, when `CODEX_HOME` points at a folder that does not exist.
 The lab deletes that folder at the end.
+
+| harness  | what the lab writes before the start                                          | how it signs in                                                   | how a command asks first                           | the button it presses |
+| -------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------- | --------------------- |
+| claude   | the login copy, `.claude.json`, an empty MCP config                           | the OAuth file, with no refresh token                             | `--permission-mode default`                        | No                    |
+| codex    | `CODEX_HOME`, `auth.json`, `config.toml` that trusts the one project folder   | a copy of `~/.codex/auth.json`, only when it is an API key login | `-a on-request -s read-only`, the person reviews   | No                    |
+| opencode | `opencode-ask.json` with `permission` ask for bash and edit                   | none: its default model is free                                   | `OPENCODE_CONFIG` names that file                  | Reject                |
+| omp      | `config.yml` with `setupVersion` and the update check off                     | `OPENROUTER_API_KEY` in the tmux server's environment, never on a command line or in a file | `--approval-mode always-ask` | Deny                  |
+
+The omp key comes from the lab's own `OPENROUTER_API_KEY`, or from the dotenv file `COLLIE_RIG_KEY_FILE` names, as the browser rig reads it.
+A login that is missing or unusable defers the run before the claim: nothing was spent and no row is written.
 
 1. The walk. The lab types `/` and reads the whole slash menu.
    It takes each command on the safe list in `slash-commands.json` and types it.
@@ -195,6 +234,8 @@ The lab refuses a `--repo` under `~/apps` and a checkout with a detached HEAD.
 **What a pass leaves.** One commit on the branch `harness-lab/<harness>-<version>`, in the lab clone.
 A scratch worktree sits under `~/.cache/collie-lab/harness-lab/worktrees/`.
 The commit touches two files: `web/src/lib/harness/verified-versions.json` and the profile's verified range.
+When a person already moved the profile's range to that version, it touches the first file alone.
+A pass that cannot commit removes its branch and its scratch worktree, and settles the row as `failed`.
 The run log is the commit body, and the body states the real send and ask results.
 The script never pushes. A person reads the branch and merges it.
 A pass whose commit fails writes a `failed` row with the reason, not a `pass` row.
@@ -272,7 +313,9 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
 - Time: about one minute of machine time. The first live run on Claude 2.1.301 took 49 seconds.
   It did an npm install, read 98 menu commands, sent 19 safe commands and made three model turns.
   The phone leg adds about two minutes.
-- Model turns: at most four, on the person's Claude subscription. The plan uses three: the send, the ask request and what Claude does after a No.
+- Model turns: at most four. The plan uses three: the send, the ask request and what the harness does after a No.
+  Claude spends them on the person's subscription, Codex on the person's OpenAI API key, omp on the OpenRouter key.
+  OpenCode spends none that cost money: its default model is free.
   A harness without a profile uses none. The phone leg adds at most 14 more. A scenario that would pass that cap is `not-reached`. The ritual's own `claude -p` session is extra: Sonnet, at most 25 turns.
 - Keys: the lab presses about 150 keys. Most of them are Down presses that read the menu.
 - Network: the feed reads, and one npm install of about 250 MB.
@@ -292,6 +335,10 @@ The lab copies `~/.claude/.credentials.json` into the isolated folder with the r
 A refresh inside the lab would rotate the person's real refresh token and could log them out.
 The copy has only the access token. The lab refuses to start when that token has less than 25 minutes left.
 A live Claude session refreshes it.
+
+Codex gets a copy of `~/.codex/auth.json` only when it is an API key login. A ChatGPT login holds a refresh token, and the lab
+refuses it for the same reason: the run is deferred and costs nothing. The key has nothing to turn over.
+The omp key never touches the disk of the run. It sits in the environment of the lab's tmux server.
 
 The copy must never outlive the run. A SIGTERM, a SIGINT or an uncaught error deletes the run folder first.
 Then it stops the tmux server and writes a `failed` row. A SIGKILL that follows finds no copy.
@@ -338,12 +385,14 @@ The gate tells you to merge a lab branch only when that branch is in the lab clo
 
 ## The send path
 
-The client's real `sendGuardedReply` (`web/src/lib/reply-action.ts`) runs in this process. Its
+The client's real `sendText` (`web/src/lib/reply-action.ts`) runs in this process. Its
 `fetch` is replaced by a shim (`transport.ts`) that answers `GET /api/pane/:id` with the bridge's
-own `readPane`, and `POST /api/pane/:id/reply` with the bridge's own `replyPane`, both from
-`bridge/server.ts`. The shim builds a Herdr adapter on the canary session's socket. So there is no
-server, no port and no paired device. Any other route throws, because a new route means the send
-path changed. The bridge's audit lines for each send are kept in `summary.json`, with the device
+own `readPane`, and `POST /api/send` with the bridge's own `sendRoute` and Send Protocol, both from
+`bridge/server.ts`. A checkout from before M56 spec 06 sends with `sendGuardedReply` to
+`POST /api/pane/:id/reply`, and the shim still answers that route with `replyPane`. The shim builds a
+Herdr adapter on the canary session's socket. So there is no server, no port and no paired device.
+Any other route throws, because a new route means the send path changed. The bridge's audit lines for
+each send are kept in `summary.json`, with the device
 name `collie-canary`.
 
 ## Proof against 1.13.1

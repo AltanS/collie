@@ -68,6 +68,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The Send Protocol's request for a program on this machine (M56 spec 14): the field holds Sending until the bridge answers; a sent text moves to the thread as a pending line the program's own line replaces, and any other outcome lands at the thumb as the terminal composer's notice.",
   },
+  postWalky: {
+    channel: "inline",
+    why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",
@@ -172,6 +176,14 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "The history empties on the page the person is looking at once the bridge answers; a refusal publishes an error status through lib/mutate.ts and the history is read again (ADR 0095).",
   },
+  removeSent: {
+    channel: "inline",
+    why: "The row leaves the Sent sheet under the thumb once the machine answers. A refusal or a lost answer must stay readable while the person decides what to do, so the sheet says it in its own notice and keeps the row (M61).",
+  },
+  clearSent: {
+    channel: "inline",
+    why: "The Sent sheet empties and reads the list again once the machine answers. A refusal or a lost answer is said in the sheet's own notice, beside the button that asked, and the lines stay (M61).",
+  },
   addLauncher: {
     channel: "inline",
     why: "The added row appears in the list the person is looking at, so the list is the acceptance. A refusal names a field (a character the bridge refuses, a line too long) or a switch the operator turned off, and the person must still read it while they fix the line, so it sits in the add form itself and not on the status line (M48, ADR 0094).",
@@ -223,6 +235,18 @@ export const ACK_MANIFEST = {
   startUpdate: {
     channel: "inline",
     why: "The answer is the run itself — a progress state that persists in the card for the length of a restart, or a refusal (a red preflight, a run already going) the operator has to read and act on. Neither survives a floating toast, and both belong beside the button that asked for them (components/update-card.tsx).",
+  },
+  startRollback: {
+    channel: "inline",
+    why: "The answer is the rollback run itself, followed in update mode through the same steps as an update (M60 spec 01), or a refusal (no previous build, a run already going) the operator reads on the confirm screen that asked. Neither survives a floating toast.",
+  },
+  setReleaseLine: {
+    channel: "inline",
+    why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",
+  },
+  startGoBack: {
+    channel: "inline",
+    why: "Like startRollback: the answer is the run itself, followed in update mode, or a refusal (no Stable to go back to, a run already going) read on the confirm screen that asked (M60 spec 01).",
   },
   snoozeUpdate: {
     channel: "silent",

@@ -36,13 +36,16 @@ describe("the recipe table", () => {
         "opencode:--auto",
         "grok:--always-approve",
         "agy:--dangerously-skip-permissions",
+        "muse:--yolo",
+        "muse:--approval-mode never",
+        "muse:--disable-request-user-input",
       ].toSorted(),
     );
   });
 
   test("a harness without a checked option lists none", () => {
-    // muse was not installed when the table was checked; hermes's pane goes undetected (see the header).
-    for (const id of ["hermes", "muse"]) expect(recipeOptions(id)).toEqual([]);
+    // hermes's pane goes undetected (see the header).
+    expect(recipeOptions("hermes")).toEqual([]);
     expect(recipeOptions("__proto__")).toEqual([]);
   });
 });
@@ -50,6 +53,12 @@ describe("the recipe table", () => {
 describe("buildRecipe", () => {
   test("the binary alone, labelled by the harness", () => {
     expect(buildRecipe("claude", [])).toEqual({ ok: true, command: "claude", label: "Claude Code", noPrompts: false, options: [] });
+  });
+
+  test("Kiro recipes retain the required V3 flag and offer no permission bypass", () => {
+    expect(buildRecipe("kiro", [])).toEqual({ ok: true, command: "kiro-cli", label: "Kiro", noPrompts: false, options: [] });
+    expect(recipeOptions("kiro")).toEqual([]);
+    expect(buildRecipe("kiro", ["trust-all"])).toEqual({ ok: false, reason: "unknown_option" });
   });
 
   test("options in TABLE order, whatever order they were picked in", () => {
@@ -70,6 +79,8 @@ describe("buildRecipe", () => {
     expect(buildRecipe("claude", ["skip", "plan"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("claude", ["opus", "opus"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("codex", ["bypass", "readonly"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "never"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "no-questions"])).toMatchObject({ ok: true, command: "muse --yolo --disable-request-user-input" });
   });
 
   test("an unknown harness or option is refused", () => {
@@ -87,6 +98,17 @@ describe("buildRecipe", () => {
   test("a codex and an opencode recipe", () => {
     expect(buildRecipe("codex", ["never", "search"])).toMatchObject({ command: "codex --ask-for-approval never --search", noPrompts: true });
     expect(buildRecipe("opencode", ["plan"])).toMatchObject({ command: "opencode --agent plan", noPrompts: false });
+  });
+
+  test("a muse recipe", () => {
+    expect(buildRecipe("muse", [])).toEqual({ ok: true, command: "muse", label: "Muse", noPrompts: false, options: [] });
+    expect(buildRecipe("muse", ["yolo"])).toMatchObject({ ok: true, command: "muse --yolo", noPrompts: true });
+    expect(buildRecipe("muse", ["never", "no-questions"])).toMatchObject({
+      ok: true,
+      command: "muse --approval-mode never --disable-request-user-input",
+      noPrompts: true,
+    });
+    expect(buildRecipe("muse", ["--yolo"])).toEqual({ ok: false, reason: "unknown_option" });
   });
 });
 
@@ -107,8 +129,22 @@ describe("scanNoPrompts", () => {
     ["opencode --auto", true],
     ["grok --always-approve", true],
     ["hermes --yolo", true],
+    ["muse --yolo", true],
+    ["muse --disable-approval", true],
+    ["muse --disable-request-user-input", true],
+    ["muse --approval-mode never", true],
+    ["muse --approval-mode=never", true],
+    ["muse '--disable-approval'", true],
+    ["muse --approval-mode on-request", false],
+    ["muse --disable-sandbox", false],
+    ["muse --trust-workspace", false],
+    ["muse --disable-write", false],
     ["agy --dangerously-skip-permissions", true],
     ["agy --mode plan", false],
+    ["kiro-cli chat --v3 --trust-all-tools", true],
+    ["kiro-cli chat -a", true],
+    ["kiro-cli chat --trust-tools fs_read", false],
+    ["make -a", false],
     ["make --always-approve", false],
     ["~/bin/opencode --auto", true],
     ["C:\\Tools\\opencode.exe --auto", true],

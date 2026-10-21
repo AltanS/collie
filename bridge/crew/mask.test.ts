@@ -4,7 +4,7 @@
 // Placeholders only: the fake key is built at run time, so no key shape sits in this file.
 import { describe, expect, test } from "bun:test";
 
-import { maskChatBody, maskDiff, maskFileBody, maskHistoryPage, maskPaneRead, maskSnapshotTitles } from "../answer-mask.ts";
+import { maskChatBody, maskDiff, maskFileBody, maskHistoryPage, maskPaneRead, maskSnapshotTitles, maskTodoList } from "../answer-mask.ts";
 import type { ChatWindowBody } from "../journal/live.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import type { ChangeDiff, FileReadAnswer, PaneReadResponse } from "../types.ts";
@@ -97,6 +97,7 @@ const history = { paneId: "w1:p1", available: true as const, entries: [entry], h
 const chatBody: ChatWindowBody = {
   page: "live",
   gen: 1,
+  session: "s1",
   rev: 3,
   head: 1_000_001,
   oldest: 1_000_000,
@@ -304,6 +305,29 @@ describe("the merged snapshot's titles", () => {
     expect(out.agents[1]!.terminalTitle).toBe(masked);
     expect(out.agents[2]).toEqual(snap.agents[2]!);
     expect(out.shellPanes[0]!.terminalTitle).toBe(`curl ${masked}`);
+  });
+});
+
+describe("a pane's todo list", () => {
+  test("maskTodoList masks the words and leaves the id and the status", () => {
+    const todos = [
+      { id: "1", text: `export KEY=${key}`, status: "in_progress" as const, activeForm: `Exporting ${key}` },
+      { id: "2", text: "Run the tests", status: "pending" as const },
+    ];
+    const out = maskTodoList(todos);
+    expect(out[0]).toEqual({ id: "1", text: `export KEY=${masked}`, status: "in_progress", activeForm: `Exporting ${masked}` });
+    expect(out[1]).toEqual(todos[1]!);
+    expect(todos[0]!.text).toContain(key);
+  });
+
+  test("the merged snapshot masks a member's todo text as it masks a title", () => {
+    const snap = {
+      agents: [{ paneId: "w1:p1", todos: [{ id: "1", text: `use ${key}`, status: "pending" as const }] }, { paneId: "w1:p2" }],
+      shellPanes: [],
+    };
+    const out = maskSnapshotTitles(snap);
+    expect(out.agents[0]!.todos![0]!.text).toBe(`use ${masked}`);
+    expect(out.agents[1]).toEqual({ paneId: "w1:p2" });
   });
 });
 

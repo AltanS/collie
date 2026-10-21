@@ -121,9 +121,18 @@ const AGENT_VIEW_KEYS = {
   // Also not a crew dimension: the pane's prompt-cache reading (M28/02), computed on the machine the
   // pane lives on and absent until its agent has taken one turn. A 1.8.x peer omits it.
   cache: true,
+  // Not a crew dimension: the pane's active todo list (bridge/todos.ts), absent when there are no
+  // todos or on an older bridge.
+  todos: true,
+  // Not a crew dimension: the pane's running subagents (bridge/subagents.ts), absent when none is
+  // running or on an older bridge.
+  subagents: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache`, and
   // absent until that agent has taken one turn. An older bridge or peer omits it.
   model: true,
+  // Not a crew dimension: the effort beside that model, from the same probe, and absent whenever the
+  // model is or the log names no level. An older bridge or peer omits it.
+  effort: true,
   // Not crew dimensions: the operator's name for this pane's one-pane tab, and the pane's position in
   // its tab. Computed on the machine the pane lives on; an older peer omits both.
   soleTabName: true,
@@ -153,6 +162,8 @@ const AGENT_VIEW_KEYS = {
   sendProtocol: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
   held: true,
+  // Not a crew dimension: the pane's session instance (walky talky), four characters naming the session that holds the pane id now. Absent on a machine that predates it.
+  instance: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -204,6 +215,10 @@ const UPDATE_INFO_KEYS = {
   // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
   // release, so a solo payload is byte-identical to what it was.
   urgent: true,
+  // The release line and the way back to Stable (M60 spec 01). Optional: an older bridge sends
+  // neither, and that reads as Stable with no way back to offer.
+  line: true,
+  back: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no crew dimension", () => {
@@ -251,6 +266,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "badge",
       "cache",
       "cwd",
+      "effort",
       "focused",
       "gitHead",
       "hasSession",
@@ -259,6 +275,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "hold",
       "hooks",
       "host",
+      "instance",
       "kind",
       "lastActiveAt",
       "lastSeenAt",
@@ -272,6 +289,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "sessionName",
       "soleTabName",
       "status",
+      "subagents",
       "subtitle",
       "surface",
       "tabId",
@@ -279,6 +297,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "tabPosition",
       "terminalTitle",
       "terminalTitleStale",
+      "todos",
       "turnId",
       "workspaceId",
       "workspaceLabel",
@@ -286,6 +305,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     ]);
     expect(Object.keys(DEVICE_AUTH_KEYS).toSorted()).toEqual(["authorized", "device", "enforced"]);
     expect(Object.keys(UPDATE_INFO_KEYS).toSorted()).toEqual([
+      // The way back to Stable (M60 spec 01) — optional, sent only in that one case.
+      "back",
       "bridgeStale",
       "checkedAt",
       "current",
@@ -297,6 +318,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "installKind",
       "latest",
       "latestUrl",
+      // The release line (M60 spec 01) — optional; absent reads as Stable.
+      "line",
       // Whether the release ahead changes the crew wire (M27/06) — optional, and absent on a solo
       // install.
       "linkChange",

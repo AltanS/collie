@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { AGENT_ALIASES, KNOWN_HARNESS_NAMES } from "../journal/registry.ts";
 import { registeredAgents } from "../../web/src/lib/harness/registry.ts";
-import { isMuxAgentName, MUX_AGENT_NAMES, MUX_SCREENLESS_AGENT_NAMES } from "./agents.ts";
+import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
+import { isMuxAgentName, MUX_AGENT_NAMES, MUX_PROFILE_ONLY_AGENT_NAMES, MUX_SCREENLESS_AGENT_NAMES } from "./agents.ts";
 import { agentNameProblems } from "./conformance.ts";
 import type { MuxPane } from "./types.ts";
 
@@ -11,9 +12,17 @@ import type { MuxPane } from "./types.ts";
 // crew-level-contract.test.ts does: the list must be exactly what the two readers answer to.
 
 describe("the contract's agent names are the names Collie's readers answer to", () => {
-  test("the list is the screen readers, the journal readers and the journal's aliases", () => {
+  test("the list is the screen readers, the journal readers, the journal's aliases and the profile-only names", () => {
     const readers = new Set([...registeredAgents(), ...KNOWN_HARNESS_NAMES, ...Object.keys(AGENT_ALIASES)]);
-    expect([...MUX_AGENT_NAMES]).toEqual([...readers].toSorted());
+    expect([...MUX_AGENT_NAMES]).toEqual([...readers, ...MUX_PROFILE_ONLY_AGENT_NAMES].toSorted());
+  });
+
+  test("a profile-only name has an input profile and no reader", () => {
+    const readers = new Set([...registeredAgents(), ...KNOWN_HARNESS_NAMES, ...Object.keys(AGENT_ALIASES)]);
+    for (const name of MUX_PROFILE_ONLY_AGENT_NAMES) {
+      expect(loadProfiles().has(name)).toBe(true);
+      expect(readers.has(name)).toBe(false);
+    }
   });
 
   test("shell and every harness name pass; a multiplexer's own id does not", () => {

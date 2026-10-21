@@ -49,7 +49,7 @@ function mount(state: WayOutState, over: Partial<ComponentProps<typeof Composer>
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
     display: { open: false, onToggle: vi.fn() },
     onSent: vi.fn(),
     screen: { on: false, onToggle },
@@ -119,7 +119,7 @@ describe("the way out", () => {
           text="pane output"
           terminalDraft={null}
           rawTerminalDraft={null}
-          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
           display={{ open: false, onToggle: vi.fn() }}
           onSent={vi.fn()}
           screen={{ on: false, onToggle: vi.fn() }}

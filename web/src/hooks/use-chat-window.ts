@@ -9,6 +9,7 @@ import {
   markSaved,
   mergeChat,
   savedChatWindow,
+  sessionChanged,
   type ChatAnswer,
   type ChatWindow,
 } from "@/lib/chat-window";
@@ -176,10 +177,18 @@ export function useChatWindow({
     };
   }, []);
 
+  // A window also belongs to the SESSION it was read from (#526). When the pane's agent starts
+  // another one (pi's `/new`), the answer carries another `session` tag and `mergeChat` replaces the
+  // thread and every older page with the new session's turns, which may be none. A "load older" tap
+  // still in flight belonged to the old session: its page is thrown away on arrival, and its
+  // spinner goes now, so the new thread does not stand under a load it never asked for.
   const apply = useCallback((answer: ChatAnswer) => {
-    const next = mergeChat(window.current, answer);
+    const previous = window.current;
+    const next = mergeChat(previous, answer);
     window.current = next;
-    if (alive.current) setHeld(next);
+    if (!alive.current) return;
+    setHeld(next);
+    if (sessionChanged(previous, next)) setLoadingOlder(false);
   }, []);
 
   /** Write the held window through to the store (see the header). Live windows with turns only. */

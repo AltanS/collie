@@ -37,6 +37,14 @@ import { cn } from "@/lib/utils";
  *     the same ref, and seven copies of a rule is not a rule.
  *
  * It styles NOTHING. Tone, padding, borders and text all belong to what is inside it.
+ *
+ * **`axis="x"` runs the same machine sideways**, for a control that comes and goes INSIDE A ROW: the
+ * belt's agents mark (actions-row.tsx) is the first. `grid-template-columns: 0fr ↔ 1fr` instead of
+ * rows, and nothing else changes: the same duration, the same delayed unmount, the same hold, the
+ * same reduced-motion snap. An `fr` track under max-content sizing is its content's width times the
+ * factor, so the column eases from nothing to the child's own width with no measured number. The
+ * caller owns the row's gap: a flex `gap` beside a zero-width item still counts, so a caller in a
+ * gapped row cancels one gap with a negative margin on this box and pays it back as padding inside.
  */
 
 /**
@@ -68,6 +76,18 @@ export interface CollapseProps {
    */
   children: ReactNode;
   className?: string;
+  /** `"y"` (the default) grows the height; `"x"` grows the width, for a control in a row. */
+  axis?: "x" | "y";
+  /**
+   * Animate the enter even when this Collapse MOUNTS open. Off by default, because a notice that is
+   * true at first paint is part of the first frame (see the guard below). On for a control whose
+   * PARENT may mount at the same moment the control arrives: the belt's pinned block mounts only once
+   * something is pinned, so the X or the agents mark arriving alone mounts its Collapse already open,
+   * and without this it pops in with no transition (Altan, 2026-10-19: "the x icon should appear
+   * smoothly not immediately, same for the Agent icon"). It mounts closed and opens two frames later,
+   * the same path as an open flip on a mounted Collapse.
+   */
+  appear?: boolean;
 }
 
 /**
@@ -108,7 +128,7 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function Collapse({ open, children, className }: CollapseProps) {
+export function Collapse({ open, children, className, axis = "y", appear = false }: CollapseProps) {
   const reduced = usePrefersReducedMotion();
   const ms = reduced ? 0 : COLLAPSE_MS;
 
@@ -116,9 +136,11 @@ export function Collapse({ open, children, className }: CollapseProps) {
   //   rendered — is the child in the tree at all (the delayed-unmount half);
   //   expanded — which end of the 0fr↔1fr transition we are heading for;
   //   settled  — has the enter transition finished, so the clip can come off (see below).
+  // `appear` starts an open mount at the CLOSED end, unless reduced motion has nothing to animate.
+  const startsOpen = open && (!appear || reduced);
   const [rendered, setRendered] = useState(open);
-  const [expanded, setExpanded] = useState(open);
-  const [settled, setSettled] = useState(open);
+  const [expanded, setExpanded] = useState(startsOpen);
+  const [settled, setSettled] = useState(startsOpen);
 
   // The held copy (part 4 of the header). Written in an EFFECT and not during render, so this stays
   // a pure component: the effect for the render that SHOWED the children has already run by the
@@ -143,7 +165,9 @@ export function Collapse({ open, children, className }: CollapseProps) {
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
-      return;
+      // An `appear` mount that began closed falls through to the enter below; every other mount
+      // is already where it belongs.
+      if (startsOpen === open) return;
     }
     if (open) {
       setRendered(true);
@@ -184,7 +208,8 @@ export function Collapse({ open, children, className }: CollapseProps) {
     setSettled(false);
     const leave = window.setTimeout(() => setRendered(false), ms);
     return () => clearTimeout(leave);
-  }, [open, ms, reduced]);
+    // `startsOpen` matters on the first run only; it moves only when `open` does.
+  }, [open, ms, reduced, startsOpen]);
 
   if (!rendered) return null;
 
@@ -192,10 +217,17 @@ export function Collapse({ open, children, className }: CollapseProps) {
     <div
       data-slot="collapse"
       data-state={expanded ? "open" : "closed"}
+      data-axis={axis === "x" ? "x" : undefined}
       className={cn(
         "grid shrink-0 transition-all ease-out motion-reduce:transition-none",
         COLLAPSE_DURATION_CLASS,
-        expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        axis === "x"
+          ? expanded
+            ? "grid-cols-[1fr] opacity-100"
+            : "grid-cols-[0fr] opacity-0"
+          : expanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0",
         // The clip is only needed while the row is shorter than its content. Once open it is
         // actively harmful: an `overflow: hidden` ancestor eats a child's `::before` tap
         // extension, taps and all, with nothing to see — the measured failure documented at
@@ -206,7 +238,11 @@ export function Collapse({ open, children, className }: CollapseProps) {
         className,
       )}
     >
-      <div className={cn("min-h-0 min-w-0", settled ? "overflow-visible" : "overflow-hidden")}>
+      {/* While it leaves, the held copy is out of reach: `inert` takes it out of hit testing and the
+          tab order, as CollapseSwap does for its stand-in. A held control is the caller's LAST one,
+          and its handler may act on a state that has already moved on (the belt's Undo, after its
+          window closed); 240ms in which an invisible button can still be pressed is a bug. */}
+      <div className={cn("min-h-0 min-w-0", settled ? "overflow-visible" : "overflow-hidden")} inert={!open}>
         {content}
       </div>
     </div>

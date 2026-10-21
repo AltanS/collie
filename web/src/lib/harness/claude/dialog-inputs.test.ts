@@ -100,7 +100,7 @@ describe("the amend note (Tab on Yes or No) is a field, never a button", () => {
 describe("AskUserQuestion's 'Type something.' row is found by position, typed or not", () => {
   it("pointer on the empty field: modelled as focused, so no button can type a digit into it", () => {
     const model = detectPromptSelect(fixtureLines("claude--v2283-ask-type-something-focused.txt"))!;
-    expect(model.feedback).toEqual({ key: "4", focused: true, text: "", purpose: "free-text" });
+    expect(model.feedback).toEqual({ key: "4", focused: true, text: "", purpose: "answer", pointer: "on" });
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
   });
 
@@ -110,29 +110,33 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
       key: "4",
       focused: true,
       text: "my own answer second line of my answer",
-      purpose: "free-text",
+      purpose: "answer",
+      pointer: "on",
     });
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Orange", "Chat about this"]);
   });
 
   it("typed, pointer moved off: the field shows its value and the answers stay pressable", () => {
     const model = detectPromptSelect(fixtureLines("claude--v2283-ask-type-something-typed-off-row.txt"))!;
-    expect(model.feedback).toEqual({ key: "3", focused: false, text: "1", purpose: "free-text" });
+    expect(model.feedback).toEqual({ key: "3", focused: false, text: "1", purpose: "answer", pointer: "above" });
     expect(model.options.map((o) => o.label)).toEqual(["Apple", "Banana", "Chat about this"]);
   });
 
-  it("multi-select with the pointer on the field is claimed, the pointer read as on the field", () => {
+  it("multi-select with the pointer on the field is claimed, its field focused and never an option", () => {
     // A toggle digit would be typed into the field, so the model says where the pointer is: the
     // macros (lib/multi-select-action.ts) move it off with an arrow before any digit.
     const lines = fixtureLines("claude--v2283-multiselect-type-something-focused.txt");
-    const model = detectMultiSelect(lines)!;
-    expect(model).toMatchObject({ phase: "checkbox", pointer: "field", advanceLabel: "Submit" });
-    expect(model.phase === "checkbox" && model.options.map((o) => o.label)).toEqual(["Red", "Blue", "Green"]);
+    const model = detectMultiSelect(lines);
+    if (model?.phase !== "checkbox") throw new Error("the focused multi-select is not claimed");
+    expect(model).toMatchObject({ pointer: "field", advanceLabel: "Submit" });
+    expect(model.field).toMatchObject({ n: 4, focused: true, text: "", checked: false, pointer: "on" });
+    expect(model.options.map((o) => o.label)).toEqual(["Red", "Blue", "Green"]);
+    expect(model.options.map((o) => o.n)).not.toContain(4);
     expect(kinds(buildBlocks(lines, { agent: "claude" }))).toContain("multi-select");
     expect(kinds(buildBlocks(lines, { agent: "claude" }))).not.toContain("unread-dialog");
   });
 
-  it("a wizard step with the pointer on the field is not claimed either", () => {
+  it("a wizard step with the pointer on the field is claimed, its field focused and never an option", () => {
     const text = readFileSync(join(PANES_DIR, "claude--v2283-wizard-two-line-question.txt"), "utf8");
     // Move the pointer from "1. Apple" onto "4. Type something." the way Down×3 repaints it. The
     // pointer is the `❯ ` just before "1. "; the first `❯` in the file is an old prompt row.
@@ -142,7 +146,10 @@ describe("AskUserQuestion's 'Type something.' row is found by position, typed or
       .replace(`\n  ${grey}4. Type something.`, `\n❯ ${grey}4. Type something.`);
     expect(moved).not.toBe(text);
     expect(detectWizard(splitLines(parseAnsi(text)))).not.toBeNull();
-    expect(detectWizard(splitLines(parseAnsi(moved)))).toBeNull();
+    const focused = detectWizard(splitLines(parseAnsi(moved)));
+    if (focused?.phase !== "question") throw new Error("the focused step is not claimed as a question");
+    expect(focused.field).toMatchObject({ key: "4", focused: true, text: "", chosen: false, pointer: "on" });
+    expect(focused.options.map((o) => o.keys[0])).not.toContain("4");
   });
 });
 

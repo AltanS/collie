@@ -8,10 +8,13 @@ import {
   isBlobHash,
   isPiSessionId,
   parsePiTranscript,
+  piJournal,
   PiTranscriptSource,
   resolveBlobPath,
   resolveImageUrl,
 } from "./pi.ts";
+import { LiveWindows, TICK_FLOOR_MS } from "./live.ts";
+import { TranscriptStore } from "./store.ts";
 import { MAX_TEXT_CHARS } from "./text.ts";
 import type { ToolCall } from "./tool-call.ts";
 import type { TranscriptPart } from "./types.ts";
@@ -843,6 +846,102 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
   });
 });
 
+// pi names a new session before it writes the file (#526). Observed on pi 0.87.1 under Herdr: on
+// launch and right after `/new`, `herdr pane get` reports `agent_session: {kind: "path", value:
+// ".../--tmp-x--/2026-10-19T07-48-57-661Z_<uuid>.jsonl"}` while that folder holds no such file; pi
+// writes it whole when the first reply is saved. Until then the pane is a new, EMPTY session.
+describe("PiTranscriptSource — a session pi has not written yet", () => {
+  const SID = "01a15322-94bd-773d-b89f-b80fc1885dd6";
+  const OLD = "01a15322-2a49-773d-b89f-b80c14b8ba0c";
+
+  async function fixture() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-pi-new-")));
+    const root = join(base, "sessions");
+    const project = join(root, "--tmp-x--");
+    await mkdir(project, { recursive: true });
+    const old = join(project, `2026-10-19T07-48-30-410Z_${OLD}.jsonl`);
+    await Bun.write(old, `${header()}\n${speech("a1", "user", "the old question")}\n`);
+    const next = join(project, `2026-10-19T07-48-57-661Z_${SID}.jsonl`);
+    return { base, root, project, old, next, clean: () => rm(base, { recursive: true, force: true }) };
+  }
+
+  test("resolve still answers null for it, and pending answers where the file will be", async () => {
+    const f = await fixture();
+    const src = new PiTranscriptSource(f.root);
+    expect(await src.resolve({ kind: "path", value: f.next })).toBeNull();
+    expect(await src.pending({ kind: "path", value: f.next })).toBe(f.next);
+    // A file that exists is resolve's to answer, never pending's.
+    expect(await src.pending({ kind: "path", value: f.old })).toBeNull();
+    // An id names no place, so there is nothing to confine yet.
+    expect(await src.pending({ kind: "id", value: SID })).toBeNull();
+    await f.clean();
+  });
+
+  test("pending keeps resolve's confinement: pi's own name, a folder inside the root, nothing there", async () => {
+    const f = await fixture();
+    const src = new PiTranscriptSource(f.root);
+    expect(await src.pending({ kind: "path", value: join(f.project, "notes.jsonl") })).toBeNull();
+    expect(await src.pending({ kind: "path", value: join(f.project, `x_${SID}.txt`) })).toBeNull();
+    // A folder outside every root, and one that does not exist.
+    expect(await src.pending({ kind: "path", value: join(f.base, `t_${SID}.jsonl`) })).toBeNull();
+    expect(await src.pending({ kind: "path", value: join(f.root, "--gone--", `t_${SID}.jsonl`) })).toBeNull();
+    // A folder symlinked out of the root.
+    await mkdir(join(f.base, "elsewhere"));
+    await symlink(join(f.base, "elsewhere"), join(f.root, "--sneaky--"));
+    expect(await src.pending({ kind: "path", value: join(f.root, "--sneaky--", `t_${SID}.jsonl`) })).toBeNull();
+    // A dangling symlink where the log will be: never "empty", whatever it points at later.
+    await symlink(join(f.base, "outside.jsonl"), f.next);
+    expect(await src.pending({ kind: "path", value: f.next })).toBeNull();
+    await f.clean();
+  });
+
+  test("the live window answers an empty session under a new tag, then reads the file when it appears", async () => {
+    const f = await fixture();
+    let now = 1_000_000;
+    const live = new LiveWindows(new TranscriptStore(), () => now);
+    const adapter = piJournal(f.root);
+
+    const before = await live.window(adapter, { kind: "path", value: f.old }, { limit: 40 });
+    expect(before?.upserts.map((e) => e.uuid)).toEqual(["a1"]);
+
+    // `/new`: the ref moves to a file that is not there. Not "no log" (null): an empty session.
+    const empty = await live.window(adapter, { kind: "path", value: f.next }, { limit: 40 });
+    expect(empty).not.toBeNull();
+    expect(empty?.upserts).toEqual([]);
+    expect(empty?.hasOlder).toBe(false);
+    expect(empty?.queued).toEqual([]);
+    expect(empty?.lastPrompt).toBeUndefined();
+    expect(empty?.session).toEqual(expect.any(String));
+    expect(empty?.session).not.toBe(before?.session);
+    expect(empty?.gen).not.toBe(before?.gen);
+
+    // A poll while pi still has not written it: the same empty answer, a 304 on the wire.
+    now += TICK_FLOOR_MS;
+    const quiet = await live.window(adapter, { kind: "path", value: f.next }, { limit: 40, after: { gen: empty!.gen, rev: empty!.rev } });
+    expect(quiet).toEqual(empty);
+
+    // The first reply is saved: pi writes the header, the prompt and the reply at once.
+    await Bun.write(
+      f.next,
+      `${header()}\n${speech("b1", "user", "a new question")}\n${speech("b2", "assistant", "a new answer")}\n`,
+    );
+    now += TICK_FLOOR_MS;
+    const born = await live.window(adapter, { kind: "path", value: f.next }, { limit: 40, after: { gen: empty!.gen, rev: empty!.rev } });
+    expect(born?.session).toBe(empty?.session);
+    expect(born?.upserts.map((e) => e.uuid)).toEqual(["b1", "b2"]);
+    expect(born?.hasOlder).toBe(false);
+    await f.clean();
+  });
+
+  test("a path pi may not serve is still no log, not an empty session", async () => {
+    const f = await fixture();
+    const live = new LiveWindows(new TranscriptStore(), () => 0);
+    const outside = join(f.base, `2026-10-19T07-48-57-661Z_${SID}.jsonl`);
+    expect(await live.window(piJournal(f.root), { kind: "path", value: outside }, { limit: 40 })).toBeNull();
+    await f.clean();
+  });
+});
+
 // pi with more than one sessions root (a second PI_CODING_AGENT_DIR) — the same multi-home case
 // CLAUDE_CONFIG_DIR raised for Claude (issue #92). pi is the interesting one because its ref is
 // usually a free-form PATH: no root built that name, so every configured root is asked whether the
@@ -987,7 +1086,7 @@ describe("parsePiTranscript — a message delivered while the agent works", () =
 });
 
 // Gentle Shell (gentle-pi 4.2.0) on pi 1.3.0: the row shapes below were read off real local sessions on
-// 2026-10-16 (issue #461, ADR 0110).
+// 2026-10-16 (issue #461, ADR 0114).
 describe("parsePiTranscript — Gentle Shell's tools", () => {
   /** A linear session: each row hangs off the one before, so nothing reads as a rewind. */
   const session = () => {
@@ -1201,5 +1300,58 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     const call = tools(s.rows)[0]?.part.call;
     expect(call).toEqual({ kind: "execute", command: "tail -f x", description: "watch", background: true });
     expect(tools(s.rows)[0]?.part.result?.isError).toBeUndefined();
+  });
+});
+
+// The thinking level beside the model (#463). pi writes a `thinking_level_change` row when a session
+// opens and on every change, and pi 1.3 also stamps `thinkingLevel` on each assistant message, so the
+// newest of the two is the level the next turn runs at.
+describe("the pi probe — the thinking level", () => {
+  const SID = "019f1827-bf99-7927-9684-76318de905b5";
+  const level = (id: string, thinkingLevel: string) =>
+    JSON.stringify({ type: "thinking_level_change", id, parentId: "p0", timestamp: "2026-07-29T10:00:00.000Z", thinkingLevel });
+  const answer = (id: string, extra: Record<string, JsonValue> = {}) =>
+    row(id, {
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      usage: { input: 10, output: 5, cacheRead: 900, cacheWrite: 0 },
+      ...extra,
+    });
+
+  async function probeOf(lines: readonly string[]) {
+    const created = `${tmpdir()}/collie-pi-effort-${Math.floor(performance.now() * 1000)}`;
+    const root = join(created, "sessions");
+    const project = join(root, "--repo--");
+    await mkdir(project, { recursive: true });
+    const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
+    await Bun.write(log, `${lines.join("\n")}\n`);
+    const probe = await piJournal(root).cacheProbe?.({ kind: "path", value: await realpath(log) });
+    await rm(created, { recursive: true, force: true });
+    return probe;
+  }
+
+  test("the level row written when the session opened names the effort", async () => {
+    const probe = await probeOf([header(), level("l1", "high"), answer("a1")]);
+    expect(probe?.model).toBe("anthropic:claude-opus-5-5");
+    expect(probe?.effort).toBe("high");
+  });
+
+  test("a level changed after the last turn is the one the next turn uses", async () => {
+    const probe = await probeOf([header(), level("l1", "high"), answer("a1", { thinkingLevel: "high" }), level("l2", "low")]);
+    expect(probe?.turnId).toBe("a1");
+    expect(probe?.effort).toBe("low");
+  });
+
+  test("the turn's own thinkingLevel answers when no level row is in the window", async () => {
+    const probe = await probeOf([answer("a1", { thinkingLevel: "xhigh" })]);
+    expect(probe?.effort).toBe("xhigh");
+  });
+
+  test("a log that names no level reports no effort", async () => {
+    const probe = await probeOf([header(), answer("a1")]);
+    expect(probe?.model).toBe("anthropic:claude-opus-5-5");
+    expect(probe?.effort).toBeUndefined();
   });
 });

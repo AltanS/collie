@@ -28,6 +28,15 @@ import {
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
 import { cmdDocs, cmdSkill } from "./docs.ts";
+import {
+  cmdSkillInstall,
+  cmdSkillPrint,
+  cmdSkillStatus,
+  cmdSkillSync,
+  cmdSkillUninstall,
+  cmdSkillVerb,
+  type SkillDeps,
+} from "./skill-install.ts";
 import { asksForHelp, EXIT, type Io, realIo } from "./io.ts";
 import {
   cmdExecBridge,
@@ -96,8 +105,20 @@ import {
 import { cmdSttWhistle } from "./stt-whistle.ts";
 import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE_SUBCOMMANDS, type DurableAttachDeps } from "./durable-attach.ts";
 import { realExec, realFiles } from "./sys.ts";
+import { HOST } from "../bridge/host.ts";
 import { cmdSupervise, realSuperviseDeps } from "./task-scheduler.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
+import {
+  askSocket,
+  cmdWalky,
+  cmdWalkyInbox,
+  cmdWalkyReply,
+  cmdWalkySend,
+  cmdWalkyStatus,
+  cmdWalkyWho,
+  WALKY_SUBCOMMANDS,
+  type WalkyDeps,
+} from "./walky.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 
 // The `collie` binary's dispatch: argv in, exit code out. This module owns ONLY the dispatch —
@@ -238,6 +259,11 @@ function hooksDeps(io: Io): HooksDeps {
   return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
 }
 
+/** `skill install|uninstall|sync|status|print`: the context, the filesystem and the symlink probe, like `hooks`. */
+function skillDeps(io: Io): SkillDeps {
+  return { ctx: loadContext(io.err), io, files: realFiles, fs: realLinkFs };
+}
+
 /**
  * `stt`: the pairing set (context + filesystem — `stt.json` lives beside the pairing files, under the
  * state dir the bridge resolves), plus `exec` to locate the operator's `codex` binary and the two
@@ -247,6 +273,49 @@ function hooksDeps(io: Io): HooksDeps {
  * nobody can answer must abort legibly rather than read EOF as consent — and on the codex path that
  * question IS the consent (ADR 0029).
  */
+/** `walky`: the context and the filesystem (the socket checks), stdin for a body, and the socket itself. */
+function walkyDeps(io: Io): WalkyDeps {
+  return {
+    ctx: loadContext(io.err),
+    files: realFiles,
+    uid: process.getuid?.(),
+    io,
+    platform: HOST.platform,
+    readStdin: () => Bun.stdin.text(),
+    stdinIsTty: process.stdin.isTTY === true,
+    ask: (path, line) => askSocket(path, line),
+  };
+}
+
+/** The sub-verbs of `walky`. */
+const WALKY_TREE: readonly Subcommand[] = [
+  {
+    name: "who",
+    summary: "the agent panes you can message: address, machine, harness, label, state",
+    run: (args, s) => cmdWalkyWho(walkyDeps(s.io), args),
+  },
+  {
+    name: "send",
+    summary: "message one pane, a machine or everyone: `walky send <address> <text>` (no text: stdin)",
+    run: (args, s) => cmdWalkySend(walkyDeps(s.io), args),
+  },
+  {
+    name: "reply",
+    summary: "answer a message by its id: `walky reply <id> <text>` (no text: stdin)",
+    run: (args, s) => cmdWalkyReply(walkyDeps(s.io), args),
+  },
+  {
+    name: "inbox",
+    summary: "read one message by id, or this pane's unread ones and mark them read (`--keep`, `--all`)",
+    run: (args, s) => cmdWalkyInbox(walkyDeps(s.io), args),
+  },
+  {
+    name: "status",
+    summary: "a message's receipt: `walky status <id>`",
+    run: (args, s) => cmdWalkyStatus(walkyDeps(s.io), args),
+  },
+];
+
 function sttDeps(io: Io): SttDeps {
   const ctx = loadContext(io.err);
   const deps: SttDeps = {
@@ -786,6 +855,16 @@ export const COMMANDS: readonly Command[] = [
     ],
     run: async (args, s) => await cmdDurable(durableVerbDeps(s.io), args),
   },
+  // ── Walky talky (M62) ──────────────────────────────────────────────────────
+  // Messages between agent sessions, typed by an agent inside its pane or by the operator outside one.
+  // The verb talks to the running bridge over its local socket and changes nothing on disk itself.
+  // One spelling: `wt` was dropped before release, since Windows Terminal's binary is `wt.exe`.
+  {
+    name: "walky",
+    summary: `walky talky, messages between agent sessions: ${WALKY_SUBCOMMANDS.join(", ")}`,
+    subcommands: WALKY_TREE,
+    run: (args, s) => cmdWalky({ io: s.io }, args),
+  },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the
   // same tree, declared below it, and it prints one note on a terminal (ADR 0038).
@@ -836,8 +915,41 @@ export const COMMANDS: readonly Command[] = [
   // says why). Both verbs are read-only and neither draws a terminal view, so `--plain` is moot.
   {
     name: "skill",
-    summary: "print the agent-facing brief on Collie, for an AI coding agent working in this terminal (also `collie --skill`)",
-    run(_args, s) {
+    summary:
+      "print the agent-facing brief on Collie (also `collie --skill`), or install the walky talky skill into a harness: install, uninstall, sync, status, print",
+    subcommands: [
+      {
+        name: "install",
+        summary: "write the walky talky skill: `skill install <claude|codex|opencode|pi|gemini|all>`",
+        run: (args, s) => cmdSkillInstall(skillDeps(s.io), args),
+      },
+      {
+        name: "uninstall",
+        summary: "remove only the file or block Collie wrote: `skill uninstall <harness|all>`",
+        run: (args, s) => cmdSkillUninstall(skillDeps(s.io), args),
+      },
+      {
+        name: "sync",
+        summary:
+          "bring every harness on this machine up to this build's skill, as `collie update` does after each update (`--dry-run`, `--json`)",
+        run: (args, s) => cmdSkillSync(skillDeps(s.io), args),
+      },
+      {
+        name: "status",
+        summary: "what each target carries now: installed, stale, absent or refused (`--check` answers with the exit code)",
+        run: (args, s) => cmdSkillStatus(skillDeps(s.io), args),
+      },
+      {
+        name: "print",
+        summary: "print the text an install writes: `skill print <harness|all|generic>`",
+        run: (args, s) => cmdSkillPrint(skillDeps(s.io), args),
+      },
+    ],
+    run(args, s) {
+      // A bare `collie skill` (and `collie --skill`) prints the general brief, as it always did. Flags
+      // are ignored as before; a word that is no sub-verb gets the usage block.
+      const word = args.find((a) => !a.startsWith("-"));
+      if (word !== undefined) return cmdSkillVerb(skillDeps(s.io), word, args.slice(args.indexOf(word) + 1));
       const ctx = loadContext(s.io.err);
       return cmdSkill(s.io, collieVersion(ctx.root));
     },

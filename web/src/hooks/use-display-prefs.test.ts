@@ -9,6 +9,7 @@ import {
   inputFocusZoomsPage,
   IOS_NO_ZOOM_FONT_PX,
   mirrorFont,
+  sentSuggestionsOf,
   useDisplayPrefs,
 } from "./use-display-prefs";
 
@@ -20,7 +21,7 @@ describe("useDisplayPrefs", () => {
 
   it("returns defaults when localStorage is empty", () => {
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false, keepChat: "1d" });
   });
 
   it("persists wrap=true and reloads it on mount", () => {
@@ -43,7 +44,7 @@ describe("useDisplayPrefs", () => {
       JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false, expandClippedReply: false }),
     );
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false, expandClippedReply: false, keepChat: "1d" });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false, expandClippedReply: false, stretchText: false, keepChat: "1d" });
   });
 
   it("persists rawTerminal and reloads it on mount (the escape hatch survives a reload)", () => {
@@ -70,7 +71,7 @@ describe("useDisplayPrefs", () => {
   it("reads a pre-tapToFocus payload without discarding the prefs it does have", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 15, rawTerminal: true }));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true, expandClippedReply: true, stretchText: false, keepChat: "1d" });
   });
 
   it("persists fontFamily and reloads it on mount", () => {
@@ -172,6 +173,27 @@ describe("useDisplayPrefs", () => {
     expect(result.current.prefs.expandClippedReply).toBe(true);
     expect(result.current.prefs.tapToFocus).toBe(false);
     expect(result.current.prefs.fontSize).toBe(15);
+  });
+
+  it("draws no stretches until the operator turns them on", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.stretchText).toBe(false);
+  });
+
+  it("persists stretchText and reloads it on mount", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    act(() => result.current.setStretchText(true));
+    expect(result.current.prefs.stretchText).toBe(true);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).stretchText).toBe(true);
+    const { result: reloaded } = renderHook(() => useDisplayPrefs());
+    expect(reloaded.current.prefs.stretchText).toBe(true);
+  });
+
+  it("reads a stored stretchText that is not a boolean as off, keeping the rest", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, stretchText: "yes" }));
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.stretchText).toBe(false);
+    expect(result.current.prefs.wrap).toBe(false);
   });
 
   // ── THE DRAFT FIELD'S OWN SIZE ────────────────────────────────────────────────────────────────
@@ -280,13 +302,13 @@ describe("useDisplayPrefs — the rest", () => {
   it("falls back to defaults on malformed JSON", () => {
     localStorage.setItem(STORAGE_KEY, "not-json{{{");
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false, keepChat: "1d" });
   });
 
   it("falls back to defaults when stored value is not an object", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, keepChat: "1d" });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false, keepChat: "1d" });
   });
 });
 
@@ -338,3 +360,28 @@ describe("useDisplayPrefs — hand", () => {
   });
 });
 
+
+// ── "Suggestions from Sent" (Settings -> Device): the strip above a shell pane's box (M61) ────────
+describe("useDisplayPrefs — Sent suggestions", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("is on by default, and a payload written before the setting existed reads on", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false }));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+
+  it("persists the choice under the display prefs, in the key that already exists", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    act(() => result.current.setSentSuggestions(false));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sentSuggestions).toBe(false);
+    expect(Object.keys(localStorage)).toEqual([STORAGE_KEY]);
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(false);
+    act(() => result.current.setSentSuggestions(true));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+
+  it("reads a stored value that is not a boolean as on", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sentSuggestions: "no" }));
+    expect(sentSuggestionsOf(renderHook(() => useDisplayPrefs()).result.current.prefs)).toBe(true);
+  });
+});

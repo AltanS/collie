@@ -6,7 +6,7 @@ import { formationLayout } from "@/components/crew-formation";
 import { CrewProvider } from "@/components/crew-provider";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { ServerSwitcher } from "@/components/server-switcher";
-import { type CrewData } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type CrewData } from "@/lib/loaders";
 import type { CrewMemberStatus, ServerSummary } from "@/lib/types";
 import { fixtureCrewStatus, fixtureServers } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
@@ -155,6 +155,27 @@ describe("CrewRoute", () => {
   it("captions the drawing with the crew, its size and how much of it answers", async () => {
     renderCrew(loaded);
     expect(await screen.findByText("home · 3 machines · 2 reachable")).toBeInTheDocument();
+  });
+
+  it("says the members follow the lead's release line, Stable when the snapshot names none (M60 spec 01)", async () => {
+    renderCrew(loaded);
+    expect(await screen.findByText("Members follow the lead's release line, Stable.")).toBeInTheDocument();
+  });
+
+  it("names Edge when the lead is on Edge", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => ({ update: { current: "1.23.0-edge.1", latest: null, latestUrl: null, releaseAvailable: false, majorAvailable: null, majorUrl: null, bridgeStale: false, checkedAt: 0, line: "edge" } }),
+          children: [{ path: "crew", loader: () => loaded, element: withHeaderHost(<CrewProvider servers={undefined}>{<CrewRoute />}</CrewProvider>) }],
+        },
+      ],
+      { initialEntries: ["/crew"] },
+    );
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByText("Members follow the lead's release line, Edge.")).toBeInTheDocument();
   });
 
   it("opens a member's paperwork on a tap — and does not navigate", async () => {

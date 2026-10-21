@@ -226,6 +226,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "sendProtocol",
   },
   {
+    key: "walky",
+    env: "COLLIE_WALKY",
+    section: "bridge",
+    kind: "bool",
+    default: true,
+    doc: "Take walky talky messages for this machine's agent panes. Off refuses each one; the CLI here still sends.",
+    configField: "walky",
+  },
+  {
     key: "transcript",
     env: "COLLIE_TRANSCRIPT",
     section: "bridge",
@@ -519,6 +528,16 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "Mask known secret shapes in pane text before it reaches a phone or a push.",
     configField: "redact",
   },
+  {
+    key: "sent",
+    env: "COLLIE_SENT",
+    section: "access",
+    kind: "enum",
+    values: ["on", "off"],
+    default: "on",
+    doc: "Keep a record of the shell lines sent through Collie on this machine.",
+    configField: "sent",
+  },
 
   // ── push ───────────────────────────────────────────────────────────────────
   {
@@ -634,7 +653,16 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "journal",
     kind: "roots",
     default: [],
-    doc: "Where Hermes keeps its session logs. Empty takes ~/.hermes.",
+    doc: "Where Hermes keeps its session logs. Empty takes $HERMES_HOME, else ~/.hermes. Its named profiles (profiles/<name>/) are read too.",
+    configField: "journalRoots",
+  },
+  {
+    key: "kiro_root",
+    env: "COLLIE_KIRO_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where Kiro V3 keeps its sessions. Empty follows KIRO_HOME, else ~/.kiro/sessions.",
     configField: "journalRoots",
   },
   {
@@ -747,6 +775,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: 30_000,
     min: 1,
     doc: "How long an update waits for the restarted bridge to answer.",
+  },
+  {
+    key: "skill_sync",
+    env: "COLLIE_SKILL_SYNC",
+    section: "update",
+    kind: "bool",
+    default: true,
+    doc: "After each update, install the walky talky skill into every harness on this machine and keep it current. Off only prints a note when it is behind.",
   },
 
   // ── serve ──────────────────────────────────────────────────────────────────

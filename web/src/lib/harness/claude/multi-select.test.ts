@@ -9,6 +9,8 @@ import { detectWizard } from "./wizard";
 import { detectPromptSelect } from "./prompt-select";
 import { detectPreviewSelect } from "./preview-select";
 import { lineText } from "./markers";
+import { detectCheckbox } from "../muse/checkbox";
+import { multiSelectEquals, multiSelectIdentity, type MultiSelectModel } from "../multi-select-model";
 
 // The multi-select detector is developed and gated against byte-faithful sandbox captures of a real
 // multiSelect AskUserQuestion (claude--select-multiselect-*.txt; interaction model probed live).
@@ -27,7 +29,7 @@ describe("detectMultiSelect — checkbox phase", () => {
     expect(model).not.toBeNull();
     if (model!.phase !== "checkbox") throw new Error("expected checkbox phase");
     expect(model!.question).toBe("Which pizza toppings do you want?");
-    // "5. [ ] Type something" is a free-text row → stays with the composer, dropped from options.
+    // "5. [ ] Type something" is the answer field → modelled as `field`, dropped from options.
     expect(model!.options.map((o) => o.label)).toEqual(["Cheese", "Mushrooms", "Olives", "Peppers"]);
     // The digit that toggles each row.
     expect(model!.options.map((o) => o.n)).toEqual([1, 2, 3, 4]);
@@ -265,7 +267,7 @@ describe("detectMultiSelect — a checkbox question inside a wizard", () => {
       "Extra cheese",
     ]);
     expect(m.options.every((o) => !o.checked)).toBe(true);
-    // The free-text "Type something" row stays with the composer; "Chat about this" is the escape.
+    // The "Type something" row is the answer field, never an option; "Chat about this" is the escape.
     expect(m.escape?.label).toMatch(/chat about this/i);
     expect(m.options[0]!.description).toMatch(/crisp at the edges/);
   });
@@ -353,7 +355,8 @@ describe("detectMultiSelect — the advance row is a place, not a word", () => {
     // "advance", the macro would press Enter on whatever row the terminal's ❯ is really on — and on
     // "Chat about this" that aborts the entire tool call.
     // The last checkbox row is "Type something", as on every real capture: a pointer ON that field
-    // reads `field` (see the field tests below), so the decoy test keeps it elsewhere.
+    // reads `field` and types every digit (see the field tests below), so the decoy test keeps it
+    // elsewhere.
     const m = model(
       pane(["  1. [ ] Garlic knots", "  ❯ Submit", "❯ 2. [ ] Caesar salad", "  3. [ ] Type something"], "Submit"),
     );
@@ -398,13 +401,14 @@ describe("the pointer on the 'Type something' field (Claude Code 2.1.302)", () =
     expect(lineText(fixtureLines(FIELD)[region!.startLine]!)).toContain("☒ Next step");
   });
 
-  it("a typed field reads `field` too, and its row is an option the macros toggle off the field", () => {
+  it("a typed field reads `field` too, and its row is the field, never an option", () => {
     const typed = fixtureText(FIELD).replace("[ ] \u001b[0m\u001b[2mType something", "[✔] teal");
     expect(typed).not.toBe(fixtureText(FIELD));
     const m = detectMultiSelect(splitLines(parseAnsi(typed)))!;
     if (m.phase !== "checkbox") throw new Error("expected checkbox phase");
     expect(m.pointer).toBe("field");
-    expect(m.options.at(-1)).toMatchObject({ n: 5, label: "teal", checked: true });
+    expect(m.field).toMatchObject({ n: 5, text: "teal", checked: true, focused: true, pointer: "on" });
+    expect(m.options.map((o) => o.n)).toEqual([1, 2, 3, 4]);
   });
 
   it("with the pointer moved up onto option 4 it reads `option`, the same dialog otherwise", () => {
@@ -416,5 +420,132 @@ describe("the pointer on the 'Type something' field (Claude Code 2.1.302)", () =
     const off = detectMultiSelect(splitLines(parseAnsi(moved)))!;
     expect(off.pointer).toBe("option");
     expect(off.signature).toBe(on.signature);
+  });
+});
+
+// The answer field (ADR 0113, grammar/ASK_FIELD_NOTES.md § Multi-select): the last menu row above the
+// advance row, found by POSITION, modelled as `field` and never an option. Its digit toggles its tick;
+// while `❯` is on it every digit is typed into it, which `field.focused` carries.
+describe("detectMultiSelect — the answer field", () => {
+  const capture = (name: string) => {
+    const m = detectMultiSelect(fixtureLines(`claude--v2299-ask-field-${name}.txt`));
+    if (m?.phase !== "checkbox") throw new Error(`${name} is not claimed as a checkbox question`);
+    return m;
+  };
+
+  it("ticked and empty, pointer on row 1: the placeholder reads empty, ticked, the pointer above", () => {
+    const m = capture("multi-ticked-empty");
+    expect(m.field).toEqual({ n: 4, focused: false, text: "", checked: true, pointer: "above", lines: 1 });
+    expect(m.pointer).toBe("option");
+  });
+
+  it("focused and typed: the text, ticked, and the pointer on the field", () => {
+    const m = capture("multi-focused-typed");
+    expect(m.field).toEqual({ n: 4, focused: true, text: "Pineapple", checked: true, pointer: "on", lines: 1 });
+    expect(m.pointer).toBe("field");
+  });
+
+  it("Enter on the focused field unticks it and keeps the text", () => {
+    expect(capture("multi-focused-unticked").field).toMatchObject({ text: "Pineapple", checked: false, focused: true });
+  });
+
+  it("cleared: empty and unticked", () => {
+    expect(capture("multi-focused-cleared").field).toMatchObject({ text: "", checked: false, focused: true });
+  });
+
+  it("the pointer on Submit: the field below it, the model pointer on the advance row", () => {
+    const m = capture("multi-pointer-submit");
+    expect(m.field).toMatchObject({ text: "Mushroom", checked: false, focused: false, pointer: "below" });
+    expect(m.pointer).toBe("advance");
+  });
+
+  it("a wizard's checkbox step carries its steps and its Next row", () => {
+    for (const [name, text, checked] of [
+      ["wizmulti-focused-empty", "", true],
+      ["wizmulti-focused-typed", "Pineapple", true],
+      ["wizmulti-focused-unticked", "Pineapple", false],
+    ] as const) {
+      const m = capture(name);
+      expect(m.steps?.map((s) => s.label), name).toEqual(["Toppings", "Size"]);
+      expect(m.advanceLabel, name).toBe("Next");
+      expect(m.field, name).toMatchObject({ n: 4, text, checked, focused: true, pointer: "on" });
+    }
+  });
+
+  it("the field is never an option, and the option digits stay as they were", () => {
+    for (const name of [
+      "multi-ticked-empty",
+      "multi-focused-typed",
+      "multi-focused-unticked",
+      "multi-focused-cleared",
+      "multi-pointer-submit",
+      "wizmulti-focused-empty",
+      "wizmulti-focused-typed",
+      "wizmulti-focused-unticked",
+    ]) {
+      const m = capture(name);
+      expect(m.options.map((o) => o.n), name).toEqual([1, 2, 3]);
+      expect(m.options.map((o) => o.label), name).not.toContain("Type something");
+      expect(m.escape, name).toEqual({ n: 5, label: "Chat about this" });
+    }
+  });
+
+  it("typing and clearing keep the core signature; the region signature stays literal", () => {
+    const typed = capture("multi-focused-typed");
+    const cleared = capture("multi-focused-cleared");
+    expect(cleared.signature).toBe(typed.signature);
+    expect(cleared.regionSignature).not.toBe(typed.regionSignature);
+  });
+});
+
+describe("the comparators and the answer field", () => {
+  const capture = (name: string) => detectMultiSelect(fixtureLines(`claude--v2299-ask-field-${name}.txt`))!;
+
+  it("typed, unticked and cleared are one dialog to identity, three states to the entry guard", () => {
+    const states = ["multi-focused-typed", "multi-focused-unticked", "multi-focused-cleared"].map(capture);
+    for (const a of states) {
+      for (const b of states) {
+        expect(multiSelectIdentity(a, b)).toBe(true);
+        expect(multiSelectEquals(a, b)).toBe(a === b);
+      }
+    }
+  });
+
+  it("a wizard step's own chip flipping as its field is typed into is still the same dialog", () => {
+    const empty = capture("wizmulti-focused-empty");
+    const typed = capture("wizmulti-focused-typed");
+    expect(empty.phase === "checkbox" && empty.steps?.[0]?.answered).toBe(false);
+    expect(typed.phase === "checkbox" && typed.steps?.[0]?.answered).toBe(true);
+    expect(multiSelectIdentity(empty, typed)).toBe(true);
+    expect(multiSelectEquals(empty, typed)).toBe(false);
+  });
+
+  it("a chip that is NOT current changing its mark is still drift", () => {
+    const typed = capture("wizmulti-focused-typed");
+    if (typed.phase !== "checkbox" || typed.steps === null) throw new Error("expected a wizard step");
+    const otherFlipped: MultiSelectModel = {
+      ...typed,
+      steps: typed.steps.map((s) => (s.current ? s : { ...s, answered: !s.answered })),
+    };
+    expect(multiSelectIdentity(typed, otherFlipped)).toBe(false);
+  });
+
+  it("the field's presence and digit are part of identity", () => {
+    const typed = capture("multi-focused-typed");
+    if (typed.phase !== "checkbox" || typed.field === undefined) throw new Error("expected a field");
+    const { field, ...withoutField } = typed;
+    expect(multiSelectIdentity(typed, withoutField)).toBe(false);
+    expect(multiSelectIdentity(typed, { ...typed, field: { ...field, n: 3 } })).toBe(false);
+  });
+
+  it("a model without a field (Muse's) compares exactly as it did", () => {
+    const muse = (name: string) => detectCheckbox(fixtureLines(name))!;
+    const plain = muse("muse--ask-toppings.txt");
+    const checked = muse("muse--ask-toppings-checked.txt");
+    expect(plain.phase === "checkbox" && plain.field).toBe(undefined);
+    expect(multiSelectEquals(plain, muse("muse--ask-toppings.txt"))).toBe(true);
+    expect(multiSelectIdentity(plain, muse("muse--ask-toppings.txt"))).toBe(true);
+    expect(multiSelectEquals(plain, checked)).toBe(false);
+    expect(multiSelectIdentity(plain, checked)).toBe(false);
   });
 });

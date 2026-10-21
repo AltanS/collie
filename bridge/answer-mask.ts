@@ -61,11 +61,59 @@ export function maskTerminalTitle<P extends { terminalTitle?: string }>(pane: P)
 }
 
 /**
- * A snapshot with every pane's program-set title masked. The lead's merged snapshot carries its
- * members' panes as the members sent them, so a member that does not mask sent its titles in clear.
+ * A pane's todo list with its words masked. A task's subject and its present-tense form are text an
+ * agent wrote, so they can hold a path, a command or a key. Ids and statuses are the bridge's own.
+ */
+export function maskTodoList<T extends { text: string; activeForm?: string }>(todos: readonly T[]): T[] {
+  return todos.map((todo) => {
+    const masked = { ...todo, text: redactText(todo.text) };
+    if (todo.activeForm !== undefined) masked.activeForm = redactText(todo.activeForm);
+    return masked;
+  });
+}
+
+/**
+ * A pane's running subagents with their descriptions masked. The description is the text the agent
+ * wrote when it started the subagent, so it can hold a path, a command or a key. The id, the type,
+ * the model and the times are Claude Code's own.
+ */
+export function maskSubagentList<T extends { description: string }>(subagents: readonly T[]): T[] {
+  return subagents.map((subagent) => ({ ...subagent, description: redactText(subagent.description) }));
+}
+
+/** The pane fields an agent or a program wrote, which the mask reaches. */
+interface PaneWords {
+  terminalTitle?: string;
+  todos?: readonly { text: string; activeForm?: string }[];
+  subagents?: readonly { description: string }[];
+}
+
+/** A pane with its program-set title, its todo list and its subagents masked, whichever it carries. */
+function maskPaneWords<P extends PaneWords>(pane: P): P {
+  const titled = maskTerminalTitle(pane);
+  const listed = titled.todos === undefined ? titled : { ...titled, todos: maskTodoList(titled.todos) };
+  return listed.subagents === undefined ? listed : { ...listed, subagents: maskSubagentList(listed.subagents) };
+}
+
+/**
+ * A snapshot with every pane's program-set title, todo list and subagents masked. The lead's merged
+ * snapshot carries its members' panes as the members sent them, so a member that does not mask sent
+ * them in clear.
  */
 export function maskSnapshotTitles<
-  S extends { agents: readonly { terminalTitle?: string }[]; shellPanes: readonly { terminalTitle?: string }[] },
+  S extends {
+    agents: readonly PaneWords[];
+    shellPanes: readonly { terminalTitle?: string }[];
+  },
 >(snapshot: S): S {
-  return { ...snapshot, agents: snapshot.agents.map(maskTerminalTitle), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
+  return { ...snapshot, agents: snapshot.agents.map(maskPaneWords), shellPanes: snapshot.shellPanes.map(maskTerminalTitle) };
+}
+
+/**
+ * A Sent answer (ADR 0107) with every line masked. A line that matched a pattern when it was sent was
+ * never kept, so this changes a line only when the pattern list grew after it was recorded, or when a
+ * member one release behind kept what this bridge would not. Every other field is untouched.
+ */
+export function maskSentAnswer<T extends { entries: readonly { line: string }[] }>(answer: T): T {
+  return { ...answer, entries: answer.entries.map((entry) => ({ ...entry, line: redactText(entry.line) })) };
 }

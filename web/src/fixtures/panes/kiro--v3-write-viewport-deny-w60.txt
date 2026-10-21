@@ -1,0 +1,38 @@
+    24[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_24[0m                            
+    25[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_25[0m                            
+    26[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_26[0m                            
+    27[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_27[0m                            
+    28[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_28[0m                            
+    29[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_29[0m                            
+    30[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_30[0m                            
+    31[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_31[0m                            
+    32[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_32[0m                            
+    33[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_33[0m                            
+    34[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_34[0m                            
+    35[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_35[0m                            
+    36[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_36[0m                            
+    37[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_37[0m                            
+    38[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_38[0m                            
+    39[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_39[0m                            
+    40[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_40[0m                            
+    41[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_41[0m                            
+    42[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_42[0m                            
+    43[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_43[0m                            
+    44[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_44[0m                            
+    45[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_45[0m                            
+    46[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_46[0m                            
+    47[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_47[0m                            
+    48[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_48[0m                            
+    49[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_49[0m                            
+    50[0m[38;5;2m+[0m  [0m[38;5;2mcollie_viewport_line_50[0m                            
+
+────────────────────────────────────────────────────────────
+ Write File requires approval
+ fs_write → viewport-deny.txt
+ 
+   Allow      
+ [0m[1m[38;5;5m❯[0m [0m[1m[38;5;5mDeny       [0m
+   Always deny
+────────────────────────────────────────────────────────────
+ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit
+                                                           

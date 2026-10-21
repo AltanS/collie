@@ -1,0 +1,40 @@
+[0m[38;2;205;127;50m╭─ [0m[1m[38;2;255;215;0m⚙ Command Palette[0m[38;2;205;127;50m ──────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;205;127;50m│                                                                                          │[0m
+[0m[38;2;205;127;50m│ [0mType to filter 171 commands — ↑/↓ then Enter inserts, Esc cancels                       [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│                                                                                          │[0m
+[0m[38;2;205;127;50m│ [0m[1m[38;2;255;215;0m❯ /new  —  Start a new session (fresh session ID + history) (usage: /new [name])        [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /reset  —  Start a new session (fresh session ID + history) (alias for /new)          [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /clear  —  Clear screen and start a new session                                       [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /redraw  —  Force a full UI repaint (recovers from terminal drift)                    [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /history  —  Show conversation history                                                [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /save  —  Export the current conversation (bare /save shows usage) (usage: /save      [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    <json|md|html> [filename] [redact])                                                 [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /retry  —  Retry the last message (resend to agent)                                   [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /prompt  —  Compose your next prompt in $EDITOR (markdown), then send it (usage:      [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    /prompt [initial text])                                                             [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /compose  —  Compose your next prompt in $EDITOR (markdown), then send it (alias for  [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    /prompt)                                                                            [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /undo  —  Back up N user turns and re-prompt (default 1) (usage: /undo [N])           [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /title  —  Set a title for the current session (usage: /title [name])                 [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /handoff  —  Hand off this session to a messaging platform (Telegram, Discord, etc.)  [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    (usage: /handoff <platform>)                                                        [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /branch  —  Branch the current session (new thread on Discord/Telegram/Slack/Matrix;  [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --here stays here) (usage: /branch [--here] [name])                                 [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /fork  —  Branch the current session (new thread on Discord/Telegram/Slack/Matrix;    [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --here stays here) (alias for /branch)                                              [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /worktree  —  Show, list, create, or prune isolated git worktrees (usage: /worktree   [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    [new [name]|list|prune [--dry-run]])                                                [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /compress  —  Compress conversation context (add 'here [N]' to keep recent N turns;   [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --preview shows what would happen) (usage: /compress [here [N] | focus topic |      [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --preview|--dry-run])                                                               [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /compact  —  Compress conversation context (add 'here [N]' to keep recent N turns;    [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --preview shows what would happen) (alias for /compress)                            [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /rollback  —  List or restore filesystem checkpoints (restores keep your hand-edits;  [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    --all overrides) (usage: /rollback [number] [--all])                                [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /snapshot  —  Create or restore state snapshots of Hermes config/state (usage:        [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m    /snapshot [create|restore <id>|prune])                                              [0m[38;2;205;127;50m │[0m
+[0m[38;2;205;127;50m│ [0m[38;2;184;134;11m  /snap  —  Create or restore state snapshots of Hermes config/state (alias for         [0m[38;2;205;127;50m │[0m
+ 
+[0m[38;2;205;127;50m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;255;248;220m❯ [0m[3m[38;2;184;134;11mType / to browse commands, or Ctrl+P for the palette[0m
+[0m[38;2;205;127;50m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m

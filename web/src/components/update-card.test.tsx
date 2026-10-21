@@ -18,6 +18,7 @@ import type {
 import { useUpdateScreen } from "@/hooks/use-update-screen";
 import { __resetUpdateAsk } from "@/lib/update-ask";
 import { clearUpdateStarted } from "@/lib/update-ribbon";
+import { asJsonString, parseJsonObject } from "@/lib/json";
 import { UpdateCard } from "./update-card";
 import { UpdateScreen } from "./update-screen";
 
@@ -1448,5 +1449,66 @@ describe("update card — the crew link sentence", () => {
     expect(await screen.findByRole("button", { name: "Update to 1.4.0" })).toBeInTheDocument();
     expect(screen.queryByText(LINE)).not.toBeInTheDocument();
     expect(screen.queryByText(/crew link/)).not.toBeInTheDocument();
+  });
+});
+
+// ── ROLL BACK (M60 spec 01) ─────────────────────────────────────────────────────────────────────
+
+describe("Roll back — offered from the preflight's kept build, confirmed in update mode", () => {
+  const KEPT: PreflightReport = { ...GREEN, rollback: { from: "1.3.0", to: "1.2.4" } };
+
+  it("is not offered when the preflight names no kept build", async () => {
+    renderCard(info());
+    await screen.findByRole("button", { name: "Update to 1.4.0" });
+    expect(screen.queryByRole("button", { name: /^Roll back/ })).toBeNull();
+  });
+
+  it("names the kept build; the tap opens Ready to start, and Roll back there sends the confirm with a request id", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/update/rollback", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        bodies.push(body);
+        const id = asJsonString(body?.requestId) ?? "";
+        return HttpResponse.json({ ok: true, from: "1.3.0", to: "1.2.4", run: null, runId: id }, { status: 202 });
+      }),
+    );
+    serveCheck(info(), KEPT);
+    renderCard(info());
+    await user.click(await screen.findByRole("button", { name: "Roll back to 1.2.4" }));
+    expect(screen.getByText("1.2.4 is still on this machine. A rollback switches to it and restarts. Nothing is downloaded.")).toBeInTheDocument();
+    const panel = screen.getByRole("dialog", { name: "Roll back to 1.2.4" });
+    expect(bodies).toHaveLength(0);
+    await user.click(within(panel).getByRole("button", { name: "Roll back" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ confirm: true, target: "1.2.4" });
+  });
+
+  it("stays available under a red preflight: going back is what a machine in trouble needs", async () => {
+    const red: PreflightReport = { ...KEPT, verdict: "red", checks: [{ id: "disk", verdict: "red", reason: "0 bytes free" }] };
+    serveCheck(info(), red);
+    renderCard(info());
+    expect(await screen.findByRole("button", { name: "Roll back to 1.2.4" })).toBeEnabled();
+  });
+
+  it("an Edge build that failed its check says it is not offered again, and offers no Retry (ADR 0110)", async () => {
+    const view = renderCard(info({ run: runAt("rolled-back", { from: "1.3.0", to: "1.4.0-edge.1" }) }));
+    expect(await screen.findByText("Edge build 1.4.0-edge.1 failed its check and was rolled back. It is not offered again.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    view.unmount();
+    // A strict release that failed keeps its Retry, and says nothing about Edge.
+    renderCard(info({ run: runAt("rolled-back", { from: "1.3.0", to: "1.4.0" }) }));
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByText(/is not offered again/)).toBeNull();
+  });
+
+  it("a rollback run says so, and offers no Retry that would update to the older build", async () => {
+    const view = renderCard(info({ current: "1.2.4", run: runAt("done", { from: "1.3.0", to: "1.2.4", action: "rollback" }) }));
+    expect(await screen.findByText("Rolled back to 1.2.4.")).toBeInTheDocument();
+    view.unmount();
+    renderCard(info({ run: runAt("rolled-back", { from: "1.3.0", to: "1.2.4", action: "rollback" }) }));
+    expect(await screen.findByText("The rollback failed its check. This machine is still on 1.3.0.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

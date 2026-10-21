@@ -92,6 +92,22 @@ describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", ()
   });
 });
 
+// Hermes draws `☤` in front of its input while the agent runs, and nowhere else in that row: the
+// prompt row is the turn's sign. A streaming reply shows no spinner, so nothing else would say it.
+describe("a running turn on Hermes 0.22.2 captures (2026-10-16)", () => {
+  const read = (name: string) => readScreen(fixtureRows(name), agentOf("hermes"), idleFor("hermes")).surface;
+
+  it("the `☤` prompt reads running with the box empty, so a send waits for the turn", () => {
+    expect(read("hermes--running.txt")).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+
+  it("a clarify's typed answer reads idle and free: the question's ticking panel is no turn", () => {
+    for (const name of ["hermes--clarify-other.txt", "hermes--clarify-other-w60.txt", "hermes--clarify-open.txt"]) {
+      expect(read(name), name).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    }
+  });
+});
+
 describe("foldSurface", () => {
   const context = { idle: CLAUDE, pollMs: 1000 };
 
@@ -308,7 +324,7 @@ describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
 });
 
 // Claude Code 2.1.302's "Heads up" notice above a live box: its keys act only on a box that holds one
-// digit, so the box stays free. The rating survey over the box is another shape and stays unreadable.
+// digit, so the box stays free. The rating survey over the box is a notice too since 2026-10-19 (ADR 0109).
 describe("a notice above a live box (Claude Code 2.1.302)", () => {
   it("folds the heads-up notice with no modal over the box", () => {
     const read = readScreen(fixtureRows("claude--v2302-heads-up-above-box--w142.txt"), "claude", CLAUDE);
@@ -322,7 +338,69 @@ describe("a notice above a live box (Claude Code 2.1.302)", () => {
     expect(read.surface.turn).toBe("running");
   });
 
-  it("keeps the rating survey over the box unreadable", () => {
-    expect(readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", CLAUDE).surface.modal).toBe("unreadable");
+  // Decided 2026-10-19 (ADR 0109): the 2.1.278 survey reads as a notice. Until then it read unreadable.
+  it("reads the rating survey over the box as a notice: no modal, the box free", () => {
+    const read = readScreen(fixtureRows("claude-lab--survey-rating-above-box--w82.txt"), "claude", CLAUDE);
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(read.surface)).toBe(true);
+  });
+});
+
+// Claude Code 2.1.30x writes a named session's name into the right end of the box's top edge
+// (`──── 1.23.0 ─`). Lane 8788, 2026-10-19: every send to the named pane was refused `unconfirmed`
+// with `modal: "unreadable"`. The edge was not the cause: the rating survey stood on the update row
+// right over the box, one run with it, and its key row read as a single-key prompt. The same day the
+// survey became a notice (ADR 0109) and the update row a gap the profile names, so the screen reads free.
+describe("a session name in the box's top edge (Claude Code 2.1.303, lane 8788, 2026-10-19)", () => {
+  const name = (state: string) => `claude--v2303-titled-edge-${state}--w160.txt`;
+  const read = (rows: ReturnType<typeof fixtureRows>) => readScreen(rows, "claude", CLAUDE);
+  const textOf = (rows: ReturnType<typeof fixtureRows>) => rows.map((row) => row.segments.map((s) => s.text).join(""));
+  const topOf = (rows: ReturnType<typeof fixtureRows>) => textOf(rows).findIndex((text) => text.endsWith(" 1.23.0 ─"));
+  const withRow = (rows: ReturnType<typeof fixtureRows>, at: number, text: string) => rows.map((row, i) => (i === at ? rowsOf(text)[0]! : row));
+
+  it("reads the titled edge as the box's edge, the name as its label and never as the draft", () => {
+    for (const [state, turn, composer, text] of [
+      ["working", "running", "empty", ""],
+      ["idle", "idle", "empty", ""],
+      ["draft", "idle", "draft", "ok merge the five, running the crew update now"],
+    ] as const) {
+      const r = read(fixtureRows(name(state)));
+      expect(r.frame?.label, state).toBe("1.23.0");
+      expect(r.frame?.interior.text, state).toBe(text);
+      expect(r.surface, state).toEqual({ revision: 1, turn, modal: "none", composer });
+    }
+    expect(isFree(read(fixtureRows(name("idle"))).surface)).toBe(true);
+  });
+
+  it("reads a draft under the titled edge during a turn", () => {
+    const rows = fixtureRows(name("working"));
+    const r = read(withRow(rows, topOf(rows) + 1, "❯ hello there"));
+    expect(r.frame?.interior.text).toBe("hello there");
+    expect(r.surface).toMatchObject({ turn: "running", modal: "none", composer: "draft" });
+  });
+
+  it("the field screen: the survey on the update row over the box reads free, with or without the name", () => {
+    const rows = fixtureRows(name("survey"));
+    const r = read(rows);
+    expect(r.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(r.surface)).toBe(true);
+    expect(r.cues?.strength).toBe("none");
+    // The same screen with a plain edge of the same width reads the same.
+    const plain = withRow(rows, topOf(rows), "─".repeat(160));
+    expect(read(plain).frame?.label).toBeNull();
+    expect(read(plain).surface).toEqual(r.surface);
+    // A blank row between the survey's key row and the update row changes nothing.
+    const keys = textOf(rows).findIndex((text) => text.startsWith("  1: Bad"));
+    const gapped = [...rows.slice(0, keys + 1), rowsOf("")[0]!, ...rows.slice(keys + 1)];
+    expect(read(gapped).surface).toEqual(r.surface);
+  });
+
+  it("folds the heads-up notice over a titled edge with no modal over the box", () => {
+    const rows = fixtureRows("claude--v2302-heads-up-above-box--w142.txt");
+    const top = read(rows).frame!.top;
+    const r = read(withRow(rows, top, `${"─".repeat(132)} 1.23.0 ─`));
+    expect(r.frame?.top).toBe(top);
+    expect(r.frame?.label).toBe("1.23.0");
+    expect(r.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
   });
 });

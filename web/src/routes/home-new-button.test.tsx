@@ -145,7 +145,7 @@ describe("the floating New button on the dashboard", () => {
   it("is not drawn when nothing can be created: no createSpace and no launchers", async () => {
     declares({ createSpace: false });
     renderHome(homeData());
-    await screen.findByRole("combobox", { name: "Workspace" });
+    await screen.findByRole("button", { name: /^Workspace / });
     // The capability read is async; give it a turn, then it must still be absent.
     await waitFor(() => expect(fab()).toBeNull());
     await new Promise((r) => setTimeout(r, 50));
@@ -166,7 +166,7 @@ describe("the floating New button on the dashboard", () => {
 
   it("is not drawn on a device that may not write", async () => {
     renderHome(homeData({ device: { enforced: true, device: "d1", authorized: false } }));
-    await screen.findByRole("combobox", { name: "Workspace" });
+    await screen.findByRole("button", { name: /^Workspace / });
     expect(fab()).toBeNull();
   });
 
@@ -185,7 +185,7 @@ describe("the floating New button on the dashboard", () => {
   it("steps aside while the on-screen keyboard is up", async () => {
     keyboard.open = true;
     renderHome(homeData());
-    await screen.findByRole("combobox", { name: "Workspace" });
+    await screen.findByRole("button", { name: /^Workspace / });
     expect(fab()).toBeNull();
   });
 
@@ -210,7 +210,7 @@ describe("the toast dock beside the New button", () => {
 
   it("keeps the footer-only lift when no button is offered", async () => {
     renderHome(homeData({ device: { enforced: true, device: "d1", authorized: false } }));
-    await screen.findByRole("combobox", { name: "Workspace" });
+    await screen.findByRole("button", { name: /^Workspace / });
     expect(toastDock()?.className).toContain("bottom-[calc(3.5rem+1px)]");
     expect(toastDock()?.className).not.toContain("3.5rem+1px+1rem");
   });

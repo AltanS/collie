@@ -1,0 +1,52 @@
+
+[0m[38;2;255;255;255m●[0m The earshot worker is still installing and rendering.
+
+[0m[38;2;153;153;153m✻ Waiting for [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m background agent to finish[0m
+
+[0m[38;2;177;185;249m────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m [0m[38;2;153;153;153m· [0mfrom the general-purpose agent
+ [0m[38;2;153;153;153mInstall revised set, measure hits and level gaps[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│ [0mS=/var/home/devel/projects/sample-workspace/experiments/showreel;
+ [0m[2m│[0m D=$S/audio/earshot; P=/tmp/earshot-work/pool; rm -f $D/*.wav
+ [0m[2m│[0m $D/*.params.json
+ [0m[2m│[0m cp_() { cp -L $P/$1.wav $D/$2.wav; }
+ [0m[2m│[0m cp_ key-f key; cp_ key-g key-alt1; cp_ key-d key-alt2
+ [0m[2m│[0m cp_ enter-c enter; cp_ enter-b enter-alt1; cp_ enter-a enter-alt2
+ [0m[2m│[0m cp_ tap-j tap; cp_ tap-b tap-alt1; cp_ tap-m tap-alt2
+ [0m[2m│[0m cp_ notify-s2 notify; cp_ notify-s3 notify-alt1; cp_ notify-c notify-alt2
+ [0m[2m│[0m cp_ whoosh-a whoosh; cp_ whoosh-c whoosh-alt1; cp_ whoosh-b whoosh-alt2
+ [0m[2m│[0m cp_ impact-d impact; cp_ impact-c impact-alt1; cp_ impact-e impact-alt2
+ [0m[2m│[0m cp_ glitch-c glitch; cp_ glitch-a glitch-alt1; cp_ glitch-b glitch-alt2
+ [0m[2m│[0m cp_ lock-b lock; cp_ lock-f lock-alt1; cp_ lock-c lock-alt2
+ [0m[2m│[0m cp_ shimmer-f shimmer; cp_ shimmer-d shimmer-alt1; cp_ shimmer-c
+ [0m[2m│[0m shimmer-alt2
+ [0m[2m│[0m cp_ slide-l slide; cp_ slide-g slide-alt1; cp_ slide-j slide-alt2
+ [0m[2m│[0m python3 -c "
+ [0m[2m│[0m import json
+ [0m[2m│[0m for src,dst in [('notify_s2','notify'),('notify_s3','notify-alt1')]:
+ [0m[2m│[0m     p=json.load(open(f'/tmp/earshot-work/{src}.json')); json.dump(p,
+ [0m[2m│[0m     open('$D/'+dst+'.params.json','w'), indent=1, sort_keys=True)
+ [0m[2m│[0m "
+ [0m[2m│[0m cd $S && python3 -c "
+ [0m[2m│[0m from scipy.io import wavfile; import numpy as np
+ [0m[2m│[0m for n in 'key enter tap notify whoosh impact glitch lock shimmer
+ [0m[2m│[0m slide'.split():
+ [0m[2m│[0m     sr,x=wavfile.read(f'audio/earshot/{n}.wav'); x=x.astype(float)/2**31
+ [0m[2m│[0m     x = x[:,None] if x.ndim==1 else x
+ [0m[2m│[0m     a=np.abs(x).max(axis=1); e=np.convolve(a**2,np.ones(240)/240,'same')
+ [0m[2m│[0m     print(n.ljust(8), x.shape[1], 'dur', round(len(x)/sr,3), 'peak',
+ [0m[2m│[0m     round(20*np.log10(a.max()),1), 'env_t', round(e.argmax()/sr,3))
+ [0m[2m│[0m "; sed -i 's/^for n in .*$/for n in "key enter tap notify whoosh impact
+ [0m[2m│[0m glitch lock shimmer slide".split():/' /tmp/earshot-work/scripts/level.py;
+ [0m[2m│[0m python3 /tmp/earshot-work/scripts/level.py
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│[0m Dangerous rm operation on possibly-empty variable path: $D/*.wav in `rm -f
+ [0m[2m│[0m $D/*.wav $D/*.params.json` (rewrite it as "${D:?}"/*.wav or use a literal
+ [0m[2m│[0m path)
+
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend · ctrl+x ctrl+k twice to stop background agents[0m

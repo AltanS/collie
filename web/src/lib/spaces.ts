@@ -124,30 +124,39 @@ export function filterSpaces(
 }
 
 /**
- * The spaces the Spaces section lists while the workspace strip isolates one workspace (issue #338).
+ * The spaces the Spaces section lists while the workspace filter isolates workspaces (issue #338; it
+ * holds several since issue #527).
  *
- * `isolatedKey` is the device's stored isolate key (`workspacePrefKey`: machine, session and the
+ * `isolatedKeys` are the device's stored isolate keys (`workspacePrefKey`: machine, session and the
  * workspace NAME, separated by NUL). The match is on machine and name, because the id is opaque and
- * can change. The isolated space stays, and so do the linked worktrees of its repo when it is the
+ * can change. Each isolated space stays, and so do the linked worktrees of its repo when it is the
  * repo's own checkout, since those are the same project's spaces. Isolating a worktree keeps just
- * that worktree. A null key, or a key no space here matches (a stale isolate, or one on another
- * machine than the addressed one), returns every space, the same rule the pane list follows.
+ * that worktree. The spaces keep their incoming order. No key, or no key that a space here matches (a
+ * stale isolate, or one on another machine than the addressed one), returns every space, the same
+ * rule the pane list follows; a stale key beside a live one is ignored.
  */
 export function isolateSpaces(
   workspaces: readonly WorkspaceView[],
-  isolatedKey: string | null,
+  isolatedKeys: readonly string[],
 ): WorkspaceView[] {
-  if (isolatedKey === null) return [...workspaces];
-  const parts = isolatedKey.split("\u0000");
-  const label = parts[parts.length - 1];
-  const host = parts[0];
-  const match = workspaces.find((w) => w.label === label && (w.host ?? "") === host);
-  if (match === undefined) return [...workspaces];
-  const ownCheckout = match.repoRoot !== undefined && match.isWorktree === false;
-  return workspaces.filter(
-    (w) =>
-      w === match ||
-      (ownCheckout && w.isWorktree === true && w.repoRoot === match.repoRoot && (w.host ?? "") === host),
+  const matches = isolatedKeys.flatMap((key) => {
+    const parts = key.split("\u0000");
+    const label = parts[parts.length - 1];
+    const host = parts[0];
+    const match = workspaces.find((w) => w.label === label && (w.host ?? "") === host);
+    return match === undefined ? [] : [{ match, host }];
+  });
+  if (matches.length === 0) return [...workspaces];
+  return workspaces.filter((w) =>
+    matches.some(
+      ({ match, host }) =>
+        w === match ||
+        (match.repoRoot !== undefined &&
+          match.isWorktree === false &&
+          w.isWorktree === true &&
+          w.repoRoot === match.repoRoot &&
+          (w.host ?? "") === host),
+    ),
   );
 }
 

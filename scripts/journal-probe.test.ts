@@ -13,6 +13,17 @@ describe("refFor", () => {
     expect(refFor("claude", path)).toBeNull();
   });
 
+  test("Kiro takes the opaque session id from the messages.jsonl parent", () => {
+    const path = join("/sessions", "1234567890abcdef", "sess_custom-session", "messages.jsonl");
+    expect(refFor("kiro", path)).toEqual({ kind: "id", value: "sess_custom-session" });
+  });
+
+  test("Kiro probe skips non-session files rather than guessing a UUID", () => {
+    expect(refFor("kiro", "/sessions/hash/id/tool-outputs/result.jsonl")).toBeNull();
+    expect(refFor("kiro", "/sessions/hash/id/history.jsonl")).toBeNull();
+    expect(refFor("kiro", "/sessions/hash/not an id/messages.jsonl")).toBeNull();
+  });
+
   test("claude still reads the uuid out of the filename", () => {
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
     expect(refFor("claude", `/projects/-Users-you-proj/${id}.jsonl`)).toEqual({

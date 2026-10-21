@@ -105,6 +105,7 @@
 
 import type { StyledLine } from "../../blocks";
 import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";
+import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -152,9 +153,6 @@ const OTHER_LABEL = "Other (type your own)";
 
 /** The mark a saved note leaves after its row's label (`noteMarker` in ask-dialog.ts). */
 const NOTE_MARK = /^(.*\S) {2}✎ note$/;
-
-/** The bridge's cap on a bound region less a margin, as resume.ts. */
-const MAX_REGION_CHARS = 32_000;
 
 /** omp caps the question at four rows before it offers `ctrl+o expand` (`MAX_HEADER_ROWS`). */
 const MAX_QUESTION_ROWS = 4;

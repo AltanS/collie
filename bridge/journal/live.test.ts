@@ -6,10 +6,12 @@ import {
   chatParams,
   DEFAULT_CHAT_LIMIT,
   LAST_PROMPT_MAX_CHARS,
+  LIVE_TURNS,
   LiveWindows,
   MAX_CHAT_LIMIT,
   MAX_LIVE_BYTES,
   MAX_LIVE_ENTRIES,
+  MAX_PAGE_ROWS,
   MIN_LIVE_ENTRIES,
   parseChatAfter,
   parseChatBefore,
@@ -195,6 +197,10 @@ const queue = (...waiting: string[]) => JSON.stringify({ queue: waiting });
 /** A prompt turn; `note` makes it one the agent sent itself. */
 const ask = (id: string, text: string, role: "user" | "note" = "user") => JSON.stringify({ id, ask: text, role });
 
+/** `n` prompts (`p0`..), each followed by two tool rows (`p0a`, `p0b`): three rows a turn. */
+const thread = (n: number): string[] =>
+  Array.from({ length: n }, (_, i) => [ask(`p${i}`, `prompt ${i}`), say(`p${i}a`), say(`p${i}b`)]).flat();
+
 function windows(fx: ReturnType<typeof fakeJournal>): LiveWindows {
   return new LiveWindows(new TranscriptStore(), fx.clock);
 }
@@ -283,14 +289,16 @@ describe("a window's first answer", () => {
     expect(body?.rev).toBe(0);
   });
 
-  test("a reader holding nothing gets a screenful, not the window", async () => {
-    const fx = fakeJournal(Array.from({ length: 30 }, (_, i) => say(`u${i}`)));
+  test("a reader holding nothing gets the last prompts and what followed, not the window", async () => {
+    const fx = fakeJournal(thread(8));
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 5 });
-    expect(body?.upserts.map((e) => e.uuid)).toEqual(["u25", "u26", "u27", "u28", "u29"]);
+    // Eight prompts of three rows each: the sixth-newest is p2, the seventh row of the window.
+    expect(body?.upserts[0]?.uuid).toBe("p2");
+    expect(body?.upserts).toHaveLength(18);
     // `oldest` is what the WINDOW still holds, not what this answer carried — so a client that got a
-    // screenful knows the rest is a request away and not a disk read.
+    // page knows the rest is a request away and not a disk read.
     expect(body?.oldest).toBe(SEQ_BASE);
-    expect(body?.head).toBe(SEQ_BASE + 29);
+    expect(body?.head).toBe(SEQ_BASE + 23);
   });
 
   test("a ref that resolves to nothing is null, indistinguishable from any other refusal", async () => {
@@ -569,19 +577,21 @@ describe("a reset is a new numbering", () => {
 
 describe("older turns are read only when a reader asks", () => {
   test("a page is numbered DOWN from the turn the client named", async () => {
-    const fx = fakeJournal(Array.from({ length: 10 }, (_, i) => say(`u${i}`)));
+    const fx = fakeJournal(thread(10));
     const live = windows(fx);
     const body = await live.window(fx.adapter, ref(), { limit: 10 });
     expect(fx.calls.load).toBe(0); // the live read never touches the History path
 
-    const older = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 5, uuid: "u5" }, 3);
+    // p9 is the 28th row (index 27). The six prompts before it are p8..p3, so the page starts at p3.
+    const older = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 27, uuid: "p9" }, 3);
     expect(older?.page).toBe("older");
     expect(older?.gen).toBe(body!.gen);
-    expect(older?.upserts.map((e) => [e.uuid, e.seq])).toEqual([
-      ["u2", SEQ_BASE + 2],
-      ["u3", SEQ_BASE + 3],
-      ["u4", SEQ_BASE + 4],
+    expect(older?.upserts).toHaveLength(18);
+    expect(older?.upserts.map((e) => [e.uuid, e.seq]).slice(0, 2)).toEqual([
+      ["p3", SEQ_BASE + 9],
+      ["p3a", SEQ_BASE + 10],
     ]);
+    expect(older?.upserts.at(-1)).toMatchObject({ uuid: "p8b", seq: SEQ_BASE + 26 });
     expect(older?.hasOlder).toBe(true);
     expect(fx.calls.load).toBe(1);
   });
@@ -599,25 +609,128 @@ describe("older turns are read only when a reader asks", () => {
   });
 
   test("a second page off the first page's oldest turn keeps the numbering", async () => {
-    const fx = fakeJournal(Array.from({ length: 10 }, (_, i) => say(`u${i}`)));
+    const fx = fakeJournal(thread(10));
     const live = windows(fx);
     await live.window(fx.adapter, ref(), { limit: 10 });
-    const first = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 9, uuid: "u9" }, 4);
+    const first = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 27, uuid: "p9" }, 4);
     const oldest = first!.upserts[0]!;
-    expect([oldest.uuid, oldest.seq]).toEqual(["u5", SEQ_BASE + 5]);
+    expect([oldest.uuid, oldest.seq]).toEqual(["p3", SEQ_BASE + 9]);
+    // Three prompts are left before p3, so this page is the rest of the log and says so.
     const second = await live.older(fx.adapter, ref(), { seq: oldest.seq, uuid: oldest.uuid }, 4);
-    expect(second?.upserts.map((e) => [e.uuid, e.seq])).toEqual([
-      ["u1", SEQ_BASE + 1],
-      ["u2", SEQ_BASE + 2],
-      ["u3", SEQ_BASE + 3],
-      ["u4", SEQ_BASE + 4],
-    ]);
+    expect(second?.upserts.map((e) => e.seq)).toEqual(Array.from({ length: 9 }, (_, i) => SEQ_BASE + i));
+    expect(second?.upserts[0]?.uuid).toBe("p0");
+    expect(second?.hasOlder).toBe(false);
   });
 
   test("a ref that resolves to nothing is null here too", async () => {
     const fx = fakeJournal([say("u1")]);
     const live = windows(fx);
     expect(await live.older(fx.adapter, ref("none"), { seq: 1, uuid: "u1" }, 5)).toBeNull();
+  });
+});
+
+// ── a page is counted in turns (ADR 0073, amended 2026-10-19) ───────────────
+
+/** `n` rows of tool calls with a prompt at each index in `at`, the rest `say` rows. */
+function rowsWithPrompts(n: number, at: readonly number[]): string[] {
+  return Array.from({ length: n }, (_, i) => (at.includes(i) ? ask(`p${i}`, `prompt ${i}`) : say(`t${i}`)));
+}
+
+describe("a page is counted in turns, not rows", () => {
+  // 150 rows, ten prompts at 5, 20, 35 ... 140. Counted from the head: 140, 125, 110, 95, 80, 65,
+  // so the sixth-newest prompt is p65.
+  const at = [5, 20, 35, 50, 65, 80, 95, 110, 125, 140];
+
+  test("the live page starts at the sixth-newest prompt", async () => {
+    expect(LIVE_TURNS).toBe(6);
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    expect(body!.upserts[0]).toMatchObject({ uuid: "p65", seq: SEQ_BASE + 65 });
+    expect(body!.upserts).toHaveLength(150 - 65);
+    expect(body!.upserts.at(-1)?.seq).toBe(body!.head);
+  });
+
+  test("a window with fewer than six prompts answers the whole window", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, [5, 70, 120]));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    expect(body!.upserts).toHaveLength(150);
+    expect(body!.upserts[0]?.seq).toBe(body!.oldest);
+  });
+
+  test("a page the turn rule makes short is padded to the floor", async () => {
+    // Six prompts in the last ten rows: the rule says ten rows, the floor says forty.
+    const fx = fakeJournal(rowsWithPrompts(150, [140, 141, 142, 143, 144, 145]));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    expect(body!.upserts).toHaveLength(DEFAULT_CHAT_LIMIT);
+    expect(body!.upserts[0]?.seq).toBe(SEQ_BASE + 110);
+  });
+
+  test("`limit` stays the floor, and the turn rule extends it", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, [140, 141, 142, 143, 144, 145]));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 100 });
+    expect(body!.upserts).toHaveLength(100);
+  });
+
+  test("a page the turn rule makes long is capped at MAX_PAGE_ROWS from the head", async () => {
+    // The only prompts are the first six, 500 rows back: the rule wants everything.
+    const fx = fakeJournal(rowsWithPrompts(600, [0, 1, 2, 3, 4, 5]));
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    expect(MAX_PAGE_ROWS).toBe(400);
+    expect(body!.upserts).toHaveLength(MAX_PAGE_ROWS);
+    expect(body!.upserts.at(-1)?.seq).toBe(body!.head);
+    expect(body!.upserts[0]?.seq).toBe(body!.head - MAX_PAGE_ROWS + 1);
+  });
+
+  test("a note does not start a turn", async () => {
+    const lines = rowsWithPrompts(100, [10, 20, 30, 40, 50]);
+    // Two rows that look like prompts and are not: a note is the agent talking to itself.
+    lines[60] = ask("n60", "loop wake-up", "note");
+    lines[70] = ask("n70", "loop wake-up", "note");
+    const fx = fakeJournal(lines);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    // Five real prompts only, so the whole window.
+    expect(body!.upserts).toHaveLength(100);
+  });
+
+  test("the `before` page is the six prompts before the cursor, numbered down from it", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    const edge = first!.upserts[0]!; // p65, index 65
+    const older = await live.older(fx.adapter, ref(), { seq: edge.seq, uuid: edge.uuid }, DEFAULT_CHAT_LIMIT);
+    // Before index 65 the prompts are 50, 35, 20, 5: only four, so everything back to the log's start.
+    expect(older!.upserts).toHaveLength(65);
+    expect(older!.hasOlder).toBe(false);
+    expect(older!.gen).toBe(first!.gen);
+    expect(older!.upserts.map((e) => e.seq)).toEqual(Array.from({ length: 65 }, (_, i) => SEQ_BASE + i));
+  });
+
+  test("an older page with more than six prompts behind it starts at the sixth and stays contiguous", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => 10 + i * 10); // 10, 20, ... 120
+    const fx = fakeJournal(rowsWithPrompts(150, many));
+    const live = windows(fx);
+    await live.window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    const older = await live.older(fx.adapter, ref(), { seq: SEQ_BASE + 125, uuid: "t125" }, DEFAULT_CHAT_LIMIT);
+    // Before index 125: 120, 110, 100, 90, 80, 70 are the six newest prompts.
+    expect(older!.upserts[0]).toMatchObject({ uuid: "p70", seq: SEQ_BASE + 70 });
+    expect(older!.upserts).toHaveLength(55);
+    expect(older!.hasOlder).toBe(true);
+    const seqs = older!.upserts.map((e) => e.seq);
+    expect(seqs).toEqual(Array.from({ length: 55 }, (_, i) => SEQ_BASE + 70 + i));
+  });
+
+  test("the `after` delta is not paged: it sends everything that moved", async () => {
+    const fx = fakeJournal(rowsWithPrompts(150, at));
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: DEFAULT_CHAT_LIMIT });
+    fx.append(...Array.from({ length: 450 }, (_, i) => say(`n${i}`)));
+    fx.settle();
+    const delta = await live.window(fx.adapter, ref(), {
+      limit: DEFAULT_CHAT_LIMIT,
+      after: { gen: first!.gen, rev: first!.rev },
+    });
+    expect(delta!.upserts).toHaveLength(450);
+    expect(delta!.upserts[0]?.uuid).toBe("n0");
   });
 });
 
@@ -757,10 +870,12 @@ describe("what is queued", () => {
 
 describe("the newest prompt", () => {
   test("a prompt above the first page still rides the body", async () => {
-    // The case the field exists for: a run of tool calls pushes the prompt out of `limit`.
-    const fx = fakeJournal([ask("p1", "fix the flaky test"), say("u1"), say("u2"), say("u3")]);
+    // The case the field exists for: a run of tool calls pushes the prompt out of the page.
+    const run = Array.from({ length: MAX_PAGE_ROWS + 50 }, (_, i) => say(`u${i}`));
+    const fx = fakeJournal([ask("p1", "fix the flaky test"), ...run]);
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 2 });
-    expect(body!.upserts.map((e) => e.uuid)).toEqual(["u2", "u3"]);
+    expect(body!.upserts).toHaveLength(MAX_PAGE_ROWS);
+    expect(body!.upserts.some((e) => e.uuid === "p1")).toBe(false);
     expect(body!.lastPrompt).toEqual({ uuid: "p1", ts: "2026-10-10T00:00:00Z", text: "fix the flaky test" });
   });
 
@@ -902,6 +1017,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     const live = redactChatBody({
       page: "live",
       gen: 1,
+      session: "s1",
       rev: 2,
       head: SEQ_BASE,
       oldest: SEQ_BASE,
@@ -914,6 +1030,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     const prompted = redactChatBody({
       page: "live",
       gen: 1,
+      session: "s1",
       rev: 2,
       head: SEQ_BASE,
       oldest: SEQ_BASE,
@@ -923,7 +1040,7 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
       lastPrompt: { uuid: "p1", ts: "", text: `deploy with ${key}` },
     });
     expect(prompted).toMatchObject({ lastPrompt: { uuid: "p1", text: `deploy with ${masked}` } });
-    const older = redactChatBody({ page: "older", gen: 1, upserts: [turn], hasOlder: true });
+    const older = redactChatBody({ page: "older", gen: 1, session: "s1", upserts: [turn], hasOlder: true });
     expect(JSON.stringify(older)).not.toContain(key);
     expect(older).toMatchObject({ page: "older", gen: 1, hasOlder: true });
   });

@@ -38,9 +38,14 @@
     },
     "placeholders": {
       "texts": [
-        "Start a message with ! to run a shell command yourself"
+        "Start a message with ! to run a shell command yourself",
+        "/loop 10m <prompt> schedules a recurring prompt",
+        "Paste an image with Ctrl+V — file paths and URLs work too"
       ],
-      "sgr": 2
+      "sgr": 2,
+      "fg": [
+        "rgb(175,177,179)"
+      ]
     },
     "volatile": {
       "above": {
@@ -48,7 +53,17 @@
       },
       "below": {
         "maxRows": 2,
-        "footerMaxRows": 2
+        "footerMaxRows": 2,
+        "commandList": {
+          "pointer": "^  (?<command>/\\S+)(?: · [^·]+?)* {2,}\\S.*$",
+          "entry": "^  (?<command>/\\S+)(?: · [^·]+?)* {2,}\\S.*$",
+          "wrapped": "^  ↓ \\d+ more$",
+          "sides": [
+            "inside"
+          ],
+          "pointerBold": true,
+          "argumentHint": true
+        }
       }
     },
     "dialogsInBox": true,
@@ -75,6 +90,25 @@
       "down": "Down",
       "confirm": "Enter",
       "cancel": "Escape"
+    },
+    "enterWhileRunning": "steers",
+    "neverHeld": [
+      "/clear",
+      "/new",
+      "/exit",
+      "/quit",
+      "/logout",
+      "/resume",
+      "/fork",
+      "/rewind",
+      "!"
+    ],
+    "queueKey": "Tab",
+    "queuedRow": {
+      "pattern": "^\\s*└ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*◆ Queued input · ↑ to edit\\s*$",
+      "hintGap": 0,
+      "hintAbove": true
     }
   },
   "collapse": {
@@ -91,7 +125,8 @@
     "note": "No live send has passed on this harness: it is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. The box layout comes from the saved screens in web/src/fixtures/panes (muse--*.txt, Muse Code 1.3.0 to 1.4.8; muse is also absent from the harness table of LAB.md). Provisional until a live probed send passes; fallback ¤"
   },
   "paste": {
-    "bracketed": true
+    "bracketed": true,
+    "settleMs": 350
   },
   "hooks": {}
 }

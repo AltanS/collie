@@ -1,0 +1,45 @@
+
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude Code[0m [38;5;246mv2.1.303[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mSonnet 5.5 with high effort · Claude Max[39m
+[38;5;174m ▝▝   ▝▝ [39m  [38;5;246m~/projects/sample-workspace[39m
+
+
+
+[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+[39m   [1m[38;5;153mResume session[38;5;246m (1 of 50)[0m
+   [2m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+   [2m│[0m [38;5;246m⌕ Search…[39m                                                                                                                                              [2m│[0m
+   [2m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+     [38;5;246msample-workspace[39m
+
+   [38;5;153m❯[39m [38;5;153mcd89bf4c[39m
+     [38;5;246m27 seconds ago · main · 2.2KB[39m
+
+     website refactoring
+     [38;5;246m1 minute ago · main · 26.7MB[39m
+
+     1.23.0
+     [38;5;246m5 minutes ago · main · 70.5MB · sample/forge1#528[39m
+
+     walky talky
+     [38;5;246m22 hours ago · main · 9.1MB[39m
+
+     atuin
+     [38;5;246m22 hours ago · main · 1.8MB[39m
+
+     Library first-day download counts
+     [38;5;246m22 hours ago · main · 521.3KB[39m
+
+     Slow test suite performance
+     [38;5;246m1 day ago · main · 1.8MB · sample/forge1#492[39m
+
+     tracker: nightly-lab-pass due, run: tracker run start nightly-lab-pass now
+     [38;5;246m1 day ago · main · 3.8KB[39m
+
+     /model
+     [38;5;246m1 day ago · main · 3.6KB[39m
+
+   [38;5;246m↓[39m Herdrui and herdr prompt handling
+     [38;5;246m1 day ago · main · 1.2MB[39m
+
+     [38;5;246mCtrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type to search · Esc to cancel[39m

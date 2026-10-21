@@ -1,18 +1,26 @@
 // The pure parts of driving an agent: options, startup answers, draft clearing, colour answers.
 
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { herdrMuxFactory } from "../../bridge/mux/herdr/adapter";
+import { muxAck, muxOk, type MuxAdapter, type MuxGrid, type MuxOutcome } from "../../bridge/mux/types";
 import { claude } from "./agents/claude";
 import { CODEX_ARGS, codex } from "./agents/codex";
+import { kiro } from "./agents/kiro";
 import { muse } from "./agents/muse";
 import { opencode } from "./agents/opencode";
 import { backspaceSweep, launchedThrough, launchLine } from "./agents/profile";
 import { DEFAULT_AGENTS, parseArgs } from "./args";
+import { buildRecipe } from "../../bridge/launcher-recipes";
 import { colorAnswers, unfinishedTail } from "./client";
 import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
-import { answeredBelow } from "./scenarios";
+import { answeredBelow, opaqueTokenRead, pressableBar } from "./scenarios";
+import { loadReaders, type Adapter } from "./readers";
+import { installTransport } from "./transport";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
 const ESC = String.fromCodePoint(0x1b);
@@ -46,6 +54,13 @@ describe("parseArgs", () => {
     expect(o.agents).toEqual(["grok", "hermes", "agy"]);
     expect(o.scenarios).toEqual(["options"]);
     expect(DEFAULT_SCENARIOS).not.toContain("options");
+  });
+
+  test("the harness bar is pressed only when asked for", () => {
+    const o = parseArgs(["--agent", "muse", "--scenario", "bar"], "/repo");
+    if (o === "help") throw new Error("help");
+    expect(o.scenarios).toEqual(["bar"]);
+    expect(DEFAULT_SCENARIOS).not.toContain("bar");
   });
 
   test("--agent, --scenario, --cols, --readers", () => {
@@ -118,6 +133,13 @@ describe("startup answers", () => {
     expect(launchedThrough(opencode, "/opt/launchers/opencode").launch(null)).toBe("clear; OPENCODE_DISABLE_AUTOUPDATE=1 /opt/launchers/opencode");
   });
 
+  test("Kiro starts the New sheet's program on V3, whatever the host's Kiro setting says", () => {
+    const built = buildRecipe("kiro", []);
+    if (!built.ok) throw new Error(built.reason);
+    expect(kiro.launch(null)).toBe(`clear; ${built.command} chat --v3`);
+    expect(launchedThrough(kiro, "/opt/launchers/kiro").launch(null)).toBe("clear; /opt/launchers/kiro chat --v3");
+  });
+
   test("Codex is never cleared with Ctrl+C", () => {
     expect(codex.clearFallback).toBeNull();
     for (const m of MESSAGES) expect(codex.clearKeys(m.text)).not.toContain("ctrl+c");
@@ -172,6 +194,26 @@ describe("drafts and messages", () => {
     expect(JOURNAL_MESSAGE.id).toBe("16-read");
     expect(JOURNAL_MESSAGE.text).toContain("Read the file README.md");
     expect(JOURNAL_MESSAGE.text).not.toMatch(/\brun\b|`|echo/i);
+  });
+});
+
+describe("opaqueTokenRead", () => {
+  const chip = (draft: string) => /^📄 #\d+$/.test(draft);
+  const omp: Adapter = { agent: "omp", extractInputDraft: () => null, draftIsOpaque: chip };
+
+  test("a token with no evidence of its content counts as the draft read back", () => {
+    expect(opaqueTokenRead(omp, "📄 #1")).toBe(true);
+  });
+
+  test("real text, no draft or no adapter is not a token read", () => {
+    expect(opaqueTokenRead(omp, "Reply with only OK.")).toBe(false);
+    expect(opaqueTokenRead(omp, null)).toBe(false);
+    expect(opaqueTokenRead(undefined, "📄 #1")).toBe(false);
+  });
+
+  test("a harness whose token can be matched to the send keeps that stricter check", () => {
+    const matched: Adapter = { ...omp, agent: "claude", draftCarriesSend: () => false };
+    expect(opaqueTokenRead(matched, "📄 #1")).toBe(false);
   });
 });
 
@@ -237,3 +279,96 @@ describe("lastPointedRow", () => {
     expect(lastPointedRow(["no pointer here"], "❯")).toBeNull();
   });
 });
+
+describe("pressableBar", () => {
+  test("presses the picker buttons in bar order, never Compact and never a two-tap row", () => {
+    const bar = [
+      { id: "model", command: "/model" },
+      { id: "compact", command: "/compact" },
+      { id: "wipe", command: "/clear", confirm: true },
+      { id: "resume", command: "/resume" },
+    ];
+    expect(pressableBar(bar).map((i) => i.id)).toEqual(["model", "resume"]);
+    expect(pressableBar([])).toEqual([]);
+  });
+});
+
+describe("loadReaders on this checkout", () => {
+  const repoRoot = resolve(import.meta.dir, "..", "..");
+  const rule = "─".repeat(40);
+
+  test("loads draftCarriesSend and routes sendGuardedReply through /api/send", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-canary-readers-"));
+    const globals = ["localStorage", "document", "fetch"] as const;
+    const saved = new Map(globals.map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+    let box = "";
+    let revision = 1;
+    const typed: string[] = [];
+    const render = (): string =>
+      ["> earlier", "", rule, box === "" ? "❯ \u001b[2mTry something\u001b[0m" : `❯ ${box}`, rule, "  status row"].join("\n");
+    const baseMux = herdrMuxFactory.create({ endpoint: "/unused.sock", timeoutMs: 5000, options: {} });
+    const mux: MuxAdapter = {
+      ...baseMux,
+      readGrid: (paneId: string): Promise<MuxOutcome<MuxGrid>> =>
+        Promise.resolve(muxOk({ paneId, text: render(), truncated: false, revision })),
+      typeText: (_paneId: string, text: string) => {
+        typed.push(text);
+        box += text;
+        revision++;
+        return Promise.resolve(muxAck());
+      },
+      writeKeys: (_paneId: string, keys: readonly string[]) => {
+        for (const key of keys) {
+          if (key === "Enter") box = "";
+          else if (key === "Backspace") box = [...box].slice(0, -1).join("");
+        }
+        revision++;
+        return Promise.resolve(muxAck());
+      },
+    };
+    try {
+      const transport = installTransport(
+        {
+          socket: "/unused.sock",
+          isOwnedPane: (id: string) => id === "w1:p1",
+          paneInfo: () => ({ agent: "claude", status: "idle", session: null }),
+        },
+        dir,
+        { mux, versionOf: () => Promise.resolve("2.1.200") },
+      );
+      const readers = await loadReaders(repoRoot);
+      if (readers.markLive !== undefined) transport.onLiveRead(readers.markLive);
+      expect(readers.draftCarriesSend("ship it\nplease", "ship it please")).toBe(true);
+      expect(readers.draftCarriesSend("ship it", "something else")).toBe(false);
+      expect(readers.barFor?.("claude").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+
+      await transport.readScreen("w1:p1");
+      const sent = await readers.sendGuardedReply("w1:p1", "Reply with only OK.", "claude");
+      expect(sent).toEqual({ status: "sent" });
+      expect(typed).toContain("Reply with only OK.");
+      expect(transport.audit.length).toBe(1);
+
+      const bar = await readers.sendGuardedReply("w1:p1", "/model", "claude");
+      expect(bar).toEqual({ status: "sent" });
+      expect(transport.audit.length).toBe(2);
+
+      // A legacy `--readers` checkout's one-shot send posts `{ text, submit: true }` with no `id`.
+      const legacyRes = await fetch("/api/pane/w1%3Ap1/reply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "legacy one-shot", submit: true }),
+      });
+      expect(legacyRes.status).toBe(200);
+      expect(typed).toContain("legacy one-shot");
+      expect(transport.audit.length).toBe(3);
+    } finally {
+      for (const k of globals) {
+        const desc = saved.get(k);
+        if (desc !== undefined) Object.defineProperty(globalThis, k, desc);
+        else Reflect.deleteProperty(globalThis, k);
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+

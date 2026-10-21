@@ -268,6 +268,30 @@ A lead older than 1.21.0 still lists a member's durable agents, but without the 
 Terminal tab polls a pane that has no terminal. The member says so once in its log, and
 `collie doctor` on the member shows the row `durable-lead`. Update the lead to fix it.
 
+## Messages between machines
+
+An agent can message an agent on another machine of the crew, and the lead relays every such message.
+
+```sh
+# on the lead: every agent pane of every machine
+collie walky who
+```
+
+A member sends the message to the lead. The lead checks the member's signature, then passes the
+message on to the machine that the address names, and that machine checks the lead's. The lead also
+sends the sender's certificate, so that machine checks the sender's signature too. A member's own
+`who` lists its own panes only. The lead learns the outcome of every message, and sends it back to the
+member that sent it. Run `collie walky status <id>` on the sender's machine or on the lead
+([Across a crew](walky-talky.md#across-a-crew)).
+
+On the phone, a pane on a member shows its messages as a lead's own pane does. The lead reads the
+list from that member's log, so the cards and the Messages sheet look the same on every machine
+([On the phone](walky-talky.md#on-the-phone)).
+
+> **Note.** A member needs Collie 1.23.0 to take a message and to show its messages on the phone. A
+> message to an older member is refused `not sent: older member`, and a member under an older lead
+> gets `not sent: older lead`. Run `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
+
 ## Machines
 
 Every Collie measures its own machine, the lead keeps a day of it for each machine in the crew, and

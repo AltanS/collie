@@ -212,7 +212,7 @@ export function planFor(dialog: LiftedDialog, index: number): AskPlan | null {
     }
     case "wizard": {
       const m = dialogModelOf(block, "wizard");
-      if (m === null || m.phase !== "question") return null;
+      if (m === null || m.phase !== "question" || m.field?.focused === true) return null;
       const option = m.options[index];
       if (option === undefined) return null;
       const split = splitWalk(option.keys);

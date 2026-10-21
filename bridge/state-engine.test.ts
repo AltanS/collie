@@ -11,11 +11,13 @@ import {
   StateEngine,
   terminalTitleIsStale,
   type EngineSnapshot,
+  type MuseSessionNameProbe,
 } from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
-import { muxOk } from "./mux/types.ts";
-import type { MuxAdapter, MuxPane, MuxTab } from "./mux/types.ts";
+import { muxOk, muxUnreachable } from "./mux/types.ts";
+import type { MuxAdapter, MuxOutcome, MuxPane, MuxTab } from "./mux/types.ts";
+import type { ForegroundProcess } from "./journal/types.ts";
 import { toPaneWire } from "./types.ts";
 import type { AgentStatus } from "./types.ts";
 
@@ -808,6 +810,167 @@ describe("StateEngine — session name enrichment", () => {
     await engine["poll"]();
     expect(reads).toBe(2);
     expect(engine.current().agents[0]!.sessionName).toBe("unstamped");
+  });
+});
+
+// Muse names its sessions in its own journal, never on the screen, so the engine reads them
+// through the injected probe (bridge/journal/muse.ts) instead of the grid — and feeds them into
+// the same sticky cache as Claude's, with the same say-nothing/sticky contract. These tests drive
+// the engine side with a probe stub; the probe itself is pinned against real logs in muse.test.ts.
+describe("StateEngine — muse session names", () => {
+  const musePane: MuxPane = {
+    paneId: "w1:p9",
+    spaceId: "w1",
+    spaceLabel: "demo",
+    spaceNumber: 1,
+    tabId: "w1:t1",
+    cwd: "/home/you/demo",
+    focused: false,
+    alive: true,
+    agent: "muse",
+    status: "idle",
+    revision: 1,
+  };
+
+  function makeMuseEngine(
+    probe: MuseSessionNameProbe,
+    panes: MuxPane[] = [musePane],
+    foreground: () => MuxOutcome<readonly ForegroundProcess[]> = () =>
+      muxOk([{ argv: ["muse", "resume", "some-uuid"] }]),
+  ) {
+    let processReads = 0;
+    // SAFETY: this poll reaches `snapshot()` and `foregroundProcesses`, and nothing else.
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes, spaces: [], tabs: [] }),
+      foregroundProcesses: () => {
+        processReads++;
+        return Promise.resolve(foreground());
+      },
+    };
+    // SAFETY: see above — every member this poll can reach is present on `stub`.
+    const engine = new StateEngine(stub as MuxAdapter, 1500, { museSessionName: probe });
+    const poll = () => engine["poll"]();
+    const agent = () => engine.current().agents[0]!;
+    return { engine, poll, agent, processReads: () => processReads };
+  }
+
+  test("a named muse session names the pane", async () => {
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve("landing-page"));
+    await poll();
+    expect(agent().sessionName).toBe("landing-page");
+  });
+
+  test("an unnamed muse session leaves sessionName absent entirely", async () => {
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve(null));
+    await poll();
+    expect(agent().sessionName).toBeUndefined();
+    expect("sessionName" in agent()).toBe(false);
+  });
+
+  test("the probe gets the foreground argv when the pane reports no session", async () => {
+    let seen: unknown;
+    const { poll, processReads } = makeMuseEngine((_ref, processes) => {
+      seen = processes;
+      return Promise.resolve(null);
+    });
+    await poll();
+    expect(processReads()).toBe(1);
+    expect(seen).toEqual([{ argv: ["muse", "resume", "some-uuid"] }]);
+  });
+
+  test("a pane that already reports its session costs no foreground read", async () => {
+    const reported: MuxPane = {
+      ...musePane,
+      agentSession: { kind: "id", value: "01a0a28c-ba4b-76f2-a3d8-637a1b190f6a" },
+    };
+    let seenRef: unknown;
+    const { poll, agent, processReads } = makeMuseEngine((ref) => {
+      seenRef = ref;
+      return Promise.resolve("by-ref");
+    }, [reported]);
+    await poll();
+    expect(processReads()).toBe(0);
+    expect(seenRef).toEqual({ kind: "id", value: "01a0a28c-ba4b-76f2-a3d8-637a1b190f6a" });
+    expect(agent().sessionName).toBe("by-ref");
+  });
+
+  test("say-nothing keeps the last-known name; a later unnamed answer drops it", async () => {
+    let answer: string | null | undefined = "kept";
+    const panes: MuxPane[] = [{ ...musePane }];
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve(answer), panes);
+    await poll();
+    expect(agent().sessionName).toBe("kept");
+    answer = undefined; // binding unreadable this poll — sticky wins
+    panes[0] = { ...musePane, revision: 2 };
+    await poll();
+    expect(agent().sessionName).toBe("kept");
+    answer = null; // the exact session is unnamed now — the old name goes
+    panes[0] = { ...musePane, revision: 3 };
+    await poll();
+    expect(agent().sessionName).toBeUndefined();
+    expect("sessionName" in agent()).toBe(false);
+  });
+
+  // `muse resume <named>`, quit, then a bare `muse` in the same pane: the new session binds by
+  // nothing, so the probe says nothing, and the old session's name must not stay on the pane.
+  test("a name leaves with its session: a pane that can no longer be bound drops it", async () => {
+    let answer: string | null | undefined = "landing-page";
+    let argv = ["muse", "resume", "some-uuid"];
+    const panes: MuxPane[] = [{ ...musePane }];
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve(answer), panes, () => muxOk([{ argv }]));
+    await poll();
+    expect(agent().sessionName).toBe("landing-page");
+    answer = undefined;
+    argv = ["muse"];
+    panes[0] = { ...musePane, revision: 2 };
+    await poll();
+    expect(agent().sessionName).toBeUndefined();
+    expect("sessionName" in agent()).toBe(false);
+  });
+
+  test("a foreground read that fails keeps the name: the binding is unknown, not lost", async () => {
+    let answer: string | null | undefined = "landing-page";
+    let read: MuxOutcome<readonly ForegroundProcess[]> = muxOk([{ argv: ["muse", "resume", "some-uuid"] }]);
+    const panes: MuxPane[] = [{ ...musePane }];
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve(answer), panes, () => read);
+    await poll();
+    expect(agent().sessionName).toBe("landing-page");
+    answer = undefined;
+    read = muxUnreachable("socket closed");
+    panes[0] = { ...musePane, revision: 2 };
+    await poll();
+    expect(agent().sessionName).toBe("landing-page");
+  });
+
+  test("a rename lands when the revision moves", async () => {
+    let answer: string | null | undefined = "first";
+    const panes: MuxPane[] = [{ ...musePane }];
+    const { poll, agent } = makeMuseEngine(() => Promise.resolve(answer), panes);
+    await poll();
+    expect(agent().sessionName).toBe("first");
+    answer = "second";
+    panes[0] = { ...musePane, revision: 2 };
+    await poll();
+    expect(agent().sessionName).toBe("second");
+  });
+
+  test("with no probe wired, a muse pane is untouched and its argv is never read", async () => {
+    let processReads = 0;
+    // SAFETY: this poll reaches `snapshot()` only.
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes: [musePane], spaces: [], tabs: [] }),
+      foregroundProcesses: () => {
+        processReads++;
+        return Promise.resolve(muxOk([]));
+      },
+    };
+    // SAFETY: see above — every member this poll can reach is present on `stub`.
+    const engine = new StateEngine(stub as MuxAdapter, 1500);
+    await engine["poll"]();
+    expect(processReads).toBe(0);
+    expect("sessionName" in engine.current().agents[0]!).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@ import type {
   PaneChatResponse,
   PaneChangeDiffResponse,
   PaneChangesResponse,
+  PaneHistoryResponse,
   ServerSummary,
   SessionSummary,
   SnapshotResponse,
@@ -26,8 +27,11 @@ import type {
 } from "@/lib/types";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import type { Surface } from "@/lib/surface/surface";
+// The import attribute is what lets Playwright's Node loader read this JSON too.
+import kiroJournalEntries from "@/fixtures/kiro-journal-entries.json" with { type: "json" };
 
 import { censusFor, fixtureMachinesSolo, historyFor } from "./machine-fixtures";
+import type { WalkyReceipt, WalkyRow, WalkySendBody } from "@/lib/walky";
 
 // A couple of fixture agents covering the triage groups, reused across tests.
 export const fixtureAgents: AgentView[] = [
@@ -390,6 +394,50 @@ export const fixtureOmpAskBatchChat = ompAskChat("Where should the note go?", [
   },
 ]);
 
+/** The same pane used by the default API fixture, with Kiro's journal availability. */
+export const KIRO_PANE_ID = fixtureAgents[0]!.paneId;
+
+/** A Kiro pane can draw Chat without exposing its session ID or foreground process. */
+export const fixtureKiroSnapshot: SnapshotResponse = {
+  ...fixtureSnapshot,
+  agents: [{ ...fixtureAgents[0]!, agent: "kiro", hasSession: true }],
+  shellPanes: [],
+};
+
+/**
+ * The bridge's Kiro journal parse of the session kiro-cli 2.32.0 saved in
+ * `bridge/journal/fixtures/kiro/messages.jsonl`. The JSON is committed
+ * because the browser runner cannot load the bridge's parser; `bridge/journal/kiro-journal-golden.test.ts`
+ * fails when the parser stops producing it.
+ */
+export const fixtureKiroEntries: TranscriptEntry[] =
+  // SAFETY: `bridge/journal/kiro-journal-golden.test.ts` checks this file equals the Kiro journal's
+  // `parse` output, which is a TranscriptEntry[].
+  kiroJournalEntries as TranscriptEntry[];
+
+/** Kiro's read-only History: every saved entry, on one page. */
+export const fixtureKiroHistory: Extract<PaneHistoryResponse, { available: true }> = {
+  paneId: KIRO_PANE_ID,
+  available: true,
+  entries: fixtureKiroEntries,
+  hasMore: false,
+  total: fixtureKiroEntries.length,
+  fileTruncated: false,
+};
+
+/** Kiro's live Chat window: the same entries, numbered as the default Chat fixture numbers its own. */
+export const fixtureKiroChat: Extract<PaneChatResponse, { available: true }> = {
+  paneId: KIRO_PANE_ID,
+  available: true,
+  page: "live",
+  gen: FIXTURE_CHAT_GEN,
+  rev: 1,
+  head: FIXTURE_SEQ_BASE + fixtureKiroEntries.length - 1,
+  oldest: FIXTURE_SEQ_BASE,
+  hasOlder: false,
+  upserts: fixtureKiroEntries.map((entry, index) => Object.assign({}, entry, { seq: FIXTURE_SEQ_BASE + index })),
+};
+
 /**
  * A journal image reference in the ONE shape `imageSrc` accepts: a blob path on the owning collie,
  * `/api/blobs/<64 hex>` (`lib/api.ts` § BLOB_REF). Anything else is refused there and renders as no
@@ -549,6 +597,77 @@ export function sendHandler(answer: (request: SentRequest) => JsonObject) {
       return HttpResponse.json({ ok, send });
     }),
   ];
+}
+
+// ── The fake bridge's walky talky (M62) ─────────────────────────────────────────────────────────
+// `GET /api/pane/:id/walky` answers the rows a test set with `setWalkyRows` (none by default), and
+// `POST /api/walky` records each body and answers an accepted receipt per target, one for `all`.
+
+/** An agent message to this pane, held and verified by its lead: the card's happy path. */
+export const fixtureWalkyAgent: WalkyRow = {
+  v: 1,
+  id: "wt_k3f9x2m8q1a0",
+  kind: "agent",
+  from: { memberId: "bluefin", address: "bluefin/w6:p3", harness: "claude", label: "collie-workspace#fix-465" },
+  to: "bluefin/w1:p1",
+  replyTo: null,
+  at: Date.parse("2026-10-17T09:30:00Z"),
+  body: "Tests are green on fix-465. You can merge.",
+  signer: "bluefin",
+  signature: "c2ln",
+  receipt: { id: "wt_k3f9x2m8q1a0", state: "delivered", verified: "origin", at: Date.parse("2026-10-17T09:30:02Z"), by: "bluefin", target: "bluefin/w1:p1" },
+};
+
+/** An operator message from a paired phone, a reply to the agent's, written locally. */
+export const fixtureWalkyOperator: WalkyRow = {
+  v: 1,
+  id: "wt_p0q9r8s7t6u5",
+  kind: "operator",
+  from: { memberId: "bluefin", address: null, harness: null, label: "phone-altan" },
+  to: "bluefin/w1:p1",
+  replyTo: "wt_k3f9x2m8q1a0",
+  at: Date.parse("2026-10-17T09:31:00Z"),
+  body: "Stop and report what you changed.",
+  signer: null,
+  signature: null,
+  receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo", target: "bluefin/w1:p1" },
+};
+
+/** The address of the pane the walky fixtures belong to: the target of the two rows above, the sender of the one below. */
+export const fixtureWalkySelf = "bluefin/w1:p1";
+
+/** A message THIS pane sent to another agent pane (the list holds sent rows too), with its receipt. */
+export const fixtureWalkySent: WalkyRow = {
+  v: 1,
+  id: "wt_s3ntaaaa0001",
+  kind: "agent",
+  from: { memberId: "bluefin", address: "bluefin/w1:p1", harness: "claude", label: "collie-workspace#this-pane" },
+  to: "bluefin/w6:p3#k3f9",
+  replyTo: null,
+  at: Date.parse("2026-10-17T09:32:00Z"),
+  body: "Merged. Thanks.",
+  signer: "bluefin",
+  signature: "c2ln",
+  receipt: { id: "wt_s3ntaaaa0001", state: "delivered", verified: "local", at: Date.parse("2026-10-17T09:32:02Z"), by: "bluefin", target: "bluefin/w6:p3" },
+};
+
+let walkyRows: WalkyRow[] = [];
+let walkyPosts: WalkySendBody[] = [];
+/** The rows `GET /api/pane/:id/walky` answers with, newest first. */
+export function setWalkyRows(rows: readonly WalkyRow[]): void {
+  walkyRows = [...rows];
+}
+/** The `POST /api/walky` bodies the fake bridge took in this test, oldest first. */
+export function recordedWalkyPosts(): readonly WalkySendBody[] {
+  return walkyPosts;
+}
+/** Reset between tests (msw.ts afterEach). */
+export function resetWalky(): void {
+  walkyRows = [];
+  walkyPosts = [];
+}
+function walkyReceipt(id: string, to: string): WalkyReceipt {
+  return { id, state: "accepted", verified: "local", at: Date.now(), by: to.split("/")[0] ?? "solo", target: to };
 }
 
 // Default happy-path handlers; individual tests can override via server.use(...).
@@ -864,9 +983,33 @@ export function fixtureFileImage(path: string): Uint8Array | null {
 export const handlers = [
   // The session page's recent sends (M56 spec 09): none, unless a test says otherwise.
   http.get("/api/send/receipts", () => HttpResponse.json({ receipts: [] })),
+  http.get(/\/api\/pane\/[^/]+\/walky/, () => HttpResponse.json({ messages: walkyRows })),
+  http.post("/api/walky", async ({ request }) => {
+    const body = parseJsonObject(await request.text());
+    const posted: WalkySendBody = {
+      id: asJsonString(body?.id) ?? "",
+      to: asJsonString(body?.to) ?? "",
+      body: asJsonString(body?.body) ?? "",
+    };
+    const replyTo = asJsonString(body?.replyTo);
+    if (replyTo !== undefined) posted.replyTo = replyTo;
+    walkyPosts.push(posted);
+    if (posted.to === "all") {
+      return HttpResponse.json({ receipts: ["bluefin/w1:p1", "minibuch/w2:p1"].map((to) => walkyReceipt(posted.id, to)) });
+    }
+    if (posted.to.endsWith("/all")) {
+      return HttpResponse.json({ receipts: [walkyReceipt(posted.id, `${posted.to.slice(0, -4)}/w1:p1`)] });
+    }
+    return HttpResponse.json({ receipt: walkyReceipt(posted.id, posted.to) });
+  }),
+  // No agents, no shell panes, no refusals; a test that needs more overrides it with server.use(...).
+  http.get("/api/walky/who", () => HttpResponse.json({ targets: [], skipped: [], refusals: null })),
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),
+  ),
+  http.get(/\/api\/pane\/[^/]+\/subagent\/[^/]+$/, () =>
+    HttpResponse.json({ paneId: "w1:p1", agentId: "a000000", available: false }),
   ),
   // The Changes view: the list, or with ?repo=&path= one file's diff. Asked by pane or by
   // workspace, the answer is the same list (ADR 0065).

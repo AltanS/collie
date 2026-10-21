@@ -1,6 +1,6 @@
 import { chmodSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import {
   configFilePaths,
@@ -12,7 +12,7 @@ import {
   type FilePerms,
   type PrivateFileVerdict,
 } from "./config-source.ts";
-import { HOST, type Host } from "./host.ts";
+import { HOST, type Host, isInside } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
 import { secretFileVerdict } from "./owner-only.ts";
 import type { AuditContent } from "./audit.ts";
@@ -87,6 +87,21 @@ function normaliseUploadTypes(raw: string[]): string[] {
  * things on the two platforms this bridge supports. One path stays one path, so an existing value
  * parses to exactly what it always meant.
  */
+/**
+ * The Hermes home a `HERMES_HOME` belongs to, the way Hermes itself reads it
+ * (`get_default_hermes_root`, hermes_constants.py): anything inside `~/.hermes`, a named profile
+ * included, belongs to `~/.hermes`; `<root>/profiles/<name>` elsewhere belongs to `<root>`; any other
+ * value is a home of its own. The journal then searches that home and every profile under it, so a
+ * bridge started inside one profile's environment still finds the default profile and the others.
+ */
+export function hermesHome(value: string | undefined, home: string, host: Host = HOST): string {
+  const native = join(home, ".hermes");
+  if (value === undefined || value.trim() === "") return native;
+  const path = resolve(value.trim());
+  if (isInside(host, path, native)) return native;
+  return basename(dirname(path)) === "profiles" ? dirname(dirname(path)) : path;
+}
+
 function envRoots(
   name: string,
   fallback: string | string[],
@@ -329,6 +344,12 @@ export interface Config {
    */
   redact: boolean;
   /**
+   * Whether this machine keeps Sent, its record of the shell lines a person sent through Collie
+   * (`COLLIE_SENT`, default on). Off: nothing is recorded and a read lists nothing; remove and clear
+   * still work. See `bridge/sent.ts` and ADR 0107.
+   */
+  sent: "on" | "off";
+  /**
    * Per-device authorisation. Name of a request header carrying an opaque device identifier,
    * injected by a trusted upstream reverse proxy. Empty = the feature is off (no behaviour change).
    * When set, devices whose header value isn't in {@link deviceAllowlist} are read-only. See
@@ -392,6 +413,11 @@ export interface Config {
    * that submits text runs it too. `COLLIE_SEND_PROTOCOL=0` turns sending text off (the keys still work).
    */
   sendProtocol: boolean;
+  /**
+   * Walky talky (`COLLIE_WALKY`, M62): whether this machine takes messages for its panes. Off refuses
+   * every message with `refused: off`; the CLI on this machine still sends. On by default.
+   */
+  walky: boolean;
   /**
    * Whether `tailscale serve` is bypassed (COLLIE_SKIP_SERVE=1) because an operator-run reverse
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
@@ -570,7 +596,17 @@ export function resolveJournalRoots(
       join(env.GROK_HOME ?? join(home, ".grok"), "sessions"),
       env,
     ),
-    hermes: envRoots("COLLIE_HERMES_ROOT", join(home, ".hermes"), env),
+    // Hermes's own home var first, as for the others, read as Hermes reads it (`hermesHome`). A
+    // root's named profiles are found under it (bridge/journal/hermes.ts), so one root serves the
+    // default profile and every named one.
+    hermes: envRoots("COLLIE_HERMES_ROOT", hermesHome(env.HERMES_HOME, home), env),
+    // Kiro V3 writes its sessions under $KIRO_HOME/sessions, or ~/.kiro/sessions when KIRO_HOME is unset.
+    // kiro-cli 2.32.0 writes to ~/.kiro when KIRO_HOME is blank or spaces, so a blank value counts as unset.
+    kiro: envRoots(
+      "COLLIE_KIRO_ROOT",
+      join(env.KIRO_HOME?.trim() || join(home, ".kiro"), "sessions"),
+      env,
+    ),
     // Muse keeps date-partitioned session logs under the XDG data dir, one session.jsonl per
     // session uuid. Muse publishes no home var of its own, so the Collie override is the only
     // relocation.
@@ -703,6 +739,7 @@ export function loadConfig(env: Environment = process.env): Config {
     accessAud: envList("COLLIE_ACCESS_AUD", env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),
     redact: envBool("COLLIE_REDACT", true, env),
+    sent: envEnum("COLLIE_SENT", ["on", "off"] as const, "on", env),
     deviceHeader: (env.COLLIE_DEVICE_HEADER ?? "").trim(),
     deviceAllowlist: envList("COLLIE_DEVICE_ALLOWLIST", env),
     allowedOrigins: envList("COLLIE_ALLOWED_ORIGINS", env),
@@ -716,6 +753,7 @@ export function loadConfig(env: Environment = process.env): Config {
     multiSession: envBool("COLLIE_MULTI_SESSION", true, env),
     surfaceShadow: envBool("COLLIE_SURFACE_SHADOW", false, env),
     sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
+    walky: envBool("COLLIE_WALKY", true, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
   };

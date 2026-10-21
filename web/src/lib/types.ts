@@ -11,6 +11,12 @@ export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
 export interface AgentView {
   paneId: string;
+  /**
+   * The pane's current session instance: four characters of [a-z0-9] that change when another session
+   * takes over the same pane id. A walky message addressed `<member>/<paneId>#<instance>` reaches only
+   * that session. Absent on a machine that predates it.
+   */
+  instance?: string;
   workspaceId: string;
   workspaceLabel: string;
   workspaceNumber: number;
@@ -164,11 +170,29 @@ export interface AgentView {
    */
   cache?: PaneCache;
   /**
+   * The pane's active todo list, as the bridge read it from the session's task files or journal.
+   * Mirrors `PaneTodo` in bridge/todos.ts. **Absent, never a placeholder**, when the pane has no
+   * todos or on an older bridge. Text only, never markup.
+   */
+  todos?: PaneTodo[];
+  /**
+   * The subagents of this pane's session that have not finished yet. Mirrors `PaneSubagent` in
+   * bridge/subagents.ts; Claude Code only today. **Absent, never a placeholder**, when none is running
+   * or on an older bridge. Text only, never markup.
+   */
+  subagents?: PaneSubagent[];
+  /**
    * The model this pane's agent is on, in the harness's own words. Mirrors `PaneWire.model` in
    * bridge/types.ts. **Absent, never a placeholder**, and text only: read it through `modelLabel`
    * (lib/model-label.ts), which shortens it and drops anything that is not a name.
    */
   model?: string;
+  /**
+   * The effort this pane's agent runs at, in the harness's own word (`high`, `xhigh`). Mirrors
+   * `PaneWire.effort` in bridge/types.ts. **Absent, never a placeholder**, and text only: read it
+   * through `effortLabel` (lib/model-label.ts). Drawn only after a model.
+   */
+  effort?: string;
   /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
@@ -300,6 +324,29 @@ export interface AskDecided {
 
 /** What a checkout is on: a branch by name, or a detached head at a full object name. */
 export type GitHead = { kind: "branch"; name: string } | { kind: "detached"; sha: string };
+
+export type PaneTodoStatus = "pending" | "in_progress" | "completed";
+
+/** One item in a pane's todo list. Mirrors `PaneTodo` in bridge/todos.ts. */
+export interface PaneTodo {
+  id: string;
+  text: string;
+  status: PaneTodoStatus;
+  activeForm?: string;
+}
+
+/** One running subagent of a pane's session. Mirrors `PaneSubagent` in bridge/subagents.ts. */
+export interface PaneSubagent {
+  /** The id `GET /api/pane/<id>/subagent/<agentId>` takes, the same one an Agent card opens. */
+  agentId: string;
+  agentType?: string;
+  model?: string;
+  /** The call's short description, one line. Empty when Claude Code wrote no meta file for it. */
+  description: string;
+  /** ISO 8601. */
+  startedAt?: string;
+  spawnDepth?: number;
+}
 
 /**
  * One rule as the pane sheet reads it. Mirrors `CacheRuleWire` in bridge/types.ts.
@@ -475,14 +522,18 @@ export interface DevicesResponse {
   devices: PairedDeviceWire[];
 }
 
-/** Why a `POST /api/pair` claim was rejected (the `error` field of its 400 body). */
+/**
+ * Why a `POST /api/pair` claim was rejected: the `error` field of its 400 body, or — for
+ * `identity-required` — the access gate's 403, which refuses before the claim is reached (#512).
+ */
 export type PairFailure =
   | "no-pending"
   | "expired"
   | "exhausted"
   | "bad-code"
   | "duplicate-label"
-  | "bad-request";
+  | "bad-request"
+  | "identity-required";
 
 /**
  * One entry in the snapshot's session registry — a named Herdr session the bridge is fanning out.
@@ -893,7 +944,34 @@ export interface UpdateInfo {
    * release above `current` as their target. `lib/update-screen.ts` is the reader.
    */
   peersTo?: string;
+  /** This machine's release line (M60 spec 01, ADR 0110). Absent on a bridge older than the field,
+   *  which is Stable. */
+  line?: ReleaseLine;
+  /**
+   * The Stable release "Go back now" installs, when this machine is on Stable and runs an Edge build
+   * that is ahead of every Stable release. `exceptions` names the state files that build cannot read
+   * (ADR 0110), which the page shows before the button. Absent otherwise.
+   */
+  back?: { to: string; exceptions: string[] };
 }
+
+/** A machine's release line: Stable takes final releases only, Edge also takes `-edge.N` builds. */
+export type ReleaseLine = "stable" | "edge";
+
+/** The answer of `POST /api/update/line`: the record as saved, with the request id it answers. */
+export interface ReleaseLineReceipt {
+  ok: true;
+  line: ReleaseLine;
+  /** Builds this machine rolled back from, which are never offered again. */
+  rejected: string[];
+  changedAt: number | null;
+  requestId: string;
+  /** The same request id with the same line was seen before; nothing changed this time. */
+  replay?: true;
+}
+
+/** The answer of `POST /api/update/back`: the same shape as a rollback's start. */
+export type GoBackStartResponse = RollbackStartResponse;
 
 /**
  * Where an update run is (mirrors `bridge/update-run.ts`). `done`, `rolled-back`, `stuck` and
@@ -940,6 +1018,13 @@ export interface UpdateRun {
    * on a bridge that predates it — both read as "no run to key on", which is the closed case.
    */
   runId?: string;
+  /**
+   * `rollback` when this run goes BACK to a build kept on disk (M60 spec 01): `to` is then the older
+   * version and `from` the one left. `switch` when it goes down to a Stable release after the line
+   * changed ("Go back now", or a member following its lead down). Absent on every update, and on a
+   * bridge older than the field.
+   */
+  action?: "rollback" | "switch";
   /**
    * The peer legs of a crew-wide run (M16/04). Absent on a solo run, and absent on a bridge that
    * predates it — the page then falls back to the census rows, which is the same screen with older
@@ -1049,6 +1134,12 @@ export interface PreflightReport {
   schema: number;
   verdict: "green" | "amber" | "red";
   checks: PreflightCheck[];
+  /**
+   * The build `collie update --rollback` would go back to, when this machine keeps one (M60 spec 01):
+   * the version it runs now and the older one on disk. Absent when there is none, and on a bridge
+   * older than the field. The Updates page offers Roll back only when it is here.
+   */
+  rollback?: { from: string; to: string };
 }
 
 /**
@@ -1112,6 +1203,20 @@ export interface UpdateStartResponse {
    * than the field, which reads as "no id to key on".
    */
   runId?: string;
+}
+
+/** `POST /api/update/rollback` — the 202 (M60 spec 01). The run is followed on the snapshot from here. */
+export interface RollbackStartResponse {
+  ok: true;
+  /** The version this machine leaves, and the older one it goes back to. */
+  from: string | null;
+  to: string | null;
+  /** The record as the bridge read it before the start, as on `POST /api/update`. */
+  run: UpdateRun | null;
+  /** The request id this device sent, which the run record carries as its run id. */
+  runId: string;
+  /** The same request id was seen before: this is that start's receipt, and nothing new started. */
+  replay?: true;
 }
 
 export interface SnapshotResponse {
@@ -1187,7 +1292,7 @@ export interface PlanTask {
 
 /**
  * What a tool call did, in the shape the thing it did suggests. Mirrors
- * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0110).
+ * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0114).
  *
  * Every branch's FIRST field is the one a person would name the call by, so a row can be drawn from
  * `kind` plus one field. A tool outside the ten is not an error, it is `other`, which still carries
@@ -1201,9 +1306,9 @@ export type ToolCall =
   | { kind: "search"; query: string; where?: string; hits?: number }
   | { kind: "fetch"; url: string }
   | { kind: "delete" | "move"; path: string; to?: string }
-  /** `ongoing`: a background sub-agent that has not finished, though its start result is in. */
-  | { kind: "task"; agent: string; summary: string; ongoing?: true }
-  /** A task list the agent keeps rewriting (ADR 0110). On pi its updates are folded into the one card. */
+  /** `agentId` names the subagent's own log. `ongoing`: a background sub-agent that has not finished, though its start result is in. */
+  | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
+  /** A task list the agent keeps rewriting (ADR 0114). On pi its updates are folded into the one card. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
   | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
@@ -1515,6 +1620,12 @@ export interface ChatEntry extends TranscriptEntry {
 export interface ChatWindowBody {
   page: "live";
   gen: number;
+  /**
+   * Which session, as an opaque tag. Another one than the tag held means the pane's agent started a
+   * new session (pi's `/new`): drop what is held for the pane, older pages included (#526). Absent
+   * from a bridge one release behind, which leaves `gen` as the only rule.
+   */
+  session?: string;
   rev: number;
   /** The newest `seq` the window holds. Below `oldest` when the window is empty. */
   head: number;
@@ -1566,6 +1677,8 @@ export interface ChatPrompt {
 export interface ChatOlderBody {
   page: "older";
   gen: number;
+  /** The session the page was read from, as {@link ChatWindowBody.session} names it. */
+  session?: string;
   upserts: ChatEntry[];
   /** Turns exist before `upserts[0]` too. */
   hasOlder: boolean;
@@ -1595,8 +1708,29 @@ export interface ChatBefore {
  * no route at all, and the honest reading there is "update this machine". Mirrors bridge/types.ts.
  */
 export type PaneChatResponse =
-  | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
+  | {
+      paneId: string;
+      available: false;
+      reason: "disabled" | "no-session" | "no-log";
+      /**
+       * Why a `no-session` answer has no session, when the bridge knows a reason the person can act
+       * on (bridge/types.ts). `shared-folder`: another pane runs the same harness in this folder and
+       * this pane's command line names no session (#508). Absent from an older bridge.
+       */
+      detail?: "shared-folder";
+    }
   | ({ paneId: string; available: true } & ChatBody);
+
+/** GET /api/pane/:id/subagent/:agentId — one Claude subagent's own JSONL transcript. */
+export type PaneSubagentResponse =
+  | { paneId: string; agentId: string; available: false }
+  | {
+      paneId: string;
+      agentId: string;
+      available: true;
+      entries: TranscriptEntry[];
+      fileTruncated: boolean;
+    };
 
 /**
  * `error` is the bridge's English sentence and stays what a client displays when it has nothing
@@ -1990,6 +2124,54 @@ export type RecentRunsResponse =
   | { ok: true; removed: number }
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
+// ── SENT (M61): the record of shell lines a person sent through Collie ───────────────────────────
+// The wire contract of GET /api/sent, POST /api/sent/remove and POST /api/sent/clear. Held in memory
+// only: nothing here is stored on the phone.
+
+/** Where the bridge reads from: this machine, or (on a crew lead) this machine and every member. */
+export type SentScope = "here" | "all";
+
+/** One distinct line on one machine. Repeats are merged by the bridge into `count`. */
+export interface SentEntry {
+  /** Stable per line on its machine (the first 16 hex characters of the line's sha256). */
+  id: string;
+  line: string;
+  /** Absolute folder, or `null` for home. */
+  cwd: string | null;
+  /** Epoch ms of the newest record. */
+  at: number;
+  /** Entry kinds, never harness names. */
+  kind: "shell" | "run";
+  count: number;
+  /** The machine id the crew already uses. */
+  host: string;
+}
+
+/** One machine the bridge asked, and whether it answered. */
+export interface SentMachine {
+  host: string;
+  label: string;
+  ok: boolean;
+  /** That machine records nothing (`COLLIE_SENT=off`). */
+  off?: boolean;
+  reason?: "old_version" | "unreachable" | "timeout";
+}
+
+/** GET /api/sent. `entries` is newest first. */
+export interface SentAnswer {
+  entries: SentEntry[];
+  /** A later page exists on at least one machine. */
+  more: boolean;
+  /** This bridge records nothing. */
+  off: boolean;
+  machines: SentMachine[];
+}
+
+/** POST /api/sent/remove and /clear. Idempotent: a missing id still answers ok. */
+export type SentWriteResponse =
+  | { ok: true }
+  | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
+
 /** One agent a host can start by id. Mirrors `HarnessInfo` in bridge/types.ts. */
 export interface HarnessInfo {
   /** The id `POST /api/launch` takes as `harness`, and the brand key `AgentIcon` draws. */
@@ -2012,6 +2194,27 @@ export interface FoldersResponse {
   recent: string[];
   favourites: string[];
   home: string;
+}
+
+/** One sub-folder in a browse answer: its name only, and whether it holds a `.git` entry (#467). */
+export interface FolderBrowseEntry {
+  name: string;
+  git: boolean;
+}
+
+/**
+ * GET /api/folders/browse — the New page's folder browser (#467, bridge/folder-browse.ts). `path` is
+ * the nearest folder that exists at or above the asked text, spelled under home as the text was;
+ * `filter` is the rest of the text after it ("" when the text named a folder); `folders` are the
+ * sub-folders of `path` whose names start with `filter`, case-insensitive, sorted by name, at most
+ * 200; `parent` is the folder above `path`, or `null` at home, the bound.
+ */
+export interface FolderBrowseResponse {
+  path: string;
+  parent: string | null;
+  folders: FolderBrowseEntry[];
+  filter: string;
+  truncated: boolean;
 }
 
 export interface BridgeConfig {

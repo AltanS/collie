@@ -118,6 +118,122 @@ describe("WizardBlock — question step presentation", () => {
   });
 });
 
+// The step's own answer field (ADR 0113): the same states as the single-question card, plus the
+// wizard's one extra lock — while the field has the keyboard, `Left`/`Right` move its caret.
+describe("WizardBlock — the answer field", () => {
+  const OFFER = "Type your own answer";
+
+  it("the offer opens the editor, which says that sending moves on", async () => {
+    const user = userEvent.setup();
+    render(<WizardBlock wizard={fixtureModel("claude--wizard-q1.txt")} onAction={vi.fn()} onAnswer={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("");
+    expect(screen.getByText(/moves to the next question/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send answer" })).toBeDisabled();
+  });
+
+  it("a typed field shows what it holds, and Change opens the editor holding it", async () => {
+    const onAnswer = vi.fn(() => true);
+    const user = userEvent.setup();
+    render(
+      <WizardBlock
+        wizard={fixtureModel("claude--v2299-ask-field-wizard-revisit-typed.txt")}
+        onAction={vi.fn()}
+        onAnswer={onAnswer}
+      />,
+    );
+    expect(screen.getByText(/In the answer field:/)).toHaveTextContent("In the answer field: Mango");
+    await user.click(screen.getByRole("button", { name: "Change this answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mango");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAnswer).toHaveBeenCalledWith("Mango");
+  });
+
+  it("a focused field locks the options, the escape row AND the step arrows, not the answer editor", () => {
+    const onAction = vi.fn();
+    render(
+      <WizardBlock
+        wizard={fixtureModel("claude--v2299-ask-field-wizard-focused-empty.txt")}
+        onAction={onAction}
+        onAnswer={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/The answer field has the keyboard in the terminal/)).toBeInTheDocument();
+    for (const name of [/Apple/, /Pear/, /Chat about this/, /Previous step/, /Next step/]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: OFFER })).toBeEnabled();
+  });
+
+  it("keeps the draft on screen when the answer is refused", async () => {
+    const user = userEvent.setup();
+    render(<WizardBlock wizard={fixtureModel("claude--wizard-q1.txt")} onAction={vi.fn()} onAnswer={() => false} />);
+    await user.click(screen.getByRole("button", { name: OFFER }));
+    await user.type(screen.getByRole("textbox", { name: "Answer text" }), "keep me");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("keep me");
+  });
+
+  // The open editor hides the field's own card, so a desk edit made while it is open was never seen
+  // on the phone: Send refuses once, says what the field holds now, and the next Send replaces it.
+  describe("the field changes under the open editor", () => {
+    function holding(wizard: WizardModel, text: string): WizardModel {
+      if (wizard.phase !== "question" || !wizard.field) throw new Error("fixture has no answer field");
+      return { ...wizard, field: { ...wizard.field, text } };
+    }
+
+    it("text typed at the desk: Send sends nothing and names it; the next Send replaces it", async () => {
+      const wizard = fixtureModel("claude--wizard-q1.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<WizardBlock wizard={holding(wizard, "Desk words")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      // The stepper's own live region is a `status` too, so the notice is found by its words.
+      expect(
+        screen.getByText("The answer field in the terminal now holds “Desk words”. Send again to replace it."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Phone words");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+    });
+
+    it("a field emptied at the desk: Send sends nothing and says so; the next Send fills it", async () => {
+      const wizard = fixtureModel("claude--v2299-ask-field-wizard-revisit-typed.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Change this answer" }));
+      rerender(<WizardBlock wizard={holding(wizard, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByText("The answer field in the terminal was emptied. Send again to fill it.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Answer text" })).toHaveValue("Mango");
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Mango");
+    });
+
+    it("a re-render that leaves the field's text as it was does not hold Send back", async () => {
+      const wizard = fixtureModel("claude--wizard-q1.txt");
+      const onAnswer = vi.fn(() => true);
+      const user = userEvent.setup();
+      const { rerender } = render(<WizardBlock wizard={wizard} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: OFFER }));
+      await user.type(screen.getByRole("textbox", { name: "Answer text" }), "Phone words");
+      rerender(<WizardBlock wizard={holding(wizard, "")} onAction={vi.fn()} onAnswer={onAnswer} />);
+      await user.click(screen.getByRole("button", { name: "Send answer" }));
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith("Phone words");
+      expect(screen.queryByText(/The answer field in the terminal/)).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe("WizardBlock — review (Submit) step presentation", () => {
   it("lists the echoed answers and offers Submit answers / Cancel", async () => {
     const onAction = vi.fn();

@@ -50,6 +50,7 @@ import {
   reopenConversation,
   hasSplitUrl,
   paneReadResponse,
+  paneChat,
   paneHistory,
   readPane,
   parsePairRequest,
@@ -142,6 +143,7 @@ import { computeEtag } from "./http-cache.ts";
 import { grokJournal } from "./journal/grok.ts";
 import { museJournal } from "./journal/muse.ts";
 import { TranscriptStore } from "./journal/store.ts";
+import { LiveWindows } from "./journal/live.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import {
   MUX_LOGO_PATH,
@@ -209,6 +211,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       hermes: ["/nope/hermes"],
       muse: ["/nope/muse"],
       openclaw: ["/nope/openclaw"],
+      kiro: ["/nope/kiro"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
@@ -224,6 +227,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     accessAud: [],
     auditContent: "preview",
     redact: true,
+    sent: "on",
     deviceHeader: "",
     deviceAllowlist: [],
     allowedOrigins: [],
@@ -240,6 +244,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     multiSession: true,
     surfaceShadow: false,
     sendProtocol: false,
+    walky: true,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
@@ -659,6 +664,7 @@ describe("pane write prompt binding", () => {
     expected_prompt?: string | number | null;
     expected_styled?: string | number | null;
     expected_columns?: { start: number; end: number } | number[] | string | null;
+    expected_tail_lines?: number | string | null;
   }
 
   function request(body: PaneActionBody): Request {
@@ -1373,6 +1379,73 @@ describe("pane write prompt binding", () => {
               : await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
           expect(res.status).toBe(400);
           expect(await res.text()).toBe("bad expected_columns");
+          expect(client.reads).toEqual([]);
+          expect(client.keys).toEqual([]);
+          expect(client.texts).toEqual([]);
+        }
+      }
+    });
+  });
+
+  // `expected_tail_lines` (web/src/lib/tail-lines.ts): how many of the read's last non-blank rows the
+  // region may end in, for a harness that paints its own live chrome under a dialog (Hermes's
+  // spinner, countdown hint, status bar and input row). Same single read; the bridge only counts.
+  describe("expected_tail_lines", () => {
+    const PANEL = ["╭─ needs your input ─╮", "│ ❯ 1. Red          │", "╰────────────────────╯"];
+    const CHROME = ["  spinner (12.0s)", "  hint (3540s)", " status ⏱ 12s", "────", "? ❯", "────"];
+    const REGION = PANEL.join("\n");
+
+    test("a region seven rows up passes with a window of 8; the keys go after ONE read, and the audit records it", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME, "ticked"].join("\n");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_tail_lines: 8 };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, "phone", "default");
+      expect(res.status).toBe(200);
+      expect(client.reads).toHaveLength(1);
+      expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: true, tailLines: 8 } });
+    });
+
+    test("the same region without the field is refused as not_in_tail (an older phone fails closed)", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME].join("\n");
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: REGION }), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "prompt_changed", reason: "not_in_tail" });
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).not.toHaveProperty("promptBinding.tailLines");
+    });
+
+    test("a region further up than the declared window is still refused", async () => {
+      const client = new FakePaneClient();
+      client.text = [...PANEL, ...CHROME, "a", "b"].join("\n");
+      const { audit, entries } = auditEntries();
+      const body = { keys: ["1"], expected_prompt: REGION, expected_tail_lines: 8 };
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ code: "prompt_changed", reason: "not_in_tail" });
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { passed: false, tailLines: 8 } });
+    });
+
+    test("expected_tail_lines without expected_prompt, or not a window from 6 to 12, is a 400 before any read or write", async () => {
+      const bad: PaneActionBody["expected_tail_lines"][] = [5, 13, 0, -8, 7.5, "8", null];
+      for (const route of ["keys", "reply"] as const) {
+        for (const expected_tail_lines of [...bad, 8]) {
+          const client = new FakePaneClient();
+          const { audit } = auditEntries();
+          const alone = expected_tail_lines === 8;
+          const body = alone
+            ? { keys: ["1"], text: "hello", expected_tail_lines }
+            : { keys: ["1"], text: "hello", expected_prompt: REGION, expected_tail_lines };
+          const res =
+            route === "keys"
+              ? await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default")
+              : await replyPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("bad expected_tail_lines");
           expect(client.reads).toEqual([]);
           expect(client.keys).toEqual([]);
           expect(client.texts).toEqual([]);
@@ -2922,6 +2995,7 @@ describe("chatBodyForMux — Send now is offered only where the multiplexer can 
   const body = {
     page: "live" as const,
     gen: 1,
+    session: "s1",
     rev: 3,
     head: 3,
     oldest: 1,
@@ -3366,17 +3440,19 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All TWENTY-TWO session-scoped route handlers (tab create, workspace create, launch, this host's launcher
-    // rows, this host's folder list and a star on it, one journal blob, a workspace's Changes list,
+    // All TWENTY-SEVEN session-scoped route handlers (tab create, workspace create, launch, this host's launcher
+    // rows, this host's folder list and a star on it, one journal blob, a Claude subagent transcript, a workspace's Changes list,
     // a workspace's Files view, the Files existence check by pane or workspace, the Files image read
-    // by pane or workspace (ADR 0090), tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
+    // by pane or workspace (ADR 0090), the Claude commands a pane would load, tab action, the space rename (M53 spec 05), the pane family, "look now", the New sheet's
     // branch plan and create from a folder (ADR 0093), and the
     // three writes on a phone's own launcher rows, served by one function (ADR 0094), and the two
     // writes on this machine's one-off command history, served by one function (ADR 0095), and the
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
-    // conversation list and the items or reopen of one (M53 spec 11)) reach
-    // their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(22);
+    // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
+    // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
+    // and the New page's folder browser (#467)) reach their runtime through the caller's resolver and
+    // nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(27);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -3502,6 +3578,53 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("202,");
   });
 
+  test("api/update/rollback is a POST through the same write gate, answers 202 and never awaits the runner (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const routes = [...src.matchAll(/pathname === "\/api\/update\/rollback"[^)]*\)/g)].map((m) => m[0]);
+    expect(routes).toEqual(['pathname === "/api/update/rollback" && req.method === "POST")']);
+    const at = src.indexOf('if (pathname === "/api/update/rollback" && req.method === "POST")');
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).not.toContain("guard(req");
+    // Forced preflight, the pure verdict, and a plain call into the spawn.
+    expect(handler).toContain("await action.preflight(true)");
+    expect(handler).toContain("rollbackVerdict(parsed, {");
+    expect(handler).toContain("const started = action.rollback({ runId: verdict.runId });");
+    expect(handler).not.toContain("await action.rollback");
+    // No crew run: a rollback levels nobody.
+    expect(handler).not.toContain("beginCrewRun");
+    expect(handler).toContain("202,");
+  });
+
+  test("api/update/back is the rollback route's shape: write gate, forced preflight, 202, no crew run (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/back" && req.method === "POST")');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("await action.preflight(true)");
+    expect(handler).toContain("backVerdict(parsed, {");
+    expect(handler).toContain("const started = action.back({ runId: verdict.runId, to: verdict.to });");
+    expect(handler).not.toContain("await action.back");
+    expect(handler).not.toContain("beginCrewRun");
+    expect(handler).toContain("202,");
+  });
+
+  test("api/update/line: a read-gated GET, a write-gated POST with a receipt, and the switch installs nothing (M60 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/line" && (req.method === "GET" || req.method === "POST"))');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("parseLineRequest(body)");
+    expect(handler).toContain("requestId: parsed.requestId");
+    expect(handler).toContain("updateMonitor.lineChanged();");
+    // A switch changes what is offered; it never starts the updater.
+    expect(handler).not.toContain("action.start");
+    expect(handler).not.toContain("updateAction");
+  });
+
   test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
@@ -3610,6 +3733,27 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(src).toContain("update: updateStatusWithPeers(),");
     expect(src).toContain("...updateStatusWithPeers(), preflight: report");
     expect(src).not.toContain('"/api/update/status"');
+  });
+
+  test("GET /api/pane/:id/claude-commands: device-read-gated, local-only, and scans only for a Claude agent pane", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf("const claudeCommandsMatch = pathname.match(PANE_CLAUDE_COMMANDS_ROUTE);");
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n    }\n", at));
+    // A read of this machine's disk, so the Files level, and before any runtime is resolved.
+    expect(handler).toContain('caller.gate("device-read")');
+    expect(handler).not.toContain('caller.gate("read")');
+    expect(handler.indexOf('caller.gate("device-read")')).toBeLessThan(handler.indexOf("await caller.resolve();"));
+    expect(handler).toContain('if (req.method !== "GET") return text("method not allowed", 405);');
+    expect(handler).toContain("await caller.resolve();");
+    // Fail closed: a throw in the scan answers an empty list.
+    expect(handler).toContain("catch (err)");
+    expect(handler).toContain("rt.engine.current().agents.find");
+    expect(handler).toContain('canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude"');
+    expect(handler).toContain("discoverClaudeCommands(");
+    const forwardableAt = src.indexOf("const FORWARDABLE");
+    const forwardableBlock = src.slice(forwardableAt, forwardableAt + 1200);
+    expect(forwardableBlock).not.toContain("claude-commands");
   });
 });
 
@@ -4385,7 +4529,7 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
   test("the session dispatch reaches the folder routes through this one function", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
-    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders\)/g)]).toHaveLength(1);
+    expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders, folderBrowse\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
     expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
   });
@@ -5087,6 +5231,39 @@ describe("journalRefOf — which session the history and chat routes read", () =
     });
   });
 
+  // #508: a folder walk cannot tell two same-harness panes in one folder apart, so discovery is told.
+  describe("discovery hears about a same-harness neighbour in the folder", () => {
+    const seen: unknown[] = [];
+    const a = adapter({
+      discover: async (_cwd, hint) => {
+        seen.push(hint);
+        return null;
+      },
+    });
+    const mine = pane({});
+    const processes = [{ argv: ["muse"] }];
+
+    test("a neighbour adds shared: true beside the foreground hint", async () => {
+      seen.length = 0;
+      await journalRefOf(a, mine, [mine, pane({ paneId: "w1:p2" })], { processes });
+      expect(seen).toEqual([{ processes, shared: true }]);
+    });
+
+    test("a neighbour with no other hint still says shared", async () => {
+      seen.length = 0;
+      await journalRefOf(a, mine, [mine, pane({ paneId: "w1:p2" })]);
+      expect(seen).toEqual([{ shared: true }]);
+    });
+
+    test("a pane in another folder or another harness is no neighbour", async () => {
+      seen.length = 0;
+      const elsewhere = pane({ paneId: "w1:p2", cwd: "/home/op/elsewhere" });
+      const shell = pane({ paneId: "w1:p3", agent: "shell" });
+      await journalRefOf(a, mine, [mine, elsewhere, shell], { processes });
+      expect(seen).toEqual([{ processes }]);
+    });
+  });
+
   // The screen is a thunk the route hands over untouched: discovery decides whether to read it.
   test("discovery receives the pane's screen beside its folder, and only reads it when it asks", async () => {
     let reads = 0;
@@ -5132,8 +5309,9 @@ describe("journalRefOf — which session the history and chat routes read", () =
   // reported ref and every case above still passes while the resumed session goes unread again.
   test("every journal route reads the ref journalRefOf settles on, never the reported one", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    // history and chat, each handing discovery the hints built for the pane (screen and argv)
-    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(2);
+    // history, chat and the subagent transcript read, each handing discovery the hints built for the
+    // pane (screen and argv)
+    expect([...src.matchAll(/journalRefOf\(adapter, pane, panes, await discoveryHints\(/g)]).toHaveLength(3);
     expect(src).not.toMatch(/pane\.agentSession \?\?/);
   });
 });
@@ -5432,6 +5610,79 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
       expect(JSON.stringify(a.entries)).not.toContain("beta from session B");
       expect(JSON.stringify(b.entries)).toContain("beta from session B");
       expect(JSON.stringify(b.entries)).not.toContain("alpha from session A");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // #508: two fresh `muse` panes name no session in argv, and the folder walk would hand both the
+  // newest log. Neither may read a conversation that could be the other's.
+  test("two panes whose argv names no session read no session, not the newest log", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      await sessionLog(base, UUID_B, [metadata("/same"), accepted("beta from session B")]);
+      const journals = { muse: museJournal([base]) };
+      const transcripts = new TranscriptStore();
+      const stub: Partial<StateEngine> = {
+        current: () => ({
+          agents: [view("w1:p1"), view("w1:p2")],
+          shellPanes: [],
+          workspaces: [],
+          tabs: [],
+          bridge: "connected",
+        }),
+      };
+      // SAFETY: paneHistory reaches only `current()` (for the pane lookup) — the one member
+      // present above, mirroring the engine stubs elsewhere in this suite.
+      const engine = stub as StateEngine;
+      const mux = {
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      for (const paneId of ["w1:p1", "w1:p2"]) {
+        const url = new URL(`http://x/api/pane/${paneId}/history`);
+        const res = await paneHistory(cfg(), journals, transcripts, engine, mux, paneId, url, new Request(url));
+        // SAFETY: the bridge's own JSON, served by the call above.
+        const body = (await res.json()) as { available: boolean; reason?: string };
+        expect(body).toMatchObject({ available: false, reason: "no-session" });
+      }
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // #508: the chat route says WHY there is no session, so the phone can name the remedy.
+  test("the chat route names a shared folder, and only for the pane that shares one", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      const journals = { muse: museJournal([base]) };
+      const live = new LiveWindows(new TranscriptStore());
+      let agents: AgentView[] = [view("w1:p1"), view("w1:p2")];
+      const stub: Partial<StateEngine> = {
+        current: () => ({ agents, shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+      };
+      // SAFETY: paneChat reaches only `current()` (for the pane lookup) on the paths read here.
+      const engine = stub as StateEngine;
+      const mux = {
+        capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }),
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      const read = async () => {
+        const url = new URL("http://x/api/pane/w1:p1/chat");
+        const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url));
+        // SAFETY: the bridge's own JSON, served by the call above.
+        return (await res.json()) as { paneId: string; available: boolean; reason?: string; detail?: string };
+      };
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session", detail: "shared-folder" });
+      // Alone in the folder, the same pane reads the folder's log: no reason to give.
+      agents = [view("w1:p1")];
+      expect(await read()).toMatchObject({ available: true });
+      // A neighbour in ANOTHER folder is no reason either: no log there means the plain no-session.
+      agents = [{ ...view("w1:p1"), cwd: "/empty" }, view("w1:p2")];
+      expect(await read()).toEqual({ paneId: "w1:p1", available: false, reason: "no-session" });
     } finally {
       await rm(base, { recursive: true, force: true });
     }

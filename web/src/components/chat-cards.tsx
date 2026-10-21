@@ -32,7 +32,7 @@
 // translated: a path, a command, a query, a URL, a sub-agent's name, a tool's own name and a
 // harness's own name are the agent's words or the machine's, and they go through as they arrived.
 
-import { createContext, memo, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowRightLeft,
   Bot,
@@ -62,6 +62,9 @@ import { isPlainClick, useFileLinks } from "@/components/file-links";
 import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
+import { WalkyCard } from "@/components/walky-card";
+import { WalkyIds } from "@/components/walky-id-chip";
+import { useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -74,6 +77,18 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
+import {
+  directionOf,
+  parseWalkyCommand,
+  resultId,
+  shellLineOf,
+  stateWord,
+  standingOf,
+  targetWord,
+  type EnvelopeHeader,
+  type WalkyCommand,
+  type WalkyRow,
+} from "@/lib/walky";
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
@@ -90,6 +105,12 @@ const HARNESS_LABELS = new Map([
   ["codex", "Codex"],
   ["opencode", "opencode"],
   ["pi", "pi"],
+  ["antigravity", "Antigravity"],
+  ["agy", "Antigravity"],
+  ["grok", "Grok"],
+  ["hermes", "Hermes Agent"],
+  ["muse", "Muse"],
+  ["kiro", "Kiro"],
 ]);
 
 /** The harness's own name for itself, or the key back when nobody has taught us one. */
@@ -124,7 +145,49 @@ export interface CardWaiting {
  */
 export const CardWaitingCtx = createContext<Record<string, CardWaiting>>({});
 
+/** The card's and the sheet's title: "Agent · {agent}" with a name, plain "Agent" without one. */
+export function agentLabel(agent: string | undefined): string {
+  return agent === undefined ? t("chat.card.agentPlain") : t("chat.card.agent", { agent });
+}
+
+/** What the subagent bottom sheet needs when a `task` card is tapped. */
+export interface SubagentTarget {
+  readonly cardKey: string;
+  /** Absent when the call named no agent type and no model; the card then reads plain "Agent". */
+  readonly agent?: string;
+  readonly summary: string;
+  readonly agentId?: string;
+  readonly status: ChatToolStatus;
+  readonly output?: string;
+}
+
+export interface SubagentSheetHandle {
+  readonly activeCardKey: string | null;
+  readonly open: (target: SubagentTarget) => void;
+  readonly sync: (target: SubagentTarget) => void;
+}
+
+/** Supplied by `SubagentSheet` on the pane route; `null` in unit tests that mount `ToolCard` bare. */
+export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
+
 // ---------- items ----------
+
+/**
+ * A step that is never folded: a delegated agent call, a question the agent put to the person, and
+ * the agent's own walky talky `send` or `reply` (its card carries the sent message and its receipt).
+ * `groupRuns` splits a run around it, and the stream draws it as a card even while tool calls are off.
+ *
+ * The walky test is `parseWalkyCommand`, the same parser `ToolCard` uses to pick its card, so the
+ * step that draws as a walky card is the step that stands alone. `who`, `status` and `inbox` stay
+ * ordinary commands: a received message has its own card already.
+ */
+export function standsAlone(item: ChatItem): boolean {
+  if (item.kind !== "tool") return false;
+  if (item.tool.kind === "task" || item.tool.kind === "question") return true;
+  const line = shellLineOf(item.tool);
+  const walky = line === null ? null : parseWalkyCommand(line);
+  return walky?.verb === "send" || walky?.verb === "reply";
+}
 
 /**
  * Split the stream into single items and runs of consecutive tool items.
@@ -135,6 +198,12 @@ export const CardWaitingCtx = createContext<Record<string, CardWaiting>>({});
  * ONE means every step folds, including a lone one, and that is how "tool calls off" is drawn
  * (Settings → Appearance). The stream then carries one summary line where the cards were, which is
  * the same treatment collie's History page gives a turn's steps — one idea, one look, two surfaces.
+ *
+ * AN AGENT CALL AND A QUESTION NEVER JOIN A FOLD. A delegated `task` carries a summary and, later,
+ * a report the person came for (its card opens the subagent sheet), and a `question` is an event
+ * the person must see. Folded in with 18 commands both were out of sight, and the fold's label did
+ * not count the agent. Each stands alone and splits the run around it: the steps before it fold
+ * as one group (or stand as single cards, by `minRun`), then the card, then the steps after it.
  */
 export function groupRuns(items: ChatItem[], minRun = 3): ChatItem[][] {
   const out: ChatItem[][] = [];
@@ -145,7 +214,10 @@ export function groupRuns(items: ChatItem[], minRun = 3): ChatItem[][] {
     run = [];
   };
   for (const item of items) {
-    if (item.kind === "tool" || item.kind === "thinking") run.push(item);
+    if (standsAlone(item)) {
+      flush();
+      out.push([item]);
+    } else if (item.kind === "tool" || item.kind === "thinking") run.push(item);
     else {
       flush();
       out.push([item]);
@@ -309,7 +381,7 @@ export function stepLine(call: ChatToolCall): StepLine {
       return { verb: t("chat.step.fetched"), subject: call.url, mono: true };
     // A sub-agent's name and a tool's own name are the harness's vocabulary, never a dictionary's.
     case "task":
-      return { verb: `${call.agent}:`, subject: call.summary, mono: false };
+      return { verb: call.agent === undefined ? `${t("chat.card.agentPlain")}:` : `${call.agent}:`, subject: call.summary, mono: false };
     // The plan's label is Collie's word; the count is two numbers and needs no translation.
     case "plan":
       return { verb: t("chat.card.plan"), subject: planCount(call), mono: false };
@@ -328,10 +400,12 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
   const waiting = useContext(CardWaitingCtx)[item.id];
   switch (item.kind) {
     case "user":
-      return <UserTurn text={item.text} ts={item.ts} />;
+      // A turn that opens with an envelope header is a CLAIM to be a message; only the pane's own log
+      // can make it one. The other user turns never subscribe to the log, so a poll redraws none of them.
+      return item.walky === undefined ? <UserTurn text={item.text} ts={item.ts} /> : <EnvelopeTurn text={item.text} ts={item.ts} header={item.walky} />;
     case "reply":
       // Agent prose: MarkdownText wears `font-content`, never the app face (DESIGN.md §5).
-      return <Growing partial={item.partial === true}><MarkdownText text={item.text} /></Growing>;
+      return <Growing partial={item.partial === true}><MarkdownText text={item.text} stretches /></Growing>;
     case "thinking":
       return (
         <Disclosure label={t("chat.card.thinking")} icon={ChevronRight}>
@@ -427,7 +501,7 @@ function Compacted({ item }: { item: Extract<ChatItem, { kind: "compacted" }> })
  * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
  * blue is "this is literal", the orange is "this is yours".
  */
-function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: PendingState }) {
+function UserTurn({ text, ts, pending, notInLog = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean }) {
   const time = ts && pending === undefined ? clockTimeOf(ts) : "";
   return (
     <div
@@ -444,6 +518,13 @@ function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: 
         {/* The transcript's own word for the reader, so History and Chat never disagree. */}
         {t("transcript.youLabel")}
         {time && <span className="font-normal tabular-nums opacity-80">{time}</span>}
+        {/* A turn that printed a walky talky header the bridge's log does not hold: still the plain turn, with a quiet word
+            beside the clock saying why it is not a card (lib/walky.ts, the cross-check). */}
+        {notInLog && (
+          <span data-slot="walky-not-in-log" className="font-normal normal-case tracking-normal opacity-80">
+            {t("walky.card.notInLog")}
+          </span>
+        )}
         {/* The clock takes the slot the time takes once the program's line is here, so the swap moves nothing. */}
         {pending !== undefined && (
           <span className="flex items-center gap-1 font-normal normal-case tracking-normal opacity-80">
@@ -459,6 +540,36 @@ function UserTurn({ text, ts, pending }: { text: string; ts?: string; pending?: 
       <p className="font-content whitespace-pre-wrap break-words text-sm">{text}</p>
     </div>
   );
+}
+
+/**
+ * A user turn whose first line is a walky talky envelope header. The header is only text an agent could
+ * have printed, so the card is drawn from the pane's own log, by id (`standingOf`):
+ * - the log holds the id: "Message from <label>", drawn from the LOG's row;
+ * - the log was read and lacks it: the plain turn, and after ONE more read of the list that still lacks
+ *   it, a quiet "no log record on this machine" beside the clock;
+ * - the log could not be read: the plain turn, claiming nothing.
+ *
+ * WHY THE WAIT. The log row and the typed line reach the phone through two reads that need not agree
+ * at the same instant, so the first poll that shows the turn may simply be early. The turn remembers
+ * the read count (`useWalkyReads`, bumped by the loader per answered read) at which it first saw
+ * itself absent, and marks only once the count has moved past it. A row that arrives in between turns
+ * the turn into the card; a turn that goes absent again starts the wait over.
+ */
+function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header: EnvelopeHeader }) {
+  const standing = standingOf(useWalkyLog(), header.id);
+  const self = useWalkySelf();
+  const reads = useWalkyReads();
+  const absent = standing.standing === "absent";
+  // The read count at which this turn first found itself absent, or null while it is not. Set while
+  // rendering (React's "adjust state when a value changes" form) so the first absent render and the
+  // note of it are the same render.
+  const [absentSince, setAbsentSince] = useState<number | null>(null);
+  if (absent && absentSince === null) setAbsentSince(reads);
+  else if (!absent && absentSince !== null) setAbsentSince(null);
+  // A held id that this pane SENT is not a message it received: a header that borrows it stays the plain turn.
+  if (standing.standing === "held" && directionOf(standing.row, self) === "received") return <WalkyCard row={standing.row} />;
+  return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 
 /** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */
@@ -557,6 +668,7 @@ const KIND_ICON = {
 function ToolHead({
   icon: Icon,
   label,
+  badge,
   children,
   trailing,
   status,
@@ -564,6 +676,8 @@ function ToolHead({
 }: {
   icon: LucideIcon;
   label: string;
+  /** A small word after the tool's name (the walky talky badge). */
+  badge?: ReactNode;
   children?: ReactNode;
   trailing?: ReactNode;
   status: ChatToolStatus;
@@ -573,6 +687,7 @@ function ToolHead({
     <div className="flex min-h-9 min-w-0 items-center gap-2 px-3 py-1.5 text-xs">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 font-medium">{label}</span>
+      {badge}
       <span className="flex min-w-0 flex-1 items-center">{children}</span>
       {trailing}
       <StatusSlot status={status} exitCode={exitCode} />
@@ -639,7 +754,7 @@ function PathText({ text }: { text: string }) {
         if (target === null) continue;
         const start = base + f.start;
         const end = base + f.end;
-        if (start > at) out.push(text.slice(at, start));
+        if (start > at) out.push(<WalkyIds key={`w${at}`} text={text.slice(at, start)} />);
         out.push(
           <a
             key={start}
@@ -659,10 +774,10 @@ function PathText({ text }: { text: string }) {
       base += row.length + 1;
     }
     if (out.length === 0) return null;
-    if (at < text.length) out.push(text.slice(at));
+    if (at < text.length) out.push(<WalkyIds key={`w${at}`} text={text.slice(at)} />);
     return out;
   }, [open, text]);
-  return <>{nodes ?? text}</>;
+  return <>{nodes ?? <WalkyIds text={text} />}</>;
 }
 
 /**
@@ -695,21 +810,117 @@ function WaitingArea({ waiting, line }: { waiting?: CardWaiting; line?: boolean 
   );
 }
 
-export function ToolCard({
-  tool,
-  status,
-  waiting,
-  preview,
-}: {
+interface ToolCardProps {
   tool: ChatToolCall;
   status: ChatToolStatus;
   waiting?: CardWaiting;
   preview?: boolean;
-}) {
+}
+
+/** What the walky talky layer adds to a tool card: the badge is always there, the receipt line only when the log vouches for it. */
+interface ToolWalky {
+  receipt: string | null;
+}
+
+/**
+ * The small "walky talky" word beside a tool's name, on a card that ran the walky talky CLI. It claims
+ * nothing about any message: it says which command this is.
+ */
+function WalkyBadge() {
+  return (
+    <Badge variant="outline" data-slot="walky-tool-badge" className="px-1.5 py-0 text-[10px] font-medium">
+      {t("walky.tool.badge")}
+    </Badge>
+  );
+}
+
+/** The one line a send or reply card shows, drawn from the LOG's row and in the words the composer's strip uses. */
+function WalkyReceiptLine({ text, className }: { text: string; className: string }) {
+  return (
+    <p data-slot="walky-receipt" className={cn("text-xs text-muted-foreground", className)}>
+      {text}
+    </p>
+  );
+}
+
+/**
+ * A tool card that ran `collie walky` (the shell line STARTS with it). Everything the card says about a
+ * message comes from the pane's log, never from the command's own text or its output:
+ * - `send` / `reply`: the output's first line is the new message's id. If the log holds it, one receipt
+ *   line: "Message to <the log's target>: <state>";
+ * - `inbox <id>`: if the log holds the id, the message's card under the tool card;
+ * - any other case, or an id the log lacks or could not vouch for: the plain card, plus the badge.
+ */
+function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCommand }) {
   useLocale();
+  const log = useWalkyLog();
+  const self = useWalkySelf();
+  const output = "output" in props.tool ? props.tool.output : undefined;
+  let receipt: string | null = null;
+  let inbox: WalkyRow | null = null;
+  if (command.verb === "send" || command.verb === "reply") {
+    const id = resultId(output);
+    const standing = id === null ? null : standingOf(log, id);
+    // A line "Message to <target>" is about a message this pane sent: a row that reached this pane is not one.
+    if (standing?.standing === "held" && directionOf(standing.row, self) === "sent") {
+      receipt = t("walky.composer.outcome", {
+        label: targetWord(standing.row.receipt.target),
+        state: stateWord(standing.row.receipt),
+      });
+    }
+  } else if (command.verb === "inbox" && command.id !== null) {
+    const standing = standingOf(log, command.id);
+    // `inbox` reads a message that came in; a row this pane sent has no card to show here.
+    if (standing.standing === "held" && directionOf(standing.row, self) === "received") inbox = standing.row;
+  }
+  const card = <ToolCardBody {...props} walky={{ receipt }} />;
+  if (inbox === null) return card;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {card}
+      <WalkyCard row={inbox} />
+    </div>
+  );
+}
+
+export function ToolCard(props: ToolCardProps) {
+  const line = shellLineOf(props.tool);
+  const command = line === null ? null : parseWalkyCommand(line);
+  if (command === null) return <ToolCardBody {...props} />;
+  return <WalkyToolCard {...props} command={command} />;
+}
+
+function ToolCardBody({
+  tool,
+  status,
+  waiting,
+  preview,
+  walky,
+}: ToolCardProps & { walky?: ToolWalky }) {
+  useLocale();
+  const subagentSheet = useContext(SubagentSheetCtx);
   // `data-waiting` lets a host find the card of the thing it is waiting on (scroll to it, see if it
   // is on screen).
   const anchor = waiting?.id;
+  const subagentCardKey = anchor ?? (tool.kind === "task" ? `${tool.agent ?? ""}:${tool.summary}` : "");
+  const taskAgent = tool.kind === "task" ? tool.agent : undefined;
+  const taskSummary = tool.kind === "task" ? tool.summary : "";
+  const taskAgentId = tool.kind === "task" ? tool.agentId : undefined;
+  const taskOutput = tool.kind === "task" ? tool.output : undefined;
+  const isActiveSubagent =
+    tool.kind === "task" && subagentSheet !== null && subagentSheet.activeCardKey === subagentCardKey;
+  const syncSubagent = subagentSheet?.sync;
+  useEffect(() => {
+    if (!isActiveSubagent || syncSubagent === undefined) return;
+    syncSubagent({
+      cardKey: subagentCardKey,
+      agent: taskAgent,
+      summary: taskSummary,
+      agentId: taskAgentId,
+      status,
+      output: taskOutput,
+    });
+  }, [isActiveSubagent, syncSubagent, subagentCardKey, taskAgent, taskSummary, taskAgentId, status, taskOutput]);
   // A card waiting on the reader recolours the edge it always has (DESIGN.md §2): the border is in
   // every card's base, so the body arriving changes paint, not the box.
   const held = waiting?.body !== undefined && "border-status-blocked";
@@ -741,7 +952,13 @@ export function ToolCard({
     case "execute":
       return (
         <Card data-waiting={anchor} className={cn("gap-0 py-0", held)}>
-          <ToolHead icon={SquareTerminal} label={t("chat.card.run")} status={status} exitCode={tool.exitCode}>
+          <ToolHead
+            icon={SquareTerminal}
+            label={t("chat.card.run")}
+            badge={walky && <WalkyBadge />}
+            status={status}
+            exitCode={tool.exitCode}
+          >
             {tool.background && (
               <Badge variant="outline" className="mr-1.5 shrink-0 text-muted-foreground">
                 {t("chat.card.background")}
@@ -751,6 +968,7 @@ export function ToolCard({
               <span className="font-content min-w-0 truncate text-muted-foreground">{tool.description}</span>
             )}
           </ToolHead>
+          {walky?.receipt != null && <WalkyReceiptLine text={walky.receipt} className="px-3 pb-1.5" />}
           <CommandBlock command={tool.command} output={tool.output} preview={preview} />
           <WaitingArea waiting={waiting} />
         </Card>
@@ -784,7 +1002,7 @@ export function ToolCard({
           : tool.kind === "fetch"
             ? t("chat.card.fetch")
             : tool.kind === "task"
-              ? t("chat.card.agent", { agent: tool.agent })
+              ? agentLabel(tool.agent)
               : tool.kind === "other"
                 ? tool.name
                 : tool.kind === "delete"
@@ -823,6 +1041,20 @@ export function ToolCard({
           </span>
         );
       const body = (tool.kind === "task" || tool.kind === "other") && tool.summary.includes("\n") ? tool.summary : null;
+      const onTap =
+        tool.kind === "task" &&
+        subagentSheet !== null &&
+        (tool.agentId !== undefined || output !== undefined || status === "running")
+          ? () =>
+              subagentSheet.open({
+                cardKey: subagentCardKey,
+                agent: tool.agent,
+                summary: tool.summary,
+                agentId: tool.agentId,
+                status,
+                output,
+              })
+          : undefined;
       return (
         <LineTool
           anchor={anchor}
@@ -833,6 +1065,9 @@ export function ToolCard({
           body={body}
           waiting={waiting}
           quiet={tool.kind === "other" && tool.quiet === true}
+          onTap={onTap}
+          badge={walky && <WalkyBadge />}
+          note={walky?.receipt}
         >
           {subject}
         </LineTool>
@@ -1048,6 +1283,9 @@ function LineTool({
   body,
   waiting,
   quiet,
+  onTap,
+  badge,
+  note,
   children,
 }: {
   anchor?: string;
@@ -1059,17 +1297,29 @@ function LineTool({
   waiting?: CardWaiting;
   /** Bookkeeping (memory, phase): same row, lower contrast, so a run of them recedes. */
   quiet?: boolean;
+  onTap?: () => void;
+  /** A small word after the label (the walky talky badge). */
+  badge?: ReactNode;
+  /** One quiet line under the row (the walky talky receipt). */
+  note?: string | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const interactive = onTap !== undefined || output !== undefined;
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className={cn("shrink-0 font-medium text-muted-foreground", quiet && "opacity-60")}>{label}</span>
-      <span className={"flex min-w-0 flex-1 items-center"}>{children}</span>
+      {badge}
+      <span className="flex min-w-0 flex-1 items-center">{children}</span>
       <StatusSlot status={status} />
-      {output !== undefined && (
-        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+      {interactive && (
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            onTap === undefined && open && "rotate-90",
+          )}
+        />
       )}
     </>
   );
@@ -1079,11 +1329,11 @@ function LineTool({
       data-quiet={quiet || undefined}
       className={cn("rounded-md border border-transparent", waiting?.body !== undefined && "border-status-blocked bg-card")}
     >
-      {output !== undefined ? (
+      {interactive ? (
         <button
           type="button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          aria-expanded={onTap === undefined ? open : undefined}
+          onClick={() => (onTap !== undefined ? onTap() : setOpen(!open))}
           className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {row}
@@ -1092,7 +1342,8 @@ function LineTool({
         <div className="flex min-h-7 min-w-0 items-center gap-2 px-2 text-xs">{row}</div>
       )}
       {body && <p className="font-content whitespace-pre-wrap break-words px-2 pb-1.5 text-sm">{body}</p>}
-      {open && output !== undefined && (
+      {note != null && <WalkyReceiptLine text={note} className="px-2 pb-1.5" />}
+      {onTap === undefined && open && output !== undefined && (
         <pre className="mx-2 mb-2 max-h-80 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none] whitespace-pre-wrap break-words">
           <PathText text={output} />
         </pre>
@@ -1127,7 +1378,9 @@ function CommandBlock({ command, output, preview }: { command: string; output?: 
         </CopyableBlock>
         {open && lines.length > 0 && (
           <CopyableBlock text={output ?? ""} label={t("copyable.output")}>
-            <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>{shown.join("\n")}</pre>
+            <pre className={cn("m-0 overflow-x-auto rounded-b-md border-t border-white/10 px-2.5 py-2 font-mono text-[11px] leading-[1.4] whitespace-pre", MIRROR_SPACE, MIRROR_INVERT)}>
+              <WalkyIds text={shown.join("\n")} onDark />
+            </pre>
           </CopyableBlock>
         )}
       </div>

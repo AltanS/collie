@@ -9,6 +9,8 @@ import { dropTaskChecklist } from "./task-checklist";
 import { detectWizard, detectWizardRegion } from "./wizard";
 import { detectPromptSelect } from "./prompt-select";
 import { lineText } from "./markers";
+import { detectQuestionTabs } from "../opencode/question-tabs";
+import { wizardsEqual, wizardsSameIdentity } from "../wizard-model";
 
 // Anchored on this file's own directory (NOT `new URL(..., import.meta.url)`, which Vite statically
 // rewrites into a root-relative asset path) so the fixtures resolve regardless of the run cwd.
@@ -39,7 +41,7 @@ describe("detectWizard — question phase", () => {
       { label: "Workflow", answered: false, current: false },
     ]);
     expect(model!.question).toBe("Which focus area should we work on?");
-    // "4. Type something." is a free-text row → stays with the composer, not a button.
+    // "4. Type something." is the answer field → modelled as `field`, never an option button.
     expect(model!.options.map((o) => o.label)).toEqual(["Parser", "UI", "Tests", "Chat about this"]);
     // Wizard digits fire ALONE (instant select + advance) — no trailing Enter.
     expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"], ["5"]]);
@@ -288,5 +290,114 @@ describe("detectWizard — a long question at a narrow width (Claude Code 2.1.30
   it("lifts as a wizard block through the adapter", () => {
     const kinds = buildBlocks(fixtureLines(FIXTURE), { agent: "claude" }).map((b) => b.kind);
     expect(kinds).toContain("wizard");
+  });
+});
+
+// The step's `Type something.` field (ADR 0113, grammar/ASK_FIELD_NOTES.md § Wizard), over the 2.1.299
+// captures of a three-question wizard: modelled as a field, never an option, in every state the
+// answer recipe walks it through.
+describe("detectWizard — the answer field", () => {
+  const step = (name: string) => {
+    const model = detectWizard(fixtureLines(`claude--v2299-ask-field-${name}.txt`));
+    if (model?.phase !== "question") throw new Error(`${name} is not a wizard question step`);
+    return model;
+  };
+
+  it("the field's digit on an empty field: focused and empty, the step still claimed", () => {
+    expect(step("wizard-focused-empty").field).toEqual({
+      key: "3",
+      focused: true,
+      text: "",
+      chosen: false,
+      pointer: "on",
+    });
+  });
+
+  it("typed into: the field holds the words", () => {
+    expect(step("wizard-focused-typed").field).toMatchObject({ focused: true, text: "Mango", chosen: false });
+  });
+
+  it("a step answered by typing, revisited: the ✔ is `chosen`, not part of the text", () => {
+    expect(step("wizard-revisit-typed").field).toEqual({
+      key: "3",
+      focused: false,
+      text: "Mango",
+      chosen: true,
+      pointer: "above",
+    });
+  });
+
+  it("revisited and focused: the caret cell's space and the ✔ are stripped", () => {
+    expect(step("wizard-revisit-focused").field).toEqual({
+      key: "3",
+      focused: true,
+      text: "Mango",
+      chosen: true,
+      pointer: "on",
+    });
+  });
+
+  it("revisited and cleared: the placeholder reads as empty, the ✔ stays", () => {
+    expect(step("wizard-revisit-cleared").field).toMatchObject({ focused: true, text: "", chosen: true });
+  });
+
+  it("the field is never an option, and the options keep their digits", () => {
+    for (const name of [
+      "wizard-focused-empty",
+      "wizard-focused-typed",
+      "wizard-revisit-typed",
+      "wizard-revisit-focused",
+      "wizard-revisit-cleared",
+    ]) {
+      const model = step(name);
+      expect(model.options.map((o) => [o.label, o.keys]), name).toEqual([
+        ["Apple", ["1"]],
+        ["Pear", ["2"]],
+        ["Chat about this", ["4"]],
+      ]);
+    }
+  });
+
+  it("the review step that lists typed answers is still the review", () => {
+    const model = detectWizard(fixtureLines("claude--v2299-ask-field-wizard-review-typed.txt"));
+    expect(model?.phase).toBe("review");
+  });
+});
+
+describe("wizardsSameIdentity — the answer recipe's mid-flight comparator", () => {
+  const model = (name: string) => {
+    const found = detectWizard(fixtureLines(name));
+    if (!found) throw new Error(`${name} did not detect a wizard`);
+    return found;
+  };
+  const typed = model("claude--v2299-ask-field-wizard-revisit-typed.txt");
+  const focused = model("claude--v2299-ask-field-wizard-revisit-focused.txt");
+  const cleared = model("claude--v2299-ask-field-wizard-revisit-cleared.txt");
+
+  it("walking onto the field and clearing it keep the step's identity, and change what it commits on", () => {
+    for (const [a, b] of [
+      [typed, focused],
+      [focused, cleared],
+      [typed, cleared],
+    ] as const) {
+      expect(wizardsSameIdentity(a, b)).toBe(true);
+      expect(wizardsEqual(a, b)).toBe(false);
+    }
+  });
+
+  it("a different question is not the same identity", () => {
+    expect(wizardsSameIdentity(typed, model("claude--wizard-q1.txt"))).toBe(false);
+    expect(wizardsSameIdentity(typed, model("claude--v2299-ask-field-wizard-focused-empty.txt"))).toBe(false);
+  });
+
+  it("an opencode wizard step carries no coreSignature and compares exactly as wizardsEqual", () => {
+    const region = detectQuestionTabs(fixtureLines("oc--question--two--q1.txt"));
+    if (region?.kind !== "wizard" || region.model.phase !== "question") throw new Error("no opencode wizard step");
+    const oc = region.model;
+    expect(oc.coreSignature).toBeUndefined();
+    expect(wizardsSameIdentity(oc, { ...oc })).toBe(true);
+    const moved = { ...oc, signature: `${oc.signature} ` };
+    expect(wizardsEqual(oc, moved)).toBe(false);
+    expect(wizardsSameIdentity(oc, moved)).toBe(false);
   });
 });

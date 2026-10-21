@@ -1,6 +1,7 @@
 import type { StyledLine } from "../../blocks";
 import {
   classifyFooter,
+  hasQuestionMark,
   isAlienBuffer,
   isBlank,
   isHorizontalRule,
@@ -153,7 +154,7 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
       continue;
     }
     if (
-      t.includes("?") ||
+      hasQuestionMark(t) ||
       /^Do you\b/i.test(t.trim()) ||
       /^Question\s+\d/i.test(t.trim()) ||
       /^Requesting permission\b/i.test(t.trim())

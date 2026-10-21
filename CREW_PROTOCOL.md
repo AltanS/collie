@@ -242,7 +242,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `GET` | `/crew/v1/snapshot` | `GET /api/snapshot` (`bridge/server.ts:177`) | **merged** — the only merged route |
 | `GET` | `/crew/v1/pane/:id` | `GET /api/pane/:id` (`:276`) | proxied byte-for-byte |
 | `GET` | `/crew/v1/pane/:id/history` | `GET …/history` (`:277`) | proxied byte-for-byte |
-| `GET` | `/crew/v1/pane/:id/chat` | `GET …/chat` | proxied byte-for-byte — additive-optional (§7.1), added 2026-09-30 (M41/08). The live half of `history`: the same session log on the member that owns the pane, asked "anything after this?" rather than "show me this". The query (`after`, `before`, `limit`) rides through untouched, and `if-none-match` is already forwarded (§6), so the peer answers its own 304 and the lead re-emits it. A read, so it is attempted against a stale member rather than refused (§10.3). A lead that predates it never calls it, and a peer that predates it answers **404** to a lead that does — which the phone must read as "update this member", never as an empty session |
+| `GET` | `/crew/v1/pane/:id/chat` | `GET …/chat` | proxied byte-for-byte — additive-optional (§7.1), added 2026-09-30 (M41/08). The live half of `history`: the same session log on the member that owns the pane, asked "anything after this?" rather than "show me this". The query (`after`, `before`, `limit`) rides through untouched, and `if-none-match` is already forwarded (§6), so the peer answers its own 304 and the lead re-emits it. A `no-session` answer may carry `detail: "shared-folder"` (additive-optional, added 2026-10-19, #508): the member found another pane of the same harness in the pane's folder and would not guess which log is this pane's. The lead passes it through untouched (an `available: false` answer is not masked), and a phone or member that predates it reads the plain `no-session`. A read, so it is attempted against a stale member rather than refused (§10.3). A lead that predates it never calls it, and a peer that predates it answers **404** to a lead that does — which the phone must read as "update this member", never as an empty session |
 | `GET` | `/crew/v1/pane/:id/changes` | `GET …/changes` | proxied byte-for-byte — additive-optional (§7.1). Read-only git over the folder of the pane's WORKSPACE on the machine that owns it (ADR 0065); the query (`depth`, `nested`, `repo`, `path`, and `view=commit` for the repo's last commit) rides through untouched. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/workspace/:id/changes` | `GET …/workspace/:id/changes` | proxied byte-for-byte — additive-optional (§7.1). The same list asked by workspace rather than by pane (ADR 0065), with the same query. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/pane/:id/files` | `GET …/files` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-05 (M45/03). One folder (`?dir=`) or one text file (`?path=`) under the same root the pane's Changes list reads, off **the member's own disk** (ADR 0083); the query rides through untouched. A READ for forwarding (attempted against a stale member, read budget, audited on neither side), but the member answers it only for a device its **own** device policy authorises, exactly as for a write (§12): `crewGate` takes its write branch for it. A lead that predates it never calls it, and a peer that predates it answers **404** to a lead that does, which the phone must read as "update this member", never as a missing file. A refused path is the member's own `404 { "error": "unknown-path" }`, told apart by its body. A listing row may carry `ignored: true` (additive-optional, added 2026-10-05): git says the entry is ignored in the repository that holds the folder, asked once per listing by the member over its own disk. A member that predates it, one with no repository there, and one whose git did not answer in time all send no field, and the phone then hides nothing for it. The phone hides flagged rows by default; it is a view filter, and an ignored file still reads |
@@ -258,6 +258,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/pane/:id/answer` | `POST …/answer` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0100). A person's tap answers one open ask of a pane that carries asks as data, by `requestId`, `askId` and `revision`. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The answer receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as "this answer did not land", never as taken |
 | `POST` | `/crew/v1/pane/:id/send\|abort` | `POST …/send`, `POST …/abort` | forwarded, additive-optional (§7.1), added 2026-10-12 (ADR 0101). A send or a stop on a pane that takes guarded controls, by `requestId` and exactly one of `turnId` and `askId`: the turn the phone last showed, or an open ask. A stale name is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates them never calls them, and a peer that predates them answers 404, which the phone reads as stale, never as done |
 | `POST` | `/crew/v1/pane/:id/action` | `POST …/action` | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 07). A tap on one of the buttons a durable agent lists for a pane, by `requestId` and `actionId`, with the `turnId` the phone saw when it names one: a turn that moved is refused with 409 and the current `turnId` and `askIds`, before anything reaches the durable agent. A WRITE: refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). The control receipt lives on **the member that owns the pane**, so a retry with the same request id replays there; the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404, which the phone reads as a refusal, never as done |
+| `POST` | `/crew/v1/pane/:id/walky` | none: the lead's own call, beside `GET /api/pane/:id/walky` (`WALKY_PANE_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-17 (M62). A walky talky message the LEAD routes to the member that owns the pane, `:id` the pane id or `all` for every agent pane there, with the lead's attestation in the body (§21). A WRITE on the write budget, refused before it is attempted when the member is not taking writes (§10.3). Never a phone's: the browser path answers only the GET on this path, and the member answers the POST only from its lead, through walky's own handler and never through the reply handler. It is not behind the member's device gate, because no phone stands behind it and the attestation is what admits it. Audited `walky.deliver` on both sides (§12). A peer that predates it answers 404, which the lead writes as `refused: older member` in the receipt |
 | `POST` | `/crew/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/crew/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/crew/v1/space/:id/rename` | `POST /api/space/:id/rename` (`SPACE_ACTION_ROUTE`) | forwarded, additive-optional (§7.1), added 2026-10-13 (M53 spec 05). Renames a space on a durable agent that declares `renameSpace`; a member that predates it answers 404. |
@@ -274,8 +275,12 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/crew/v1/launch/check` | `POST /api/launch/check` | forwarded, additive-optional (§7.1), since 1.19.0 (ADR 0095, amendment). A READ, attempted even against a member that is not taking writes (§10.3): `{ run }` answers `{ ok: true, noPrompts, problem? }` from that member's own character rule and no-prompts scan. Runs nothing, stores nothing, writes no audit line; a peer that predates it answers 404 |
 | `POST` | `/crew/v1/launch/recent/remove` | `POST /api/launch/recent/remove` | forwarded, additive-optional (§7.1), since 1.19.0 (ADR 0095). A WRITE on that member's own `commands-recent.json`: `{ line }` removes one line from its one-off command history. Refused before it is attempted when the member is not taking writes (§10.3). Nothing is copied between machines; a peer that predates it answers 404 |
 | `POST` | `/crew/v1/launch/recent/clear` | `POST /api/launch/recent/clear` | forwarded, additive-optional (§7.1), since 1.19.0 (ADR 0095). Clears that member's one-off command history, as above |
+| `GET` | `/crew/v1/sent` | `GET /api/sent` | forwarded, additive-optional (§7.1), since 1.23.0 (ADR 0107). A READ, attempted even against a member that is not taking writes (§10.3): that member's own Sent record, `{ entries, more, off, machines }`, off its own `sent.jsonl`. The lead masks every `line` again before the phone reads it (§9.1). A lead answering `scope=all` asks each member this read with `scope=here`, 2 s each, and keeps no copy; a peer that predates it answers 404, which the lead reports as `old_version` |
+| `POST` | `/crew/v1/sent/remove` | `POST /api/sent/remove` | forwarded, additive-optional (§7.1), since 1.23.0 (ADR 0107). A WRITE on that member's own `sent.jsonl`: `{ id, requestId }` removes every record of one line, and a missing id answers ok. Refused before it is attempted when the member is not taking writes (§10.3). Audited as `sent.remove` on both sides, with no text; a peer that predates it answers 404 |
+| `POST` | `/crew/v1/sent/clear` | `POST /api/sent/clear` | forwarded, additive-optional (§7.1), since 1.23.0 (ADR 0107). Empties that member's `sent.jsonl`, as above, audited as `sent.clear` |
 | `GET` | `/crew/v1/folders` | `GET /api/folders` | forwarded — additive-optional (§7.1), added 2026-09-27 (M40/02, #289). That member's own new-space folder list, `{ recent, favourites, home }` off its own `folders.json`: a folder exists on one machine, so the list is read where the folder is and the lead keeps no copy. A lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does, which the phone reads as "no list" and never as an error |
 | `POST` | `/crew/v1/folders/star` | `POST /api/folders/star` | forwarded — additive-optional (§7.1), same pairing as above. A WRITE on that member's own `folders.json`, `{ folder, starred }`, refused before it is attempted when the member is not taking writes (§10.3) and by the member's own device gate (§12). Not audited on either side: it is a preference, like `notifications/prefs`, and touches no terminal |
+| `GET` | `/crew/v1/folders/browse` | `GET /api/folders/browse` | proxied byte-for-byte — additive-optional (§7.1), added 2026-10-19 (#467). The New page's folder browser: the sub-folders of one folder under **the member's own home**, by name, with a `git` bit, off its own disk (`bridge/folder-browse.ts`, ADR 0083's bound with home as the root); `?path=` rides through untouched and the member resolves it by its own New page rule. A READ for forwarding (attempted against a stale member, read budget, audited on neither side, never masked: names only), answered only for a device the member's **own** device policy authorises, as the Files read is (§12, `crewGate`'s write branch). A refusal is the Files view's `404 { "error": "unknown-path" }`; a peer that predates it answers a plain 404, which the phone reads as "update this member" |
 | `GET` | `/crew/v1/blobs/:hash` | `GET /api/blobs/:hash` | proxied byte-for-byte — additive-optional (§7.1). The image an agent's own journal named, off the disk that holds it; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/crew/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
 | `GET` | `/crew/v1/hello` | — (new) | consumed by the lead: liveness + version + member id |
@@ -442,6 +447,8 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/secret` | the lead | Hands a peer the rotated crew secret (§8.4). Refused unless the caller is *this collie's own lead*: the secret is crew-wide, so any other admitted member accepting one could lock the lead out of its own crew. Authenticated by the **outgoing** secret and carrying the incoming one — there is no instant in which both are accepted. |
 | `POST` | `/crew/v1/lead` | the member being promoted | "The member calling you is the lead now" (§14). The old lead demotes itself and answers with its roster (the only way the new lead can pin members it has never spoken to); a peer re-pins and keeps its id and the crew secret. A member may only claim leadership **for itself** — and a claim is **not self-authorising**: the lead demotes only against a live operator approval (§14). |
 | `POST` | `/crew/v1/leave` | any member | The caller removes **itself** from this collie's roster (§8.4). The member id is the admitted one, never a body field, and a second call is still `200` — the operator's question has the same answer either way. |
+| `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
+| `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
 | `POST` | `/crew/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
 | `POST` | `/crew/v1/warrant` | the lead | Delivers or refreshes the warrant naming the crew's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `crew status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/crew/v1/lead` is one fact arriving at two kinds of recipient. |
@@ -449,8 +456,8 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 Everything except `enroll` sits behind the same two factors as the rest of the prefix, and each
 carries a role check on top: *admitted* and *allowed to do this* are different questions.
 
-**Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`
-and, since 2026-08-20, `warrant` and `takeover`. It is exactly the routes that travel **peer → lead**, the one
+**Which routes may be authenticated by a §8.6 signature** is a closed set — `leave`, `lead`, `hello`,
+since 2026-08-20 `warrant` and `takeover`, and since 2026-10-17 `walky` (§21). It is exactly the routes that travel **peer → lead**, the one
 direction where the transport cannot pin (§8.1), and `warrant` joined it for the delivery that
 matters most: a new lead telling the old one that the crown has moved (§18.12). The proxy surface is
 not on the list and must not be — those calls run lead → peer over a pinned handshake, and admitting a
@@ -483,7 +490,8 @@ Every request on a crew link, and every response:
 | `X-Crew-Member: <member-id>` | both | Who is speaking. On a request, the lead's id; on a response, the peer's. Informational — identity is proven by the pinned certificate, never by this header. |
 | `X-Crew-Device: <device-id>` | request | The operator's device identity, forwarded for the peer's audit trail (§12). Absent when the lead's device gate is off. Printable ASCII as itself, any other id in RFC 8187 form (§12). |
 | `X-Crew-Preflight: fresh` | request | **Optional**, added 2026-09-04 (§19). On `GET /crew/v1/snapshot` only: a REQUEST that the answering member re-run its own `collie update --check --local` before it answers. `fresh` is the only value with meaning; anything else reads as absent. A member that ignores it is a **correct member** — its answer is then simply older, and `asOf` says so. Honoured at most once per `PREFLIGHT_TTL_MS` per member. |
-| `X-Crew-Lead-Release: <x.y.z>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: the bare version the LEAD is itself running, sent only while that version is a strict release and the lead's own health gate has settled it. Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the receiving member does nothing. It is a statement about the sender and carries no ref, no URL and no command. |
+| `X-Crew-Lead-Release: <x.y.z>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: the bare version the LEAD is itself running, sent only while that version is a strict release and the lead's own health gate has settled it. Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the receiving member does nothing. It is a statement about the sender and carries no ref, no URL and no command. *(Amended 2026-10-18, ADR 0110: an Edge build `x.y.z-edge.N` is stated too; see §20, "Two release lines".)* |
+| `X-Crew-Lead-Line: <line>[;<step>]` | request | **Optional**, added 2026-10-18 (§20, ADR 0110). On `GET /crew/v1/snapshot` only, and only beside `X-Crew-Lead-Release`: the lead's release line, `stable` or `edge`, and, when the release it states is where its last run landed, that run's step, `rollback` or `switch`. Absent means `stable` with no step. It carries no ref, no URL and no command. |
 | `X-Crew-Update-Turn: <member-name>;<run-id>` | request | **Optional**, added 2026-09-04 (§20). On `GET /crew/v1/snapshot` only: who may take that release now, and the id of the `UpdateRun` the operator confirmed on the lead. Sent to **at most one member at a time**. A member ignores a turn that does not name itself. Absent means it is not this member's turn. |
 | `X-Crew-Received-At` | response | Omitted deliberately. **A peer's clock is never trusted for freshness** — the lead stamps its own receipt time (§10). |
 
@@ -1111,10 +1119,12 @@ travel it are the most consequential in the protocol: `leave` removes a member f
 speak for any other. The second factor is therefore re-established over material both sides already
 pinned — no new key, no new trust, the same guarantee the handshake gives the other way.
 
-**`POST /crew/v1/leave`, `POST /crew/v1/lead` and `POST /crew/v1/warrant` MUST carry a signature.**
+**`POST /crew/v1/leave`, `POST /crew/v1/lead`, `POST /crew/v1/warrant` and `POST /crew/v1/walky` MUST carry a signature.**
 `GET /crew/v1/hello` MAY, and does when a verb sends it, so `collie crew status` and `collie
 reconnect` can probe a lead at all. (`warrant` joined the set on 2026-08-20: §18.12's deposition
-travels peer → lead, into a listener that pins nothing inbound.) Nothing else may: the proxy surface
+travels peer → lead, into a listener that pins nothing inbound. `walky` joined it on 2026-10-17: a
+member's walky talky message travels the same direction, and the signature is what names the member
+that sent it, §21.) Nothing else may: the proxy surface
 (§5) runs lead → peer over a pinned handshake, and hashing a body to verify a signature there would
 pull a streamed upload (§13) into memory on the security path. `/crew/v1/enroll` cannot — at that
 instant nobody has pinned the caller (§8.2).
@@ -1143,6 +1153,10 @@ instant nobody has pinned the caller (§8.2).
   counter that resets on restart is no counter and every membership verb restarts this collie. The
   floor moves **before** the request is handled. It is advanced only for the membership routes, which
   are the state-changing ones — a replayed `hello` changes nothing and is bounded by the skew window.
+  `walky` does not advance it either (§21): its message id is its replay key, and a replay inside the
+  window is answered with the receipts already stored and types nothing. A member may send several
+  messages close together from two panes, and a floor would refuse the later of any two that share a
+  stamp.
 - **A failure at any step is the uniform 401** of §8.1 — indistinguishable from a wrong secret, an
   unpinned certificate, or an unknown member. The signature is checked **before** the timestamp, so a
   caller who cannot sign learns nothing about this collie's clock or about what it has already seen.
@@ -1340,6 +1354,9 @@ prevents (`web/src/lib/api.ts:201-203`).
   buttons the durable agent of a durable pane lists, at most four, each with an `id`, a `label` and optional
   `icon`, `busy` and `disabled`. The merge passes it through like `asks` and `turnId`, and a lead that
   predates it does the same, so the phone draws no durable agent buttons for a member it cannot read.
+- **A pane may carry `instance`** (additive-optional, §7.1, added 2026-10-18): its walky talky
+  instance token, four characters of `[a-z0-9]`; the merge keeps it only in that form (§21, "Pane
+  instances").
 
 **The merged `agents` and `shellPanes` run in place order, never by status.** The lead's panes come
 first, then each peer's in member-id order. Inside one machine the order is workspace number, then
@@ -1606,7 +1623,7 @@ federation code exists to break it.
 | Push payload | unchanged — no `host` field, mirroring how `session` is stamped only for non-primary | `bridge/push.ts:124-131` |
 | Poll cadence | unchanged — **no second timer, no peer sweep**, same idle relaxation. Amended on purpose 2026-10-05: the one interval runs at the fast cadence for `HOT_POLLS` polls after an input or a new agent pane with no session (`ARCHITECTURE.md` §5), solo or not, and names no crew state | `bridge/event-poker.ts`, `bridge/config.ts:212-213` |
 | Audit line bytes | unchanged — `host` is omitted, not null, exactly as `session`/`device` are today | `bridge/audit.ts:55-61` |
-| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state. Amended on purpose 2026-10-05 (ADR 0084): `machine-history.json` is written from the tick at most once every five minutes once a minute is recorded, and `machine-alerts.json` only after the operator sets the first rule | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts`, `bridge/machine-history.ts`, `bridge/machine-alerts.ts` |
+| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state. Amended on purpose 2026-10-05 (ADR 0084): `machine-history.json` is written from the tick at most once every five minutes once a minute is recorded, and `machine-alerts.json` only after the operator sets the first rule. Amended on purpose 2026-10-17 (ADR 0107): `sent.jsonl` is written only after the first shell line or one-off run the skip rules keep, and never with `COLLIE_SENT=off` | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts`, `bridge/machine-history.ts`, `bridge/machine-alerts.ts`, `bridge/sent.ts` |
 | Ports opened | exactly one, loopback, as today. The standby door's second listener (§18.15) is bound only when `COLLIE_STANDBY_PORT` is set **and** a trust store exists, which a solo instance has neither of | `bridge/config.ts:210-211`, `bridge/crew/standby.ts` |
 
 **Why `servers` is optional-and-absent rather than always-present.** An always-present field — even a
@@ -1683,7 +1700,8 @@ happened on the peer's terminals.
 - **A peer is never asked to trust the lead's authorisation decision in place of its own.** The peer
   applies its own write-level checks to a crew request; the lead's gate does not stand in for them.
 - **One read borrows the write's device check** (added 2026-10-05, ADR 0083): `files` on the pane and
-  workspace routes, and `files/image` beside them (added 2026-10-07, ADR 0090). It is still a read
+  workspace routes, `files/image` beside them (added 2026-10-07, ADR 0090), and `folders/browse` (added
+  2026-10-19, #467), which lists folder names under the member's home on the same bound. It is still a read
   on the link (forwarded on the read budget, audited on neither side), but the peer answers it only
   when `X-Crew-Device` names a device its own allowlist holds, the same branch of `crewGate` a write
   takes. Additive inside protocol version 2: the routes are new, so no request that crossed the link
@@ -3136,11 +3154,12 @@ member**, and every guard below is evaluated on the member's own side.
 
 Each is a refusal with a recorded reason, and each is on the member:
 
-1. **Release builds only.** Its own version must be a strict release. A `-dev+` build never
-   self-levels, full stop.
+1. **Release builds only.** Its own version must be a strict release (or, since 2026-10-18, an Edge
+   build). A `-dev+` build never self-levels, full stop.
 2. The header must be **present and a strict release**.
-3. **Strictly higher**, by semver. Equal is nothing; lower is nothing, ever. There is no downgrade
-   path on this link and there will not be one.
+3. **Strictly higher**, by semver. Equal is nothing; lower is nothing. *(Amended 2026-10-18, ADR
+   0110: lower is taken in exactly two cases, the lead's rollback and the lead's line switch back to
+   Stable, both named by `X-Crew-Lead-Line`. See "Two release lines" below.)*
 4. **Not a major crossing.** ADR 0020's consent is a named operator choice and a header is not one.
 5. **Not a tag it already rolled back from in this run** — keyed by **(tag, run id)** in its own
    `<state dir>/update.json`. A new run id, which only a fresh operator confirm produces, permits
@@ -3247,9 +3266,421 @@ member backwards is a lead that could move it anywhere, which is the credential 
 §7.1 makes the resulting skew harmless, and the remedy is `collie crew update <member>` from the
 lead, which pushes the lead's own commit over the operator's SSH.
 
+*(Amended 2026-10-18, ADR 0110.)* The gap narrows to one case. A lead's rollback through the
+updater (`collie update --rollback`, or Roll back on the phone) and a lead's switch back to Stable
+now step the members down with it, under the rules in "Two release lines". A lead whose files were
+put back by hand, outside the updater, writes no run with a step, so its members still stay ahead,
+and the remedy above still applies. The step is still not a credential: it names one of two
+versions the lead has itself just landed on, the member checks the tag upstream and behind its own
+preflight, and the member never takes a version its lead does not run.
+
+### Two release lines *(added 2026-10-18, ADR 0110)*
+
+A machine is on one of two release lines. **Stable** takes strict releases only, as before.
+**Edge** also takes `x.y.z-edge.N` builds, which are GitHub pre-releases cut from the same tree. The
+lead's line is the crew's line.
+
+**What the lead sends.** `X-Crew-Lead-Release` now states an Edge build as well as a strict release,
+under the same settled rule. Beside it, and never without it, the lead sends `X-Crew-Lead-Line`:
+
+| Value | Meaning |
+|---|---|
+| `stable` | the lead is on Stable; the member takes strict releases only |
+| `edge` | the lead is on Edge; the member may take an Edge build |
+| `stable;rollback`, `edge;rollback` | the lead's last run was a rollback and it landed on the stated release |
+| `stable;switch` | the lead's last run was a switch back to Stable and it landed on the stated release |
+
+The step rides only while the release the lead states is where that run landed: the run is `done`
+and its `to` is that release. Any later run on the lead clears it.
+
+**What the member decides.** The guards above hold, with three changes, all on the member:
+
+1. A stated Edge build is taken only when the header says `edge`. Without the header, or with
+   `stable`, an Edge build is refused as `lead-states-nothing`.
+2. A lower stated release is taken only when the header names a step. Without a step it is refused
+   as `not-higher`, as before. Equal is still nothing.
+3. A step down with a run id the member has not stepped for yet skips the hourly limit once. The
+   same run id never skips it twice.
+
+The member takes the lead's line for its own, in its own `update-line.json`. On a `rollback` step
+off an Edge build, it also marks its own Edge build as rolled back from, so that build is not
+offered again on that machine. An Edge build that fails the member's own health gate is marked the
+same way, and the member refuses a marked build in any later run, as `build-rejected`.
+
+**On the lead.** A run with a step opens the crew run like any other, and a leg is done once the
+member is at or below the target. A down run has no lead-side hourly limit.
+
+**Compatibility.** A member older than this amendment ignores `X-Crew-Lead-Line` and refuses an
+Edge build in `X-Crew-Lead-Release` as not a strict release. It never steps down. Both are the
+closed readings. A lead older than this amendment sends no line, which a new member reads as
+`stable` with no step. The protocol integer does not move (§7.1).
+
 ### Compatibility
 
 A member that predates this amendment ignores both headers and omits the field. All three readings
 are the closed one, and none of them refuses anything. A lead that predates it sends neither header,
 which is the state every crew is in until an operator confirms an update. The protocol integer is
 still the only thing that refuses (§7.1).
+
+---
+
+## 21. Walky talky messages *(added 2026-10-17, M62)*
+
+Walky talky lets one agent session message another, and the operator message a session
+(`docs/walky-talky.md`). On one machine a message never touches this link. Between two machines it
+always travels **through the lead**, because that is the only topology the trust store supports: a
+member pins only its lead, and the lead pins every member (§8.1). A message from member A to member B
+is two hops, A to the lead and the lead to B.
+
+### The routes
+
+| Method | Path | Sent by | Body | Answer |
+|---|---|---|---|---|
+| `POST` | `/crew/v1/walky` | a member, to its lead | the signed message | `{ receipts }` |
+| `POST` | `/crew/v1/pane/:id/walky` | the lead, to a member | `{ message, attest, sender? }` | `{ receipts }` |
+| `POST` | `/crew/v1/walky/outcomes` | the lead, to a member | `{ receipts }` | `{ written }` |
+| `GET` | `/crew/v1/pane/:id/walky?limit=` | the lead, to a member, for a phone | none | `{ messages }` |
+
+- `/crew/v1/walky` is a **membership-table route** (§5): it carries no pane data and is addressed to the
+  collie. It joins the signed set (§8.6), because it travels peer → lead, where the transport cannot
+  pin. Only a collie that leads answers it; a peer answers 404.
+- `/crew/v1/pane/:id/walky` is a **forwarded write** (§5's table, `FORWARDABLE` in
+  `bridge/crew/forward.ts`). `:id` is the pane id when the message names one pane, and `all` when it
+  names `<member>/all` or `all`. The lead sends it through its own forward, so it gets the write budget
+  and §10.3's rules: refused before it is attempted when the member is not taking writes, and an
+  attempted write whose outcome is unknown is written `unknown` and never sent again. The dial
+  attestation rides it like every lead → peer dial (§8.6).
+- `/crew/v1/walky/outcomes` is a **membership-table route** (§5) that travels lead → peer, so it rides
+  the pinned handshake and the dial attestation like every lead → peer dial (§8.6), with the write
+  budget. Only a collie that has a lead answers it, and only to that lead: any other caller is the
+  uniform 401, and a lead answers 404. See "The outcome comes back" below. Added 2026-10-18.
+- `GET /crew/v1/pane/:id/walky` is a **forwarded read** (§5's table, the same `FORWARDABLE` entry as the
+  POST; `forwardKind` tells the two apart by method). Added 2026-10-18. A phone asks the lead for
+  `GET /api/pane/:id/walky?limit=50&host=<member>`, and the lead forwards it to that member like every
+  other pane read (§9.1): `host=` dropped, `session=` and `limit=` passed on, the read budget, attempted
+  against a stale member too, never audited. The member answers from its own log, under its own read
+  gate (§6), with the list its own phone route answers: `{ messages }`, the messages that reached the pane and
+  the ones it sent, newest first, each with its newest receipt, `verified` as the member wrote it. The answer goes back byte for byte with its ETag. The lead
+  does not mask it, because a member's own route does not mask that body either. See "The phone reads
+  a member's list" below.
+- The first two answer `{ receipts }`, one receipt per pane reached, at `accepted` or a refusal, within the
+  write budget. Neither waits for the typing. (The M62 contract named a single `{ receipt }` for the
+  lead → member hop; a `<member>/all` reaches several panes, so the answer is a list, for the reason
+  the receipt gained `target` in spec 01.)
+- The lead believes a member's answer for that member's own panes only. A receipt the member wrote
+  for the message as a whole (a refusal names the message's own `to`, `all` on a broadcast) stands
+  for the leg the lead dialled and takes its target, `<member>/all` or the pane address. A receipt
+  in another machine's name, or for a pane on another machine, is dropped. Added 2026-10-18.
+- The lead dials every member at once, and gives each leg at most 8 seconds, all of it (the forward's
+  write budget bounds the dial to the answer's headers only). A leg past that is the lead's own
+  `unknown` with the reason `member slow`, never `refused`: the member may still deliver. Its outcome
+  report then updates the leg; a pane of a leg routed as `<member>/all` is logged as a target of its
+  own. Added 2026-10-18.
+
+### The canonical strings
+
+Two signed objects, each behind its own fixed domain tag, LF between fields, `-` for every null field
+(`bridge/walky/canonical.ts`). The message, signed by the sending bridge's crew key:
+
+```
+collie-walky-v1\n<id>\n<kind>\n<from.memberId>\n<from.address>\n<from.harness>\n<to>\n<replyTo>\n<at>\n<sha256(body) hex>
+```
+
+The lead's attestation, signed by the lead's key, beside a message it routes to one member:
+
+```
+collie-walky-attest-v1\n<id>\n<crewId>\n<receiver memberId>\n<sha256(the message's canonical string) hex>
+```
+
+The lead's voucher, signed by the lead's key, beside a message from another member of its roster
+(added 2026-10-18):
+
+```
+collie-walky-voucher-v1\n<crewId>\n<memberId>\n<fingerprint>
+```
+
+`fingerprint` is the SHA-256 of the sending member's pinned certificate over its DER, lowercase hex,
+the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
+
+`from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed. The
+attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
+present an attested message at a sibling or in another crew. The voucher binds the crew and names the
+member and its certificate; it names no message, so the attestation is still what binds one message
+to one receiver. All three use the primitives §8.6 already has: base64 ECDSA-P256-SHA256, with the key
+behind the signer's pinned certificate.
+
+### The shape check both hops share
+
+Both receiving sides run ONE shape check on the message as it arrived, before the message signature
+(`checkCrewMessage`, `bridge/walky/crew.ts`). Added 2026-10-17 (M62 hardening).
+
+- **Every signed string field** (`id`, `kind`, `from.memberId`, `from.address`, `from.harness`, `to`,
+  `replyTo`, `signer`) holds no line break and no other control byte, and is never the bare `-`. An
+  LF would let one field pose as two in the canonical string, and `-` is how it spells a null.
+- **`from.memberId === signer`**: the machine that signed is the machine that sent. An agent's
+  `from.address` names a pane on the signer's member. An operator names no address and no harness.
+- **`from.label` and `from.harness`** are printable ASCII without `[ ] ( )`, at most 48 and 32
+  characters. Neither is signed; both reach a header line.
+- **The body** is one a second clean leaves unchanged, at most 4,000 characters, and **the address**
+  names its member (`local/…` is a solo word).
+
+A malformed field is a 400 that says why, because the caller passed both factors. A sender or a pane
+that does not match the signer is the uniform 401.
+
+### What the lead checks, in order
+
+1. The two factors, with §8.6's request signature over the four-field string. The signature names the
+   member. A request without one is the uniform 401.
+2. The shared shape check above.
+3. `signer` is the member the request signature named. Then the message signature verifies against
+   that member's pinned certificate. Any failure here is the uniform 401.
+4. The lead delivers to its own panes, with `verified: "origin"`, and routes to the members the
+   address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
+   own machine for `all`. The sender's machine already delivered to its own panes before it asked.
+
+The lead counts the caps again, as every delivering bridge does (`bridge/walky/rate.ts`): 30 tokens
+per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 6
+messages in 10 minutes between the same two addresses, either direction (`pair limit`); and one outer
+bucket per dialling member, 60 tokens in 10 minutes, all its panes together. An operator's broadcast
+takes one token per pane and per member leg. A refusal is a receipt (`refused`, `rate limit` or
+`pair limit`) in a 200, never a 429.
+
+Every delivering bridge also refuses, before anything is logged: an agent's `all` or `<member>/all`
+(`only the operator may broadcast`), a message to its sender's own pane (`that is your own pane`), and
+a reply chain deeper than 4 in its own log (`thread depth`; a link the log does not hold ends the walk
+and counts 0). The sender's own bridge refuses a reply to a message that did not reach the sender's
+pane (`unknown reply`) and sends a reply to the stored sender of what it answers. A pane id that two
+sessions use is `ambiguous pane`, and a reply whose sender pane is gone or in another session is
+`sender gone`. Added 2026-10-17 (M62 hardening).
+
+### What a member checks
+
+The dial attestation is checked for every route (§8.6). Then the member checks `attest` against its
+pinned lead, for this crew and for itself as the receiver; a failure is the uniform 401. Then the
+shared shape check above. The route's `:id` must name the message's own pane, or `all`. A message
+reaches this machine's agent panes only: a member never routes a message on, so a message cannot loop
+between a member and its lead.
+
+`verified` in the receipt says how the sender was known. **A member verifies its lead's attestation,
+and the origin through a certificate its lead vouched for.** A member pins no other member. When the
+lead routes a message whose signer is an `enrolled` member of its roster other than itself, the body
+carries an optional `sender: { certPem, voucher }` (added 2026-10-18): the certificate the lead pinned
+for that member, and the lead's voucher for it (the canonical strings above). After the attestation
+and the shape check, the member then:
+
+1. recomputes the fingerprint from `certPem`;
+2. verifies `voucher` against its pinned lead, for its own crew id and for `memberId` equal to the
+   message's `signer`;
+3. verifies the message's own signature against `certPem`.
+
+All three good: `verified: "origin"`. Any failure in the sender block is the uniform 401, because it
+is a claim that does not verify. `certPem` is at most 4,096 characters and `voucher` at most 512; a
+longer one, an empty one or a block with a field missing reads as a malformed body, a 400. The member
+pins nothing from the block and stores nothing: the voucher is the lead's word for this one message,
+and a lead that lies about its roster is still believed, as it is for every write it forwards.
+
+Without `sender`, the result is `verified: "lead"`, as before. The one other way to `origin` is a
+message the lead itself sent: the member pins that certificate, verifies the origin signature too, and
+writes `verified: "origin"`, and only when `from.memberId` is the signer as well. The lead never adds a
+sender block to its own message.
+
+### Dedupe, replay and the time window
+
+The message id is the dedupe key on every bridge. The same id again returns the receipts already
+stored and types nothing; the same id with another canonical string is refused `id reused`. The
+sender's clock is left out of that comparison, so a phone's retry of one attempt is a replay. A replay
+of `/crew/v1/walky` inside §8.6's skew window is therefore harmless, and the route **does not advance
+the monotonic floor** (§8.6): it changes no roster, and two panes on one member may send close
+together.
+
+Dedupe lives in its own file, `<stateDir>/walky/seen.json` (`bridge/walky/seen.ts`): an entry per
+`(id, target)` with its first sight and a hash of the message, kept 24 hours and independent of the
+log's rotation. The entry is written before the log's line and before any key. A repeat returns the
+stored receipts for the targets it has and finishes the targets it lacks, so a fan-out cut short by a
+crash resumes; a seen target whose log record is gone answers `unknown` and is never typed again.
+The crew leg of a fan-out is one target (`all`), not one per member.
+
+On both hops the receiving bridge refuses a message whose `at` is more than **10 minutes** from its
+own clock, either way, as a `refused: stale` receipt in a 200. The local socket and the phone route
+set `at` themselves. Added 2026-10-17 (M62 hardening).
+
+### An older member
+
+Before it dials, the lead compares the member's reported `version` (§19, the field its sweep already
+reads) with a floor: `1.23.0`, or the lead's own version when the lead is a build below `1.23.0` (a
+development build that carries walky talky). A member below the floor gets `refused: older member` at
+once, with no POST, so an older member costs no write budget and no timeout. A member that reported
+no version, or a value that names no release, is dialled as before, and its 404 on
+`POST /crew/v1/pane/:id/walky` stays the backstop with the same reason. Added 2026-10-18 (M62
+hardening I).
+
+### The phone reads a member's list *(added 2026-10-18)*
+
+The phone checks a walky talky header on a pane's screen against that pane's list, and draws a card
+only for an id the list holds. A pane on a member is checked against that member's own log, through
+the forwarded read above, so a message that member logged looks on the phone as one on the lead does.
+
+Three answers reach the phone:
+
+| Member | What the lead answers |
+|---|---|
+| 1.23.0 or later | The member's own `{ messages }` |
+| Reported a version below the floor of "An older member" below | `404`, from the lead, with no dial |
+| Down, or a build that predates the read | `503 host_unreachable` (§10.3), or the member's own `404` passed on |
+
+The phone reads every refusal as a list it could not read: no card, and never the mark for a header the
+log does not hold. A pane polls this read, so the lead answers an older member itself instead of
+dialling it on every poll. A member that reported no version is asked, and its 404 is the same answer.
+
+A reply from the phone to a message in that list goes to the lead's own `POST /api/walky`, with the
+sender's address and `replyTo`, like every operator message. The lead fills the address from its own
+log when it holds the message: one it routed or sent there. A message between two panes of one member
+never reaches the lead. For that one case the lead takes the operator's address when it names one pane
+on another machine, and keeps `replyTo`. The member's log holds the message, and the member pins the
+reply to the sender's pane as for its own. An agent's reply, a fan-out and a pane on the lead still need
+the lead's own record, else `unknown reply`.
+
+### The outcome report
+
+The member snapshot gains an optional sibling beside the body, in the seat §19's fields use:
+
+```json
+{ "...": "the snapshot body", "walky": { "receipts": [ { "id": "wt_…", "target": "laptop/w1:p9", "state": "delivered", "verified": "lead", "at": 1786000000000, "by": "laptop" } ], "cursor": "4f1a09c2.17" } }
+```
+
+It holds the receipts this member wrote for its own panes, for messages that came from another
+machine, past `accepted`, **that the lead has not acked yet**. At most 100, the oldest dropped, and a
+receipt goes 10 minutes after it was first held, acked or not. It is a report on the exchange, never a
+stored state (§18.5): it lives in memory only. **Absent means "nothing to report"** (§7.1).
+
+**The ack cursor** (added 2026-10-18). Each held receipt gets a sequence number, and a newer state for
+the same id and target is a new receipt with a new number. `cursor` is `<epoch>.<seq>` of the newest
+receipt in the report. `epoch` is 8 random lowercase hex characters, minted when the bridge process
+starts, so a restarted member's cursor space never meets an old ack. The lead keeps the last cursor it
+read from each member, in memory, and sends it on its next sweep dial of that member's snapshot as the
+request header `X-Crew-Walky-Ack: <cursor>`. The member reads the header first: an ack whose epoch
+matches drops every held receipt with a seq at or below the acked one, and then the report is built.
+An ack of another epoch, or a value that is not a cursor, acks nothing. A report no longer empties on
+an answer, so an answer the lead never read loses nothing: the next answer carries the same receipts.
+
+The lead writes each reported receipt into its own log, and only when the member wrote it (`by`), for a
+pane on that member, for a message the lead routed there. The same receipt reported again is skipped
+(same state, not newer), so a resend is harmless.
+
+**An outcome only moves forward** (added 2026-10-18). The states rank `accepted`, then `unknown`, then
+the finished ones: `delivered`, `inbox-only`, `refused` and `expired`. A reported or pushed receipt is
+taken only when it ranks higher than the one held, or is the same state and newer; a finished state is
+never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
+refusal) replaces only `accepted`, so a slow leg never goes over the outcome a report already brought.
+
+**A pane under a leg sent as a whole** (added 2026-10-18). A report may name a pane the lead holds no
+record for when the lead routed `<member>/all` or `all` there. The lead then logs it as a new target
+under that leg's message, with three limits: never for the reporting member's own broadcast, only for a
+target that is already bare and trimmed (no instance token, no blanks), and at most 50 pane targets per
+message on one member.
+
+**A receipt's text fields** (added 2026-10-18). Every receipt read off the wire (an answer, a report,
+a push) and off the log keeps `reason` only when it is printable ASCII (0x20 to 0x7e) of at most 120
+characters, and `sendId` only in the form `<message id>-<8 lowercase hex>`; else the field is dropped.
+`by` must be a member id or the log's own `-`, or the receipt is malformed. A bridge cleans the reasons
+it writes to the same form, and `collie walky` prints every string from another machine with its
+control characters shown as `?`.
+
+### What the sender learns
+
+The lead learns every outcome first: from its own panes, and from each member's report. When the
+operator sent from the phone or from the lead, `collie walky status <id>` on the lead shows it. Since
+2026-10-18 the lead also pushes each outcome back to the member whose message it was (the next
+subsection), for a message to a third machine and for a message to the lead's own pane alike. The
+sending member's `collie walky status <id>` then shows the real outcome, and `collie walky send` there
+waits for it the way it waits for a local one: up to 15 seconds, then it prints the queued state and
+`check later: collie walky status <id>`. The words "outcome known on the lead" stay only while the
+receipt is still `accepted` on the member. Under an older lead it stays `accepted`.
+
+### The outcome comes back *(added 2026-10-18)*
+
+The lead keeps an **outbox per member**, in memory only: every receipt its own log writes, past
+`accepted`, for a message whose `from.memberId` is that member and whose target is not on that member.
+Both kinds of line count, the lead's own deliveries and the lines `mergeReport` writes from another
+member's report. At most 100 per member, the oldest dropped, and a receipt goes 10 minutes after the
+lead held it.
+
+The lead pushes the outbox with `POST /crew/v1/walky/outcomes`, body `{ receipts }`, to that member: at
+once when a receipt settles (one push for a burst), and again on each sweep that member answers while
+the outbox is not empty.
+
+| Answer | What the lead does |
+|---|---|
+| 200 `{ written }` | Drops what it sent. A newer receipt for the same id and target that arrived meanwhile stays. |
+| 404 | A member before this route: drops that batch, and pushes again only when a new receipt settles. |
+| refused, unknown, any other status | Keeps the batch for the next sweep. The member writes a receipt once, so a push that landed and is sent again changes nothing. |
+
+The member registers the route only when it has a lead, and the admitted caller must be that lead (the
+dial attestation covers it like every lead → peer dial, §8.6). It writes a pushed receipt only when its
+own log holds a record for that id and target whose message has `from.memberId` equal to this member,
+and only when the receipt moves it forward (the rule above). For a pane under a leg this member sent
+as a whole, it adds the pane as a new target under the same limits as the lead's report (added
+2026-10-18), so a broadcast whose leg was slow still learns each pane. A receipt for one of the
+member's own panes is never taken: that outcome is its own word. It answers `{ written }`, the count.
+A pushed outcome is never reported back up: the member's report skips every message from itself.
+
+An answer to the member's own `POST /crew/v1/walky` that arrives after a pushed outcome does not write
+over it: neither its `accepted` nor, since 2026-10-18, the `unknown` of a dial that timed out.
+
+`collie walky who` on the lead lists every member's agent panes, from the bodies its sweep already
+holds, so it dials nobody. A member has no roster, so `who` there lists its own panes and the line
+"other machines: run `collie walky who` on the lead (<lead>), or use the phone".
+
+### Pane instances (added 2026-10-18)
+
+A multiplexer reuses a pane id once the pane closes (Herdr `w1:p1`, zellij `terminal_1`, tmux `%7`),
+so `<member>/<pane>` alone cannot tell the pane a sender meant from a new session that took its id.
+Every bridge therefore gives each `(session, paneId)` it sees a token, four characters of `[a-z0-9]`
+from a CSPRNG, minted the first time it sees the pane (`bridge/walky/instances.ts`, persisted in
+`<stateDir>/walky/instances.json`). A pane not seen for more than 30 seconds loses its token, and its
+inbox is deleted; on load the same rule runs against the clock, so a restart inside 30 seconds keeps
+the tokens.
+
+- **The address.** `<member>/<pane>#<token>` names one instance; `<member>/<pane>` still means
+  whatever pane holds the id now. `#` is not a pane id character, so the split is unambiguous. `who`
+  prints every address with its token, and an agent's `from.address` carries its own, so both are
+  signed in the canonical string as they stand.
+- **Delivery.** The bridge that owns the pane resolves the token. The pane id held by another
+  instance is `refused: pane replaced`; no pane with that id is `no such pane`. A reply whose stored
+  sender pane now holds another instance is `sender gone`.
+- **The route.** `/crew/v1/pane/:id/walky` keeps `:id` the bare pane id; the token rides in the
+  message's `to`, under the attestation.
+- **Receipts never carry the token.** A receipt's `target` stays `<member>/<pane>`, so the lead's leg
+  and the member's own receipt, its outcome report included, keep matching by `(id, target)`.
+- **The wire.** Each pane on a snapshot carries `instance` (§9.2). The lead keeps a member's token
+  only as four characters of `[a-z0-9]`, and its `who` prints `<member>/<pane>#<token>` when the
+  member's pane has one, bare when not.
+
+A member that sends no `instance` has its panes listed bare, and they work as before. A bridge built
+before this subsection cannot parse an address with a token. As a member it answers a routed message
+whose `to` carries one with a 400, which the lead never builds for it, because its panes carry no
+token. As a lead it answers a member's agent message whose `from.address` carries one with a 400, so
+an agent on a newer member cannot message through an older lead; an operator's message still goes.
+
+### Compatibility
+
+Additive inside protocol version 2, and every reading is the closed one (§7.1). A member that predates
+this section answers 404 on `/crew/v1/pane/:id/walky`, which the lead writes as `refused: older member`
+in the receipt. A lead that predates it answers 404 on `/crew/v1/walky`, which the member writes as
+`refused: older lead`. A member that predates the report omits the `walky` sibling, and the lead keeps
+`accepted`.
+
+The additions of 2026-10-18 read the same way. A member before the ack cursor sends no `cursor` and
+ignores `X-Crew-Walky-Ack`; it empties its report on each answer as before. A lead before the ack never
+sends the header, so the member resends each receipt for up to 10 minutes, and the lead's merge skips
+the repeats. A lead restart sends no ack until it has read a report. A member before the outcomes push
+answers 404, and the lead stops pushing to it until a new receipt settles; its operator reads the
+outcome on the lead, as before. A member before the forwarded read answers 404 on
+`GET /crew/v1/pane/:id/walky`, which the lead passes on and the phone reads as a list it could not read;
+a lead before it answers the phone's `?host=` read with a 400, read the same way. A lead before the push never sends one, and the sending member stays at
+`accepted` with the words "outcome known on the lead". A member before the sender block ignores
+`sender` and writes `verified: "lead"`; a lead before it sends none, and the result is `lead` as
+before.
+
+A solo install mints no key, signs nothing, registers none of these routes and never sends a message
+off the machine (§11). `CREW_PROTOCOL_VERSION` stays `2`.

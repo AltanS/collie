@@ -70,6 +70,10 @@ export const WALK_PAIRS: readonly WalkPair[] = [
     "claude--menu-resume-picker--w120-first.txt",
     "claude--menu-resume-picker--w120-third.txt",
   ],
+  // Claude Code 2.1.303 on a long list: the title counts the pointer, `(1 of 50)` against `(2 of 50)`,
+  // which `coreSignature` blanks and the card's title drops (2026-10-19). Two widths.
+  ["claude", "claude--v2303-menu-resume-picker--w119-first.txt", "claude--v2303-menu-resume-picker--w119-second.txt"],
+  ["claude", "claude--v2303-menu-resume-picker--w160-first.txt", "claude--v2303-menu-resume-picker--w160-second.txt"],
   // Claude "Switch model?" confirmation (2.1.289), two widths: the pointer on `Yes` against on `No`.
   // The 50-column pair also prints the edge row both ways (labelled, then bare), which
   // `coreSignature` leaves out of the identity.
@@ -124,6 +128,37 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
   // gentle-pi 4.2.0's review-consent screen (pi 1.3.0): no rule frame, footer last; the Effect paragraph follows the pointer.
   ["pi", "pi--v130-gentle-review-consent.txt", "pi--v130-gentle-review-consent-moved.txt"],
+  // Kiro V3 2.33.0: the startup workspace trust dialog, before and after one Down at each width.
+  ["kiro", "kiro--v3-workspace-trust-continue-w120.txt", "kiro--v3-workspace-trust-exit-w120.txt"],
+  ["kiro", "kiro--v3-workspace-trust-continue-w60.txt", "kiro--v3-workspace-trust-exit-w60.txt"],
+  ["kiro", "kiro--v3-workspace-trust-continue-w40.txt", "kiro--v3-workspace-trust-exit-w40.txt"],
+  // Kiro V3 2.32.0: the same shell request with Allow, Always allow and Deny pointed.
+  ["kiro", "kiro--v3-approval-allow-w120.txt", "kiro--v3-approval-deny-w120.txt"],
+  ["kiro", "kiro--v3-approval-always-w120.txt", "kiro--v3-approval-deny-w120.txt"],
+  ["kiro", "kiro--v3-approval-allow-w60.txt", "kiro--v3-approval-deny-w60.txt"],
+  ["kiro", "kiro--v3-approval-denied-request-allow-w120.txt", "kiro--v3-approval-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w120.txt", "kiro--v3-shell-args-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w60.txt", "kiro--v3-shell-args-deny-w60.txt"],
+  ["kiro", "kiro--v3-shell-bare-allow-w120.txt", "kiro--v3-shell-bare-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w120.txt", "kiro--v3-shell-wrapped-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w60.txt", "kiro--v3-shell-wrapped-deny-w60.txt"],
+  // Installed V3 file tools: Allow and Deny with the complete read/diff preview unchanged.
+  ["kiro", "kiro--v3-read-allow-w120.txt", "kiro--v3-read-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-allow-w60.txt", "kiro--v3-read-deny-w60.txt"],
+  ["kiro", "kiro--v3-read-denied-request-allow-w120.txt", "kiro--v3-read-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-allow-w120.txt", "kiro--v3-write-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-allow-w60.txt", "kiro--v3-write-deny-w60.txt"],
+  ["kiro", "kiro--v3-write-lines-allow-w120.txt", "kiro--v3-write-lines-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-denied-request-allow-w120.txt", "kiro--v3-write-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-allow-w120.txt", "kiro--v3-replace-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-allow-w60.txt", "kiro--v3-replace-deny-w60.txt"],
+  ["kiro", "kiro--v3-replace-denied-request-allow-w120.txt", "kiro--v3-replace-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-wrapped-allow-w120.txt", "kiro--v3-read-wrapped-deny-w120.txt"],
+  ["kiro", "kiro--v3-read-wrapped-allow-w60.txt", "kiro--v3-read-wrapped-deny-w60.txt"],
+  // Kiro V3 2.32.0 with tools trusted: write and replace panels also offer Always allow.
+  ["kiro", "kiro--v3-write-trusted-allow-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
+  ["kiro", "kiro--v3-write-trusted-always-w120.txt", "kiro--v3-write-trusted-deny-w120.txt"],
+  ["kiro", "kiro--v3-replace-trusted-allow-w120.txt", "kiro--v3-replace-trusted-deny-w120.txt"],
 ];
 
 /**

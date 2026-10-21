@@ -1,3 +1,4 @@
+import type { AgentSessionRef, ForegroundProcess } from "./journal/types.ts";
 import type { MuxAdapter, MuxAttention, MuxPane } from "./mux/types.ts";
 import {
   type AgentStatus,
@@ -255,7 +256,8 @@ function rankOf(order: ReadonlyMap<string, number>, key: string): number {
  * only re-labels the fields the wire has always used (`workspaceId`, not `spaceId` — nothing
  * phone-visible renames) and adds the two things the multiplexer cannot know. `kind` is one
  * (Collie's split of the herd into agents and bare shells); `sessionName` is the other, filled in
- * afterwards from the pane's own text (see {@link StateEngine.enrichSessionNames}).
+ * afterwards from the pane's own text or its harness's journal (see
+ * {@link StateEngine.enrichSessionNames}).
  */
 function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   const view: AgentView = {
@@ -317,6 +319,20 @@ export interface EngineSnapshot {
  */
 export const ATTENTION_WINDOW_MS = 10_000;
 
+/**
+ * The user-given name of the Muse session running in a pane, read out of Muse's own journal
+ * (bridge/journal/muse.ts `museSessionNameReader`) — Muse paints no session name for the grid
+ * scrape below to find. The contract mirrors {@link extractClaudeSessionName}'s: the name;
+ * `null` when the pane's own session is known exactly and has no user-given name; `undefined`
+ * when nothing can be said either way, so the sticky cache keeps the last-known name. Injected
+ * rather than imported: the reader is filesystem state rooted in operator config, and this
+ * engine's world is the mux port.
+ */
+export type MuseSessionNameProbe = (
+  ref: AgentSessionRef | undefined,
+  processes: readonly ForegroundProcess[] | undefined,
+) => Promise<string | null | undefined>;
+
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
 type RemoveListener = (paneId: string) => void;
 type UpdateListener = (snap: EngineSnapshot) => void;
@@ -330,14 +346,24 @@ export class StateEngine {
   private bridge: BridgeStatus = "disconnected";
   private muxFault: MuxFault | undefined = undefined;
   private readonly prevStatus = new Map<string, AgentStatus>();
-  // Last-known claude `/rename` session name per pane. Kept sticky so the name doesn't flicker away
-  // when a pane momentarily hides its input box (a dialog / working spinner). A styled read sets it
-  // from a name, deletes it when the input box shows no name (or only a mode badge), and keeps it
-  // when no input box is in view (`undefined`). It is also cleared when the pane itself vanishes
-  // (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
+  // Last-known harness session name per pane: Claude's `/rename` name read off its screen, and
+  // Muse's user-given name read out of its journal. Kept sticky so the name doesn't flicker away
+  // when a pane momentarily hides its input box (a dialog / working spinner) or its binding
+  // cannot be read for a poll. A read sets it from a name, deletes it on a proven-unnamed answer
+  // (a plain rule or only a mode badge for Claude, an exactly-known nameless session for Muse),
+  // and keeps it on say-nothing (`undefined`), except that a Muse name also goes when the pane no
+  // longer shows the binding it was read by (see museBindings). It is also cleared when the pane
+  // itself vanishes (see the removal loop). Enriched each poll (see enrichSessionNames).
   private readonly sessionNames = new Map<string, string>();
-  // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid RPC for
-  // any pane whose revision hasn't moved — O(claude_panes) socket calls per poll → O(changed).
+  // The binding each cached Muse name was read by (museBindingOf): the session ref the pane
+  // reported, or its foreground argv. A say-nothing answer keeps the name only while the pane
+  // still shows that binding, or shows none that could be read this poll. `muse resume <named>`,
+  // quit, then a bare `muse` in the same pane changes the argv and binds nothing, and the old
+  // session's name must not stay on the new one.
+  private readonly museBindings = new Map<string, string>();
+  // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid /
+  // foreground RPC for any pane whose revision hasn't moved — O(enriched panes) socket calls
+  // per poll → O(changed).
   private readonly enrichedAt = new Map<string, number>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
@@ -374,12 +400,18 @@ export class StateEngine {
   // the bridge came up, and holding the engine hot for each of them would spend a fast spell on every
   // restart.
   private sawHerd = false;
+  // The Muse journal name reader, when the bridge wired one (see {@link MuseSessionNameProbe}).
+  // Absent — every test, and a bridge with transcripts off — muse panes are never probed and
+  // carry no sessionName, exactly as before the reader existed.
+  private readonly museNameProbe: MuseSessionNameProbe | undefined;
   constructor(
     private readonly mux: MuxAdapter,
     private readonly pollMs: number,
+    opts: { museSessionName?: MuseSessionNameProbe } = {},
   ) {
     this.cadenceMs = pollMs;
     this.baseCadenceMs = pollMs;
+    this.museNameProbe = opts.museSessionName;
   }
 
   onTransition(fn: TransitionListener): () => void {
@@ -679,13 +711,15 @@ export class StateEngine {
         if (live.has(id)) continue;
         this.prevStatus.delete(id);
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
+        this.museBindings.delete(id);
         this.enrichedAt.delete(id);
         for (const fn of this.removeListeners) fn(id);
       }
 
-      // Enrich claude panes with their own `/rename` session name (read from pane text). Best-effort:
-      // a failed read keeps the last-known name and never fails the poll. The revision map lets
-      // unchanged panes skip the readGrid RPC entirely.
+      // Enrich panes with their harness's own session name (Claude's `/rename` name from pane
+      // text, Muse's user-given name from its journal). Best-effort: a failed read keeps the
+      // last-known name and never fails the poll. The revision map lets unchanged panes skip
+      // the readGrid / foreground RPC entirely.
       const revisions = new Map<string, number>();
       for (const p of panes) {
         if (p.revision !== undefined) revisions.set(p.paneId, p.revision);
@@ -739,14 +773,33 @@ export class StateEngine {
   }
 
   /**
-   * Read each claude pane's visible text and attach its `/rename` session name (see
-   * {@link extractClaudeSessionName}) to the view, exactly parallel to `paneLabel`. The name lives
-   * only in the pane's rendered text — Herdr's pane metadata doesn't carry it — so this is the one
-   * place all panes can pick it up (the web app only holds text for the open pane). Reads run in
-   * parallel and are individually best-effort: a read that fails or times out, or a screen with no
-   * input box in view, keeps the last-known name (sticky cache) and never fails the poll; an input
-   * box that shows no name drops it. Claude-only; other harnesses never set it. A
-   * multiplexer that cannot hand over a rendered grid declines the read, which reads here as
+   * The pane's foreground argv, for the Muse name probe's exact binding. Absent adapter
+   * support, a refusal, or a throw all read as "no hint" — server.ts `discoverProcesses` makes
+   * the same three-way collapse for journal discovery, for the same reason: the hint is an
+   * enrichment, and its absence must never read as evidence about the pane.
+   */
+  private async foregroundOf(paneId: string): Promise<readonly ForegroundProcess[] | undefined> {
+    if (this.mux.foregroundProcesses === undefined) return undefined;
+    try {
+      const result = await this.mux.foregroundProcesses(paneId);
+      return result.ok ? result.value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Read each pane's own session name and attach it to the view, exactly parallel to
+   * `paneLabel`. Claude's lives only in the pane's rendered text — Herdr's pane metadata
+   * doesn't carry it — so it is scraped off the visible grid (see
+   * {@link extractClaudeSessionName}); Muse paints none anywhere, so its name comes from the
+   * journal probe ({@link MuseSessionNameProbe}) when the bridge wired one. This is the one
+   * place all panes can pick a name up (the web app only holds text for the open pane). Reads
+   * run in parallel and are individually best-effort: a read that fails or times out, a screen
+   * with no input box in view, or a probe that cannot bind the pane exactly keeps the
+   * last-known name (sticky cache) and never fails the poll; a proven-unnamed answer drops it,
+   * and so does a Muse pane whose binding changed under its name (see museBindings).
+   * A multiplexer that cannot hand over a rendered grid declines the read, which reads here as
    * "keep whatever's cached" — exactly like a read that failed.
    */
   private async enrichSessionNames(
@@ -754,9 +807,11 @@ export class StateEngine {
     revisions: Map<string, number>,
   ): Promise<void> {
     const claude = agents.filter((a) => a.agent === "claude");
-    if (claude.length === 0) return;
-    await Promise.all(
-      claude.map(async (a) => {
+    const probe = this.museNameProbe;
+    const muse = probe === undefined ? [] : agents.filter((a) => a.agent === "muse");
+    if (claude.length === 0 && muse.length === 0) return;
+    await Promise.all([
+      ...claude.map(async (a) => {
         const rev = revisions.get(a.paneId);
         if (rev !== undefined) {
           const prev = this.enrichedAt.get(a.paneId);
@@ -784,10 +839,64 @@ export class StateEngine {
           // Keep whatever's cached (if anything) — a transient read failure must not blank the name.
         }
       }),
-    );
+      ...muse.map(async (a) => {
+        if (probe === undefined) return;
+        const rev = revisions.get(a.paneId);
+        if (rev !== undefined) {
+          const prev = this.enrichedAt.get(a.paneId);
+          if (prev !== undefined && prev === rev) return;
+        }
+        try {
+          // A pane that already reports its session needs no argv to bind it, so the foreground
+          // read is spent only where it can buy the binding (server.ts `discoveryHints`).
+          const processes = a.agentSession === undefined ? await this.foregroundOf(a.paneId) : undefined;
+          const binding = museBindingOf(a.agentSession, processes);
+          const name = await probe(a.agentSession, processes);
+          // The same sticky contract as Claude's scrape: a name sets, a proven-unnamed exact
+          // session (`null`) forgets, say-nothing (`undefined`) keeps the last-known name. One
+          // addition: say-nothing on a pane whose readable binding is not the one the name was
+          // read by forgets too, because the name belongs to a session that has left the pane.
+          if (name) {
+            this.sessionNames.set(a.paneId, name);
+            if (binding === null) this.museBindings.delete(a.paneId);
+            else this.museBindings.set(a.paneId, binding);
+          } else if (name === null || this.museBindingLost(a.paneId, binding)) {
+            this.sessionNames.delete(a.paneId);
+            this.museBindings.delete(a.paneId);
+          }
+          if (rev !== undefined) this.enrichedAt.set(a.paneId, rev);
+        } catch {
+          // Keep whatever's cached (if anything) — a transient probe failure must not blank the name.
+        }
+      }),
+    ]);
     for (const a of agents) {
       const name = this.sessionNames.get(a.paneId);
       if (name) a.sessionName = name;
     }
   }
+
+  /**
+   * Whether a pane no longer shows the binding its cached Muse name was read by. A binding that
+   * could not be read this poll (`null`, a failed foreground read) is unknown, not lost, so the
+   * name stays, as it does for any transient failure.
+   */
+  private museBindingLost(paneId: string, binding: string | null): boolean {
+    const bound = this.museBindings.get(paneId);
+    return bound !== undefined && binding !== null && binding !== bound;
+  }
+}
+
+/**
+ * The evidence a Muse probe binds a pane by, as one comparable key: the session ref the pane
+ * reported, else its foreground argv. Null when neither could be read. The engine does not parse
+ * the argv (that grammar is the reader's, journal/muse.ts); it only notices that it changed.
+ */
+function museBindingOf(
+  ref: AgentSessionRef | undefined,
+  processes: readonly ForegroundProcess[] | undefined,
+): string | null {
+  if (ref !== undefined) return `ref:${ref.kind}:${ref.value}`;
+  if (processes === undefined) return null;
+  return `argv:${JSON.stringify(processes.map((p) => p.argv))}`;
 }

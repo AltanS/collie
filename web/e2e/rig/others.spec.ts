@@ -7,9 +7,11 @@
 // selector are raw, with the "Collie cannot read this dialog" card and the Keys board. So scenario 1
 // drives the selector through the Keys board, and scenario 3 asks a pick-one question.
 //
-// History for scenario 5 costs one model turn: a prompt, then 45 shell lines (`!echo`) sent through the
-// bridge's send API. pi and omp record each as a note of its own and run it without the model, so the
-// prompt ends up behind the newest page and the phone shows the reported pin.
+// History for scenario 5 costs seven model turns: since 1.23.0 a page is the last six prompts with all
+// that follows each (at least 40 rows), so the cold page starts at the second prompt and the first
+// is the older page. After the first prompt come 45 shell lines (`!echo`) sent through the bridge's
+// send API; pi and omp record each as a note of its own and run it without the model, and they pad
+// the rows past the 40-row floor.
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -47,6 +49,9 @@ import { sleep } from "./rig-lib";
 
 const PHONE = devices[PHONE_DEVICE];
 const REPLY_MS = 120_000;
+
+/** Prompts the Load older case seeds: the live page holds the last six, so the seventh is the older page. */
+const HISTORY_PROMPTS = 7;
 
 interface Plan {
   /** A row the selector prints only while it is open, at any of its levels. */
@@ -104,7 +109,10 @@ const PLANS = {
       prepare: () => undefined,
       took: (project) => existsSync(join(project, "phone-said-yes.txt")),
     },
-    question: { prompt: 'Use the ask tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do nothing else.', option: "Cherry" },
+    // omp draws an option's `preview` behind a rail the Ask reader declines (omp/ASK_NOTES.md), so the
+    // phone shows the unread-dialog card. The field is optional, yet Haiku filled it on 2026-10-18:
+    // the prompt rules it out, so the case tests the card and not the model's mood.
+    question: { prompt: 'Use the ask tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Give no option a preview. Do nothing else.', option: "Cherry" },
   },
 } satisfies Record<"pi" | "omp", Plan>;
 
@@ -224,22 +232,32 @@ for (const harness of ["pi", "omp"] as const) {
     test(`5 Load older with an empty phone cache (${harness})`, async ({ browser, rig }) => {
       await runScenario(harness, "load-older", session, async (pane, trail) => {
         if (!SETUPS[harness].turns) throw new NotReached(SETUPS[harness].noTurnsReason);
-        spendTurn(harness, "load-older: the prompt before the shell lines");
-        const seed = await phoneOn(browser, rig, pane, PHONE);
-        try {
-          trail.log.push(await sendFromComposer(seed.page, seed.recorder, "Reply with only the word READY.", "send the history prompt"));
-        } finally {
-          await seed.context.close();
+        // Since 1.23.0 a page is the last six prompts with all that follows each (at least 40 rows), so
+        // the history is seven prompts: the first, 45 shell lines (no model turn, they pad the rows past
+        // the 40-row floor) and six more. The cold page then starts inside the shell lines and the
+        // first prompt sits on the older page.
+        const deep = asJsonObject(await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`).catch(() => null));
+        if (!coldPageHasOlder(deep)) {
+          const seed = await phoneOn(browser, rig, pane, PHONE);
+          try {
+            for (let n = 1; n <= HISTORY_PROMPTS; n++) {
+              spendTurn(harness, `load-older: history prompt ${String(n)} of ${String(HISTORY_PROMPTS)}`);
+              trail.log.push(await sendFromComposer(seed.page, seed.recorder, `Reply with exactly DONE-${String(n)} and nothing else.`, `send history prompt ${String(n)}`));
+              await rig.screenUntil(pane, new RegExp(`^\\s*DONE-${String(n)}\\s*$`, "m"), REPLY_MS, 60);
+              await waitIdle(rig, pane, REPLY_MS);
+              if (n === 1) {
+                const lines = await seedShellLines(rig, pane, 45);
+                trail.notes.push(`history: ${String(HISTORY_PROMPTS)} prompts and ${String(lines)} of 45 shell lines sent through the API (no model turn)`);
+              }
+            }
+          } finally {
+            await seed.context.close();
+          }
         }
-        await rig.screenUntil(pane, /^\s*READY\s*$/m, REPLY_MS, 60);
-        await waitIdle(rig, pane, REPLY_MS);
-        const lines = await seedShellLines(rig, pane, 45);
-        trail.notes.push(`history: one prompt, then ${String(lines)} of 45 shell lines sent through the API (no model turn)`);
         const cold = asJsonObject(await rig.get(`/api/pane/${encodeURIComponent(pane)}/chat`));
         if (!coldPageHasOlder(cold)) throw new NotReached(`the session holds no more than one page; ${trail.notes.join("; ")}`);
-        const lastPrompt = asJsonObject(cold?.lastPrompt);
-        const inPage = Array.isArray(cold?.upserts) && cold.upserts.some((row) => asJsonObject(row)?.uuid === lastPrompt?.uuid);
-        if (lastPrompt === undefined || inPage) throw new NotReached(`no reported pin: the last prompt is ${lastPrompt === undefined ? "missing" : "inside the cold page"}`);
+        const coldRows = Array.isArray(cold?.upserts) ? cold.upserts.length : 0;
+        trail.notes.push(`cold page: ${String(coldRows)} turns`);
         const context = await phoneContext(browser, rig, PHONE);
         const page = await context.newPage();
         try {
@@ -251,6 +269,16 @@ for (const harness of ["pi", "omp"] as const) {
           const row = await loadOlder.boundingBox();
           const pinBox = (await pin.isVisible().catch(() => false)) ? await pin.boundingBox() : null;
           const covered = row !== null && pinBox !== null && pinBox.y < row.y + row.height && row.y < pinBox.y + pinBox.height;
+          // Nothing covers the row's centre: the tap lands on the Load older button itself.
+          const hit =
+            row === null
+              ? "no box"
+              : await page.evaluate(([x, y]) => {
+                  const el = document.elementFromPoint(x!, y!);
+                  const button = el?.closest("button");
+                  return button === null || button === undefined ? (el?.tagName ?? "nothing") : (button.textContent ?? "").trim().slice(0, 40);
+                }, [row.x + row.width / 2, row.y + row.height / 2]);
+          trail.notes.push(`pin ${pinBox === null ? "not shown" : "shown"}${covered ? ", OVER the Load older row" : ""}; a tap at the row's centre lands on "${hit}"`);
           const before = await page.locator("[data-block]").count();
           await loadOlder.tap({ timeout: 5000 });
           const grew = await expect
@@ -259,8 +287,17 @@ for (const harness of ["pi", "omp"] as const) {
             .then(() => true)
             .catch(() => false);
           trail.captures.push(await capture(page, `${harness}-5-load-older`));
-          trail.notes.push(`reported pin ${pinBox === null ? "not shown" : covered ? "OVER the row" : "clear of the row"}`, grew ? "an older page loaded" : "no older page loaded");
-          return { verdict: pinBox !== null && !covered && grew ? "pass" : "fail", taps: 1, minTaps: 1, note: trail.notes.join("; "), captures: trail.captures };
+          trail.notes.push(grew ? "an older page loaded" : "no older page loaded");
+          // The row stays free afterwards: when more older turns remain the Load older row is still there,
+          // and the pin, shown now that the reader is below the first prompt, must not sit over it.
+          await page.waitForTimeout(500);
+          const rowAgain = (await loadOlder.count()) > 0;
+          if (rowAgain) await loadOlder.scrollIntoViewIfNeeded().catch(() => undefined);
+          const rowBox = rowAgain ? await loadOlder.boundingBox() : null;
+          const pinNow = (await pin.isVisible().catch(() => false)) ? await pin.boundingBox() : null;
+          const coveredAfter = rowBox !== null && pinNow !== null && pinNow.y < rowBox.y + rowBox.height && rowBox.y < pinNow.y + pinNow.height;
+          trail.notes.push(`after the tap: pin ${pinNow === null ? "not shown" : "shown"}, Load older row ${rowAgain ? (coveredAfter ? "covered by the pin" : "clear of the pin") : "gone (no older turns left)"}`);
+          return { verdict: !covered && !coveredAfter && hit.includes(message("chat.scrollback.loadOlder")) && grew ? "pass" : "fail", taps: 1, minTaps: 1, note: trail.notes.join("; "), captures: trail.captures };
         } finally {
           await context.close();
         }

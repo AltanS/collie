@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -91,6 +91,55 @@ describe("HermesTranscriptSource", () => {
     await rm(root, { recursive: true, force: true });
   });
 });
+// Named profiles keep their own state.db under `profiles/<name>/` (`hermes profile use` makes one the
+// default a bare `hermes` runs), so a pane's session may live in any of them.
+describe("HermesTranscriptSource — profiles", () => {
+  const SESSIONS = "create table sessions (id text primary key, source text, started_at real, parent_session_id text)";
+  const MESSAGES =
+    "create table messages (id integer primary key, session_id text, role text, content text, tool_call_id text, tool_calls text, tool_name text, timestamp real, reasoning text, reasoning_content text, active integer default 1, compacted integer default 0, display_kind text)";
+
+  async function sessionDb(dir: string, id: string, text: string): Promise<void> {
+    await mkdir(dir, { recursive: true });
+    const db = new Database(join(dir, "state.db"));
+    db.run(SESSIONS);
+    db.run(MESSAGES);
+    db.run("insert into sessions (id, source, started_at, parent_session_id) values (?, 'cli', 1, null)", [id]);
+    db.run("insert into messages (id, session_id, role, content, timestamp) values (1, ?, 'user', ?, 1)", [id, text]);
+    db.close();
+  }
+
+  test("finds a session in a named profile's state.db as well as in the root's own", async () => {
+    const root = await mkdtemp(join(tmpdir(), "collie-hermes-profiles-"));
+    const inProfile = "20261016_101707_b9d200";
+    await sessionDb(root, SID, "default profile turn");
+    await sessionDb(join(root, "profiles", "assistant"), inProfile, "assistant profile turn");
+    const source = new HermesTranscriptSource(root);
+
+    const own = await source.resolve({ kind: "id", value: SID });
+    expect(own).toBe(`${await realpath(join(root, "state.db"))}#${SID}`);
+    const profiled = await source.resolve({ kind: "id", value: inProfile });
+    expect(profiled).toBe(`${await realpath(join(root, "profiles", "assistant", "state.db"))}#${inProfile}`);
+    const loaded = await source.load(profiled!);
+    expect(parseHermesTranscript(loaded.text)[0]?.parts[0]).toEqual({ kind: "text", text: "assistant profile turn" });
+    expect(await source.resolve({ kind: "id", value: "20261016_000000_000000" })).toBeNull();
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("never opens a profile whose folder links outside the root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "collie-hermes-root-"));
+    const outside = await mkdtemp(join(tmpdir(), "collie-hermes-outside-"));
+    const id = "20261016_101707_b9d201";
+    await sessionDb(outside, id, "not ours");
+    await mkdir(join(root, "profiles"), { recursive: true });
+    await symlink(outside, join(root, "profiles", "linked"));
+    expect(await new HermesTranscriptSource(root).resolve({ kind: "id", value: id })).toBeNull();
+
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  });
+});
+
 // The live read. Hermes' cursor is `max(messages.id)`, so this is where the two things that cursor
 // CAN and CANNOT see are pinned: a new row arrives, and a row whose mutable state changed does not.
 describe("HermesTranscriptSource — readSince", () => {

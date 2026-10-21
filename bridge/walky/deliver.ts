@@ -1,0 +1,624 @@
+// Delivery (M62 README, decisions 1, 6 and 7): log first, then type.
+//
+//   1. Resolve the address to target panes. A shell pane is never a target. An address on another
+//      member goes to the crew seam (`routeRemote`, spec 03); with no seam it is refused.
+//   2. The same id again returns the stored receipts and types nothing (seen.ts keeps the ids a day,
+//      apart from the log's rotation). The same id with another text is refused `id reused` and logs
+//      nothing. A fan-out repeated after a crash finishes the targets it lacks.
+//   3. `COLLIE_WALKY=off` refuses `off`; the sender cap refuses `rate limit`. Neither is logged.
+//   4. Each target gets a message line, an inbox entry and an `accepted` receipt, in that order,
+//      before any key. The answer leaves with those receipts.
+//   5. Then the envelope (types.ts `formatEnvelope`) goes through the pane's Send Protocol as one
+//      send, mode `send`. An agent's message types ONE line, the header and a nudge, and no body: the
+//      body reaches the agent as the output of `collie walky inbox <id>`, a tool result, never as a
+//      prompt from its operator. An operator's message types the header and the body. `sent` or
+//      `effective` is `delivered`; an operator's acks the inbox entry, an agent's stays unread until
+//      the agent reads it. A refusal, a
+//      typed-not-submitted, an expiry or a cancel is `inbox-only` with the reason. A send held behind
+//      a running turn is watched for 10 minutes; still held then, it is cancelled and `inbox-only`.
+//      An `unknown` stays `unknown`, and is never sent again (CREW_PROTOCOL §10.3).
+//
+// Collie never answers a message and never answers a dialog with one (decision 6): the Send
+// Protocol refuses a send over a dialog, and the message waits in the inbox.
+
+import { createHash } from "node:crypto";
+
+import { bareAddress, LOCAL_MEMBER, isSelf, paneAddress, parseAddress } from "./address.ts";
+import { canonicalMessage } from "./canonical.ts";
+import type { LogRecord, Placement, WalkyLog } from "./log.ts";
+import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
+import { RefusalCounter, type RefusalCounts } from "./refusals.ts";
+import { seenHash, WalkySeen } from "./seen.ts";
+import { formatEnvelope, receiptReason, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
+
+/** How long a held send may wait before the message is left in the inbox only. */
+export const HELD_LIMIT_MS = 10 * 60 * 1000;
+/** How often a held send's state is read. */
+export const HELD_POLL_MS = 2000;
+/**
+ * How long a message waits for this bridge's earlier walky send into the same pane to be answered
+ * before it is typed. Past it the message is `inbox-only: pane busy`. A send answers within its own
+ * steps (about 15 s) or as `held`, so two minutes is room enough.
+ */
+export const LANE_WAIT_MS = 2 * 60 * 1000;
+/** The reason of a message that waited out {@link LANE_WAIT_MS}. */
+export const PANE_BUSY = "pane busy";
+
+/** One pane of this bridge, as walky talky sees it. */
+export interface WalkyPane {
+  readonly session: string;
+  readonly paneId: string;
+  /**
+   * The pane's instance token (instances.ts): the session that holds this pane id now. An address
+   * with a token reaches this pane only while the token matches.
+   */
+  readonly instance: string;
+  /** False for a bare shell: it never receives a message. */
+  readonly agent: boolean;
+  readonly harness: string | null;
+  readonly label: string;
+  /** The pane's status word, as the snapshot gives it. */
+  readonly state: string;
+  /** False when the session has no Send Protocol (no screen, or COLLIE_SEND_PROTOCOL=0). */
+  readonly terminal: boolean;
+}
+
+/** A Send Protocol outcome and reason, as the request store holds them. */
+export interface SendResult {
+  readonly outcome: string;
+  readonly reason?: string;
+}
+
+/** What delivery needs of the bridge. index.ts builds it from the session registry. */
+export interface WalkyHost {
+  /** Every pane of every session, in registry order (the primary first). */
+  panes(): readonly WalkyPane[];
+  /** Run one send through the pane's Send Protocol. */
+  send(pane: WalkyPane, sendId: string, text: string): Promise<SendResult>;
+  /** The stored outcome of a send request, or null when the protocol never took it. */
+  sendState(sendId: string): SendResult | null;
+  /** Take back a held send. */
+  cancelHeld(session: string, paneId: string, sendId: string): void;
+}
+
+/**
+ * THE CREW SEAM. Spec 03 fills it: hand a message to the crew for one other member (`memberId`) or
+ * for every other member (`"all"`), and answer the receipts the crew wrote. Absent, an address on
+ * another member is refused `crew routing not built`, and `all` reaches this machine's panes only.
+ */
+export type RouteRemote = (message: WalkyMessage, members: string) => Promise<readonly WalkyReceipt[]>;
+
+/** How one delivery runs. The defaults are a message this bridge built itself. */
+export interface DeliverOptions {
+  /**
+   * How this bridge knows who sent the message: `local` for one it built, `origin` when it verified
+   * the sender's own signature, `lead` when it verified its lead's attestation (CREW_PROTOCOL §21).
+   */
+  readonly verified?: WalkyVerified;
+  /**
+   * True for a message a crew hop brought to this bridge's panes. It reaches this machine only: an
+   * address on another member is refused `no such pane`, and `all` is never routed on, so a message
+   * cannot loop between a member and its lead.
+   */
+  readonly localOnly?: boolean;
+  /**
+   * On a lead, the member whose request signature carried the message (CREW_PROTOCOL §21): its outer
+   * bucket of 60 tokens per 10 minutes is counted too.
+   */
+  readonly via?: string;
+}
+
+/** The parts of a receipt beside its id, target and state. */
+interface ReceiptExtra {
+  readonly reason?: string | undefined;
+  readonly sendId?: string | undefined;
+  readonly verified?: WalkyVerified;
+}
+
+/** The deepest reply chain a message may sit in: a fifth reply in a row is refused `thread depth`. */
+export const THREAD_DEPTH_MAX = 4;
+
+/**
+ * Whether two messages under one id are the same message. The sender's clock (`at`) is left out: a
+ * phone's retry of the same attempt reuses the id and is built again a moment later, and that is a
+ * replay, not a second message.
+ */
+export function sameMessage(a: WalkyMessage, b: WalkyMessage): boolean {
+  return canonicalMessage({ ...a, at: 0 }) === canonicalMessage({ ...b, at: 0 });
+}
+
+/** Whether a target names a fan-out (`all` or `<member>/all`), not one pane. */
+export function isFanOut(target: string): boolean {
+  return target === "all" || target.endsWith("/all");
+}
+
+/**
+ * The receipts with every `<member>/all` leg left out once a pane on that member has a receipt of its
+ * own: the panes answer for the leg (a slow member's report, crew.ts `mergeReport`). A leg with no
+ * pane receipt stays, whatever its state.
+ */
+export function withoutAnsweredLegs<T extends Pick<WalkyReceipt, "target">>(receipts: readonly T[]): T[] {
+  const answered = new Set<string>();
+  for (const receipt of receipts) {
+    const address = parseAddress(receipt.target);
+    if (address?.kind === "pane") answered.add(address.memberId);
+  }
+  return receipts.filter((receipt) => {
+    const address = parseAddress(receipt.target);
+    return address?.kind !== "member-all" || !answered.has(address.memberId);
+  });
+}
+
+/** Who sent a message, as delivery needs it: the pane it came from, if any. */
+export interface SenderPane {
+  readonly session: string;
+  readonly paneId: string;
+  /** The sender pane's instance token; null for a reply pinned by a log line from before instances. */
+  readonly instance: string | null;
+}
+
+/** Whether a pane is the sender's: the same session and pane id, and the same instance when it is known. */
+function isPaneOf(pane: WalkyPane, sender: SenderPane): boolean {
+  return pane.session === sender.session && pane.paneId === sender.paneId && (sender.instance === null || pane.instance === sender.instance);
+}
+
+export interface DelivererDeps {
+  readonly log: WalkyLog;
+  readonly host: WalkyHost;
+  /** This bridge's member id, null on a solo install. */
+  readonly memberId: string | null;
+  /** False with COLLIE_WALKY=off. Read per message. */
+  readonly enabled: () => boolean;
+  /** The sender cap, 30 per sender per 10 minutes. */
+  readonly rate?: RateLimiter;
+  /** The pair cap, 6 per two addresses per 10 minutes. */
+  readonly pairs?: RateLimiter;
+  /** The lead's outer cap, 60 per member per 10 minutes. */
+  readonly members?: RateLimiter;
+  readonly routeRemote?: RouteRemote;
+  /** The dedupe file, `<stateDir>/walky/seen.json`. Absent: in memory, for a test. */
+  readonly seen?: WalkySeen;
+  /** The refusal counter, `<stateDir>/walky/refusals.json`. Absent: in memory. */
+  readonly refusals?: RefusalCounter;
+  readonly now?: () => number;
+  readonly sleep?: (ms: number) => Promise<void>;
+  /** {@link LANE_WAIT_MS}, for a test. A real timer: the wait is for another send, not for the clock. */
+  readonly laneWaitMs?: number;
+  readonly warn?: (line: string) => void;
+}
+
+/** The Send Protocol request id of one message to one target: deterministic, so a retry is a replay there too. */
+export function sendIdOf(id: string, target: string): string {
+  return `${id}-${createHash("sha256").update(target).digest("hex").slice(0, 8)}`;
+}
+
+/** A refusal's reason in the receipt's words. */
+export function reasonOf(result: SendResult): string {
+  if (result.outcome === "typed_not_submitted") return "typed, not submitted";
+  if (result.outcome !== "refused") return result.reason === undefined ? result.outcome : `${result.outcome}: ${result.reason.replace(/_/gu, " ")}`;
+  if (result.reason === "busy") return "pane busy";
+  if (result.reason === "not_free") return "box not free";
+  if (result.reason === "pane_gone") return "no such pane";
+  return (result.reason ?? "refused").replace(/_/gu, " ");
+}
+
+export class WalkyDeliverer {
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly rate: RateLimiter;
+  private readonly pairs: RateLimiter;
+  private readonly members: RateLimiter;
+  private readonly seen: WalkySeen;
+  private readonly refusals: RefusalCounter;
+  private readonly running = new Set<Promise<void>>();
+  /**
+   * Per pane, the promise of the newest walky send this bridge started there: it resolves once the Send
+   * Protocol answered that send (typed, refused, or `held`). A second message waits for it, so two
+   * quick messages are typed one after the other, never into each other, and the second is not
+   * refused `busy` by the first's own typing. A `held` answer releases the pane: the Send Protocol's
+   * hold queue then keeps the order.
+   */
+  private readonly lanes = new Map<string, Promise<void>>();
+
+  constructor(private readonly deps: DelivererDeps) {
+    this.now = deps.now ?? Date.now;
+    this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.rate = deps.rate ?? new RateLimiter();
+    this.pairs = deps.pairs ?? new RateLimiter(PAIR_LIMIT);
+    this.members = deps.members ?? new RateLimiter(MEMBER_LIMIT);
+    this.seen = deps.seen ?? new WalkySeen(null, this.now);
+    this.refusals = deps.refusals ?? new RefusalCounter(null, this.now);
+  }
+
+  /** The `by` of every receipt this bridge writes. */
+  get by(): string {
+    return this.deps.memberId ?? "solo";
+  }
+
+  /** Every receipt this bridge writes. Its target never carries an instance token (address.ts `bareAddress`). */
+  private receipt(id: string, target: string, state: WalkyReceiptState, extra: ReceiptExtra = {}): WalkyReceipt {
+    const base: WalkyReceipt = { id, target: bareAddress(target), state, verified: extra.verified ?? "local", at: this.now(), by: this.by };
+    // Cleaned to the form every reader keeps (types.ts `receiptReason`): an error text can be anything.
+    const reason = receiptReason(extra.reason);
+    const withReason = reason === undefined ? base : { ...base, reason };
+    return extra.sendId === undefined ? withReason : { ...withReason, sendId: extra.sendId };
+  }
+
+  /** A refusal written by this bridge: nothing typed, nothing logged but the count (M62 hardening I). */
+  refusal(id: string, target: string, reason: string, verified: WalkyVerified = "local"): WalkyReceipt {
+    this.refusals.count(reason);
+    return this.receipt(id, target, "refused", { reason, verified });
+  }
+
+  /** Count a refusal that wrote no receipt. */
+  noteRefusal(reason: string): void {
+    this.refusals.count(reason);
+  }
+
+  /** How many messages this bridge refused, per reason. */
+  refusalCounts(): RefusalCounts {
+    return this.refusals.current();
+  }
+
+  /** A newer receipt for a logged record: same id, target and verification, a new state. */
+  private next(record: LogRecord, state: WalkyReceiptState, reason?: string, sendId?: string): WalkyReceipt {
+    return this.receipt(record.message.id, record.target, state, { reason, sendId, verified: record.receipt.verified });
+  }
+
+  /** Resolves when every delivery started so far has settled. For tests and a clean stop. */
+  async settled(): Promise<void> {
+    while (this.running.size > 0) await Promise.all(this.running);
+  }
+
+  /** An address as this bridge spells it: `local/…` on a crew member is its own member id. The token stays. */
+  private normal(raw: string): string {
+    const address = parseAddress(raw);
+    if (address === null || address.kind === "all") return raw;
+    const member = isSelf(address.memberId, this.deps.memberId) ? (this.deps.memberId ?? LOCAL_MEMBER) : address.memberId;
+    return address.kind === "pane" ? paneAddress(member, address.paneId, address.instance) : `${member}/all`;
+  }
+
+  /**
+   * Whether `to` names the sender's own pane: the same member and pane id, and the same instance
+   * unless one of the two names none. A message a crew hop brought has no sender pane here, so this
+   * is the check that holds for it whatever spelling the sender chose.
+   */
+  private ownPane(from: string, to: string): boolean {
+    const a = parseAddress(this.normal(from));
+    const b = parseAddress(this.normal(to));
+    if (a?.kind !== "pane" || b?.kind !== "pane") return false;
+    return a.memberId === b.memberId && a.paneId === b.paneId && (a.instance === null || b.instance === null || a.instance === b.instance);
+  }
+
+  /**
+   * How deep a message sits in its thread: how many of its `replyTo` links this bridge's log holds,
+   * walking up. A link the log does not hold ends the walk and counts 0.
+   */
+  threadDepth(message: Pick<WalkyMessage, "id" | "replyTo">): number {
+    const seen = new Set<string>([message.id]);
+    let depth = 0;
+    let link = message.replyTo;
+    while (link !== null && !seen.has(link) && depth <= THREAD_DEPTH_MAX) {
+      seen.add(link);
+      const parent = this.deps.log.first(link);
+      if (parent === null) break;
+      depth += 1;
+      link = parent.message.replyTo;
+    }
+    return depth;
+  }
+
+  /**
+   * Deliver one built message. Answers at once with the receipts written before any key. The checks,
+   * in order, each a refusal that types nothing and logs no message (M62 hardening D and F):
+   *
+   *   `no such pane`                    the address does not parse, or names another machine on a crew hop
+   *   `id reused`                       the id is taken by another message
+   *   `only the operator may broadcast` an agent named `all` or `<member>/all`
+   *   `that is your own pane`           the target is the sender's own pane
+   *   `thread depth`                    the reply chain is deeper than 4 in this bridge's log
+   *   `off`                             COLLIE_WALKY=off on this machine
+   *   `ambiguous pane`                  more than one session has a pane with the target's id (and token)
+   *   `pane replaced`                   the address names a token, and the pane id is held by another instance
+   *   `sender gone`                     a reply's pane is gone, now in another session, or another instance
+   *   `not an agent pane`               the target is a shell
+   *   `rate limit` / `pair limit`       a cap is full: the sender's, the lead's per member, or the pair's
+   */
+  async deliver(message: WalkyMessage, sender: SenderPane | null, options: DeliverOptions = {}): Promise<WalkyReceipt[]> {
+    const verified = options.verified ?? "local";
+    const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
+    const address = parseAddress(message.to);
+    if (address === null) return refuse("no such pane");
+    // The same id again: the receipts of the targets it already has. One pane, or another machine,
+    // ends here; a fan-out goes on and finishes the targets it lacks (a crashed fan-out resumes).
+    const done = this.prior(message, verified);
+    if (done === null) return refuse("id reused");
+    if (done.size > 0 && address.kind === "pane") return [...done.values()];
+    if (address.kind !== "pane" && message.kind === "agent") return refuse("only the operator may broadcast");
+    const remote = address.kind !== "all" && !isSelf(address.memberId, this.deps.memberId);
+    if (remote && options.localOnly === true) return refuse("no such pane");
+    if (message.from.address !== null && this.ownPane(message.from.address, message.to)) return refuse("that is your own pane");
+    if (this.threadDepth(message) > THREAD_DEPTH_MAX) return refuse("thread depth");
+    if (remote) return this.capped(message, 1, options) ?? this.remote(message, address.memberId, sender);
+    if (!this.deps.enabled()) return refuse("off");
+    const panes = this.deps.host.panes();
+    const isSender = (pane: WalkyPane): boolean => sender !== null && isPaneOf(pane, sender);
+    const self = this.deps.memberId ?? LOCAL_MEMBER;
+    const refusedTargets: WalkyReceipt[] = [];
+    let targets: WalkyPane[];
+    if (address.kind === "pane") {
+      let pane: WalkyPane | undefined;
+      const pin = this.replyPin(message);
+      if (pin !== null) {
+        // The stored sender pane, and the instance that sent, when the log knows it.
+        pane = panes.find((candidate) => isPaneOf(candidate, pin));
+        if (pane === undefined || pane.paneId !== address.paneId) return refuse("sender gone");
+        if (address.instance !== null && pane.instance !== address.instance) return refuse("sender gone");
+      } else {
+        const named = panes.filter((candidate) => candidate.paneId === address.paneId);
+        // A token names one instance: the pane id held by another is a pane that closed and gave its id away.
+        const meant = address.instance === null ? named : named.filter((candidate) => candidate.instance === address.instance);
+        if (meant.length === 0 && named.length > 0) return refuse("pane replaced");
+        if (meant.length > 1) return refuse("ambiguous pane");
+        pane = meant[0];
+      }
+      if (pane === undefined) return refuse("no such pane");
+      if (isSender(pane)) return refuse("that is your own pane");
+      if (!pane.agent) return refuse("not an agent pane");
+      targets = [pane];
+    } else {
+      // A pane id that more than one session uses is one address for two panes: neither is typed.
+      const counts = new Map<string, number>();
+      for (const pane of panes) counts.set(pane.paneId, (counts.get(pane.paneId) ?? 0) + 1);
+      targets = [];
+      for (const pane of panes) {
+        if (!pane.agent || isSender(pane)) continue;
+        if ((counts.get(pane.paneId) ?? 0) > 1) {
+          const target = `${self}/${pane.paneId}`;
+          if (!refusedTargets.some((held) => held.target === target)) refusedTargets.push(this.refusal(message.id, target, "ambiguous pane", verified));
+          continue;
+        }
+        targets.push(pane);
+      }
+    }
+    const fresh = targets.filter((pane) => !done.has(`${self}/${pane.paneId}`));
+    const routes = address.kind === "all" && this.deps.routeRemote !== undefined && options.localOnly !== true;
+    const routesOn = routes && !done.has("all");
+    if (done.size > 0 && fresh.length === 0 && !routesOn) return withoutAnsweredLegs([...done.values()]);
+    const capped = this.capped(message, fresh.length + (routesOn ? 1 : 0), options);
+    if (capped !== null) return capped;
+    const receipts: WalkyReceipt[] = [...refusedTargets];
+    for (const pane of targets) {
+      const target = `${self}/${pane.paneId}`;
+      const held = done.get(target);
+      if (held !== undefined) {
+        receipts.push(held);
+        continue;
+      }
+      const accepted = this.receipt(message.id, target, "accepted", { verified });
+      // Seen first, then logged, then typed: a crash between any two never types twice.
+      this.seen.add(message, target);
+      const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
+      this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
+      receipts.push(accepted);
+      this.track(this.inLane(record, pane));
+    }
+    // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
+    if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
+    else if (routes) receipts.push(...[...done].filter(([target]) => !targets.some((pane) => `${self}/${pane.paneId}` === target)).map(([, receipt]) => receipt));
+    return withoutAnsweredLegs(receipts);
+  }
+
+  /**
+   * What this bridge already holds for a message id, by target: the log's receipts, and a seen entry
+   * the log lost answers `unknown` (it may have been typed; it is never typed again). Null when the
+   * id belongs to another message.
+   */
+  private prior(message: WalkyMessage, verified: WalkyVerified): Map<string, WalkyReceipt> | null {
+    const records = this.deps.log.all(message.id);
+    if (records.length > 0 && !sameMessage(records[0]!.message, message)) return null;
+    const entries = this.seen.of(message.id);
+    const hash = entries.length === 0 ? null : seenHash(message);
+    if (entries.some((entry) => entry.hash !== hash)) return null;
+    const out = new Map<string, WalkyReceipt>();
+    for (const record of records) out.set(record.target, record.receipt);
+    for (const entry of entries) if (!out.has(entry.target)) out.set(entry.target, this.receipt(message.id, entry.target, "unknown", { reason: "no log record", verified }));
+    return out;
+  }
+
+  /**
+   * The exact pane a reply goes back to: the session and pane this bridge took the replied-to message
+   * from, when the reply names that message's sender. Null when the log does not know it: the address
+   * then picks the pane, and must pick exactly one.
+   */
+  private replyPin(message: WalkyMessage): SenderPane | null {
+    if (message.replyTo === null) return null;
+    const parent = this.deps.log.first(message.replyTo);
+    if (parent === null || parent.sender === null || parent.message.from.address === null) return null;
+    if (this.normal(parent.message.from.address) !== this.normal(message.to)) return null;
+    const { session, paneId, instance } = parent.sender;
+    return session === null || paneId === null ? null : { session, paneId, instance };
+  }
+
+  /**
+   * The caps, checked together and taken together: `tokens` from the sender's bucket and, on a lead,
+   * from the dialling member's; one from the pair's for a message between two panes. Null when all
+   * fit (and are now counted), else the refusal.
+   */
+  private capped(message: WalkyMessage, tokens: number, options: DeliverOptions): WalkyReceipt[] | null {
+    const now = this.now();
+    const verified = options.verified ?? "local";
+    const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
+    const count = Math.max(1, tokens);
+    // A sender and a pair are counted by pane id, the token left out, so a new spelling never opens a new bucket.
+    const key = senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
+    const pair = message.from.address === null ? null : pairKey(bareAddress(this.normal(message.from.address)), bareAddress(this.normal(message.to)));
+    if (!this.rate.room(key, now, count)) return refuse("rate limit");
+    if (options.via !== undefined && !this.members.room(options.via, now, count)) return refuse("rate limit");
+    if (pair !== null && !this.pairs.room(pair, now)) return refuse("pair limit");
+    this.rate.take(key, now, count);
+    if (options.via !== undefined) this.members.take(options.via, now, count);
+    if (pair !== null) this.pairs.take(pair, now);
+    return null;
+  }
+
+  /** An address on another member: through the crew seam, or refused while there is none. */
+  private async remote(message: WalkyMessage, members: string, sender: SenderPane | null): Promise<WalkyReceipt[]> {
+    const route = this.deps.routeRemote;
+    if (route === undefined) return [this.refusal(message.id, message.to, "crew routing not built")];
+    const placement: Placement = { session: null, paneId: null, instance: null };
+    const accepted = this.receipt(message.id, members === "all" ? "all" : message.to, "accepted");
+    this.seen.add(message, accepted.target);
+    this.deps.log.record(message, accepted.target, placement, accepted, sender);
+    try {
+      const receipts = [...(await route(message, members))];
+      // A fan-out comes back as one receipt per pane on the far side: each is logged as a target of
+      // its own, so `status` and the outcome report (crew.ts) can find it by id and target.
+      for (const receipt of receipts) {
+        if (receipt.id !== message.id) continue;
+        // A refusal the routing side wrote itself (an older member, a bad signature) counts here too.
+        if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
+        const held = this.deps.log.get(message.id, receipt.target);
+        if (held === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
+        // The answer of this dial replaces only `accepted` (CREW_PROTOCOL §21): while it was on its
+        // way, a member's report or the lead's push may have written the real outcome, and a slow
+        // leg's `unknown` or a late `accepted` must not go over it.
+        else if (held.receipt.state === "accepted") this.deps.log.update(receipt);
+      }
+      return receipts.length === 0 ? [accepted] : receipts;
+    } catch (err) {
+      const failed = this.receipt(message.id, accepted.target, "unknown", { reason: `crew: ${err instanceof Error ? err.message : String(err)}` });
+      if (this.deps.log.get(message.id, accepted.target)?.receipt.state === "accepted") this.deps.log.update(failed);
+      return [failed];
+    }
+  }
+
+  private track(work: Promise<void>): void {
+    const tracked = work.catch((err: Error) => this.deps.warn?.(`[walky] delivery failed: ${err.message}`)).finally(() => this.running.delete(tracked));
+    this.running.add(tracked);
+  }
+
+  /**
+   * Type one logged message once the pane's earlier walky send was answered. The first message to a
+   * free pane starts at once, in this same tick, so its send id is on disk before any await. The
+   * receipt stays `accepted` while it waits, as a hold does.
+   */
+  private async inLane(record: LogRecord, pane: WalkyPane): Promise<void> {
+    const key = `${pane.session}\u0000${pane.paneId}`;
+    const before = this.lanes.get(key) ?? null;
+    const { promise: mine, resolve: release } = Promise.withResolvers<void>();
+    this.lanes.set(key, mine);
+    const done = (): void => {
+      release();
+      if (this.lanes.get(key) === mine) this.lanes.delete(key);
+    };
+    try {
+      if (before !== null && !(await this.waited(before))) {
+        this.deps.log.update(this.next(record, "inbox-only", PANE_BUSY));
+        return;
+      }
+      await this.type(record, pane, done);
+    } finally {
+      done();
+    }
+  }
+
+  /** Whether `before` resolved inside {@link LANE_WAIT_MS}. */
+  private async waited(before: Promise<void>): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), this.deps.laneWaitMs ?? LANE_WAIT_MS);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([before.then(() => true), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Type one logged message into its pane, and write how it ended. `answered`: the Send Protocol answered. */
+  private async type(record: LogRecord, pane: WalkyPane, answered: () => void = () => undefined): Promise<void> {
+    const { message, target } = record;
+    if (!pane.terminal) {
+      this.deps.log.update(this.next(record, "inbox-only", "no terminal"));
+      return;
+    }
+    const sendId = sendIdOf(message.id, target);
+    // The send id is on disk before the send: a restart reads the request store under it.
+    this.deps.log.update(this.next(record, "accepted", undefined, sendId));
+    let result: SendResult;
+    try {
+      result = await this.deps.host.send(pane, sendId, formatEnvelope(message));
+    } catch (err) {
+      result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
+    }
+    answered();
+    await this.settle(record, pane.session, pane.paneId, pane.instance, sendId, result);
+  }
+
+  /** Write the receipt an outcome stands for. A held send is watched until it ends or its 10 minutes pass. */
+  private async settle(record: LogRecord, session: string, paneId: string, instance: string | null, sendId: string, first: SendResult): Promise<void> {
+    const { message } = record;
+    let result = first;
+    if (result.outcome === "held") {
+      const until = record.receipt.at + HELD_LIMIT_MS;
+      while (result.outcome === "held" && this.now() < until) {
+        await this.sleep(HELD_POLL_MS);
+        result = this.deps.host.sendState(sendId) ?? result;
+      }
+      if (result.outcome === "held") {
+        // Take it back, then read what the Send Protocol says now: it may have gone out at the last
+        // moment, and a hold the cancel did not reach may still go out. Only a cancel it confirmed
+        // means nothing was typed.
+        this.deps.host.cancelHeld(session, paneId, sendId);
+        const after = this.deps.host.sendState(sendId);
+        if (after?.outcome === "cancelled") {
+          this.deps.log.update(this.next(record, "inbox-only", "held past 10 minutes", sendId));
+          return;
+        }
+        if (after === null || after.outcome === "held") {
+          this.deps.log.update(this.next(record, "unknown", "held past 10 minutes, still pending", sendId));
+          return;
+        }
+        result = after;
+      }
+    }
+    if (result.outcome === "sent" || result.outcome === "effective") {
+      this.deps.log.update(this.next(record, "delivered", undefined, sendId));
+      // The operator's body was typed: read. An agent's was not: it waits for `inbox <id>`.
+      // A record from before instances names no inbox this log still writes: nothing to ack.
+      if (message.kind === "operator" && instance !== null) this.deps.log.ack(session, paneId, instance, [message.id]);
+      return;
+    }
+    if (result.outcome === "unknown") {
+      this.deps.log.update(this.next(record, "unknown", result.reason?.replace(/_/gu, " "), sendId));
+      return;
+    }
+    this.deps.log.update(this.next(record, "inbox-only", reasonOf(result), sendId));
+  }
+
+  /**
+   * After a restart: every receipt still `accepted` is settled from what the Send Protocol stored.
+   * The send id is DERIVED from the message id and the target (`sendIdOf`), never read from the
+   * receipt: a crash between logging and writing the send id must not hide a send that went out. A
+   * send id the protocol never took means no key went out: `inbox-only`. A held send is watched again
+   * from where it stood. Nothing here sends.
+   */
+  recover(): number {
+    let count = 0;
+    for (const record of this.deps.log.pending()) {
+      const { session, paneId } = record;
+      if (session === null || paneId === null) continue;
+      count += 1;
+      const sendId = sendIdOf(record.message.id, record.target);
+      const state = this.deps.host.sendState(sendId);
+      if (state === null) {
+        this.deps.log.update(this.next(record, "inbox-only", "bridge restarted"));
+        continue;
+      }
+      this.track(this.settle(record, session, paneId, record.instance, sendId, state));
+    }
+    return count;
+  }
+}

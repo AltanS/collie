@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 117 in all, each one named, with its reason:
-#              bridge 75. 5 are the POSIX-only and engine cases below, 4 are the hold socket tests, 30 are the
+#              Today, 142 in all, each one named, with its reason:
+#              bridge 81. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
 #                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
@@ -31,6 +31,9 @@
 #                to end > a 13 s WAV becomes text through a real child of this Collie". It runs only
 #                where COLLIE_TEST_WHISTLE_DIR holds the measured model, which is never committed, so
 #                no CI job or VM has it (Linux CI skips it too).
+#              The /etc link scan, bridge (1). In bridge/claude-commands.test.ts, "discoverClaudeCommands: the bounds
+#                a reader of the operator's disk keeps". Windows has no /etc, and a file symlink needs a privilege there:
+#                - "real disk: a symlink to /etc, in a project or in the personal folders, yields no row" (POSIX links to /etc)
 #              The hold socket, bridge (4). Windows builds no hold socket yet, so every permission there stays a
 #                screen ask (CHANGELOG, M56 spec 12). The four tests of the "the hold socket" block in
 #                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
@@ -39,6 +42,13 @@
 #                - "a pid the bridge cannot place is dropped with one log line, and the connection closes with no decision" (it dials that socket)
 #                - "a placed request reaches the session; the decision travels back as one line" (the same)
 #                - "an unparsed line is dropped" (the same)
+#              Walky talky, bridge (5). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
+#                0700 and 0600 sit in their own skipped test, and the behaviour beside them runs on Windows:
+#                - "keeps its tokens at 0600 in a 0700 folder" (instances.test.ts, "the instance registry")
+#                - "is private: a 0700 folder and a 0600 file" (log.test.ts, "the log")
+#                - "keeps its file at 0600 in a 0700 folder" (refusals.test.ts, "the refusal counter")
+#                - "keeps an id and target a day, apart from the log, on disk at 0600" (seen.test.ts, "the seen file")
+#                - "is 0600, answers one line per connection, and refuses a second bridge on the same path" (socket.test.ts, "the socket"): every part of it is the Unix socket, and Windows builds no walky socket ("Windows has no socket" runs there)
 #              Durable, bridge (30 + 36). Windows has no socket transport (WIRE.md section 1A), so a test
 #                that is about the Unix socket itself cannot run there. The tests about the wire (controls,
 #                asks, answers, receipts, events, Chat, starters, the conformance suite) run on Windows
@@ -57,7 +67,7 @@
 #                handed a socket path), asks.test.ts (a socket with nothing listening) and
 #                http-client.test.ts (the socket client sends no Authorization header), one each; and
 #                bridge/durable/log.test.ts (a mode 0755 folder put back to 0700).
-#              cli 17. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 36. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 5:
 #                "a per-call override wins over the Exec's own environment (#283) > a child
@@ -67,6 +77,11 @@
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
 #                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
 #                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
+#              Walky talky, cli (19). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
+#                `socketTest`, 8 in "send", 8 in "reply, inbox, status, who" and 3 in "on a crew member". The
+#                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
+#                UNREACHABLE" and "on Windows it says why and exits STATE".
 #              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 #                The other 2 are in the harness lab (scripts/harness-canary/lab/):
@@ -75,8 +90,8 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 75,
-  [int]$MaxSkipsCli = 17,
+  [int]$MaxSkipsBridge = 81,
+  [int]$MaxSkipsCli = 36,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

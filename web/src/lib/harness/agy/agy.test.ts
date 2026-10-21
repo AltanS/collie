@@ -46,7 +46,19 @@ const NEUTRAL = new Set([
 // subject, 2026-10-06). It is a named exception, not a silent one: the test below fails the day agy
 // stops claiming it, and then the entry is deleted. No agy pane paints this screen, and the agy
 // adapter only reads panes Herdr reports as agy.
-const KNOWN_FOREIGN_CLAIMS = new Set(["claude--v2291-permission-bash-subagent.txt"]);
+const KNOWN_FOREIGN_CLAIMS = new Set([
+  "claude--v2291-permission-bash-subagent.txt",
+  // The same shape on 2.1.303: a background agent's Bash permission with a tall command (2026-10-19).
+  "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
+  "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
+  // A Japanese AskUserQuestion on 2.1.296 (issue 543): its question ends in a fullwidth "？", which agy
+  // reads as a question now that both readers share hasQuestionMark. No agy pane paints it.
+  "claude--v2296-question-fullwidth--w150.txt",
+  // A Claude AskUserQuestion on 2.1.304 whose question has no "?" at all: both readers take the
+  // question under the single-question chip, and the scrubbed transcript names Claude nowhere. No agy
+  // pane paints it.
+  "claude--v2304-ask-no-question-mark-plain--w135.txt",
+]);
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
 const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.has(f));
@@ -146,6 +158,23 @@ describe("agyAdapter unit & footer safety", () => {
 
     const blocks = agyAdapter.buildBlocks(lines);
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(true);
+  });
+
+  it("finds a question that ends in a fullwidth question mark, above the rows that explain it (issue 543)", () => {
+    const raw = [
+      "どの色にしますか？",
+      "ダッシュボードの配色です。",
+      "あとから変更できます。",
+      "迷ったら緑を選んでください。",
+      "❯ 1. 赤",
+      "  2. 緑",
+      "  3. 青",
+      "Enter to select · ↑/↓ to navigate",
+    ].join("\n");
+    const model = detectPromptSelect(splitLines(parseAnsi(raw)));
+    expect(model).not.toBeNull();
+    expect(model!.question).toBe("どの色にしますか？");
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
   });
 
   it("declines a numbered list without a dialog footer (ADR 0009 safety)", () => {

@@ -5,6 +5,7 @@ import { apiError } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { cleanLauncherText, isForbiddenCodePoint, MAX_COMMAND_CHARS, MAX_LABEL_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
 import { memoryAddedIo, stateFileIo, type AddedFileIo } from "./launchers-added.ts";
+import { looksSecret } from "./secret-line.ts";
 import type { RecentRunWire, RecentRunsResponse } from "./types.ts";
 
 // ── The one-off commands a phone ran on THIS machine, newest first (ADR 0095) ────────────────────
@@ -38,16 +39,8 @@ import type { RecentRunWire, RecentRunsResponse } from "./types.ts";
 // on every New page. So a line with an assignment (`NAME=value`), a URL with a password in it, or a
 // word such as token, secret or password runs as usual and is not recorded. The test is a cheap
 // guess that errs towards keeping too little: a line it skips is typed again, a line it keeps can
-// leak (ADR 0095, 2026-10-09 amendment).
-
-const ASSIGNMENT = /(?:^|[\s;&|(])[A-Za-z_][A-Za-z0-9_]*=\S/;
-const URL_PASSWORD = /:\/\/[^\s/@:]+:[^\s/@]+@/;
-const SECRET_WORD = /password|passwd|secret|token|api[-_]?key|bearer|authorization|credential/i;
-
-/** Whether a line seems to carry a secret, so the history leaves it out. */
-export function looksSecret(line: string): boolean {
-  return ASSIGNMENT.test(line) || URL_PASSWORD.test(line) || SECRET_WORD.test(line);
-}
+// leak (ADR 0095, 2026-10-09 amendment). It lives in bridge/secret-line.ts, shared with Sent.
+export { looksSecret };
 
 /** The file's name inside the state dir. */
 export const RECENT_FILE = "commands-recent.json";

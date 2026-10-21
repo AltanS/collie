@@ -18,8 +18,14 @@ import {
   parseCrewRows,
   parsePeerPreflight,
   parsePreflightReport,
+  backVerdict,
+  type BackState,
+  parseLineRequest,
+  parseRollbackRequest,
   parseUpdateStartRequest,
   peerPreflightWire,
+  rollbackVerdict,
+  type RollbackState,
   PreflightCache,
   preflightCommand,
   PREFLIGHT_TTL_MS,
@@ -992,5 +998,169 @@ describe("updateStartVerdict — a peers-only start over a crew that may already
       lead({ crew: [row("minibuch", null)], peers: [{ name: "minibuch", state: "unreachable" }] }),
     );
     expect(v).toEqual({ kind: "peers", to: "1.5.0" });
+  });
+});
+
+describe("POST api/update/rollback — the rollback verdict (M60 spec 01)", () => {
+  const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const BACK = { ...GREEN, rollback: { from: "1.3.0", to: "1.2.4" } };
+  const back = (over: Partial<RollbackState> = {}): RollbackState => ({ run: null, lockHeld: false, preflight: BACK, ...over });
+  const rollback = (over: JsonObject = {}) => {
+    const parsed = parseRollbackRequest({ confirm: true, requestId: ID, ...over });
+    if (parsed === null) throw new Error("not an object");
+    return parsed;
+  };
+
+  test("a confirmed request with a UUID and a kept build starts, and the request id is the run id", () => {
+    expect(rollbackVerdict(rollback(), back())).toEqual({ kind: "start", from: "1.3.0", to: "1.2.4", runId: ID });
+    expect(rollbackVerdict(rollback({ target: "1.2.4" }), back())).toMatchObject({ kind: "start" });
+  });
+
+  test("no confirm, or no request id that is a UUID, starts nothing", () => {
+    expect(rollbackVerdict(rollback({ confirm: false }), back())).toMatchObject({ kind: "refuse", status: 400, body: { code: "update.confirm_required" } });
+    for (const requestId of [undefined, "", "r-1", 7, `${ID}x`]) {
+      const v = rollbackVerdict(rollback({ requestId: requestId ?? null }), back());
+      expect(v).toMatchObject({ kind: "refuse", status: 400, body: { code: "update.request_id_required" } });
+    }
+    expect(parseRollbackRequest("yes")).toBeNull();
+  });
+
+  test("the same request id again answers its receipt and starts nothing, whatever the run did since", () => {
+    for (const s of ["staging", "verifying", "done", "rolled-back"] as const) {
+      const run = { ...runAt(s), from: "1.3.0", to: "1.2.4", runId: ID, action: "rollback" as const };
+      expect(rollbackVerdict(rollback(), back({ run, lockHeld: s === "staging" }))).toEqual({ kind: "replay", from: "1.3.0", to: "1.2.4", runId: ID });
+    }
+  });
+
+  test("a run going, a lock held or a crew run open refuses a new id: the double tap", () => {
+    expect(rollbackVerdict(rollback(), back({ run: runAt("restarting") }))).toMatchObject({ status: 409, body: { code: "update.in_progress", detail: { state: "restarting" } } });
+    expect(rollbackVerdict(rollback(), back({ lockHeld: true }))).toMatchObject({ status: 409, body: { code: "update.in_progress" } });
+    expect(rollbackVerdict(rollback(), back({ crewRunOpen: true }))).toMatchObject({ status: 409, body: { detail: { state: "levelling the crew" } } });
+    // A finished run of ANOTHER id does not stand in the way.
+    expect(rollbackVerdict(rollback(), back({ run: runAt("done") }))).toMatchObject({ kind: "start" });
+  });
+
+  test("no previous build, a packaged install, or no preflight at all refuses it", () => {
+    expect(rollbackVerdict(rollback(), back({ preflight: GREEN }))).toEqual({
+      kind: "refuse",
+      status: 409,
+      body: { error: "there is no previous build on this machine to roll back to", code: "update.rollback_unavailable" },
+    });
+    expect(rollbackVerdict(rollback(), back({ installKind: "packaged" }))).toMatchObject({ status: 409, body: { code: "update.packaged" } });
+    expect(rollbackVerdict(rollback(), back({ preflight: null }))).toMatchObject({ status: 503, body: { code: "update.preflight_unavailable" } });
+  });
+
+  test("a red preflight does NOT gate it: going back must work when this build is the one in trouble", () => {
+    const red = { ...REPORT("red", [{ id: "disk", verdict: "red", reason: "0 bytes free" }]), rollback: BACK.rollback };
+    expect(rollbackVerdict(rollback(), back({ preflight: red }))).toMatchObject({ kind: "start", to: "1.2.4" });
+  });
+
+  test("a sheet that named another build than the one on disk now is refused, naming both", () => {
+    expect(rollbackVerdict(rollback({ target: "1.2.3" }), back())).toMatchObject({
+      status: 409,
+      body: { code: "update.target_mismatch", detail: { asked: "1.2.3", would: "1.2.4" } },
+    });
+  });
+
+  test("the report's rollback field is read, and a malformed one reads as none", () => {
+    const doc = (rollbackField: JsonValue) => JSON.stringify({ schema: 1, verdict: "green", checks: [], rollback: rollbackField });
+    expect(parsePreflightReport(doc({ from: "1.3.0", to: "1.2.4" }))?.rollback).toEqual({ from: "1.3.0", to: "1.2.4" });
+    for (const bad of [null, "1.2.4", { from: "1.3.0" }, { from: "", to: "1.2.4" }, { from: 1, to: 2 }]) {
+      expect("rollback" in (parsePreflightReport(doc(bad)) ?? {})).toBe(false);
+    }
+  });
+
+  test("the spawn is `update --rollback --run-id`, with no major and no tag", () => {
+    const base = { platform: "linux", binary: "/opt/collie/bin/collie", stamp: "42", hasSystemdRun: true, hasSetsid: true };
+    expect(updateStartCommand({ ...base, major: true, toTag: "v9.0.0", runId: ID, rollback: true }).command).toEqual([
+      "systemd-run",
+      "--user",
+      "--collect",
+      "--unit",
+      "collie-api-update-42",
+      "/opt/collie/bin/collie",
+      "update",
+      "--rollback",
+      "--run-id",
+      ID,
+    ]);
+    expect(updateStartCommand({ ...base, hasSystemdRun: false, major: false, runId: ID, rollback: true }).command).toEqual([
+      "setsid",
+      "/opt/collie/bin/collie",
+      "update",
+      "--rollback",
+      "--run-id",
+      ID,
+    ]);
+  });
+});
+
+describe("POST api/update/back and api/update/line — the two release lines (M60 spec 01)", () => {
+  const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const backState = (over: Partial<BackState> = {}): BackState => ({
+    run: null,
+    lockHeld: false,
+    preflight: GREEN,
+    current: "1.23.0-edge.2",
+    line: "stable",
+    back: "1.22.6",
+    ...over,
+  });
+  const askBack = (over: JsonObject = {}) => {
+    const parsed = parseRollbackRequest({ confirm: true, requestId: ID, ...over });
+    if (parsed === null) throw new Error("not an object");
+    return parsed;
+  };
+
+  test("Go back now starts to the monitor's Stable target, with the request id as the run id", () => {
+    expect(backVerdict(askBack(), backState())).toEqual({ kind: "start", from: "1.23.0-edge.2", to: "1.22.6", runId: ID });
+    expect(backVerdict(askBack({ target: "1.22.6" }), backState())).toMatchObject({ kind: "start" });
+  });
+
+  test("refusals, in order: confirm, id, replay, a run going, packaged, nothing to go back to, a stale sheet, red", () => {
+    expect(backVerdict(askBack({ confirm: false }), backState())).toMatchObject({ status: 400, body: { code: "update.confirm_required" } });
+    expect(backVerdict(askBack({ requestId: "nope" }), backState())).toMatchObject({ status: 400, body: { code: "update.request_id_required" } });
+    const run: UpdateRun = { ...runAt("done"), runId: ID, from: "v1.23.0-edge.2", to: "v1.22.6" };
+    expect(backVerdict(askBack(), backState({ run }))).toEqual({ kind: "replay", from: "v1.23.0-edge.2", to: "v1.22.6", runId: ID });
+    expect(backVerdict(askBack(), backState({ lockHeld: true }))).toMatchObject({ status: 409, body: { code: "update.in_progress" } });
+    expect(backVerdict(askBack(), backState({ crewRunOpen: true }))).toMatchObject({ status: 409, body: { code: "update.in_progress" } });
+    expect(backVerdict(askBack(), backState({ installKind: "packaged" }))).toMatchObject({ status: 409, body: { code: "update.packaged" } });
+    expect(backVerdict(askBack(), backState({ line: "edge" }))).toMatchObject({ status: 409, body: { code: "update.back_unavailable" } });
+    expect(backVerdict(askBack(), backState({ back: null }))).toMatchObject({ status: 409, body: { code: "update.back_unavailable" } });
+    expect(backVerdict(askBack({ target: "1.22.5" }), backState())).toMatchObject({ status: 409, body: { code: "update.target_mismatch" } });
+    expect(backVerdict(askBack(), backState({ preflight: null }))).toMatchObject({ status: 503 });
+    const red = REPORT("red", [{ id: "disk", verdict: "red", reason: "0.1 GB free" }]);
+    expect(backVerdict(askBack(), backState({ preflight: red }))).toMatchObject({ status: 409, body: { code: "update.preflight_red" } });
+  });
+
+  test("the spawn is `update --to-tag v<to> --downgrade --run-id`, and --line rides only when asked", () => {
+    const base = { platform: "linux", binary: "/c", stamp: "1", hasSystemdRun: false, hasSetsid: false, major: false };
+    expect(updateStartCommand({ ...base, runId: ID, toTag: "v1.22.6", downgrade: true }).command).toEqual([
+      "/c",
+      "update",
+      "--to-tag",
+      "v1.22.6",
+      "--downgrade",
+      "--run-id",
+      ID,
+    ]);
+    expect(updateStartCommand({ ...base, runId: ID, toTag: "v1.23.0-edge.2", line: "edge" }).command).toEqual([
+      "/c",
+      "update",
+      "--to-tag",
+      "v1.23.0-edge.2",
+      "--line",
+      "edge",
+      "--run-id",
+      ID,
+    ]);
+    // `--downgrade` without a tag means nothing and is never sent.
+    expect(updateStartCommand({ ...base, runId: ID, downgrade: true }).command).toEqual(["/c", "update", "--run-id", ID]);
+  });
+
+  test("the line switch body: a line word and a UUID, nothing else believed", () => {
+    expect(parseLineRequest({ line: "edge", requestId: ID })).toEqual({ line: "edge", requestId: ID });
+    expect(parseLineRequest({ line: "nightly", requestId: "x" })).toEqual({ line: null, requestId: null });
+    expect(parseLineRequest("edge")).toBeNull();
   });
 });

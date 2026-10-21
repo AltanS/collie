@@ -467,6 +467,32 @@ describe("preflight — the bun check", () => {
   });
 });
 
+describe("preflight — the rollback target (M60 spec 01)", () => {
+  const binary = (seed: Record<string, string>) => {
+    const h = harness({ answers: [[`git -C /opt/app/versions/1.0.0 rev-parse --show-prefix`, { code: 128 }]], files: seed });
+    const deps: UpdateCheckDeps = {
+      ...h.deps,
+      ctx: context({}, { root: "/opt/app/versions/1.0.0" }),
+      link: fakeLinkFs({ "/opt/app/current": { kind: "symlink", target: "versions/1.0.0" } }),
+      net: { ...deadNet, getJson: () => Promise.resolve({ ok: true, value: [{ name: "v1.0.0", commit: { sha: "cccccccc" } }] }) },
+    };
+    return { ...h, deps };
+  };
+
+  test("names the build a rollback goes back to when one is kept, and the human report says so", async () => {
+    const h = binary({ "/opt/app/versions/1.0.0/bin/collie": "B", "/opt/app/versions/0.9.0/bin/collie": "B" });
+    const report = await preflight(h.deps);
+    expect(report.rollback).toEqual({ from: "1.0.0", to: "0.9.0" });
+    expect(await cmdUpdateCheck(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("rollback: 0.9.0 is kept on disk (collie update --rollback)");
+  });
+
+  test("has no rollback key at all when nothing older is kept, or on an in-place checkout", async () => {
+    expect("rollback" in (await preflight(binary({ "/opt/app/versions/1.0.0/bin/collie": "B" }).deps))).toBe(false);
+    expect("rollback" in (await preflight(harness().deps))).toBe(false);
+  });
+});
+
 describe("preflight — the clean-tree check", () => {
   test("untracked files stay green: `--untracked-files=no` is what is asked", async () => {
     const h = harness();

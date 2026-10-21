@@ -198,3 +198,26 @@ describe("a durable turn that is still being written, and a line with a request 
     expect(finished(tool!)).toBe(tool);
   });
 });
+
+describe("itemsOf and a walky talky envelope (M62)", () => {
+  const envelope = (text: string, role: "user" | "assistant" = "user") => ({
+    uuid: "u9",
+    ts: "2026-10-17T09:30:00Z",
+    role,
+    parts: [{ kind: "text" as const, text }],
+  });
+
+  it("tags a user turn whose first line is a header, with what the header claims", () => {
+    const [item] = itemsOf(envelope("[walky-talky wt_k3f9x2m8q1a0] from agent bluefin/w6:p3 (claude, x#y) reply to wt_8ab2c3d4e5f6\nbody"));
+    expect(item).toMatchObject({ kind: "user", walky: { id: "wt_k3f9x2m8q1a0", kind: "agent", replyTo: "wt_8ab2c3d4e5f6" } });
+  });
+
+  it("leaves an ordinary turn, and a header quoted on a later line, untagged", () => {
+    expect(itemsOf(envelope("fix the tests"))[0]).not.toHaveProperty("walky");
+    expect(itemsOf(envelope("see:\n[walky-talky wt_k3f9x2m8q1a0] from agent x (y)"))[0]).not.toHaveProperty("walky");
+  });
+
+  it("tags only a user turn: an assistant that prints a header is just speaking", () => {
+    expect(itemsOf(envelope("[walky-talky wt_k3f9x2m8q1a0] from agent x (y)", "assistant"))[0]).not.toHaveProperty("walky");
+  });
+});
