@@ -53,6 +53,7 @@ interface FakePane {
   label?: string | null;
   revision: number;
   agent_session?: { source?: string; agent?: string; kind?: string; value?: string } | null;
+  tokens?: Record<string, string> | null;
   scroll?: {
     offset_from_bottom: number;
     max_offset_from_bottom: number;
@@ -1197,6 +1198,52 @@ describe("StateEngine — pane capability fields", () => {
     herdr.panes = [p];
     await poll();
     expect(engine.current().agents[0]!.agentSession).toEqual({ kind: "id", value: "abc-123" });
+  });
+
+  // herdr-mirror keeps a local tail copy of a mirrored pi/omp journal, and publishes its path as the
+  // `mirror_session_path` pane token, because Herdr refuses a pi/omp session on a pane that is not
+  // running the agent itself.
+  describe("a herdr-mirror journal token", () => {
+    const COPY = "/home/you/.local/state/herdr-mirror/journals/sessions/0123456789ab.jsonl";
+
+    test.each(["omp", "pi"])("stands in for the session of a mirrored %s pane", async (agent) => {
+      const { herdr, engine, poll } = makeEngine();
+      const p = pane("w1:p1", "w1", "idle", agent);
+      p.tokens = { mirror_session_path: COPY, model: "opus" };
+      herdr.panes = [p];
+      await poll();
+      expect(engine.current().agents[0]!.agentSession).toEqual({ kind: "path", value: COPY });
+    });
+
+    test("never replaces the pane's own agent_session", async () => {
+      const { herdr, engine, poll } = makeEngine();
+      const p = pane("w1:p1", "w1", "idle", "omp");
+      const own = "/home/you/.omp/agent/sessions/--repo--/2026-10-21T10-00-00-000Z_abc.jsonl";
+      p.agent_session = { source: "herdr:omp", agent: "omp", kind: "path", value: own };
+      p.tokens = { mirror_session_path: COPY };
+      herdr.panes = [p];
+      await poll();
+      expect(engine.current().agents[0]!.agentSession).toEqual({ kind: "path", value: own });
+    });
+
+    test("is no fallback for a session dropped as another harness's", async () => {
+      const { herdr, engine, poll } = makeEngine();
+      const p = pane("w1:p1", "w1", "idle", "omp");
+      p.agent_session = { source: "herdr:claude", agent: "claude", kind: "id", value: "abc-123" };
+      p.tokens = { mirror_session_path: COPY };
+      herdr.panes = [p];
+      await poll();
+      expect(engine.current().agents[0]!.agentSession).toBeUndefined();
+    });
+
+    test.each([["claude"], ["codex"], [null]])("is ignored on a pane whose agent keeps no pi journal: %p", async (agent) => {
+      const { herdr, engine, poll } = makeEngine();
+      const p = pane("w1:p1", "w1", "idle", agent);
+      p.tokens = { mirror_session_path: COPY };
+      herdr.panes = [p];
+      await poll();
+      expect(engine.current().agents[0]?.agentSession).toBeUndefined();
+    });
   });
 
   test.each([

@@ -64,6 +64,7 @@ import {
 import {
   DEFAULT_TIMEOUT_MS,
   HerdrClient,
+  mirrorSessionRef,
   paneAgentSession,
   type CreatedShell,
   type HerdrRpc,
@@ -717,7 +718,11 @@ function toMuxPane(
   // old one's ref behind — live-observed: a pane running `pi` still advertising a claude `id` from
   // the claude that had been there before. Serving that would hand pi's adapter a Claude uuid.
   // Absence of `agent` stays permissive, so an older server that omits the field still works.
-  const session = paneAgentSession(raw.agent_session);
+  //
+  // A herdr-mirror pane reports no session of its own (Herdr refuses a pi/omp one there), so for a
+  // pi/omp pane with NO `agent_session` the mirror's journal-copy token stands in for it — see
+  // mirrorSessionRef. It is a `path` ref like pi's, confined by the journal adapter the same way.
+  const session = paneAgentSession(raw.agent_session) ?? mirrorSessionRef(raw);
   if (session !== null && (session.agent === undefined || session.agent === agent)) {
     pane.agentSession = { kind: session.kind, value: session.value };
   }
