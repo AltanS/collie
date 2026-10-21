@@ -40,6 +40,32 @@
       "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%)",
       "underPainted": true
     },
+    "frameAlternates": [
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^ ─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―].*?)\\s+─+)?$",
+          "minCells": 8,
+          "column": 1
+        },
+        "prompt": {
+          "pattern": "^ >(?: (?<draft>(?:(?!\\s{8,}\\S).)*))?(?:\\s{8,}\\S.*)?$",
+          "column": 1
+        },
+        "bottom": {
+          "pattern": "^ ─+$",
+          "minCells": 8,
+          "column": 1
+        },
+        "continuationIndent": 3,
+        "maxDraftRows": 30,
+        "maxTailRows": 60,
+        "rows": "^(?: ─.*| >(?: .*)?| {3}.*|)$",
+        "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%| ↳ \\S)",
+        "underPainted": true,
+        "ownPrompt": true
+      }
+    ],
     "placeholders": {
       "texts": [],
       "sgr": 2
@@ -60,8 +86,8 @@
           "entry": "^ {2,5}(?<command>[^\\s(→]\\S*)(?: {2,}\\S.*)?$",
           "wrapped": "^ {2,5}\\(\\d+/\\d+\\)$",
           "footer": {
-            "pattern": "^\\S",
-            "maxRows": 4
+            "pattern": "^(?:\\S| ↳ \\S)",
+            "maxRows": 6
           }
         }
       }
@@ -69,7 +95,7 @@
     "runningRows": [
       "^\\s*[⠀-⣿•] Working\\b",
       "\\bWorking\\s*\\(.*esc to interrupt\\)",
-      "^─+\\s+[⠀-⣿]\\s+Working\\b"
+      "^ ?─+\\s+[⠀-⣿]\\s+Working\\b"
     ],
     "dialogsInBox": true
   },

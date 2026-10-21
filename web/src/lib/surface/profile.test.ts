@@ -255,7 +255,7 @@ describe("the codex profile (M56 spec 13)", () => {
       return { list, pointer: (text: string) => commandOf(list.pointer, text), entry: (text: string) => commandOf(list.entry, text), wrapped: (text: string) => new RegExp(list.wrapped, "u").test(text) };
     };
     const stock = read("pi");
-    expect(stock.list).toMatchObject({ lead: "/", sides: ["under"], footer: { maxRows: 4 } });
+    expect(stock.list).toMatchObject({ lead: "/", sides: ["under"], footer: { pattern: "^(?:\\S| ↳ \\S)", maxRows: 6 } });
     // Stock pi 0.87.1 and 1.3.0, pi 1.2.0 with editor padding, OmO on pi.
     expect(stock.pointer("→ model          <provider/model> — Select model (opens selector UI)")).toBe("model");
     expect(stock.pointer(" → settings       Open settings menu")).toBe("settings");
@@ -721,6 +721,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["an under row that is no expression", ["idle", "frame", "under"], "[unclosed", "idle.frame.under"],
     ["an underPainted flag that is no boolean", ["idle", "frame", "underPainted"], "yes", "idle.frame.underPainted"],
     ["an underPainted flag with no under pattern", ["idle", "frame", "underPainted"], true, "idle.frame.underPainted"],
+    ["an ownPrompt flag that is no boolean", ["idle", "frame", "ownPrompt"], "yes", "idle.frame.ownPrompt"],
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
     ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
@@ -735,6 +736,17 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawOpencode(), ["idle", "frame", "walk"], "edges")).path).toMatch(/^idle\.frame\./u);
     expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
+    expect(failure(change(rawClaude(), ["idle", "frame", "ownPrompt"], true)).path).toBe("idle.frame.ownPrompt");
+  });
+
+  it("takes the box's own prompt glyph (`ownPrompt`) only beside a rows pattern (issue 544)", () => {
+    const own = change(rawOpencode(), ["idle", "frame", "ownPrompt"], true);
+    expect(parseProfile(own).idle.frame.ownPrompt).toBe(true);
+    expect(parseProfile(change(rawOpencode(), ["idle", "frame", "ownPrompt"], false)).idle.frame.ownPrompt).toBeUndefined();
+    expect(failure(change(own, ["idle", "frame", "rows"], undefined)).path).toBe("idle.frame.ownPrompt");
+    const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
+    expect(pi.idle.frame.ownPrompt).toBeUndefined();
+    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true]);
   });
 
   it("names the alternate frame shape in the path of a bad field", () => {
