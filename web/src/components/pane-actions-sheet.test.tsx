@@ -73,6 +73,13 @@ describe("PaneActionsSheet — rename", () => {
     expect(screen.getByPlaceholderText("name this pane")).toHaveValue("deploy");
   });
 
+  it("turns the keyboard's first-letter capital off, so a name can start lowercase", async () => {
+    const user = userEvent.setup();
+    renderSheet();
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByPlaceholderText("name this pane")).toHaveAttribute("autocapitalize", "none");
+  });
+
   it("autofocuses the input once rename mode opens", async () => {
     const user = userEvent.setup();
     renderSheet();
