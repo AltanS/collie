@@ -1614,7 +1614,8 @@ export class SendProtocol {
 
   /**
    * The newest settled requests for a pane, newest first, as the session page lists them (M56 spec 09).
-   * The request files hold receipts only, so no row of the screen and no text can come out of here.
+   * The request files hold receipts and the line Sent would keep (requests.ts), so no row of the screen
+   * can come out of here, and of the text only that line.
    */
   recent(paneId: string, limit = 10): SendReceiptRow[] {
     const rows: SendReceiptRow[] = [];
@@ -1629,6 +1630,7 @@ export class SendProtocol {
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
+      if (record.line !== undefined) row.line = record.line;
       rows.push(row);
     }
     return rows;

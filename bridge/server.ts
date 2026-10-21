@@ -2701,7 +2701,8 @@ export function startServer(opts: {
         return heldCancelRoute(rt, requestId, url.searchParams.get("pane"), { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
-      // by name and gaps, read from the receipts. Never a row of the screen and never the text.
+      // by name and gaps, read from the receipts, and of the text only the line Sent would keep
+      // (surface/requests.ts). Never a row of the screen.
       if (pathname === "/api/send/receipts" && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;

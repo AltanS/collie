@@ -31,6 +31,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Muse pane offers launch chips and counts its no-prompt flags.** The New page lists Yolo mode, Never ask and No question prompts for Muse, built from `muse --help` on 1.4.11. Yolo mode and Never ask exclude each other, as Codex's two bypass chips do. Collie also reads `--yolo`, `--approval-mode never`, `--disable-approval` and `--disable-request-user-input` as flags that stop prompts when it decides whether a pane can ask. Thanks @jpcarranza94 (#566).
 - **The dashboard's workspace filter picks several workspaces.** The filter used to take one workspace or all of them. The closed control names the choice, such as "collie, membero", or "3 workspaces" past two, and a tap opens a sheet with one check per workspace. The dashboard, the Spaces section and Changes show every chosen workspace. A device that stored one workspace keeps it as a choice of one. Thanks @viniciosrab (#531, closes #527).
 
+### Changed
+
+- **Recent sends show what was sent.** Each row in a pane's Recent sends list now carries the text as one line under the outcome, cut at the row's edge, and the whole line once you open the row. The line is kept under the same rule as Sent: a text that looks like a secret, runs over several lines or is too long leaves only its outcome and time, as before.
+
 ### Fixed
 
 - **A pi pane with an extension's own input box takes sends again.** An extension such as pi-powerline-footer can replace pi's input box with one that draws its borders and a `>` prompt one column in, shows your last prompt under the box and may add a taller footer. Collie found no input box there, so every send was refused with "Collie cannot tell if this was sent". Collie now reads that box, also when a message wraps to more rows or is a walky talky message, and a slash command typed there goes out with one tap while pi's command list shows. Collie reads the box only when both borders and the prompt sit in the same column and every row inside is the prompt row or a row three spaces in. pi's own questions and pickers still never read as the input box. Thanks @npo-mmenke (#544).
