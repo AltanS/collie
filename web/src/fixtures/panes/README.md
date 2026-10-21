@@ -356,6 +356,23 @@ The same block with nothing under its bottom rule is built inside `pi/ask.test.t
 file: agy's generic menu claims that screen, and the agy suite fails on any foreign fixture it lifts.
 The pi reader refuses it, because pi always paints a status row under a dialog.
 
+## Kiro CLI 2.33.0 workspace trust (captured 2026-10-21)
+
+The `kiro--v3-workspace-trust-*` captures show the startup trust prompt in a new, empty temporary folder under Herdr 0.9.5 on x86_64 Linux. They came from `kiro-cli chat --v3` and Herdr's visible ANSI grid at 120, 60 and 40 columns by 60 rows. Each starts at the dialog's top divider; rows above it were removed. The user name, temporary suffix and workspace-root hash were replaced with equal-length aliases, preserving the wrapped path fragments and ANSI styling.
+
+The captures themselves accept no trust choice. Up/Down move the pointer, the edge captures prove the arrows clamp, and Escape exits. A separate live phone test verified both native buttons through the scratch bridge's real Ask route, accepting trust only for an empty disposable folder. Keys, binding, results and the retained local screenshots are documented in [`kiro/WORKSPACE_TRUST_NOTES.md`](../../lib/harness/kiro/WORKSPACE_TRUST_NOTES.md).
+
+| Fixture | Cols | State / what's in it | Label |
+| --- | --- | --- | --- |
+| `kiro--v3-workspace-trust-continue-w120.txt` | 120 | Default Trust row; complete subject and revocation note | `dialog` |
+| `kiro--v3-workspace-trust-exit-w120.txt` | 120 | Don't trust row after one Down | `dialog` |
+| `kiro--v3-workspace-trust-continue-w60.txt` | 60 | Trust row; wrapped workspace and revocation paths | `dialog` |
+| `kiro--v3-workspace-trust-exit-w60.txt` | 60 | Don't trust row; same wrapped dialog | `dialog` |
+| `kiro--v3-workspace-trust-continue-w40.txt` | 40 | Trust row; both warnings and key hints wrap | `dialog` |
+| `kiro--v3-workspace-trust-exit-w40.txt` | 40 | Don't trust row; same narrow dialog | `dialog` |
+| `kiro--v3-workspace-trust-continue-up-edge-w40.txt` | 40 | Extra Up at the first row leaves Trust selected | `dialog` |
+| `kiro--v3-workspace-trust-exit-down-edge-w40.txt` | 40 | Extra Down at the last row leaves Don't trust selected | `dialog` |
+
 ## Kiro CLI 2.32.0 corpus (captured 2026-10-17, Herdr 0.9.5, throwaway Herdr session)
 
 `kiro-cli 2.32.0` on x86_64 Linux, run directly with `chat --v3` under Herdr 0.9.5. Each `kiro--*` file is `herdr pane read <pane> --source visible --format ansi --raw`, the same `pane.read` answer the bridge serves, with LF line ends. Each is cut from the composer divider or an approval panel's `↓` preview row down; transcript rows above it were removed and blank viewport rows remain. The `running-*` and `write-viewport-*` files keep the whole visible grid.
