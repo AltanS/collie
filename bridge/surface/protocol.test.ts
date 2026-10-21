@@ -3927,16 +3927,20 @@ describe("counters, the cap and the examples", () => {
     expect(existsSync(ledger.examplesDir)).toBe(false);
   });
 
-  test("recent lists the pane's settled requests newest first, with no text and no rows", async () => {
+  test("recent lists the pane's settled requests newest first, each with the line Sent would keep, and no rows", async () => {
     const { protocol, send, pane } = rig();
     pane.dialog = DIALOG;
-    await send("refused text must not appear");
+    await send("refused text is listed too");
     pane.dialog = null;
     await send("a text that goes through");
+    // A text Sent's rule refuses (a secret word) is listed with no line.
+    await send("the api_key goes in here");
     const rows = protocol.recent("%1");
-    expect(rows.map((row) => row.outcome)).toEqual(["sent", "refused"]);
-    expect(rows[1]).toMatchObject({ reason: "not_free", keys: [] });
-    expect(JSON.stringify(rows)).not.toMatch(/must not appear|goes through/u);
+    expect(rows.map((row) => row.outcome)).toEqual(["sent", "sent", "refused"]);
+    expect(rows[0]!.line).toBeUndefined();
+    expect(rows[1]).toMatchObject({ line: "a text that goes through" });
+    expect(rows[2]).toMatchObject({ reason: "not_free", keys: [], line: "refused text is listed too" });
+    expect(JSON.stringify(rows)).not.toMatch(/api_key|rows|plainRaw/u);
     expect(protocol.recent("%9")).toEqual([]);
     expect(protocol.recent("%1", 1)).toHaveLength(1);
   });
@@ -5141,7 +5145,7 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
 });
 
 describe("a refusal receipt keeps its line and the Surface words (2026-10-17 field case)", () => {
-  test("a box that moved between two reads: the line and four words on the receipt and on disk, never the text", async () => {
+  test("a box that moved between two reads: the line and four words on the receipt and on disk, never the screen row", async () => {
     const r = rig();
     r.pane.beforeRead = (p, n) => {
       if (n === 2) p.box = "someone typed at the desk";
@@ -5152,7 +5156,8 @@ describe("a refusal receipt keeps its line and the Surface words (2026-10-17 fie
     const stored = new RequestStore(join(dir, "sends"), () => r.clock.now).get("detail-00001")?.receipt;
     expect(stored).toMatchObject({ detail: "The input box moved between two reads.", saw: { turn: "idle", modal: "none", composer: "draft" } });
     const file = readFileSync(join(dir, "sends", "detail-00001.json"), "utf8");
-    expect(file).not.toContain("a private sentence");
+    // The text is on disk only as the line Sent would keep (requests.ts); the desk's draft is a screen row and never is.
+    expect(JSON.parse(file).line).toBe("a private sentence");
     expect(file).not.toContain("someone typed at the desk");
   });
 

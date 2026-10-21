@@ -1516,8 +1516,9 @@ export async function postProgramSend(body: SendRequestBody, scope?: Scope): Pro
 
 /**
  * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
- * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
- * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
+ * outcome, reason, time, keys by name and gaps, and the one line of the text the bridge kept when
+ * Sent's rule would. Never a row of the screen. This machine's own panes only: a pane on a crew
+ * member answers nothing here, and the list is empty.
  */
 export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
   if (normalizeScope(scope).host) return [];
