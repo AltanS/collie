@@ -30,8 +30,13 @@
 // frame is never free, so one of these shapes in a transcript costs a counter, never a send; over a
 // found frame the stricter rules above keep a quote free.
 //
+// A profile that draws its dialogs in the box's place has its box rows read as that cluster too. There
+// a prompt glyph over a draft soft-wrapped to the box's width ({@link softWrapped}) is read as blank: the
+// wrapped rows under it line up like a pointed list between two rules, and they are one paragraph.
+//
 // Pure: the same rows always give the same answer.
 
+import { displayWidth } from "../text-width";
 import { commandListNear, pointsAt, type CommandListRead } from "./command-list";
 import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
@@ -80,6 +85,8 @@ export const CLUSTER_GAP_ROWS = 3;
 export const FOOTER_MAX_ROWS = 2;
 /** Commands in a list that make it an overlay shape. */
 const COMMAND_LIST_MIN = 3;
+/** Cells a soft-wrapped row may stop short of the box's width before its next word would have fit. */
+const WRAP_SLACK = 8;
 
 /** Glyphs a dialog draws in front of the highlighted row. */
 const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉";
@@ -449,8 +456,9 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
- * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
- * and a notice over the box ({@link noticeOver}) are left out of both.
+ * the box rows included, with the prompt glyph over a soft-wrapped draft read as blank ({@link softWrapped}).
+ * The typed command's own list on either side of the box ({@link ownCommandList}) and a notice over the
+ * box ({@link noticeOver}) are left out of both.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
@@ -459,10 +467,50 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   const at = frame.top;
-  const down = readCues(rows.slice(at), null, null);
+  const down = readCues(withoutPromptGlyph(rows, frame).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
+}
+
+/**
+ * Whether a found box's draft, from the prompt row down to its last non-blank row, is one paragraph
+ * soft-wrapped to the box's width: two rows or more, no blank row between them, and every row but the
+ * last filled to the top edge's width, so the next row's first word would not have fit on it (within
+ * {@link WRAP_SLACK}). A draft
+ * typed with newlines has short rows and fails this, so it reads as a list still: the conservative side,
+ * a send refused, never a dialog typed into.
+ */
+function softWrapped(texts: readonly string[], frame: Frame): boolean {
+  // The top edge spans the box: an open box's bottom row is its last row (a statusline), not a rule.
+  const width = displayWidth(texts[frame.top]!.trimEnd());
+  // A blank top edge gives no width to fill: read no wrap.
+  if (width <= WRAP_SLACK) return false;
+  const { prompt } = frame.interior;
+  let last = frame.interior.last;
+  while (last > prompt && isBlank(texts[last]!)) last--;
+  if (last === prompt) return false;
+  for (let i = prompt; i < last; i++) {
+    const row = texts[i]!.trimEnd();
+    const next = texts[i + 1]!.trim().split(/\s/u)[0]!;
+    if (isBlank(row) || next.length === 0) return false;
+    if (displayWidth(row) + 1 + displayWidth(next) <= width - WRAP_SLACK) return false;
+  }
+  return true;
+}
+
+/** The rows with the pointer glyph the box's prompt row opens on read as blank, when the frame took it as
+ *  the prompt marker (the draft does not start with it) and the draft under it is {@link softWrapped}. */
+function withoutPromptGlyph(rows: readonly FrameRow[], frame: Frame): readonly FrameRow[] {
+  if (frame.placeholder) return rows;
+  const texts = rows.map(rowText);
+  const glyph = texts[frame.interior.prompt]!.trimStart()[0];
+  if (glyph === undefined || !POINTERS.includes(glyph) || frame.interior.text.startsWith(glyph)) return rows;
+  if (!softWrapped(texts, frame)) return rows;
+  const segments = [...rows[frame.interior.prompt]!.segments];
+  const at = segments.findIndex((run) => run.text.includes(glyph));
+  segments[at] = { ...segments[at]!, text: segments[at]!.text.replace(glyph, " ") };
+  return rows.map((row, i) => (i === frame.interior.prompt ? { segments } : row));
 }
 
 /**
