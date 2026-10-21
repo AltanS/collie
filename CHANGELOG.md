@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **A Kiro workspace trust prompt gets a card on the phone.** Collie reads Kiro V3's startup "trust this workspace" dialog whole and offers Trust, continue and Don't trust through the guarded pointer walk. Each choice is bound to the workspace path, and the dialog's security warnings stay on the card. Thanks @aahung (#558).
+- **Muse's background tasks show above the composer.** When Muse lists background tasks under its input rule (`main · ↓ to select` and one row per task), the phone now draws that list in the agents footer, the way it does for Claude Code, instead of dropping it. Collie shows it only when the block opens with Muse's own header. Thanks @jpcarranza94 (#564).
 
 ### Fixed
 
