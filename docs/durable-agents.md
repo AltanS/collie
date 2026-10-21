@@ -229,7 +229,7 @@ by its retention rule leaves the list.
 
 > **Caution.** A stop does not kill a tool that is already running. The old process keeps going to the
 > end of the tool and does its side effect, while the log says the tool was aborted. A tool that has
-> started cannot be called back.
+> started cannot be called back. A process that was killed while a tool ran is different: the next start does not run that tool again.
 
 ### Why a question waits in the log
 

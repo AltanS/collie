@@ -102,8 +102,8 @@ is the one the tests run.
 - **A cold read is the log.** Collie's route keeps nothing the phone sees between two requests. It reads the log of the
   World. One cold read of a session with 200 entries took about 100 ms in the spike. Once a process holds a reader, a
   poll reads only what is new: 50 polls of a 200-entry session took about 3 ms at p95 here.
-- **Streaming makes it grow.** The cost follows the number of log events, not the number of entries. A reply that
-  streams writes about one event every 100 ms. Ten sessions of about 1,400 events each took 1 s to list from cold.
+- **Streaming makes it grow.** The cost follows the number of log events, not the number of entries.
+  Ten sessions of about 1,400 events each took 1 s to list from cold.
 
 ## Two rules for self-hosting
 
