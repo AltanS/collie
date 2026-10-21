@@ -1,0 +1,33 @@
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mLoad AskUserQuestion via ToolSearch ("select:AskUserQuestion") if needed, [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mthen call the AskUserQuestion tool now to ask me ONE question with the exact [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtext below: header "Release", question "The staging candidate passed all 24 [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55msmoke checks and the migration dry run on the replica database (see [0m[48;2;55;55;55m          [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mhttps://ci.example.test/runs/42?tab=checks for the full timing report, query [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mplans, lock durations, and rollback verification steps across both [0m[48;2;55;55;55m           [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mregions).\n\nWhich environment should we promote this build to next, and [0m[48;2;55;55;55m     [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mshould the rollout pause after the first region?", multiSelect false, with 3 [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55moptions: 1) label "Production", description "Roll out to all regions"; 2) [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mlabel "Canary", description "10% traffic for 30 minutes"; 3) label "Hold", [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdescription "Keep on staging only". Do nothing else afterward.[0m[48;2;55;55;55m                [0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Release [0m
+
+[0m[2m│[0m [0m[1m[38;2;255;255;255mThe staging candidate passed all 24 smoke checks and the migration dry run on [0m
+[0m[2m│[0m [0m[1m[38;2;255;255;255mthe replica database (see https://ci.example.test/runs/42?tab=checks for the [0m
+[0m[2m│[0m [0m[1m[38;2;255;255;255mfull timing report, query plans, lock durations, and rollback verification [0m
+[0m[2m│ [0m[1m[38;2;255;255;255msteps across both regions).[0m
+[0m[2m│[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mWhich environment should we promote this build to next, and should the rollout[0m
+[0m[2m│ [0m[1m[38;2;255;255;255mpause after the first region?[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mProduction[0m
+     [0m[38;2;153;153;153mRoll out to all regions[0m
+  [0m[38;2;153;153;153m2. [0mCanary
+     [0m[38;2;153;153;153m10% traffic for 30 minutes[0m
+  [0m[38;2;153;153;153m3. [0mHold
+     [0m[38;2;153;153;153mKeep on staging only[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m────────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

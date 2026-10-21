@@ -1131,6 +1131,26 @@
    "version": "2.1.304",
    "state": "dialog"
   },
+  "claude--v2304-ask-chip-question-mark.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
+  "claude--v2304-ask-two-paragraph--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
+  "claude--v2304-select-preview-cjk-moved.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
+  "claude--v2304-select-preview-cjk.txt": {
+   "harness": "claude",
+   "version": "2.1.304",
+   "state": "dialog"
+  },
   "claude--v2302-turn-ended-yn--w119.txt": {
    "harness": "claude",
    "version": "2.1.302",

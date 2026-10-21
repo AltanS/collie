@@ -1570,11 +1570,19 @@
   }
  },
  {
+  "fixture": "claude--v2304-ask-chip-question-mark.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2304-ask-no-question-mark--w135.txt",
   "frame": null
  },
  {
   "fixture": "claude--v2304-ask-no-question-mark-plain--w135.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2304-ask-two-paragraph--w80.txt",
   "frame": null
  },
  {
@@ -1656,6 +1664,14 @@
    },
    "footer": null
   }
+ },
+ {
+  "fixture": "claude--v2304-select-preview-cjk-moved.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2304-select-preview-cjk.txt",
+  "frame": null
  },
  {
   "fixture": "claude--wizard-multiselect-checked.txt",
