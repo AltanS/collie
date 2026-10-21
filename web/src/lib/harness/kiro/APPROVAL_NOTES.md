@@ -2,7 +2,7 @@
 
 ## Provenance
 
-Where and how the approval/composer captures were made, and what was substituted for publication, is in the Kiro section of the fixture corpus [README](../../../fixtures/panes/README.md). The startup workspace-trust screen has its own [notes](./WORKSPACE_TRUST_NOTES.md); it is separate from a tool panel's persistent trust page.
+These notes cover the captures of the shell, read and write approval panels and of the composer. Where and how they were made, and what was substituted for publication, is in the Kiro section of the fixture corpus [README](../../../fixtures/panes/README.md). The startup workspace trust card ("Trust, continue" and "Don't trust") has its own [notes](./WORKSPACE_TRUST_NOTES.md); it is separate from a tool panel's persistent trust page.
 
 ## Verified menu keys
 
