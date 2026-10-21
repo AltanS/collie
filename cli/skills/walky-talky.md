@@ -121,12 +121,12 @@ Read one message by its id. This is how you read the body of a message from anot
 `{{COLLIE_BIN}} walky inbox` with no id prints every unread message for your pane and marks them
 read. This is also how you read one your screen refused.
 
-`{{COLLIE_BIN}} walky status wt_...` shows what became of a message you sent: "queued", "typed
-into the pane", "waiting in the inbox, not typed", "not sent" with the reason, or "may have
-arrived, will not be sent again". If a send says "waiting in the inbox", the other session stayed
-busy, or its box held a draft. Do not send it again. The message waits in its inbox. If it says "may have
-arrived", do not send it again either: it may already be there. For a pane on another machine, "queued
-(outcome known on the lead)" means the outcome has not come back yet. Check later.
+`{{COLLIE_BIN}} walky status wt_...` shows what became of a message you sent: "queued", "held",
+"typed into the pane", "waiting in the inbox, not typed", "not sent" or "may have arrived, will not be sent again".
+"held: draft present" or "held: turn running" means Collie types it when the box clears or the turn
+ends, up to 60 minutes. Wait. Do not send it again. If a send says "waiting in the inbox", do not
+send it again: it waits there. If it says "may have arrived", do not send it again either: it may
+already be there. For a pane on another machine, "queued (outcome known on the lead)" also means wait.
 
 An id Collie does not know exits 3 (`status` prints `no record of <id> on this machine`). A refused
 send exits 4.

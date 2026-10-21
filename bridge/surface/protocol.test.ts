@@ -5140,6 +5140,122 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
   });
 });
 
+describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () => {
+  const FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" } as const;
+  const RUNNING = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  const DRAFT = { revision: 1, turn: "idle", modal: "none", composer: "draft" } as const;
+  type Read = typeof FREE | typeof RUNNING | typeof DRAFT;
+  const HOUR = 60 * 60 * 1000;
+  const marked = (until: number): Partial<SendRequest> => ({ draftHolds: true, holdUntil: until });
+  const queued = (check?: (id: string) => boolean): Rig & { holds: HoldStore } => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ holds, clock });
+    if (check === undefined) return { ...r, holds };
+    const protocol = new SendProtocol({ ...r.deps, holds, releaseCheck: (id) => check(id) });
+    const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => protocol.handle({ id: nextId(), text, mode: "send", ...over }, { session: "main", paneId: "%1", harness: "claude" });
+    return { ...r, protocol, send, holds };
+  };
+  const tick = async (r: Rig, surface: Read = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+
+  test("a phone send over a draft is still refused draft_present with its offers; a marked one is held, nothing typed", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    const phone = await r.send("hello", { id: "draft-000001" });
+    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(phone.offers).toEqual(["append", "replace", "cancel"]);
+    const until = r.clock.now + HOUR;
+    const walky = await r.send("hello", { id: "draft-000002", ...marked(until) });
+    expect(walky.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(walky.offers).toEqual([]);
+    expect(walky.detail).toBe("The box holds a draft. Collie keeps this and sends it when the box is empty.");
+    // Its caller's clock replaces the hold store's 30 minutes.
+    expect(r.holds.get("draft-000002")).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: until });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.pane.box).toBe("half a thought");
+  });
+
+  test("a phone send while a marked send waits over the draft does not join its queue: it is refused with its offers", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000003", ...marked(r.clock.now + HOUR) });
+    const phone = await r.send("from the phone", { id: "draft-000004" });
+    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(phone.offers).toEqual(["append", "replace", "cancel"]);
+    // A second marked send joins behind the first, held for the same draft.
+    await r.send("from walky again", { id: "draft-000005", ...marked(r.clock.now + HOUR) });
+    expect(r.holds.list().map((entry) => `${entry.id} ${entry.cause ?? "-"}`)).toEqual(["draft-000003 draft_present", "draft-000005 draft_present"]);
+  });
+
+  test("the box emptied: it goes on the second poll that reads it free, not after the quiet five", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000006", ...marked(r.clock.now + HOUR) });
+    expect(await tick(r, DRAFT)).toEqual([]);
+    r.pane.box = "";
+    expect(await tick(r)).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000006", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> from walky");
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a submitted draft: the poll reads the turn, the cause moves to turn_running, and it goes after the turn", async () => {
+    const r = queued();
+    r.pane.box = "fix the parser";
+    await r.send("from walky", { id: "draft-000007", ...marked(r.clock.now + HOUR) });
+    r.pane.transcript.push("> fix the parser");
+    r.pane.box = "";
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(r.holds.get("draft-000007")?.cause).toBe("turn_running");
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000007", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> fix the parser", "> from walky"]);
+  });
+
+  test("a release that meets a draft again goes back without spending a try, and writes the cause", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000008", ...marked(r.clock.now + HOUR) });
+    for (let round = 0; round < 7; round++) {
+      // The poll reads the box free, but the person typed again before the release read it.
+      expect(await tick(r)).toEqual([]);
+      const [back] = await tick(r);
+      expect(back?.receipt).toMatchObject({ requestId: "draft-000008", outcome: "held", keys: [] });
+    }
+    expect(r.holds.get("draft-000008")).toMatchObject({ state: "held", tries: 0, cause: "draft_present" });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("the caller's check has the last word: false ends it refused(pane_gone), nothing typed", async () => {
+    const r = queued(() => false);
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000009", ...marked(r.clock.now + HOUR) });
+    r.pane.box = "";
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    expect(r.deps.store.get("draft-000009")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("its one clock: still held at 30 minutes, ended `expired` at the caller's hour", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000010", ...marked(r.clock.now + HOUR) });
+    r.clock.now += 31 * 60 * 1000;
+    expect(await tick(r, DRAFT)).toEqual([]);
+    expect(r.holds.get("draft-000010")?.state).toBe("held");
+    r.clock.now = 1_000_000 + HOUR;
+    expect(await tick(r, DRAFT)).toEqual([]);
+    expect(r.deps.store.get("draft-000010")?.receipt).toMatchObject({ outcome: "expired" });
+    expect(r.pane.calls).toEqual([]);
+  });
+});
+
 describe("a refusal receipt keeps its line and the Surface words (2026-10-17 field case)", () => {
   test("a box that moved between two reads: the line and four words on the receipt and on disk, never the text", async () => {
     const r = rig();

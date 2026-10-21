@@ -5,7 +5,14 @@ import { join } from "node:path";
 
 import { mintIdentity } from "../crew/identity.ts";
 import { verifyMessage } from "./canonical.ts";
-import { HELD_LIMIT_MS, reasonOf, sendIdOf, type SendResult, type WalkyHost, type WalkyPane } from "./deliver.ts";
+import { loadProfiles, profileFor, type VersionRange } from "../../web/src/lib/surface/profile.ts";
+import type { Surface } from "../../web/src/lib/surface/surface.ts";
+import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
+import { HoldStore } from "../surface/holds.ts";
+import { KeyGate } from "../surface/key-gate.ts";
+import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
+import { RequestStore } from "../surface/requests.ts";
+import { HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
 import { WalkyService, type WalkyServiceDeps } from "./service.ts";
@@ -21,6 +28,8 @@ function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
 
 class FakeHost implements WalkyHost {
   readonly sends: { pane: string; id: string; text: string }[] = [];
+  /** How each send asked to be held. */
+  readonly holds: (WalkyHold | undefined)[] = [];
   readonly states = new Map<string, SendResult>();
   readonly cancelled: string[] = [];
   answer: SendResult = { outcome: "sent" };
@@ -28,8 +37,9 @@ class FakeHost implements WalkyHost {
   panes(): readonly WalkyPane[] {
     return this.list;
   }
-  async send(target: WalkyPane, sendId: string, text: string): Promise<SendResult> {
+  async send(target: WalkyPane, sendId: string, text: string, hold?: WalkyHold): Promise<SendResult> {
     this.sends.push({ pane: target.paneId, id: sendId, text });
+    this.holds.push(hold);
     this.states.set(sendId, this.answer);
     return this.answer;
   }
@@ -174,15 +184,17 @@ describe("one message to one pane", () => {
     expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
   });
 
-  test("a send still held after 10 minutes is cancelled, and the message stays in the inbox", async () => {
+  test("a send still held after 60 minutes is cancelled, and the message stays in the inbox", async () => {
     const r = rig([pane("w1:p1")]);
     r.host.answer = { outcome: "held" };
     const start = r.clock;
     await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
     await r.service.deliverer.settled();
+    expect(HELD_LIMIT_MS).toBe(60 * 60 * 1000);
     expect(r.clock - start).toBeGreaterThanOrEqual(HELD_LIMIT_MS);
+    expect(r.clock - start).toBeLessThan(HELD_LIMIT_MS + HELD_POLL_MS * 2);
     expect(r.host.cancelled).toEqual([sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1")]);
-    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 10 minutes" });
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
   });
 
   test("a session with no terminal keeps the inbox and skips the typing", async () => {
@@ -619,5 +631,395 @@ describe("a message a crew hop brought (CREW_PROTOCOL §21)", () => {
     expect(r.service.status("wt_aaaaaaaaaaa1").elsewhere).toEqual(["desk/w2:p2"]);
     expect(r.service.whoNote()).toBe("other machines: run `collie walky who` on the lead, or use the phone");
     expect(rig([pane("w1:p1")], { memberId: "desk" }).service.whoNote()).toBeNull();
+  });
+});
+
+describe("a draft holds the message (M62 spec 02)", () => {
+  /** A host whose `sendState` answers a script, one result per read, then the last for ever. */
+  class ScriptHost extends FakeHost {
+    script: SendResult[] = [];
+    override sendState(sendId: string): SendResult | null {
+      const next = this.script.shift();
+      if (next !== undefined) this.states.set(sendId, next);
+      return super.sendState(sendId);
+    }
+  }
+
+  test("the send is marked: a draft holds it, and its hold ends on the one clock, 60 minutes from acceptance", async () => {
+    const r = rig([pane("w1:p1")]);
+    const accepted = r.clock;
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.host.holds).toEqual([{ draftHolds: true, holdUntil: accepted + HELD_LIMIT_MS }]);
+  });
+
+  test("while held the receipt stays `accepted` with what holds it, and moves with it: draft, turn, then typed", async () => {
+    const host = new ScriptHost([pane("w1:p1")]);
+    const r = rig([pane("w1:p1")], { host });
+    host.answer = { outcome: "held", reason: "draft_present" };
+    host.script = [{ outcome: "held", reason: "draft_present" }, { outcome: "held", reason: "turn_running" }, { outcome: "held", reason: "turn_running" }, { outcome: "effective" }];
+    const seen: string[] = [];
+    r.log.onReceipt((record) => seen.push(`${record.receipt.state}${record.receipt.reason === undefined ? "" : `: ${record.receipt.reason}`}`));
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
+    await r.service.deliverer.settled();
+    // The acceptance, the send id before the send, then each reason once: held rides as `accepted`.
+    expect(seen).toEqual(["accepted", "accepted", "accepted: draft present", "accepted: turn running", "delivered"]);
+    expect(host.sends).toHaveLength(1);
+  });
+
+  test("a hold the Send Protocol ends `expired` at the same moment is `held past 60 minutes`, and its row goes", async () => {
+    const host = new ScriptHost([pane("w1:p1")]);
+    const r = rig([pane("w1:p1")], { host });
+    host.answer = { outcome: "held", reason: "draft_present" };
+    const start = r.clock;
+    host.sendState = (sendId) => (r.clock - start >= HELD_LIMIT_MS ? { outcome: "expired" } : (host.states.get(sendId) ?? null));
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
+    // The ended row is dismissed: the phone offers no Resend of a walky envelope.
+    expect(host.cancelled).toEqual([sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1")]);
+  });
+
+  test("the instance is checked again when the box frees: another instance at the pane id never takes it", async () => {
+    const r = rig([pane("w1:p1")]);
+    r.host.answer = { outcome: "held", reason: "draft_present" };
+    const sendId = sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1");
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
+    expect(r.service.deliverer.stillMeant(sendId, "main", "w1:p1")).toBe(true);
+    // The pane closed and a new session took its id; the release asks, and the Send Protocol ends it.
+    r.host.list = [pane("w1:p1", { instance: "bbbb" })];
+    expect(r.service.deliverer.stillMeant(sendId, "main", "w1:p1")).toBe(false);
+    r.host.states.set(sendId, { outcome: "refused", reason: "pane_gone" });
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "pane replaced" });
+    expect(r.host.sends).toHaveLength(1);
+    // A request this log does not know goes ahead.
+    expect(r.service.deliverer.stillMeant("req-000001", "main", "w1:p1")).toBe(true);
+  });
+
+  test("a restart keeps the hold and the clock: it is watched again and ends 60 minutes from acceptance, not from the restart", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-deliver-"));
+    roots.push(root);
+    const clock = { now: 1_786_000_000_000 };
+    const log = new WalkyLog(join(root, "walky"), () => clock.now);
+    const first = new FakeHost([pane("w1:p1")]);
+    first.answer = { outcome: "held", reason: "draft_present" };
+    // The first bridge dies while it watches the hold: its sleep never returns.
+    let sleeps = 0;
+    const before = new WalkyService({ log, host: first, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => clock.now, sleep: (ms) => (++sleeps > 3 ? new Promise<void>(() => undefined) : Promise.resolve(void (clock.now += ms))) });
+    const accepted = clock.now;
+    await before.send(send("wt_aaaaaaaaaaa1", "local/w1:p1"), operator);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(before.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    // Thirty minutes later a new bridge starts over the same log; the Send Protocol still holds the send.
+    clock.now = accepted + 30 * 60 * 1000;
+    const host = new FakeHost([pane("w1:p1")]);
+    const sendId = sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1");
+    host.states.set(sendId, { outcome: "held", reason: "draft_present" });
+    const after = new WalkyService({ log: new WalkyLog(join(root, "walky"), () => clock.now), host, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => clock.now, sleep: async (ms) => void (clock.now += ms) });
+    expect(after.deliverer.recover()).toBe(1);
+    await after.deliverer.settled();
+    expect(clock.now - accepted).toBeGreaterThanOrEqual(HELD_LIMIT_MS);
+    expect(clock.now - accepted).toBeLessThan(HELD_LIMIT_MS + HELD_POLL_MS * 2);
+    expect(host.cancelled).toEqual([sendId]);
+    expect(host.sends).toEqual([]);
+    expect(after.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
+  });
+});
+
+// ── Through the real Send Protocol ────────────────────────────────────────────────────────────────
+
+const RULE = "─".repeat(40);
+const WIDTH = 38;
+/** The Claude range the Send Protocol tests pin (protocol.test.ts `CLAUDE_TEST_RANGE`). */
+const TEST_RANGE: readonly [VersionRange] = [{ range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" }];
+
+/** A Claude Code input box as protocol.test.ts's FakePane draws it, cut to what a walky send needs. */
+class BoxPane {
+  revision = 1;
+  transcript = ["> an earlier question", "An answer from the agent."];
+  box = "";
+  /** The turn the poll's Surface reads. The screen itself draws no running row: no release reads it then. */
+  running = false;
+  calls: string[] = [];
+  keysSeen: string[] = [];
+
+  private boxRows(): string[] {
+    if (this.box === "") return ['❯ \u001b[2mTry "fix the failing tests"\u001b[0m'];
+    const rows: string[] = [];
+    this.box.split("\n").forEach((line, li) => {
+      const chunks = line.length === 0 ? [""] : (line.match(new RegExp(`.{1,${String(WIDTH)}}`, "gu")) ?? [""]);
+      chunks.forEach((chunk, ci) => rows.push(li === 0 && ci === 0 ? `❯ ${chunk}` : `  ${chunk}`));
+    });
+    return rows;
+  }
+
+  /** What the bridge's poll reads: a turn, a draft, or a free pane. */
+  surface(): Surface {
+    if (this.running) return { revision: this.revision, turn: "running", modal: "none", composer: this.box === "" ? "empty" : "draft" };
+    return { revision: this.revision, turn: "idle", modal: "none", composer: this.box === "" ? "empty" : "draft" };
+  }
+
+  readGrid = (paneId: string): Promise<MuxOutcome<MuxGrid>> =>
+    Promise.resolve(muxOk({ paneId, text: [...this.transcript, "", RULE, ...this.boxRows(), RULE, "  sonnet · project · main"].join("\n"), truncated: false, revision: this.revision }));
+
+  private take(text: string): void {
+    this.box += text;
+    this.revision++;
+  }
+
+  typeText = (_paneId: string, text: string): Promise<MuxAck> => {
+    this.calls.push(`type:${text}`);
+    this.take(text);
+    return Promise.resolve(muxAck());
+  };
+
+  pasteText = (_paneId: string, text: string): Promise<MuxAck> => {
+    this.calls.push(`paste:${text}`);
+    this.take(text);
+    return Promise.resolve(muxAck());
+  };
+
+  writeKeys = (_paneId: string, keys: readonly string[]): Promise<MuxAck> => {
+    for (const key of keys) {
+      this.keysSeen.push(key);
+      if (key === "Backspace") this.box = [...this.box].slice(0, -1).join("");
+      else if (key === "ctrl+j") this.box += "\n";
+      else if (key === "Enter" && this.box.length > 0) {
+        this.transcript.push(`> ${this.box.replace(/\n/gu, " ")}`);
+        this.box = "";
+      }
+      this.revision++;
+    }
+    return Promise.resolve(muxAck());
+  };
+}
+
+/** What the desk of {@link wired} changes between polls: the pane's instance, the person, a send to wait for. */
+interface DeskState {
+  instance: string;
+  desk: (poll: number) => void;
+  hold: Promise<unknown> | null;
+}
+
+describe("a draft holds the message, through the Send Protocol (M62 spec 02)", () => {
+  interface Wired {
+    readonly box: BoxPane;
+    readonly service: WalkyService;
+    readonly protocol: SendProtocol;
+    readonly holds: HoldStore;
+    readonly clock: { now: number };
+    /** The Surface polls the bridge ran, one per walky poll. */
+    readonly polls: Surface[];
+    /** What the walky host's list says the pane is: a new instance stands for a pane that was replaced. */
+    instance: string;
+    /** Runs before each poll: the person at the desk. */
+    desk: (poll: number) => void;
+    /** Set by the desk: the walky poll waits for it, so a send the test makes there finishes first. */
+    hold: Promise<unknown> | null;
+  }
+
+  /**
+   * One pane, the real Send Protocol with its request store and hold queue, and walky talky over it as
+   * the bridge wires them (index.ts): the send is marked, a held one reads what holds it from its hold
+   * file, and the release asks walky first. Each walky poll is one Surface poll of the pane.
+   */
+  function wired(): Wired {
+    const root = mkdtempSync(join(tmpdir(), "walky-protocol-"));
+    roots.push(root);
+    const clock = { now: 1_786_000_000_000 };
+    const now = (): number => clock.now;
+    const box = new BoxPane();
+    const holds = new HoldStore(join(root, "held"), now);
+    const store = new RequestStore(join(root, "sends"), now);
+    const base = loadProfiles().get("claude")!;
+    let check: (id: string, session: string, paneId: string) => boolean = () => true;
+    const protocol = new SendProtocol({
+      mux: { readGrid: box.readGrid, typeText: box.typeText, pasteText: box.pasteText },
+      gate: new KeyGate(box, now),
+      store,
+      locks: new SessionLocks(),
+      ring: new RowRing(),
+      profile: () => Promise.resolve(profileFor("claude", "2.1.200", { log: () => undefined, profiles: new Map([["claude", { ...base, versions: TEST_RANGE }]]) })),
+      generation: () => "claude:s1",
+      holds,
+      releaseCheck: (id, session, paneId) => check(id, session, paneId),
+      now,
+      sleep: (ms) => Promise.resolve(void (clock.now += ms)),
+    });
+    const result = (sendId: string, outcome: string, reason: string | undefined): SendResult => {
+      const why = outcome === "held" ? (holds.get(sendId)?.cause ?? reason) : reason;
+      return why === undefined ? { outcome } : { outcome, reason: why };
+    };
+    const state: DeskState = { instance: "aaaa", desk: () => undefined, hold: null };
+    const host: WalkyHost = {
+      panes: () => [pane("%1", { harness: "claude", instance: state.instance })],
+      send: async (target, sendId, text, hold) => {
+        const answer = await protocol.handle(hold === undefined ? { id: sendId, text, mode: "send" } : { id: sendId, text, mode: "send", draftHolds: true, holdUntil: hold.holdUntil }, { session: target.session, paneId: target.paneId, harness: "claude" });
+        return answer.receipt === undefined ? { outcome: "unknown" } : result(sendId, answer.receipt.outcome, answer.receipt.reason);
+      },
+      sendState: (sendId) => {
+        const receipt = store.get(sendId)?.receipt;
+        return receipt === undefined ? null : result(sendId, receipt.outcome, receipt.reason);
+      },
+      cancelHeld: (session, paneId, sendId) => void protocol.cancelHeld(session, paneId, sendId),
+    };
+    const polls: Surface[] = [];
+    const log = new WalkyLog(join(root, "walky"), now);
+    const service = new WalkyService({
+      log,
+      host,
+      memberId: null,
+      enabled: () => true,
+      machine: "desk",
+      keyPem: () => null,
+      now,
+      // A walky poll is one Surface poll: the hold rides it, no poller of its own.
+      sleep: async (ms) => {
+        clock.now += ms;
+        wiredRig.desk(polls.length);
+        await state.hold;
+        const surface = box.surface();
+        polls.push(surface);
+        await Promise.all(protocol.tickHolds("main", () => surface));
+      },
+    });
+    check = (id, session, paneId) => service.deliverer.stillMeant(id, session, paneId);
+    const wiredRig: Wired = {
+      box,
+      service,
+      protocol,
+      holds,
+      clock,
+      polls,
+      get instance() {
+        return state.instance;
+      },
+      set instance(value) {
+        state.instance = value;
+      },
+      get desk() {
+        return state.desk;
+      },
+      set desk(value) {
+        state.desk = value;
+      },
+      get hold() {
+        return state.hold;
+      },
+      set hold(value) {
+        state.hold = value;
+      },
+    };
+    return wiredRig;
+  }
+
+  const ID = "wt_draftdraft01";
+  const header = `[walky-talky ${ID}] from operator (cli)`;
+
+  test("a draft holds it, nothing is typed over it, and it is typed after two reads of an empty box and an idle pane", async () => {
+    const r = wired();
+    r.box.box = "half a thought";
+    let emptiedAt = -1;
+    r.desk = (poll) => {
+      // The person works on the draft for three polls, then clears the box.
+      if (poll === 3) {
+        r.box.box = "";
+        emptiedAt = poll;
+      }
+    };
+    const answer = await r.service.send(send(ID, "local/%1"), operator);
+    expect(answer).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+    // The draft polls saw nothing typed; the release came on the second free poll after the box emptied.
+    const free = r.polls.findIndex((surface, at) => at >= emptiedAt && surface.composer === "empty");
+    expect(free).toBe(emptiedAt);
+    expect(r.polls.length).toBe(emptiedAt + 2);
+    expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
+    expect(r.box.transcript.at(-1)).toContain(header);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("the receipt reads `accepted: draft present` while the draft is there, and a phone send there is still refused with its offers", async () => {
+    const r = wired();
+    r.box.box = "half a thought";
+    let during: unknown;
+    let phone: Promise<unknown> | null = null;
+    r.desk = (poll) => {
+      if (poll === 1) {
+        during = r.service.status(ID).receipts[0];
+        // The person's own send from the phone, while the walky message waits over the same draft.
+        phone = r.protocol.handle({ id: "req-phone01", text: "from the phone", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+        r.hold = phone;
+      }
+      if (poll === 4) r.box.box = "";
+    };
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(during).toMatchObject({ state: "accepted", reason: "draft present" });
+    expect(await phone).toMatchObject({ receipt: { outcome: "refused", reason: "draft_present" }, offers: ["append", "replace", "cancel"] });
+    expect(r.box.calls.some((call) => call.includes("from the phone"))).toBe(false);
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+  });
+
+  test("a submitted draft starts a turn: the turn hold takes over, and the message is typed after that turn, once", async () => {
+    const r = wired();
+    r.box.box = "fix the parser";
+    const reasons: string[] = [];
+    r.desk = (poll) => {
+      reasons.push(r.service.status(ID).receipts[0]?.reason ?? "-");
+      // The person submits the draft on poll 2; the turn runs for three polls, then ends.
+      if (poll === 2) {
+        r.box.transcript.push(`> ${r.box.box}`);
+        r.box.box = "";
+        r.box.running = true;
+      }
+      if (poll === 5) r.box.running = false;
+    };
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.polls.slice(0, 2).every((surface) => surface.composer === "draft")).toBe(true);
+    expect(r.polls.slice(2, 5).every((surface) => surface.turn === "running")).toBe(true);
+    expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
+    // Typed after the turn: the draft's own prompt first, then the message.
+    expect(r.box.transcript.indexOf("> fix the parser")).toBeLessThan(r.box.transcript.findIndex((row) => row.includes(header)));
+    expect(reasons).toContain("draft present");
+    expect(reasons).toContain("turn running");
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+  });
+
+  test("a replaced pane never takes it: the release asks walky, which finds another instance, and nothing is typed", async () => {
+    const r = wired();
+    r.box.box = "half a thought";
+    r.desk = (poll) => {
+      if (poll === 2) {
+        // The pane closed; a new session took its id, with an empty box.
+        r.instance = "bbbb";
+        r.box.box = "";
+      }
+    };
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: "pane replaced" });
+    expect(r.box.calls).toEqual([]);
+    expect(r.box.keysSeen).toEqual([]);
+  });
+
+  test("a draft that stays the whole hour: nothing typed, `held past 60 minutes`, and the hold queue's own clock is the same one", async () => {
+    const r = wired();
+    r.box.box = "a long thought";
+    const accepted = r.clock.now;
+    let entry: unknown;
+    r.desk = (poll) => {
+      if (poll === 0) entry = r.holds.list()[0];
+    };
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: accepted + HELD_LIMIT_MS });
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
+    expect(r.box.calls).toEqual([]);
+    expect(r.box.box).toBe("a long thought");
+    expect(r.holds.list()).toEqual([]);
   });
 });

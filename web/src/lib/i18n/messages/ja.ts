@@ -2537,6 +2537,8 @@ export const ja: Dictionary = {
   "walky.state.refusedBecause": "未送信: {reason}",
   "walky.state.expired": "期限切れ",
   "walky.state.unknown": "届いている可能性があります。再送信されません",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "メッセージ",
   "walky.sheet.title": "メッセージ",

@@ -57,8 +57,10 @@ export interface WalkyReceipt {
   /**
    * Why, in the bridge's words: "no such pane", "not an agent pane", "pane busy", "box not free", "password prompt",
    * "rate limit", "off", "no terminal" (a session with no terminal is `inbox-only`, not refused),
-   * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature",
+   * "id reused", "held past 60 minutes", "bridge restarted", "typed, not submitted", "signature",
    * "pane replaced" (the address named a session instance and the pane now holds another).
+   * On `accepted` it is a held message (M62 spec 02): "draft present" or "turn running". Collie types
+   * it when the box clears or the turn ends, up to 60 minutes, so nobody sends it again.
    */
   reason?: string;
   verified: WalkyVerified;
@@ -506,11 +508,16 @@ export function targetWord(address: string): string {
   return address === "all" ? t("walky.crew.receiptAll") : address;
 }
 
-/** Where a message stands, in words, with the bridge's reason when there is one. */
+/** A held message (M62 spec 02): `accepted`, with the reason that holds it ("draft present", "turn running"). */
+export function isHeld(receipt: WalkyReceipt): boolean {
+  return receipt.state === "accepted" && receipt.reason !== undefined && receipt.reason !== "";
+}
+
+/** Where a message stands, in words, with the bridge's reason when there is one. A held one reads "held: <reason>". */
 export function stateWord(receipt: WalkyReceipt): string {
   switch (receipt.state) {
     case "accepted":
-      return t("walky.state.accepted");
+      return isHeld(receipt) ? t("walky.state.held", { reason: receipt.reason ?? "" }) : t("walky.state.accepted");
     case "delivered":
       return t("walky.state.delivered");
     case "inbox-only":

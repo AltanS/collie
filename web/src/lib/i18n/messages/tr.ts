@@ -2368,6 +2368,8 @@ export const tr: Dictionary = {
   "walky.state.refusedBecause": "gönderilmedi: {reason}",
   "walky.state.expired": "süresi doldu",
   "walky.state.unknown": "ulaşmış olabilir, tekrar gönderilmeyecek",
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Mesajlar",
   "walky.sheet.title": "Mesajlar",
