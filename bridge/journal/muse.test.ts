@@ -322,6 +322,71 @@ describe("parseMuseTranscript plain-text results carry no exit code (data-absent
   });
 });
 
+describe("parseMuseTranscript plain-text harness verdicts carry error state (MUSE-29)", () => {
+  // The harness answers a refused or failed call in plain text — no JSON envelope, and no sampled
+  // row records a number beside it (bridge/journal/muse.ts) — with its own verdict prefix. Chat and
+  // History derive the card state from result.isError/result.denied, so without these flags a
+  // refusal or a failure renders as a success.
+  test("a plain-text `tool denied:` command result is denied, never an error, with no exit code", () => {
+    const text = "tool denied: approval aborted\nThe user rejected this action.";
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "rm -rf /" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({
+      kind: "tool",
+      result: { text, denied: true },
+      call: { kind: "execute", command: "rm -rf /" },
+    });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    if (part?.kind === "tool" && part.call?.kind === "execute") {
+      expect(part.call).not.toHaveProperty("exitCode");
+    } else throw new Error("expected an execute call");
+  });
+
+  test("a plain-text `tool failed:` command result is an error, with no invented exit code", () => {
+    const text = "tool failed: unmanaged shell backgrounding is not allowed; use bash session_id polling instead";
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "sleep 999 &" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text, isError: true } });
+    expect(part).not.toMatchObject({ result: { denied: true } });
+    if (part?.kind === "tool" && part.call?.kind === "execute") {
+      expect(part.call).not.toHaveProperty("exitCode");
+    } else throw new Error("expected an execute call");
+  });
+
+  test("the verdict prefix is the harness's, not prose: a near-miss stays flagless", () => {
+    const entries = parseMuseTranscript(
+      [
+        toolCalls("row-1", [{ call_id: "call_1", name: "bash", args: { command: "ls" } }]),
+        batchResults("row-2", [{ tool_call_id: "call_1", text: "a tool failed: oops" }]),
+      ].join("\n"),
+    );
+    const part = entries[0]?.parts[0];
+    expect(part).toMatchObject({ kind: "tool", result: { text: "a tool failed: oops" } });
+    expect(part).not.toMatchObject({ result: { isError: true } });
+    expect(part).not.toMatchObject({ result: { denied: true } });
+  });
+
+  test("an orphan `tool failed:` result keeps its error state unattached", () => {
+    const text = "tool failed: No such file or directory (os error 2)";
+    const entries = parseMuseTranscript(batchResults("row-9", [{ tool_call_id: "call_x", text }]));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      role: "assistant",
+      parts: [{ kind: "tool", name: "result", result: { text, isError: true } }],
+    });
+  });
+});
+
 function toolCalls(
   id: string,
   calls: { call_id?: string; name: string; args?: JsonValue }[],

@@ -141,10 +141,18 @@ type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"
  * A plain-text result carries no exit code anywhere else either: the batch item is exactly
  * `{tool_call_index, tool_call_id, text}` and no sampled row records a number beside it (failure
  * state elsewhere is categorical — `task/failed` and kin — never numeric). So none is invented.
+ * What a plain-text result CAN carry is the harness's own verdict prefix: a refused call answers
+ * `tool denied: …` (nothing went wrong, somebody said no) and a failed one answers `tool failed:
+ * …`. Those prefixes read as `denied`/`failed` — the same categorical flags the lifecycle rows
+ * already set — so Chat and History stop drawing a refusal or a failure as a success.
  */
 interface UnwrappedResult {
   text: string;
   exitCode?: number;
+  /** The harness refused the call (`tool denied: …`); never an error, never read out of prose. */
+  denied?: true;
+  /** The harness failed the call (`tool failed: …`); the categorical flag, with no code beside it. */
+  failed?: true;
 }
 
 function unwrapResultText(text: string, toolName: string): UnwrappedResult {
@@ -153,6 +161,10 @@ function unwrapResultText(text: string, toolName: string): UnwrappedResult {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction.
     parsed = JSON.parse(text) as JsonValue;
   } catch {
+    // Plain text: only the harness's own verdict prefix earns a flag. Anything else — a file's
+    // first line, a command's bare output — renders verbatim with no state, as before.
+    if (text.startsWith("tool denied:")) return { text, denied: true };
+    if (text.startsWith("tool failed:")) return { text, failed: true };
     return { text };
   }
   if (!isObj(parsed)) return { text };
@@ -561,6 +573,8 @@ export function createMuseReducer(): RowReducer {
           const unwrapped = unwrapResultText(str(item.text), target?.part.name ?? "");
           const result: ToolResult = clamp(stripAnsi(unwrapped.text), MAX_RESULT_CHARS);
           if (unwrapped.exitCode !== undefined && unwrapped.exitCode !== 0) result.isError = true;
+          if (unwrapped.failed === true) result.isError = true;
+          if (unwrapped.denied === true) result.denied = true;
           if (callId !== "" && failedCalls.has(callId)) result.isError = true;
           if (callId !== "" && deniedCalls.has(callId)) result.denied = true;
           const imageUrl = callId === "" ? undefined : imageForCall.get(callId);
