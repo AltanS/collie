@@ -659,7 +659,7 @@ describe("ChangesRoute — batch diff comments", () => {
       }),
     );
     const router = renderAt("/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts");
-    const firstRow = await screen.findByRole("button", { name: /^\+1 export function cartTotal/ });
+    const firstRow = await screen.findByRole("button", { name: /^1\s*\+.*cartTotal/ });
     await user.click(firstRow);
 
     await user.click(screen.getByRole("button", { name: "Comment on selected (1)" }));
@@ -677,8 +677,8 @@ describe("ChangesRoute — batch diff comments", () => {
     await act(async () => {
       await router.navigate("/pane/w1%3Ap1/changes?repo=packages%2Fapi&path=server%2Fhandlers%2Forders.ts");
     });
-    const apiDelRow = await screen.findByRole("button", { name: /^-1 import \{ db \} from "\.\/db";/ });
-    const apiAddRow = screen.getByRole("button", { name: /^\+1 import \{ db \} from "\.\.\/db";/ });
+    const apiDelRow = await screen.findByRole("button", { name: /^1\s*−.*import/ });
+    const apiAddRow = screen.getByRole("button", { name: /^1\s*\+.*import/ });
     await user.click(apiDelRow);
     await user.click(apiAddRow);
     await user.click(screen.getByRole("button", { name: "Comment on selected (2)" }));
@@ -713,7 +713,7 @@ describe("ChangesRoute — batch diff comments", () => {
       { ...fixtureAgents[0]!, paneId: "w1:p9", agent: "codex", paneLabel: "codex-worker" },
     ];
     const router = renderAt(`/space/${encodeURIComponent(wsId)}/changes?repo=.&path=src%2Flib%2Fcart.ts`);
-    const firstRow = await screen.findByRole("button", { name: /^\+1 export function cartTotal/ });
+    const firstRow = await screen.findByRole("button", { name: /^1\s*\+.*cartTotal/ });
     await user.click(firstRow);
     await user.click(screen.getByRole("button", { name: "Comment on selected (1)" }));
     await user.type(

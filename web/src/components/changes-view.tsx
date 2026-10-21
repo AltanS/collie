@@ -5,7 +5,7 @@ import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
-import { diffCommentRowKey, formatDiffLineLabel, type DiffComment } from "@/lib/diff-comments";
+import { diffCommentRowKey, type DiffComment } from "@/lib/diff-comments";
 import {
   buildChangeTree,
   FILTER_STATUSES,
@@ -900,10 +900,18 @@ export function DiffView({
         }
         const rowCells = (
           <>
-            <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
+            <span
+              aria-hidden={commenting && row.newNo === null ? undefined : true}
+              className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums"
+              style={gutter}
+            >
               {row.oldNo ?? ""}
             </span>
-            <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
+            <span
+              aria-hidden={commenting && row.newNo !== null ? undefined : true}
+              className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums"
+              style={gutter}
+            >
               {row.newNo ?? ""}
             </span>
             <span aria-hidden className={cn("w-[2ch] shrink-0 select-none text-center", SIGN_TONE[row.kind])}>
@@ -933,7 +941,6 @@ export function DiffView({
                   c.rowKeys.every((k) => activeCommentKeySet.has(k)),
               )
             : [];
-        const lineAria = `${formatDiffLineLabel([row])} ${row.text}`.trim();
         const lineEl = (
           <div
             key={rowKey}
@@ -946,7 +953,6 @@ export function DiffView({
             <button
               type="button"
               aria-pressed={selected}
-              aria-label={lineAria}
               onClick={() => commenting.onToggleRow(commentKey)}
               className="flex min-h-7 min-w-0 flex-1 cursor-pointer items-baseline py-0.5 text-left font-mono text-xs leading-5"
             >
