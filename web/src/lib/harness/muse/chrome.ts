@@ -34,6 +34,7 @@ import {
   INPUT_PLACEHOLDERS,
   isContinuationRow,
   isNoteRow,
+  isTasksPopupHeader,
   locateTail,
   parsePaletteRow,
   promptRowText,
@@ -120,6 +121,32 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const tail = locateTail(lines);
   if (tail === null) return [];
   return [lines[tail.status]!];
+}
+
+/**
+ * The background-tasks popup Muse paints between the bottom rule and the statusline while tasks
+ * exist (`main · ↓ to select` + one `├/└ <task> <state> <elapsed>` row per task — DIALOG_NOTES.md
+ * §5). stripChrome peels it off the mirror with the rest of the tail chrome, and
+ * extractStatusLines stops above it, so without this probe the task list was on no surface at
+ * all (the Claude agents-footer equivalent, issue #242). It gets its own chrome element rather
+ * than more statusline rows: the strip's height cap guards against an operator's script, and
+ * this block is Muse's own and already bounded by the tail walk.
+ *
+ * POSITIONAL, like the strip: the rows from the tail's popup header to the statusline, STYLED,
+ * top to bottom. `[]` when there is no tail or no popup under the rule (a plain idle/approval
+ * screen, trust, or a filter picker, which has no tail at all). One content check: the block
+ * must open with the tasks popup header — the walk peels by position, and without the header
+ * check a misread tail would show here labelled as background work.
+ */
+export function extractAgentsFooter(lines: StyledLine[]): StyledLine[] {
+  const tail = locateTail(lines);
+  if (tail === null || tail.popup === null) return [];
+  const rows: StyledLine[] = [];
+  for (let j = tail.popup; j < tail.status; j++) {
+    if (!isBlank(rstrip(lineText(lines[j]!)))) rows.push(lines[j]!);
+  }
+  if (rows.length === 0 || !isTasksPopupHeader(rstrip(lineText(rows[0]!)))) return [];
+  return rows;
 }
 
 /**

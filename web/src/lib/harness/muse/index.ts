@@ -64,6 +64,7 @@ import { detectCheckboxRegion } from "./checkbox";
 import {
   composerPrompt,
   composerReady,
+  extractAgentsFooter,
   extractInputDraft,
   extractStatusLines,
   regionReachesTail,
@@ -212,6 +213,7 @@ export const museAdapter: HarnessAdapter = {
   modalOnScreen: museModalOnScreen,
   extractInputDraft,
   extractStatusLines,
+  extractAgentsFooter,
   composerPrompt,
   // Two token grammars, either of which proves the send landed: the paste collapse and the
   // attach chips/quotes (#278). Each is sound on its own; the OR only widens evidence.
