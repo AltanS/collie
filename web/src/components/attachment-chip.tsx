@@ -3,7 +3,7 @@ import { ArrowLeftToLine, ClipboardPaste, FileText, Image, X } from "lucide-reac
 import { useLocale } from "@/hooks/use-locale";
 import { pasteLineCount, shortName } from "@/lib/attachments";
 import type { DraftAttachment } from "@/lib/drafts";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /** A chip as the composer holds it: the stored draft attachment plus, for a photo picked in this
@@ -65,8 +65,7 @@ export function AttachmentChip({
   const inFrontNote = inFront ? t("composer.attach.inFront", { name: attachment.name }) : null;
   const edge = inFront ? "border-dashed border-foreground/60" : "border-border";
   const pasteStats = isPaste
-    ? t("composer.paste.chipStats", {
-        lines: pasteLineCount(attachment.path),
+    ? tn("composer.paste.chipStats", pasteLineCount(attachment.path), {
         chars: attachment.path.length,
       })
     : null;

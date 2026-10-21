@@ -70,6 +70,17 @@ describe("a collapsed paste chip", () => {
     expect(selected).toBe(true);
   });
 
+  it("says 1 line, not 1 lines, for a one-line paste", () => {
+    const oneLine: ComposerAttachment = { ...paste, path: "x".repeat(300), name: "xxxx" };
+    render(
+      <ul>
+        <AttachmentChip attachment={oneLine} onRemove={() => {}} onSelect={() => {}} />
+      </ul>,
+    );
+    expect(chip()).toHaveTextContent("1 line · 300 chars");
+    expect(chip()).not.toHaveTextContent("1 lines");
+  });
+
   it("reaches a 44px hit area inside the strip's padding", () => {
     render(
       <ul>

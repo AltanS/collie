@@ -2766,8 +2766,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
-                {translate("composer.paste.chipStats", {
-                  lines: pasteLineCount(activePaste.path),
+                {translatePlural("composer.paste.chipStats", pasteLineCount(activePaste.path), {
                   chars: activePaste.path.length,
                 })}
               </span>
