@@ -148,6 +148,13 @@ export interface PaneOptions {
   turnId?: string;
   /** True: `canSend` is false while the pane works or waits. For a host that cannot steer a running turn. */
   sendWhenIdleOnly?: boolean;
+  /**
+   * The pane's events cursor, fixed by the host: a whole number that rises whenever anything the pane shows changes. A
+   * host that rebuilds the pane from its log on every request cannot replay the events between two cursors, so a read
+   * at exactly this cursor (and this epoch) gets no events, and any other read gets the reset view with this cursor as
+   * `next` (WIRE.md 7.2 allows a reset for any cursor). Left out, the pane counts its own events.
+   */
+  cursor?: number;
 }
 
 // ── cleaning ──────────────────────────────────────────────────────────────────
@@ -537,6 +544,8 @@ export class Pane implements PaneHandle {
   /** True when the host fixed the turn id: `state()` never mints one. */
   private readonly turnFixed: boolean;
   private readonly sendWhenIdleOnly: boolean;
+  /** The host's cursor ({@link PaneOptions.cursor}), or undefined for a pane that counts its own events. */
+  private readonly fixedCursor: number | undefined;
   /** The raw tail: the newest `limit` events. `total` counts every event ever, so a cursor is `total` at read time. */
   readonly tail: SessionEvent[] = [];
   private total = 0;
@@ -577,7 +586,7 @@ export class Pane implements PaneHandle {
     cwd: string | undefined,
     limit = DEFAULT_TAIL,
     session?: string | null,
-    extra: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly"> = {},
+    extra: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly" | "cursor"> = {},
   ) {
     this.store = store;
     this.id = id;
@@ -590,6 +599,8 @@ export class Pane implements PaneHandle {
     this.turnFixed = extra.turnId !== undefined;
     this.turnId = extra.turnId === undefined ? mintId() : assertId(extra.turnId, "pane turnId");
     this.sendWhenIdleOnly = extra.sendWhenIdleOnly === true;
+    if (extra.cursor !== undefined && (!Number.isSafeInteger(extra.cursor) || extra.cursor < 0)) throw new RangeError(`a pane's cursor is a whole number from 0: ${extra.cursor}`);
+    this.fixedCursor = extra.cursor;
     this.limit = Math.min(limit, MAX_TAIL);
   }
 
@@ -611,9 +622,15 @@ export class Pane implements PaneHandle {
   /**
    * The events past a cursor (WIRE.md 7.2). A cursor inside the tail gets plain events, at most 1000 and
    * at most 8 MiB, with `more` when it stopped early. A stale epoch, a cursor older than the tail or a
-   * cursor past the count gets `reset: true` and the whole current view of the pane.
+   * cursor past the count gets `reset: true` and the whole current view of the pane. A pane with a host's
+   * cursor ({@link PaneOptions.cursor}) answers nothing at that cursor and the reset view at any other.
    */
   eventsAfter(after: number, staleEpoch: boolean): Omit<EventsReply, "epoch"> {
+    if (this.fixedCursor !== undefined) {
+      // A host's cursor names a whole view, not a place in a tail: the same cursor is nothing new, any other one a reset.
+      if (!staleEpoch && after === this.fixedCursor) return { events: [], next: this.fixedCursor };
+      return { ...this.resetView(), next: this.fixedCursor };
+    }
     const start = this.total - this.tail.length;
     if (!staleEpoch && after >= start && after <= this.total) {
       const events: SessionEvent[] = [];
@@ -629,6 +646,11 @@ export class Pane implements PaneHandle {
       if (next < this.total) reply.more = true;
       return reply;
     }
+    return this.resetView();
+  }
+
+  /** The whole current view of the pane (WIRE.md 7.2): its items, its open asks, its state, with `next` at the count. */
+  private resetView(): Omit<EventsReply, "epoch"> {
     // The newest items that fit: at most 2000, and inside the reply budget with room for the asks.
     const asks = this.openAsks;
     let budget = LIMITS.replyBytes - asks.reduce((n, a) => n + bytes(JSON.stringify(a)), 0) - 1024;
@@ -1077,9 +1099,10 @@ export class Store {
     if (o.sessionId !== undefined && o.sessionId !== null) assertId(o.sessionId, "pane sessionId");
     const have = this.panes.get(id);
     if (have) return have;
-    const host: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly"> = {};
+    const host: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly" | "cursor"> = {};
     if (o.turnId !== undefined) host.turnId = o.turnId;
     if (o.sendWhenIdleOnly !== undefined) host.sendWhenIdleOnly = o.sendWhenIdleOnly;
+    if (o.cursor !== undefined) host.cursor = o.cursor;
     const pane = new Pane(this, id, tabId, workspaceId, cut(o.title, CAPS.title), cut(o.harness, CAPS.harness), cwdOf(o.cwd), this.tailLimit, o.sessionId, host);
     // A pane shown again is open: it is no longer one a reopen could put back.
     for (const [key, closed] of this.closedPanes) if (closed.id === id) this.closedPanes.delete(key);
