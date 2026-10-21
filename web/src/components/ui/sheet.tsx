@@ -173,7 +173,8 @@ export function BottomSheet({
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
-      drag.current = { startY: t.clientY, atTop: panel.scrollTop <= 0, engaged: false, dy: 0 };
+      const inTextarea = e.target instanceof Element && e.target.closest("textarea") !== null;
+      drag.current = { startY: t.clientY, atTop: !inTextarea && panel.scrollTop <= 0, engaged: false, dy: 0 };
     };
     const onMove = (e: TouchEvent) => {
       const d = drag.current;
