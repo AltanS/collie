@@ -198,6 +198,10 @@ The durable agent's home on the phone says the same sentence, for example
 
 [`WIRE.md`](../bridge/mux/durable/WIRE.md) is the contract, with every shape, code and rule.
 
+A host with no process of its own, such as a function on Vercel, fills the wire from a log on every
+request. Its rules for the epoch, the ask journal and the route are the appendix "A host with no process"
+at the end of `WIRE.md`. The appendix is a draft and is not part of version 1.
+
 The decisions behind it are records in the repository:
 
 | record | what it decides |
