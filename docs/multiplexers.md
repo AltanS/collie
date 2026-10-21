@@ -573,7 +573,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
-| Hermes | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
+| Hermes (classic CLI) | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
 | Cursor CLI (`cursor-agent`) | Queues the message | Enter | Yes | 2026.10.16 |
 | Kiro (`kiro-cli`) | Steers the turn; Collie holds a send until the turn ends | Enter | Short texts | 2.32.0 |
 
@@ -665,7 +665,8 @@ So Collie refuses a send while the screen shows the turn running, and it types n
 Where a harness draws no running sign, Collie cannot tell, and the agent decides what Enter does.
 OpenCode and OMP passed live sends on a version above the checked one.
 Collie probes every send on them until a send passes inside the checked range.
-Hermes passed live sends on 0.22.2, inside its range, on Herdr only.
+Hermes (the classic CLI) passed live sends on 0.22.2, inside its range, on Herdr only.
+The Ink TUI (`hermes --tui`, or a config that starts it) is not read yet; tap Type here to send.
 The probe has not been tried in each Hermes dialog, so Collie probes every send there too.
 
 A version above the checked one still works, and the receipt says `provisional`.
