@@ -15,7 +15,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -94,6 +94,8 @@ class FakePane {
   collapseOver = 120;
   /** The most lines a {@link pasteBlock} paste may hold and still land literally. */
   blockLiteralLines = 3;
+  /** The image files a {@link pasteBlock} paste takes off, each drawn as `[Image #N]` before the rest. */
+  imageFiles: readonly string[] = [];
   pastes = 0;
   readFails = false;
   readsSeen = 0;
@@ -263,6 +265,12 @@ class FakePane {
     void paneId;
     this.calls.push(`block:${text}`);
     if (this.now !== null) this.lastWriteAt = this.now();
+    // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
+    // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
+    const pieces = text.split(/\n| (?=\/)/u);
+    const kept = pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
+    for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
+    if (kept.length < pieces.length) text = kept.join("\n");
     const breaks = text.split("\n").length - 1;
     if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
       this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
@@ -354,6 +362,8 @@ function rig(
     paste?: boolean;
     /** The multiplexer frames a whole-text paste itself (Herdr's `pasteBlock`). */
     block?: boolean;
+    /** The paths the protocol takes for image files on disk. */
+    imageFiles?: readonly string[];
     pane?: FakePane;
     storeDir?: string;
     ledger?: SurfaceLedger;
@@ -399,6 +409,7 @@ function rig(
     generation: options.generation ?? (() => "gen-1"),
     ledger: options.ledger,
     holds: options.holds,
+    imageFile: (path: string) => (options.imageFiles ?? []).includes(path),
     now,
     sleep: (ms: number) => {
       clock.now += ms;
@@ -574,6 +585,90 @@ describe("a send that goes through", () => {
     const answer = await send(Array.from({ length: 10 }, (_, i) => `line ${String(i)}`).join("\n"));
     expect(answer.receipt?.outcome).toBe("typed_not_submitted");
     expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a short one-line message keeps the write it always had: only a long or multi-line one is one paste", async () => {
+    const { pane, send } = rig({ block: true });
+    expect((await send("a short message")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect((await send("x".repeat(800))).receipt?.outcome).toBe("sent");
+    expect(pane.calls.map((call) => call.split(":")[0])).toEqual(["paste", "paste"]);
+    expect((await send("x".repeat(801))).receipt?.outcome).toBe("sent");
+    expect(pane.calls.at(-1)).toBe(`block:${"x".repeat(801)}`);
+  });
+
+  test("a text that starts with a slash, a bang or an at keeps the write per line, so the harness reads its lead as typed", async () => {
+    for (const text of [`/review ${"x".repeat(900)}`, `!echo ${"x".repeat(900)}`, `@notes.md ${"x".repeat(900)}`, "@notes.md read this\nand this"]) {
+      const { pane, send } = rig({ block: true });
+      await send(text);
+      expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([]);
+    }
+  });
+
+  test("an image path that ends a long dictation is taken off the paste, and its image token then the folded rest is proven", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const text = `${"слово ".repeat(300).trim()} ${shot}`;
+    expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual([`block:${text}`]);
+    expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2]");
+  });
+
+  test("an image path on a line of its own is taken off a multi-line paste, and the rest folds with one line break fewer", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines.slice(0, 5), shot, ...lines.slice(5)].join("\n"))).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2 +9 lines]");
+  });
+
+  test("an image the harness took that the protocol did not expect leaves the send typed_not_submitted", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    // The disk check says no file: the protocol expects the path as text, the harness attached it.
+    const { send } = rig({ block: true, pane });
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Submit finds a box that holds the image token and the folded paste", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const { pane, send } = rig({ block: true, imageFiles: [shot] });
+    pane.box = "[Image #1][Pasted text #2]";
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`, { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test("Add to a draft with an image: the draft, the image token, then the folded rest", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    pane.box = "draft";
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines, shot].join("\n"), { mode: "append" })).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> draft[Image #1][Pasted text #2 +9 lines]");
+  });
+
+  test("a short multi-line text with an image lands literally after the image token", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    expect((await send(`line one\n${shot}\nline three`)).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> [Image #1]line one line three");
+  });
+
+  test("Discard finds and clears a box that holds the image token and the folded paste", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const { pane, send } = rig({ block: true, imageFiles: [shot] });
+    pane.box = "[Image #1][Pasted text #2 +9 lines]";
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines, shot].join("\n"), { mode: "discard" })).receipt?.outcome).toBe("discarded");
+    expect(pane.box).toBe("");
   });
 
   test("control bytes, tabs and paste markers never reach the pane", async () => {
@@ -3093,13 +3188,49 @@ describe("pure helpers", () => {
   test("boxMatches takes ONE collapse form for a whole multi-line text only when it claims the text's line breaks", () => {
     const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
     const three = ["a", "b", "c"];
-    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse)).toBe(true);
-    expect(boxMatches(" [Pasted text #4 +2 lines] ", "", three, collapse)).toBe(true);
-    expect(boxMatches("[Pasted text #4 +3 lines]", "", three, collapse)).toBe(false);
-    expect(boxMatches("[Pasted text #4]", "", three, collapse)).toBe(false);
-    expect(boxMatches("[Pasted text #4 +2 lines] tail", "", three, collapse)).toBe(false);
-    expect(boxMatches("draft [Pasted text #4 +2 lines]", "draft", three, collapse)).toBe(true);
-    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, null)).toBe(false);
+    const whole = { images: 0, image: null, lines: three };
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse, whole)).toBe(true);
+    expect(boxMatches(" [Pasted text #4 +2 lines] ", "", three, collapse, whole)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +3 lines]", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("[Pasted text #4]", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("[Pasted text #4 +2 lines] tail", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("draft [Pasted text #4 +2 lines]", "draft", three, collapse, whole)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, null, whole)).toBe(false);
+    // A text written per line never reads as one fold: Hermes, opencode, pi and Cursor keep that rule.
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse)).toBe(false);
+  });
+
+  test("boxMatches reads a whole paste's image tokens before its text, as many as were taken off", () => {
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const image = /\[Image #\d+\]/uy;
+    const one = { images: 1, image, lines: ["look at this"] };
+    expect(boxMatches("[Image #3]look at this", "", one.lines, collapse, one)).toBe(true);
+    expect(boxMatches("look at this", "", one.lines, collapse, one)).toBe(false);
+    const two = { images: 2, image, lines: ["a", "b"] };
+    expect(boxMatches("[Image #9] [Image #10][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(true);
+    expect(boxMatches("[Image #9][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(false);
+    // The box may wrap inside a token (ADR 0010): the row break reads as white space.
+    expect(boxMatches("draft [Image #1][Pasted text #2 +1 li nes]", "draft", two.lines, collapse, { ...two, images: 1 })).toBe(true);
+    expect(boxMatches("[Ima ge #1][Pasted text #2]", "", ["one long line"], collapse, { images: 1, image, lines: ["one long line"] })).toBe(true);
+    expect(boxMatches("[Pasted text #2 +1 lines]", "", ["one long line"], collapse, { images: 0, image, lines: ["one long line"] })).toBe(false);
+  });
+
+  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, image files taken off", () => {
+    const match = profileFor("claude", "2.1.304", { log: () => undefined });
+    expect(match?.profile.paste?.block).toBe(true);
+    const shot = "/srv/shots/a.jpg";
+    const isShot = (path: string): boolean => path === shot;
+    expect(wholePaste(match, ["short"], isShot)).toBeNull();
+    expect(wholePaste(match, ["x".repeat(800)], isShot)).toBeNull();
+    expect(wholePaste(match, ["x".repeat(801)], isShot)?.images).toBe(0);
+    expect(wholePaste(match, ["a", "b"], isShot)).toMatchObject({ images: 0, lines: ["a", "b"] });
+    for (const lead of ["/", "!", "@"]) expect(wholePaste(match, [`${lead}x`, "b"], isShot)).toBeNull();
+    expect(wholePaste(match, ["see", shot], isShot)).toMatchObject({ images: 1, lines: ["see"] });
+    expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
+    expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match, ["see /srv/shots/missing.jpg", "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
+    expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
   });
 
   test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {

@@ -12,7 +12,8 @@
 //           fails with its character standing once in the box gets one Backspace and one more read
 //   write   the whole text in one write per line (a bracketed paste where the multiplexer and the
 //           profile allow it); a line break is the profile's newline key, through the gate. Where
-//           the multiplexer frames a paste itself (`pasteBlock`), the whole text is ONE paste instead
+//           the multiplexer frames a paste itself (`pasteBlock`), a long or multi-line message is ONE
+//           paste instead (`wholePaste`: never a command, never a text that starts with a reserved lead)
 //   S1      (6, 2500) read until the box holds exactly the predicted text (or the profile's collapse
 //           form) and nothing else moved; else `typed_not_submitted`. A turn that started after an
 //           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
@@ -80,6 +81,7 @@
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
+import { statSync } from "node:fs";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -265,6 +267,8 @@ export interface SendDeps {
    * of it is the caller's business: the bridge keeps the line only for a shell pane (bridge/sent.ts).
    */
   readonly blindSent?: (sent: { readonly session: string; readonly paneId: string; readonly text: string }) => void;
+  /** Whether a path names an image file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
+  readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -567,11 +571,11 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
  * Code's agents screen draws a box of its own with a one-row key-hint footer, the same count as a
  * conversation with the statusline off, and Enter there starts a new background session with the text.
  */
-function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null): "pass" | "wait" | "modal_cue" | "mismatch" | "changed" | "other_screen" {
+function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null): "pass" | "wait" | "modal_cue" | "mismatch" | "changed" | "other_screen" {
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return "modal_cue";
   if (s0.frame === null || snap.frame === null) return "changed";
   if (snap.otherScreen !== null) return "other_screen";
-  if (!boxMatches(boxText(snap.frame), prefix, lines, collapse)) return "mismatch";
+  if (!boxMatches(boxText(snap.frame), prefix, lines, collapse, whole)) return "mismatch";
   if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return "changed";
   return "pass";
 }
@@ -1153,14 +1157,70 @@ function isSpace(ch: string | undefined): boolean {
   return ch !== undefined && /\s/u.test(ch);
 }
 
+/** A text the write sends as ONE paste (`pasteBlock`): what the harness keeps of it in the box. */
+export interface WholePaste {
+  /** The image files the harness takes off the paste; each shows as one `image` token before the rest. */
+  readonly images: number;
+  /** The profile's image token, or null when the profile names none (then `images` is 0). */
+  readonly image: RegExp | null;
+  /** The text that stays in the paste, as lines. */
+  readonly lines: readonly string[];
+}
+
+/**
+ * One line of at most this many characters is written as before, never as a whole paste: Claude Code
+ * inserts a paste this short literally (ADR 0010, the 2026-10-03 addendum: 800 literal, 801 a token).
+ */
+const WHOLE_PASTE_MIN_CHARS = 800;
+
+/** A piece of a paste that is an absolute path to an image file (Herdr runs on POSIX). */
+const IMAGE_PIECE = /^\/.*\.(?:png|jpe?g|gif|webp)$/iu;
+/** Where the harness cuts a paste into pieces: at each newline, and at a space right before an absolute path. */
+const PIECE_CUT = /\r?\n| (?=\/)/u;
+
+function isImageFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a text goes as ONE paste, and what the box then shows of it; null for the write per line.
+ * Only where the profile measured it (`paste.block`), only for a message of more than one line or of
+ * more than {@link WHOLE_PASTE_MIN_CHARS} on one line (a dictation is often one long line), and never
+ * for a text that starts with a reserved lead: a slash command, a shell line or a file mention keeps
+ * the write it has always had, so the harness reads the lead as typed. With the profile's image
+ * token, the pieces that are image files on this disk come off the paste the way the harness takes
+ * them (lab, Claude Code 2.1.305: `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`); the kept
+ * pieces stay, joined by newlines.
+ */
+export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
+  const paste = match?.profile.paste;
+  if (match === null || paste?.block !== true) return null;
+  const text = lines.join("\n");
+  if (lines.length === 1 && text.length <= WHOLE_PASTE_MIN_CHARS) return null;
+  if (reservedLead(lines[0] ?? "", match.profile.reservedLeads) !== null) return null;
+  if (paste.image === undefined) return { images: 0, image: null, lines };
+  const image = new RegExp(paste.image, "uy");
+  const pieces = text.split(PIECE_CUT);
+  const kept = pieces.filter((piece) => !(IMAGE_PIECE.test(piece.trim()) && imageFile(piece.trim())));
+  const images = pieces.length - kept.length;
+  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n") };
+}
+
 /**
  * Whether the box text equals `prefix` then each line, white space and wrapping ignored. A line may
  * also show as the profile's collapse form (a long paste the harness folded), whose line count, if it
  * carries one, must say one line: each written line is its own write. A text written as ONE paste
- * (`pasteBlock`) may instead stand as one collapse form for all of it, whose line count is exactly the
- * line breaks the text holds (Claude Code counts `+M lines` as the `\n`s in the paste; lab, 2.1.304).
+ * (`whole`) first shows its image tokens, then may stand as one collapse form for all of it, whose
+ * line count is exactly the line breaks the kept text holds (Claude Code counts `+M lines` as the
+ * `\n`s in the paste; lab, 2.1.304), or else lands literally, never one line of it folded. Its tokens
+ * are read with white space taken out, since the box may wrap inside one. Without `whole` none of this
+ * is read: a profile that writes per line keeps the rule above.
  */
-export function boxMatches(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null): boolean {
+export function boxMatches(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null = null): boolean {
   let p = 0;
   const skip = (): void => {
     while (isSpace(box[p])) p++;
@@ -1187,23 +1247,39 @@ export function boxMatches(box: string, prefix: string, lines: readonly string[]
     return true;
   };
   if (!eat(prefix)) return false;
-  if (lines.length > 1 && collapse !== null) {
-    const at = p;
-    skip();
-    collapse.lastIndex = p;
-    const m = collapse.exec(box);
-    if (m !== null && m.index === p && Number(m.groups?.lines) === lines.length - 1) {
-      p += m[0].length;
-      skip();
-      if (p === box.length) return true;
+  if (whole !== null) {
+    // The tokens are read with all white space taken out, the box's and the pattern's: the box may wrap
+    // inside a token (`+9 li` / `nes]`, ADR 0010).
+    let squeezed = "";
+    const at: number[] = [];
+    for (let i = p; i < box.length; i++) {
+      if (isSpace(box[i])) continue;
+      squeezed += box[i];
+      at.push(i);
     }
-    p = at;
+    at.push(box.length);
+    let q = 0;
+    const take = (token: RegExp | null): RegExpExecArray | null => {
+      if (token === null) return null;
+      const bare = new RegExp(token.source.replaceAll(" ", ""), "uy");
+      bare.lastIndex = q;
+      const m = bare.exec(squeezed);
+      if (m !== null) q += m[0].length;
+      return m;
+    };
+    for (let i = 0; i < whole.images; i++) if (take(whole.image) === null) return false;
+    const after = q;
+    const m = take(collapse);
+    const count = m?.groups?.lines;
+    if (m !== null && q === squeezed.length && (count === undefined ? lines.length === 1 : Number(count) === lines.length - 1)) return true;
+    p = at[after]!;
   }
   for (const line of lines) {
     const at = p;
     if (eat(line)) continue;
     p = at;
-    if (!eatCollapse()) return false;
+    // A whole paste folds whole or lands literally, never one line of it.
+    if (whole !== null || !eatCollapse()) return false;
   }
   skip();
   return p === box.length;
@@ -1455,6 +1531,8 @@ interface RunState {
   blind: boolean;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
+  /** The text went, or a draft stands, as ONE paste ({@link wholePaste}); null for the write per line. */
+  whole: WholePaste | null;
   /**
    * The confirmed commit of a digit a notice over the empty box printed ({@link SendProtocol.gateSend}):
    * no probe, the digit alone, no submit key; the notice taking it is the send.
@@ -2164,6 +2242,7 @@ export class SendProtocol {
       manual: false,
       blind: false,
       command: request.mode === "command",
+      whole: null,
       noticeKey: false,
       heldOther: false,
       queued: false,
@@ -2358,7 +2437,13 @@ export class SendProtocol {
     }
     // Submit and Discard name the text the box holds: a command's text may stand there with its lead read as a mode marker.
     if ((request.mode === "submit" || request.mode === "discard") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
-    const holds = (box: string): boolean => (state.command ? commandBoxMatches : boxMatches)(box, "", lines, collapseOf(match));
+    // A draft that went as one paste is read the way the send read it.
+    if ((request.mode === "submit" || request.mode === "discard") && !state.command && this.deps.mux.pasteBlock !== undefined) {
+      state.whole = wholePaste(match, lines, this.deps.imageFile);
+    }
+    const { whole } = state;
+    const holds = (box: string): boolean =>
+      state.command ? commandBoxMatches(box, "", lines, collapseOf(match)) : boxMatches(box, "", whole?.lines ?? lines, collapseOf(match), whole);
 
     if (match === null && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
@@ -2448,6 +2533,7 @@ export class SendProtocol {
     if (state.probed) landing = await this.probe(state, s0, prefix);
     this.lap(state, "probe");
 
+    if (!state.command && !state.noticeKey && this.deps.mux.pasteBlock !== undefined) state.whole = wholePaste(match, lines, this.deps.imageFile);
     await this.write(state, lines);
     this.lap(state, "write");
 
@@ -2463,7 +2549,7 @@ export class SendProtocol {
     const settleMs = state.match?.profile.paste?.settleMs;
     if (settleMs !== undefined) await this.sleep(settleMs);
 
-    const s1 = await this.awaitTyped(state, s0, landing, prefix, lines);
+    const s1 = await this.awaitTyped(state, s0, landing, prefix, state.whole?.lines ?? lines);
     state.marks.s1 = s1;
     this.lap(state, "s1");
     this.checkGeneration(state, "typed_not_submitted");
@@ -3055,16 +3141,16 @@ export class SendProtocol {
   }
 
   /**
-   * The write: each line in one write, the profile's newline key between lines. Where the profile says
-   * its harness folds one whole-text paste (`paste.block`, measured in the lab) and the multiplexer
-   * frames a paste itself (`pasteBlock`), the whole text goes as ONE paste instead. A long dictation typed line by line grows the box past the screen, and a box whose
-   * top is off screen can never be proven, so the send ended `typed_not_submitted` and Submit and
-   * Discard could not find the box either. One paste is what the harness folds into its collapse form
-   * (`[Pasted text #N +M lines]`), one row, which S1 matches (boxMatches); a short one lands literally.
+   * The write: each line in one write, the profile's newline key between lines. A text that goes as
+   * ONE paste (`state.whole`, {@link wholePaste}) is one `pasteBlock` instead. A long dictation typed
+   * line by line grows the box past the screen, and a box whose top is off screen can never be proven,
+   * so the send ended `typed_not_submitted` and Submit and Discard could not find the box either. One
+   * paste is what the harness folds into its collapse form (`[Pasted text #N +M lines]`), one row,
+   * which S1 matches (boxMatches); a short one lands literally.
    */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
     const { mux } = this.deps;
-    if (state.match?.profile.paste?.block === true && mux.pasteBlock !== undefined) {
+    if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);
       // Called on the mux, never torn off it: an adapter's method reads its own `this`.
       const ack = await this.within(state, mux.pasteBlock(state.target.paneId, lines.join("\n")));
@@ -3114,7 +3200,7 @@ export class SendProtocol {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
       if (boxOnly) {
-        const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse);
+        const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
         if (verdict === "other_screen") {
           // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
           why = "changed";
@@ -3152,7 +3238,7 @@ export class SendProtocol {
       }
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
-        if (!(command ? commandBoxMatches : boxMatches)(boxText(snap.frame), prefix, lines, collapse)) {
+        if (!(command ? commandBoxMatches(boxText(snap.frame), prefix, lines, collapse) : boxMatches(boxText(snap.frame), prefix, lines, collapse, state.whole))) {
           why = "mismatch";
           return "wait";
         }

@@ -452,6 +452,14 @@ export interface Profile {
      * paste instead of a write per line, so a long dictation never grows the box past the screen.
      */
     readonly block?: boolean;
+    /**
+     * The token the harness draws for an image file it takes off a whole-text paste, as a regular
+     * expression source (Claude Code: `[Image #N]`). Optional, and only with `block`: without it, a
+     * send that names an image file is not modelled, so such a box stays unproven. With `block`, this
+     * token and the collapse pattern are read on the box with its white space taken out, so each
+     * writes a space as a literal space, never `\s` or `[ ]`.
+     */
+    readonly image?: string;
   };
   /** How the bridge keeps an ask (M56 spec 08). Optional: a profile without it uses the default lifetime. */
   readonly ask?: {
@@ -1004,6 +1012,10 @@ export function parseProfile(raw: JsonValue): Profile {
     if (block === true && bracketed !== true) fail("paste.block", "needs paste.bracketed");
     paste = settleMs === undefined ? { bracketed: bracketed === true } : { bracketed: bracketed === true, settleMs };
     if (block === true) paste = { ...paste, block: true };
+    if (pasteNode.image !== undefined) {
+      if (block !== true) fail("paste.image", "needs paste.block");
+      paste = { ...paste, image: pattern(pasteNode.image, "paste.image").source };
+    }
   }
 
   let ask: Profile["ask"];
