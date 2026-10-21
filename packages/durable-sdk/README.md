@@ -55,6 +55,32 @@ WebSocket, so the hibernation and WebSocket features of Durable Objects do not h
 On a send, the label queued is Collie's own reading of the turn, and Pi's inbox is not shown. A task that sleeps until
 a deadline shows as idle or working, never as waiting.
 
+## A durable agent on durable-harness
+
+**Experimental.** A Pi agent on Vercel's `durable-harness` needs one wrapper around its opener and one route. It is tested
+self-hosted, in one Node process on a local World. It is untested on Vercel.
+
+```ts
+import { collieRoute, withCollie } from "@colliepwa/durable-sdk/durable-harness";
+import { resumeWith } from "durable-harness/pi-durable";
+// Harness, models, ctx and registry are your Pi agent's own.
+
+const open = resumeWith(
+  withCollie((storage, reg) => Harness.open(storage, { models, registry: reg }, ctx), {
+    registry,
+    risky: new Set(["deploy"]),
+  }),
+);
+export const collie = collieRoute({ open, token: process.env.COLLIE_TOKEN });
+```
+
+Mount `collie` under a path that ends in `/session/v1`, then attach it with
+`collie durable attach desk --url https://your-app.example.com/collie --token-env COLLIE_TOKEN`. The phone reads,
+answers, sends while the session is idle, stops and reads the history. A stop does not call back a tool that has
+started: it finishes, and does its work, while the log says it was aborted. On a local World, serve the route from the
+process that runs the queue. The steps, the cost and the limits are in the
+[Durable agents page](https://colliepwa.dev/docs/durable-agents).
+
 ## The entries
 
 | Import | What it is |
