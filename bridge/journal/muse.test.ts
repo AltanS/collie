@@ -94,7 +94,7 @@ describe("parseMuseTranscript turns", () => {
     });
   });
 
-  test("text blocks join across messages; a digest asset becomes a named image part, never typed words", () => {
+  test("text blocks join across messages; a digest asset stays marked in words, never typed pixels", () => {
     const digest = "b".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
@@ -102,13 +102,12 @@ describe("parseMuseTranscript turns", () => {
         { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest } },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([
-      { kind: "text", text: "check this" },
-      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
-    ]);
+    // The log carries no pixels and /api/blobs only serves pi/omp attachments, so the
+    // deficit is a text marker — never a broken image part.
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
   });
 
-  test("an image-only turn survives on its image part alone", () => {
+  test("an image-only turn survives on its marker alone", () => {
     const digest = "c".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
@@ -118,7 +117,7 @@ describe("parseMuseTranscript turns", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       role: "user",
-      parts: [{ kind: "image", url: `/api/blobs/${digest}` }],
+      parts: [{ kind: "text", text: "[image attached]" }],
     });
   });
 
@@ -738,7 +737,7 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
     else throw new Error("expected a question call");
   });
 
-  test("Muse's own [Image #n] marker stays verbatim beside the asset's named image part", () => {
+  test("Muse's own [Image #n] marker stays verbatim and is not named twice", () => {
     const digest = "a".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
@@ -757,17 +756,13 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
         },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([
-      { kind: "text", text: "look at [Image #1] please" },
-      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
-    ]);
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "look at [Image #1] please" }]);
   });
 
-  test("a user asset names its digest, never invented pixels: a hash and a path become no data URL", () => {
+  test("a user asset keeps its marker, never invented pixels: a hash and a path become no data URL", () => {
     // The log carries only a content digest (+ sometimes a since-deleted source_path);
-    // no blob store exists under Muse's data dirs, so the digest becomes a named blob-route
-    // reference — rendered where the bytes are servable, an honest named attachment where
-    // they are not — and no data URL is fabricated from it.
+    // no blob store exists under Muse's data dirs and /api/blobs only serves pi/omp
+    // attachments, so the deficit stays a text marker — and no data URL is fabricated.
     const digest = "b".repeat(64);
     const entries = parseMuseTranscript(
       accepted("row-1", [
@@ -787,10 +782,7 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
         },
       ]),
     );
-    expect(entries[0]?.parts).toEqual([
-      { kind: "text", text: "check this" },
-      { kind: "image", url: `/api/blobs/${digest}`, mimeType: "image/png" },
-    ]);
+    expect(entries[0]?.parts).toEqual([{ kind: "text", text: "check this\n\n[image attached]" }]);
     expect(JSON.stringify(entries)).not.toContain("data:image");
   });
 
