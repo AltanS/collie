@@ -631,9 +631,17 @@ export async function sendFromComposer(page: Page, recorder: TapRecorder, text: 
   return tap(recorder, page.getByRole("button", { name: message("composer.send.sendAria"), exact: true }), label);
 }
 
+/** The most ctrl+u presses {@link resetBox} spends on one draft: one per line of the box. */
+const RESET_LINES = 6;
+
 /**
  * Leave the input box empty before a scenario: close an open menu or dialog with Escape and clear a
  * draft with ctrl+u. Clean-up outside the phone, so it is noted and never counted as a tap.
+ *
+ * ctrl+u clears one line of the box, so a draft of several lines (a walky talky header and its body,
+ * typed and not submitted) takes one press per line. It presses again while the box reads a draft, at
+ * most {@link RESET_LINES} times. Field case 2026-10-21: one press left a message header in Claude's
+ * box, and the next case's broadcast was held behind it.
  */
 export async function resetBox(rig: Rig, paneId: string, host?: Host): Promise<string | null> {
   const pane = await rig.pane(paneId, host).catch(() => null);
@@ -646,11 +654,15 @@ export async function resetBox(rig: Rig, paneId: string, host?: Host): Promise<s
     steps.push("Escape");
     await sleep(600);
   }
-  const after = await rig.pane(paneId, host).catch(() => null);
-  if (after?.surface?.composer === "draft") {
+  let presses = 0;
+  let after = await rig.pane(paneId, host).catch(() => null);
+  while (after?.surface?.composer === "draft" && presses < RESET_LINES) {
     await rig.keys(paneId, ["ctrl+u"], host);
-    steps.push("ctrl+u");
+    presses += 1;
+    await sleep(400);
+    after = await rig.pane(paneId, host).catch(() => null);
   }
+  if (presses > 0) steps.push(presses === 1 ? "ctrl+u" : `ctrl+u x${String(presses)}`);
   await rig.until(() => rig.pane(paneId, host), freeSurface, 5000);
   return steps.length === 0 ? null : `box reset outside the phone (${steps.join(", ")})`;
 }
