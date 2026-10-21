@@ -237,12 +237,29 @@ interface Loaded {
   items: Map<string, Item[]>;
 }
 
+/** The most GET answers one instance keeps for an outage. An events answer can hold a reset view of up to 8 MiB. */
+export const KEPT_MAX = 64;
+
+/**
+ * For tests only, not exported by the entry: the route answers `route[KEPT_SIZE]()` with how many answers it keeps.
+ * The key of an events answer holds its cursor, so a server that runs for days must not keep them all.
+ */
+export const KEPT_SIZE: unique symbol = Symbol("collie.keptSize");
+
 export function createRoute(o: RouteOptions): (request: Request) => Promise<Response> {
   const now = o.now ?? Date.now;
   const staleMs = o.staleMs ?? 5000;
   const readBackMs = o.readBackMs ?? 4000;
   const warn = o.warn ?? ((line: string) => console.warn(line));
+  // Keyed by method, path and search: a stale events answer must match the cursor the phone asked for.
   const kept = new Map<string, Kept>();
+  /** Keep a good answer: drop every one older than `staleMs`, then the oldest past {@link KEPT_MAX}. */
+  const keep = (key: string, entry: Kept) => {
+    for (const [k, v] of kept) if (entry.at - v.at > staleMs) kept.delete(k);
+    kept.delete(key);
+    kept.set(key, entry);
+    while (kept.size > KEPT_MAX) kept.delete(kept.keys().next().value!);
+  };
   let epochOf: Promise<string> | undefined;
   let preflight: Promise<void> | undefined;
 
@@ -445,7 +462,7 @@ export function createRoute(o: RouteOptions): (request: Request) => Promise<Resp
     return { store, hostName: o.hostName, caps: { ...caps, history: history !== undefined }, hooks, warn };
   }
 
-  return async (request: Request): Promise<Response> => {
+  const serve = async (request: Request): Promise<Response> => {
     if (!(await tokenAccepted(request, o.token, o.tokenNext))) return refused();
     if (o.preflight !== undefined) {
       preflight ??= o.preflight();
@@ -515,9 +532,11 @@ export function createRoute(o: RouteOptions): (request: Request) => Promise<Resp
     if (response.status === 503) return fromKept(key, request) ?? response;
     const body = await response.text();
     const headers = [...response.headers.entries()];
-    if (response.status === 200) kept.set(key, { status: response.status, headers, body, at: now() });
+    if (response.status === 200) keep(key, { status: response.status, headers, body, at: now() });
     return new Response(response.status === 304 ? null : body, { status: response.status, headers });
   };
+
+  return Object.assign(serve, { [KEPT_SIZE]: () => kept.size });
 
   /** The last good answer to the same GET, while it is younger than `staleMs`. A snapshot's ETag still gets its 304. */
   function fromKept(key: string, request: Request): Response | undefined {

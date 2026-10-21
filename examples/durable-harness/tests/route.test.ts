@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { api, call } from "../../durable-member/tests/client.ts";
 import { paneIdOfRun } from "../../../packages/durable-sdk/src/durable-harness/pi-source.ts";
-import { tokenAccepted } from "../../../packages/durable-sdk/src/durable-harness/route.ts";
+import { KEPT_MAX, KEPT_SIZE, tokenAccepted } from "../../../packages/durable-sdk/src/durable-harness/route.ts";
 import { askThroughJournal } from "../../../packages/durable-sdk/src/durable-harness/with-collie.ts";
 import { HttpError } from "../../../packages/durable-sdk/src/core/receipts.ts";
 import { assistantEntry, longSession, task, userEntry } from "./fake-world.ts";
@@ -311,5 +311,23 @@ describe("the snapshot's rev never falls", () => {
     const after = (await api.snapshot(r.dial())).body;
     expect(after.panes.length).toBe(before.panes.length - 1);
     expect(after.rev).toBeGreaterThan(before.rev);
+  });
+});
+
+describe("the stale-answer cache is bounded", () => {
+  test("200 events reads with rising cursors keep at most 64 answers, and one older than staleMs goes at the next keep", async () => {
+    let now = 1_000_000;
+    const r = rig({ route: { now: () => now } });
+    const run = r.world.addRun({ session: idleSession });
+    const pane = paneIdOfRun(run);
+    // SAFETY (test): createRoute attaches the size probe; collieRoute's public type does not name it.
+    const size = (r.routes[0] as unknown as { [KEPT_SIZE]: () => number })[KEPT_SIZE];
+    const epoch = (await api.hello(r.dial())).body.epoch;
+    for (let after = 0; after < 200; after++) expect((await api.events(r.dial(), pane, after, epoch)).status).toBe(200);
+    expect(size()).toBeLessThanOrEqual(KEPT_MAX);
+    expect(KEPT_MAX).toBe(64);
+    now += 6000; // past staleMs (5000)
+    await api.snapshot(r.dial());
+    expect(size()).toBe(1);
   });
 });
