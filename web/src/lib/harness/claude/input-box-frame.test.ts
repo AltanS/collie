@@ -149,6 +149,8 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2303-titled-edge-idle--w160.txt",
     "claude--v2303-titled-edge-survey--w160.txt",
     "claude--v2303-titled-edge-working--w160.txt",
+    // The survey's transcript question, 2.1.306 (captured 2026-10-21): the box stands under it.
+    "claude--v2306-transcript-survey--w153.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

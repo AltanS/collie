@@ -1582,6 +1582,22 @@
   }
  },
  {
+  "fixture": "claude--v2306-transcript-survey--w153.txt",
+  "frame": {
+   "top": 8,
+   "prompt": 9,
+   "bottom": 10,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 11,
+    "last": 15
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

@@ -310,6 +310,11 @@
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n                                                                                                                        ✔ Update installed · Restart to update\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1.23.0 ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2306-transcript-survey--w153.txt",
+    "detector": "menu",
+    "region": "● Can Anthropic look at your session transcript to help us improve Claude Code?\n  Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys\n  y: Yes    n: No     d: Don't ask again\n\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude-lab--survey-rating-above-box--w82.txt",
     "detector": "menu",
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n──────────────────────────────────────────────────────────────────────────────────\n❯ git add docs/lab-notes.md and commit\n──────────────────────────────────────────────────────────────────────────────────"

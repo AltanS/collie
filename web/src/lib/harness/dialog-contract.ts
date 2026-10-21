@@ -210,8 +210,9 @@ export const DIALOG_CONTRACT: DialogContract = {
     // A footer-named key COMMITS (in the `/model` picker, Enter writes the user's default), so it
     // takes the full signature check; an arrow only moves the highlight — which is precisely what
     // changes the signature — so it compares identity without the leftRight label. A card off a notice
-    // above a live box (`liveBox`) has digit keys only, each printed on its key row, and no arrows: its
-    // region is the notice's rows, which the bridge finds in its fresh read or refuses the tap.
+    // above a live box (`liveBox`) has digit keys only (letter keys only, under a `letters` head), each
+    // printed on its key row, and no arrows: its region is the notice's rows, which the bridge finds in
+    // its fresh read or refuses the tap.
     commits: menusEqual,
     identity: menusSameIdentity,
     signature: (m) => m.signature,

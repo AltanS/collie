@@ -945,11 +945,11 @@ const ANSWER_BOX = "The input box answers a question the agent asked. A held mes
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The `unconfirmed` detail of a send whose whole text is one of the keys a notice above the box printed. */
-const NOTICE_KEY_DETAIL = "That digit would answer the notice above the box. Check the pane, then tap Type here.";
+const NOTICE_KEY_DETAIL = "That message would answer the notice above the box. Check the pane, then tap Type here.";
 /** The detail of a notice digit refused where no commit can go ahead (a running turn, a Replace). */
-const NOTICE_KEY_HELD_DETAIL = "That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.";
+const NOTICE_KEY_HELD_DETAIL = "That message would answer the notice above the box. Answer it on its card, or send it once the turn has ended.";
 /** The detail of a notice's digit that still stands in the box when the notice wait ends. */
-const NOTICE_DIGIT_LEFT = "The number is still in the box: the notice did not take it. Check the pane.";
+const NOTICE_DIGIT_LEFT = "The key is still in the box: the notice did not take it. Check the pane.";
 /** The detail of a notice's digit gone from the box while the notice still stands. */
 const NOTICE_NOT_TAKEN = "The notice did not take the number. Check the pane.";
 /** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
@@ -2563,12 +2563,13 @@ export class SendProtocol {
 
   /**
    * Whether S0 shows a notice the profile names over the found box (`idle.notices`) and the send's
-   * whole text, trimmed, is one of the keys it printed. The harness reads such a box as the answer to
-   * the notice, so the send takes the manual Send even on a free screen.
+   * whole text, trimmed, is one of the keys it printed, a letter in either case (Claude Code lowercases
+   * the box before it matches a lettered key). The harness reads such a box as the answer to the notice,
+   * so the send takes the manual Send even on a free screen.
    */
   private answersNotice(state: RunState, s0: Snap): boolean {
     const text = state.request.text.trim();
-    return s0.notice !== null && s0.notice.keys.some((key) => key.key === text);
+    return s0.notice !== null && s0.notice.keys.some((key) => key.key.toLowerCase() === text.toLowerCase());
   }
 
   /**
