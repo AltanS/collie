@@ -2,8 +2,8 @@
 // model calls a risky tool, the guard of `withCollie` asks through the run's journal, and `collieRoute` serves the
 // phone over HTTP. On Node, not Bun: the SDK source and durable-harness must load one copy of Pi (tests/node/loader.mjs).
 //
-// SPEC 04 EXTENDS THIS FILE: the two-process ask, the takeover with the rerun (a first cut is below), and the adapter
-// over loopback HTTP. Each test here is one scenario of proc.mjs; add a command there and a test here.
+// Each test is one scenario of proc.mjs (see its header for the commands and the environment). The adapter over loopback
+// HTTP is bridge/mux/durable/example-durable-harness.test.ts, which starts server.ts instead of proc.mjs.
 import { afterAll, describe, expect, test } from "bun:test";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -68,7 +68,7 @@ const fresh = () => {
 };
 const firstAsk = async (d: Dial) => until("the ask", async () => (await api.snapshot(d)).body.panes?.[0]?.openAsks?.[0], 30000);
 
-describe("a real durable-harness session (spec 04 extends)", () => {
+describe("a real durable-harness session", () => {
   realHarness(
     "the guard asks through the journal, the phone allows, the tool runs once, and the pane goes idle",
     async () => {
