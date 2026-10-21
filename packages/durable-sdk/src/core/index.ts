@@ -13,6 +13,8 @@ export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello, versionLine } from "./handle.ts";
 export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
 export { AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
+export type { FoldedJournal, FoldedReceipt, JournalAnswer, JournalAsk, JournalExpire, JournalReceipt, JournalRecord, SeededAsk } from "./journal.ts";
+export { foldJournal, isTerminal } from "./journal.ts";
 export {
   digestOf,
   type DroppedReceipt,

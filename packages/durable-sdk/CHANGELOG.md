@@ -4,6 +4,10 @@
 Each version names the durable wire version it speaks. Until the package leaves the `experimental` dist-tag, a minor
 release may change the API.
 
+## 0.2.0 (Unreleased)
+
+- **A journal for a host with no process.** `core/journal.ts` defines the records of that host (`ask`, `answer`, `expire`, `receipt`) and `foldJournal`, a pure fold: the first terminal record of an ask id wins, an `ask` after its terminal record is ignored, and a `receipt` of phase `done` closes its `pending`. It returns the open asks, the decided outcomes, the winning record of each and the request ids.
+
 ## [0.1.0]
 
 - **The first package.** The durable SDK, built from `packages/durable-sdk` in the Collie repo.
