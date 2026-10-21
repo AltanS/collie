@@ -88,6 +88,7 @@ class StubAdapter implements MuxAdapter {
    *  without the call — the decorators must carry it without inventing it. */
   foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
   pasteText?: (paneId: string, text: string) => Promise<MuxAck>;
+  pasteBlock?: (paneId: string, text: string) => Promise<MuxAck>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -293,6 +294,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     controlTurn: true,
     foregroundProcesses: true,
     pasteText: true,
+    pasteBlock: true,
     renameSpace: true,
     listConversations: true,
     conversationItems: true,
@@ -341,6 +343,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
     stub.pasteText = () => Promise.resolve(muxAck());
+    stub.pasteBlock = () => Promise.resolve(muxAck());
     stub.renameSpace = () => Promise.resolve(muxAck());
     stub.listConversations = () => Promise.resolve(muxOk({ items: [] }));
     stub.conversationItems = () => Promise.resolve(muxOk({ items: [], more: false }));

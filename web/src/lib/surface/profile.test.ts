@@ -79,7 +79,7 @@ describe("every profile file", () => {
     // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
     expect(claude.probe.char).toBe("⌁");
     expect(claude.probe.status).toBe("verified");
-    expect(claude.paste).toEqual({ bracketed: true });
+    expect(claude.paste).toEqual({ bracketed: true, block: true, image: "\\[Image #\\d+\\]" });
     // M56 spec 08: an ask that left the screen is voided after this lifetime.
     expect(claude.ask).toEqual({ lifetimeMs: 5000 });
     expect(claude.hooks.PermissionRequest).toBe("ask");
@@ -855,6 +855,8 @@ describe("parseProfile names the failing field", () => {
     ["a paste settle that is not a whole number", ["paste", "settleMs"], 1.5, "paste.settleMs"],
     ["a paste settle below its floor", ["paste", "settleMs"], 0, "paste.settleMs"],
     ["a paste settle above its ceiling", ["paste", "settleMs"], 99_999, "paste.settleMs"],
+    ["a paste image token that is no expression", ["paste", "image"], "[unclosed", "paste.image"],
+    ["a paste image token without the whole paste", ["paste", "block"], false, "paste.image"],
     ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
     ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],

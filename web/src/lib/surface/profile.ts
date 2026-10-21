@@ -494,6 +494,21 @@ export interface Profile {
      * in ms, a send waits after the write before the reads that can send it. Optional.
      */
     readonly settleMs?: number;
+    /**
+     * The harness takes ONE bracketed paste of a whole multi-line text and folds a long one into its
+     * collapse form, whose `lines` group counts the paste's line breaks. Measured per harness in the
+     * lab: where it is true and the multiplexer frames a paste itself (`pasteBlock`), a send is one
+     * paste instead of a write per line, so a long dictation never grows the box past the screen.
+     */
+    readonly block?: boolean;
+    /**
+     * The token the harness draws for an image file it takes off a whole-text paste, as a regular
+     * expression source (Claude Code: `[Image #N]`). Optional, and only with `block`: without it, a
+     * send that names an image file is not modelled, so such a box stays unproven. With `block`, this
+     * token and the collapse pattern are read on the box with its white space taken out, so each
+     * writes a space as a literal space, never `\s` or `[ ]`.
+     */
+    readonly image?: string;
   };
   /** How the bridge keeps an ask (M56 spec 08). Optional: a profile without it uses the default lifetime. */
   readonly ask?: {
@@ -1063,7 +1078,15 @@ export function parseProfile(raw: JsonValue): Profile {
     if (pasteNode.settleMs !== undefined && (settleMs === undefined || !Number.isInteger(settleMs) || settleMs < 1 || settleMs > 5000)) {
       fail("paste.settleMs", "must be a whole number of ms from 1 to 5000");
     }
+    const block = pasteNode.block;
+    if (block !== undefined && block !== true && block !== false) fail("paste.block", "must be true or false");
+    if (block === true && bracketed !== true) fail("paste.block", "needs paste.bracketed");
     paste = settleMs === undefined ? { bracketed: bracketed === true } : { bracketed: bracketed === true, settleMs };
+    if (block === true) paste = { ...paste, block: true };
+    if (pasteNode.image !== undefined) {
+      if (block !== true) fail("paste.image", "needs paste.block");
+      paste = { ...paste, image: pattern(pasteNode.image, "paste.image").source };
+    }
   }
 
   let ask: Profile["ask"];
