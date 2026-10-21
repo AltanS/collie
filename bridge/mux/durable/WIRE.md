@@ -1414,13 +1414,25 @@ answered it. The core's tests check this for the memory store after every reques
 - **Why it matters.** The adapter re-greets, and reads each pane with its old epoch and old cursor, whenever the
   epoch changes (8.7 and 8.8). Two instances of one deployment MUST give one epoch, or the phone would reset
   every pane on every request that lands on the other instance.
-- **`rev`** per pane is the number of events in the log plus the number of journal records plus the byte length of
-  the live partial (the reply still being written). All three only grow, so it never goes down inside a run. The snapshot's `rev` is the
-  sum of the pane revs and the number of runs. A run that leaves the list lowers it; the docs say so.
-- **`turnId`** is `safeId` of a hash over the session id and the slot of the oldest input that is not finished,
-  or, when idle, the slot of the last finished one. It is a fact of the log, so every instance computes the same.
-- **`ready`** is true once the World has answered. A World error is 503 `starting`.
-- **Panes.** One pane per run of the program's workflow, in every status. A finished run is a closed pane.
+- **`rev` and the events cursor.** A pane's cursor is the run's event count (every commit raises it, the throttled
+  commit of a growing reply included), plus the number of journal records, plus the number of open asks whose
+  `expiresAt` has passed with no record yet (so a timeout by the clock moves it too). All three only grow inside a
+  run. The byte length of the live partial is NOT part of it: it falls to 0 at the end of every message, and the event
+  count already moves with each partial. A read at exactly the pane's cursor, in the current epoch, gets no events and
+  the same `next`; any other read gets the reset view (section 7.2) with the cursor as `next`. The host cannot replay
+  the events between two cursors, so it never sends a tail. The snapshot's `rev` is 1, plus the sum of the open panes'
+  cursors, plus the number of runs in every status, plus 2^32 for every finished run. A run that finishes takes its
+  cursor out of the sum and adds 2^32, which is more than one cursor reaches, so the value never goes down when a run
+  ends. A run that leaves the list (retention) lowers it; the docs say so. The adapter compares `epoch-rev` stamps and
+  ETags for equality only, never for order (`bridge/mux/durable/events.ts`): a lower value is harmless by itself, but
+  one that comes back to an earlier value would make it skip a read, which is why the value must not fall.
+- **`turnId`** is `safeId` of a hash over the session id and one slot of the log: while the session works, the slot of
+  the newest user entry before the first start of the oldest task that is not finished; when idle, the slot of the
+  newest user entry. It is a fact of the log, so every instance computes the same. A follow-up the run takes in the
+  middle starts a new turn once its entry lands.
+- **`ready`** is true once the World has answered. A World error is 503 `starting` (but see A.3 for a short outage).
+- **Panes.** One pane per run of the program's workflow whose status is not `completed`, `failed` or `cancelled`. A
+  finished run is a closed conversation: it is in the history (section 7.16), not in the snapshot.
 
 ### A.2 The journal
 
@@ -1439,7 +1451,7 @@ Four records. Every `at`, `openedAt` and `expiresAt` is ISO 8601 with a zone.
 | `ask` | `askId`, `toolCallId`, `argsHash`, `ask`, `openedAt`, `expiresAt?` | A question was raised. `ask` is the wire's `Ask` (section 4). `argsHash` is a hash of the tool call's arguments. |
 | `answer` | `askId`, `revision`, `answer`, `requestId`, `nonce`, `at` | The phone answered. `nonce` is minted per attempt. |
 | `expire` | `askId`, `at`, `decidedBy?` | The ask closed with no answer. `decidedBy` is `timeout` (the default) or `program` (a stop of the turn). |
-| `receipt` | `phase`, `group`, `requestId`, `digest`, `reply?`, `at` | A request id. `phase` is `pending` before the act and `done` after it. Only a `done` carries `reply`. |
+| `receipt` | `phase`, `group`, `requestId`, `digest`, `reply?`, `nonce?`, `at` | A request id. `phase` is `pending` before the act, then `done` after it or `failed` when the act refused. Only a `done` carries `reply`. `nonce` is minted per `pending`, and its `done` or `failed` carries the same one. |
 
 How a reader folds them (`foldJournal` in the core is the reference, and is pure):
 
@@ -1451,6 +1463,10 @@ How a reader folds them (`foldJournal` in the core is the reference, and is pure
    itself when its own timer fires; the reader does not wait for it.
 5. A `receipt` with `phase: "done"` closes the `pending` of its request id when the digest is the same. The first
    `pending` of an id stands; a `pending` after a `done` is ignored.
+6. A `receipt` with `phase: "failed"` removes the standing `pending` of its request id when the nonce is the same.
+   The id is free again, as on the memory path, which keeps no failure (section 7.6). A `failed` with another nonce
+   changes nothing.
+7. A line that does not parse, or whose fields do not fit its tag, is ignored, and so is a record with an unknown tag.
 
 **The ask id** is derived from the pane id and the tool call id (section 6), so a rerun of the same tool call
 finds its own record and goes on under the same id with the original `expiresAt`. A rerun that asks about other
@@ -1461,8 +1477,10 @@ arguments (a different `argsHash`) is not the same question and MUST be denied, 
 (same `nonce`). When another record won, it answers 409 `decided` with that record's outcome (section 7.3). It
 never answers `taken` from what it wrote alone, because two instances can append at once and the stream decides.
 
-**Request ids** follow section 7.6 through the same stream. A request first appends a `receipt` `pending`, runs the act,
-and appends the `done` with the reply. A repeat of an id with a `done` gets the first reply with `replayed: true`. A repeat
+**Request ids** follow section 7.6 through the same stream. A request first appends a `receipt` `pending` with a fresh
+`nonce` and reads the journal back: it runs the act only when the standing `pending` is its own. It then appends the
+`done` with the reply, or a `failed` when the act refused (a stale turn, a send that is not allowed now). Request ids
+are kept per run, so the same id on two panes is not seen as reused. A repeat of an id with a `done` gets the first reply with `replayed: true`. A repeat
 whose `pending` has no `done` yet is another instance's act in flight: it waits up to the write timeout, then answers 500
 `receipt-dropped` (an unknown outcome, section 7.6) and never runs the act again. A different digest under the same id is 409
 `request-id-reused`. A flush that fails after the act is a 5xx with no `done`.
@@ -1473,3 +1491,30 @@ holds nothing the card would not show.
 
 **A stop.** When the host stops a turn, it appends an `expire` record with `decidedBy: "program"` for every ask that
 is still open, so no question is left waiting for a turn that is gone.
+
+**The guard.** The hook that raises the ask lives in the program's process, which can be taken over, crash, or be
+resumed on another machine at any point. It is therefore rerun-first: on every run of a risky call it reads the
+journal, appends the `ask` only when there is none for this call, and polls the journal (1 s, doubling to 5 s) until a
+terminal record closes the ask. It lets the call run only on an `answer` whose option has the effect `allow`, for the
+same `argsHash`. `allow-always` is never offered behind a token (section 1B). Anything else blocks the call: a deny, an
+`expire`, other arguments, and a process that lost the session (Pi's `StorageFenced`), which is checked before every
+read, so a fenced process that sees an answer still does not run the tool. The hook appends the `expire` record of a
+timeout itself, on its own timer, at `expiresAt`.
+
+### A.3 The route
+
+- **Transport 1B.** A bearer token, at least 32 bytes, from the environment. Each compare is over the SHA-256
+  digests of the two tokens, so it takes the same time whatever the guess. A second token may be accepted during a
+  rotation. A missing or wrong token is a bare 401 `unauthorized` with `WWW-Authenticate: Bearer`, before anything
+  is read from the World.
+- **Load per route.** Hello reads that the World answers. The snapshot reads the runs list and the journal of each
+  open run. A pane's routes read that run and its journal. History reads the runs it lists. Nothing is kept between
+  two requests but the last good answer to each GET (below).
+- **Caps.** `asks`, `send`, `abort` and `history`. `steer`, `rename`, `close`, `reopen`, `actions` and `starters` are
+  false: the host has no store of its own for titles, closes or starters, and a taken-over session cannot be steered.
+  A send is taken only while the pane is idle (`canSend` is false while it works or waits); otherwise 409
+  `not-supported`. A stop takes the session over, aborts the root conversation and closes its open asks as above.
+- **A short outage.** A GET that the World cannot answer is answered from the last good answer of this instance to
+  the same GET, for up to 5 s, ETag included. After that it is 503 `starting`, and hello says `ready: false`.
+- **Versions.** The route checks the installed `durable-harness` and the World's spec version at its first request.
+  On any other than the tested ones every request is 500 with one line that names both.

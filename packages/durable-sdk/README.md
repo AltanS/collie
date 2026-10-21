@@ -64,6 +64,7 @@ a deadline shows as idle or working, never as waiting.
 | `@colliepwa/durable-sdk/node` | The `node:http` server only. |
 | `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) agent: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. |
+| `@colliepwa/durable-sdk/durable-harness` | Experimental. A Pi agent on Vercel's [durable-harness](https://www.npmjs.com/package/durable-harness): `collieRoute`, a web route that reads the wire from the World on every request, and `withCollie`, an opener whose guard asks the phone through the run's journal. Self-hosted only; Vercel is untested. |
 
 **On Node, a durable agent cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so
 the descendant check (which refuses an answer, or any other act, from the durable agent itself or from a process it started)
@@ -72,6 +73,12 @@ the agent's tools in a sandbox that cannot reach the socket, or run the durable 
 
 `./pi` needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later and below
 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: install them yourself, and a durable agent that never imports `./pi` needs none.
+
+`./durable-harness` needs the three Pi packages and two more optional peers, at the exact versions it is tested on:
+`durable-harness` 0.0.1-beta.6 and `@workflow/world` 5.0.5 (World spec 8; tested with `@workflow/world-local` 5.1.2,
+Pi 1.2.0, Node 22 and later). A beta moves its API between releases, so the route checks the installed
+`durable-harness` and the World's spec at its first request, and answers every request 500 with one line naming both
+versions when either differs.
 
 ## Versions
 

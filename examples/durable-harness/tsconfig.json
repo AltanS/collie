@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["bun", "node"],
+    "lib": ["ESNext"],
+    // The example imports the SDK's source (packages/durable-sdk/src), and its `./durable-harness` entry imports Pi,
+    // durable-harness and @workflow/world. This sends those imports to this folder's install, so the check sees the one
+    // copy of each the program runs (Pi 1.2.0, which durable-harness itself imports). A `paths` target is a folder lookup
+    // that never reads a package's `exports`, so each subpath gets its own line (see examples/durable-member/tsconfig.json).
+    "paths": {
+      "@earendil-works/chord/context": ["./node_modules/@earendil-works/chord/dist/context"],
+      "@earendil-works/*": ["./node_modules/@earendil-works/*"],
+      "durable-harness": ["./node_modules/durable-harness/dist/index"],
+      "durable-harness/pi-durable": ["./node_modules/durable-harness/dist/pi-durable"],
+      "durable-harness/package.json": ["./node_modules/durable-harness/package.json"],
+      "@workflow/*": ["./node_modules/@workflow/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", ".workflow-data"]
+}
