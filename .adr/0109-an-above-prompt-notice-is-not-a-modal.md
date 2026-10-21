@@ -58,3 +58,17 @@ claude.json names the Dismissed head (`^✦ Dismissed\.`) and marks the Heads up
 Nothing else changes. These keys act on a box holding one digit, like the offer's: the follow-up's own digit typed into the empty box answered it in the live check. So the box stays free, a sentence goes on one tap, and a send of exactly one printed digit takes the manual Send with `cause: "notice_key"`. The card's buttons are the printed digits in printed order, and its tap is bound from the head row through the box's bottom border.
 
 A follow-up whose rows break these shapes still falls back to the strong cue and the manual Send. That includes the plugin's error row and its learning-page row, which no capture holds yet.
+
+## Addendum — 2026-10-21: the survey's transcript question has letter keys
+
+Status is unchanged. After a key on the rating survey, Claude Code 2.1.306 asks a second question over the same live box: `● Can Anthropic look at your session transcript to help us improve Claude Code?`, a `Learn more:` row with the docs link, and the keys `y: Yes    n: No     d: Don't ask again`. On 2026-10-21 every phone send to such a pane was refused `unconfirmed` with `modal: "unreadable"` until the question was answered at a keyboard, because the reader took digit keys only. The 2.1.306 bundle reads these letters through the same hook as the survey's digits: a key acts only when the box's whole value is that letter, lowercased first.
+
+So letters join the notice shape in one named and fail-closed way:
+
+- **Letter keys only under a head that declares them.** `idle.notices` gains `letters: true`. Under such a head the key block is read as `<letter>: <label>` items, one letter each, and a block of digits no longer reads there; a `letters` head never carries keys on its own row. Every other head reads digits only, as before, so a letter key under it still falls back to the strong cue. The conformance suite holds a card to the same rule: digits, or letters under a `letters` head, each printed.
+- **The bridge matches a send case-insensitively.** Claude Code lowercases the box before it matches a letter, so a send of exactly `Y` would answer the question as `y` does. `answersNotice` compares lowercased text; digits are unaffected. The refusal sentence says "message" rather than "number", since the key may be a letter.
+- **A first line that is a key counts as the key.** The bridge writes a send one line at a time, so a send whose first line, trimmed, is a printed key leaves that key alone in the box until the newline key follows it, and the notice may take it. `answersNotice` matches such a send too, letters and digits alike, so it takes the same manual Send and the same key-pad refusals as the key alone. Once confirmed it is typed in full on the ordinary path: S1 must find the whole text in the box, so if the notice took the first line, no Enter follows. A first line such as `yes` or `y.` is an ordinary message.
+
+claude.json names the transcript question with `letters: true`. The update-row gap also takes 2.1.306's wording, `Restart to apply`.
+
+The card sends a printed letter in one tap, as it sends a printed digit. These keys carry weight: `y` lets Anthropic read the session transcript, and `d` turns the question off for good. They are still the harness's own printed answers to its own question, the same as a keyboard user's one key press, so no confirm step is added. A send of one of the letters in the composer takes the manual Send, as a digit does.

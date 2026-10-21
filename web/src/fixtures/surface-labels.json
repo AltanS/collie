@@ -1121,6 +1121,11 @@
    "version": "2.1.303",
    "state": "idle"
   },
+  "claude--v2306-transcript-survey--w153.txt": {
+   "harness": "claude",
+   "version": "2.1.306",
+   "state": "idle"
+  },
   "claude--v2304-ask-no-question-mark--w135.txt": {
    "harness": "claude",
    "version": "2.1.304",

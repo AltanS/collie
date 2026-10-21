@@ -3234,7 +3234,7 @@ describe("real screens from the fixture corpus", () => {
     expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(digit.cause).toBe("notice_key");
     expect(digit.offers).toEqual(["keys"]);
-    expect(digit.receipt?.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
+    expect(digit.receipt?.detail).toBe("That message would answer the notice above the box. Answer it on its card, or send it once the turn has ended.");
     expect(captured.pane.calls).toEqual([]);
   });
 
@@ -3280,7 +3280,7 @@ describe("real screens from the fixture corpus", () => {
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(answer.cause).toBe("notice_key");
     expect(answer.offers).toEqual(["keys"]);
-    expect(answer.detail).toBe("That digit would answer the notice above the box. Answer it on its card, or send the digit once the turn has ended.");
+    expect(answer.detail).toBe("That message would answer the notice above the box. Answer it on its card, or send it once the turn has ended.");
     expect(pane.box).toBe("half a thought");
   });
 
@@ -3328,7 +3328,7 @@ describe("real screens from the fixture corpus", () => {
     expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
     expect(first.cause).toBe("notice_key");
     expect(first.offers).toEqual(["commit", "keys"]);
-    expect(first.receipt?.detail).toBe("That digit would answer the notice above the box. Check the pane, then tap Type here.");
+    expect(first.receipt?.detail).toBe("That message would answer the notice above the box. Check the pane, then tap Type here.");
     pane.afterInput = answersDigit;
     const commit = await send("1", { rowsHash: first.rowsHash! });
     expect(commit.receipt).toMatchObject({ outcome: "sent" });
@@ -3441,6 +3441,171 @@ describe("real screens from the fixture corpus", () => {
     expect(captured.pane.calls).toEqual([]);
   });
 
+  // 2026-10-21, Claude Code 2.1.306: after a key on the rating survey it asks whether Anthropic may read
+  // the transcript, keys `y`, `n`, `d`, read like the survey's digits (the box's whole value, lowercased).
+  // Every send was refused `unconfirmed` (modal unreadable) until it was answered by hand.
+  const TRANSCRIPT_ROWS = [
+    "● Can Anthropic look at your session transcript to help us improve Claude Code?",
+    "  Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys",
+    "  y: Yes    n: No     d: Don't ask again",
+  ];
+
+  test("on the transcript question: a sentence goes on one tap", async () => {
+    const { pane, send } = rig();
+    pane.over = [...TRANSCRIPT_ROWS, ""];
+    const answer = await send("done reviewing, ship FIX-2 to the frontend dev");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> done reviewing, ship FIX-2 to the frontend dev");
+  });
+
+  test("on the transcript question: a printed letter, in either case, takes the notice path", async () => {
+    for (const letter of ["y", "n", "d", "Y", "N", "D"]) {
+      const { pane, send } = rig();
+      pane.over = [...TRANSCRIPT_ROWS, ""];
+      const first = await send(letter);
+      expect(first.receipt, letter).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.cause, letter).toBe("notice_key");
+      expect(pane.calls, letter).toEqual([]);
+    }
+    // A letter the question does not print is an ordinary message.
+    const { pane, send } = rig();
+    pane.over = [...TRANSCRIPT_ROWS, ""];
+    expect((await send("x")).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> x");
+  });
+
+  test("on the transcript question: Y in a running turn, Replace and Append is refused to the key pad", async () => {
+    const running = rig();
+    running.pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...TRANSCRIPT_ROWS];
+    const turn = await running.send("Y");
+    expect(turn.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(turn.cause).toBe("notice_key");
+    expect(running.pane.calls).toEqual([]);
+
+    const replacing = rig();
+    replacing.pane.over = TRANSCRIPT_ROWS;
+    replacing.pane.box = "half a thought";
+    const replace = await replacing.send("Y", { mode: "replace" });
+    expect(replace.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(replace.cause).toBe("notice_key");
+    expect(replacing.pane.box).toBe("half a thought");
+
+    const appending = rig();
+    appending.pane.over = TRANSCRIPT_ROWS;
+    const append = await appending.send("Y", { mode: "append" });
+    expect(append.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(append.cause).toBe("notice_key");
+    expect(appending.pane.calls).toEqual([]);
+  });
+
+  test("the transcript question's capture reads free, and a printed letter is refused to the notice path", async () => {
+    const captured = rig({ pane: still(fixture("claude--v2306-transcript-survey--w153.txt")) });
+    const prepared = await captured.protocol.handle({ id: "fixture-transcript-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const letter = await captured.send("n");
+    expect(letter.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(letter.cause).toBe("notice_key");
+    expect(captured.pane.calls).toEqual([]);
+  });
+
+  // The review of #559: the lines of a send are written one at a time, so a first line that is one of the
+  // notice's keys stands alone in the box until the newline key follows it, and the notice may take it
+  // (`y` shares the transcript, `d` turns the question off for good). Such a send takes the notice rule
+  // too, letters and digits alike; a first line that only starts with a key is an ordinary message.
+  test("on the transcript question: a send whose first line is a printed letter takes the notice path", async () => {
+    for (const text of ["y\nship it", "Y\nship it", "  n  \nand the rest", "d\n\nlater"]) {
+      const { pane, send } = rig();
+      pane.over = [...TRANSCRIPT_ROWS, ""];
+      const first = await send(text);
+      expect(first.receipt, text).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.cause, text).toBe("notice_key");
+      expect(first.offers, text).toEqual(["commit", "keys"]);
+      expect(pane.calls, text).toEqual([]);
+    }
+  });
+
+  test("on a heads-up notice: a send whose first line is a printed digit takes the notice path", async () => {
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    const first = await send("1\nship it");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.cause).toBe("notice_key");
+    expect(first.offers).toEqual(["commit", "keys"]);
+    expect(pane.calls).toEqual([]);
+
+    const running = rig();
+    running.pane.over = ["✻ Thinking… (2s · esc to interrupt)", "", ...NOTICE_ROWS];
+    const turn = await running.send("0\nship it");
+    expect(turn.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(turn.cause).toBe("notice_key");
+    expect(turn.offers).toEqual(["keys"]);
+    expect(running.pane.calls).toEqual([]);
+  });
+
+  test("on the transcript question: Replace and Append whose first line is a printed letter are refused to the key pad", async () => {
+    const replacing = rig();
+    replacing.pane.over = TRANSCRIPT_ROWS;
+    replacing.pane.box = "half a thought";
+    const replace = await replacing.send("y\nship it", { mode: "replace" });
+    expect(replace.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(replace.cause).toBe("notice_key");
+    expect(replacing.pane.box).toBe("half a thought");
+
+    const appending = rig();
+    appending.pane.over = TRANSCRIPT_ROWS;
+    const append = await appending.send("n\nship it", { mode: "append" });
+    expect(append.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(append.cause).toBe("notice_key");
+    expect(appending.pane.calls).toEqual([]);
+  });
+
+  test("a first line that only starts with a printed key goes on one tap", async () => {
+    for (const text of ["yes\nship it", "y.\nship it", "n o\nship it"]) {
+      const { pane, send } = rig();
+      pane.over = [...TRANSCRIPT_ROWS, ""];
+      const answer = await send(text);
+      expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+      expect(answer.cause, text).toBeUndefined();
+    }
+    const { pane, send } = rig();
+    pane.over = NOTICE_ROWS;
+    const answer = await send("10\nship it");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.cause).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> 10 ship it");
+  });
+
+  /** The transcript question's hook: a box holding one of its letters alone answers it. */
+  function answersLetter(pane: FakePane): void {
+    if (pane.over.length > 0 && ["y", "n", "d"].includes(pane.box.trim().toLowerCase())) {
+      pane.over = [];
+      pane.box = "";
+    }
+  }
+
+  test("a confirmed send whose first line is a printed letter is typed in full, and no Enter follows when the question took the letter", async () => {
+    const { pane, send } = rig();
+    pane.over = [...TRANSCRIPT_ROWS, ""];
+    const first = await send("y\nship it");
+    expect(first.cause).toBe("notice_key");
+    pane.afterInput = answersLetter;
+    const commit = await send("y\nship it", { rowsHash: first.rowsHash! });
+    expect(commit.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen.filter((key) => key === "Enter" || key === "ctrl+enter")).toEqual([]);
+    expect(pane.transcript.at(-1)).not.toBe("> y ship it");
+  });
+
+  test("a confirmed send whose first line is a printed letter goes in whole when the question leaves the letter", async () => {
+    const { pane, send } = rig();
+    pane.over = [...TRANSCRIPT_ROWS, ""];
+    const first = await send("y\nship it");
+    const commit = await send("y\nship it", { rowsHash: first.rowsHash! });
+    expect(commit.receipt).toMatchObject({ outcome: "sent" });
+    expect(commit.cause).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> y ship it");
+  });
+
   /** The notice's plugin: a box holding one of its digits alone answers it, clearing the box and the notice. */
   function answersDigit(pane: FakePane, what: string): void {
     if (/^(?:type|paste):\d$/u.test(what) && pane.over.length > 0) {
@@ -3481,7 +3646,7 @@ describe("real screens from the fixture corpus", () => {
     const answer = await commit();
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
     expect(answer.offers).toEqual(["keys"]);
-    expect(answer.detail).toBe("The number is still in the box: the notice did not take it. Check the pane.");
+    expect(answer.detail).toBe("The key is still in the box: the notice did not take it. Check the pane.");
     expect(pane.box).toBe("1");
     expect(pane.keysSeen).toEqual([]);
   });
