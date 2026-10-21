@@ -16,14 +16,17 @@ export { AnswerDecided, AskClosed, askIdFor, cleanConversationRow, cleanItem, mi
 export type { FoldedJournal, FoldedReceipt, JournalAnswer, JournalAsk, JournalExpire, JournalReceipt, JournalRecord, SeededAsk } from "./journal.ts";
 export { foldJournal, isTerminal } from "./journal.ts";
 export {
+  type Claim,
   digestOf,
   type DroppedReceipt,
   HttpError,
   isDropped,
   MemoryReceiptStore,
+  PENDING_WAIT_MS,
   RECEIPTS_PER_GROUP,
   type ReceiptRecord,
   Receipts,
+  type ReceiptsOptions,
   type ReceiptStore,
   CLOSE_GROUP,
   RENAME_GROUP,
