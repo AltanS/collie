@@ -299,7 +299,7 @@ test.describe("walky talky across a crew", () => {
         notes.push(`Claude ${who ? "ran" : "did NOT show"} \`collie walky who\`; pi got the nudge for ${id}`);
         // The address Claude sent to, off its own Bash call, against the one the lead's `who` prints for pi.
         const listed = asJsonString(jsonRows((await askWalky("lead", { op: "who" }))?.targets).find((t) => (asJsonString(t.address) ?? "").startsWith(crewAddress(MEMBER_ID, piPane)))?.address) ?? null;
-        const typedTo = [...claudeScreen.matchAll(/collie walky send\s+["']?([a-z0-9-]+\/[^\s"']+)/g)].map((m) => m[1]!).findLast((address) => address.startsWith(`${MEMBER_ID}/`)) ?? null;
+        const typedTo = [...claudeScreen.matchAll(/collie walky send\s+["']?([a-z0-9-]+\/[^\s"'()]+)/g)].map((m) => m[1]!).findLast((address) => address.startsWith(`${MEMBER_ID}/`)) ?? null;
         const tokened = typedTo !== null && new RegExp(`^${escape(crewAddress(MEMBER_ID, piPane))}#[a-z0-9]{4}$`).test(typedTo) && typedTo === listed;
         notes.push(`Claude sent to ${typedTo ?? "no address on screen"}, who lists ${listed ?? "nothing"}: ${tokened ? "the address with its token" : "NOT the token address"}`);
         const bodyInNudge = nudged!.split("\n").some((line) => line.includes(`[walky-talky ${id}]`) && line.includes(token));
