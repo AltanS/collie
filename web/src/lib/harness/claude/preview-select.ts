@@ -17,7 +17,7 @@
 import type { StyledLine } from "../../blocks";
 import { displayWidth, widePieces } from "../../text-width";
 import { classifyFooter, hasQuestionMark, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
-import { parseOptionRow } from "./prompt-select";
+import { parseOptionRow, SINGLE_SELECT_CHIP } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { PreviewNote, PreviewOption, PreviewSelectModel } from "../preview-model";
 import type { WizardStepChip } from "../wizard-model";
@@ -294,7 +294,6 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
 // A single-question dialog's chip row (" ☐ Design"): the first row of the dialog under its rule, which
 // tops the question the way a wizard's stepper does.
 const CHIP_ROW = /^[←→\s]*[☐☒☑✔✅]\s/u;
-const SINGLE_SELECT_CHIP = /^\s*☐\s+\S/u;
 
 /** What sits above a preview dialog's question paragraph. */
 interface QuestionHead {
