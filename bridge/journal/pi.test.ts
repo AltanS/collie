@@ -18,6 +18,7 @@ import { TranscriptStore } from "./store.ts";
 import { MAX_TEXT_CHARS } from "./text.ts";
 import type { ToolCall } from "./tool-call.ts";
 import type { TranscriptPart } from "./types.ts";
+import { mirrorSessionRef } from "../mux/herdr/client.ts";
 
 /**
  * Any JSON document — what a row of an agent's on-disk log actually is, before the adapter parses
@@ -826,6 +827,24 @@ describe("PiTranscriptSource — path refs are confined to the root", () => {
     const { base, root, log } = await fixture();
     const escape = `${log}/../../../../etc/hosts`;
     expect(await new PiTranscriptSource(root).resolve({ kind: "path", value: escape })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
+
+  // herdr-mirror's journal copies arrive as a pane token, not a Herdr session, and are named
+  // `<id>.jsonl` directly under their own sessions root. The token becomes the same untrusted `path`
+  // ref: readable inside a configured root, refused anywhere else.
+  test("a herdr-mirror token ref is confined like any path ref", async () => {
+    const { base, root } = await fixture();
+    const copy = join(root, "0123456789ab.jsonl");
+    await Bun.write(copy, speech("m", "user", "mirrored"));
+    const src = new PiTranscriptSource(root);
+    const inside = mirrorSessionRef({ agent: "omp", tokens: { mirror_session_path: copy } });
+    expect(inside).not.toBeNull();
+    expect(await src.resolve(inside!)).toBe(copy);
+    const outside = mirrorSessionRef({ agent: "omp", tokens: { mirror_session_path: join(base, "outside.jsonl") } });
+    expect(await src.resolve(outside!)).toBeNull();
+    const escape = mirrorSessionRef({ agent: "pi", tokens: { mirror_session_path: `${copy}/../../outside.jsonl` } });
+    expect(await src.resolve(escape!)).toBeNull();
     await rm(base, { recursive: true, force: true });
   });
 
