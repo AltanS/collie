@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A pi pane with an extension's own input box takes sends again.** An extension such as pi-powerline-footer can replace pi's input box with one that draws its borders and a `>` prompt one column in, shows your last prompt under the box and may add a taller footer. Collie found no input box there, so every send was refused with "Collie cannot tell if this was sent". Collie now reads that box, also when a message wraps to more rows or is a walky talky message, and a slash command typed there goes out with one tap while pi's command list shows. Collie reads the box only when both borders and the prompt sit in the same column and every row inside is the prompt row or a row three spaces in. pi's own questions and pickers still never read as the input box. Thanks @npo-mmenke (#544).
+- **A Grok or opencode draft that names the interrupt hint is no longer read as a running turn.** The running-row patterns of both profiles now stand where the real row puts them, Grok's `Esc:cancel` in the hint row under the box and opencode's `esc interrupt` in the status row after its spinner. A draft such as `press Esc:cancel to stop` stays a draft and the send goes through, where it was refused as `turn_running`. Tests from @aahung (#460).
 
 ## [1.24.0] - 2026-10-20
 
