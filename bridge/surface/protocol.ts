@@ -2730,7 +2730,7 @@ export class SendProtocol {
       this.gateTurn(state, s0, s0.frame);
       if (surface.composer === "draft") {
         state.queued = false;
-        throw new Ended("refused", "draft_present", { surface, framed: true, detail: "The box already holds a draft." });
+        throw draftRefusal(state, s0);
       }
       // In a turn the key would answer the notice before the harness queues it, so no commit is offered.
       if (this.answersNotice(state, s0)) {
@@ -2740,7 +2740,7 @@ export class SendProtocol {
       return;
     }
     if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") {
-      throw new Ended("refused", "draft_present", { surface, framed: s0.frame !== null, detail: "The box already holds a draft." });
+      throw draftRefusal(state, s0);
     }
     if (takesManualSend(surface)) {
       this.gateManual(state, s0, "Collie cannot read this screen. Check the pane, then tap Type here.");
@@ -3590,6 +3590,20 @@ export class SendProtocol {
     if (snap.frame !== null && boxText(snap.frame).length === 0) return snap;
     throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
   }
+}
+
+/**
+ * The `draft_present` refusal of a send or a command at a box that holds a draft. A framed draft is
+ * offered Add, Replace and Cancel, but a command only Replace and Cancel: Add would put the command
+ * after the draft's words, and "old draft /model" is a message nobody means.
+ */
+function draftRefusal(state: RunState, s0: Snap): Ended {
+  const framed = s0.frame !== null;
+  const note: EndNote = { surface: s0.surface, framed, detail: "The box already holds a draft." };
+  const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+  const command = state.request.mode === "command" || (state.request.mode === "submit" && reservedLead(sendLines(state.request.text)[0] ?? "", leads) !== null);
+  if (framed && command) note.offers = ["replace", "cancel"];
+  return new Ended("refused", "draft_present", note);
 }
 
 /**

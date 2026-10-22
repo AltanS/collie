@@ -2953,7 +2953,7 @@ describe("the offers as new requests", () => {
     neverEscape(pane);
   });
 
-  test("replace with a slash command (the belt's Model onto a draft): the draft offers, then the box is emptied and the command sent", async () => {
+  test("replace with a slash command (the belt's Model onto a draft): Replace and Cancel only, then the box is emptied and the command sent", async () => {
     const { pane, send } = rig();
     pane.box = "old draft";
     pane.afterInput = (p, what) => {
@@ -2962,7 +2962,10 @@ describe("the offers as new requests", () => {
     };
     const refused = await send("/model", { mode: "command" });
     expect(refused.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
-    expect(refused.offers).toEqual(["append", "replace", "cancel"]);
+    // Add would send "old draft /model", a message nobody means: a command is offered Replace and Cancel only.
+    expect(refused.offers).toEqual(["replace", "cancel"]);
+    // A plain message onto the same draft keeps all three.
+    expect((await send("a plain thought")).offers).toEqual(["append", "replace", "cancel"]);
     const answer = await send("/model", { mode: "replace" });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
