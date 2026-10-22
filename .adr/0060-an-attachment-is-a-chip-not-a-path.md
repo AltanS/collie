@@ -64,3 +64,7 @@ place; Send swaps in the path there. The terminal gets the same line it got befo
   stay, for a path the operator types or pastes as text.
 - **The paste-a-file, Photos and Files paths share one chip list.** Take over, slash-command insert
   and dictation still write text only.
+
+## Amendment, 2026-10-21: a long text paste is a chip too, and the draft store has a second version
+
+Status is unchanged. A plain-text paste of five lines or more, or of 300 characters or more, now becomes a `paste` chip and a `[Pasted #N]` marker, and that chip holds the text itself where an upload's chip holds a path (#560). An older build drops a chip kind it does not know and keeps the text beside it, so after a rollback it would send the bare marker; the drafts therefore live under a second key version, `collie:draft:v2:`, which no older build reads. A first-version draft is copied over on read and left in place for a rollback, and a save or a clear on this build removes it, so a rollback never restores text older than what the box last held.

@@ -5,8 +5,15 @@
 //
 // What a file holds: the id, the session and pane, the pane generation, the Surface revision seen at
 // accept, a salted hash and the length of the text, the phase, and the receipt once settled. Never
-// the text and never the rows: both can hold secrets. The salt is random per state directory, so a
-// short text cannot be looked up from its hash in a table made elsewhere.
+// the rows: they can hold secrets. The salt is random per state directory, so a short text cannot be
+// looked up from its hash in a table made elsewhere.
+//
+// The text, as `line`, only when Sent would keep it (`sentLineOf`, bridge/secret-line.ts, ADR 0107):
+// one line, not too long, nothing that looks like a secret, nothing the outbound mask would change.
+// That is what the pane's Recent sends list prints under each row, so a person can tell ten rows apart
+// (Altan, 2026-10-21). A text the rule refuses is sent as usual and leaves only its hash and length.
+// Unlike Sent, this is per request and per pane, kept as long as the receipt is (REQUEST_KEEP_MS),
+// listed on this machine only, and it is not searched: ADR 0107's "shell lines only" stands for Sent.
 //
 // Ask answers (M56 spec 08) live in the same directory under `ask.<id>.json`: the ask id, the pane
 // and its generation, the ask hash, the option id, the phase and the receipt. A request id cannot
@@ -19,6 +26,7 @@ import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
 import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
 export const REQUEST_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -41,6 +49,8 @@ export interface SendRecord {
   readonly mode: SendMode;
   readonly textHash: string;
   readonly textLength: number;
+  /** The text as the line Sent would keep (see the header), or absent when that rule refused it. */
+  readonly line?: string;
   readonly acceptedAt: number;
   readonly phase: RequestPhase;
   readonly submitSentAt?: number;
@@ -210,6 +220,9 @@ function parseRecord(raw: JsonValue | undefined): SendRecord | null {
   if (surfaceRevision === undefined || mode === undefined || textHash === undefined || textLength === undefined) return null;
   if (acceptedAt === undefined || phase === undefined) return null;
   let record: SendRecord = { id, session, paneId, paneGeneration, surfaceRevision, mode, textHash, textLength, acceptedAt, phase };
+  // Lenient like `detail`: a line that is not what it should be is dropped, and the record stays.
+  const line = asJsonString(node.line);
+  if (line !== undefined && line !== "" && line.length <= SENT_MAX_LINE) record = { ...record, line };
   const submitSentAt = asJsonNumber(node.submitSentAt);
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
   const runAt = asJsonNumber(node.runAt);
@@ -345,7 +358,7 @@ export class RequestStore {
     const textHash = this.hashText(input.text);
     const known = this.get(input.id);
     if (known !== null) return known.textHash === textHash ? { kind: "replay", record: known } : { kind: "id_reused", record: known };
-    const record: SendRecord = {
+    let record: SendRecord = {
       id: input.id,
       session: input.session,
       paneId: input.paneId,
@@ -357,6 +370,8 @@ export class RequestStore {
       acceptedAt: this.now(),
       phase: "accepted",
     };
+    const line = sentLineOf(input.text);
+    if (line !== null) record = { ...record, line };
     this.write(record);
     return { kind: "new", record };
   }

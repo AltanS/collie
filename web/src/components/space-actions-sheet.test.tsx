@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
+import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import type { MuxCapability, MuxConfig, WorkspaceView } from "@/lib/types";
 import { SpaceActionsSheet } from "./space-actions-sheet";
@@ -11,7 +12,10 @@ import { SpaceActionsSheet } from "./space-actions-sheet";
 // The long-press space sheet (M53 spec 05): one row, Rename, drawn only on a machine whose multiplexer declares
 // `renameSpace` (a durable program that takes renames). Same shape as the tab sheet one level up.
 
-beforeEach(() => clearStatus());
+beforeEach(() => {
+  clearStatus();
+  resetPollIntent();
+});
 afterEach(() => __resetOperatorCommands());
 
 /** Serve an `/api/config` whose mux block declares exactly `capabilities`. */
@@ -89,6 +93,7 @@ describe("SpaceActionsSheet: rename", () => {
     await waitFor(() => expect(props.onRenamed).toHaveBeenCalledTimes(1));
     expect(body).toEqual({ label: "Support" });
     expect(url).toContain("/api/space/triage/rename");
+    expect(topologyBursting()).toBe(true);
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -119,6 +124,7 @@ describe("SpaceActionsSheet: rename", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     expect(props.onRenamed).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();
+    expect(topologyBursting()).toBe(false);
   });
 
   it("renders a markup-looking name as literal text", async () => {

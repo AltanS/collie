@@ -510,10 +510,13 @@ take its own update touches no peer at all. Stopping there is safe, because a cr
 skew ([CREW_PROTOCOL.md §7.1](../CREW_PROTOCOL.md#71-version-skew-inside-a-protocol-version)), so a
 half-updated crew is a supported state and pressing on is not.
 
-**One case the phone cannot fix.** If you roll the lead back by hand after its peers have levelled,
-the peers are left ahead of their lead. Nothing steps a peer down: a lead that could move a peer
-backwards is a lead that could move it anywhere. The skew is harmless, and the remedy is
-`collie crew update <member>` on the lead.
+**One case the phone cannot fix.** If you roll the lead back by hand, with git or by copying files,
+after its peers have levelled, the peers are left ahead of their lead. Collie did not see the
+rollback, so no member steps down. A rollback made with the phone's **Roll back** or with
+`collie update --rollback`, and a switch back to Stable, do step the members down. See "The crew follows the lead" under
+[Release lines](#release-lines). Those two runs are the only ones that move a member to
+a lower version, because a lead that could move a peer backwards at will could move it anywhere. The
+skew from a hand rollback is harmless, and the remedy is `collie crew update <member>` on the lead.
 
 Code reaches a peer over your SSH and never over the crew link
 ([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04). When a peer
@@ -640,6 +643,12 @@ the normal update screen.
 - A build this machine rolled back from is never offered again, on either line.
 - On Edge, the push about a new build goes out at the next check, not in the next digest. It still
   waits until 09:00 local time. Stable keeps the digest windows.
+
+**What rhythm to expect on Edge.** Expect about one Edge build a day at most, and each one carries a
+change you can see. The bridge checks for new builds every six hours. You get one push per build, and
+never before 09:00 host local time. When one check finds several new builds, they fold into one push.
+The update strip asks once per build, and you may skip a build: the next update takes the newest
+one. Dismissing the strip counts for that version only, so the next build asks again.
 
 **Back to Stable.** Switch to Stable on a machine that runs an Edge build, and the page shows one of
 three cases:

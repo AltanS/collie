@@ -168,6 +168,38 @@ describe("send", () => {
     ]);
   });
 
+  socketTest("a held send (M62 spec 02) prints `held: <reason>` and when it will be typed, in `send` and in `status`", async () => {
+    // The bridge's watch of the hold never wakes here: the receipt stays where the hold put it.
+    const b = await bridge({ sleep: () => new Promise<void>(() => undefined) });
+    b.answer = { outcome: "held", reason: "draft_present" };
+    let at = 0;
+    const d = deps(b, inPane("%1"), {
+      now: () => at,
+      sleep: async (ms: number) => {
+        at += ms;
+      },
+    });
+    expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "wt_aaaaaaaaaaa1",
+      "to local/%2#bbbb, agent-y, repo#two",
+      "held: draft present",
+      "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
+      "check later: collie walky status wt_aaaaaaaaaaa1",
+    ]);
+    const status = deps(b);
+    expect(await cmdWalkyStatus(status, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(status.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "local/%2: held: draft present (this machine)", "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again."]);
+  });
+
+  test("a receipt line: `accepted` with no reason is queued, with one it is held", () => {
+    const receipt = { id: "wt_aaaaaaaaaaa1", target: "local/%2", state: "accepted" as const, verified: "local" as const, at: 1, by: "solo" };
+    expect(receiptLine(receipt, false)).toBe("queued");
+    expect(receiptLine({ ...receipt, reason: "turn running" }, false)).toBe("held: turn running");
+    // A held receipt the lead pushed back says why, not only where the outcome is known.
+    expect(receiptLine({ ...receipt, reason: "draft present" }, true, new Set(["local/%2"]))).toBe("local/%2: held: draft present");
+  });
+
   socketTest("an agent's `all` is refused: only the operator may broadcast", async () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));

@@ -399,7 +399,9 @@ the send before it started. If no turn shows, it goes after five free polls over
 command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits for a
 turn Collie sees, and so does any held command on an agent whose version Collie could not read. A
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
-10 minutes. After that the row says the message was not sent, and offers Resend. Some commands never
+10 minutes. After that the row says the message was not sent, and offers Resend. A walky talky
+message is also held over a draft, never typed into it, and its hold lasts 60 minutes
+([Walky talky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Some commands never
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
 `/resume`, `/logout` and every `!` line. On Hermes these are `/exit`, `/quit`, `/clear`, `/new`,

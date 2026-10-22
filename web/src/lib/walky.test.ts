@@ -216,6 +216,12 @@ describe("the words", () => {
     expect(of("expired")).toBe("expired");
   });
 
+  it("reads a held message as held, with what holds it (M62 spec 02)", () => {
+    expect(stateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("held: draft present");
+    expect(stateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("held: turn running");
+    expect(stateWord({ ...receipt, state: "accepted", reason: "" })).toBe("queued");
+  });
+
   it("gives a refusal its reason", () => {
     expect(stateWord({ ...receipt, state: "refused", reason: "rate limit" })).toBe("not sent: rate limit");
     expect(stateWord({ ...receipt, state: "refused" })).toBe("not sent");

@@ -30,8 +30,14 @@ interface HostChipProps {
    * address and a bordered pill would read as a second object dropped on the end of it. It shares
    * `caption`'s drawing rules — the tint on the glyph, the fault in the glyph's SHAPE — and differs
    * from it only in type, which is why the two are one branch below.
+   *
+   * `glyph` — the glyph alone, no name at all: the machine as its tint and its shape, for a row that
+   * has no room for a word and whose neighbours already say the rest. Today that is the pane
+   * switcher's row (Altan, 2026-10-21: "subtle, possibly only the colour of the machine and the
+   * icon"). The name is not lost, it moves into the label a screen reader gets. Same branch as
+   * `caption` and `bare`, same tint, same `ServerOff` for a fault; it only leaves the name span out.
    */
-  variant?: "tag" | "target" | "caption" | "bare";
+  variant?: "tag" | "target" | "caption" | "bare" | "glyph";
   /**
    * This chip stands ON a write surface, so its accessible name says "sends to <name>" rather than
    * "host: <name>". `target` and `caption` imply it and need not pass it.
@@ -115,6 +121,7 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   const target = variant === "target";
   const caption = variant === "caption";
   const bare = variant === "bare";
+  const glyph = variant === "glyph";
   // The name is decorative repetition for a screen reader if it were bare text, so the WHOLE chip
   // carries one label that says what it MEANS. Every write surface says "sends to": `target` heads a
   // dock or sheet that is about to write, `caption` was the composer's own status band, and `sends`
@@ -147,7 +154,10 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   // the address the path finishes. Everything else is the caption's, deliberately: the same tint on
   // the same glyph, the same `ServerOff` for a fault, the same one label for the whole run. A second
   // branch here is how the two would start describing one machine two different ways.
-  if (caption || bare) {
+  // `glyph` IS THE SAME RUN WITH THE NAME LEFT OUT: the 10px glyph, centred like the caption's, the
+  // same tint and the same fault shape, and the whole label on the span, so a screen reader still
+  // hears the machine the eye only sees as a colour.
+  if (caption || bare || glyph) {
     return (
       <span
         aria-label={label}
@@ -167,7 +177,9 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
           // there regardless, so it is left as it is.
           caption
             ? "items-center text-[10px]/3 font-medium label-caps"
-            : // `max-w-[8rem]` and `shrink-0` are AddressTag's one decision, kept here too (issue
+            : glyph
+              ? "shrink-0 items-center"
+              : // `max-w-[8rem]` and `shrink-0` are AddressTag's one decision, kept here too (issue
               // #264): the run never gives up width to its neighbours, and the NAME truncates inside
               // it instead. Without the cap, a member id derived from a long hostname (26 chars,
               // search domain appended) held its whole width on the dashboard row, and every card on
@@ -194,9 +206,11 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
         )}
         {/* `min-w-0`: a flex item will not shrink below its content without it, so `truncate`
             alone never cut the name short inside the capped run (issue #264). */}
-        <span className="min-w-0 truncate" aria-hidden>
-          {name}
-        </span>
+        {!glyph && (
+          <span className="min-w-0 truncate" aria-hidden>
+            {name}
+          </span>
+        )}
       </span>
     );
   }

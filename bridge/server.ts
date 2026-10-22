@@ -618,6 +618,7 @@ export function isPaneReadAction(action: string | undefined): boolean {
  * routes after which the operator watches the pane for an effect, so a landed one puts the engine
  * that owns the pane into its hot cadence (state-engine.ts § noteInput). Structural writes (close,
  * rename, focus, a new tab) settle their own topology and need no intent; an upload types nothing.
+ * Settling starts the re-read and does not wait for it (see `settleTopology`).
  */
 export function isPaneInput(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
@@ -2700,7 +2701,8 @@ export function startServer(opts: {
         return heldCancelRoute(rt, requestId, url.searchParams.get("pane"), { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
-      // by name and gaps, read from the receipts. Never a row of the screen and never the text.
+      // by name and gaps, read from the receipts, and of the text only the line Sent would keep
+      // (surface/requests.ts). Never a row of the screen.
       if (pathname === "/api/send/receipts" && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;
@@ -5480,6 +5482,13 @@ function promptBindingFailure(
  *
  * Cheap where it is already fresh — a pushing adapter's `refresh()` resolves immediately (see the
  * port) — so this costs a listing only on the adapters that actually needed one.
+ *
+ * IT STARTS THE ENGINE'S RE-READ AND DOES NOT WAIT FOR IT. `pokeNow()` fires a poll, so the route
+ * answers before that poll lands, and a phone that revalidates on the answer can still read the old
+ * herd. Measured on the dev lane on 2026-10-21: a new pane label reached `/api/snapshot` 100 to
+ * 117 ms after the answer, and a read sent within 100 ms of it missed the label 44 times in 44. So the
+ * phone also stamps a topology burst after a create, a close or a rename (web/src/lib/poll-intent.ts
+ * `stampTopology`), which reads again 300 ms on.
  */
 async function settleTopology(herdr: Pick<MuxAdapter, "refresh">, engine: Pick<StateEngine, "pokeNow">): Promise<void> {
   try {

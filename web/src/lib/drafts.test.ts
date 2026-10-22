@@ -4,7 +4,9 @@ import { clearDraft, fitsDraftStore, loadDraft, loadDraftEntry, pruneDrafts, sav
 // tab mid-composition, so the cases below pin the three things that would silently lose one: the
 // round trip, the empty-means-delete rule, and every storage failure mode staying non-fatal.
 
-const KEY = "collie:draft:default:w1:p1";
+const KEY = "collie:draft:v2:default:w1:p1";
+/** The same pane's key in the store's first version, the one a Stable 1.23.x build reads. */
+const LEGACY = "collie:draft:default:w1:p1";
 
 beforeEach(() => {
   localStorage.clear();
@@ -34,13 +36,15 @@ describe("drafts", () => {
     expect(loadDraft({ host: "badger", session: "demo" }, "w1:p1")).toBe("badger demo");
   });
 
-  // Byte-identical keys on the lead: an install that upgrades into the host dimension must still
-  // find the drafts it already stored. A host segment is emitted ONLY when there is a host.
-  it("keeps the lead's storage keys exactly as they shipped", () => {
+  // The lead's key keeps its shape under the store's version: a host segment is emitted ONLY when
+  // there is a host, so the first-version keys an install already stored are still found.
+  it("keeps the lead's key shape, with no host segment, under the store's version", () => {
     saveDraft({ host: "  ", session: "  " }, "w1:p1", "still the lead");
-    expect(localStorage.getItem("collie:draft:default:w1:p1")).not.toBeNull();
+    expect(localStorage.getItem("collie:draft:v2:default:w1:p1")).not.toBeNull();
     saveDraft({ session: "demo" }, "w1:p2", "named");
-    expect(localStorage.getItem("collie:draft:demo:w1:p2")).not.toBeNull();
+    expect(localStorage.getItem("collie:draft:v2:demo:w1:p2")).not.toBeNull();
+    localStorage.setItem("collie:draft:demo:w1:p3", JSON.stringify({ text: "first version", at: Date.now() }));
+    expect(loadDraft({ host: "  ", session: "demo" }, "w1:p3")).toBe("first version");
   });
 
   it("removes the key when the text is empty or whitespace", () => {
@@ -199,6 +203,101 @@ describe("drafts", () => {
     it("never hands out a number a held chip already has", () => {
       localStorage.setItem(KEY, JSON.stringify({ text: "t", at: Date.now(), attachments: [{ ...chip, n: 5 }], next: 2 }));
       expect(loadDraftEntry(undefined, "w1:p1")?.next).toBe(6);
+    });
+
+    it("round-trips a paste chip and counts its content toward the disk size cap", () => {
+      const pasteChip = { n: 1, path: "a\nb\nc\nd\ne", name: "a", kind: "paste" as const };
+      saveDraft(undefined, "w1:p1", "[Pasted #1]", [pasteChip], 2);
+      __resetDraftPrune();
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({
+        text: "[Pasted #1]",
+        attachments: [pasteChip],
+        next: 2,
+      });
+
+      const hugePaste = { n: 1, path: "x".repeat(8 * 1024 + 1), name: "xxx", kind: "paste" as const };
+      expect(fitsDraftStore("[Pasted #1]", [hugePaste])).toBe(false);
+      saveDraft(undefined, "w1:p1", "[Pasted #1]", [hugePaste], 2);
+      expect(localStorage.getItem(KEY)).toBeNull();
+      expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toEqual([hugePaste]);
+    });
+  });
+
+  // A paste chip's text lives only in the chip; the draft holds `[Pasted #N]`. A Stable 1.23.x build
+  // reads only the first-version key and drops a chip kind it does not know, so it would restore the
+  // bare marker and send it literally. The store's second version keeps it from ever meeting one.
+  describe("the store's version (PR 560)", () => {
+    const pasteChip = { n: 1, path: "a\nb\nc\nd\ne", name: "a", kind: "paste" as const };
+
+    it("writes a paste-chip draft only under the new version, never where an older build reads", () => {
+      saveDraft(undefined, "w1:p1", "see [Pasted #1]", [pasteChip], 2);
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").attachments).toEqual([pasteChip]);
+      expect(localStorage.getItem(LEGACY)).toBeNull();
+    });
+
+    it("moves a first-version draft over on read and leaves the first-version entry as it was", () => {
+      const raw = JSON.stringify({ text: "typed before the update", at: Date.now() - 1000 });
+      localStorage.setItem(LEGACY, raw);
+      expect(loadDraft(undefined, "w1:p1")).toBe("typed before the update");
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").text).toBe("typed before the update");
+      expect(localStorage.getItem(LEGACY)).toBe(raw);
+    });
+
+    it("never writes back to the first version: a save supersedes it, a clear removes both", () => {
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "old words", at: Date.now() - 1000 }));
+      saveDraft(undefined, "w1:p1", "new words");
+      expect(localStorage.getItem(LEGACY)).toBeNull();
+      expect(loadDraft(undefined, "w1:p1")).toBe("new words");
+
+      saveDraft(undefined, "w1:p1", "kept");
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "written by a rolled-back build", at: Date.now() + 1000 }));
+      clearDraft(undefined, "w1:p1");
+      expect(localStorage.getItem(KEY)).toBeNull();
+      expect(localStorage.getItem(LEGACY)).toBeNull();
+    });
+
+    it("takes a first-version draft that is newer, as after a rollback and an update again", () => {
+      saveDraft(undefined, "w1:p1", "from this build", [pasteChip], 2);
+      __resetDraftPrune();
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "from the older build", at: Date.now() + 1000 }));
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "from the older build", attachments: [], next: 1 });
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").text).toBe("from the older build");
+    });
+
+    // The Stable-then-Edge round trip. "Newer" is the stored `at`, never which key happens to exist.
+    it("takes the older build's text when its entry carries the newer timestamp, whatever is under the new key", () => {
+      localStorage.setItem(KEY, JSON.stringify({ text: "written by this build", at: Date.now() - 60_000 }));
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "written after the rollback", at: Date.now() - 1000 }));
+      expect(loadDraft(undefined, "w1:p1")).toBe("written after the rollback");
+      expect(JSON.parse(localStorage.getItem(KEY) ?? "{}").text).toBe("written after the rollback");
+    });
+
+    it("keeps the new version's draft when it is newer, and never copies the older entry over it", () => {
+      const chips = [{ n: 1, path: "a\nb\nc\nd\ne", name: "a", kind: "paste" as const }];
+      const raw = JSON.stringify({ text: "see [Pasted #1]", at: Date.now() - 1000, attachments: chips, next: 2 });
+      localStorage.setItem(KEY, raw);
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "an older draft", at: Date.now() - 60_000 }));
+      expect(loadDraftEntry(undefined, "w1:p1")).toEqual({ text: "see [Pasted #1]", attachments: chips, next: 2 });
+      expect(localStorage.getItem(KEY)).toBe(raw);
+    });
+
+    // ADR 0017: a recognised password prompt purges the pane's draft. A first-version entry copied
+    // forward on read has no save behind it yet, and the purge must still take it and its copy.
+    it("purges a draft copied forward from the first version, and the first-version entry too", () => {
+      localStorage.setItem(LEGACY, JSON.stringify({ text: "hunter2", at: Date.now() - 1000 }));
+      expect(loadDraft(undefined, "w1:p1")).toBe("hunter2");
+      expect(localStorage.getItem(KEY)).not.toBeNull();
+      clearDraft(undefined, "w1:p1");
+      expect(localStorage.getItem(KEY)).toBeNull();
+      expect(localStorage.getItem(LEGACY)).toBeNull();
+      expect(loadDraft(undefined, "w1:p1")).toBeNull();
+    });
+
+    it("never moves an expired first-version draft over", () => {
+      const raw = JSON.stringify({ text: "ancient", at: 0 });
+      localStorage.setItem(LEGACY, raw);
+      expect(loadDraft(undefined, "w1:p1")).toBeNull();
+      expect(localStorage.getItem(KEY)).toBeNull();
     });
   });
 });

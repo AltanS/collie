@@ -93,6 +93,9 @@ export function TabActionsSheet({
       const res = await api.renameTab(tab.tabId, trimmed, scope);
       if (res.ok) {
         setStatus(t("space.tab.renamed"), "success");
+        // The same catch-up as a close: the strip should not wait out an idle-timed gap to show
+        // the new name (pane-actions-sheet.tsx says why the revalidate alone can read the old one).
+        stampTopology();
         onRenamed();
         onClose();
       } else {

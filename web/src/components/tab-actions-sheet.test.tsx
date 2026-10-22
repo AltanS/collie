@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
+import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import type { TabView } from "@/lib/types";
 import { TabActionsSheet } from "./tab-actions-sheet";
 
@@ -14,7 +15,10 @@ import { TabActionsSheet } from "./tab-actions-sheet";
 // close confirm names the blast radius (closing a tab kills every pane in it). Wired to the bridge
 // via lib/api (exercised through MSW); the parent gets onRenamed / onClosed side-effect callbacks.
 
-beforeEach(() => clearStatus());
+beforeEach(() => {
+  clearStatus();
+  resetPollIntent();
+});
 
 const tab: TabView = {
   tabId: "w1:t1",
@@ -79,7 +83,7 @@ describe("TabActionsSheet — rename", () => {
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 
-  it("posts the trimmed label, then calls onRenamed and closes", async () => {
+  it("posts the trimmed label, then calls onRenamed, owes a topology burst and closes", async () => {
     const user = userEvent.setup();
     let body: unknown;
     let url = "";
@@ -100,6 +104,7 @@ describe("TabActionsSheet — rename", () => {
     await waitFor(() => expect(props.onRenamed).toHaveBeenCalledTimes(1));
     expect(body).toEqual({ label: "api" });
     expect(url).toContain("/api/tab/w1%3At1/rename");
+    expect(topologyBursting()).toBe(true);
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -129,6 +134,7 @@ describe("TabActionsSheet — rename", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     expect(props.onRenamed).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();
+    expect(topologyBursting()).toBe(false);
   });
 
   it("resets back to the action list when the sheet reopens, even mid-rename", async () => {

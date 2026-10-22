@@ -314,6 +314,22 @@ describe("the session page's rows (send drill 3)", () => {
     expect(rows.receipts[2]!.detail).toHaveLength(240);
   });
 
+  it("reads the line of a row off the wire, and leaves out one that is empty or not a string (2026-10-21)", () => {
+    const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "claude", version: "2.1.302" };
+    const rows = readSendReceipts({
+      receipts: [
+        { ...row, line: "ok check please it's past 2pm" },
+        { ...row, requestId: "r2abcdefgh", line: "" },
+        { ...row, requestId: "r3abcdefgh", line: 7 },
+        { ...row, requestId: "r4abcdefgh" },
+      ],
+    });
+    expect(rows.receipts[0]!.line).toBe("ok check please it's past 2pm");
+    expect(rows.receipts[1]!.line).toBeUndefined();
+    expect(rows.receipts[2]!.line).toBeUndefined();
+    expect(rows.receipts[3]!.line).toBeUndefined();
+  });
+
   it("reads the cap of a row off the wire and drops one that is not whole", () => {
     const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
     const rows = readSendReceipts({ receipts: [{ ...row, cap: { count: 5, limit: 5, harness: "codex", version: "-" } }, { ...row, requestId: "r2abcdefgh", cap: { count: "x" } }] });

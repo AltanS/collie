@@ -89,6 +89,15 @@ export const HERDR_MUX = "herdr";
  * one `events.subscribe` stream. `unsupportedKeys` is where Herdr's actual hole is: six named keys
  * the server refuses (keys.ts).
  */
+/** The bracketed-paste markers {@link HerdrMux.pasteBlock} frames a paste in. */
+const PASTE_START = "\u001b[200~";
+const PASTE_END = "\u001b[201~";
+/** Whether {@link HerdrMux.pasteBlock} keeps a character: the line break, or not a control byte (C0, DEL, C1). */
+function pasteKeeps(ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0;
+  return ch === "\n" || (code >= 0x20 && (code < 0x7f || code > 0x9f));
+}
+
 const HERDR_CAPABILITIES = declareCapabilities({
   supports: [
     "paneGrid",
@@ -452,6 +461,19 @@ export class HerdrMux implements MuxAdapter {
 
   async typeText(paneId: string, text: string): Promise<MuxAck> {
     return this.attempt(() => this.client.sendPaneText(paneId, text));
+  }
+
+  /**
+   * One bracketed paste of the whole text (MuxAdapter.pasteBlock). `pane.send_text` writes raw bytes
+   * and carries no paste framing (HERDR_API.md), so the markers are written here, in the same call as
+   * the text: a PTY is an ordered stream, and one write cannot be split by another caller's keys. Every
+   * control byte but the line break (C0, DEL, C1: ESC and the 8-bit CSI among them) is cut from the text
+   * first, so nothing inside can end the paste early and type the rest as keys.
+   */
+  async pasteBlock(paneId: string, text: string): Promise<MuxAck> {
+    const body = [...text].filter(pasteKeeps).join("");
+    if (body.length === 0) return muxAck();
+    return this.attempt(() => this.client.sendPaneText(paneId, `${PASTE_START}${body}${PASTE_END}`));
   }
 
   /**

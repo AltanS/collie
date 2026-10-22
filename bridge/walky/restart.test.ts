@@ -221,8 +221,8 @@ describe("the end of a hold", () => {
   }
 
   test("a hold the cancel took is `inbox-only`; one still pending after it is `unknown`, never `inbox-only`", async () => {
-    expect(await held("held-cancels")).toMatchObject({ state: "inbox-only", reason: "held past 10 minutes" });
-    expect(await held("held-stuck")).toMatchObject({ state: "unknown", reason: "held past 10 minutes, still pending" });
+    expect(await held("held-cancels")).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
+    expect(await held("held-stuck")).toMatchObject({ state: "unknown", reason: "held past 60 minutes, still pending" });
     expect(await held("held-released")).toMatchObject({ state: "delivered" });
   });
 

@@ -131,8 +131,10 @@ const STEPS: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "comm
 
 /**
  * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire
- * carries no text and no screen row, and this reads nothing of either: outcome, reason, time, the
- * keys by name and the measured gaps, and on a refusal Collie's own line and four Surface words.
+ * carries no screen row, and this reads none: outcome, reason, time, the keys by name and the measured
+ * gaps, on a refusal Collie's own line and four Surface words, and `line`, the one line of the text
+ * the bridge kept when Sent's rule would (see {@link SendReceiptRow.line}). Any other text field is
+ * not read.
  */
 export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswer {
   const list = asJsonObject(body)?.receipts;
@@ -168,6 +170,8 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
     const saw = readSurfaceWords(node.saw);
     if (saw !== null) row.saw = saw;
+    const line = asJsonString(node.line);
+    if (line !== undefined && line.length > 0) row.line = line;
     receipts.push(row);
   }
   return { receipts };

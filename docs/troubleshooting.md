@@ -293,7 +293,7 @@ exist. **Try again** sends the same request and never opens a second pane
 
 ## Walky talky
 
-Five symptoms of walky talky come up most. Each one has a command that shows the cause
+Six symptoms of walky talky come up most. Each one has a command that shows the cause
 ([Walky talky](walky-talky.md)).
 
 **`collie walky send` says "run this inside a pane, or send from the phone".** The command ran
@@ -303,13 +303,20 @@ phone. In an agent pane, `collie walky who` marks your pane with `(you)`. The er
 this machine knows this pane" means another Collie owns the pane. The error "no running Collie bridge
 answers" means the bridge is down: run `collie status`.
 
+**The message says "held" and is not typed yet.** `collie walky status <id>` prints "held: draft
+present" or "held: turn running". The box holds a draft, or the agent is working. Collie types the
+message when the box clears or the turn ends, up to 60 minutes. Do not send it again. To let it in
+now, send or clear the draft in that pane. Under an older lead, "queued (outcome known on the lead)"
+also means wait.
+
 **The message sits in the inbox and was not typed.** `collie walky status <id>` prints "waiting in the
-inbox, not typed" and the reason. "held past 10 minutes" means the pane stayed busy, or a dialog
-stayed open, for the whole 10-minute hold: Collie never types into a dialog. "draft present" means the
-box holds your own text. "box not free" means Collie could not read a free input box. "pane busy"
-means an earlier message was still being typed there after 2 minutes. "no terminal" and "bridge
-restarted" are the other two. Run `collie walky inbox` in that pane, or open Messages in the pane's
-menu on the phone. Collie does not type the message again.
+inbox, not typed" and the reason. "held past 60 minutes" means a draft stayed in the box, the pane
+stayed busy, or a dialog stayed open, for the whole 60-minute hold: Collie never types into a draft or
+a dialog. "box not free" means Collie could not read a free input box. "pane busy" means an earlier
+message was still being typed there after 2 minutes. "pane replaced" means another session took the
+pane while the message waited. "no terminal" and "bridge restarted" are the other two. Run `collie
+walky inbox` in that pane, or open Messages in the pane's menu on the phone. Collie does not type the
+message again.
 
 **`collie walky send` says "not sent: pane replaced".** The address ends with a token, such as
 `#k3f9`, and the pane it named has closed. Another pane holds that pane id now, so Collie does not

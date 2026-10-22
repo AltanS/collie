@@ -15,7 +15,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -94,6 +94,10 @@ class FakePane {
    */
   drawsQueuedRow = false;
   collapseOver = 120;
+  /** The most lines a {@link pasteBlock} paste may hold and still land literally. */
+  blockLiteralLines = 3;
+  /** The image files a {@link pasteBlock} paste takes off, each drawn as `[Image #N]` before the rest. */
+  imageFiles: readonly string[] = [];
   pastes = 0;
   readFails = false;
   readsSeen = 0;
@@ -256,6 +260,33 @@ class FakePane {
     return Promise.resolve(muxAck());
   };
 
+  /**
+   * One bracketed paste of the whole text (`pasteBlock`), as Claude Code 2.1.304 took it in the lab
+   * (2026-10-20): a paste with more than {@link blockLiteralLines} lines, or longer than
+   * {@link collapseOver}, folds into ONE `[Pasted text #N +M lines]` row, M being its line breaks;
+   * a short one lands literally, line breaks and all.
+   */
+  pasteBlock = (paneId: string, text: string): Promise<MuxAck> => {
+    void paneId;
+    this.calls.push(`block:${text}`);
+    if (this.now !== null) this.lastWriteAt = this.now();
+    // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
+    // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
+    const pieces = text.split(/\n| (?=\/)/u);
+    const kept = pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
+    for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
+    if (kept.length < pieces.length) text = kept.join("\n");
+    const breaks = text.split("\n").length - 1;
+    if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
+      this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
+    } else {
+      this.box += text;
+    }
+    this.bump();
+    this.afterInput?.(this, `block:${text}`);
+    return Promise.resolve(muxAck());
+  };
+
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
     const held = this.beforeWrite?.(this, `keys:${keys.join(",")}`);
@@ -267,7 +298,7 @@ class FakePane {
         if (this.echo !== null) {
           this.echo.field = this.echo.field.slice(0, -1);
         } else if (this.backspaceRestores) {
-          const chip = /\[Pasted text #\d+\]$/u.exec(this.box);
+          const chip = /\[Pasted text #\d+(?: \+\d+ lines)?\]$/u.exec(this.box);
           this.box = chip === null ? [...this.box].slice(0, -1).join("") : this.box.slice(0, chip.index);
         }
       } else if (key === "ctrl+j") {
@@ -340,6 +371,10 @@ function rig(
     version?: string;
     harness?: string;
     paste?: boolean;
+    /** The multiplexer frames a whole-text paste itself (Herdr's `pasteBlock`). */
+    block?: boolean;
+    /** The paths the protocol takes for image files on disk. */
+    imageFiles?: readonly string[];
     pane?: FakePane;
     storeDir?: string;
     ledger?: SurfaceLedger;
@@ -353,7 +388,12 @@ function rig(
   const pane = options.pane ?? new FakePane(options.mode ?? "claude");
   const clock = options.clock ?? { now: 1_000_000 };
   const now = (): number => clock.now;
-  const mux = options.paste === false ? { readGrid: pane.readGrid, typeText: pane.typeText } : { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText };
+  const mux =
+    options.paste === false
+      ? { readGrid: pane.readGrid, typeText: pane.typeText }
+      : options.block === true
+        ? { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText, pasteBlock: pane.pasteBlock }
+        : { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText };
   const gate = new KeyGate(pane, now);
   const store = new RequestStore(options.storeDir ?? join(dir, "sends"), now);
   const locks = new SessionLocks();
@@ -380,6 +420,7 @@ function rig(
     generation: options.generation ?? (() => "gen-1"),
     ledger: options.ledger,
     holds: options.holds,
+    imageFile: (path: string) => (options.imageFiles ?? []).includes(path),
     now,
     sleep: (ms: number) => {
       clock.now += ms;
@@ -472,6 +513,183 @@ describe("a send that goes through", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "Enter"] });
     expect(pane.calls).toEqual(["paste:first line", "paste:second line"]);
     expect(pane.transcript.at(-1)).toBe("> first line second line");
+  });
+
+  test("a long dictation goes as ONE paste where the multiplexer frames it, and the folded row is proven", async () => {
+    const { pane, send } = rig({ block: true });
+    const lines = Array.from({ length: 190 }, (_, i) => `Строка ${String(i + 1)}: надиктованный текст.`);
+    const answer = await send(lines.join("\n"));
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual([`block:${lines.join("\n")}`]);
+    expect(pane.keysSeen).not.toContain("ctrl+j");
+    expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +189 lines]");
+  });
+
+  test("a profile that does not say its harness folds a whole paste keeps the write per line, even where the multiplexer could paste it whole", async () => {
+    const { pane, send } = rig({ block: true, edit: (profile) => ({ ...profile, paste: { bracketed: true } }) });
+    expect((await send("first line\nsecond line")).receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "Enter"] });
+    expect(pane.calls).toEqual(["paste:first line", "paste:second line"]);
+  });
+
+  test("Submit and Discard find a box that holds the folded paste", async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${String(i)}`).join("\n");
+    const submitted = rig({ block: true });
+    submitted.pane.box = "[Pasted text #1 +11 lines]";
+    expect((await submitted.send(lines, { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(submitted.pane.transcript.at(-1)).toBe("> [Pasted text #1 +11 lines]");
+    const discarded = rig({ block: true });
+    discarded.pane.box = "[Pasted text #1 +11 lines]";
+    expect((await discarded.send(lines, { mode: "discard" })).receipt?.outcome).toBe("discarded");
+    expect(discarded.pane.box).toBe("");
+  });
+
+  test("Add to a draft pastes the whole text after it, and the draft then the folded row is proven", async () => {
+    const { pane, send } = rig({ block: true });
+    pane.box = "draft";
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${String(i)}`).join("\n");
+    expect((await send(lines, { mode: "append" })).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${lines}`]);
+    expect(pane.transcript.at(-1)).toBe("> draft[Pasted text #1 +11 lines]");
+  });
+
+  test("a long dictation into a running turn is one paste and goes in queued", async () => {
+    const { pane, send } = rig({ block: true });
+    pane.over = [LIVE_ROW];
+    const lines = Array.from({ length: 60 }, (_, i) => `dictated line ${String(i)}`).join("\n");
+    expect((await send(lines)).receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${lines}`]);
+    expect(pane.keysSeen).not.toContain("ctrl+j");
+  });
+
+  test("the paste is called on the multiplexer, so an adapter method that reads its own this works", async () => {
+    const pane = new FakePane("claude");
+    // A class method, as HerdrMux's is: torn off its object it would lose `this` (live lab, 2026-10-20).
+    class Adapter {
+      readonly readGrid = pane.readGrid;
+      readonly typeText = pane.typeText;
+      constructor(private readonly target: FakePane) {}
+      pasteBlock(paneId: string, text: string): Promise<MuxAck> {
+        return this.target.pasteBlock(paneId, text);
+      }
+    }
+    const { deps } = rig({ pane });
+    const own = new SendProtocol({ ...deps, mux: new Adapter(pane) });
+    const answer = await own.handle({ id: nextId(), text: "one\ntwo\nthree\nfour", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(pane.calls).toEqual(["block:one\ntwo\nthree\nfour"]);
+  });
+
+  test("one long dictated line goes as one paste too, and a short text lands literally", async () => {
+    const { pane, send } = rig({ block: true });
+    expect((await send("слово ".repeat(700).trim())).receipt?.outcome).toBe("sent");
+    expect((await send("first line\nsecond line")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls.map((call) => call.split(":")[0])).toEqual(["block", "block"]);
+    expect(pane.transcript.at(-1)).toBe("> first line second line");
+  });
+
+  test("a folded row that claims another line count is not this text: it ends typed_not_submitted", async () => {
+    const pane = new FakePane("claude");
+    // The rig takes the port when it is built, so the harness that folds one line too many comes first.
+    const original = pane.pasteBlock;
+    pane.pasteBlock = (paneId, text) => original(paneId, `${text}\nextra`);
+    const { send } = rig({ block: true, pane });
+    const answer = await send(Array.from({ length: 10 }, (_, i) => `line ${String(i)}`).join("\n"));
+    expect(answer.receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a short one-line message keeps the write it always had: only a long or multi-line one is one paste", async () => {
+    const { pane, send } = rig({ block: true });
+    expect((await send("a short message")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect((await send("x".repeat(800))).receipt?.outcome).toBe("sent");
+    expect(pane.calls.map((call) => call.split(":")[0])).toEqual(["paste", "paste"]);
+    expect((await send("x".repeat(801))).receipt?.outcome).toBe("sent");
+    expect(pane.calls.at(-1)).toBe(`block:${"x".repeat(801)}`);
+  });
+
+  test("a text that starts with a slash, a bang or an at keeps the write per line, so the harness reads its lead as typed", async () => {
+    for (const text of [`/review ${"x".repeat(900)}`, `!echo ${"x".repeat(900)}`, `@notes.md ${"x".repeat(900)}`, "@notes.md read this\nand this"]) {
+      const { pane, send } = rig({ block: true });
+      await send(text);
+      expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([]);
+    }
+  });
+
+  test("an image path that ends a long dictation is taken off the paste, and its image token then the folded rest is proven", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const text = `${"слово ".repeat(300).trim()} ${shot}`;
+    expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.calls).toEqual([`block:${text}`]);
+    expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2]");
+  });
+
+  test("an image path on a line of its own is taken off a multi-line paste, and the rest folds with one line break fewer", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines.slice(0, 5), shot, ...lines.slice(5)].join("\n"))).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2 +9 lines]");
+  });
+
+  test("an image the harness took that the protocol did not expect leaves the send typed_not_submitted", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    // The disk check says no file: the protocol expects the path as text, the harness attached it.
+    const { send } = rig({ block: true, pane });
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("an image path outside Collie's uploads stays text: the harness takes it, the box does not match, and nothing is submitted", async () => {
+    const shot = "/home/me/screenshots/phone-1.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    // The file exists on this disk, but only Collie's own upload shape is taken off the paste.
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Submit finds a box that holds the image token and the folded paste", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const { pane, send } = rig({ block: true, imageFiles: [shot] });
+    pane.box = "[Image #1][Pasted text #2]";
+    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`, { mode: "submit" })).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+  });
+
+  test("Add to a draft with an image: the draft, the image token, then the folded rest", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    pane.box = "draft";
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines, shot].join("\n"), { mode: "append" })).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> draft[Image #1][Pasted text #2 +9 lines]");
+  });
+
+  test("a short multi-line text with an image lands literally after the image token", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    expect((await send(`line one\n${shot}\nline three`)).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> [Image #1]line one line three");
+  });
+
+  test("Discard finds and clears a box that holds the image token and the folded paste", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const { pane, send } = rig({ block: true, imageFiles: [shot] });
+    pane.box = "[Image #1][Pasted text #2 +9 lines]";
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines, shot].join("\n"), { mode: "discard" })).receipt?.outcome).toBe("discarded");
+    expect(pane.box).toBe("");
   });
 
   test("control bytes, tabs and paste markers never reach the pane", async () => {
@@ -3133,6 +3351,60 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #2]", "", ["short"], null)).toBe(false);
   });
 
+  test("boxMatches takes ONE collapse form for a whole multi-line text only when it claims the text's line breaks", () => {
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const three = ["a", "b", "c"];
+    const whole = { images: 0, image: null, lines: three };
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse, whole)).toBe(true);
+    expect(boxMatches(" [Pasted text #4 +2 lines] ", "", three, collapse, whole)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +3 lines]", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("[Pasted text #4]", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("[Pasted text #4 +2 lines] tail", "", three, collapse, whole)).toBe(false);
+    expect(boxMatches("draft [Pasted text #4 +2 lines]", "draft", three, collapse, whole)).toBe(true);
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, null, whole)).toBe(false);
+    // A text written per line never reads as one fold: Hermes, opencode, pi and Cursor keep that rule.
+    expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse)).toBe(false);
+  });
+
+  test("boxMatches reads a whole paste's image tokens before its text, as many as were taken off", () => {
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const image = /\[Image #\d+\]/uy;
+    const one = { images: 1, image, lines: ["look at this"] };
+    expect(boxMatches("[Image #3]look at this", "", one.lines, collapse, one)).toBe(true);
+    expect(boxMatches("look at this", "", one.lines, collapse, one)).toBe(false);
+    const two = { images: 2, image, lines: ["a", "b"] };
+    expect(boxMatches("[Image #9] [Image #10][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(true);
+    expect(boxMatches("[Image #9][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(false);
+    // The box may wrap inside a token (ADR 0010): the row break reads as white space.
+    expect(boxMatches("draft [Image #1][Pasted text #2 +1 li nes]", "draft", two.lines, collapse, { ...two, images: 1 })).toBe(true);
+    expect(boxMatches("[Ima ge #1][Pasted text #2]", "", ["one long line"], collapse, { images: 1, image, lines: ["one long line"] })).toBe(true);
+    expect(boxMatches("[Pasted text #2 +1 lines]", "", ["one long line"], collapse, { images: 0, image, lines: ["one long line"] })).toBe(false);
+  });
+
+  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
+    const match = profileFor("claude", "2.1.304", { log: () => undefined });
+    expect(match?.profile.paste?.block).toBe(true);
+    const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const foreign = "/srv/shots/a.jpg";
+    const windows = String.raw`C:\Users\Me Too\collie\uploads\w1-mf3x9q-0a1b2c3d.PNG`;
+    const isShot = (path: string): boolean => path === shot || path === foreign || path === windows;
+    expect(wholePaste(match, ["short"], isShot)).toBeNull();
+    expect(wholePaste(match, ["x".repeat(800)], isShot)).toBeNull();
+    expect(wholePaste(match, ["x".repeat(801)], isShot)?.images).toBe(0);
+    expect(wholePaste(match, ["a", "b"], isShot)).toMatchObject({ images: 0, lines: ["a", "b"] });
+    for (const lead of ["/", "!", "@"]) expect(wholePaste(match, [`${lead}x`, "b"], isShot)).toBeNull();
+    expect(wholePaste(match, ["see", shot], isShot)).toMatchObject({ images: 1, lines: ["see"] });
+    expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
+    expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
+    // Any other image file on the disk stays text: only Collie's own upload shape is taken off.
+    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 0, lines: ["see", foreign] });
+    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 0 });
+    expect(wholePaste(match, [`see ${windows}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
+    expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
+    expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
+  });
+
   test("commandBoxMatches takes the text as written, with its lead cut, or with a mode marker for the lead", () => {
     for (const box of ["!echo ok", "! echo ok", "echo ok", "$ echo ok", "[!] echo ok", "! echo ok"]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(true);
     for (const box of ["echo okay", "x echo ok", "!echo", ""]) expect(commandBoxMatches(box, "", ["!echo ok"], null)).toBe(false);
@@ -3927,16 +4199,20 @@ describe("counters, the cap and the examples", () => {
     expect(existsSync(ledger.examplesDir)).toBe(false);
   });
 
-  test("recent lists the pane's settled requests newest first, with no text and no rows", async () => {
+  test("recent lists the pane's settled requests newest first, each with the line Sent would keep, and no rows", async () => {
     const { protocol, send, pane } = rig();
     pane.dialog = DIALOG;
-    await send("refused text must not appear");
+    await send("refused text is listed too");
     pane.dialog = null;
     await send("a text that goes through");
+    // A text Sent's rule refuses (a secret word) is listed with no line.
+    await send("the api_key goes in here");
     const rows = protocol.recent("%1");
-    expect(rows.map((row) => row.outcome)).toEqual(["sent", "refused"]);
-    expect(rows[1]).toMatchObject({ reason: "not_free", keys: [] });
-    expect(JSON.stringify(rows)).not.toMatch(/must not appear|goes through/u);
+    expect(rows.map((row) => row.outcome)).toEqual(["sent", "sent", "refused"]);
+    expect(rows[0]!.line).toBeUndefined();
+    expect(rows[1]).toMatchObject({ line: "a text that goes through" });
+    expect(rows[2]).toMatchObject({ reason: "not_free", keys: [], line: "refused text is listed too" });
+    expect(JSON.stringify(rows)).not.toMatch(/api_key|rows|plainRaw/u);
     expect(protocol.recent("%9")).toEqual([]);
     expect(protocol.recent("%1", 1)).toHaveLength(1);
   });
@@ -5140,8 +5416,170 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
   });
 });
 
+describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () => {
+  const FREE = { revision: 1, turn: "idle", modal: "none", composer: "empty" } as const;
+  const RUNNING = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  const DRAFT = { revision: 1, turn: "idle", modal: "none", composer: "draft" } as const;
+  type Read = typeof FREE | typeof RUNNING | typeof DRAFT;
+  const HOUR = 60 * 60 * 1000;
+  const marked = (until: number): Partial<SendRequest> => ({ draftHolds: true, holdUntil: until });
+  const queued = (check?: (id: string) => boolean): Rig & { holds: HoldStore } => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const r = rig({ holds, clock });
+    if (check === undefined) return { ...r, holds };
+    const protocol = new SendProtocol({ ...r.deps, holds, releaseCheck: (id) => check(id) });
+    const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => protocol.handle({ id: nextId(), text, mode: "send", ...over }, { session: "main", paneId: "%1", harness: "claude" });
+    return { ...r, protocol, send, holds };
+  };
+  const tick = async (r: Rig, surface: Read = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+  /** The poll's default cadence: two reads this far apart span the draft release's two seconds. */
+  const POLL = 2000;
+  const later = async (r: Rig, surface: Read = FREE, ms = POLL): Promise<(SendAnswer | null)[]> => {
+    r.clock.now += ms;
+    return tick(r, surface);
+  };
+
+  test("a phone send over a draft is still refused draft_present with its offers; a marked one is held, nothing typed", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    const phone = await r.send("hello", { id: "draft-000001" });
+    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(phone.offers).toEqual(["append", "replace", "cancel"]);
+    const until = r.clock.now + HOUR;
+    const walky = await r.send("hello", { id: "draft-000002", ...marked(until) });
+    expect(walky.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(walky.offers).toEqual([]);
+    expect(walky.detail).toBe("The box holds a draft. Collie keeps this and sends it when the box is empty.");
+    // Its caller's clock replaces the hold store's 30 minutes.
+    expect(r.holds.get("draft-000002")).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: until });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.pane.box).toBe("half a thought");
+  });
+
+  test("a phone send while a marked send waits over the draft does not join its queue: it is refused with its offers", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000003", ...marked(r.clock.now + HOUR) });
+    const phone = await r.send("from the phone", { id: "draft-000004" });
+    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(phone.offers).toEqual(["append", "replace", "cancel"]);
+    // A second marked send joins behind the first, held for the same draft.
+    await r.send("from walky again", { id: "draft-000005", ...marked(r.clock.now + HOUR) });
+    expect(r.holds.list().map((entry) => `${entry.id} ${entry.cause ?? "-"}`)).toEqual(["draft-000003 draft_present", "draft-000005 draft_present"]);
+  });
+
+  test("the box emptied: it goes on the second poll that reads it free, not after the quiet five", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000006", ...marked(r.clock.now + HOUR) });
+    expect(await tick(r, DRAFT)).toEqual([]);
+    r.pane.box = "";
+    expect(await later(r)).toEqual([]);
+    const [released] = await later(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000006", outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> from walky");
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a submitted draft: the poll reads the turn, the cause moves to turn_running, and it goes after the turn", async () => {
+    const r = queued();
+    r.pane.box = "fix the parser";
+    await r.send("from walky", { id: "draft-000007", ...marked(r.clock.now + HOUR) });
+    r.pane.transcript.push("> fix the parser");
+    r.pane.box = "";
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(r.holds.get("draft-000007")?.cause).toBe("turn_running");
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000007", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> fix the parser", "> from walky"]);
+  });
+
+  test("a submitted draft whose turn has not drawn yet: two quick free reads type nothing, the turn read makes it a turn hold (2026-10-21 rig case 9)", async () => {
+    // The browser leg's sequence: the draft, then Enter. The box clears at once, and the poll ticks on
+    // every screen update, so two reads a few hundred milliseconds apart read an empty box over an idle
+    // pane before the agent draws its turn. Typing there met the turn and ended typed_not_submitted.
+    const r = queued();
+    r.pane.box = "draft";
+    await r.send("from walky", { id: "draft-000011", ...marked(r.clock.now + HOUR) });
+    expect(await later(r, DRAFT)).toEqual([]);
+    r.pane.transcript.push("> draft");
+    r.pane.box = "";
+    expect(await later(r, FREE, 300)).toEqual([]);
+    expect(await later(r, FREE, 400)).toEqual([]);
+    expect(await later(r, FREE, 500)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.holds.get("draft-000011")).toMatchObject({ state: "held", cause: "draft_present" });
+    // The turn shows: the hold is now a turn hold, and it goes after that turn, once.
+    expect(await later(r, RUNNING, 300)).toEqual([]);
+    expect(r.holds.get("draft-000011")?.cause).toBe("turn_running");
+    expect(await later(r, RUNNING)).toEqual([]);
+    expect(await later(r)).toEqual([]);
+    const [released] = await later(r);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000011", outcome: "sent" });
+    expect(r.pane.transcript.slice(-2)).toEqual(["> draft", "> from walky"]);
+  });
+
+  test("the draft release counts its two seconds from the first free read: a draft read in between starts them again", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000012", ...marked(r.clock.now + HOUR) });
+    r.pane.box = "";
+    expect(await later(r)).toEqual([]);
+    expect(await later(r, DRAFT, 1500)).toEqual([]);
+    expect(await later(r, FREE, 1500)).toEqual([]);
+    expect(await later(r, FREE, 1500)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    const [released] = await later(r, FREE, 500);
+    expect(released?.receipt).toMatchObject({ requestId: "draft-000012", outcome: "sent" });
+  });
+
+  test("a release that meets a draft again goes back without spending a try, and writes the cause", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000008", ...marked(r.clock.now + HOUR) });
+    for (let round = 0; round < 7; round++) {
+      // The poll reads the box free, but the person typed again before the release read it.
+      expect(await later(r)).toEqual([]);
+      const [back] = await later(r);
+      expect(back?.receipt).toMatchObject({ requestId: "draft-000008", outcome: "held", keys: [] });
+    }
+    expect(r.holds.get("draft-000008")).toMatchObject({ state: "held", tries: 0, cause: "draft_present" });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("the caller's check has the last word: false ends it refused(pane_gone), nothing typed", async () => {
+    const r = queued(() => false);
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000009", ...marked(r.clock.now + HOUR) });
+    r.pane.box = "";
+    expect(await later(r)).toEqual([]);
+    expect(await later(r)).toEqual([]);
+    expect(r.deps.store.get("draft-000009")?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("its one clock: still held at 30 minutes, ended `expired` at the caller's hour", async () => {
+    const r = queued();
+    r.pane.box = "half a thought";
+    await r.send("from walky", { id: "draft-000010", ...marked(r.clock.now + HOUR) });
+    r.clock.now += 31 * 60 * 1000;
+    expect(await tick(r, DRAFT)).toEqual([]);
+    expect(r.holds.get("draft-000010")?.state).toBe("held");
+    r.clock.now = 1_000_000 + HOUR;
+    expect(await tick(r, DRAFT)).toEqual([]);
+    expect(r.deps.store.get("draft-000010")?.receipt).toMatchObject({ outcome: "expired" });
+    expect(r.pane.calls).toEqual([]);
+  });
+});
+
 describe("a refusal receipt keeps its line and the Surface words (2026-10-17 field case)", () => {
-  test("a box that moved between two reads: the line and four words on the receipt and on disk, never the text", async () => {
+  test("a box that moved between two reads: the line and four words on the receipt and on disk, never the screen row", async () => {
     const r = rig();
     r.pane.beforeRead = (p, n) => {
       if (n === 2) p.box = "someone typed at the desk";
@@ -5152,7 +5590,8 @@ describe("a refusal receipt keeps its line and the Surface words (2026-10-17 fie
     const stored = new RequestStore(join(dir, "sends"), () => r.clock.now).get("detail-00001")?.receipt;
     expect(stored).toMatchObject({ detail: "The input box moved between two reads.", saw: { turn: "idle", modal: "none", composer: "draft" } });
     const file = readFileSync(join(dir, "sends", "detail-00001.json"), "utf8");
-    expect(file).not.toContain("a private sentence");
+    // The text is on disk only as the line Sent would keep (requests.ts); the desk's draft is a screen row and never is.
+    expect(JSON.parse(file).line).toBe("a private sentence");
     expect(file).not.toContain("someone typed at the desk");
   });
 

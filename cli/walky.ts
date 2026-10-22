@@ -114,14 +114,24 @@ function receiptsOf(value: JsonValue | undefined): WalkyReceipt[] {
   });
 }
 
+/** The line under a held receipt (M62 spec 02): when it will be typed, and not to send it again. */
+export const HELD_HINT = "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.";
+
+/** Whether a receipt is a held send: `accepted` with the reason that holds it (`draft present`, `turn running`). */
+export function isHeld(receipt: WalkyReceipt): boolean {
+  return receipt.state === "accepted" && receipt.reason !== undefined;
+}
+
 /**
  * A receipt's state in the words a person reads (M62 hardening I). The wire names stay as they are;
- * only what is printed changes. `elsewhere`: the lead keeps this receipt's outcome.
+ * only what is printed changes. `elsewhere`: the lead keeps this receipt's outcome. A held send reads
+ * `held: <reason>`.
  */
 export function stateWords(receipt: WalkyReceipt, elsewhere = false): string {
   const reason = receipt.reason === undefined ? undefined : shown(receipt.reason);
   switch (receipt.state) {
     case "accepted":
+      if (reason !== undefined) return `held: ${reason}`;
       return elsewhere ? `queued (${OUTCOME_ON_LEAD})` : "queued";
     case "delivered":
       return "typed into the pane";
@@ -327,6 +337,7 @@ async function sendAndWait(deps: WalkyDeps, to: string | null, replyTo: string |
   if (receipts.length === 0) deps.io.out("queued");
   else if (receipts.length === 1) deps.io.out(receiptLine(receipts[0]!, false, elsewhere));
   else for (const receipt of receipts) deps.io.out(receiptLine(receipt, true, elsewhere));
+  if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
   if (receipts.length === 0 || receipts.some(notTypedYet)) deps.io.out(`check later: collie walky status ${id}`);
   return exitOf(receipts);
 }
@@ -435,6 +446,7 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
   }
   deps.io.out(id);
   for (const receipt of receipts) deps.io.out(`${receiptLine(receipt, true, elsewhere)} (${verifiedWords(receipt, signer)})`);
+  if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
   return exitOf(receipts);
 }
 

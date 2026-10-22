@@ -34,6 +34,8 @@
 //     a wrap can fall mid-token (`…+3 li` / `nes]`). Every match here therefore runs on a
 //     whitespace-STRIPPED normalisation — never on the space-joined raw, which would miss the wrap.
 
+import { isUploadImagePath, pastePieces } from "../../upload-path";
+
 /** The token as it appears AFTER all whitespace is stripped — the only form we ever match against. */
 const PLACEHOLDER = /\[Pastedtext#\d+(?:\+(\d+)lines)?\]/g;
 
@@ -42,21 +44,6 @@ const PLACEHOLDER = /\[Pastedtext#\d+(?:\+(\d+)lines)?\]/g;
  * picks those paths is {@link liftedPaste}.
  */
 const IMAGE_TOKEN = /\[Image#\d+\]/g;
-
-/**
- * The shape of the path Collie's upload route hands back (`bridge/server.ts`): an absolute
- * `<stateDir>/uploads/<pane>-<base36 time>-<8 hex>.<ext>`, with a POSIX or a Windows root. The
- * composer swaps a chip's marker for that path where the marker stood (`composeLine`), so it is the
- * only image path Collie ever sends. A name merely ending `.png` in a sentence is not this shape.
- */
-const UPLOAD_PATH_TAIL = String.raw`[\\/]uploads[\\/][A-Za-z0-9_-]+-[0-9a-z]+-[0-9a-f]{8}\.(?:png|jpe?g|gif|webp)`;
-const UPLOAD_ROOT = String.raw`(?:/|[A-Za-z]:[\\/])`;
-/** A whole piece of a paste that is one upload path; the directories may hold spaces (a Windows
- *  profile name). */
-const UPLOAD_PIECE = new RegExp(`^${UPLOAD_ROOT}.*${UPLOAD_PATH_TAIL}$`, "i");
-/** Where Claude cuts a paste into pieces: at each newline, and at a space that comes right before
- *  an absolute path. */
-const PIECE_CUT = new RegExp(`\\r?\\n| (?=${UPLOAD_ROOT})`);
 
 /**
  * What Claude keeps of a paste after it takes the image paths out. Claude cuts the paste at each
@@ -77,8 +64,8 @@ const PIECE_CUT = new RegExp(`\\r?\\n| (?=${UPLOAD_ROOT})`);
  * a token for one of those makes the send unprovable, which stalls it rather than guessing.
  */
 export function liftedPaste(sent: string): { images: number; text: string } {
-  const pieces = sent.split(PIECE_CUT);
-  const kept = pieces.filter((piece) => !UPLOAD_PIECE.test(piece.trim()));
+  const pieces = pastePieces(sent);
+  const kept = pieces.filter((piece) => !isUploadImagePath(piece));
   const images = pieces.length - kept.length;
   return images === 0 ? { images, text: sent } : { images, text: kept.join("\n") };
 }

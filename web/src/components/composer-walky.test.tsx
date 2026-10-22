@@ -194,6 +194,11 @@ describe("the strip follows a queued message (M62 hardening I)", () => {
     // A revalidation that still reads `accepted` changes nothing.
     act(() => setRows([rowOf(base)]));
     expect(screen.getByText("Message to this pane: queued")).toBeInTheDocument();
+    // A held message (M62 spec 02): still `accepted`, with what holds it, and when it will be typed.
+    act(() => setRows([rowOf({ ...base, reason: "draft present" })]));
+    expect(await screen.findByText("Message to this pane: held: draft present. Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.")).toBeInTheDocument();
+    act(() => setRows([rowOf({ ...base, reason: "turn running", at: 2 })]));
+    expect(await screen.findByText(/^Message to this pane: held: turn running\. /)).toBeInTheDocument();
     act(() => setRows([rowOf({ ...base, state: "inbox-only", reason: "dialog open" })]));
     expect(await screen.findByText("Message to this pane: waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });

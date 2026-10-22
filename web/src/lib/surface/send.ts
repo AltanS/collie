@@ -239,8 +239,8 @@ export function surfaceWords(surface: Surface): SurfaceWords {
 
 /**
  * One row of a pane's recent sends, for the session page (M56 spec 09): the receipt's outcome, reason,
- * time, keys by name and measured gaps. No text, no hash of the text and no screen row: a receipt is
- * shown the way it is stored.
+ * time, keys by name and measured gaps, and the text as the one line the bridge kept of it, when it
+ * kept one. No hash of the text and no screen row: a receipt is shown the way it is stored.
  */
 export interface SendReceiptRow {
   readonly requestId: string;
@@ -261,6 +261,12 @@ export interface SendReceiptRow {
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
   readonly saw?: SurfaceWords;
+  /**
+   * The text that was sent, as the one line the bridge keeps when Sent's own rule would keep it
+   * (`bridge/secret-line.ts`): absent for a text that looked like a secret, ran over several lines or
+   * was too long. The row prints it so ten rows can be told apart; it is never searched.
+   */
+  readonly line?: string;
 }
 
 /** Where a held request stands (M56 spec 15): waiting, going out now, or closed with its text kept. */

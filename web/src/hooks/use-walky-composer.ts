@@ -5,7 +5,7 @@ import { useWalkyLog } from "@/components/walky-log";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
-import { paneAddress, stateWord, WALKY_BODY_MAX, wasTaken, type WalkyReceipt } from "@/lib/walky";
+import { isHeld, paneAddress, stateWord, WALKY_BODY_MAX, wasTaken, type WalkyReceipt } from "@/lib/walky";
 import type { NoticeTone } from "@/components/ui/notice";
 
 /** Who a message in the composer is addressed to, when it is not simply this pane. */
@@ -29,6 +29,12 @@ function toneOf(receipt: WalkyReceipt): NoticeTone {
   return receipt.state === "delivered" || receipt.state === "accepted" ? "success" : "caution";
 }
 
+/** The line under the box for a receipt: its state in words, and for a held one when it will be typed. */
+function outcomeNote(label: string, receipt: WalkyReceipt): WalkyNote {
+  const text = t("walky.composer.outcome", { label, state: stateWord(receipt) });
+  return { tone: toneOf(receipt), text: isHeld(receipt) ? `${text}. ${t("walky.state.heldHint")}` : text };
+}
+
 /**
  * The composer's message mode (M62 spec 05): the long-press Send menu's "Send as message", and the
  * Reply opened from the pane's Messages sheet. It decides nothing about the box; the composer hands
@@ -40,8 +46,9 @@ function toneOf(receipt: WalkyReceipt): NoticeTone {
  *
  * A first answer of `accepted` ("queued") is not the end (M62 hardening I): the strip then follows
  * the receipt in the pane's own walky list (`useWalkyLog`, read on the ordinary revalidation, no poll
- * of its own) and shows the final word once the receipt leaves `accepted`. A message to another pane
- * is not in this pane's list, so its strip keeps the first word.
+ * of its own) and shows the final word once the receipt leaves `accepted`. A held message (`accepted`
+ * with a reason, M62 spec 02) shows "held" with its reason and when it will be typed. A message to
+ * another pane is not in this pane's list, so its strip keeps the first word.
  */
 export function useWalkyComposer({
   paneId,
@@ -91,7 +98,7 @@ export function useWalkyComposer({
         setNote({ tone: "danger", text: t("walky.composer.failed", { error: t("walky.crew.noReceipts") }) });
         return false;
       }
-      setNote({ tone: toneOf(receipt), text: t("walky.composer.outcome", { label, state: stateWord(receipt) }) });
+      setNote(outcomeNote(label, receipt));
       if (receipt.state === "accepted") setFollowed({ id: receipt.id, label });
       if (!wasTaken(receipt)) return false;
       setAim(null);
@@ -101,13 +108,10 @@ export function useWalkyComposer({
     [aim, address, send, onTaken],
   );
 
-  // The receipt the pane's list holds now for the followed message, once it has left `accepted`.
+  // The receipt the pane's list holds now for the followed message, once it has left `accepted` or is held.
   const later = followed === null ? undefined : log?.byId.get(followed.id)?.receipt;
   const shown = useMemo<WalkyNote | null>(
-    () =>
-      followed !== null && later !== undefined && later.state !== "accepted"
-        ? { tone: toneOf(later), text: t("walky.composer.outcome", { label: followed.label, state: stateWord(later) }) }
-        : note,
+    () => (followed !== null && later !== undefined && (later.state !== "accepted" || isHeld(later)) ? outcomeNote(followed.label, later) : note),
     [followed, later, note],
   );
 
