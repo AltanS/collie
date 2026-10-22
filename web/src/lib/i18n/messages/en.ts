@@ -440,6 +440,7 @@ export const en = {
   "composer.held.showLessAria": "Show less of the queue",
   "composer.protocol.discarded": "The text was removed from the box. Your draft is still here.",
   "composer.protocol.draft": "The box already holds a draft. Add to it, replace it, or cancel.",
+  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
   "composer.protocol.typed": "Your text is in the box, but Enter was not pressed. Submit it or discard it.",
   "composer.protocol.unconfirmed": "Collie cannot read this screen. Check the pane, then tap Type here.",
   "composer.protocol.noticeKey": "That message would answer the notice above the box. Check the pane, then tap Type here.",

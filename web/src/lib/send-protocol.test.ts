@@ -145,6 +145,10 @@ describe("readSend", () => {
 
   it("each refusal gets its own sentence, bound and not_free included, and the key pad offer is not a strip button", () => {
     expect(readSend(reply("refused", "draft_present", ["append", "replace", "cancel"]))).toMatchObject({ clear: false, note: "draft", offers: ["append", "replace", "cancel"] });
+    // A command onto a draft is offered Replace and Cancel only, and its sentence names only those.
+    expect(readSend(reply("refused", "draft_present", ["replace", "cancel"]))).toMatchObject({ clear: false, note: "draftCommand", offers: ["replace", "cancel"] });
+    // A draft the bridge found no frame for offers the key pad alone: no strip button, so the plain sentence stays.
+    expect(readSend(reply("refused", "draft_present", ["keys"]))).toMatchObject({ note: "draft", offers: [] });
     expect(readSend(reply("refused", "stale_surface", ["keys"]))).toMatchObject({ clear: false, note: "moved", offers: [] });
     expect(readSend(reply("refused", "not_free")).note).toBe("notFree");
     expect(readSend(reply("refused", "bound")).note).toBe("bound");

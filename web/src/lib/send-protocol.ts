@@ -199,6 +199,7 @@ export type SendNote =
   | "cancelled"
   | "discarded"
   | "draft"
+  | "draftCommand"
   | "typed"
   | "unconfirmed"
   | "noticeKey"
@@ -388,6 +389,8 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // answer a DELETE or a snapshot row, not a POST; they are read here for a receipt that arrives late.
   if (note === "held") return { clear: true, note, offers: [] };
   if (note === "expired" || note === "cancelled") return { clear: false, note, offers: [] };
+  // A command onto a draft is offered Replace and Cancel, not Add (the bridge's list): the sentence names only those.
+  if (note === "draft" && offers.includes("replace") && !offers.includes("append")) return { clear: false, note: "draftCommand", offers };
   return { clear: false, note, offers };
 }
 
