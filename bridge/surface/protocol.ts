@@ -1703,7 +1703,9 @@ export class SendProtocol {
     if (accepted.kind === "replay") {
       const stored = accepted.record.receipt;
       if (stored !== undefined) {
-        const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null), replayed: true };
+        // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
+        const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness));
+        const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
         // A send a crash cut short: read the pane now and report it beside the stored receipt.
         if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
         return withLook(replay, await this.lookAfterCrash(request, accepted.record, target));
@@ -3378,17 +3380,23 @@ export class SendProtocol {
 }
 
 /**
+ * Whether a request is a command for the draft offers: mode `command`, or a submit whose first line
+ * carries a reserved lead. One rule for a fresh refusal ({@link draftRefusal}) and a replayed one.
+ */
+function draftCommand(request: SendRequest, match: ProfileMatch | null): boolean {
+  const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
+  return request.mode === "command" || (request.mode === "submit" && reservedLead(sendLines(request.text)[0] ?? "", leads) !== null);
+}
+
+/**
  * The `draft_present` refusal of a send or a command at a box that holds a draft. A framed draft is
  * offered Add, Replace and Cancel, but a command only Replace and Cancel: Add would put the command
  * after the draft's words, and "old draft /model" is a message nobody means.
  */
 function draftRefusal(state: RunState, s0: Snap): Ended {
   const framed = s0.frame !== null;
-  const note: EndNote = { surface: s0.surface, framed, detail: "The box already holds a draft." };
-  const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
-  const command = state.request.mode === "command" || (state.request.mode === "submit" && reservedLead(sendLines(state.request.text)[0] ?? "", leads) !== null);
-  if (framed && command) note.offers = ["replace", "cancel"];
-  return new Ended("refused", "draft_present", note);
+  const offers = offersFor("refused", "draft_present", framed, draftCommand(state.request, state.match));
+  return new Ended("refused", "draft_present", { surface: s0.surface, framed, offers, detail: "The box already holds a draft." });
 }
 
 /**

@@ -2607,8 +2607,13 @@ describe("the offers as new requests", () => {
     expect(refused.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
     // Add would send "old draft /model", a message nobody means: a command is offered Replace and Cancel only.
     expect(refused.offers).toEqual(["replace", "cancel"]);
-    // A plain message onto the same draft keeps all three.
-    expect((await send("a plain thought")).offers).toEqual(["append", "replace", "cancel"]);
+    // The same request id again is a replay of the stored receipt, with the same two offers.
+    const replayed = await send("/model", { id: refused.receipt!.requestId, mode: "command" });
+    expect(replayed).toMatchObject({ replayed: true, receipt: { reason: "draft_present" }, offers: ["replace", "cancel"] });
+    // A plain message onto the same draft keeps all three, and so does its replay.
+    const plain = await send("a plain thought");
+    expect(plain.offers).toEqual(["append", "replace", "cancel"]);
+    expect((await send("a plain thought", { id: plain.receipt!.requestId })).offers).toEqual(["append", "replace", "cancel"]);
     const answer = await send("/model", { mode: "replace" });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
