@@ -346,7 +346,7 @@ export const pt: Dictionary = {
   "composer.held.showLessAria": "Mostrar menos: fila",
   "composer.protocol.discarded": "O texto foi removido da caixa. Seu rascunho continua aqui.",
   "composer.protocol.draft": "A caixa já tem um rascunho. Acrescente, substitua ou cancele.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "A caixa já tem um rascunho. Substitua ou cancele.",
   "composer.protocol.typed": "Seu texto está na caixa, mas o Enter não foi pressionado. Envie ou descarte.",
   "composer.protocol.unconfirmed": "O Collie não consegue ler esta tela. Confira o painel e toque em Digitar aqui.",
   "composer.protocol.noticeKey": "Essa mensagem responderia ao aviso acima da caixa. Confira o painel e toque em Digitar aqui.",

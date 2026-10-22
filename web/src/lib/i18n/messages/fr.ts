@@ -346,7 +346,7 @@ export const fr: Dictionary = {
   "composer.held.showLessAria": "Afficher moins : file d'attente",
   "composer.protocol.discarded": "Le texte a été retiré du champ. Votre brouillon est toujours ici.",
   "composer.protocol.draft": "Le champ contient déjà un brouillon. Ajoutez, remplacez ou annulez.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "Le champ contient déjà un brouillon. Remplacez ou annulez.",
   "composer.protocol.typed": "Votre texte est dans le champ, mais Entrée n'a pas été pressée. Envoyez-le ou supprimez-le.",
   "composer.protocol.unconfirmed": "Collie ne peut pas lire cet écran. Vérifiez le volet, puis touchez Taper ici.",
   "composer.protocol.noticeKey": "Ce message répondrait à l'avis au-dessus de la zone. Vérifiez le volet, puis touchez Taper ici.",

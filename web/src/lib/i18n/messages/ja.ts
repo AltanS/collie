@@ -403,7 +403,7 @@ export const ja: Dictionary = {
   "composer.held.showLessAria": "表示を減らす：キュー",
   "composer.protocol.discarded": "入力欄からテキストを削除しました。下書きはここに残っています。",
   "composer.protocol.draft": "入力欄にはすでに下書きがあります。追加、置換、またはキャンセルしてください。",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "入力欄にはすでに下書きがあります。置換、またはキャンセルしてください。",
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
   "composer.protocol.unconfirmed": "Collie はこの画面を読めません。ペインを確認してから「ここに入力」をタップしてください。",
   "composer.protocol.noticeKey": "そのメッセージは入力欄の上のお知らせへの回答になります。ペインを確認してから「ここに入力」をタップしてください。",
