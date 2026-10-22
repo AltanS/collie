@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does.
+
 ## [1.23.3] - 2026-10-22
 
 ### Packaging

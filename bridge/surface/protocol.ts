@@ -2340,7 +2340,8 @@ export class SendProtocol {
       if (refusal !== null) throw refusal;
     }
     // Submit and Discard name the text the box holds: a command's text may stand there with its lead read as a mode marker.
-    if ((request.mode === "submit" || request.mode === "discard") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
+    // A Replace whose text starts with a reserved lead empties the box and then sends a command, so it is one from here on.
+    if ((request.mode === "submit" || request.mode === "discard" || request.mode === "replace") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
     const holds = (box: string): boolean => (state.command ? commandBoxMatches : boxMatches)(box, "", lines, collapseOf(match));
 
     if (match === null && (request.mode === "send" || request.mode === "command")) {
@@ -3379,11 +3380,13 @@ export class SendProtocol {
 /**
  * The rules a text meets before any read: a plain send may not start with a reserved lead (it has the
  * command route), and a text of more than one line needs a profile's newline key. Null when it passes.
+ * A Replace may start with one: it is the draft offer's answer to a command refused `draft_present`
+ * (a typed `/model`, the belt's Model), the box is emptied first, and the text goes out as a command.
  */
 function textRefusal(request: SendRequest, match: ProfileMatch | null): Ended | null {
   const lines = sendLines(request.text);
   const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
-  const lead = request.mode === "command" ? null : reservedLead(lines[0] ?? "", leads);
+  const lead = request.mode === "command" || request.mode === "replace" ? null : reservedLead(lines[0] ?? "", leads);
   if (lead !== null) return new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
   if (lines.length > 1 && match === null) return new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
   return null;
