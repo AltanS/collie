@@ -6734,3 +6734,168 @@ describe("pi under pi-powerline-footer's inset editor (issue 544, live 2026-10-2
     });
   }
 });
+
+
+describe("messages held at a startup trust dialog", () => {
+  const FREE = { revision: 0, turn: "idle", modal: "none", composer: "empty" } as const;
+  const trust = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/kiro--v3-workspace-trust-continue-w120.txt"), "utf8");
+  const idle = splitLines(parseAnsi(readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/kiro--v3-idle-w120.txt"), "utf8"))).map(lineText);
+  const promptRow = idle.findIndex((row) => row.startsWith("›"));
+
+  // The actual captured trust/composer frames surround the fake's normal text/key behavior.
+  class StartupPane extends FakePane {
+    trustOpen = true;
+    constructor() {
+      super("generic");
+      this.dialog = [];
+    }
+    ready(): void {
+      this.trustOpen = false;
+      this.dialog = null;
+    }
+    override render(): string {
+      if (this.fixed !== null) return this.fixed;
+      if (this.trustOpen) return trust;
+      const frame = this.box === "" ? idle : [...idle.slice(0, promptRow), `› ${this.box}`];
+      return [...this.transcript, ...this.over, ...frame].join("\n");
+    }
+  }
+  const queued = () => {
+    const clock = { now: 1_000_000 };
+    const holds = new HoldStore(join(dir, "held"), () => clock.now);
+    const pane = new StartupPane();
+    let generation: string | null = "gen-1";
+    return { ...rig({ pane, harness: "kiro", version: "2.33.0", holds, clock, generation: () => generation }), pane, holds, clock, setGeneration: (value: string | null) => { generation = value; } };
+  };
+  const tick = (r: Rig, surface = FREE) => Promise.all(r.protocol.tickHolds("main", () => surface));
+
+  test("records positive startup trust evidence and releases once after two free reads, not the ten-second fallback", async () => {
+    const r = queued();
+    const answer = await r.send("the already requested message", { id: "startup-00001" });
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.holds.get("startup-00001")).toMatchObject({ startupTrust: true });
+    expect(r.pane.calls).toEqual([]);
+    r.pane.ready();
+    const at = r.clock.now;
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 1500;
+    const [sent] = await tick(r);
+    expect(sent?.receipt).toMatchObject({ outcome: "sent", requestId: "startup-00001" });
+    expect(sent?.receipt?.s0).not.toBeNull();
+    expect(r.clock.now - at).toBeLessThan(10_000);
+    expect(r.holds.list()).toEqual([]);
+    expect(r.pane.transcript.filter((row) => row === "> the already requested message")).toHaveLength(1);
+    expect(await tick(r)).toEqual([]);
+    expect((await r.send("the already requested message", { id: "startup-00001" })).replayed).toBe(true);
+    expect(r.pane.transcript.filter((row) => row === "> the already requested message")).toHaveLength(1);
+    neverEscape(r.pane);
+  });
+
+  test("a false free poll cannot send into the trust dialog: release still re-reads S0", async () => {
+    const r = queued();
+    await r.send("wait for trust", { id: "startup-00002" });
+    expect(await tick(r)).toEqual([]);
+    const [back] = await tick(r);
+    expect(back?.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.holds.get("startup-00002")).toMatchObject({ startupTrust: true, state: "held" });
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("non-free reads reset startup readiness; a real desk draft is never cleared", async () => {
+    const r = queued();
+    await r.send("keep waiting", { id: "startup-00003" });
+    r.pane.ready();
+    expect(await tick(r)).toEqual([]);
+    const draft = { revision: 0, turn: "idle", modal: "none", composer: "draft" } as const;
+    expect(await Promise.all(r.protocol.tickHolds("main", () => draft))).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    const stale = { revision: 0, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" } as const;
+    expect(await Promise.all(r.protocol.tickHolds("main", () => stale))).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    r.pane.box = "the operator's draft";
+    const [ended] = await tick(r);
+    expect(ended?.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.pane.box).toBe("the operator's draft");
+    expect(r.pane.calls).toEqual([]);
+    expect(r.holds.get("startup-00003")?.text).toBe("keep waiting");
+  });
+
+  test("a turn starting during release stays held instead of typing or steering", async () => {
+    const r = queued();
+    await r.send("never steer this", { id: "startup-00004" });
+    r.pane.ready();
+    r.pane.over = ["ᗥ Thinking... (esc to cancel)"];
+    expect(await tick(r)).toEqual([]);
+    const [back] = await tick(r);
+    expect(back?.receipt?.outcome).toBe("held");
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+  });
+
+  test("exit refuses the pending request with its text preserved, never types into the remaining shell", async () => {
+    const r = queued();
+    await r.send("keep my message", { id: "startup-00005" });
+    r.setGeneration(null);
+    for (let i = 0; i < 3; i++) expect(await tick(r)).toEqual([]);
+    expect(r.holds.get("startup-00005")).toMatchObject({ state: "ended", outcome: "refused", reason: "pane_gone", text: "keep my message" });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("an unmodeled trust-shaped screen has no expedited release evidence", async () => {
+    const r = queued();
+    r.pane.fixed = splitLines(parseAnsi(trust)).map(lineText).join("\n").replace(" ❯ Trust, continue", "   Trust, continue");
+    const answer = await r.send("unknown startup", { id: "startup-00006" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", keys: [] });
+    expect(r.holds.get("startup-00006")).toBeNull();
+    r.pane.fixed = null;
+    r.pane.ready();
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 1500;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("a normal tool approval keeps the existing quiet fallback", async () => {
+    const r = queued();
+    r.pane.fixed = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/kiro--v3-approval-allow-w120.txt"), "utf8");
+    const answer = await r.send("wait for the tool", { id: "startup-00010" });
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(r.holds.get("startup-00010")?.startupTrust).toBeUndefined();
+    r.pane.fixed = null;
+    r.pane.ready();
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 1500;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("queued messages behind the startup message do not inherit its shortcut", async () => {
+    const r = queued();
+    await r.send("first startup message", { id: "startup-00007" });
+    await r.send("after the first turn", { id: "startup-00008" });
+    expect(r.holds.get("startup-00008")?.startupTrust).toBeUndefined();
+    r.pane.ready();
+    expect(await tick(r)).toEqual([]);
+    const [sent] = await tick(r);
+    expect(sent?.receipt?.outcome).toBe("sent");
+    expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.transcript.filter((row) => row === "> first startup message")).toHaveLength(1);
+    expect(r.pane.transcript).not.toContain("> after the first turn");
+    expect(r.holds.get("startup-00008")?.state).toBe("held");
+  });
+
+  test("startup evidence survives restart while release still verifies the actual box", async () => {
+    const r = queued();
+    await r.send("resume after restart", { id: "startup-00009" });
+    const again = new HoldStore(join(dir, "held"), () => r.clock.now);
+    expect(again.get("startup-00009")?.startupTrust).toBe(true);
+    const restarted = new SendProtocol({ ...r.deps, holds: again });
+    r.pane.ready();
+    expect(await Promise.all(restarted.tickHolds("main", () => FREE))).toEqual([]);
+    const [sent] = await Promise.all(restarted.tickHolds("main", () => FREE));
+    expect(sent?.receipt?.outcome).toBe("sent");
+    expect(again.list()).toEqual([]);
+  });
+});

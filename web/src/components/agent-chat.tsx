@@ -22,6 +22,8 @@ import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { buzz } from "@/lib/haptics";
 import { handOf, mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
+import { useStartupReadiness } from "@/hooks/use-startup-readiness";
+import type { AgentLaunch } from "@/lib/agent-startup";
 import { useChatReady } from "@/hooks/use-chat-ready";
 import { usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
@@ -60,7 +62,7 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
-import { paneSurface } from "@/lib/send-slot";
+import { paneSurface, UNREAD_SURFACE } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
@@ -149,6 +151,12 @@ interface AgentChatProps {
   /** Which machine + which named session this pane lives in — scopes every read/write + the safety chip. */
   scope?: Scope;
   agent: AgentView | undefined;
+  /** Scoped launch intent, independent of optimistic pane metadata and its retirement. */
+  agentLaunch?: AgentLaunch;
+  /** True only while the route uses the fabricated freshPane, never for a snapshot shell row. */
+  bootstrap?: boolean;
+  /** Retire launch intent after a real composer, or when the observed agent exits; sends no draft. */
+  onLaunchReady?: () => void;
   agents: AgentView[];
   shellPanes: AgentView[];
   tabs: TabView[];
@@ -233,6 +241,9 @@ export function AgentChat({
   paneId,
   scope,
   agent,
+  agentLaunch,
+  bootstrap = false,
+  onLaunchReady,
   agents,
   shellPanes,
   tabs,
@@ -683,6 +694,18 @@ export function AgentChat({
   // badge its row wears in the Spaces list. A terminal session's header is untouched.
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
+  const paneLive = useLive(paneId, scope);
+  const startup = useStartupReadiness({
+    paneKey: paneScopeKey(scope, paneId),
+    launch: gridless ? undefined : agentLaunch,
+    text,
+    surface: agent?.surface,
+    agent: agent?.agent,
+    marked: agent?.sendProtocol === true,
+    live: paneLive && !connecting && !gone && hostBlock === undefined,
+    stale: stale || noSavedCopy,
+    onReady: onLaunchReady,
+  });
   const stripsExist = !gridless && (canFold || tabPanes.length > 1);
   const folded = canFold && stripsFolded;
   // WHO OWNS THE 4px ABOVE THE MIRROR'S RULE.
@@ -830,7 +853,8 @@ export function AgentChat({
   // display faithfulness, not a grammar. Dropping the agent here would re-invert a Muse pane
   // (.adr/0047), so the agent stays and `grammars` is what turns its adapter off. The override
   // travels as `nativeMirror`, and buildBlocks resolves the pair itself.
-  const mirrorAgent = grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined;
+  const grammarAgent = (bootstrap || isShell) && (startup.starting || startup.initialDialog) ? startup.harness : agent?.agent;
+  const mirrorAgent = grammarsOn || rendersNativeMirror(grammarAgent) ? grammarAgent : undefined;
   const blocks = useMemo(
     () =>
       buildBlocks(splitLines(parseAnsi(display)), {
@@ -846,9 +870,12 @@ export function AgentChat({
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
   // The composer's Surface (M56 spec 06): the bridge's read, with the facts the phone knows before
   // any read folded in as `composer: unreachable` (lib/send-slot.ts, `paneSurface`).
+  const startupBootstrap = bootstrap && (startup.starting || startup.initialDialog) && agent?.sendProtocol === undefined && agent?.surface === undefined && hostBlock === undefined;
   const { surface: composerSurface, unreachableNote } = useMemo(
-    () => paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
-    [agent?.surface, agent?.sendProtocol, hostBlock],
+    () => startupBootstrap
+      ? { surface: UNREAD_SURFACE, unreachableNote: undefined }
+      : paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
+    [startupBootstrap, agent?.surface, agent?.sendProtocol, hostBlock],
   );
   // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
   // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
@@ -1381,7 +1408,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         prompt,
       };
       // Two recipes behind one block: a single guarded keystroke for an option, and the plan
@@ -1413,7 +1440,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1434,7 +1461,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         wizard,
         keys,
       });
@@ -1448,7 +1475,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // Send an answer typed on the phone into a wizard step's field (ADR 0113): the shared recipe
@@ -1466,7 +1493,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         wizard,
         text: answer,
       });
@@ -1483,7 +1510,7 @@ export function AgentChat({
       }
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -1504,7 +1531,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         preview,
       };
       const result =
@@ -1531,7 +1558,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -1551,7 +1578,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         multi,
         intent: action,
       });
@@ -1565,7 +1592,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // An answer typed into a multi-select question's own field (ADR 0113): the `type` intent, under the
@@ -1583,7 +1610,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         multi,
         intent: { kind: "type", text: answer },
       });
@@ -1600,7 +1627,7 @@ export function AgentChat({
       }
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -1648,7 +1675,7 @@ export function AgentChat({
         scope,
         requestedLines,
         detectedRevision: shown.revision,
-        agent: agent?.agent,
+        agent: grammarAgent,
         menu,
         keys: action.keys,
         nav: action.nav,
@@ -1663,7 +1690,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
@@ -1683,7 +1710,7 @@ export function AgentChat({
           scope,
           requestedLines,
           detectedRevision: shown.revision,
-          agent: agent?.agent,
+          agent: grammarAgent,
           kind: "unread-dialog",
           model: cancel,
         },
@@ -1699,7 +1726,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, grammarAgent, revalidator, showAfterSend],
   );
 
   // Chat's "Send now" on the Waiting to send card: press the keys the BRIDGE declared for this
@@ -1714,7 +1741,6 @@ export function AgentChat({
   // Resolves false when no key went out, which is the card's cue to drop its pending face at once.
   const dialogPresentRef = useRef(dialogPresent);
   dialogPresentRef.current = dialogPresent;
-  const paneLive = useLive(paneId, scope);
   // The same fact for the structural writes: the tab and pane sheets (rename, close, focus) take it
   // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
   const savedCopyWrites = actsDisabledByCache || !paneLive;
@@ -3023,6 +3049,8 @@ export function AgentChat({
                   // What owns the agent's keyboard, as the bridge read it (M56 spec 06). See
                   // `composerSurface` above for the facts folded in before any read.
                   surface={composerSurface}
+                  starting={startup.starting}
+                  initialDialog={startup.initialDialog}
                   unreachableNote={unreachableNote}
                   scope={scope}
                   stale={actsDisabledByCache}
@@ -3134,7 +3162,7 @@ export function AgentChat({
                         closeDrawer();
                         // Beside THIS pane — the switcher's launch always opens a tab in this pane's
                         // Space, on this pane's own host (server.ts resolves `paneId` there).
-                        void launch(command, paneId);
+                        void launch(command, paneId, row?.kind === "agent" ? row.harness : undefined);
                       },
                     });
                   }

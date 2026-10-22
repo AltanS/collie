@@ -73,3 +73,40 @@ trust decision and does not widen the send profile's verified version range.
 complete subjects, bridge binding and conservative refusal. `kiro.test.ts` includes these
 screens in adapter conformance, `walk-pairs.ts` declares the selected-row pairs, and the
 Surface labels and binding-region corpus pin every added capture.
+
+
+## Startup readiness and pending messages (2026-10-22)
+
+A launch's successful response means the shell command was typed, not that the agent's first
+screen is ready. Known-agent launches now carry a scoped, frontend-only intent. The phone keeps
+an editable local draft and waits for a real initial dialog or composer; it does not offer an
+ordinary Send against the temporary shell or an unread startup frame. Trust is rendered from the
+existing adapter, without a Send tap. After a trust dialog leaves, startup remains pending until
+the launched agent and its normal composer are both established. An observed agent exiting ends
+the launch intent. Once startup completes, later unknown screens retain the existing manual Send.
+The existing poller watches initial startup at its hot cadence for at most twenty seconds; that
+clock never establishes readiness or enables Send.
+
+A message already submitted by an older client or a startup race can still be held by the bridge.
+Only a normal message positively read at a modeled, frameless trust dialog receives private
+`startupTrust` evidence. It resumes after two consecutive free poll reads and the regular Send
+Protocol's fresh S0 verification. Commands, draft holds, unreadable dialogs and later messages
+queued behind it keep their existing release rules. The mark survives restart and never appears
+in the public held-row wire shape. No Trust decision is automated.
+
+A live Pixel 7 browser tested the built app from `origin/main` at `1218fa59` plus this fix, against
+an authenticated loopback-only scratch bridge and isolated Herdr. The local bridge probed Kiro's
+send profile as 2.33.1, provisional. Three cases passed:
+
+- New page → Kiro → fresh folder: trust appeared without sending; a typed draft remained local
+  through Trust and composer initialization, with no Send receipt created.
+- A normal Send submitted through the authenticated API while trust was open (the older-client
+  race) was held without keys, then sent exactly once through the normal protocol after Trust.
+  It completed about 5.4 seconds after the Trust tap and 2.1 seconds after the first observed free
+  composer; replaying the request did not submit it twice. These are observations, not deadlines.
+- Don't trust exited Kiro: the pending message ended with its text retained and nothing typed into
+  the remaining shell.
+
+Screenshots and structured results are retained locally in `.screenshot-bugs/kiro-startup-queue/`.
+All scratch services were stopped. This focused live check does not claim a full model-turn
+browser release-gate run.
