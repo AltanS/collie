@@ -57,6 +57,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A crew lead shows why a walky talky message is held, every time.** When a member held a message in the same millisecond it accepted it, as it does for a second message to a pane that already holds one, the lead skipped the member's report as nothing new. `collie walky send` on the lead then printed a plain `accepted`, without `held: draft present`. The lead now takes a report of the same moment when it adds the reason, and a repeat of the same report still writes nothing.
 - **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does.
 - **A repeated request for a slash command onto a draft offers Replace and Cancel too.** The bridge answers a repeated request id from its store, and that answer offered Add again.
+- **The draft notice of a slash command names only Replace and Cancel.** It said "Add to it, replace it, or cancel" where no Add button showed.
 
 ### Packaging
 

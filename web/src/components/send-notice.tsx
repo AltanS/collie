@@ -19,7 +19,7 @@ export function answerSentence(reading: SendReading): string {
       ? translate(`composer.protocol.${reading.note}`)
       : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
   // A draft refusal already says what the screen held, and "The agent is working" already says the turn runs.
-  if (reading.surface === null || reading.note === "draft" || reading.note === "agentBusy") return note;
+  if (reading.surface === null || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "agentBusy") return note;
   return `${note} ${translate(`composer.surface.${reading.surface}`)}`;
 }
 

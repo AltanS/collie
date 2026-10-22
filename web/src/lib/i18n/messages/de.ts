@@ -414,6 +414,7 @@ export const de: Dictionary = {
   "composer.held.showLessAria": "Weniger anzeigen: Warteschlange",
   "composer.protocol.discarded": "Der Text wurde aus dem Feld entfernt. Dein Entwurf ist noch hier.",
   "composer.protocol.draft": "Im Feld steht schon ein Entwurf. Ergänzen, ersetzen oder abbrechen.",
+  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
   "composer.protocol.typed": "Dein Text steht im Feld, aber Enter wurde nicht gedrückt. Absenden oder verwerfen.",
   "composer.protocol.unconfirmed": "Collie kann diesen Bildschirm nicht lesen. Prüfe den Bereich und tippe dann auf Hier tippen.",
   "composer.protocol.noticeKey": "Diese Nachricht würde den Hinweis über dem Eingabefeld beantworten. Prüfe den Bereich und tippe dann auf Hier tippen.",
