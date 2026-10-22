@@ -14,8 +14,9 @@ function cells(leg: Leg): string[] {
 }
 
 describe("the browser leg's cases per leg", () => {
-  test("the solo leg prints twenty-seven cells: the twenty-two it printed before the crew leg, and cases 16 to 18", () => {
-    expect(cells("solo")).toHaveLength(27);
+  test("the solo leg prints twenty-eight cells: the twenty-two it printed before the crew leg, cases 16 to 18, and case 22", () => {
+    expect(cells("solo")).toHaveLength(28);
+    expect(cells("solo").filter((cell) => cell.endsWith(" belt-model-draft"))).toEqual(["claude belt-model-draft"]);
     expect(cells("solo").filter((cell) => cell.endsWith(" walky-busy"))).toEqual(["claude walky-busy", "pi walky-busy", "omp walky-busy"]);
     expect(cells("solo").every((cell) => !cell.includes("walky-crew"))).toBe(true);
   });

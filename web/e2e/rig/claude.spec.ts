@@ -1,4 +1,5 @@
-// Claude Code in the browser leg: the five scenarios on one session, on Haiku. About 6 model turns.
+// Claude Code in the browser leg: the five scenarios on one session, on Haiku, and case 22 (Model from
+// the belt over a draft), which spends no model turn. About 6 model turns.
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -15,6 +16,7 @@ import {
   capture,
   captureScreen,
   expect,
+  freeSurface,
   jsonRows,
   message,
   openSession,
@@ -41,6 +43,9 @@ const session: Session = { paneId: null, startNote: "not started" };
 
 /** How long a reply on Haiku may take before the case gives up on it. */
 const REPLY_MS = 120_000;
+
+/** The draft case 22 puts in Claude's box: one word of letters, typed through the keys route. */
+const BELT_DRAFT = "beltdraft";
 
 /** Prompts the Load older case seeds: the live page holds the last six, so the seventh is the older page. */
 const HISTORY_PROMPTS = 7;
@@ -287,6 +292,72 @@ test.describe("claude", () => {
         const shotAfter = await capture(page, "claude-5-load-older-after");
         const verdict = !covered && !coveredAfter && hit.includes(message("chat.scrollback.loadOlder")) && olderReads.includes(200) && grew ? "pass" : "fail";
         return { verdict, taps: 1, minTaps: 1, note: notes.join("; "), taps_log: log, captures: [shotBefore, shotAfter] };
+      } finally {
+        await context.close();
+      }
+    });
+  });
+
+  test("22 Model from the belt over a draft: Replace empties the box and opens the picker", async ({ browser, rig }) => {
+    await runScenario(H, "belt-model-draft", session, async (pane, trail) => {
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      recorder.watchAsks(pane);
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        // A draft sits in Claude's box, typed outside the phone (the keys route), as walky case 9 types
+        // one. One word of letters, so it is easy to find on the screen and needs no space key.
+        await rig.keys(pane, [...BELT_DRAFT]);
+        const drafted = await rig.until(() => rig.pane(pane), (p) => p?.surface?.composer === "draft", 8000);
+        if (drafted === null) throw new NotReached("the draft did not show in Claude's box");
+        // The field case: the belt's Model pill onto that draft. The bridge refuses it draft_present
+        // before any key and offers Replace and Cancel, never Add ("draft/model" is no message).
+        const model = await tap(recorder, page.getByRole("group", { name: "Harness shortcuts" }).getByRole("button", { name: "Model", exact: true }), "Model shortcut");
+        log.push(model);
+        const refusal = model.answers.find((answer) => answer.path === "/api/send");
+        const refusedDraft = refusal?.outcome === "refused" && refusal.reason === "draft_present";
+        notes.push(tapWords(model));
+        const strip = page.getByTestId("send-offers");
+        const stripShown = await strip
+          .waitFor({ state: "visible", timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        const offer = (key: "composer.protocol.append" | "composer.protocol.replace" | "composer.protocol.cancel") => strip.getByRole("button", { name: message(key), exact: true });
+        const hasReplace = stripShown && (await offer("composer.protocol.replace").isVisible().catch(() => false));
+        const hasCancel = stripShown && (await offer("composer.protocol.cancel").isVisible().catch(() => false));
+        const hasAdd = stripShown && (await offer("composer.protocol.append").count()) > 0;
+        const sentence = await page
+          .getByText(message("composer.protocol.draftCommand"), { exact: true })
+          .isVisible()
+          .catch(() => false);
+        notes.push(`offers ${stripShown ? `${hasReplace ? "Replace" : "no Replace"}, ${hasCancel ? "Cancel" : "no Cancel"}, ${hasAdd ? "ADD" : "no Add"}` : "not shown"}; the notice ${sentence ? "names only Replace and Cancel" : "does not say Replace it, or cancel"}`);
+        const shotOffer = await capture(page, "claude-22-belt-model-offer");
+        // No Replace on the strip is the bug itself: the case fails, it is not "not reached".
+        if (!hasReplace) return { verdict: "fail", taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shotOffer] };
+        // Replace: one tap, a new request. The bridge empties the box with Backspace and sends /model.
+        const replace = await tap(recorder, offer("composer.protocol.replace"), "Replace");
+        log.push(replace);
+        notes.push(tapWords(replace));
+        const card = page.getByRole("group", { name: "Select model" });
+        const cardShown = await card
+          .waitFor({ state: "visible", timeout: 15_000 })
+          .then(() => true)
+          .catch(() => false);
+        const picker = (await rig.until(() => rig.pane(pane), (p) => askOn(p)?.kind === "menu", 10_000)) !== null;
+        const screen = await rig.screen(pane, 80);
+        const draftGone = !screen.includes(BELT_DRAFT);
+        notes.push(`picker ${picker ? "open on the pane" : "NOT open on the pane"}, card ${cardShown ? "on the phone" : "NOT on the phone"}, the draft ${draftGone ? "is gone" : "IS STILL ON THE SCREEN"}`);
+        const shot = await capture(page, "claude-22-belt-model-picker");
+        const shotScreen = await captureScreen(rig, pane, "claude-22-belt-model-picker");
+        // Leave the pane idle for the next case: close the picker outside the phone, as resetBox does.
+        if (picker) {
+          await rig.keys(pane, ["Escape"]);
+          const idle = (await rig.until(() => rig.pane(pane), freeSurface, 8000)) !== null;
+          notes.push(`picker closed outside the phone (Escape), box ${idle ? "free" : "NOT free"}`);
+        }
+        // Two taps and no more: Model (refused draft_present, by design) and Replace, which must work at once.
+        const verdict = refusedDraft && hasReplace && hasCancel && !hasAdd && sentence && replace.worked && cardShown && picker && draftGone && log.length === 2 ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shotOffer, shot, shotScreen] };
       } finally {
         await context.close();
       }

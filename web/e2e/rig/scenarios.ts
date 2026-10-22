@@ -27,6 +27,8 @@ export const SCENARIOS = [
   { id: "walky-busy", title: "16 walky talky: a message during a running turn" },
   { id: "walky-question", title: "17 walky talky: a message over a question card", only: ["claude"] },
   { id: "walky-replaced", title: "18 walky talky: an address of a pane that closed", only: ["claude"] },
+  // A slash command onto a draft (the 2026-10-22 field case): the belt's Model, Replace, the picker.
+  { id: "belt-model-draft", title: "22 Model from the belt over a draft", only: ["claude"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },
