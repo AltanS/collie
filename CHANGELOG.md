@@ -25,9 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does.
-- **A repeated request for a slash command onto a draft offers Replace and Cancel too.** The bridge answers a repeated request id from its store, and that answer offered Add again.
-- **The draft notice of a slash command names only Replace and Cancel.** It said "Add to it, replace it, or cancel" where no Add button showed.
+- **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does. A slash command onto a draft now offers Replace and Cancel, not Add, since Add would send the draft with the command at its end.
 
 ## [1.23.3] - 2026-10-22
 
