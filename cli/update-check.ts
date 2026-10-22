@@ -188,10 +188,12 @@ const DISK_AMBER_KB = 1024 * 1024;
 
 /**
  * The oldest Bun this tree's own code is known to run on: the oldest one the whole test suite
- * passes on (1.3.14 fails seven backend test files, and one of them exhausts memory). Below it is
- * AMBER rather than red: a preflight that refuses on a guess is one the operator learns to override.
+ * passes on (1.3.14 fails seven backend test files, and one of them exhausts memory), and since
+ * 1.4.4 the first one that rejects certificates issued under the compromised eMudhra intermediates
+ * (#568, oven-sh/bun#46300). Below it is AMBER rather than red: a preflight that refuses on a guess
+ * is one the operator learns to override.
  */
-const MIN_BUN = "1.4.0";
+const MIN_BUN = "1.4.4";
 
 /**
  * Rewrite a remedy that names Collie's own self-update command, and ONLY such a remedy.

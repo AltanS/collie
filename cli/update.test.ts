@@ -201,7 +201,7 @@ function harness(
   const io = capture();
   const exec = posixExec({
     ...over,
-    answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.0\n" }], ...ORIGIN],
+    answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.4\n" }], ...ORIGIN],
   });
   const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [BINARY]: "OLD BINARY" };
   if (over.installed !== undefined) {
@@ -823,7 +823,7 @@ describe("update", () => {
       installed: "0.31.1",
       absent: ["bun"],
       answers: [
-        ["/opt/bun/bin/bun --version", { stdout: "1.4.0\n" }],
+        ["/opt/bun/bin/bun --version", { stdout: "1.4.4\n" }],
         ...MANAGED,
         [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
@@ -2739,7 +2739,7 @@ describe("the staged checkout path", () => {
     // operator is told the update can proceed by a check the update then contradicts.
     const h = legacyClone({
       absent: ["bun"],
-      answers: [[`${HOME}/.bun/bin/bun --version`, { stdout: "1.4.0\n" }]],
+      answers: [[`${HOME}/.bun/bin/bun --version`, { stdout: "1.4.4\n" }]],
     });
     h.files.entries.set(`${HOME}/.bun/bin/bun`, { text: "" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
