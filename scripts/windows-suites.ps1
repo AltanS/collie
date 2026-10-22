@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 143 in all, each one named, with its reason:
-#              bridge 81. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
-#                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
+#              Today, 153 in all, each one named, with its reason:
+#              bridge 91. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
+#                durable example apps, 10 are the durable-harness adapter test, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
 #                - "commandFileProblem: regular executable passes, symlinks are followed" (the
@@ -67,6 +67,10 @@
 #                handed a socket path), asks.test.ts (a socket with nothing listening) and
 #                http-client.test.ts (the socket client sends no Authorization header), one each; and
 #                bridge/durable/log.test.ts (a mode 0755 folder put back to 0700).
+#              Durable harness, bridge (10). bridge/mux/durable/example-durable-harness.test.ts returns a skip reason on
+#                win32: it starts the examples/durable-harness server with Node 24 and its Bun install, which no
+#                Windows job or VM has. The Linux job "durable example" in ci.yml runs it. The 10 are its 7 tests,
+#                the skipped placeholder, the beforeAll and the afterAll that Bun counts with them.
 #              cli 37. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 5:
@@ -90,7 +94,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 81,
+  [int]$MaxSkipsBridge = 91,
   [int]$MaxSkipsCli = 37,
   [int]$MaxSkipsScripts = 25
 )
