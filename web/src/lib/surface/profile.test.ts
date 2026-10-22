@@ -783,6 +783,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
     expect(pointer.test("> model   Switch model")).toBe(false);
     expect(list.namespaces).toEqual(["skill:"]);
+    expect(list.argumentList).toBe(true);
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });
   });
 
@@ -906,6 +907,7 @@ describe("parseProfile names the failing field", () => {
     ["a command list side named twice", ["idle", "volatile", "below", "commandList", "sides"], ["under", "under"], "idle.volatile.below.commandList.sides[1]"],
     ["a command list pointerBold that is no boolean", ["idle", "volatile", "below", "commandList", "pointerBold"], "yes", "idle.volatile.below.commandList.pointerBold"],
     ["a command list argumentHint that is no boolean", ["idle", "volatile", "below", "commandList", "argumentHint"], "yes", "idle.volatile.below.commandList.argumentHint"],
+    ["a command list argumentList that is no boolean", ["idle", "volatile", "below", "commandList", "argumentList"], "yes", "idle.volatile.below.commandList.argumentList"],
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],

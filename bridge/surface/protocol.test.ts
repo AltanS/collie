@@ -14,6 +14,8 @@ import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/sen
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
+import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
+import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
 import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -5225,6 +5227,161 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
     // A command the list does not name still joins the end of the queue.
     expect((await send("/compact", { id: "held-goal-02", mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
     expect(protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-goal-01", "held-goal-02"]);
+  });
+});
+
+// The same send, replayed from a real OMP 18.12.2 (captured 2026-10-22, Herdr 0.9.5, 119 columns, a local
+// fake model endpoint, no model call). Each screen the Send Protocol reads is a file in
+// web/src/fixtures/panes/omp--v18-12-2-goal-*--w119.txt, read off the pane as the bridge reads it
+// (`pane.read` visible, format ansi). The pane below answers each read with the capture taken at that
+// step of the lab's send: the probe typed, the text typed, Enter pressed. Nothing on a screen is drawn
+// by the test.
+describe("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture (lab 2026-10-22)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  /** A capture's text, line breaks as the bridge's read takes them. */
+  const capture = (name: string): string => readFileSync(join(PANES, `omp--v18-12-2-goal-${name}--w119.txt`), "utf8").replace(/\r\n/gu, "\n");
+  const OMP = loadProfiles().get("omp")!;
+  const surfaceOf = (name: string): Surface =>
+    surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 1, rows: splitLines(parseAnsi(capture(name))), ask: null }, OMP.idle).surface;
+
+  /** The captures of one send in the lab: what the screen read before, with the probe, with the text typed, and after Enter. */
+  interface Stages {
+    before: string;
+    probe: string;
+    typed: string;
+    /** The reads after Enter, in the order the lab took them; the last one stands for every later read. */
+    after: string[];
+  }
+  const PAUSE: Stages = { before: "turn-running", probe: "turn-running-probe", typed: "pause-typed", after: ["pause-result", "pause-result-later"] };
+  const RESUME: Stages = { before: "resume-before", probe: "resume-probe", typed: "resume-typed", after: ["resume-result"] };
+  const BARE: Stages = { before: "bare-before", probe: "bare-probe", typed: "bare-typed", after: ["bare-menu"] };
+
+  /** An OMP pane whose every read is one of the captures: the empty box, the probe in the box, the text in the box, or a read after Enter. */
+  const replay = (stages: Stages, text: string): FakePane => {
+    const pane = new FakePane("generic");
+    let entered = false;
+    let after = 0;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) {
+        p.fixed = capture(stages.after[Math.min(after++, stages.after.length - 1)]!);
+      } else if (p.box === "") p.fixed = capture(stages.before);
+      else if (p.box === PROBE) p.fixed = capture(stages.probe);
+      else if (p.box === text) p.fixed = capture(stages.typed);
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+  const sendOn = async (stages: Stages, text: string, options: { holds?: HoldStore; edit?: (profile: Profile) => Profile } = {}): Promise<{ answer: SendAnswer; pane: FakePane }> => {
+    const pane = replay(stages, text);
+    const made = rig({ pane, harness: "omp", version: "18.12.2", ...options });
+    return { answer: await made.send(text, { mode: "command" }), pane };
+  };
+
+  test("the captured screens carry OMP's own words, version and width", () => {
+    // eslint-disable-next-line no-control-regex
+    const plain = (name: string): string => capture(name).replace(/\u001b\[[0-9;:]*m/gu, "");
+    expect(plain("turn-running")).toContain("v18.12.2");
+    expect(plain("turn-running")).toContain("⎋ Working…");
+    expect(plain("turn-running")).toContain("🎯 Goal");
+    expect(plain("pause-result")).toContain("Goal mode paused.");
+    expect(plain("pause-result")).toContain("⏸ Goal");
+    expect(plain("pause-result")).toContain("⎋ Working…");
+    expect(plain("resume-before")).toContain("⏸ Goal");
+    expect(plain("resume-result")).toContain("Goal mode resumed.");
+    expect(plain("resume-result")).toContain("🎯 Goal");
+    for (const entry of ["Show details", "Adjust budget…", "Pause", "Drop", "↑/↓ navigate  ⏎ select  ⎋ cancel"]) expect(plain("bare-menu")).toContain(entry);
+  });
+
+  test("the reader sees a running turn and a free box on the screen before /goal pause, and again before /goal resume", () => {
+    for (const name of ["turn-running", "resume-before", "bare-before"]) {
+      const surface = surfaceOf(name);
+      expect([name, surface.turn, surface.modal, surface.composer]).toEqual([name, "running", "none", "empty"]);
+      expect(isFree(surface), name).toBe(false);
+    }
+  });
+
+  test("the screens after /goal pause and /goal resume still read a running turn: the goal turn goes on", () => {
+    for (const name of ["pause-result", "pause-result-later", "resume-result"]) {
+      const surface = surfaceOf(name);
+      expect([name, surface.turn, surface.modal, surface.composer]).toEqual([name, "running", "none", "empty"]);
+    }
+  });
+
+  test("the screen after a bare /goal is a menu the reader does not call free", () => {
+    const surface = surfaceOf("bare-menu");
+    expect(surface.modal).not.toBe("none");
+    expect(isFree(surface)).toBe(false);
+  });
+
+  test("/goal pause is sent in the turn as a command: probe, Backspace, Enter, never the queue key, receipt sent", async () => {
+    const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
+    const { answer, pane } = await sendOn(PAUSE, "/goal pause", { holds });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2", profileStatus: "provisional" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.calls[0]).toBe(`type:${PROBE}`);
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(holds.list()).toEqual([]);
+    neverEscape(pane);
+  });
+
+  // What the first version of this change missed: with `/goal pause` typed OMP draws the argument's list
+  // under the box, the pointer on `pause`. Without `commandList.argumentList` that pointer is on another
+  // command, and S1 leaves the text typed.
+  test("without commandList.argumentList the real screen's list reads as another command and Enter is never pressed", async () => {
+    const withoutFlag = (profile: Profile): Profile => {
+      const list = profile.idle.volatile.below.commandList!;
+      const { argumentList, ...rest } = list;
+      void argumentList;
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: rest } } } };
+    };
+    const { answer, pane } = await sendOn(PAUSE, "/goal pause", { edit: withoutFlag });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+  });
+
+  test("/goal resume on the paused screen goes the same way", async () => {
+    const { answer, pane } = await sendOn(RESUME, "/goal resume");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    neverEscape(pane);
+  });
+
+  test("a bare /goal goes the same way, and the menu it opens is on the next screen", async () => {
+    const { answer, pane } = await sendOn(BARE, "/goal");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2" });
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    neverEscape(pane);
+  });
+
+  test("a command the list does not name is held on the same running screen, and nothing is typed", async () => {
+    for (const text of ["/model", "/goals", "/compact"]) {
+      const holds = new HoldStore(join(dir, `held-${text.slice(1)}`), () => 1_000_000);
+      const { answer, pane } = await sendOn(PAUSE, text, { holds });
+      expect([text, answer.receipt?.outcome, answer.receipt?.keys]).toEqual([text, "held", []]);
+      expect(holds.list().map((entry) => [entry.text, entry.waitsForTurn])).toEqual([[text, true]]);
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
+
+  test("with no hold queue a command the list does not name is refused turn_running on the same screen, nothing typed", async () => {
+    const { answer, pane } = await sendOn(PAUSE, "/model");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("an unread version keeps /goal pause held on the real screen: the list applies only where the turn is trusted", async () => {
+    const holds = new HoldStore(join(dir, "held-unread"), () => 1_000_000);
+    const pane = replay(PAUSE, "/goal pause");
+    const made = rig({ pane, harness: "omp", version: "no version here", holds });
+    const answer = await made.send("/goal pause", { mode: "command" });
+    expect([answer.receipt?.outcome, answer.receipt?.keys]).toEqual(["held", []]);
+    expect(pane.calls).toEqual([]);
   });
 });
 

@@ -180,6 +180,15 @@ export interface CommandListRows {
    * typed in the draft's own colour stays. Optional.
    */
   readonly argumentHint?: boolean;
+  /**
+   * Once a space follows the command word the list under the box is that command's list of
+   * arguments (OMP's `/goal` lists `pause`, `resume`, ...). A pointer on exactly the argument
+   * already typed is then the typed command's own typeahead, as a pointer on the typed command
+   * is for a bare command: Enter runs what is typed. A list that holds the command word itself
+   * is the list of commands and never reads this way. A profile names it only where a lab run
+   * showed Enter run the typed text with that list open. Optional.
+   */
+  readonly argumentList?: boolean;
 }
 
 /** A side of the box a command list stands on. */
@@ -765,8 +774,10 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   const withNamespaces = node.namespaces === undefined ? withFooter : { ...withFooter, namespaces: commandListNamespaces(node.namespaces, `${path}.namespaces`) };
   if (node.pointerBold !== undefined && node.pointerBold !== true && node.pointerBold !== false) fail(`${path}.pointerBold`, "must be true or false");
   if (node.argumentHint !== undefined && node.argumentHint !== true && node.argumentHint !== false) fail(`${path}.argumentHint`, "must be true or false");
+  if (node.argumentList !== undefined && node.argumentList !== true && node.argumentList !== false) fail(`${path}.argumentList`, "must be true or false");
   const withPointerBold = node.pointerBold === true ? { ...withNamespaces, pointerBold: true } : withNamespaces;
-  return node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
+  const withArgumentHint = node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
+  return node.argumentList === true ? { ...withArgumentHint, argumentList: true } : withArgumentHint;
 }
 
 /** `commandList.namespaces`: unique words with no space in them. */

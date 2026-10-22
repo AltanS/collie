@@ -91,3 +91,63 @@ describe("omp 18.11's slash list (issue 497)", () => {
     expect(list).toMatchObject({ pointed: "/skill:ship", entries: ["/skill:ship"] });
   });
 });
+
+// Real OMP 18.12.2 (captured 2026-10-22, a goal turn running): with `/goal pause` typed, OMP draws the
+// list of /goal's arguments under the box with the pointer on `pause`, and Enter runs the typed text.
+// `commandList.argumentList` reads that pointer as the typed command's own; without it the pointer is
+// on "another command" and the Send Protocol leaves the text typed with `modal_cue`.
+describe("omp 18.12.2's argument list (the /goal capture, 2026-10-22)", () => {
+  interface GoalList {
+    readonly read: CommandListRead | null;
+    readonly text: string;
+  }
+  const goalListAt = (fixture: string): GoalList => {
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, OMP);
+    expect(frame, fixture).not.toBeNull();
+    return { read: commandListNear(rows.map(rowText), frame!.top, frame!.bottom, LIST), text: frame!.interior.text };
+  };
+  const { argumentList, ...withoutFlag } = LIST;
+
+  it("the shipped profile reads the argument list", () => {
+    expect(argumentList).toBe(true);
+  });
+
+  it.each([
+    ["omp--v18-12-2-goal-pause-typed--w119.txt", "/goal pause", "/pause"],
+    ["omp--v18-12-2-goal-resume-typed--w119.txt", "/goal resume", "/resume"],
+  ])("%s: the pointer rests on the argument typed", (fixture, typed, pointed) => {
+    const { read: list, text } = goalListAt(fixture);
+    expect(text).toBe(typed);
+    expect(list).toMatchObject({ pointed, side: "under", entries: [pointed] });
+    expect(pointsAt(list!, typed, LIST)).toBe(true);
+    // Without the flag it is the pointer on another command, as before.
+    expect(pointsAt(list!, typed, withoutFlag)).toBe(false);
+    const rows = fixtureRows(fixture);
+    const frame = findInputFrame(rows, OMP)!;
+    expect(ownListUnder(rows.map(rowText), frame.bottom, typed, LIST)).not.toBeNull();
+  });
+
+  it("the bare /goal's list points at the command itself, with or without the flag", () => {
+    const { read: list, text } = goalListAt("omp--v18-12-2-goal-bare-typed--w119.txt");
+    expect(text).toBe("/goal");
+    expect(list?.pointed).toBe("/goal");
+    expect(pointsAt(list!, "/goal", LIST)).toBe(true);
+    expect(pointsAt(list!, "/goal", withoutFlag)).toBe(true);
+  });
+
+  it("stops where the pointer is not on exactly the argument typed, or the list holds the command word", () => {
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal pause", LIST)).toBe(true);
+    expect(pointsAt(read("/pause", ["/pause", "/resume"]), "/goal pause", LIST)).toBe(true);
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal   pause ", LIST)).toBe(true);
+    expect(pointsAt(read("/resume", ["/pause", "/resume"]), "/goal pause", LIST)).toBe(false);
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal pa", LIST)).toBe(false);
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal paused", LIST)).toBe(false);
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal pause now", LIST)).toBe(false);
+    expect(pointsAt(read("/pause", ["/pause"]), "pause", LIST)).toBe(false);
+    expect(pointsAt(read(null, ["/pause"]), "/goal pause", LIST)).toBe(false);
+    // The command word is itself an entry: this is the list of commands, not of /goal's arguments.
+    expect(pointsAt(read("/pause", ["/goal", "/pause"]), "/goal pause", LIST)).toBe(false);
+    expect(pointsAt(read("/pause", ["/pause"]), "/goal pause", undefined)).toBe(false);
+  });
+});
