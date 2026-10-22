@@ -40,7 +40,7 @@ jobs:
       # scripts/check-flake-bun.test.ts fails when the two drift apart.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.1
+          bun-version: 1.4.4
       - name: Install (root)
         run: bun install --frozen-lockfile
 
