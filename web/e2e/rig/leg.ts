@@ -11,7 +11,7 @@
 // A TAP AND ITS RECEIPT. Every POST the page makes to /api/ask, /api/send or /api/pane/*/keys|reply
 // is recorded with the bridge's answer. A tap's receipts are the answers that came in between the
 // tap and the end of its settle window. A tap WORKED when every answer accepted it.
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { expect, test as base, type Browser, type BrowserContext, type Locator, type Page, type Response as PageResponse } from "@playwright/test";
@@ -22,6 +22,7 @@ import { TOKEN_STORAGE_KEY } from "../../src/lib/pairing";
 import { readSendReceipts, readSurface } from "../../src/lib/send-protocol";
 import { askOf, isFree, type Surface } from "../../src/lib/surface/surface";
 import { TOUR_STORAGE_KEY, TOUR_VERSION } from "../../src/lib/tour";
+import { BIN } from "./bins";
 import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
 import { MEMBER_ID, P, STATE_ROOT, memGuard, newWorkspacePane, paneRun, readRun, readToken, sleep, type Machine } from "./rig-lib";
@@ -258,6 +259,8 @@ export const askOn = (pane: RigPane | null) => (pane?.surface === null || pane?.
  */
 export async function startHarness(rig: Rig, id: HarnessId, machine: Machine = "lead"): Promise<string> {
   memGuard(`harness ${id}`);
+  // A binary that is not there would only show as the 90 s timeout below: say what is missing instead.
+  if (!existsSync(BIN[id])) throw new NotReached(`${id} binary not found at ${BIN[id]}; set COLLIE_RIG_${id.toUpperCase()}_BIN`);
   const { line } = prepareHarness(id, machine);
   const host = hostOf(machine);
   const paneId = newWorkspacePane(harnessDirs(id, machine).project, `leg-${id}`, machine);
