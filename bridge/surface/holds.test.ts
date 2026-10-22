@@ -16,6 +16,24 @@ afterEach(() => rmSync(join(dir, ".."), { recursive: true, force: true }));
 const input = (id: string, paneId = "%1", session = "main"): HoldInput => ({ id, session, paneId, harness: "agent", mode: "send", text: `text of ${id}`, revision: 3, command: false });
 
 describe("HoldStore", () => {
+  test("startup trust evidence is private, survives restart, and is never granted to commands or draft holds", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    const entry = store.add({ ...input("trust-00001"), startupTrust: true });
+    expect(entry.startupTrust).toBe(true);
+    expect(new HoldStore(dir).get("trust-00001")?.startupTrust).toBe(true);
+    expect(heldRow(entry)).not.toHaveProperty("startupTrust");
+    expect(store.putBack(entry.id, false)?.startupTrust).toBe(true);
+    expect(store.add({ ...input("trust-00002"), startupTrust: true, command: true }).startupTrust).toBeUndefined();
+    expect(store.add({ ...input("trust-00003"), startupTrust: true, mode: "command" }).startupTrust).toBeUndefined();
+    expect(store.add({ ...input("trust-00004"), startupTrust: true, waitsForTurn: true }).startupTrust).toBeUndefined();
+    expect(store.add({ ...input("trust-00005"), startupTrust: true, draftHolds: true }).startupTrust).toBeUndefined();
+    expect(store.add(input("trust-00006"))).not.toHaveProperty("startupTrust");
+    writeFileSync(join(dir, "trust-00004.json"), JSON.stringify({ ...store.get("trust-00004"), startupTrust: true }));
+    writeFileSync(join(dir, "trust-00005.json"), JSON.stringify({ ...store.get("trust-00005"), startupTrust: true }));
+    const replay = new HoldStore(dir);
+    expect(replay.get("trust-00004")?.startupTrust).toBeUndefined();
+    expect(replay.get("trust-00005")?.startupTrust).toBeUndefined();
+  });
   test("a marked request (M62 spec 02) keeps its caller's end, its mark and what holds it, across a restart", () => {
     const store = new HoldStore(dir, () => 5_000);
     const entry = store.add({ ...input("req-000001"), draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });

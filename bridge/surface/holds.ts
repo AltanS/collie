@@ -73,6 +73,8 @@ export interface HeldEntry {
    * read): it goes out only after a poll read a running turn and then a free pane, never on quiet polls.
    */
   readonly waitsForTurn?: true;
+  /** A normal message was held at a modeled, frameless trust dialog before a composer existed. */
+  readonly startupTrust?: true;
   /** The caller asked for a draft to hold this request, not refuse it (see the header). */
   readonly draftHolds?: true;
   /** On a {@link draftHolds} request: what holds it now. */
@@ -91,6 +93,8 @@ export interface HoldInput {
   readonly command: boolean;
   /** See {@link HeldEntry.waitsForTurn}. */
   readonly waitsForTurn?: boolean;
+  /** See {@link HeldEntry.startupTrust}; never kept for a command or a marked draft hold. */
+  readonly startupTrust?: boolean;
   /** See {@link HeldEntry.draftHolds}. */
   readonly draftHolds?: boolean;
   /** See {@link HeldEntry.cause}; kept only with {@link draftHolds}. */
@@ -129,6 +133,7 @@ function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (reason !== undefined) entry = { ...entry, reason };
   if (endedAt !== undefined) entry = { ...entry, endedAt };
   if (node.waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
+  if (node.startupTrust === true && mode === "send" && node.waitsForTurn !== true && node.draftHolds !== true) entry = { ...entry, startupTrust: true };
   if (node.draftHolds === true) {
     entry = { ...entry, draftHolds: true };
     const cause = pick(node.cause, HOLD_CAUSES);
@@ -200,9 +205,10 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    const { command, waitsForTurn, draftHolds, cause, expiresAt, ...rest } = input;
+    const { command, waitsForTurn, startupTrust, draftHolds, cause, expiresAt, ...rest } = input;
     let entry: HeldEntry = { ...rest, heldAt: at, expiresAt: expiresAt ?? at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
     if (waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
+    if (startupTrust === true && !command && input.mode === "send" && waitsForTurn !== true && draftHolds !== true) entry = { ...entry, startupTrust: true };
     if (draftHolds === true) entry = cause === undefined ? { ...entry, draftHolds: true } : { ...entry, draftHolds: true, cause };
     return this.write(entry);
   }

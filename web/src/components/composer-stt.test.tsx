@@ -324,6 +324,20 @@ describe("Composer — a finished clip", () => {
 });
 
 describe("Composer — hands-free", () => {
+  it("during a known launch keeps the transcript as a draft and never sends it", async () => {
+    const user = userEvent.setup();
+    setHandsFreeEnabled(true);
+    const sent = vi.fn();
+    server.use(configHandler(CONFIG_WITH_STT), sttHandler("wait for the first screen"), ...replyHandler(sent));
+    renderComposer({ starting: true });
+    const recorder = await startRecording(user);
+    expect(screen.queryByRole("button", { name: /transcribe and send/i })).toBeNull();
+    act(() => recorder.finish());
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("wait for the first screen"));
+    expect(sent).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+  });
+
   it("routes the transcript through the Send Protocol when the draft is empty", async () => {
     const user = userEvent.setup();
     setHandsFreeEnabled(true);

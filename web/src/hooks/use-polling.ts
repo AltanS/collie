@@ -43,6 +43,8 @@ export const BURST_MS = 300;
 /** The gap while the operator follows a pane that has something to show — its agent is working, or
  *  its mirror moved on the last poll. */
 export const HOT_MS = 1500;
+/** A new agent launch gets a bounded watch for its first screen; the clock changes cadence, never readiness. */
+export const STARTUP_HOT_MS = 20_000;
 /** The home screen while an agent somewhere is working or blocked. Nobody is on a mirror, so there
  *  is nothing to keep smooth; the herd's row still has to reflect a status change without feeling
  *  stuck. */
@@ -74,6 +76,8 @@ export interface PollIntent {
    *  `lib/poll-intent.ts` → `stampTopology`. Unlike `bursting`, this applies wherever the operator
    *  is looking, not only on the pane a send went to. */
   topologyBursting?: boolean;
+  /** The current pane is a newly launched agent still awaiting its initial screen. */
+  starting?: boolean;
   /** How many polls in a row got no answer at all (`HomeData.failure` is `network`). 0 (or absent)
    *  when the last one got any answer, a 5xx or a refusal included. */
   failures?: number;
@@ -127,6 +131,9 @@ function cadenceFor(
 
   // 1. A send just happened on the pane you are looking at: watch it land.
   if (intent?.bursting) return BURST_MS;
+
+  // A launch can outlast the topology burst while the first snapshot still calls it a shell.
+  if (paneId && intent?.starting) return HOT_MS;
 
   // 2 and 3. You are on a pane, pinned to its tail, and it has something to show — either its agent
   // says so, or the mirror itself moved on the last poll. The second half is what covers a plain
@@ -203,8 +210,13 @@ export function usePolling(
   paneId?: string | null,
   scope?: Scope,
   following?: boolean,
+  startupId?: string,
 ): number {
   const revalidator = useRevalidator();
+  const startupWatch = useRef<{ id: string; at: number } | null>(null);
+  if (startupId === undefined) startupWatch.current = null;
+  else if (startupWatch.current?.id !== startupId) startupWatch.current = { id: startupId, at: Date.now() };
+  const starting = startupWatch.current !== null && Date.now() - startupWatch.current.at < STARTUP_HOT_MS;
   // Held in a ref for the same reason the revalidator is: the tick effect must not re-subscribe
   // every time the viewed host or session changes identity.
   const scopeRef = useRef(scope);
@@ -249,6 +261,7 @@ export function usePolling(
     following: following ?? storeFollowing,
     changed,
     topologyBursting: topoBursting,
+    starting,
   });
 
   // Resuming from the idle lock must refetch AT ONCE. The route tree stays mounted through a pause

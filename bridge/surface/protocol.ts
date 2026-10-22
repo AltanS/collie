@@ -376,6 +376,8 @@ interface Snap {
   readonly plainRaw: readonly string[];
   readonly frame: Frame | null;
   readonly surface: Surface;
+  /** A modeled trust prompt owns the keys with no composer frame on screen. */
+  readonly startupTrust: boolean;
   readonly cueStrength: "none" | "weak" | "strong";
   /** The cues of the framed read behind {@link cueStrength}, for a refusal's example. */
   readonly cues: readonly Cue[];
@@ -1949,7 +1951,10 @@ export class SendProtocol {
     else if (end.reason !== "turn_running") this.quietWatch(target.session, target.paneId);
     const command = state.command || request.mode === "command";
     const waitsForTurn = command && !commandCannotSteer(state.match);
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn };
+    // This evidence belongs to this request, not every later message queued behind it. A turn,
+    // draft or unknown screen keeps its existing release rule; no harness name is needed here.
+    const startupTrust = !command && request.mode === "send" && request.draftHolds !== true && state.lastRead?.startupTrust === true;
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, startupTrust };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock, and what holds it: its own draft, or what the newest
       // request ahead of it waits on when it joins the queue behind.
@@ -2071,6 +2076,8 @@ export class SendProtocol {
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
    *    it free over at least ten seconds. A command whose Enter could steer a turn takes neither the
    *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again;
+   *  - a normal message held at a modeled startup trust prompt goes on two free polls after the
+   *    dialog leaves. Its release still re-reads the box through S0 before any text or submit key;
    *  - a marked request held over a draft (M62 spec 02) goes once two polls in a row read the pane free,
    *    the box empty and the pane idle (the shape of hold.ts `DESK_READS`), the second at least
    *    {@link DRAFT_LEFT_MS} after the first. A poll that reads a turn
@@ -2137,10 +2144,13 @@ export class SendProtocol {
       // A command whose Enter could steer a turn waits for a running turn a poll itself read (review Q1).
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
       const quiet = next.waitsForTurn !== true && watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      // A startup trust prompt has no preceding model turn to wait for. Two real free reads,
+      // followed by the normal S0 verification, establish readiness without the lost-turn fallback.
+      const trustLeft = next.startupTrust === true && next.mode === "send" && next.waitsForTurn !== true && next.draftHolds !== true && !watch.sawRunning && watch.freeReads >= FREE_POLLS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
       const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
-      if (busy || !(afterTurn || quiet || draftLeft)) continue;
+      if (busy || !(afterTurn || quiet || trustLeft || draftLeft)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
         continue;
@@ -2991,10 +3001,11 @@ export class SendProtocol {
     const idle = state.match?.profile.idle ?? null;
     const frame = idle === null ? null : findInputFrame(rows, idle);
     const blocks = readerBlocks(rows, harness);
+    const dialog = liftDialog(blocks);
     const ask =
       this.deps.asks === undefined
         ? liftAsk(blocks, grid.value.revision)
-        : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", liftDialog(blocks), askLifetimeOf(state.match));
+        : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", dialog, askLifetimeOf(state.match));
     const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
     const texts = rows.map((row) => rowText(row).trimEnd());
     const plainRaw = rows.map(plainOf);
@@ -3019,6 +3030,7 @@ export class SendProtocol {
       plainRaw,
       frame,
       surface,
+      startupTrust: frame === null && surface.turn === "unknown" && dialog?.block.kind === "prompt-select" && dialog.block.prompt.family === "trust",
       cueStrength: framed.strength,
       cuesUnderBox: frame !== null && framed.cues.length > 0 && framed.cues.every((cue) => cue.row > frame.bottom),
       cues: framed.cues,

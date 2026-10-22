@@ -4964,3 +4964,77 @@ describe("Composer command suggestions (#458)", () => {
   });
 });
 
+
+
+describe("Composer — known launch startup send-lock", () => {
+  it("keeps a local draft editable and blocks button, keyboard and Quick without a request", async () => {
+    const user = userEvent.setup();
+    const typed = vi.fn();
+    server.use(...replyHandler(typed));
+    const props = renderComposer({ starting: true });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box).not.toBeDisabled();
+    await user.type(box, "keep this draft");
+    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    await user.click(screen.getByRole("button", { name: "continue" }));
+    expect(typed).not.toHaveBeenCalled();
+    expect(props.onSent).not.toHaveBeenCalled();
+    expect(box).toHaveValue("keep this draft");
+    expect(loadDraft(undefined, props.paneId)).toBe("keep this draft");
+    expect(screen.getByRole("button", { name: "Type into terminal" })).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.getByRole("button", { name: "Esc" })).not.toBeDisabled();
+  });
+
+  it("startup never unlocks a genuine read-only or unreachable composer", () => {
+    renderComposer({ starting: true, readOnly: true });
+    expect(screen.getByPlaceholderText(/read.only/i)).toBeDisabled();
+    cleanup();
+    renderComposer({ starting: true, surface: { ...FREE, composer: "unreachable" }, unreachableNote: "Sending is off" });
+    expect(screen.getByPlaceholderText("Sending is off")).toBeDisabled();
+  });
+
+  it("the initial adapter-recognized trust screen uses Answer the dialog, not Send", async () => {
+    const user = userEvent.setup();
+    const typed = vi.fn();
+    const onAnswerDialog = vi.fn();
+    server.use(...replyHandler(typed));
+    renderComposer({ initialDialog: true, onAnswerDialog });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "kept draft");
+    await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
+    expect(onAnswerDialog).toHaveBeenCalledOnce();
+    expect(typed).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^Send$/ })).toBeNull();
+  });
+});
+
+
+it("startup also blocks an already-offered protocol commit without losing its draft", async () => {
+  const user = userEvent.setup();
+  const typed = vi.fn();
+  server.use(...replyHandler(typed, undefined, (request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit"], rowsHash: "abc", surface: { ...FREE, composer: "unknown", modal: "unknown", reason: "no-match" } })));
+  let lock = () => {};
+  function View() {
+    const [starting, setStarting] = useState(false);
+    lock = () => setStarting(true);
+    return <Composer paneId="offer:p1" agent="kiro" isShell={false} gone={false} readOnly={false} surface={FREE} starting={starting}
+      text="pane output" terminalDraft={null} rawTerminalDraft={null}
+      prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+      display={{ open: false, onToggle: vi.fn() }} onSent={vi.fn()} />;
+  }
+  const router = createMemoryRouter([{ path: "/", element: <View /> }]);
+  render(<RouterProvider router={router} />);
+  const box = screen.getByRole("textbox");
+  await user.type(box, "offered draft");
+  await user.click(screen.getByRole("button", { name: /^Send$/ }));
+  await screen.findByRole("button", { name: "Type here" });
+  act(lock);
+  const commit = screen.getByRole("button", { name: "Type here" });
+  expect(commit).toBeDisabled();
+  await user.click(commit);
+  expect(typed).toHaveBeenCalledOnce();
+  expect(box).toHaveValue("offered draft");
+});

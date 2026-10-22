@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useLoaderData, useLocation, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
@@ -11,6 +11,7 @@ import { useNav } from "@/hooks/use-nav";
 import { type PaneData } from "@/lib/loaders";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { canStepBack, homePath, panePath, readFrom, upTarget } from "@/lib/nav";
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { paneScopeKey } from "@/lib/scope";
 import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
@@ -39,12 +40,12 @@ export function DetailRoute() {
   const dashView = useDashPrefs().prefs.dashView;
 
   // SAFETY: `location.state` is whatever the navigation that got here attached — `unknown` by
-  // definition. The only shape Collie ever puts there is `{ freshPane }` (components/agent-list's
-  // optimistic open), and the optional chain means any other state reads as "not carried".
+  // definition. The optimistic open carries `freshPane` beside route-local extras (including launch intent),
+  // and the optional chain means an entry without that row reads as "not carried".
   const fresh = (location.state as { freshPane?: AgentView } | null)?.freshPane;
   const inSnapshot =
-    root.agents.some((a) => a.paneId === paneId) ||
-    root.shellPanes.some((p) => p.paneId === paneId);
+    findPane(root.agents, paneId, scope, root.servers, root.sessions) !== undefined ||
+    findPane(root.shellPanes, paneId, scope, root.servers, root.sessions) !== undefined;
   // The freshPane is a bootstrap only — used before a just-created pane first appears in a snapshot.
   // Once it's been seen, retire it; otherwise the stale copy masks a pane that has since closed
   // (e.g. you ran `exit` in its shell), stranding you on a dead view.
@@ -54,9 +55,19 @@ export function DetailRoute() {
   // pane's "seen" state onto a freshly-created one — disabling its freshPane fallback before the
   // snapshot catches up, so `gone` flips true and the effect below bounces you Home. That's the
   // "create a tab from inside an open pane sends me home" bug.
+  const paneKey = paneScopeKey(scope, paneId);
   const seenPaneId = useRef<string | null>(null);
-  if (inSnapshot) seenPaneId.current = paneId;
-  const seen = seenPaneId.current === paneId;
+  if (inSnapshot) seenPaneId.current = paneKey;
+  const seen = seenPaneId.current === paneKey;
+  const agentLaunch = readAgentLaunch(location.state, paneId, scope);
+  const launchReady = useCallback(() => {
+    // Retire only the intent: the optimistic row may still be needed, and `side` carries `from`.
+    // SAFETY: this callback consumes the same router state whose scoped launch was validated above.
+    const state = location.state as { agentLaunch?: unknown; freshPane?: AgentView; from?: string } | null;
+    if (state?.agentLaunch === undefined) return;
+    const { agentLaunch: _launch, ...rest } = state;
+    nav.side(`${location.pathname}${location.search}`, rest);
+  }, [location.state, location.pathname, location.search, nav]);
 
   // Looked up WITHIN the scope's host: `w1:p1` exists on every machine in a crew, so a match by id
   // alone could hand this view another machine's pane — rendering its space, tab and cwd around a
@@ -134,6 +145,9 @@ export function DetailRoute() {
         paneId={paneId}
         scope={scope}
         agent={agent}
+        agentLaunch={agentLaunch}
+        bootstrap={agent === fresh && !seen}
+        onLaunchReady={launchReady}
         agents={root.agents}
         shellPanes={root.shellPanes}
         tabs={root.tabs}

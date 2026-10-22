@@ -5,6 +5,8 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+import { readAgentLaunch, type AgentLaunch } from "@/lib/agent-startup";
+import { paneScopeKey } from "@/lib/scope";
 import { panePath } from "@/lib/nav";
 import { __resetOperatorCommands, getMuxConfig } from "@/lib/operator-config";
 import { server } from "@/test/setup";
@@ -14,9 +16,11 @@ import { DetailRoute } from "./detail";
 // Stub the heavy terminal view: this test is about DetailRoute's routing/freshPane logic, not the
 // composer. The stub reports which pane it was handed and whether an agent resolved for it.
 vi.mock("@/components/agent-chat", () => ({
-  AgentChat: ({ paneId, agent, onBackArrow }: { paneId: string; agent?: AgentView; onBackArrow?: () => void }) => (
+  AgentChat: ({ paneId, agent, onBackArrow, agentLaunch, bootstrap, onLaunchReady }: { paneId: string; agent?: AgentView; onBackArrow?: () => void; agentLaunch?: AgentLaunch; bootstrap?: boolean; onLaunchReady?: () => void }) => (
     <>
       <div data-testid="chat">{`pane:${paneId}:${agent ? "live" : "gone"}`}</div>
+      <span>{`launch:${agentLaunch?.harness ?? "none"}:bootstrap:${String(bootstrap)}`}</span>
+      <button onClick={onLaunchReady}>first screen ready</button>
       <button type="button" onClick={onBackArrow}>
         back
       </button>
@@ -220,5 +224,39 @@ describe("DetailRoute: the durable home is the way back", () => {
     await userEvent.click(screen.getByRole("button", { name: "back" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));
     expect(await screen.findByTestId("home")).toBeInTheDocument();
+  });
+});
+
+
+describe("DetailRoute — independent startup navigation", () => {
+  it("carries intent after freshPane retirement and consumes it without losing from/back", async () => {
+    let herd: AgentView[] = [];
+    const router = makeRouter("/", () => connected(herd));
+    render(<RouterProvider router={router} />);
+    await screen.findByTestId("home");
+    const fresh = agentView("w1:p2", "shell");
+    const agentLaunch = { id: "intent", paneKey: paneScopeKey({}, fresh.paneId), harness: "kiro" };
+    await act(() => router.navigate(panePath(fresh.paneId), { state: { freshPane: fresh, agentLaunch, from: "/" } }));
+    expect(await screen.findByText("launch:kiro:bootstrap:true")).toBeInTheDocument();
+    herd = [agentView(fresh.paneId, "agent")];
+    await act(() => router.revalidate());
+    await screen.findByText("launch:kiro:bootstrap:false");
+    await userEvent.click(screen.getByRole("button", { name: "first screen ready" }));
+    await screen.findByText("launch:none:bootstrap:false");
+    expect(readAgentLaunch(router.state.location.state, fresh.paneId)).toBeUndefined();
+    expect(router.state.location.state?.freshPane).toEqual(fresh);
+    expect(router.state.location.state?.from).toBe("/");
+    await userEvent.click(screen.getByRole("button", { name: "back" }));
+    await screen.findByTestId("home");
+  });
+
+  it("rejects a launch intent from a same-numbered pane in another session", async () => {
+    const fresh = agentView("w1:p2", "shell");
+    const router = makeRouter("/", () => connected([]));
+    render(<RouterProvider router={router} />);
+    await screen.findByTestId("home");
+    await act(() => router.navigate(panePath(fresh.paneId), { state: { freshPane: fresh,
+      agentLaunch: { id: "foreign", paneKey: paneScopeKey({ session: "other" }, fresh.paneId), harness: "kiro" } } }));
+    expect(await screen.findByText("launch:none:bootstrap:true")).toBeInTheDocument();
   });
 });

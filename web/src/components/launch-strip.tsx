@@ -93,7 +93,7 @@ export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
                     item: launcher,
                     machine: scope?.host ?? "",
                     folder: suffix ?? "~",
-                    go: () => void launch(launcher.command),
+                    go: () => void launch(launcher.command, undefined, launcher.kind === "agent" ? launcher.harness : undefined),
                   })
                 }
               >
