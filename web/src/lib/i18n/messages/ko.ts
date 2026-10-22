@@ -409,7 +409,7 @@ export const ko: Dictionary = {
   "composer.held.showLessAria": "간략히 보기: 대기열",
   "composer.protocol.discarded": "입력란에서 텍스트를 지웠습니다. 초안은 여기에 남아 있습니다.",
   "composer.protocol.draft": "입력란에 이미 초안이 있습니다. 추가, 교체 또는 취소하세요.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "입력란에 이미 초안이 있습니다. 교체하거나 취소하세요.",
   "composer.protocol.typed": "텍스트를 입력했지만 Enter는 누르지 않았습니다. 제출하거나 삭제하세요.",
   "composer.protocol.unconfirmed": "Collie가 이 화면을 읽을 수 없습니다. 창을 확인한 뒤 ‘여기에 입력’을 누르세요.",
   "composer.protocol.noticeKey": "그 메시지는 입력란 위의 알림에 대한 응답이 됩니다. 창을 확인한 뒤 ‘여기에 입력’을 누르세요.",

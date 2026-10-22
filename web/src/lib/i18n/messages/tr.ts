@@ -351,7 +351,7 @@ export const tr: Dictionary = {
   "composer.held.showLessAria": "Daha az göster: kuyruk",
   "composer.protocol.discarded": "Metin kutudan kaldırıldı. Taslağın hâlâ burada.",
   "composer.protocol.draft": "Kutuda zaten bir taslak var. Ekle, değiştir veya iptal et.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "Kutuda zaten bir taslak var. Değiştir veya iptal et.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
   "composer.protocol.unconfirmed": "Collie bu ekranı okuyamıyor. Bölmeyi kontrol et, sonra Buraya yaz'a dokun.",
   "composer.protocol.noticeKey": "Bu mesaj kutunun üstündeki bildirimi yanıtlar. Bölmeyi kontrol et, sonra Buraya yaz'a dokun.",

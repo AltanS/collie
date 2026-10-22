@@ -397,7 +397,7 @@ export const zhTW: Dictionary = {
   "composer.held.showLessAria": "收合：佇列",
   "composer.protocol.discarded": "文字已從輸入框移除。你的草稿仍在這裡。",
   "composer.protocol.draft": "輸入框中已有草稿。可附加、取代或取消。",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "輸入框中已有草稿。可取代或取消。",
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
   "composer.protocol.unconfirmed": "Collie 無法讀取此畫面。請檢查窗格，然後點按「在此輸入」。",
   "composer.protocol.noticeKey": "這則訊息會回答輸入框上方的提示。請檢查窗格，然後點按「在此輸入」。",

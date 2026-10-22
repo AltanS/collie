@@ -359,7 +359,7 @@ export const ru: Dictionary = {
   "composer.held.showLessAria": "Показать меньше: очередь",
   "composer.protocol.discarded": "Текст удалён из поля. Черновик остался здесь.",
   "composer.protocol.draft": "В поле уже есть черновик. Дополните, замените или отмените.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "В поле уже есть черновик. Замените или отмените.",
   "composer.protocol.typed": "Текст в поле, но Enter не нажат. Отправьте или удалите его.",
   "composer.protocol.unconfirmed": "Collie не может прочитать этот экран. Проверьте панель и нажмите «Ввести здесь».",
   "composer.protocol.noticeKey": "Это сообщение ответит на уведомление над полем ввода. Проверьте панель и нажмите «Ввести здесь».",

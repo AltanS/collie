@@ -351,7 +351,7 @@ export const it: Dictionary = {
   "composer.held.showLessAria": "Mostra meno: coda",
   "composer.protocol.discarded": "Il testo è stato tolto dal campo. La tua bozza è ancora qui.",
   "composer.protocol.draft": "Il campo contiene già una bozza. Aggiungi, sostituisci o annulla.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "Il campo contiene già una bozza. Sostituisci o annulla.",
   "composer.protocol.typed": "Il tuo testo è nel campo, ma Invio non è stato premuto. Invialo o scartalo.",
   "composer.protocol.unconfirmed": "Collie non riesce a leggere questa schermata. Controlla il riquadro, poi tocca Scrivi qui.",
   "composer.protocol.noticeKey": "Quel messaggio risponderebbe all'avviso sopra la casella. Controlla il riquadro, poi tocca Scrivi qui.",

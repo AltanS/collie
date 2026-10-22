@@ -412,7 +412,7 @@ export const es: Dictionary = {
   "composer.held.showLessAria": "Mostrar menos: cola",
   "composer.protocol.discarded": "El texto se quitó del cuadro. Tu borrador sigue aquí.",
   "composer.protocol.draft": "El cuadro ya tiene un borrador. Añade, reemplaza o cancela.",
-  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
+  "composer.protocol.draftCommand": "El cuadro ya tiene un borrador. Reemplaza o cancela.",
   "composer.protocol.typed": "Tu texto está en el cuadro, pero no se pulsó Intro. Envíalo o descártalo.",
   "composer.protocol.unconfirmed": "Collie no puede leer esta pantalla. Revisa el panel y toca Escribir aquí.",
   "composer.protocol.noticeKey": "Ese mensaje respondería al aviso sobre la caja. Revisa el panel y toca Escribir aquí.",
