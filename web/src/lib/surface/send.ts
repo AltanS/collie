@@ -339,9 +339,12 @@ export interface SendAnswer {
 export const SEND_CAUSES = ["notice_key"] as const;
 export type SendCause = (typeof SEND_CAUSES)[number];
 
-/** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */
-export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {
-  if (outcome === "refused" && reason === "draft_present") return framed ? ["append", "replace", "cancel"] : ["keys"];
+/**
+ * The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead.
+ * A command onto a draft (`command`) is offered Replace and Cancel only: Add would send the draft with the command at its end.
+ */
+export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean, command = false): SendOffer[] {
+  if (outcome === "refused" && reason === "draft_present") return framed ? (command ? ["replace", "cancel"] : ["append", "replace", "cancel"]) : ["keys"];
   if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
   // Every reason: the person reads the screen and decides; with no frame the bridge binds both to the rows hash.
   if (outcome === "typed_not_submitted") return ["submit", "discard", "keys"];
