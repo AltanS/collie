@@ -10,6 +10,7 @@ import {
   cmdHooksStatus,
   cmdHooksUninstall,
   HOLD_FLAG,
+  hooksAreBehind,
   HOOK_MARKER,
   HOOK_MARKER_PREFIX,
   type HooksDeps,
@@ -20,6 +21,8 @@ import {
   uninstallDocument,
 } from "./hooks.ts";
 import { codexConfigPath, installNotify, notifyState } from "./codex-hooks.ts";
+import { wrapCommand } from "./statusline.ts";
+import { HOST } from "../bridge/host.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
 import { collieBinary } from "./unit.ts";
@@ -1146,5 +1149,53 @@ describe("hold: the sockets come from the hook target registry", () => {
     expect(d.connects.map((c) => c.path)).toEqual([holdSocketPath(STATE)]);
     expect(holdSocketPaths(d)).toEqual([holdSocketPath(STATE)]);
     expect(d.printed).toEqual([]);
+  });
+});
+
+describe("the statusLine wrap (.adr/0115)", () => {
+  const MINE = "bash /home/pat/.claude/statusline-command.sh";
+  const withLine = (line: JsonObject): string => `${JSON.stringify({ model: "opus", statusLine: line }, null, 2)}\n`;
+  // Windows keeps the operator's command as it is: the wrapper's shell is not the one Claude Code uses there.
+  const wraps = HOST.platform !== "win32";
+
+  test("install wraps the operator's statusLine, keeps its other keys, and says so", () => {
+    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE, padding: 0 }) } });
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    const line = asJsonObject(asJsonObject(settingsOf(d))?.statusLine);
+    expect(line?.padding).toBe(0);
+    if (!wraps) {
+      expect(line?.command).toBe(MINE);
+      return;
+    }
+    expect(line?.command).toBe(wrapCommand(OWN, MINE));
+    expect(d.io.stdout.join("\n")).toContain("your own command still runs");
+  });
+
+  test("install adds no statusLine where there is none, and says the dots need one", () => {
+    const d = deps({ files: { [SETTINGS]: `{"model":"opus"}\n` } });
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(asJsonObject(settingsOf(d))?.statusLine).toBeUndefined();
+    if (wraps) expect(d.io.stdout.join("\n")).toContain("Collie never adds a statusLine");
+  });
+
+  test("uninstall puts the operator's command back byte for byte, with the hooks gone", () => {
+    const before = withLine({ type: "command", command: MINE });
+    const d = deps({ files: { [SETTINGS]: before } });
+    cmdHooksInstall(d, ["claude"]);
+    expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(SETTINGS)?.text).toBe(before);
+  });
+
+  test("status names the wrap, and a file with the hooks but an unwrapped statusLine is behind", () => {
+    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
+    cmdHooksInstall(d, ["claude"]);
+    d.io.stdout.length = 0;
+    cmdHooksStatus(d);
+    if (wraps) expect(d.io.stdout.join("\n")).toContain("wraps the statusLine");
+    expect(hooksAreBehind(d)).toBe(false);
+    // The operator replaced the statusLine after the install (Claude Code's `/statusline` does that).
+    const doc = asJsonObject(settingsOf(d)) ?? {};
+    d.files.entries.set(SETTINGS, { text: `${JSON.stringify({ ...doc, statusLine: { type: "command", command: MINE } }, null, 2)}\n` });
+    expect(hooksAreBehind(d)).toBe(wraps);
   });
 });

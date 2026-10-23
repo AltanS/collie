@@ -2297,6 +2297,12 @@ export const en = {
   "chat.changes.label": "Files",
   // What a screen reader says for the small model label above the belt; {name} is the harness's own.
   "chat.model.aria": "Model {name}",
+  "chat.usage.context": "ctx",
+  "chat.usage.context.aria": "Context {percent}% used",
+  "chat.usage.window.5h": "5h",
+  "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
+  "chat.usage.window.7d": "7d",
+  "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   "files.title": "Files",
   // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
   "branch.aria": "Branch {name}",

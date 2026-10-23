@@ -18,8 +18,10 @@ import { useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
+import { ModelTag } from "@/components/model-tag";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import type { Surface } from "@/lib/surface/surface";
+import type { PaneUsage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { Card, CardControls, Group, Section, type SectionDef } from "../layout";
@@ -126,43 +128,25 @@ function BarsTag({ usage }: { usage: Usage }) {
   );
 }
 
-// ── Shape 2: dots ─────────────────────────────────────────────────────────────────────────────────
+// ── Shape 2: dots (PICKED 2026-10-23, shipped as the real ModelTag) ───────────────────────────────
 
-/** Five 3px dots, one per fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
-function Dots({ value }: { value: number }) {
-  const lit = Math.min(5, Math.max(0, Math.ceil(value / 20)));
-  const warn = value >= WARN_AT;
-  return (
-    <span className="inline-flex items-center gap-px align-middle">
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span
-          key={i}
-          className={cn(
-            "size-[3px] rounded-full",
-            i < lit ? (warn ? "bg-status-working" : "bg-muted-foreground") : "bg-muted-foreground/25",
-          )}
-        />
-      ))}
-    </span>
-  );
-}
+/** The fixture's model label, back in the harness's own words the real tag reads. */
+const MODEL_IDS = new Map<string, { model: string; effort?: string }>([
+  ["Opus 5.5 · high", { model: "claude-opus-5-5", effort: "high" }],
+  ["Sonnet 5.5", { model: "claude-sonnet-5-5" }],
+]);
 
+/** Card 2 mounts the REAL tag, so this card shows what ships, not a copy of it. */
 function DotsTag({ usage }: { usage: Usage }) {
-  const gauges = present(usage);
-  return (
-    <TagBox className="flex items-center gap-1.5 whitespace-nowrap">
-      <span aria-hidden className="flex items-center gap-1.5">
-        {usage.model !== undefined && <span className="truncate">{usage.model}</span>}
-        {gauges.map((g) => (
-          <span key={g.id} className="flex items-center gap-[3px]">
-            <span>{g.word}</span>
-            <Dots value={g.value} />
-          </span>
-        ))}
-      </span>
-      <span className="sr-only">{spokenOf(usage)}</span>
-    </TagBox>
-  );
+  const named = usage.model === undefined ? undefined : MODEL_IDS.get(usage.model);
+  const limits = [
+    ...(usage.fiveHour === undefined ? [] : [{ window: "5h" as const, used: usage.fiveHour }]),
+    ...(usage.sevenDay === undefined ? [] : [{ window: "7d" as const, used: usage.sevenDay }]),
+  ];
+  const pane: PaneUsage = {};
+  if (usage.ctx !== undefined) pane.context = usage.ctx;
+  if (limits.length > 0) pane.limits = limits;
+  return <ModelTag model={named?.model} effort={named?.effort} usage={pane} />;
 }
 
 // ── Shape 3: short text, on a line of its own ─────────────────────────────────────────────────────
@@ -206,8 +190,8 @@ const VARIANTS: readonly VariantDef[] = [
   },
   {
     n: 2,
-    title: "Dots",
-    line: "One line. The same three gauges as five dots each, one dot per fifth. Easier to count than a bar at this size; a step is 20%, so 41% and 59% look alike.",
+    title: "Dots (picked)",
+    line: "Picked 2026-10-23 and shipped: this card mounts the real ModelTag. One line. The same three gauges as five dots each, one dot per fifth. Easier to count than a bar at this size; a step is 20%, so 41% and 59% look alike.",
     Tag: DotsTag,
   },
   {

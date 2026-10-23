@@ -2772,9 +2772,9 @@ export function AgentChat({
               data-slot="draft-notice-slot"
               className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-2"
             />
-            {/* The pane's model, small on the mirror's bottom-right corner, over both bodies alike
-                and under the notice slot above (model-tag.tsx says why there). */}
-            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} />
+            {/* The pane's model and its usage dots, small on the mirror's bottom-right corner, over both
+                bodies alike and under the notice slot above (model-tag.tsx says why there). */}
+            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} usage={agent?.usage} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,
