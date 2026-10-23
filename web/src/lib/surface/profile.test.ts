@@ -1198,6 +1198,15 @@ describe("the steer keys (M69)", () => {
     expect(queued.some((row) => /Queued follow-up inputs/u.test(row))).toBe(true);
   });
 
+  it("Codex: the steer header is a running row, so a screen that holds only it still reads the turn running", () => {
+    const signs = loadProfiles().get("codex")!.idle.runningRows!.map((source) => new RegExp(source, "u"));
+    const header = rowsOf("codex--v0164-steer-after-now").find((row) => row.includes("Messages to be submitted after next tool call"))!;
+    expect(signs.some((sign) => sign.test(header))).toBe(true);
+    // Re-wrapped narrower, its first part still is one.
+    expect(signs.some((sign) => sign.test(header.slice(0, 60)))).toBe(true);
+    expect(signs.some((sign) => sign.test("› Messages to be submitted after next tool call"))).toBe(false);
+  });
+
   it("OMP: `Backgrounded early to handle an incoming message` in the tool box and the line as a transcript row after the steer", () => {
     const [marker, transcript] = witnesses("omp");
     expect(marker).toEqual({ pattern: "^\\s*│\\s*Backgrounded early to handle an incoming message\\b" });

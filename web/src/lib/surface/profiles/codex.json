@@ -57,7 +57,8 @@
     "runningRows": [
       "\\s·\\s[⠀-⣿]$",
       "^\\s*[Tt]ab to queue message\\b",
-      "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$"
+      "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$",
+      "^\\s*• Messages to be submitted after next tool call\\b"
     ]
   },
   "keys": {
