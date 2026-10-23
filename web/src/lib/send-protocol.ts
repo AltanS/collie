@@ -315,6 +315,8 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
   switch (outcome) {
     case "sent":
     case "effective":
+    // A steer the harness took (M69) went out like a send: the draft clears. Its own words are the receipt's.
+    case "steered":
       return "sent";
     case "discarded":
       return "discarded";
@@ -352,8 +354,11 @@ export function capSentence(cap: SendCap, say: (vars: { count: string; harness: 
  * The label a row of the session page's list wears for its outcome: a key in the catalog. A discard has
  * no row label of its own; it wears the Discard button's word, so the list never calls it "Sent".
  */
-export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discard" | `sendReceipts.outcome.${Exclude<SendOutcome, "discarded">}` {
-  return outcome === "discarded" ? "composer.protocol.discard" : `sendReceipts.outcome.${outcome}`;
+export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discard" | `sendReceipts.outcome.${Exclude<SendOutcome, "discarded" | "steered">}` {
+  if (outcome === "discarded") return "composer.protocol.discard";
+  // A steer (M69) wears the Sent label until the catalog carries its own word (M69 spec 03).
+  if (outcome === "steered") return "sendReceipts.outcome.sent";
+  return `sendReceipts.outcome.${outcome}`;
 }
 
 /**

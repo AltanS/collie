@@ -56,6 +56,8 @@ const BOOK_SIZE = 512;
 
 // The sentences a person reads. Short, active, one idea each.
 const NO_BOX = "This conversation has no input box, so there is no text to add to, replace, submit or discard.";
+/** A steer on a program pane (M69): the driver writes a message for after the turn, never into it. */
+const NO_STEER = "Collie cannot steer this agent's turn. Send it without Steer, and it waits for the turn.";
 const ASK_OPEN = "The durable agent waits for an answer to a question. Answer it first, then send.";
 const NOT_READ = "Collie cannot read the state of this conversation now. Try again in a moment.";
 const PANE_GONE = "The conversation is not in the durable agent's layout.";
@@ -491,6 +493,8 @@ export class ProgramDriver {
     run.s0 = markOf(before);
     run.gaps.s0 = this.now() - started;
     if (request.mode !== "send" && request.mode !== "command") return { outcome: "refused", reason: "not_free", detail: NO_BOX };
+    // A program's turn takes no steer through this driver (M69): its pane view never says `canSteer`.
+    if (request.when === "steer") return { outcome: "refused", reason: "steer_unsupported", detail: NO_STEER };
     if (!before.ready) return { outcome: "refused", reason: "not_free", detail: NOT_READ };
     if (before.status === undefined) return { outcome: "refused", reason: "pane_gone", detail: PANE_GONE };
     if (before.asks.length > 0) return { outcome: "refused", reason: "not_free", detail: ASK_OPEN };

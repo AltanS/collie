@@ -160,7 +160,7 @@ import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -5033,7 +5033,10 @@ export async function replyThroughProtocol(
     mode: fields.mode ?? (reservedLead(words, ["/", "!", "@"]) === null ? "send" : "command"),
   });
   if (request === null) return text("bad send request", 400);
-  const { pane: target, ...sendRequest } = request;
+  const { pane: target, ...asked } = request;
+  // A request id the caller minted is the phone's, on a crew member's pane (M56 spec 06): a person's
+  // send, which may steer (M69). A caller that names no id is not the phone and never steers.
+  const sendRequest: SendRequest = fields.id === undefined ? asked : { ...asked, fromPhone: true };
   const answer = await send.protocol.handle(sendRequest, { session, paneId: target, harness });
   const receipt = answer.receipt;
   const auditDetail: AuditDetail = { mode: sendRequest.mode, submit: true, textLength: words.length };
@@ -5046,7 +5049,7 @@ export async function replyThroughProtocol(
   const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   const outcome = receipt?.outcome;
   // A held send (M56 spec 15) is taken: Collie sends it when the turn ends.
-  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "steered" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
   const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
   const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
   const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });
@@ -7714,7 +7717,7 @@ export const SEND_MAX_TEXT = 64 * 1024;
 export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
@@ -7737,6 +7740,13 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
   if (capAck !== undefined) {
     if (typeof capAck !== "boolean") return null;
     Object.assign(request, { capAck });
+  }
+  // M69: `steer` asks for a steer into the running turn; any other word is a bad request. Whether the
+  // caller may steer is the route's to say (`fromPhone`), never the body's.
+  if (when !== undefined && when !== null) {
+    const chosenWhen = SEND_WHENS.find((w) => w === when);
+    if (chosenWhen === undefined) return null;
+    Object.assign(request, { when: chosenWhen });
   }
   return request;
 }
@@ -7776,7 +7786,8 @@ export async function sendRoute(
   const harness = replySendOf(rt).harnessOf(request.pane);
   if (harness === null) return text("no such terminal pane", 404);
   const { pane: paneId, resendOf, ...asked } = request;
-  let sendRequest: SendRequest = asked;
+  // `POST /api/send` is the phone's route: a person's send, the one caller that may steer (M69).
+  let sendRequest: SendRequest = { ...asked, fromPhone: true };
   if (resendOf !== undefined) {
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);

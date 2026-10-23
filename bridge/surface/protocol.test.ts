@@ -7093,3 +7093,174 @@ describe("pi under pi-powerline-footer's inset editor (issue 544, live 2026-10-2
     });
   }
 });
+
+// M69 spec 02: the steer, replayed from real captures of pi 1.3.0, Codex 0.164.0 and OMP 18.6.1 (lab
+// 2026-10-23, web/src/fixtures/panes/*-{steer,queue}-*--w120.txt). Each read answers with the capture
+// the lab took at that point: the text typed, then one capture per read after the commit key (the last
+// one stands for every later read). The empty box and the probe are the typed capture with the line
+// taken out of the box, or the probe put in its place.
+describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const LINE = "also say hello at the end";
+  const capture = (name: string): string => readFileSync(join(PANES, `${name}--w120.txt`), "utf8");
+  // eslint-disable-next-line no-control-regex
+  const plainRow = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+  /** The capture with the box's text (the line's last place on the screen) replaced. */
+  const inBox = (screen: string, text: string): string => {
+    const at = screen.lastIndexOf(LINE);
+    return screen.slice(0, at) + text + screen.slice(at + LINE.length);
+  };
+  /** The capture without the rows whose plain text holds one of these. */
+  const without = (screen: string, rows: readonly string[]): string =>
+    screen
+      .split("\n")
+      .filter((row) => !rows.some((part) => plainRow(row).includes(part)))
+      .join("\n");
+
+  interface Replayed {
+    pane: FakePane;
+    /** Each text write and key with the rig's clock when it went in. */
+    log: [string, number][];
+  }
+  const replay = (typedName: string, after: readonly string[], clock: { now: number }): Replayed => {
+    const typed = capture(typedName);
+    const pane = new FakePane("generic");
+    const log: [string, number][] = [];
+    let committed = false;
+    let read = 0;
+    pane.afterInput = (_p, what) => {
+      log.push([what, clock.now]);
+      if (what.startsWith("keys:") && what !== "keys:Backspace") committed = true;
+    };
+    pane.beforeRead = (p) => {
+      if (committed) p.fixed = after[Math.min(read++, after.length - 1)]!;
+      else if (p.box === "") p.fixed = inBox(typed, "");
+      else if (p.box === PROBE) p.fixed = inBox(typed, PROBE);
+      else if (p.box === LINE) p.fixed = typed;
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return { pane, log };
+  };
+  const steerOn = async (
+    harness: string,
+    version: string,
+    typedName: string,
+    after: readonly string[],
+    over: Partial<SendRequest> = { when: "steer", fromPhone: true },
+    holds?: HoldStore,
+  ): Promise<{ answer: SendAnswer } & Replayed & { clock: { now: number } }> => {
+    const clock = { now: 1_000_000 };
+    const replayed = replay(typedName, after, clock);
+    const made = rig({ pane: replayed.pane, harness, version, clock, holds });
+    return { answer: await made.send(LINE, over), clock, ...replayed };
+  };
+
+  test("pi 1.3.0: Enter after the text; no row at 0.4 s, the Steering row at 1.2 s: steered", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now"), capture("pi--v130-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"], version: "1.3.0" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("alt+Enter");
+    neverEscape(pane);
+  });
+
+  test("Codex 0.164.0: one second between the text and Enter, the steer header at 0.4 s: steered", async () => {
+    const { answer, pane, log } = await steerOn("codex", "0.164.0", "codex--v0164-steer-typed", [capture("codex--v0164-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+    const wrote = log.find(([what]) => what === `paste:${LINE}`)![1];
+    const entered = log.find(([what]) => what === "keys:Enter")![1];
+    expect(entered - wrote).toBeGreaterThanOrEqual(1000);
+  });
+
+  test("Codex 0.164.0: no witness at 0.4 s or 1.2 s, the line as `› <line>` in the transcript at 2 s: steered", async () => {
+    const after = capture("codex--v0164-steer-after");
+    const bare = without(after, [`› ${LINE}`]);
+    expect(bare.split("\n").length).toBe(after.split("\n").length - 1);
+    const { answer } = await steerOn("codex", "0.164.0", "codex--v0164-steer-typed", [bare, bare, after]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP 18.6.1: the box still holds the line at 0.4 s, the backgrounded tool and the line in the transcript at 1.2 s: steered", async () => {
+    const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [capture("omp--v18-6-steer-after-now"), capture("omp--v18-6-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("OMP: the line in the transcript alone, with no backgrounded tool, is a steer too", async () => {
+    const after = without(capture("omp--v18-6-steer-after"), ["Backgrounded early to handle an incoming message"]);
+    const lines = after.split("\n").map((row) => plainRow(row).trimEnd());
+    expect(lines.some((row) => row.includes("Backgrounded early"))).toBe(false);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  test("the harness's queued row shows instead of the steer witness: sent, queued", async () => {
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-queue-after-now"), capture("pi--v130-queue-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("the line still in the box after the last read: typed_not_submitted, offered Submit and Discard", async () => {
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [capture("omp--v18-6-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+  });
+
+  test("an empty box and no row after the last read: unknown(no_evidence)", async () => {
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("when absent, pi in a turn takes today's path: the queue key, never Enter, sent and queued", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-queue-typed", [capture("pi--v130-queue-after-now"), capture("pi--v130-queue-after")], {});
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "alt+Enter"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a steer on an idle turn goes as a plain send: the submit key, receipt sent", async () => {
+    const r = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.164.0" });
+    const answer = await r.send("tidy the parser please", { when: "steer", fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Claude has no steer key: steer_unsupported, nothing read past S0 typed", async () => {
+    const r = rig();
+    r.pane.over = ["✻ Working… (3s · esc to interrupt)"];
+    const answer = await r.send("also say hello", { when: "steer", fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("an unread version is not trusted with a turn: steer_unsupported", async () => {
+    const { answer, pane } = await steerOn("pi", "no version here", "pi--v130-steer-typed", [capture("pi--v130-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a command never steers: steer_unsupported before any read", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after")], { when: "steer", fromPhone: true, mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(pane.readsSeen).toBe(0);
+  });
+
+  test("a walky talky delivery asking to steer is refused steer_not_allowed, never typed and never held", async () => {
+    const holds = new HoldStore(join(dir, "held-walky-steer"), () => 1_000_000);
+    const walky = { when: "steer" as const, draftHolds: true, holdUntil: 2_000_000 };
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after")], walky, holds);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_not_allowed", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.readsSeen).toBe(0);
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("a steer refused at S0 is never held, even with a hold queue", async () => {
+    const holds = new HoldStore(join(dir, "held-steer"), () => 1_000_000);
+    const r = rig({ holds });
+    r.pane.over = ["✻ Working… (3s · esc to interrupt)"];
+    const answer = await r.send("also say hello", { when: "steer", fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(holds.list()).toEqual([]);
+  });
+});

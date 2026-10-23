@@ -327,6 +327,14 @@ describe("Send through accept, persist, lock and receipt", () => {
     expect(controls).toHaveLength(1);
   });
 
+  test("a steer is refused steer_unsupported, even from the phone, and nothing is written (M69)", async () => {
+    const { port, controls } = fakeProgram();
+    const { driver } = driverOf(port);
+    const answer = await driver.handle({ id: "drv-steer-0001", text: "also say hello", mode: "send", when: "steer", fromPhone: true }, TARGET);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported" });
+    expect(controls).toEqual([]);
+  });
+
   test("a box mode is refused not_free and prepare only reads", async () => {
     const { port, controls } = fakeProgram();
     const { driver } = driverOf(port);
