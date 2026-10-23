@@ -16,11 +16,11 @@ import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type Mux
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import type { Answer, AskReply } from "../../web/src/lib/surface/ask.ts";
-import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
+import { emptyFoldState, readFold, stepFold, surfaceOfScreen, type FoldContext } from "../../web/src/lib/surface/fold.ts";
 import { HOLD_WIRE_VERSION, holdHash, holdInputHash, type HoldDecision, type HoldRequest } from "../../web/src/lib/surface/hold.ts";
 import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
-import { isFree, type Ask } from "../../web/src/lib/surface/surface.ts";
+import { isFree, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
 import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, counterWordOf, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
 import { KeyGate, type GateResult, type KeyToken } from "./key-gate.ts";
@@ -300,6 +300,50 @@ describe("the hold matrix", () => {
     const reply = await r.answer(ask, "3");
     expect(reply.receipt?.outcome).toBe("sent");
     expect(reply.receipt?.decision).toBe("deny");
+    expectNoKey(r);
+  });
+
+  // Second live pass (2026-10-23): "No" from the phone in a fresh session under Claude Code's
+  // fullscreen TUI. The Stop button left at once, but the turn read running about 19 s (bridge
+  // journal: `surface.hold sent decision=deny` at 16:35:57, `surface.lost-stop` at 16:36:16): the
+  // Interrupted row stood twenty rows over the box, past blank rows, outside the band the stopped-row
+  // rule read. The answer path's own edges and reads, folded as the shadow folds them.
+  test("a deny in a fresh fullscreen session: the fold reads the turn idle and free once the dialog edge settles", async () => {
+    const DENIED = fx("claude--v2-1-309-permission-denied-fresh-session--w120.txt");
+    const r = rig(BASH);
+    const context: FoldContext = { idle: loadProfiles().get(HARNESS)!.idle, pollMs: 1500, settleMs: 1500 };
+    let fold = emptyFoldState();
+    let seq = 0;
+    const edge = (kind: "prompt" | "dialog"): void => void (fold = stepFold(fold, { seq: ++seq, source: "edge", at: r.clock.now, kind }, context));
+    const read = (): Surface => {
+      const rows = splitLines(parseAnsi(r.pane.screen));
+      fold = stepFold(fold, { seq: ++seq, source: "screen", at: r.clock.now, revision: seq, rows, ask: null }, context);
+      return readFold(fold, context).surface;
+    };
+    edge("prompt");
+    r.clock.now += 3000;
+    // The hold's own fresh read on open (takeHold's `reread`) is a dialog edge.
+    const { conn, close } = r.open();
+    edge("dialog");
+    const ask = r.poll()!;
+    r.pane.beforeRead = (pane) => {
+      if (conn.replies.length > 0) pane.screen = DENIED;
+    };
+    const reply = await r.answer(ask, "3");
+    expect(reply.receipt).toMatchObject({ outcome: "sent", decision: "deny", keys: [] });
+    // The hook's connection closes after the decision: its fresh read is one more dialog edge.
+    close("closed");
+    edge("dialog");
+    r.clock.now += 700;
+    // The prompt edge's block is old and ends on the stopped row; the young dialog block keeps the modal.
+    const early = read();
+    expect(early).toMatchObject({ turn: "idle", modal: "unreadable" });
+    expect(isFree(early)).toBe(false);
+    r.clock.now += 1500;
+    expect(read()).toEqual({ revision: seq, turn: "idle", modal: "none", composer: "empty" });
+    expect(fold.running).toBeNull();
+    expect(fold.dialog).toBeNull();
+    expect(fold.lostStops).toBe(0);
     expectNoKey(r);
   });
 
