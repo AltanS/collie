@@ -126,10 +126,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 154 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 157 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([91, 38, 25]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([91, 41, 25]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the 4 hold socket tests, the 5
     // walky mode and socket tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -156,7 +156,10 @@ describe("the Windows check runs the flake's Bun", () => {
     // 21 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
     const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
     expect(walkySocketTests).toHaveLength(21);
-    expect(budget("Cli")).toBe(2 + 12 + 3 + walkySocketTests.length);
+    // The statusLine wrapper's "runShell stops the whole command" block (3 tests) is skipped off Linux.
+    expect(readFileSync(join(ROOT, "cli", "statusline.test.ts"), "utf8")).toContain('describe.skipIf(process.platform !== "linux")("runShell stops the whole command"');
+    expect(script).toContain("runShell stops the whole command");
+    expect(budget("Cli")).toBe(2 + 12 + 3 + walkySocketTests.length + 3);
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
     expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");

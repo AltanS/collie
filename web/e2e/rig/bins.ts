@@ -6,7 +6,7 @@
 // the newest `pi` under the nvm versions folder stands, and the old fixed path only after that. A `node_modules/.bin` entry never counts:
 // `bunx` puts every ancestor's one in front of PATH, and a stray pi under the home directory won over
 // the real one (2026-10-22).
-import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
@@ -45,6 +45,8 @@ export function inNvm(name: string, nvmRoot: string = join(HOME, ".config", "nvm
   for (const version of versions.toSorted(newestFirst)) {
     const path = join(nvmRoot, version, "bin", name);
     try {
+      // statSync follows a link, so a dead one throws on every OS (accessSync alone passes it on Windows).
+      if (!statSync(path).isFile()) continue;
       accessSync(path, constants.X_OK);
       return path;
     } catch {

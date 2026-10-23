@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
+import { basename, dirname, join } from "node:path";
+
 import type { JsonObject } from "./json.ts";
 import type { AgentView } from "./types.ts";
 import {
@@ -89,7 +91,7 @@ function memoryFiles(entries: Map<string, [number, string]>): UsageFiles & { rea
       return entries.get(path)?.[1] ?? null;
     },
     list: async (dir: string) =>
-      [...entries.keys()].filter((path) => path.startsWith(`${dir}/`)).map((path) => path.slice(dir.length + 1)),
+      [...entries.keys()].filter((path) => dirname(path) === join(dir)).map((path) => basename(path)),
     remove: async (path: string) => {
       entries.delete(path);
     },
@@ -105,9 +107,11 @@ function pane(session: string | null): AgentView {
 
 describe("UsageTracker", () => {
   const dir = "/state/usage";
+  // The tracker joins with the machine's own separator, so the fake disk's keys do too.
+  const file = (session: string): string => join(dir, usageFileName(session));
 
   it("reads a pane's file by its session, and reads it again only when the mtime moves", async () => {
-    const entries = new Map<string, [number, string]>([[`${dir}/${usageFileName("s1")}`, [NOW, record({ context: 42 })]]]);
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ context: 42 })]]]);
     const files = memoryFiles(entries);
     const tracker = new UsageTracker(dir, files, () => NOW);
     await tracker.refresh([pane("s1"), pane(null)]);
@@ -117,13 +121,13 @@ describe("UsageTracker", () => {
     const reads = files.reads;
     await tracker.refresh([pane("s1")]);
     expect(files.reads).toBe(reads);
-    entries.set(`${dir}/${usageFileName("s1")}`, [NOW + 1, record({ context: 50 })]);
+    entries.set(file("s1"), [NOW + 1, record({ context: 50 })]);
     await tracker.refresh([pane("s1")]);
     expect(tracker.get(pane("s1"))).toEqual({ context: 50 });
   });
 
   it("forgets a session no pane has, and a file that went away", async () => {
-    const path = `${dir}/${usageFileName("s1")}`;
+    const path = file("s1");
     const entries = new Map<string, [number, string]>([[path, [NOW, record({ context: 42 })]]]);
     const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
     await tracker.refresh([pane("s1")]);
@@ -134,8 +138,8 @@ describe("UsageTracker", () => {
 
   it("one mux session's poll keeps the readings of another's panes", async () => {
     const entries = new Map<string, [number, string]>([
-      [`${dir}/${usageFileName("a")}`, [NOW, record({ context: 1 })]],
-      [`${dir}/${usageFileName("b")}`, [NOW, record({ context: 2 })]],
+      [file("a"), [NOW, record({ context: 1 })]],
+      [file("b"), [NOW, record({ context: 2 })]],
     ]);
     const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
     await tracker.refresh([pane("a")], "main");
@@ -149,10 +153,10 @@ describe("UsageTracker", () => {
 
   it("shows each window as the newest any session of the harness reported; the context stays per session", async () => {
     const entries = new Map<string, [number, string]>([
-      [`${dir}/${usageFileName("old")}`, [NOW, record({ at: NOW - 3_600_000, context: 70, limits: [{ window: "5h", used: 10 }, { window: "7d", used: 30 }] })]],
-      [`${dir}/${usageFileName("new")}`, [NOW, record({ at: NOW, context: 5, limits: [{ window: "5h", used: 60 }] })]],
-      [`${dir}/${usageFileName("api")}`, [NOW, record({ at: NOW, context: 9 })]],
-      [`${dir}/${usageFileName("other")}`, [NOW, JSON.stringify({ schemaVersion: 1, harness: "codex", at: NOW + 1, limits: [{ window: "5h", used: 99 }] })]],
+      [file("old"), [NOW, record({ at: NOW - 3_600_000, context: 70, limits: [{ window: "5h", used: 10 }, { window: "7d", used: 30 }] })]],
+      [file("new"), [NOW, record({ at: NOW, context: 5, limits: [{ window: "5h", used: 60 }] })]],
+      [file("api"), [NOW, record({ at: NOW, context: 9 })]],
+      [file("other"), [NOW, JSON.stringify({ schemaVersion: 1, harness: "codex", at: NOW + 1, limits: [{ window: "5h", used: 99 }] })]],
     ]);
     const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
     await tracker.refresh([pane("old"), pane("new"), pane("api"), pane("other")]);
@@ -166,9 +170,9 @@ describe("UsageTracker", () => {
   });
 
   it("removes readings past their age, and leaves files that are not its own", async () => {
-    const old = `${dir}/${usageFileName("old")}`;
-    const fresh = `${dir}/${usageFileName("fresh")}`;
-    const foreign = `${dir}/notes.txt`;
+    const old = file("old");
+    const fresh = file("fresh");
+    const foreign = join(dir, "notes.txt");
     const entries = new Map<string, [number, string]>([
       [old, [NOW - USAGE_MAX_AGE_MS - 1, record({ context: 1 })]],
       [fresh, [NOW, record({ context: 2 })]],
