@@ -59,9 +59,10 @@ export interface QueuedRow {
  *   that hold the texts, each starting on a row `pattern` matches (with the named group `text`).
  * - `transcript: true`: the text itself as a row above the box, a row `pattern` matches whose group
  *   `text` (with the rows it wrapped onto) is the whole text. It counts only when there are more such
- *   rows than on the read the steer key was bound to, and no queued row of the profile holds the text.
+ *   rows than on the read the steer key was bound to, no queued row of the profile holds the text, and
+ *   the box let the text go (it reads empty or holds other text).
  * - neither: a marker row `pattern` matches (no group `text`) above the box, more of them than on the
- *   read the steer key was bound to.
+ *   read the steer key was bound to, and the box let the text go.
  */
 export interface SteerWitness {
   /** A regular expression source for the row. */

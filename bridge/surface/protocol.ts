@@ -51,7 +51,8 @@
 // there. In a turn the text goes in on the queued path (probe, write, S1), then `keys.steerDelayMs`,
 // then the profile's `keys.steer` through the gate instead of the queue key. Reads at 0.4, 1.2 and
 // 2 s after the key decide (a read at 0.1 s is not reliable): the profile's steer witness
-// (`keys.steerWitness`) says `steered`; the queued row with the text says the harness queued it
+// (`keys.steerWitness`) says `steered` (a transcript row or a marker row counts only once the box let
+// the text go: it reads empty or holds other text; a block counts as drawn); the queued row with the text says the harness queued it
 // (`sent`, `queued`); the text still in the box after the last read is `typed_not_submitted`;
 // anything else is `unknown(no_evidence)`. A steer is never held and never joins a pane's held sends.
 //
@@ -606,15 +607,19 @@ function markerRows(snap: Snap, source: string): number {
 
 /**
  * Whether one steer witness ({@link SteerWitness}) holds on a read after the steer key, against the
- * read the key was bound to: a block with the text that was not there before, a transcript row with
- * the text more than before while no queued row holds the text, or more marker rows than before.
+ * read the key was bound to: a block with the text that was not there before; or, only once the box
+ * let the text go (`letGo`: the read found a box that reads empty or holds other text), a transcript
+ * row with the text more than before while no queued row holds the text, or more marker rows than
+ * before. A transcript row alone is not enough: a short text ("ok") is also a line the agent may write,
+ * and a marker alone does not say which text the harness took. With the text still in the box, neither counts.
  */
-function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: string, queuedNow: boolean): boolean {
+function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: string, queuedNow: boolean, letGo: boolean): boolean {
   if (witness.hint !== undefined) {
     const base: QueuedRow = { pattern: witness.pattern, hint: witness.hint, hintGap: witness.hintGap ?? 0 };
     const block: QueuedRow = witness.hintAbove === true ? { ...base, hintAbove: true } : base;
     return showsQueued(after, block, text) && !showsQueued(before, block, text);
   }
+  if (!letGo) return false;
   if (witness.transcript === true) return !queuedNow && transcriptRows(after, witness.pattern, text) > transcriptRows(before, witness.pattern, text);
   return markerRows(after, witness.pattern) > markerRows(before, witness.pattern);
 }
@@ -3703,7 +3708,8 @@ export class SendProtocol {
    * After the steer key (M69): reads at {@link STEER_READS_MS} after it, each asked in order: a dialog
    * at the box (or two reads with no box) ends `unknown(dialog_after_enter)`; the profile's queued row
    * with the text, new since S1, says the harness queued it (the receipt says `sent`, `queued`); one of
-   * the profile's steer witnesses says `steered`. With neither after the last read, the text still in
+   * the profile's steer witnesses says `steered` (a transcript or marker witness only on a read whose
+   * box let the text go, see {@link steerWitnessed}). With neither after the last read, the text still in
    * the box is `typed_not_submitted`, anything else `unknown(no_evidence)`.
    */
   private async awaitSteered(state: RunState, s1: Snap, lines: readonly string[]): Promise<void> {
@@ -3739,7 +3745,10 @@ export class SendProtocol {
         state.queued = true;
         return;
       }
-      if (texts.some((text) => witnesses.some((witness) => steerWitnessed(s1, snap, witness, text, queuedNow)))) {
+      // The box let the text go: found, and it reads empty or holds other text than the one typed.
+      const frame = snap.frame;
+      const letGo = frame !== null && !texts.some((text) => wsFree(boxText(frame)) === wsFree(text));
+      if (texts.some((text) => witnesses.some((witness) => steerWitnessed(s1, snap, witness, text, queuedNow, letGo)))) {
         state.steered = true;
         return;
       }

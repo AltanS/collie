@@ -7122,8 +7122,9 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     /** Each text write and key with the rig's clock when it went in. */
     log: [string, number][];
   }
-  const replay = (typedName: string, after: readonly string[], clock: { now: number }): Replayed => {
-    const typed = capture(typedName);
+  const replay = (typedName: string, after: readonly string[], clock: { now: number }, line = LINE): Replayed => {
+    const lab = capture(typedName);
+    const typed = line === LINE ? lab : inBox(lab, line);
     const pane = new FakePane("generic");
     const log: [string, number][] = [];
     let committed = false;
@@ -7134,9 +7135,9 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     };
     pane.beforeRead = (p) => {
       if (committed) p.fixed = after[Math.min(read++, after.length - 1)]!;
-      else if (p.box === "") p.fixed = inBox(typed, "");
-      else if (p.box === PROBE) p.fixed = inBox(typed, PROBE);
-      else if (p.box === LINE) p.fixed = typed;
+      else if (p.box === "") p.fixed = inBox(lab, "");
+      else if (p.box === PROBE) p.fixed = inBox(lab, PROBE);
+      else if (p.box === line) p.fixed = typed;
       else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
     };
     return { pane, log };
@@ -7148,12 +7149,20 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     after: readonly string[],
     over: Partial<SendRequest> = { when: "steer", fromPhone: true },
     holds?: HoldStore,
+    line = LINE,
   ): Promise<{ answer: SendAnswer } & Replayed & { clock: { now: number } }> => {
     const clock = { now: 1_000_000 };
-    const replayed = replay(typedName, after, clock);
+    const replayed = replay(typedName, after, clock, line);
     const made = rig({ pane: replayed.pane, harness, version, clock, holds });
-    return { answer: await made.send(LINE, over), clock, ...replayed };
+    return { answer: await made.send(line, over), clock, ...replayed };
   };
+  /** The capture with each row whose plain text, trimmed, matches `pick` replaced by `row`. */
+  const swapRow = (screen: string, pick: (plain: string) => boolean, row: string): string =>
+    screen
+      .split("\n")
+      .map((at) => (pick(plainRow(at).trim()) ? row : at))
+      .join("\n");
+  const STEER = { when: "steer", fromPhone: true } as const;
 
   test("pi 1.3.0: Enter after the text; no row at 0.4 s, the Steering row at 1.2 s: steered", async () => {
     const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now"), capture("pi--v130-steer-after")]);
@@ -7192,6 +7201,49 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     const lines = after.split("\n").map((row) => plainRow(row).trimEnd());
     expect(lines.some((row) => row.includes("Backgrounded early"))).toBe(false);
     const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  // A transcript row or a marker counts only once the box let the text go (review before the tag): a
+  // short text is also a line the agent may write, and a marker does not say which text went in.
+  test("OMP, the short text `ok` still in the box while the agent writes the line ` ok`: not steered, typed_not_submitted at the deadline", async () => {
+    const after = swapRow(inBox(capture("omp--v18-6-steer-after-now"), "ok"), (plain) => plain === "- name: null", " ok");
+    expect(after.split("\n").filter((row) => plainRow(row) === " ok")).toHaveLength(1);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "ok");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP, the short text `ok`: the line in the transcript and the box empty: steered", async () => {
+    const after = without(inBox(capture("omp--v18-6-steer-after"), "ok"), ["Backgrounded early to handle an incoming message"]);
+    expect(after.split("\n").filter((row) => plainRow(row).trimEnd() === " ok")).toHaveLength(1);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "ok");
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP: the backgrounded tool while the line is still in the box: not steered, typed_not_submitted", async () => {
+    const marker = capture("omp--v18-6-steer-after")
+      .split("\n")
+      .find((row) => plainRow(row).includes("Backgrounded early to handle an incoming message"))!;
+    const after = swapRow(capture("omp--v18-6-steer-after-now"), (plain) => plain.includes("⟦Timeout: 60s⟧"), marker);
+    expect(after).toContain(LINE);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed" });
+  });
+
+  test("OMP: the backgrounded tool and the box empty, the transcript row not drawn yet: steered", async () => {
+    const after = without(capture("omp--v18-6-steer-after"), [LINE]);
+    expect(after).toContain("Backgrounded early to handle an incoming message");
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  test("pi: the Steering block counts as drawn, the box check does not apply to a block witness", async () => {
+    const typedRows = capture("pi--v130-steer-typed").split("\n");
+    const rows = capture("pi--v130-steer-after").split("\n");
+    const box = rows.findIndex((row, at) => at > 0 && plainRow(rows[at - 1]!).includes("Working") && plainRow(row).trim() === "");
+    expect(box).toBeGreaterThan(0);
+    rows[box] = typedRows.find((row) => plainRow(row).startsWith(LINE))!;
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [rows.join("\n")]);
     expect(answer.receipt?.outcome).toBe("steered");
   });
 
