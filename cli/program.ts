@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
-import { cmdBeaconStatusline, type StatusLineDeps } from "./statusline.ts";
+import { cmdBeaconStatusline, runShell, type StatusLineDeps } from "./statusline.ts";
 import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
 import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
@@ -372,28 +372,14 @@ function beaconDeps(): BeaconEmitDeps {
   };
 }
 
-/**
- * The statusLine wrapper's world. The operator's command runs through `/bin/sh -c`, as a command
- * string is run on POSIX, with the document on its stdin and this process's own stdout and stderr, so
- * its output reaches Claude Code untouched. A signal that ends the wrapper ends the command too:
- * Claude Code cancels a run that a newer one replaces.
- */
+/** The statusLine wrapper's world. The run and its stopping rules live in cli/statusline.ts. */
 function statusLineDeps(): StatusLineDeps {
   return {
     ctx: loadContext(() => {}),
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     uid: process.getuid?.(),
-    run: async (command, input) => {
-      const child = Bun.spawn(["/bin/sh", "-c", command], {
-        stdin: new TextEncoder().encode(input),
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      const stop = (): void => child.kill();
-      for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, stop);
-      return await child.exited;
-    },
+    run: runShell,
   };
 }
 

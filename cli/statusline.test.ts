@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -91,6 +95,18 @@ describe("the settings document", () => {
     expect(wrapStatusLine(once, moved)).toEqual(withLine({ type: "command", command: wrapCommand(moved, OWN) }));
     expect(statusLineBehind(withLine({ type: "command", command: OWN }), BIN)).toBe(true);
     expect(statusLineBehind({}, BIN)).toBe(false);
+  });
+
+  test("leaves a statusLine alone that Claude Code runs another way than `/bin/sh -c`", () => {
+    for (const line of [
+      { type: "command", command: "node", args: ["status.js"] },
+      { type: "command", command: OWN, shell: "powershell" },
+    ]) {
+      const doc = withLine(line);
+      expect(statusLineState(doc).kind).toBe("other");
+      expect(wrapStatusLine(doc, BIN)).toBe(doc);
+      expect(statusLineBehind(doc, BIN)).toBe(false);
+    }
   });
 
   test("unwrap leaves an operator's own command alone", () => {
@@ -186,5 +202,70 @@ describe("collie beacon statusline", () => {
     expect(none.runs).toEqual([]);
     const broken = deps({ runFails: true });
     expect(await cmdBeaconStatusline(broken.d, [token])).toBe(EXIT.FAIL);
+  });
+});
+
+// ── Stopping a run, with real processes ──────────────────────────────────────────────────────────
+//
+// The reviewer's case: a compound command whose first part outlives the shell's signal. Before, the
+// wrapper passed SIGTERM to `/bin/sh` alone, and `sleep` lived on, orphaned, until it finished. Now
+// the signal reaches the whole group, whether the wrapper leads one (as Claude Code starts it) or not.
+
+/** The pids running exactly `sleep <seconds>`: /proc's command line, its arguments NUL-separated. */
+function sleepers(seconds: string): number[] {
+  const want = `sleep\0${seconds}\0`;
+  const pids: number[] = [];
+  for (const entry of readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      if (readFileSync(`/proc/${entry}/cmdline`, "utf8") === want) pids.push(Number(entry));
+    } catch {
+      // Gone between the list and the read.
+    }
+  }
+  return pids;
+}
+
+async function until(check: () => boolean, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (check()) return true;
+    await Bun.sleep(25);
+  }
+  return check();
+}
+
+const RUNNER = join(import.meta.dir, "statusline.ts");
+
+describe.skipIf(process.platform !== "linux")("runShell stops the whole command", () => {
+  for (const leads of [true, false]) {
+    test(`a SIGTERM to the wrapper stops a compound command's grandchild (${leads ? "leads its group" : "in its parent's group"})`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "collie-statusline-"));
+      // A unique sleep length, so the probe finds this run's `sleep` and no other.
+      const marker = `13.${process.pid}${leads ? 1 : 2}`;
+      try {
+        const late = join(dir, "late");
+        const command = `sleep ${marker}; echo late > ${late}`;
+        const script = `import { runShell } from ${JSON.stringify(RUNNER)}; process.exitCode = await runShell(${JSON.stringify(command)}, "{}");`;
+        const wrapper = spawn(process.execPath, ["-e", script], { detached: leads, stdio: "ignore" });
+        expect(await until(() => sleepers(marker).length > 0, 5000)).toBe(true);
+        wrapper.kill("SIGTERM");
+        expect(await until(() => sleepers(marker).length === 0, 3000)).toBe(true);
+        await new Promise((resolve) => (wrapper.exitCode === null && wrapper.signalCode === null ? wrapper.on("exit", resolve) : resolve(null)));
+        // The shell died with the sleep, so the part after it never ran.
+        await Bun.sleep(100);
+        expect(existsSync(late)).toBe(false);
+      } finally {
+        for (const pid of sleepers(marker)) process.kill(pid, "SIGKILL");
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("passes the command's output and exit code through", async () => {
+    const script = `import { runShell } from ${JSON.stringify(RUNNER)}; process.exitCode = await runShell("cat; exit 7", "in");`;
+    const child = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe" });
+    expect(await child.exited).toBe(7);
+    expect(await new Response(child.stdout).text()).toBe("in");
   });
 });

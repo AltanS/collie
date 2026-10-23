@@ -1,4 +1,6 @@
+import { spawn } from "node:child_process";
 import { join } from "node:path";
+import { constants } from "node:os";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -43,7 +45,25 @@ import { EXIT } from "./io.ts";
 //     Outside a multiplexer nothing is written, as the beacon emitter does.
 //  3. Run the operator's command through `/bin/sh -c` with the SAME bytes on stdin and stdout and
 //     stderr inherited, so what Claude Code draws is the command's own output, byte for byte, and the
-//     exit code is the command's own. A command that fails, fails exactly as it did before.
+//     exit code is the command's own. A command that fails, fails exactly as it did before. `/bin/sh`
+//     is what Claude Code itself uses on POSIX: 2.1.309 runs a statusLine through its hook runner
+//     with `shell: true` (read in its bundle on 2026-10-23).
+//
+// ── STOPPING ──────────────────────────────────────────────────────────────────────────────────────
+//
+// Claude Code starts the command `detached`, so the wrapper leads a process group of its own, and it
+// cancels a run that a newer one replaces by signalling that whole GROUP, SIGTERM and then SIGKILL
+// (2.1.309, read in its bundle). So when the wrapper leads its group the shell stays IN it: a group
+// signal reaches the shell and everything it started, even a SIGKILL that leaves the wrapper no
+// chance to forward anything. A shell moved into a group of its own would escape exactly that. A
+// signal sent to the wrapper alone is passed on to the whole group.
+//
+// When the wrapper does NOT lead its group (started by hand, or by some other runner), the shell gets
+// a group of its own, and a signal the wrapper receives goes to that group. Either way a compound
+// command's grandchild (`sleep 13; echo late`) stops with the run, never orphaned.
+//
+// A statusLine with its own `shell` or `args` key is not wrapped (`statusLineState`): Claude Code then
+// runs it some other way than `/bin/sh -c`, and the wrapper would change what the operator sees.
 //
 // The file holds numbers only. No text from the document reaches it.
 
@@ -120,6 +140,8 @@ export function statusLineState(document: JsonObject): StatusLineState {
   if (line === undefined || asJsonString(line.type) !== "command" || command === undefined || command.trim() === "") {
     return { kind: "other" };
   }
+  // The exec form (`args`) and a named shell run another way than `/bin/sh -c`: leave them alone.
+  if (line.args !== undefined || line.shell !== undefined) return { kind: "other" };
   const original = originalOf(command);
   return original === null ? { kind: "plain", command } : { kind: "wrapped", command, original };
 }
@@ -258,4 +280,57 @@ export async function cmdBeaconStatusline(deps: StatusLineDeps, args: readonly s
   } catch {
     return EXIT.FAIL;
   }
+}
+
+/** Whether this process leads its own process group, as Claude Code starts every hook command. */
+function leadsGroup(): boolean {
+  try {
+    process.kill(-process.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The handle {@link startShell} gives back: the exit code to come, and how to stop the run. */
+export interface ShellRun {
+  readonly pid: number | undefined;
+  readonly exited: Promise<number>;
+  stop(signal: NodeJS.Signals): void;
+}
+
+/**
+ * Start `/bin/sh -c command`, `input` on its stdin, stdout and stderr this process's own: in this
+ * process's group when it leads one, else in a group of its own (see STOPPING above). The exit code
+ * is the shell's, or 128 plus the signal that ended it.
+ */
+export function startShell(command: string, input: string): ShellRun {
+  const leader = leadsGroup();
+  const child = spawn("/bin/sh", ["-c", command], { stdio: ["pipe", "inherit", "inherit"], detached: !leader });
+  // A command that never reads stdin closes it early; the write then fails, and that is fine.
+  child.stdin.on("error", () => {});
+  child.stdin.end(input);
+  const exited = new Promise<number>((resolve) => {
+    child.on("error", () => resolve(EXIT.FAIL));
+    child.on("close", (code, signal) => resolve(code ?? 128 + (signal === null ? 0 : (constants.signals[signal] ?? 0))));
+  });
+  const group = leader ? process.pid : child.pid;
+  return {
+    pid: child.pid,
+    exited,
+    stop: (signal) => {
+      try {
+        if (group !== undefined) process.kill(-group, signal);
+      } catch {
+        // Already gone.
+      }
+    },
+  };
+}
+
+/** {@link startShell}, with this process's own stopping signals passed on to the run. */
+export function runShell(command: string, input: string): Promise<number> {
+  const run = startShell(command, input);
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.once(signal, () => run.stop(signal));
+  return run.exited;
 }
