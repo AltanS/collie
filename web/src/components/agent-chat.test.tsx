@@ -4870,3 +4870,56 @@ describe("AgentChat, the newest turn's picture on a pi pane (M39, #292)", () => 
     expect(screen.queryByRole("img", { name: "Terminal graphics" })).toBeNull();
   });
 });
+
+// M68 spec 02: Stop on the belt of a pane with a screen. The rule is `stopFor` (the turn runs and the bridge
+// says a key exists); the first tap arms, the second posts the request id alone and the receipt shows under the box.
+describe("AgentChat: Stop on a pane with a screen", () => {
+  const RUNNING: Surface = { revision: 4, turn: "running", modal: "none", composer: "empty" };
+  const IDLE_SURFACE: Surface = { revision: 4, turn: "idle", modal: "none", composer: "empty" };
+  const stopAgent = (over: Partial<AgentView>): AgentView => ({ ...fixtureAgents[0]!, sendProtocol: true, ...over });
+  const beltStop = () => document.querySelector("[data-slot='belt-stop']");
+
+  function serveStop(receipt: JsonValue) {
+    const posted: JsonValue[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/abort$/, async ({ request }) => {
+        // SAFETY: the phone's own JSON.stringify body is JSON, a JsonValue.
+        posted.push((await request.json()) as JsonValue);
+        return HttpResponse.json(receipt);
+      }),
+    );
+    return posted;
+  }
+
+  it("draws no Stop on an idle pane, or on a running one the bridge has no key for", async () => {
+    renderChat({ agent: stopAgent({ surface: IDLE_SURFACE, canStop: true }) });
+    await screen.findByRole("button", { name: "Pane actions" });
+    expect(beltStop()).toBeNull();
+    cleanup();
+    renderChat({ agent: stopAgent({ surface: RUNNING }) });
+    await screen.findByRole("button", { name: "Pane actions" });
+    expect(beltStop()).toBeNull();
+  });
+
+  it("arms on the first tap, posts one fresh request id on the second and tells the receipt under the box", async () => {
+    const user = userEvent.setup();
+    const posted = serveStop({ requestId: "echo-0001", outcome: "stopped", keys: ["Escape"] });
+    renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
+    await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
+    expect(posted).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({ requestId: expect.stringMatching(/^[A-Za-z0-9_-]{8,64}$/) });
+    expect(await screen.findByText("Stopped.")).toBeInTheDocument();
+  });
+
+  it("tells a refusal in its own words and presses nothing more", async () => {
+    const user = userEvent.setup();
+    const posted = serveStop({ requestId: "echo-0002", outcome: "refused", reason: "draft_present" });
+    renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
+    await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
+    await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
+    expect(await screen.findByText("The box holds your text and this harness's stop key would clear it.")).toBeInTheDocument();
+    expect(posted).toHaveLength(1);
+  });
+});

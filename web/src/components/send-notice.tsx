@@ -4,7 +4,8 @@ import { Check, TriangleAlert } from "lucide-react";
 import { Notice } from "@/components/ui/notice";
 import { capSentence, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
 import { shortHash, type Surface } from "@/lib/surface/surface";
-import { t as translate } from "@/lib/i18n";
+import { t as translate, type MessageKey } from "@/lib/i18n";
+import type { StopReason, StopReceipt } from "@/lib/surface/stop";
 
 // WHAT BECAME OF A SEND, AT THE THUMB (M56 specs 06, 07 and 14). The terminal composer and the
 // composer of a program pane both tell the outcome of a send here, with the same words and the same
@@ -42,6 +43,29 @@ export const READ_THE_SCREEN: ReadonlySet<SendNote> = new Set<SendNote>(["unknow
 /** A sentence the phone itself raised before the bridge was asked (a link that is down, a dialog that owns the keys). */
 export function phoneRefusal(sentence: string, toCard = false): SendRefusal {
   return { sentence, detail: null, toCard, screen: false, tone: "caution" };
+}
+
+/** The sentence of each refusal a Stop can answer (M68), one string key per closed reason. */
+const STOP_REFUSALS = {
+  dialog_open: "belt.stop.receipt.refused.dialogOpen",
+  draft_present: "belt.stop.receipt.refused.draftPresent",
+  no_profile: "belt.stop.receipt.refused.noProfile",
+  turn_idle: "belt.stop.receipt.refused.turnIdle",
+  unreadable: "belt.stop.receipt.refused.unreadable",
+  press_failed: "belt.stop.receipt.refused.pressFailed",
+  pane_gone: "belt.stop.receipt.refused.paneGone",
+} as const satisfies Record<StopReason, MessageKey>;
+
+/**
+ * The notice a Stop's receipt gets under the box, in the box a send's refusal uses (M68 spec 02). `stopped`
+ * is the one calm word. `pressed` and every refusal are cautions: the turn may still run, or nothing was
+ * pressed. A refused Stop behind an open dialog points at the card, where the answer is.
+ */
+export function stopNotice(receipt: StopReceipt): SendRefusal {
+  if (receipt.outcome === "stopped") return { sentence: translate("belt.stop.receipt.stopped"), detail: null, toCard: false, screen: false, tone: "neutral" };
+  if (receipt.outcome === "pressed") return phoneRefusal(translate("belt.stop.receipt.pressed"));
+  const reason = receipt.reason ?? "unreadable";
+  return phoneRefusal(translate(STOP_REFUSALS[reason]), reason === "dialog_open");
 }
 
 /** The notice for an answer that did not send, from the bridge's reading of it. */

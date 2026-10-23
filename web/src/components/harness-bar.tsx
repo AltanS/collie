@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive, Check, Cpu, Ellipsis, Flag, Gauge, History, ListTree, Loader2, Pause, Play, RefreshCw, Search, Send, Shrink, Slash, Square, Star, StickyNote, Wind, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -10,6 +10,7 @@ import type { Hand } from "@/hooks/use-display-prefs";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { ARM_MS } from "@/lib/arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
@@ -421,5 +422,80 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
         );
       })}
     </HarnessSection>
+  );
+}
+
+export interface ScreenStopProps {
+  /** Runs the Stop: the composer posts the abort and shows the receipt under the box. Resolves when the receipt is in. */
+  onStop: () => Promise<void>;
+  /** Bound to the composer's `locked` or `offline`. Greys the button in place. */
+  disabled?: boolean;
+  hand?: Hand;
+}
+
+/**
+ * STOP FOR A PANE WITH A SCREEN (M68 spec 02): one button on the belt's bare ground, drawn only while the
+ * turn runs and the bridge says a key exists (`stopFor`, lib/harness-bar.ts; the caller decides). Collie's
+ * own control, so it stands beside the harness section and not inside it.
+ *
+ * ARM, THEN STOP. The first tap only arms: the word changes to "Stop?" (never the size) and the arm lapses
+ * by itself after ARM_MS. The second tap runs `onStop`. While it is in flight the button shows a spinner,
+ * is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
+ * Stop in `DurableBar`; the two never draw together, because a program pane never carries `canStop`.
+ */
+export function ScreenStop({ onStop, disabled, hand = "right" }: ScreenStopProps) {
+  useLocale();
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flying = useRef(false);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // A button that stops being pressable also stops being armed.
+  useEffect(() => {
+    if (disabled !== true) return;
+    clearTimeout(timer.current);
+    setArmed(false);
+  }, [disabled]);
+
+  async function tap() {
+    if (disabled === true || flying.current) return;
+    if (!armed) {
+      setArmed(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setArmed(false), ARM_MS);
+      return;
+    }
+    clearTimeout(timer.current);
+    setArmed(false);
+    flying.current = true;
+    setBusy(true);
+    try {
+      await onStop();
+    } finally {
+      flying.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      data-slot="belt-stop"
+      aria-busy={busy}
+      disabled={disabled === true || busy}
+      aria-label={translate(armed ? "belt.stopArmedAria" : "belt.stopAria")}
+      onClick={() => void tap()}
+      className={cn(
+        `${STRIP_ROW_PILL} gap-1.5`,
+        armed ? "border border-destructive/40 bg-destructive/10 text-destructive" : "text-foreground",
+        hand === "left" && "[direction:ltr]",
+      )}
+    >
+      {busy ? <Loader2 className={cn(BELT_ICON, "animate-spin")} /> : <Square className={BELT_ICON} />}
+      {translate(armed ? "belt.stopArmed" : "belt.stop")}
+    </Button>
   );
 }
