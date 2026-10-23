@@ -255,7 +255,9 @@ Behavior details for Claude configuration changes:
 - **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
   `statusLine.command`, then run `collie hooks install claude` again. The wrapped command names the
   collie binary by its path, so if that binary moves, the statusLine prints nothing until you run
-  the install again. `collie update` reminds you when the wrapper is missing.
+  the install again. `collie update` reminds you when the wrapper is missing. To try the wrapper by
+  hand, run it outside the multiplexer (`env -u HERDR_PANE_ID -u TMUX_PANE -u ZELLIJ_PANE_ID …`), or
+  it writes a reading into every running bridge.
 - **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
   if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
