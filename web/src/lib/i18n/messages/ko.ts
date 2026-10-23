@@ -1224,7 +1224,7 @@ export const ko: Dictionary = {
   "belt.stopAria": "턴 중지",
   "belt.stopArmedAria": "턴을 중지하려면 다시 탭하세요",
   "belt.stop.receipt.stopped": "중지되었습니다.",
-  "belt.stop.receipt.pressed": "중지 요청을 보냈습니다. 에이전트가 아직 작업 중입니다.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "중지 요청을 보냈습니다. 대화 상자가 열렸습니다. 해당 카드에서 답변하세요.",
   "belt.stop.receipt.refused.dialogOpen": "대화 상자가 열려 있습니다. 먼저 해당 카드에서 답변하세요.",
   "belt.stop.receipt.refused.draftPresent": "상자에 입력한 텍스트가 들어 있으며, 이 하네스의 중지 키를 누르면 해당 텍스트가 지워집니다.",

@@ -1234,7 +1234,7 @@ export const de: Dictionary = {
   "belt.stopAria": "Durchgang stoppen",
   "belt.stopArmedAria": "Tippe erneut, um den Durchgang zu stoppen",
   "belt.stop.receipt.stopped": "Gestoppt.",
-  "belt.stop.receipt.pressed": "Stopp gesendet. Der Agent arbeitet noch.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Stopp gesendet. Ein Dialog wurde geöffnet. Beantworte ihn auf seiner Karte.",
   "belt.stop.receipt.refused.dialogOpen": "Ein Dialog ist geöffnet. Beantworte ihn zuerst auf seiner Karte.",
   "belt.stop.receipt.refused.draftPresent": "Das Feld enthält deinen Text und die Stopp-Taste dieses Harness würde ihn löschen.",

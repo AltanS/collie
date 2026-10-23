@@ -1197,7 +1197,7 @@ export const ru: Dictionary = {
   "belt.stopAria": "Остановить ход",
   "belt.stopArmedAria": "Коснитесь еще раз, чтобы остановить ход",
   "belt.stop.receipt.stopped": "Остановлено.",
-  "belt.stop.receipt.pressed": "Команда остановки отправлена. Агент все еще работает.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Команда остановки отправлена. Открылось диалоговое окно. Ответьте в его карточке.",
   "belt.stop.receipt.refused.dialogOpen": "Диалоговое окно открыто. Сначала ответьте в его карточке.",
   "belt.stop.receipt.refused.draftPresent": "В поле находится ваш текст, и клавиша остановки этого harness очистит его.",

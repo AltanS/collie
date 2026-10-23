@@ -1234,7 +1234,7 @@ export const es: Dictionary = {
   "belt.stopAria": "Detén el turno",
   "belt.stopArmedAria": "Toca de nuevo para detener el turno",
   "belt.stop.receipt.stopped": "Detenido.",
-  "belt.stop.receipt.pressed": "Detener enviado. El agente sigue trabajando.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Detener enviado. Se abrió un cuadro de diálogo. Respóndelo en su tarjeta.",
   "belt.stop.receipt.refused.dialogOpen": "Hay un cuadro de diálogo abierto. Respóndelo primero en su tarjeta.",
   "belt.stop.receipt.refused.draftPresent": "El cuadro contiene tu texto y la tecla de detención de este harness lo borraría.",

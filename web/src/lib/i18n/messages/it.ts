@@ -1134,7 +1134,7 @@ export const it: Dictionary = {
   "belt.stopAria": "Arresta il turno",
   "belt.stopArmedAria": "Tocca di nuovo per arrestare il turno",
   "belt.stop.receipt.stopped": "Arrestato.",
-  "belt.stop.receipt.pressed": "Arresto inviato. L'agente sta ancora lavorando.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Arresto inviato. Si è aperta una finestra di dialogo. Rispondi sulla relativa scheda.",
   "belt.stop.receipt.refused.dialogOpen": "Una finestra di dialogo è aperta. Rispondi prima sulla relativa scheda.",
   "belt.stop.receipt.refused.draftPresent": "La casella contiene il tuo testo e il tasto di arresto di questo harness lo cancellerebbe.",

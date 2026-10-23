@@ -118,8 +118,8 @@ describe("a Stop on a pane with a screen", () => {
     pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
     expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
     expect(pane.keysSeen).toEqual([["Escape"]]);
-    // The first read-back comes after the short gap, and the turn is gone at the first look.
-    expect(sleeps).toEqual([400]);
+    // The turn is gone at the first look (0.4 s) and still gone at the second (1.4 s): two in a row.
+    expect(sleeps).toEqual([400, 1000]);
     expect(lines).toHaveLength(1);
     expect(pokes()).toBe(1);
   });
@@ -132,7 +132,7 @@ describe("a Stop on a pane with a screen", () => {
     expect(sleeps.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(3000);
   });
 
-  test("the turn ends on the second look: `stopped`", async () => {
+  test("the turn ends on the second look and stays ended on the third: `stopped`", async () => {
     const { pane, stop, sleeps } = rig(PI_RUNNING);
     let reads = 0;
     pane.onKeys = (_keys, p) => {
@@ -144,8 +144,28 @@ describe("a Stop on a pane with a screen", () => {
       return base(paneId, request);
     };
     expect((await receipt(await stop("%1", { requestId: ID }))).outcome).toBe("stopped");
-    expect(sleeps).toEqual([400, 1000]);
+    expect(sleeps).toEqual([400, 1000, 1000]);
   });
+
+  // One idle read may be a redraw between two tool calls: `stopped` needs two in a row.
+  for (const [idleAt, name] of [
+    [0, "0.4 s"],
+    [1, "1.4 s"],
+    [2, "2.4 s"],
+  ] as const) {
+    test(`one idle read alone, at ${name}, is \`pressed\`, never \`stopped\``, async () => {
+      const { pane, stop, sleeps } = rig(PI_RUNNING);
+      let pressedAt = -1;
+      pane.onKeys = (_keys, p) => void (pressedAt = p.reads);
+      const base = pane.readGrid;
+      pane.readGrid = (paneId, request) => {
+        if (pressedAt >= 0) pane.screen = pane.reads - pressedAt === idleAt ? PI_IDLE : PI_RUNNING;
+        return base(paneId, request);
+      };
+      expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "pressed", keys: ["Escape"] });
+      expect(sleeps).toEqual([400, 1000, 1000]);
+    });
+  }
 
   test("a dialog opens instead of the turn ending: `pressed`, never `stopped`", async () => {
     const { pane, stop } = rig(PI_RUNNING);

@@ -11,8 +11,9 @@ export interface StopBody {
 }
 
 /**
- * `stopped`: the keys went in and a read within 3 s shows the turn gone and no dialog. `pressed`: the
- * keys went in and the turn still reads running (or the read could not tell). `refused`: no key left.
+ * `stopped`: the keys went in and two reads in a row within 3 s show the turn gone and no dialog.
+ * `pressed`: the keys went in and the read-back did not show that (one idle read alone, a turn that
+ * still reads running, or a read that could not tell). `refused`: no key left.
  */
 export const STOP_OUTCOMES = ["stopped", "pressed", "refused"] as const;
 export type StopOutcome = (typeof STOP_OUTCOMES)[number];

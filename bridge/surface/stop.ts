@@ -13,9 +13,10 @@
 //   reread   one more fresh read right before the press, with the same refusals: a dialog that drew
 //            after the first read is refused, so the only window left is the press itself
 //   press    `keys.interrupt` through the gate as `person_tap`, in one call (opencode names Escape twice)
-//   readback up to three reads, the first 400 ms after the press, then 1 s apart; the turn reads idle
-//            and no modal: `stopped`; else `pressed`, with reason `dialog_open` when the last read shows
-//            a dialog (the key opened one, and its card is the next move)
+//   readback up to three reads, at 0.4 s, 1.4 s and 2.4 s after the press; two reads in a row that show
+//            the turn idle and no modal (0.4 + 1.4, or 1.4 + 2.4): `stopped`, since one idle read may be
+//            a redraw between two tool calls; else `pressed`, with reason `dialog_open` when the last
+//            read shows a dialog (the key opened one, and its card is the next move)
 //
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
@@ -140,10 +141,14 @@ export class StopService {
     if (!sent.ok) return refusal(requestId, "press_failed");
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let opened = false;
+    let idleBefore = false;
     for (let read = 0; read < READ_BACKS; read++) {
       await sleep(read === 0 ? FIRST_GAP_MS : NEXT_GAP_MS);
       const after = await this.look(paneId, harness, match);
-      if (after !== null && after.turn === "idle" && after.modal === "none") return { requestId, outcome: "stopped", keys: pressed };
+      const idle = after !== null && after.turn === "idle" && after.modal === "none";
+      // One idle read may be a redraw between two tool calls: two in a row say the turn ended.
+      if (idle && idleBefore) return { requestId, outcome: "stopped", keys: pressed };
+      idleBefore = idle;
       if (after !== null) opened = after.modal !== "none" && after.modal !== "unknown";
     }
     // The key went in, so the outcome stays `pressed`; a dialog the key opened is told, so the person is sent to its card.

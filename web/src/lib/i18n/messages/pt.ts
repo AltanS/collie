@@ -1133,7 +1133,7 @@ export const pt: Dictionary = {
   "belt.stopAria": "Pare o turno",
   "belt.stopArmedAria": "Toque novamente para parar o turno",
   "belt.stop.receipt.stopped": "Parado.",
-  "belt.stop.receipt.pressed": "Parada enviada. O agente ainda está trabalhando.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Parada enviada. Uma caixa de diálogo foi aberta. Responda no cartão correspondente.",
   "belt.stop.receipt.refused.dialogOpen": "Uma caixa de diálogo está aberta. Responda primeiro no cartão correspondente.",
   "belt.stop.receipt.refused.draftPresent": "A caixa contém seu texto e a tecla de parada deste harness limparia o conteúdo.",

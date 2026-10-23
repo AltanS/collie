@@ -1134,7 +1134,7 @@ export const fr: Dictionary = {
   "belt.stopAria": "Arrêter le tour",
   "belt.stopArmedAria": "Appuyez à nouveau pour arrêter le tour",
   "belt.stop.receipt.stopped": "Arrêté.",
-  "belt.stop.receipt.pressed": "Arrêt envoyé. L'agent travaille toujours.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Arrêt envoyé. Une boîte de dialogue s'est ouverte. Répondez-y sur sa carte.",
   "belt.stop.receipt.refused.dialogOpen": "Une boîte de dialogue est ouverte. Répondez-y d'abord sur sa carte.",
   "belt.stop.receipt.refused.draftPresent": "La zone contient votre texte et la touche d'arrêt de ce harness l'effacerait.",

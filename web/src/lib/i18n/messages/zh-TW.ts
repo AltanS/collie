@@ -1212,7 +1212,7 @@ export const zhTW: Dictionary = {
   "belt.stopAria": "停止此輪對話",
   "belt.stopArmedAria": "再次輕觸以停止此輪對話",
   "belt.stop.receipt.stopped": "已停止。",
-  "belt.stop.receipt.pressed": "已傳送停止指令。代理仍在運作中。",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "已傳送停止指令。對話方塊已開啟。請在其卡片上回答。",
   "belt.stop.receipt.refused.dialogOpen": "A dialog is open. Answer it on its card first.",
   "belt.stop.receipt.refused.draftPresent": "The box holds your text and this harness's stop key would clear it.",

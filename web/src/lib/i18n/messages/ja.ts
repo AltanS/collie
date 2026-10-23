@@ -1226,7 +1226,7 @@ export const ja: Dictionary = {
   "belt.stopAria": "ターンを停止",
   "belt.stopArmedAria": "もう一度タップしてターンを停止します",
   "belt.stop.receipt.stopped": "停止しました。",
-  "belt.stop.receipt.pressed": "停止リクエストを送信しました。エージェントはまだ処理中です。",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "停止リクエストを送信しました。ダイアログが開きました。カード上で回答してください。",
   "belt.stop.receipt.refused.dialogOpen": "ダイアログが開いています。先にカード上で回答してください。",
   "belt.stop.receipt.refused.draftPresent": "入力欄にテキストが残っています。このハーネスの停止キーを押すとテキストが消去されます。",

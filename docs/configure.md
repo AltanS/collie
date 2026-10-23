@@ -255,8 +255,8 @@ three things under the box:
 
 | Receipt | What it means |
 | --- | --- |
-| **Stopped.** | The key went in and the turn is over. The box is free. |
-| **Stop sent. The agent is still working.** | The key went in, but the turn still reads as running. Give it a moment, then tap Stop again if you need to. |
+| **Stopped.** | The key went in, and two reads in a row show the turn over. The box is free. |
+| **Stop sent. The agent still looks busy.** | The key went in, but Collie did not see the turn over on two reads in a row. Give it a moment, then tap Stop again if you need to. |
 | A refusal | Nothing was pressed. The sentence says why. |
 
 If the stop key opened a dialog instead, Collie says so and points you to its card.

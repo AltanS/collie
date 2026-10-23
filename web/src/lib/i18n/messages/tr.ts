@@ -1133,7 +1133,7 @@ export const tr: Dictionary = {
   "belt.stopAria": "Sırayı durdur",
   "belt.stopArmedAria": "Sırayı durdurmak için tekrar dokun",
   "belt.stop.receipt.stopped": "Durduruldu.",
-  "belt.stop.receipt.pressed": "Durdurma gönderildi. Ajan hâlâ çalışıyor.",
+  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
   "belt.stop.receipt.pressedDialog": "Durdurma gönderildi. Bir iletişim kutusu açıldı. Kartında yanıtla.",
   "belt.stop.receipt.refused.dialogOpen": "Bir iletişim kutusu açık. Önce kartında yanıtla.",
   "belt.stop.receipt.refused.draftPresent": "Kutu metninizi tutuyor ve bu harness'in durdurma tuşu onu temizler.",
