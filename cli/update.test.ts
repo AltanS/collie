@@ -76,7 +76,9 @@ import {
   wantsMajor,
   wantsRunId,
   wantsToTag,
+  STATUSLINE_LAG_WORD,
 } from "./update.ts";
+import { STATUSLINE_BEHIND_WORD } from "./hooks.ts";
 
 // The fakes model a POSIX box and every fixture here is spelled that way (`/opt/collie`, `/inst`), but
 // the code under test builds its paths with `join`, which hands back `\opt\collie\cli\main.ts` on
@@ -2371,7 +2373,9 @@ describe("the hooks nudge", () => {
   });
 
   test("names the statusLine wrap when that is the only thing behind, and still names the command", async () => {
-    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE, stdout: "statusline\n" } });
+    // The two spellings of the word are one fact; update.ts keeps its own to stay off hooks.ts.
+    expect(STATUSLINE_LAG_WORD).toBe(STATUSLINE_BEHIND_WORD);
+    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE, stdout: `${STATUSLINE_BEHIND_WORD}\n` } });
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     const out = h.io.stdout.join("\n");
     expect(out).toContain("your settings do not carry the wrapper yet");
