@@ -32,8 +32,9 @@
 // on LOST_STOP_READS reads over LOST_STOP_SPAN_MS, which counts as one lost-Stop incident. A `stop`
 // edge never makes a free: after it, the turn is the screen's claim. A read that shows one of the
 // profile's stopped rows (`idle.stoppedRows`: a turn the person interrupted, which fires no stop hook)
-// on a screen that reads idle with no dialog ends both blocks too, as a stop edge would, once each is
-// older than the settle time; a draft in the box does not keep it open. It is no lost Stop.
+// among the last rows with text above the box, on a screen that reads idle with no dialog, ends both
+// blocks too, as a stop edge would, once each is older than the settle time; a draft in the box does
+// not keep it open. It is no lost Stop.
 //
 // The fold is a reduction: `stepFold` takes one input, `readFold` reads the state. The bridge keeps
 // the state per pane, because a turn and its blocks outlive any short log. `foldSurface` reduces a
@@ -166,19 +167,27 @@ function stepScreen(state: FoldState, input: ScreenInput, context: FoldContext):
 
 /**
  * Whether a read shows that the turn stopped without the harness's stop hook: one of the profile's
- * `idle.stoppedRows` in the volatile band above the box, on a screen that reads the turn idle and no
- * dialog. A new turn draws its prompt row and a running sign under that row, so the screen then reads
- * running and the row ends nothing.
+ * `idle.stoppedRows` among the last rows with text above the box, as many as the volatile band above
+ * it is tall, on a screen that reads the turn idle and no dialog. Blank rows are not counted: a
+ * harness that pins its box to the bottom of the pane (Claude Code's fullscreen TUI) leaves a short
+ * transcript at the top and blank rows down to the box, so the stopped row can stand twenty rows over
+ * it (live rerun 2026-10-23, second pass: a fresh session, Escape on a running Bash call). A new turn
+ * draws its prompt row and a running sign under that row, so the screen then reads running and the
+ * row ends nothing.
  */
 function stoppedOnScreen(input: ScreenInput, read: SurfaceRead, idle: IdleProfile | null): boolean {
   const signs = idle?.stoppedRows;
   const above = read.frame?.volatile.above ?? null;
-  if (signs === undefined || signs.length === 0 || input.rows === null || above === null) return false;
+  const rows = input.rows;
+  if (signs === undefined || signs.length === 0 || rows === null || above === null) return false;
   if (read.surface.turn !== "idle" || read.surface.modal !== "none") return false;
   const patterns = signs.map((source) => new RegExp(source, "u"));
-  for (let i = above.first; i <= above.last; i++) {
-    const text = rowText(input.rows[i]!).trimEnd();
-    if (text.length > 0 && patterns.some((pattern) => pattern.test(text))) return true;
+  let left = above.last - above.first + 1;
+  for (let i = above.last; i >= 0 && left > 0; i--) {
+    const text = rowText(rows[i]!).trimEnd();
+    if (text.length === 0) continue;
+    if (patterns.some((pattern) => pattern.test(text))) return true;
+    left--;
   }
   return false;
 }

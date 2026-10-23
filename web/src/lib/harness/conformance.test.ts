@@ -127,6 +127,9 @@ const NEUTRAL = new Set([
   // `Interrupted · What should Claude do instead?` over an empty box. An ordinary box, no dialog.
   "claude--v2-1-309-interrupted--w120.txt",
   "claude--v2-1-309-permission-denied--w120.txt",
+  // The same in a fresh session under the fullscreen TUI (second live pass), blank rows over the box.
+  "claude--v2-1-309-interrupted-fresh-session--w120.txt",
+  "claude--v2-1-309-permission-denied-fresh-session--w120.txt",
   "claude--v2301-working-quiet--w100.txt",
   // Claude Code 2.1.302 turns with a list, a menu and a "(y/n)" line in the answer above the box (the
   // 2026-10-17 field case): the answer streaming with no spinner, and a running turn over the agents

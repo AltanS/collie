@@ -506,6 +506,22 @@
   }
  },
  {
+  "fixture": "claude--v2-1-309-interrupted-fresh-session--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2-1-309-permission-denied--w120.txt",
   "frame": {
    "top": 15,
@@ -517,6 +533,22 @@
    "status": {
     "first": 18,
     "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-permission-denied-fresh-session--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
    },
    "footer": null
   }

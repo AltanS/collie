@@ -516,7 +516,17 @@
    "version": "2.1.309",
    "state": "idle"
   },
+  "claude--v2-1-309-interrupted-fresh-session--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
   "claude--v2-1-309-permission-denied--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2-1-309-permission-denied-fresh-session--w120.txt": {
    "harness": "claude",
    "version": "2.1.309",
    "state": "idle"

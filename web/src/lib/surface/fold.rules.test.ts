@@ -483,4 +483,39 @@ describe("a turn stopped without its Stop hook (Claude Code 2.1.309, live rerun 
     const { state } = run([prompt(1, 0), screen(2, 5000, rows)]);
     expect(state.running).not.toBeNull();
   });
+
+  // Second live pass (2026-10-23): Collie's own Stop in a fresh session, and a refused permission in
+  // another, kept the turn running 11 to 19 s, until the lost-Stop reads (bridge journal:
+  // `surface.lost-stop pane=w76:p3` at 16:36:16 and 16:38:05). Claude Code's fullscreen TUI pins the
+  // box to the bottom; a short transcript stands at the top with blank rows down to the box, so the
+  // stopped row stood about twenty rows over it, outside the six-row band. Real captures, 120 x 40.
+  const FRESH = fixtureRows("claude--v2-1-309-interrupted-fresh-session--w120.txt");
+  const FRESH_DENIED = fixtureRows("claude--v2-1-309-permission-denied-fresh-session--w120.txt");
+  const rowsOverBox = (rows: ScreenInput["rows"]): number => {
+    const texts = rows!.map((row) => rowText(row));
+    const frame = findInputFrame(rows!, CLAUDE)!;
+    return frame.top - texts.findIndex((text) => text.includes("Interrupted · What should Claude do instead?"));
+  };
+
+  it("a fresh fullscreen session: the stopped row stands far over the box, past blank rows only, and still ends the blocks", () => {
+    expect(rowsOverBox(FRESH)).toBeGreaterThan(CLAUDE.volatile.above.maxRows);
+    expect(rowsOverBox(FRESH_DENIED)).toBeGreaterThan(CLAUDE.volatile.above.maxRows);
+    const escaped = run([prompt(1, 0), screen(2, 2000, FRESH)]);
+    expect(escaped.surface).toEqual({ revision: 2, turn: "idle", modal: "none", composer: "empty" });
+    expect(escaped.state.lostStops).toBe(0);
+    const denied = run([prompt(1, 0), dialog(2, 8000), screen(3, 21_000, FRESH_DENIED)]);
+    expect(denied.surface).toEqual({ revision: 3, turn: "idle", modal: "none", composer: "empty" });
+    expect(denied.state.dialog).toBeNull();
+    expect(denied.state.lostStops).toBe(0);
+  });
+
+  it("the blank rows are not counted, rows with text are: a stopped row under six rows of newer text ends nothing", () => {
+    const texts = INTERRUPTED.map((row) => rowText(row));
+    const at = texts.findLastIndex((text) => text.includes("Interrupted · What should Claude do instead?"));
+    const newer = Array.from({ length: CLAUDE.volatile.above.maxRows }, (_, i) => `  ${String(i + 1)}. a newer line of the transcript`);
+    const buried = plainRows([...texts.slice(0, at + 1), ...newer, ...texts.slice(at + 1)]);
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, buried)]);
+    expect(surface.turn).toBe("running");
+    expect(state.running).not.toBeNull();
+  });
 });

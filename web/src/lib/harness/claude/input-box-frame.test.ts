@@ -114,6 +114,9 @@ describe("parity with the old walk on the real corpus", () => {
     // Claude Code 2.1.309 after Escape and after a refused permission (live rerun 2026-10-23).
     "claude--v2-1-309-interrupted--w120.txt",
     "claude--v2-1-309-permission-denied--w120.txt",
+    // The same in a fresh session under the fullscreen TUI (second live pass).
+    "claude--v2-1-309-interrupted-fresh-session--w120.txt",
+    "claude--v2-1-309-permission-denied-fresh-session--w120.txt",
     "claude--v2301-queued-taken--w100.txt",
     "claude--v2301-spinner-no-timer--w100.txt",
     "claude--v2301-usage-panel-over-box--w40.txt",
