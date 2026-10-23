@@ -2331,6 +2331,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.holdsMask")}
           </p>
         </Collapse>
+        {/* M69: what the plain tap does, and where the other choice is, while a turn runs on a harness
+            that can steer. Only then: a pane without `canSteer` draws nothing here, and a closed
+            Collapse holds no height, so its layout does not move. */}
+        <Collapse open={steerRow && !direct.active}>
+          <p data-slot="composer-steer-hint" className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
+            {translate("composer.steer.hint")}
+          </p>
+        </Collapse>
         {/* ── ONE BOX, ONE ROW: THE FIELD, ATTACH, THE PRIMARY ACTION ──────────────────────
             The field, the attach control and Send used to be three shapes on one line: a
             bordered field with a button tucked into its bottom-right corner, and a round primary
