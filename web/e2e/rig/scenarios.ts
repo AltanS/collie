@@ -29,6 +29,9 @@ export const SCENARIOS = [
   { id: "walky-replaced", title: "18 walky talky: an address of a pane that closed", only: ["claude"] },
   // A slash command onto a draft (the 2026-10-22 field case): the belt's Model, Replace, the picker.
   { id: "belt-model-draft", title: "22 Model from the belt over a draft", only: ["claude"] },
+  // A Stop on a running turn (M68, ADR 0116). The number follows case 22. Cases 23 and 24 (walky cancel and
+  // drop) are on int/edge-4, so this row keeps 25 and the merge keeps the order.
+  { id: "stop-pi", title: "25 Stop a running pi turn", only: ["pi"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },

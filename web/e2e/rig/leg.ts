@@ -322,7 +322,7 @@ export interface TapLog {
 }
 
 // `update/line` is the Release line control's one write (crew case 15): its receipt says `ok`.
-const WATCHED = /\/api\/(ask\/|send$|walky$|update\/line$|pane\/[^/]+\/(keys|reply)$)/;
+const WATCHED = /\/api\/(ask\/|send$|walky$|update\/line$|pane\/[^/]+\/(keys|reply|abort)$)/;
 
 /** Records the bridge's answer to every write the page makes, and the ask ids its snapshots carried. */
 export class TapRecorder {
@@ -413,11 +413,13 @@ export function accepted(answer: Answer): boolean {
   if (answer.path.startsWith("/api/ask/")) return answer.outcome === "sent" || answer.outcome === "effective";
   // A walky talky message the bridge took: logged, typed, or kept in the inbox (lib/walky.ts wasTaken).
   if (answer.path === "/api/walky") return answer.outcome !== null && WALKY_TAKEN.has(answer.outcome);
+  // A Stop (ADR 0116) is taken when its receipt says `stopped`: `pressed` and every refusal are not a stop.
+  if (answer.path.endsWith("/abort")) return answer.outcome === "stopped";
   return answer.outcome === "ok";
 }
 
 export function answerWords(answer: Answer): string {
-  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path === "/api/walky" ? "walky" : answer.path.endsWith("/keys") ? "keys" : "reply";
+  const where = answer.path.startsWith("/api/ask/") ? "ask" : answer.path.startsWith("/api/send") ? "send" : answer.path === "/api/walky" ? "walky" : answer.path.endsWith("/keys") ? "keys" : answer.path.endsWith("/abort") ? "stop" : "reply";
   return `${where} ${String(answer.status)} ${answer.outcome ?? "-"}${answer.reason === null ? "" : ` (${answer.reason})`}`;
 }
 
