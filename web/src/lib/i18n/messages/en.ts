@@ -2765,7 +2765,7 @@ export const en = {
   "walky.sheet.dropAria": "Drop the message from {label}",
   "walky.sheet.alreadyTyped": "Already typed. Nothing to take back.",
   "walky.sheet.notHeld": "Not held. Nothing to take back.",
-  "walky.sheet.elsewhere": "Held on another machine. Take it back there.",
+  "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
   "walky.sheet.takeBackFailed": "Not taken back: {error}",
   "walky.held.mark.one": "{count} message waits for the box to clear",
   "walky.held.mark.other": "{count} messages wait for the box to clear",

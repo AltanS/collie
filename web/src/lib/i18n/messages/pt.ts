@@ -2392,7 +2392,7 @@ export const pt: Dictionary = {
   "walky.sheet.dropAria": "Descartar a mensagem de {label}",
   "walky.sheet.alreadyTyped": "Já digitado. Nada para recuperar.",
   "walky.sheet.notHeld": "Não retido. Nada para recuperar.",
-  "walky.sheet.elsewhere": "Retido em outra máquina. Recupere lá.",
+  "walky.sheet.elsewhere": "Retido em outra máquina. Retome-o lá. Ele não foi cancelado.",
   "walky.sheet.takeBackFailed": "Não recuperado: {error}",
   "walky.held.mark.one": "{count} mensagem aguarda a caixa esvaziar",
   "walky.held.mark.other": "{count} mensagens aguardam a caixa esvaziar",

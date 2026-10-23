@@ -2577,7 +2577,7 @@ export const es: Dictionary = {
   "walky.sheet.dropAria": "Descartar el mensaje de {label}",
   "walky.sheet.alreadyTyped": "Ya se ha escrito. Nada que retirar.",
   "walky.sheet.notHeld": "No retenido. Nada que retirar.",
-  "walky.sheet.elsewhere": "Retenido en otra máquina. Retírelo allí.",
+  "walky.sheet.elsewhere": "Retenido en otra máquina. Recupérelo allí. No está cancelado.",
   "walky.sheet.takeBackFailed": "No se retiró: {error}",
   "walky.held.mark.one": "{count} mensaje espera a que se vacíe el buzón",
   "walky.held.mark.other": "{count} mensajes esperan a que se vacíe el buzón",

@@ -2393,7 +2393,7 @@ export const fr: Dictionary = {
   "walky.sheet.dropAria": "Rejeter le message de {label}",
   "walky.sheet.alreadyTyped": "Déjà saisi. Rien à reprendre.",
   "walky.sheet.notHeld": "Non retenu. Rien à reprendre.",
-  "walky.sheet.elsewhere": "Retenu sur une autre machine. Reprenez-le là-bas.",
+  "walky.sheet.elsewhere": "Retenu sur une autre machine. Reprenez-le là-bas. Il n'est pas annulé.",
   "walky.sheet.takeBackFailed": "Non repris : {error}",
   "walky.held.mark.one": "{count} message attend que la boîte se libère",
   "walky.held.mark.other": "{count} messages attendent que la boîte se libère",

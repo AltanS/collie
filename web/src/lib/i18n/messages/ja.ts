@@ -2561,7 +2561,7 @@ export const ja: Dictionary = {
   "walky.sheet.dropAria": "{label} からのメッセージを破棄",
   "walky.sheet.alreadyTyped": "入力済みです。取り消すものはありません。",
   "walky.sheet.notHeld": "保留されていません。取り消すものはありません。",
-  "walky.sheet.elsewhere": "別のマシンで保留されています。そちらで取り消してください。",
+  "walky.sheet.elsewhere": "別のマシンで保持されています。そのマシンに戻してください。キャンセルされていません。",
   "walky.sheet.takeBackFailed": "取り消されませんでした: {error}",
   "walky.held.mark.one": "{count} 件のメッセージがボックスのクリアを待機しています",
   "walky.held.mark.other": "{count} 件のメッセージがボックスのクリアを待機しています",

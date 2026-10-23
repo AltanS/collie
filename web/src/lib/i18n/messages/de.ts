@@ -2580,7 +2580,7 @@ export const de: Dictionary = {
   "walky.sheet.dropAria": "Nachricht von {label} verwerfen",
   "walky.sheet.alreadyTyped": "Bereits getippt. Nichts zurückzunehmen.",
   "walky.sheet.notHeld": "Nicht gehalten. Nichts zurückzunehmen.",
-  "walky.sheet.elsewhere": "Auf einem anderen Gerät gehalten. Dort zurücknehmen.",
+  "walky.sheet.elsewhere": "Wird auf einem anderen Computer gehalten. Nimm es dort wieder auf. Es ist nicht abgebrochen.",
   "walky.sheet.takeBackFailed": "Nicht zurückgenommen: {error}",
   "walky.held.mark.one": "{count} Nachricht wartet darauf, dass das Feld geleert wird",
   "walky.held.mark.other": "{count} Nachrichten warten darauf, dass das Feld geleert wird",

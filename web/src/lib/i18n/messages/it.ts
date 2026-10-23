@@ -2394,7 +2394,7 @@ export const it: Dictionary = {
   "walky.sheet.dropAria": "Elimina il messaggio da {label}",
   "walky.sheet.alreadyTyped": "Già digitato. Nulla da revocare.",
   "walky.sheet.notHeld": "Non trattenuto. Nulla da revocare.",
-  "walky.sheet.elsewhere": "Trattenuto su un altro dispositivo. Lo revochi da lì.",
+  "walky.sheet.elsewhere": "Trattenuto su un'altra macchina. Lo riprenda da lì. Non è annullato.",
   "walky.sheet.takeBackFailed": "Non revocato: {error}",
   "walky.held.mark.one": "{count} messaggio in attesa che la casella si svuoti",
   "walky.held.mark.other": "{count} messaggi in attesa che la casella si svuoti",

@@ -2392,7 +2392,7 @@ export const tr: Dictionary = {
   "walky.sheet.dropAria": "{label} kaynağından gelen mesajı at",
   "walky.sheet.alreadyTyped": "Zaten yazıldı. Geri alınacak bir şey yok.",
   "walky.sheet.notHeld": "Tutulmuyor. Geri alınacak bir şey yok.",
-  "walky.sheet.elsewhere": "Başka bir makinede tutuluyor. Oradan geri alın.",
+  "walky.sheet.elsewhere": "Başka bir makinede tutuluyor. Oraya geri götürün. İptal edilmedi.",
   "walky.sheet.takeBackFailed": "Geri alınamadı: {error}",
   "walky.held.mark.one": "Kutunun boşalması için {count} mesaj bekliyor",
   "walky.held.mark.other": "Kutunun boşalması için {count} mesaj bekliyor",

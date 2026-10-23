@@ -2542,7 +2542,7 @@ export const zh: Dictionary = {
   "walky.sheet.dropAria": "丢弃来自 {label} 的消息",
   "walky.sheet.alreadyTyped": "已输入完成。无需撤回。",
   "walky.sheet.notHeld": "未被暂留。无需撤回。",
-  "walky.sheet.elsewhere": "Held on another machine. Take it back there.",
+  "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
   "walky.sheet.takeBackFailed": "未撤回：{error}",
   "walky.held.mark.one": "{count} message waits for the box to clear",
   "walky.held.mark.other": "{count} messages wait for the box to clear",

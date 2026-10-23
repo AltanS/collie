@@ -2536,7 +2536,7 @@ export const zhTW: Dictionary = {
   "walky.sheet.dropAria": "捨棄來自 {label} 的訊息",
   "walky.sheet.alreadyTyped": "已輸入完成，無法收回。",
   "walky.sheet.notHeld": "未暫留，無法收回。",
-  "walky.sheet.elsewhere": "Held on another machine. Take it back there.",
+  "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
   "walky.sheet.takeBackFailed": "未收回：{error}",
   "walky.held.mark.one": "有 {count} 則訊息正在等待對話框清空",
   "walky.held.mark.other": "有 {count} 則訊息正在等待對話框清空",

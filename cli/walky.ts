@@ -463,7 +463,7 @@ export function takeBackLine(result: string, receipt: WalkyReceipt, withTarget: 
     case "not held":
       return `${withTarget ? `${shown(receipt.target)}: ` : ""}not held, nothing to take back (${stateWords(receipt)})`;
     case "elsewhere":
-      return `${withTarget ? `${shown(receipt.target)}: ` : ""}held on another machine: run this on that machine, or drop it from the phone on that pane`;
+      return `${withTarget ? `${shown(receipt.target)}: ` : ""}held on another machine: run this on that machine, or drop it from the phone on that pane. It is not cancelled`;
     default:
       return words;
   }

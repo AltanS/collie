@@ -2554,7 +2554,7 @@ export const ko: Dictionary = {
   "walky.sheet.dropAria": "{label}의 메시지 삭제",
   "walky.sheet.alreadyTyped": "이미 입력했습니다. 회수할 내용이 없습니다.",
   "walky.sheet.notHeld": "보류되지 않았습니다. 회수할 내용이 없습니다.",
-  "walky.sheet.elsewhere": "다른 기기에서 보류 중입니다. 해당 기기에서 회수하십시오.",
+  "walky.sheet.elsewhere": "다른 머신에서 보류 중입니다. 해당 머신으로 다시 가져가십시오. 취소되지 않았습니다.",
   "walky.sheet.takeBackFailed": "회수되지 않음: {error}",
   "walky.held.mark.one": "상자가 비워지기를 기다리는 메시지 {count}개",
   "walky.held.mark.other": "상자가 비워지기를 기다리는 메시지 {count}개",

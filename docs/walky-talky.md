@@ -188,7 +188,7 @@ held. The owner of the target pane sees "1 message waits for the box to clear" a
 opens the Messages sheet, where each held message has Drop. Either way the message stays in the
 inbox, not typed, and the receipt reads `cancelled by sender` or `dropped by the pane's owner`. A
 message that was already typed cannot be taken back; the answer says so, and the receipt stands. Only
-the sender can cancel. On a crew, a message held on another machine is taken back on that machine.
+the sender can cancel. On a crew, a message held on another machine is taken back on that machine. It is not cancelled.
 
 Two messages to one pane are typed one after the other, never into each other. The second waits
 while the first is typed, and its receipt stays "queued". A message that still waits after 2
