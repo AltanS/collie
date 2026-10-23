@@ -71,6 +71,7 @@
     "interrupt": [
       "Escape"
     ],
+    "interruptClearsDraft": true,
     "clear": {
       "key": "Backspace",
       "slack": 16

@@ -443,6 +443,12 @@ export interface Profile {
     readonly commandSubmit?: readonly string[];
     readonly newline: readonly string[];
     readonly interrupt: readonly string[];
+    /**
+     * True when the interrupt key clears a draft in the box before it stops the turn (Ctrl+C in Grok,
+     * Muse, Hermes and Cursor). A Stop on such a pane with a draft in the box is refused `draft_present`.
+     * Optional: absent means the key leaves a draft alone.
+     */
+    readonly interruptClearsDraft?: boolean;
     /** One `key` press per typed character, plus `slack` more. Never Escape. */
     readonly clear: { readonly key: string; readonly slack: number };
     readonly navigation: {
@@ -1023,6 +1029,10 @@ export function parseProfile(raw: JsonValue): Profile {
     },
   };
   let keys: Profile["keys"] = Object.keys(platformSubmit.byPlatform).length === 0 ? baseKeys : { ...baseKeys, submitByPlatform: platformSubmit.byPlatform };
+  if (keysNode.interruptClearsDraft !== undefined) {
+    if (keysNode.interruptClearsDraft !== true && keysNode.interruptClearsDraft !== false) fail("keys.interruptClearsDraft", "must be true or false");
+    keys = { ...keys, interruptClearsDraft: keysNode.interruptClearsDraft };
+  }
   if (keysNode.enterWhileRunning !== undefined) {
     keys = { ...keys, enterWhileRunning: oneOf(keysNode.enterWhileRunning, "keys.enterWhileRunning", ENTER_MODES) };
   }

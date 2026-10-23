@@ -76,6 +76,7 @@
       "ctrl+j"
     ],
     "interrupt": [
+      "Escape",
       "Escape"
     ],
     "clear": {

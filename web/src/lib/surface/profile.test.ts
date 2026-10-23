@@ -763,6 +763,23 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true]);
   });
 
+  it("takes keys.interruptClearsDraft as a boolean and nothing else (M68 spec 01)", () => {
+    expect(parseProfile(rawClaude()).keys.interruptClearsDraft).toBeUndefined();
+    expect(parseProfile(change(rawClaude(), ["keys", "interruptClearsDraft"], true)).keys.interruptClearsDraft).toBe(true);
+    expect(parseProfile(change(rawClaude(), ["keys", "interruptClearsDraft"], false)).keys.interruptClearsDraft).toBe(false);
+    expect(failure(change(rawClaude(), ["keys", "interruptClearsDraft"], "yes")).path).toBe("keys.interruptClearsDraft");
+    expect(failure(change(rawClaude(), ["keys", "interruptClearsDraft"], 1)).path).toBe("keys.interruptClearsDraft");
+  });
+
+  it("names the profiles whose interrupt key clears a draft first, and the keys each one presses (M68 spec 01)", () => {
+    const clears = [...loadProfiles().values()].filter((profile) => profile.keys.interruptClearsDraft === true).map((profile) => profile.id);
+    expect(clears.toSorted()).toEqual(["cursor", "grok", "hermes", "muse"]);
+    // Claude Code's Esc does not clear a draft.
+    expect(loadProfiles().get("claude")?.keys.interruptClearsDraft).toBeUndefined();
+    // opencode needs Esc twice within 5 s (vendor doc: the first shows "again to interrupt"), so the gate presses both.
+    expect(loadProfiles().get("opencode")?.keys.interrupt).toEqual(["Escape", "Escape"]);
+  });
+
   it("names the alternate frame shape in the path of a bad field", () => {
     const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
     expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
