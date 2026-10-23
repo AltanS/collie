@@ -247,6 +247,13 @@ export interface AgentView {
    */
   sendProtocol?: true;
   /**
+   * Mirrors `PaneWire.canSteer` (M69): a send on this pane may steer the running turn (`when: "steer"`
+   * on `POST /api/send`). The composer offers Steer on the Send button's long press only when this is
+   * true and the turn reads running. Absent from an older bridge, on a durable pane and on a harness
+   * Collie cannot steer.
+   */
+  canSteer?: boolean;
+  /**
    * Mirrors `PaneWire.held` (M56 spec 15): the pane's held sends, oldest first. The composer draws one
    * queued row per entry, with the text and Cancel (Resend on an ended one).
    */

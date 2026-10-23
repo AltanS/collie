@@ -367,6 +367,10 @@ const PANE_WIRE_KEYS = {
   // (COLLIE_SEND_PROTOCOL=0 turns text sending off), but a pane carries it only when its session runtime
   // has a Send Protocol, and this harness builds none, so it is absent here and no golden byte moved.
   sendProtocol: true,
+  // Not a crew dimension: whether a send may steer the pane's turn (M69). It rides with `sendProtocol`
+  // only, on a pane whose Surface shadow reads a harness Collie may steer, and this harness builds no
+  // Send Protocol, so it is absent here and no golden byte moved.
+  canSteer: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15). They ride with `sendProtocol` and only
   // when a send is held, and this harness builds no Send Protocol, so no golden byte moved.
   held: true,
@@ -499,6 +503,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "asks",
       "badge",
       "cache",
+      "canSteer",
       "cwd",
       "effort",
       "focused",

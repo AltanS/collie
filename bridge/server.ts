@@ -1637,7 +1637,9 @@ export function startServer(opts: {
       // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
       const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
       const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
-      return held.length === 0 ? { ...withHold, sendProtocol: true as const } : { ...withHold, sendProtocol: true as const, held: shown };
+      // M69: a pane the phone may steer says so (paneCanSteer).
+      const marked: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      return held.length === 0 ? marked : { ...marked, held: shown };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
@@ -7757,6 +7759,15 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
  * profile. A screenless pane refuses it the way it refuses the raw reply. Every outcome is a 200 with
  * the answer; a malformed body is a 400. One audit line per request, with the outcome and never the text.
  */
+/**
+ * Whether a pane's view says `canSteer` (M69): a screen session that runs the Send Protocol, whose
+ * Surface shadow reads the pane's harness as one it may steer ({@link SurfaceShadow.canSteer}). A
+ * program session (a durable pane, its own `driver`) never steers. Exported for its test.
+ */
+export function paneCanSteer(from: { readonly send?: unknown; readonly driver?: unknown; readonly surface?: Pick<SurfaceShadow, "canSteer"> }, paneId: string): boolean {
+  return from.driver === undefined && from.send !== undefined && from.surface?.canSteer(paneId) === true;
+}
+
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface SendRouteRuntime {
   readonly send?: SendProtocol;
