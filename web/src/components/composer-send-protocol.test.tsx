@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { loadDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
-import { clearStatus } from "@/lib/status";
+import { clearStatus, useStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
@@ -222,5 +222,120 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(sends).toEqual([]);
+  });
+});
+
+// M69 spec 03: while the turn runs on a pane whose bridge says `canSteer`, the Send button's long-press
+// menu offers Steer above "Send as message", and the hint under the box names both gestures.
+describe("Steer or queue on the Send button (M69)", () => {
+  const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  const HINT = "Send queues it for after the turn. Hold Send to steer.";
+  const STEER = "Steer: the agent reads it now";
+
+  /** The header status line, where a verified send leaves its words. */
+  function StatusProbe() {
+    return <div data-testid="status">{useStatus()?.text ?? ""}</div>;
+  }
+  const status = () => screen.getByTestId("status").textContent ?? "";
+  function renderSteer(overrides: Partial<ComponentProps<typeof Composer>>) {
+    render(<StatusProbe />);
+    return renderComposer(overrides);
+  }
+
+  async function openMenu(user: ReturnType<typeof userEvent.setup>, text: string) {
+    await user.type(screen.getByPlaceholderText(/type a reply/i), text);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+  }
+
+  it("offers the row and the hint while the turn runs on a pane that can steer, above Send as message", async () => {
+    const user = userEvent.setup();
+    renderSteer({ surface: running, canSteer: true });
+    expect(screen.getByText(HINT)).toBeInTheDocument();
+    await openMenu(user, "look at the logs");
+    const steer = await screen.findByRole("button", { name: STEER });
+    const message = screen.getByRole("button", { name: "Send as message" });
+    expect(steer.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("offers neither row nor hint on an idle pane, even one that can steer", async () => {
+    const user = userEvent.setup();
+    renderSteer({ canSteer: true });
+    expect(screen.queryByText(HINT)).toBeNull();
+    await openMenu(user, "hello");
+    expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+  });
+
+  it("offers neither row nor hint while the turn runs on a pane that cannot steer", async () => {
+    const user = userEvent.setup();
+    renderSteer({ surface: running });
+    expect(screen.queryByText(HINT)).toBeNull();
+    await openMenu(user, "hello");
+    expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+  });
+
+  it("the row sends when: steer, says Steered, and clears the draft; the plain tap sends no when", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("steered"), offers: [] } },
+      { body: { receipt: { ...receipt("sent"), queued: true }, offers: [] } },
+    ]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "use the other table");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ pane: "w1:p1", text: "use the other table", mode: "send", when: "steer" });
+    await waitFor(() => expect(status()).toBe("Steered: the agent takes it after its current step."));
+    await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "and then stop");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).not.toHaveProperty("when");
+    expect(sends[1]!.id).not.toBe(sends[0]!.id);
+  });
+
+  it("a steer the harness queued reads Queued instead", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([{ body: { receipt: { ...receipt("sent"), queued: true }, offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await waitFor(() => expect(status()).toBe("Queued instead: the agent kept it for after the turn."));
+    await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
+  });
+
+  it("steer_unsupported says nothing was sent and keeps the draft", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "steer_unsupported"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(await screen.findByText(/Steer is not available on this pane\. Nothing was sent\./)).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBe("change course");
+  });
+
+  it("steer_not_allowed says only a person at the phone can steer and keeps the draft", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "steer_not_allowed"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(await screen.findByText(/Only a person at the phone can steer\./)).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBe("change course");
+  });
+
+  it("a destructive line keeps the steer across the Really send? confirm", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([{ body: { receipt: receipt("steered"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "rm -rf build");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(sends).toHaveLength(0);
+    await user.click(await screen.findByRole("button", { name: "Really send?" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "rm -rf build", when: "steer" });
   });
 });
