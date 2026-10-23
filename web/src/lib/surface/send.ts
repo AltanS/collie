@@ -17,7 +17,7 @@ import { modalWord, type Surface, type SurfaceReason } from "./surface";
  * ends like any other send, or `expired` (nobody could send it within 30 minutes; the text is kept for
  * a Resend), or `cancelled` (the person took it back before it went out).
  */
-export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled"] as const;
+export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled", "steered"] as const;
 export type SendOutcome = (typeof SEND_OUTCOMES)[number];
 
 /**
@@ -58,6 +58,10 @@ export const SEND_REASONS = [
   // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
   // have taken the Enter, so the person checks the card before answering it
   "dialog_after_enter",
+  // refused: a steer (`when: "steer"`, M69) on a pane whose profile has no steer key or whose screen is
+  // not one Collie trusts, or from anything but a person at the phone; nothing was sent
+  "steer_unsupported",
+  "steer_not_allowed",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 

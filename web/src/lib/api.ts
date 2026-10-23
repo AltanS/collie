@@ -1493,7 +1493,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
     : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
-  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  if (reply.outcome === "sent" || reply.outcome === "effective" || reply.outcome === "steered") stampSend(body.pane);
   return reply;
 }
 

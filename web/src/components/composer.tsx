@@ -33,7 +33,7 @@ import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
-import { offerMode } from "@/lib/send-protocol";
+import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
@@ -100,6 +100,22 @@ import { NoEchoNotice } from "@/components/no-echo-notice";
 import type { TranscriptEntry } from "@/lib/types";
 import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
+
+/** The status line a verified send leaves, by where the text went. */
+const STATUS_KEY = {
+  sent: "composer.status.sent",
+  queued: "composer.protocol.queued",
+  held: "composer.protocol.held",
+  steered: "sendReceipts.outcome.steered",
+  queuedInstead: "composer.steer.queuedInstead",
+} as const;
+
+/** What a cleared reading tells the status line; a steer the harness queued says so (M69). */
+function verifiedNote(note: SendNote, when: SendWhen | undefined): keyof typeof STATUS_KEY {
+  if (note === "steered" || note === "held") return note;
+  if (note === "queued") return when === "steer" ? "queuedInstead" : "queued";
+  return "sent";
+}
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -1290,7 +1306,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // mark flashes, the pill says sent, the preview keeps the text.
   // `note` says where the text went: out (`sent`), into the harness's own queue (`queued`), or into the
   // bridge's held row above the box (`held`), which is not a send yet and so leaves no "You sent" preview.
-  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" = "sent") {
+  function afterVerifiedSend(t: string, isDraft: boolean, note: "sent" | "queued" | "held" | "steered" | "queuedInstead" = "sent") {
     // The bridge has a new line now (a shell pane only: the read is off elsewhere).
     suggestions.refresh();
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
@@ -1318,7 +1334,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     // A send that went in while the agent worked waits for the turn's end: the status line says so,
     // in the place "Sent" stands, never as a refusal.
-    setStatus(translate(note === "held" ? "composer.protocol.held" : note === "queued" ? "composer.protocol.queued" : "composer.status.sent"), "success");
+    // A steer (M69) has two more words: `steered`, and `queuedInstead` when the harness queued the text
+    // the person asked to steer with. A steer never leaves a plain "Sent" behind that says neither.
+    setStatus(translate(STATUS_KEY[note]), "success");
     if (note !== "held") {
       const preview = t.length > 60 ? `${t.slice(0, 57)}…` : t;
       setLastSent(preview);
@@ -1398,7 +1416,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const { reply, reading } = res;
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(resend?.shown ?? t, isDraft, reading.note === "queued" || reading.note === "held" ? reading.note : "sent");
+        afterVerifiedSend(resend?.shown ?? t, isDraft, verifiedNote(reading.note, when));
         return true;
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
