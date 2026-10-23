@@ -269,7 +269,7 @@ const AGY: readonly AgentCommand[] = [
   // (automation, generative_ui, run-workflow, …), but its default agent does not offer them there.
   { command: "/agy-customizations", description: "Guide to Antigravity's customization system", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/antigravity-guide", description: "Guide, quick reference and sitemap for Antigravity", takesArg: false, argHint: "", common: false, dangerous: false },
-  { command: "/plugin", description: "Manage, discover, install, enable and disable plugins", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/plugin", description: "Manage, discover, install, enable and disable plugins", takesArg: false, argHint: "", common: false, dangerous: true },
 ];
 
 // ── Grok ─────────────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ const GROK: readonly AgentCommand[] = [
   { command: "/resume-codex", description: "Continue from a recent Codex session", takesArg: true, argHint: "[words or session id]", common: false, dangerous: false },
   { command: "/resume-cursor", description: "Continue from a recent Cursor session", takesArg: true, argHint: "[words or session id]", common: false, dangerous: false },
   { command: "/skill-design-principles", description: "Principles for writing and editing skills", takesArg: false, argHint: "", common: false, dangerous: false },
-  { command: "/statusline", description: "Configure the Grok Build status line", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/statusline", description: "Configure the Grok Build status line", takesArg: false, argHint: "", common: false, dangerous: true },
   { command: "/threejs-frame-conventions", description: "One frame for Three.js controls, camera and movement", takesArg: false, argHint: "", common: false, dangerous: false },
 ];
 
@@ -371,7 +371,7 @@ const MUSE: readonly AgentCommand[] = [
   { command: "/doctor", description: "Diagnose Muse Code product and runtime issues", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/grill", description: "Decision interview, each decision recorded in project docs", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/import", description: "Import a Claude Code, Codex, or Grok session", takesArg: true, argHint: "<session-id-or-path>", common: false, dangerous: false },
-  { command: "/manage-settings", description: "Read or change a Muse Code setting", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/manage-settings", description: "Read or change a Muse Code setting", takesArg: false, argHint: "", common: false, dangerous: true },
   { command: "/migrate", description: "Bring Claude Code or Codex memory and MCP servers into Muse", takesArg: true, argHint: "[memory|mcp] [claude|codex]", common: false, dangerous: false },
   { command: "/plan", description: "Research first, then write a plan", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/resume-claude", description: "Continue a Claude Code session here", takesArg: true, argHint: "[session-id-or-log-path]", common: false, dangerous: false },

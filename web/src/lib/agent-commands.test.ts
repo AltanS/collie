@@ -47,6 +47,14 @@ describe("commandsFor", () => {
     expect(cmds.find((c) => c.command === "/always-approve")?.dangerous).toBe(true);
   });
 
+  it("asks first on the rows that change a harness configuration, like /logout", () => {
+    const dangerous = (agent: string, command: string): boolean | undefined => commandsFor(agent).find((c) => c.command === command)?.dangerous;
+    expect(dangerous("agy", "/plugin")).toBe(true);
+    expect(dangerous("grok", "/statusline")).toBe(true);
+    expect(dangerous("muse", "/manage-settings")).toBe(true);
+    expect(dangerous("claude", "/logout")).toBe(true);
+  });
+
   it("returns the Muse catalog for 'muse'", () => {
     const cmds = commandsFor("muse");
     // Muse 1.4.7 completes /mod to /model only; its configuration doc's /models does not exist.
