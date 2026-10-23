@@ -4458,6 +4458,32 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");
   });
 
+  test("a steer while a held command waits runs now, ahead of it, and the held command still goes after the turn (M69)", async () => {
+    const r = await piHeldCommand("held-pi-03");
+    r.pane.inTurn = true;
+    // pi draws a steer as `Steering: <text>` over its edit hint (lab, pi 1.3.0, 2026-10-23).
+    const press = r.pane.writeKeys;
+    r.pane.writeKeys = async (paneId, keys) => {
+      const before = r.pane.steered.length;
+      const ack = await press(paneId, keys);
+      for (const text of r.pane.steered.slice(before)) r.pane.transcript.push(`Steering: ${text}`, "↳ Alt+Up to edit all queued messages");
+      return ack;
+    };
+    const steer = await r.send("also say hello at the end", { id: "steer-pi-03", when: "steer", fromPhone: true });
+    expect(steer.receipt).toMatchObject({ requestId: "steer-pi-03", outcome: "steered" });
+    expect(steer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.pane.steered).toEqual(["also say hello at the end"]);
+    expect(r.holds.get("held-pi-03")?.state).toBe("held");
+    expect(r.holds.get("steer-pi-03")).toBeNull();
+    // The turn runs on a poll, then ends: the held command goes after it, as before the steer.
+    expect(await tick(r, RUNNING)).toEqual([]);
+    r.pane.inTurn = false;
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-pi-03", outcome: "sent" });
+    expect(released?.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.holds.list()).toEqual([]);
+  });
+
   test("a held command on a pane whose version was not read waits for a polled turn too; a held text there keeps the quiet path", async () => {
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
@@ -7306,6 +7332,30 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     expect(pane.readsSeen).toBe(0);
     expect(holds.list()).toEqual([]);
   });
+
+  // The S1-idle fallback (review before the tag): S0 read the turn running, the turn ended while the
+  // text went in, so the steer goes as the plain send S0's read put it on. On pi and Codex the key of
+  // that path is the profile's queue key, which is also its submit key: read from the profile here.
+  for (const [harness, version] of [["pi", "0.87.1"], ["codex", "0.164.0"]] as const) {
+    test(`${harness}: the turn ends while the text goes in: the steer presses keys.submit, the profile's queue key, and says sent`, async () => {
+      const keys = loadProfiles().get(harness)!.keys;
+      expect(keys.queueKey).toBeDefined();
+      expect([keys.queueKey]).toEqual([...keys.submit]);
+      const pane = harness === "pi" ? new PiPane(keys.queueKey!) : new FakePane("codex");
+      if (pane instanceof PiPane) pane.inTurn = true;
+      else pane.over = ["• Working (4s • esc to interrupt)"];
+      pane.afterInput = (p, what) => {
+        if (!what.startsWith("paste:") && !what.startsWith("type:")) return;
+        if (what === `paste:${PROBE}` || what === `type:${PROBE}`) return;
+        if (p instanceof PiPane) p.inTurn = false;
+        else p.over = [];
+      };
+      const answer = await rig({ pane, harness, version }).send(LINE, { when: "steer", fromPhone: true });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe(keys.submit[0]);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  }
 
   test("a steer refused at S0 is never held, even with a hold queue", async () => {
     const holds = new HoldStore(join(dir, "held-steer"), () => 1_000_000);

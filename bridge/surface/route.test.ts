@@ -314,6 +314,28 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
     }
   });
 
+  test("the reply route and /api/send set fromPhone; a body cannot (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const seen = spyHandle(rt);
+      const { audit } = auditLines();
+      // /api/send is the phone's route: fromPhone, whatever the body says.
+      await sendRoute(rt, { id: "route-phone-0001", pane: "%1", text: "from the phone", fromPhone: false }, context(audit));
+      // The reply route with the phone's request id: fromPhone.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with an id", submit: true, id: "route-phone-0002" }, context(audit));
+      // The reply route with no id is not the phone: a body that says fromPhone does not make it so.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with no id", submit: true, fromPhone: true }, context(audit));
+      expect(seen.map((request) => [request.text, request.fromPhone])).toEqual([
+        ["from the phone", true],
+        ["a reply with an id", true],
+        ["a reply with no id", undefined],
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("with the protocol off a submitting reply is refused 409 and nothing is typed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
