@@ -200,7 +200,8 @@
     "queuedRow": {
       "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
-      "hintGap": 0
+      "hintGap": 0,
+      "header": "^\\s*After yield · \\d+\\s*$"
     },
     "steer": [
       "Enter"
@@ -212,6 +213,12 @@
       {
         "pattern": "^ (?<text>\\S.*?)\\s*$",
         "transcript": true
+      },
+      {
+        "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
+        "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
+        "hintGap": 0,
+        "header": "^\\s*Steering · \\d+\\s*$"
       }
     ]
   },

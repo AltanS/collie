@@ -6732,7 +6732,8 @@ describe("omp 18.11's box composer (issue 497)", () => {
     };
     pane.afterInput = (p, what) => {
       if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
-      if (options.running === true) above.push(`  1. ${taken}`, "  └ Alt+↑ to edit");
+      // OMP's queue block, header first (omp--v18-6-queue-after): the queued row reads only under it.
+      if (options.running === true) above.push(" After yield · 1", `   1. ${taken}`, "   └ Alt+↑ to edit");
       else above.push(` ${taken.replace(/\n/gu, " ")}`, "");
       taken = null;
       p.box = "";
@@ -7268,6 +7269,38 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [capture("omp--v18-6-steer-after-now"), capture("omp--v18-6-steer-after")]);
     expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  // Live rerun 2026-10-23: a steer while OMP streams waits for the next step in a block `Steering · 1`
+  // / `1. <line>` / `└ Alt+↑ to edit`, the rows and hint of OMP's queue under another header. The
+  // queued row read the block without its header, so the receipt said sent and queued ("Queued
+  // instead") although OMP steered.
+  test("OMP 18.6.1: the `Steering · 1` block over the line: steered, not queued", async () => {
+    const after = capture("omp--v18-6-steer-pending-block");
+    expect(after.split("\n").map((row) => plainRow(row).trim())).toEqual(expect.arrayContaining(["Steering · 1", "1. say banana", "└ Alt+↑ to edit"]));
+    const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "say banana");
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("OMP 18.6.1: the queue's `After yield · 1` block after a steer key: sent, queued", async () => {
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [capture("omp--v18-6-queue-after-now"), capture("omp--v18-6-queue-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP 18.6.1 without a steer: the queue key, `After yield · 1` over the line: sent, queued", async () => {
+    const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [capture("omp--v18-6-queue-after-now"), capture("omp--v18-6-queue-after")], {});
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("OMP: the queue's rows and hint under no header are neither queued nor a steer block", async () => {
+    const after = without(capture("omp--v18-6-queue-after"), ["After yield"]);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [after]);
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.receipt?.outcome).not.toBe("steered");
   });
 
   test("OMP: the line in the transcript alone, with no backgrounded tool, is a steer too", async () => {

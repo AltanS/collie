@@ -3050,3 +3050,4 @@ a path of the same length (OMP's shortened `…che/collie-lab/edge5fix-lab` beca
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `pi--v130-steer-after-queued--w120.txt` | `running` | A slow bash call runs; `ok` was queued with Alt+Enter, then `say banana` sent with Enter. pi draws `Steering: say banana`, then `Follow-up: ok`, then `↳ Alt+Up to edit all queued messages`: the queued row stands between the Steering row and the hint |
+| `omp--v18-6-steer-pending-block--w120.txt` | `running` | OMP streams a long plain-text answer (no tool runs); `say banana` sent with Enter waits for the next step in a block `Steering · 1` / `1. say banana` / `└ Alt+↑ to edit` over the spinner row. The queue draws the same rows and hint under `After yield · 1` (`omp--v18-6-queue-after`): only the header tells them apart. Taken while streaming, not during a tool batch: during a parallel bash batch OMP backgrounded the calls at once and took the line, with no block |

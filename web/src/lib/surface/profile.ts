@@ -56,6 +56,14 @@ export interface QueuedRow {
    * `↳ Alt+Up` hint (live rerun 2026-10-23). Optional: without it the texts stand right by the hint.
    */
   readonly between?: string;
+  /**
+   * A regular expression source for the header row over the first text, when the hint stands under
+   * the texts: the block counts only under such a row. OMP 18.6.1 draws one block shape for two
+   * things, `After yield · N` over its queued texts and `Steering · N` over a steer that waits for
+   * the turn's next step (live rerun 2026-10-23), the same `N. <line>` rows and `└ Alt+↑ to edit`
+   * hint under both. Optional; never with `hintAbove`, where the hint is the header.
+   */
+  readonly header?: string;
 }
 
 /**
@@ -82,6 +90,8 @@ export interface SteerWitness {
   readonly hintAbove?: boolean;
   /** With a hint: the rows of another entry that may stand in the block, as in {@link QueuedRow.between}. */
   readonly between?: string;
+  /** With a hint under the texts: the header row over them, as in {@link QueuedRow.header}. */
+  readonly header?: string;
   /** The text itself as a transcript row above the box (see above). */
   readonly transcript?: true;
 }
@@ -768,12 +778,15 @@ function parseSteerWitness(value: JsonValue, path: string): SteerWitness {
       hintGap: whole(field(node, "hintGap", path), `${path}.hintGap`, 0),
     };
     const between = betweenRows(node, path);
+    const header = headerRow(node, path);
     const withBetween: SteerWitness = between === undefined ? base : { ...base, between };
-    return node.hintAbove === true ? { ...withBetween, hintAbove: true } : withBetween;
+    const withHeader: SteerWitness = header === undefined ? withBetween : { ...withBetween, header };
+    return node.hintAbove === true ? { ...withHeader, hintAbove: true } : withHeader;
   }
   if (node.hintGap !== undefined) fail(`${path}.hintGap`, "is only allowed with a hint");
   if (node.hintAbove !== undefined) fail(`${path}.hintAbove`, "is only allowed with a hint");
   if (node.between !== undefined) fail(`${path}.between`, "is only allowed with a hint");
+  if (node.header !== undefined) fail(`${path}.header`, "is only allowed with a hint");
   if (node.transcript === true) {
     if (!holdsText) fail(`${path}.pattern`, "must hold the named group text");
     return { pattern: rowPattern.source, transcript: true };
@@ -792,6 +805,18 @@ function betweenRows(node: JsonObject, path: string): string | undefined {
   const rows = pattern(node.between, `${path}.between`);
   if (rows.test("")) fail(`${path}.between`, "must not match a blank row");
   return rows.source;
+}
+
+/**
+ * The `header` row of a block ({@link QueuedRow.header}), or undefined. Refused with `hintAbove` (the
+ * hint is the header there) and when it matches a blank row.
+ */
+function headerRow(node: JsonObject, path: string): string | undefined {
+  if (node.header === undefined) return undefined;
+  if (node.hintAbove === true) fail(`${path}.header`, "is not allowed with hintAbove: the hint is the header");
+  const row = pattern(node.header, `${path}.header`);
+  if (row.test("")) fail(`${path}.header`, "must not match a blank row");
+  return row.source;
 }
 
 /** A regular expression source, compiled once to prove it is one. Returns the compiled form. */
@@ -1186,7 +1211,9 @@ export function parseProfile(raw: JsonValue): Profile {
       hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
     };
     const queuedBetween = betweenRows(queuedNode, "keys.queuedRow");
-    const queuedWith: QueuedRow = queuedBetween === undefined ? queuedBase : { ...queuedBase, between: queuedBetween };
+    const queuedHeader = headerRow(queuedNode, "keys.queuedRow");
+    const queuedBetweenWith: QueuedRow = queuedBetween === undefined ? queuedBase : { ...queuedBase, between: queuedBetween };
+    const queuedWith: QueuedRow = queuedHeader === undefined ? queuedBetweenWith : { ...queuedBetweenWith, header: queuedHeader };
     const queuedRow: QueuedRow = queuedNode.hintAbove === true ? { ...queuedWith, hintAbove: true } : queuedWith;
     keys = { ...keys, queuedRow };
   }

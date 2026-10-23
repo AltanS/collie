@@ -910,6 +910,7 @@ describe("parseProfile names the failing field", () => {
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
     ["a queued row hintAbove that is not a boolean", ["keys", "queuedRow", "hintAbove"], "above", "keys.queuedRow.hintAbove"],
     ["a queued row between that matches a blank row", ["keys", "queuedRow", "between"], "^.*$", "keys.queuedRow.between"],
+    ["a queued row header that matches a blank row", ["keys", "queuedRow", "header"], "^\\s*$", "keys.queuedRow.header"],
     ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
     ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
@@ -1256,6 +1257,26 @@ describe("the steer keys (M69)", () => {
     expect(hits(queued, transcript!)).toEqual([]);
   });
 
+  it("OMP: a steer that waits for the next step draws `Steering · N` over the queue's own rows and hint; only the header tells the two apart (live rerun 2026-10-23)", () => {
+    const omp = loadProfiles().get("omp")!;
+    const block = omp.keys.steerWitness![2]!;
+    expect(block).toEqual({ pattern: "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$", hint: "^\\s*└ Alt\\+↑ to edit\\s*$", hintGap: 0, header: "^\\s*Steering · \\d+\\s*$" });
+    const queuedRow = omp.keys.queuedRow!;
+    expect(queuedRow.header).toBe("^\\s*After yield · \\d+\\s*$");
+    // The same text row and hint in both captures; the header over them differs.
+    const steer = rowsOf("omp--v18-6-steer-pending-block");
+    const at = steer.findIndex((row) => new RegExp(block.pattern, "u").exec(row)?.groups?.["text"] === "say banana");
+    expect(at).toBeGreaterThan(0);
+    expect(new RegExp(block.header!, "u").test(steer[at - 1]!)).toBe(true);
+    expect(new RegExp(queuedRow.header!, "u").test(steer[at - 1]!)).toBe(false);
+    expect(new RegExp(block.hint!, "u").test(steer[at + 1]!)).toBe(true);
+    expect(new RegExp(queuedRow.pattern, "u").test(steer[at]!)).toBe(true);
+    const queued = rowsOf("omp--v18-6-queue-after");
+    const q = queued.findIndex((row) => new RegExp(queuedRow.pattern, "u").exec(row)?.groups?.["text"] === LINE);
+    expect(new RegExp(queuedRow.header!, "u").test(queued[q - 1]!)).toBe(true);
+    expect(new RegExp(block.header!, "u").test(queued[q - 1]!)).toBe(false);
+  });
+
   const cases: [string, string, (string | number)[], JsonValue | undefined, string][] = [
     ["Escape as the steer key", "pi", ["keys", "steer"], ["Escape"], "keys.steer"],
     ["a chord that holds Escape as the steer key", "pi", ["keys", "steer"], ["alt+Escape"], "keys.steer"],
@@ -1273,6 +1294,10 @@ describe("the steer keys (M69)", () => {
     ["a witness between that is no expression", "pi", ["keys", "steerWitness", 0, "between"], "[unclosed", "keys.steerWitness[0].between"],
     ["a witness between that matches a blank row", "pi", ["keys", "steerWitness", 0, "between"], "^\\s*", "keys.steerWitness[0].between"],
     ["a witness between with no hint", "omp", ["keys", "steerWitness", 0, "between"], "^\\s*x", "keys.steerWitness[0].between"],
+    ["a witness header with no hint", "omp", ["keys", "steerWitness", 0, "header"], "^\\s*x", "keys.steerWitness[0].header"],
+    ["a witness header that matches a blank row", "omp", ["keys", "steerWitness", 2, "header"], "^\\s*$", "keys.steerWitness[2].header"],
+    ["a witness header that is no expression", "omp", ["keys", "steerWitness", 2, "header"], "[unclosed", "keys.steerWitness[2].header"],
+    ["a witness header with the hint above", "codex", ["keys", "steerWitness", 0, "header"], "^\\s*x", "keys.steerWitness[0].header"],
     ["a transcript witness that is not true", "codex", ["keys", "steerWitness", 1, "transcript"], false, "keys.steerWitness[1].transcript"],
     ["a transcript witness with no text group", "codex", ["keys", "steerWitness", 1, "pattern"], "^› .*$", "keys.steerWitness[1].pattern"],
     ["a transcript witness with a hint", "codex", ["keys", "steerWitness", 0, "transcript"], true, "keys.steerWitness[0].transcript"],

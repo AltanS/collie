@@ -618,7 +618,8 @@ function markerRows(snap: Snap, source: string): number {
 function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: string, queuedNow: boolean, letGo: boolean): boolean {
   if (witness.hint !== undefined) {
     const plain: QueuedRow = { pattern: witness.pattern, hint: witness.hint, hintGap: witness.hintGap ?? 0 };
-    const base: QueuedRow = witness.between === undefined ? plain : { ...plain, between: witness.between };
+    const withBetween: QueuedRow = witness.between === undefined ? plain : { ...plain, between: witness.between };
+    const base: QueuedRow = witness.header === undefined ? withBetween : { ...withBetween, header: witness.header };
     const block: QueuedRow = witness.hintAbove === true ? { ...base, hintAbove: true } : base;
     return showsQueued(after, block, text) && !showsQueued(before, block, text);
   }
@@ -635,13 +636,17 @@ function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: 
  * row the pattern matches, its wrapped rows indented under it. One of them, joined and
  * whitespace-free, must equal the text. A row of the profile's `between` pattern starts an entry of
  * another kind in the same block (pi's `Follow-up:` rows between its `Steering:` rows and the hint):
- * it and its wrapped rows are passed over. Rows inside the box are never read.
+ * it and its wrapped rows are passed over. With a `header` (the hint under the texts), the block
+ * counts only when the row over its first text is that header: OMP draws `After yield · N` over a
+ * queue and `Steering · N` over a waiting steer, both with the same rows and hint. Rows inside the box
+ * are never read.
  */
 function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string): boolean {
   if (queuedRow === undefined || snap.frame === null || wsFree(text).length === 0) return false;
   const start = new RegExp(queuedRow.pattern, "u");
   const hint = new RegExp(queuedRow.hint, "u");
   const between = queuedRow.between === undefined ? null : new RegExp(queuedRow.between, "u");
+  const header = queuedRow.header === undefined ? null : new RegExp(queuedRow.header, "u");
   const want = wsFree(text);
   const above = snap.texts.slice(0, snap.frame.top);
   for (let at = above.length - 1; at >= 0; at--) {
@@ -679,11 +684,16 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
     for (let gap = 0; i >= 0 && gap < queuedRow.hintGap && above[i]!.trim().length === 0; gap++) i--;
     // Upward through the queued texts: an indented row waits for the row that starts its text.
     let wrapped: string[] = [];
+    // With a header: the text was found in the block, which counts once its header shows over it.
+    let found = false;
     for (const floor = Math.max(0, i - QUEUED_SCAN_ROWS); i >= floor; i--) {
       const row = above[i]!;
       const head = start.exec(row);
       if (head !== null) {
-        if (wsFree([head.groups?.["text"] ?? "", ...wrapped].join("")) === want) return true;
+        if (wsFree([head.groups?.["text"] ?? "", ...wrapped].join("")) === want) {
+          if (header === null) return true;
+          found = true;
+        }
         wrapped = [];
         continue;
       }
@@ -691,6 +701,11 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
         // Another entry, with the rows it wrapped onto: passed over.
         wrapped = [];
         continue;
+      }
+      // The block's header ends it, before the indented-row rule could take it for a wrapped row.
+      if (header?.test(row) === true) {
+        if (found) return true;
+        break;
       }
       if (!/^\s+\S/u.test(row)) break;
       wrapped = [row.trim(), ...wrapped];

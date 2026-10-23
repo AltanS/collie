@@ -226,6 +226,7 @@ const DECLINED = new Set([
   "omp--v18-6-steer-after--w120.txt",
   "omp--v18-6-steer-after-now--w120.txt",
   "omp--v18-6-steer-done--w120.txt",
+  "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-band-idle--w130.txt",
@@ -529,6 +530,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-steer-after--w120.txt",
     "omp--v18-6-steer-after-now--w120.txt",
     "omp--v18-6-steer-done--w120.txt",
+    "omp--v18-6-steer-pending-block--w120.txt",
     "omp--v18-6-steer-typed--w120.txt",
     "omp--v18-8-ask-single-described-moved.txt",
     "omp--v18-8-ask-single-described.txt",
@@ -707,6 +709,7 @@ const COMPOSER_FIXTURES = [
   "omp--v18-6-steer-after--w120.txt",
   "omp--v18-6-steer-after-now--w120.txt",
   "omp--v18-6-steer-done--w120.txt",
+  "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-band-idle--w130.txt",
